@@ -8,8 +8,10 @@
 //!   cohort).
 //! - `ALETHEIA_MEMORY_MCP_STORE` — override the store path directly, e.g. to
 //!   target a different cohort at `<root>/data/knowledge.fjall/<cohort>`.
-//! - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` — enable write tools and authorize each
-//!   write call with a matching capability token.
+//! - `ALETHEIA_MEMORY_MCP_NOUS_ID` — bind the server to a single caller
+//!   identity (nous). Read tools fail closed when this is unset.
+//! - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` — enable write tools. The capability is
+//!   configured out-of-band and is never accepted as a tool argument.
 //! - `RUST_LOG` — tracing filter; defaults to `info`. Logs go to stderr so
 //!   stdout stays clean for JSON-RPC.
 //!

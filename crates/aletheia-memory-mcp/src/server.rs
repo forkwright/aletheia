@@ -27,6 +27,9 @@ use crate::error::{self, JoinSnafu, OpenStoreSnafu, TransportSnafu};
 pub struct MemoryServer {
     pub(crate) store: Arc<KnowledgeStore>,
     pub(crate) store_path: Option<PathBuf>,
+    /// Bound caller identity (nous) for read-tool recall scope.
+    /// If `None`, read tools reject every request.
+    pub(crate) nous_id: Option<String>,
     /// Capability token for write tools, if configured.
     /// If `None`, write tools are not registered.
     pub(crate) write_token: Option<String>,
@@ -38,6 +41,23 @@ impl MemoryServer {
 
     /// Minimum token length enforcing the documented 32-byte random token expectation.
     const MIN_WRITE_TOKEN_LEN: usize = 32;
+
+    /// Sanitize a raw caller identity read from env or provided by the caller.
+    ///
+    /// Returns `None` when the value is absent or blank. A bound identity is
+    /// required for all read tools; returning `None` makes them fail closed.
+    fn sanitize_nous_id(raw: Option<String>) -> Option<String> {
+        match raw {
+            None => None,
+            Some(s) if s.trim().is_empty() => {
+                tracing::warn!(
+                    "ALETHEIA_MEMORY_MCP_NOUS_ID is set but blank; read tools will be rejected"
+                );
+                None
+            }
+            Some(s) => Some(s.trim().to_owned()),
+        }
+    }
 
     /// Sanitize a raw write token value read from env or provided by the caller.
     ///
@@ -83,15 +103,18 @@ impl MemoryServer {
     /// `store_path` is surfaced by `nous_stats` so callers can confirm which
     /// on-disk database is being served. Pass `None` for in-memory stores.
     ///
-    /// Write tools are registered if `write_token` is `Some(_)`.
+    /// The caller identity is read from `ALETHEIA_MEMORY_MCP_NOUS_ID`.
+    /// Write tools are registered if `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set.
     #[must_use]
     pub fn new(store: Arc<KnowledgeStore>, store_path: Option<PathBuf>) -> Self {
+        let nous_id = Self::sanitize_nous_id(std::env::var("ALETHEIA_MEMORY_MCP_NOUS_ID").ok());
         let write_token =
             Self::sanitize_write_token(std::env::var("ALETHEIA_MEMORY_MCP_WRITE_TOKEN").ok());
         let tool_router = Self::router_for(write_token.as_ref());
         Self {
             store,
             store_path,
+            nous_id,
             write_token,
             tool_router,
         }
@@ -100,21 +123,42 @@ impl MemoryServer {
     /// Build a memory server with an explicit write token (for testing).
     ///
     /// This bypasses environment variable lookup. For production, use [`Self::new()`]
-    /// which reads from `ALETHEIA_MEMORY_MCP_WRITE_TOKEN`.
+    /// which reads from `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` and `ALETHEIA_MEMORY_MCP_NOUS_ID`.
     #[must_use]
     pub fn with_write_token(
         store: Arc<KnowledgeStore>,
         store_path: Option<PathBuf>,
         write_token: Option<String>,
     ) -> Self {
+        let nous_id = Self::sanitize_nous_id(std::env::var("ALETHEIA_MEMORY_MCP_NOUS_ID").ok());
         let write_token = Self::sanitize_write_token(write_token);
         let tool_router = Self::router_for(write_token.as_ref());
         Self {
             store,
             store_path,
+            nous_id,
             write_token,
             tool_router,
         }
+    }
+
+    /// Bind an explicit caller identity (for testing).
+    ///
+    /// WHY: production identity comes from `ALETHEIA_MEMORY_MCP_NOUS_ID`; tests
+    /// must be able to set it without racing on process-global environment.
+    #[must_use]
+    pub fn with_nous_id(mut self, nous_id: Option<String>) -> Self {
+        self.nous_id = Self::sanitize_nous_id(nous_id);
+        self
+    }
+
+    /// Return the server-bound caller identity, failing closed when unbound.
+    ///
+    /// All read tools use this instead of any model-supplied argument.
+    pub(crate) fn requester_nous_id(&self) -> error::Result<&str> {
+        self.nous_id
+            .as_deref()
+            .ok_or_else(|| error::CallerNotConfiguredSnafu.build())
     }
 
     /// Open a persistent knowledge store at `path` (fjall LSM-tree).
@@ -318,5 +362,35 @@ mod tests {
         let token = "x".repeat(MemoryServer::MIN_WRITE_TOKEN_LEN);
         let server = MemoryServer::with_write_token(store, None, Some(token.clone()));
         assert!(server.validate_write_token(&token).is_ok());
+    }
+
+    #[test]
+    fn requester_nous_id_fails_when_unbound() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server = MemoryServer::with_write_token(store, None, None);
+        let result = server.requester_nous_id();
+        assert!(matches!(
+            result,
+            Err(crate::error::Error::CallerNotConfigured { .. })
+        ));
+    }
+
+    #[test]
+    fn requester_nous_id_returns_bound_identity() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        assert_eq!(server.requester_nous_id().unwrap(), "alice");
+    }
+
+    #[test]
+    fn blank_nous_id_is_rejected() {
+        let store = KnowledgeStore::open_mem().unwrap();
+        let server =
+            MemoryServer::with_write_token(store, None, None).with_nous_id(Some("   ".to_owned()));
+        assert!(matches!(
+            server.requester_nous_id(),
+            Err(crate::error::Error::CallerNotConfigured { .. })
+        ));
     }
 }

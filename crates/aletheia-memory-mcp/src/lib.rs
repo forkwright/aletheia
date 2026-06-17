@@ -29,8 +29,12 @@
 //!
 //! This surface is distinct from kanon mnemosyne: it serves Aletheia nous local
 //! knowledge with session-scoped semantics, not kanon's durable corpus store.
+//! Read-tool recall scope is bound to the single `ALETHEIA_MEMORY_MCP_NOUS_ID`
+//! identity configured at server startup; the model cannot supply a different
+//! `nous_id` to access sibling memory.
+//!
 //! Write tools are registered only when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set
-//! and each write call must present that token.
+//! at server startup; the capability token is never accepted as a tool argument.
 //!
 //! # Feature gating
 //!

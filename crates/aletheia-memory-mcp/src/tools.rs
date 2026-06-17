@@ -32,9 +32,6 @@ use crate::server::MemoryServer;
 pub struct NousSearchParams {
     /// Free-text query string; matched via BM25 against current fact content.
     pub query: String,
-    /// Owning agent (nous) for whom results are being recalled. Filters out
-    /// foreign private facts and respects visibility rules.
-    pub nous_id: String,
     /// Maximum number of results to return. Defaults to 20 when omitted.
     #[serde(default)]
     pub limit: Option<usize>,
@@ -56,8 +53,6 @@ pub struct NousSearchParams {
 // kanon:ignore RUST/no-debug-derive-on-public-types — contains only scope filters; no secrets
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousListTopicsParams {
-    /// Owning agent (nous) whose view of the topic distribution is requested.
-    pub nous_id: String,
     /// Optional project partition filter.
     #[serde(default)]
     pub project_id: Option<String>,
@@ -76,8 +71,6 @@ pub struct NousListTopicsParams {
 // kanon:ignore RUST/no-debug-derive-on-public-types — contains only scope filters; no secrets
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousStatsParams {
-    /// Owning agent (nous) whose view of the stats is requested.
-    pub nous_id: String,
     /// Optional project partition filter.
     #[serde(default)]
     pub project_id: Option<String>,
@@ -99,8 +92,6 @@ pub struct NousNeighborsParams {
     /// ID of the seed fact whose entity neighbors should be returned.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
-    /// Owning agent (nous) whose scoped view is requesting the neighbors.
-    pub nous_id: String,
     /// Optional project partition filter.
     #[serde(default)]
     pub project_id: Option<String>,
@@ -604,7 +595,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_search",
-    ///   "arguments": { "query": "fleet dispatch config", "nous_id": "alice", "limit": 10 }
+    ///   "arguments": { "query": "fleet dispatch config", "limit": 10 }
     /// }
     /// ```
     #[tool(
@@ -639,16 +630,11 @@ impl MemoryServer {
             )
         })?;
 
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
         let query = params.query.clone();
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -702,7 +688,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_neighbors",
-    ///   "arguments": { "fact_id": "f-abc-123", "nous_id": "alice" }
+    ///   "arguments": { "fact_id": "f-abc-123" }
     /// }
     /// ```
     #[tool(
@@ -722,16 +708,11 @@ impl MemoryServer {
             .into());
         }
 
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
         let fact_id = params.fact_id.clone();
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -895,7 +876,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_list_topics",
-    ///   "arguments": { "nous_id": "alice" }
+    ///   "arguments": {}
     /// }
     /// ```
     #[tool(
@@ -908,15 +889,10 @@ impl MemoryServer {
         &self,
         Parameters(params): Parameters<NousListTopicsParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -988,7 +964,7 @@ impl MemoryServer {
     /// ```json
     /// {
     ///   "name": "nous_stats",
-    ///   "arguments": { "nous_id": "alice" }
+    ///   "arguments": {}
     /// }
     /// ```
     #[tool(
@@ -1000,16 +976,11 @@ impl MemoryServer {
         &self,
         Parameters(params): Parameters<NousStatsParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        if params.nous_id.trim().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
+        // WHY: recall scope is bound to the server's authenticated caller
+        // identity, not to any model-supplied argument.
+        let requester = self.requester_nous_id()?.to_owned();
 
         let store_path = self.store_path.as_ref().map(|p| p.display().to_string());
-        let requester = params.nous_id.clone();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -1663,25 +1634,36 @@ mod tests {
 
     #[test]
     fn nous_search_params_round_trip() {
-        let json =
-            r#"{"query":"fleet dispatch config","nous_id":"alice","limit":10,"scope":"project"}"#;
+        let json = r#"{"query":"fleet dispatch config","limit":10,"scope":"project"}"#;
         let params: NousSearchParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.query, "fleet dispatch config");
-        assert_eq!(params.nous_id, "alice");
         assert_eq!(params.limit, Some(10));
         assert_eq!(params.scope, Some("project".to_owned()));
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousSearchParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.nous_id, "alice");
         assert_eq!(back.limit, Some(10));
     }
 
     #[test]
-    fn nous_search_params_requires_nous_id() {
+    fn nous_search_params_accepts_no_nous_id() {
+        // WHY: recall scope is server-bound, so the model cannot supply it.
         let json = r#"{"query":"foo"}"#;
         let result = serde_json::from_str::<NousSearchParams>(json);
-        assert!(result.is_err(), "nous_id is required for scoped search");
+        assert!(
+            result.is_ok(),
+            "nous_id must not be required in tool arguments"
+        );
+    }
+
+    #[test]
+    fn search_params_ignores_foreign_nous_id_argument() {
+        // WHY: extra arguments must not be able to choose a sibling identity.
+        let json = r#"{"query":"foo","nous_id":"bob"}"#;
+        let result = serde_json::from_str::<NousSearchParams>(json).unwrap();
+        // serde ignores unknown fields by default, so the supplied nous_id
+        // has no effect on recall scope.
+        assert_eq!(result.query, "foo");
     }
 
     #[test]
@@ -1696,15 +1678,14 @@ mod tests {
 
     #[test]
     fn nous_neighbors_params_round_trip() {
-        let json = r#"{"fact_id":"f-abc-123","nous_id":"alice","scope":"project"}"#;
+        let json = r#"{"fact_id":"f-abc-123","scope":"project"}"#;
         let params: NousNeighborsParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.fact_id, "f-abc-123");
-        assert_eq!(params.nous_id, "alice");
         assert_eq!(params.scope, Some("project".to_owned()));
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousNeighborsParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.nous_id, "alice");
+        assert_eq!(back.fact_id, "f-abc-123");
     }
 
     #[test]
@@ -1762,7 +1743,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn search_scopes_to_requester_nous_id() {
+    async fn search_scopes_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1787,10 +1768,10 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousSearchParams {
             query: "dispatch".to_owned(),
-            nous_id: "alice".to_owned(),
             limit: Some(10),
             project_id: None,
             scope: None,
@@ -1814,7 +1795,81 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_topics_scopes_to_requester_nous_id() {
+    async fn search_ignores_model_supplied_nous_id() {
+        // WHY: regression test for #5067 — a caller must not be able to recall
+        // as a sibling identity by passing a different `nous_id` argument.
+        let store = open_store();
+        store
+            .insert_fact(&sample_fact(
+                "f-alice-1",
+                "alice",
+                "alice private note about dispatch",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+        store
+            .insert_fact(&sample_fact(
+                "f-bob-1",
+                "bob",
+                "bob private note about dispatch",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+
+        // Server is bound to alice; the request still carries a foreign nous_id.
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousSearchParams {
+            query: "dispatch".to_owned(),
+            limit: Some(10),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+        };
+        let result = server.nous_search(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        assert!(text.contains("f-alice-1"));
+        assert!(
+            !text.contains("f-bob-1"),
+            "model-supplied nous_id must not change recall scope"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_tools_reject_unbound_identity() {
+        let store = open_store();
+        let server = MemoryServer::with_write_token(store, None, None);
+        let params = NousSearchParams {
+            query: "dispatch".to_owned(),
+            limit: Some(10),
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+        };
+        let result = server.nous_search(Parameters(params)).await;
+        assert!(
+            result.is_err(),
+            "read tools must fail closed when no caller identity is bound"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_topics_scopes_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1850,9 +1905,9 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousListTopicsParams {
-            nous_id: "alice".to_owned(),
             project_id: None,
             scope: None,
             min_visibility: None,
@@ -1877,7 +1932,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stats_scopes_to_requester_nous_id() {
+    async fn stats_scopes_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1902,9 +1957,9 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousStatsParams {
-            nous_id: "alice".to_owned(),
             project_id: None,
             scope: None,
             min_visibility: None,
@@ -1925,7 +1980,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn neighbors_scopes_seed_fact_to_requester_nous_id() {
+    async fn neighbors_scopes_seed_fact_to_bound_server_identity() {
         let store = open_store();
         store
             .insert_fact(&sample_fact(
@@ -1939,10 +1994,10 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, None);
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousNeighborsParams {
             fact_id: "f-bob-1".to_owned(),
-            nous_id: "alice".to_owned(),
             project_id: None,
             scope: None,
             min_visibility: None,

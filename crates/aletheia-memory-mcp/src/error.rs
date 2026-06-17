@@ -72,6 +72,13 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Read tool called before a caller identity was bound to the server.
+    #[snafu(display("caller identity not configured on memory MCP server"))]
+    CallerNotConfigured {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Write call rejected due to invalid capability token.
     #[snafu(display("write authorization failed"))]
     WriteUnauthorized {
@@ -98,6 +105,7 @@ impl From<Error> for rmcp::ErrorData {
             Error::InvalidInput { .. }
             | Error::WriteNotAvailable { .. }
             | Error::WriteUnauthorized { .. }
+            | Error::CallerNotConfigured { .. }
             | Error::FactNotFound { .. } => rmcp::ErrorData::invalid_params(message, None),
             Error::OpenStore { .. }
             | Error::KnowledgeStore { .. }
