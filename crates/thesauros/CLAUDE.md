@@ -35,6 +35,7 @@ Domain pack loader: parses pack.toml manifests, resolves context files, register
 - **Priority cascade**: Context sections declare bootstrap priority (Required > Important > Flexible > Optional) matching the nous bootstrap assembler.
 - **Shell tool execution**: Pack tools run as shell scripts with JSON input on stdin, stdout captured as result. ProcessGuard prevents orphan processes.
 - **ETXTBSY retry**: Shell executor makes up to 4 attempts total (3 retries) on ETXTBSY (errno 26) with exponential backoff (1 ms, 4 ms, 16 ms) to handle races between file writes and exec.
+- **Context file size limit**: Context files are read up to `MAX_CONTEXT_FILE_BYTES` (512 KiB). Files exceeding the limit are rejected with `ContextFileTooLarge` to prevent startup OOM from oversized or unbounded files.
 
 ## Common tasks
 

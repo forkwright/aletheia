@@ -1,5 +1,6 @@
 //! Pack loading and context resolution.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use snafu::ResultExt;
@@ -7,6 +8,12 @@ use tracing::{info, warn};
 
 use crate::error::{self, Result};
 use crate::manifest::{self, ContextEntry, PackManifest, Priority};
+
+/// Maximum bytes read for a single context file.
+///
+/// WHY: Bounds per-file read to prevent a malicious or misconfigured pack from
+/// causing unbounded heap growth or startup OOM.
+const MAX_CONTEXT_FILE_BYTES: usize = 512 * 1024;
 
 /// A resolved context section from a domain pack, ready for bootstrap injection.
 #[derive(Debug, Clone)]
@@ -179,9 +186,51 @@ fn resolve_single_section(
     pack_name: &str,
 ) -> Result<PackSection> {
     let file_path = manifest::resolve_context_path(pack_root, entry)?;
-    let content = std::fs::read_to_string(&file_path).context(error::ReadFileSnafu {
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "thesauros pack loader reads context files synchronously at startup; bounded synchronous I/O is inherent to asset loading"
+    )]
+    let mut file = std::fs::File::open(&file_path).context(error::ReadFileSnafu {
         path: file_path.clone(),
     })?;
+
+    let mut content = String::new();
+    #[expect(
+        clippy::as_conversions,
+        reason = "MAX_CONTEXT_FILE_BYTES is 512 KiB and always fits in u64"
+    )]
+    let byte_limit = MAX_CONTEXT_FILE_BYTES as u64;
+    (&mut file)
+        .take(byte_limit)
+        .read_to_string(&mut content)
+        .context(error::ReadFileSnafu {
+            path: file_path.clone(),
+        })?;
+
+    // If the read consumed the whole budget, the file may be larger than the
+    // limit. Read one more byte to confirm before keeping the content.
+    if content.len() == MAX_CONTEXT_FILE_BYTES {
+        let mut extra = [0u8; 1];
+        match file.read(&mut extra) {
+            Ok(0) => {}
+            Ok(_) => {
+                return Err(error::Error::ContextFileTooLarge {
+                    path: file_path.clone(),
+                    limit: MAX_CONTEXT_FILE_BYTES,
+                    location: snafu::Location::new(file!(), line!(), column!()),
+                });
+            }
+            Err(source) => {
+                return Err(error::Error::ReadFile {
+                    path: file_path.clone(),
+                    source,
+                    location: snafu::Location::new(file!(), line!(), column!()),
+                });
+            }
+        }
+    }
+
     let content = content.trim().to_owned();
 
     let name = file_path
@@ -440,6 +489,46 @@ system_prompt_additions = ["Answer in bullet points."]
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.sections.len(), 1);
         assert_eq!(pack.sections[0].name, "exists.md");
+    }
+
+    #[test]
+    fn context_file_size_limit_rejects_oversized_file() {
+        let oversized = "a".repeat(MAX_CONTEXT_FILE_BYTES + 1);
+        let dir = setup_pack(&[
+            (
+                "pack.toml",
+                "name = \"size-test\"\nversion = \"1.0\"\n\n[[context]]\npath = \"huge.md\"\n",
+            ),
+            ("huge.md", &oversized),
+        ]);
+
+        let entry = ContextEntry {
+            path: "huge.md".to_owned(),
+            priority: Priority::Important,
+            agents: vec![],
+            truncatable: false,
+        };
+        let err = resolve_single_section(dir.path(), &entry, "size-test").unwrap_err();
+        assert!(
+            matches!(err, error::Error::ContextFileTooLarge { .. }),
+            "expected ContextFileTooLarge, got: {err}"
+        );
+    }
+
+    #[test]
+    fn context_file_at_size_limit_is_accepted() {
+        let at_limit = "a".repeat(MAX_CONTEXT_FILE_BYTES);
+        let dir = setup_pack(&[
+            (
+                "pack.toml",
+                "name = \"size-test\"\nversion = \"1.0\"\n\n[[context]]\npath = \"limit.md\"\n",
+            ),
+            ("limit.md", &at_limit),
+        ]);
+
+        let pack = load_single_pack(dir.path()).unwrap();
+        assert_eq!(pack.sections.len(), 1);
+        assert_eq!(pack.sections[0].content.len(), MAX_CONTEXT_FILE_BYTES);
     }
 
     #[test]

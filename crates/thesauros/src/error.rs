@@ -64,6 +64,18 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Context file exceeds the maximum allowed size.
+    #[snafu(display(
+        "context file {} exceeds maximum size of {limit} bytes",
+        path.display()
+    ))]
+    ContextFileTooLarge {
+        path: PathBuf,
+        limit: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Tool command script not found at declared path.
     #[snafu(display("tool command not found: {}", path.display()))]
     ToolCommandNotFound {
