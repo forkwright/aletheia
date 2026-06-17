@@ -196,7 +196,6 @@ dependencies = [
  "serde",
  "serde_json",
  "snafu",
- "subtle",
  "taxis",
  "tempfile",
  "tokio",

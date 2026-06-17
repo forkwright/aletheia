@@ -230,28 +230,19 @@ impl MemoryServer {
             .context(JoinSnafu)?
     }
 
-    /// Validate a capability token against the configured token.
+    /// Enforce server-side write authorization.
     ///
-    /// Returns `Ok(())` if tokens match (via constant-time comparison).
-    /// Returns `Err(WriteUnauthorized)` if:
-    ///   - Write token is not configured
-    ///   - Provided token does not match
+    /// Write tools are registered only when a capability token is configured at
+    /// server startup. This method ensures that, even if a route is reachable,
+    /// the server fails closed when no token is configured. There is no
+    /// model-visible credential to compare; the capability is the server's
+    /// configured secret.
     // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
-    pub(crate) fn validate_write_token(&self, provided: &str) -> error::Result<()> {
-        use subtle::ConstantTimeEq;
-
-        let expected = self
-            .write_token
-            .as_ref()
-            .ok_or_else(|| error::WriteNotAvailableSnafu.build())?;
-
-        // Constant-time comparison to prevent timing-based token leakage
-        let result = expected.as_bytes().ct_eq(provided.as_bytes());
-
-        if result.unwrap_u8() == 1 {
+    pub(crate) fn require_write_token(&self) -> error::Result<()> {
+        if self.write_token.is_some() {
             Ok(())
         } else {
-            Err(error::WriteUnauthorizedSnafu.build())
+            Err(error::WriteNotAvailableSnafu.build())
         }
     }
 }
@@ -286,29 +277,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validate_write_token_accepts_match() {
-        let store = KnowledgeStore::open_mem().unwrap();
-        let token = "a".repeat(32);
-        let server = MemoryServer::with_write_token(store, None, Some(token.clone()));
-        assert!(server.validate_write_token(&token).is_ok());
-    }
-
-    #[test]
-    fn validate_write_token_rejects_mismatch() {
+    fn require_write_token_accepts_when_configured() {
         let store = KnowledgeStore::open_mem().unwrap();
         let token = "a".repeat(32);
         let server = MemoryServer::with_write_token(store, None, Some(token));
-        let result = server.validate_write_token("wrong-token");
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(err, crate::error::Error::WriteUnauthorized { .. }));
+        assert!(server.require_write_token().is_ok());
     }
 
     #[test]
     fn write_not_available_when_no_token_configured() {
         let store = KnowledgeStore::open_mem().unwrap();
         let server = MemoryServer::with_write_token(store, None, None);
-        let result = server.validate_write_token("any-token");
+        let result = server.require_write_token();
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, crate::error::Error::WriteNotAvailable { .. }));
@@ -325,7 +305,7 @@ mod tests {
         let store = KnowledgeStore::open_mem().unwrap();
         let server = MemoryServer::with_write_token(store, None, Some(String::new()));
         // Empty token must be treated as write-disabled
-        let result = server.validate_write_token("");
+        let result = server.require_write_token();
         assert!(matches!(
             result,
             Err(crate::error::Error::WriteNotAvailable { .. })
@@ -336,7 +316,7 @@ mod tests {
     fn blank_write_token_is_rejected() {
         let store = KnowledgeStore::open_mem().unwrap();
         let server = MemoryServer::with_write_token(store, None, Some("   ".to_owned()));
-        let result = server.validate_write_token("   ");
+        let result = server.require_write_token();
         assert!(matches!(
             result,
             Err(crate::error::Error::WriteNotAvailable { .. })
@@ -349,7 +329,7 @@ mod tests {
         let short_token = "short".to_owned();
         let server = MemoryServer::with_write_token(store, None, Some(short_token));
         // Token shorter than MIN_WRITE_TOKEN_LEN must be treated as write-disabled
-        let result = server.validate_write_token("short");
+        let result = server.require_write_token();
         assert!(matches!(
             result,
             Err(crate::error::Error::WriteNotAvailable { .. })
@@ -360,8 +340,8 @@ mod tests {
     fn valid_length_write_token_is_accepted() {
         let store = KnowledgeStore::open_mem().unwrap();
         let token = "x".repeat(MemoryServer::MIN_WRITE_TOKEN_LEN);
-        let server = MemoryServer::with_write_token(store, None, Some(token.clone()));
-        assert!(server.validate_write_token(&token).is_ok());
+        let server = MemoryServer::with_write_token(store, None, Some(token));
+        assert!(server.require_write_token().is_ok());
     }
 
     #[test]

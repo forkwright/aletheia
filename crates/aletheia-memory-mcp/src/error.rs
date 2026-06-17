@@ -79,13 +79,6 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Write call rejected due to invalid capability token.
-    #[snafu(display("write authorization failed"))]
-    WriteUnauthorized {
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Fact not found for a write operation.
     #[snafu(display("fact not found: {id}"))]
     FactNotFound {
@@ -104,7 +97,6 @@ impl From<Error> for rmcp::ErrorData {
         match &err {
             Error::InvalidInput { .. }
             | Error::WriteNotAvailable { .. }
-            | Error::WriteUnauthorized { .. }
             | Error::CallerNotConfigured { .. }
             | Error::FactNotFound { .. } => rmcp::ErrorData::invalid_params(message, None),
             Error::OpenStore { .. }

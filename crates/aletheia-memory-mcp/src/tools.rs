@@ -6,8 +6,8 @@
 //!
 //! Write tools (`nous_annotate`, `nous_supersede`, `nous_forget`) are only
 //! registered if the `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` environment variable is
-//! set at server startup. Each write call must include a `write_token` field
-//! that matches the configured token (via constant-time comparison).
+//! set at server startup. The capability token is configured out-of-band and is
+//! never accepted as a model-visible tool argument.
 
 use std::collections::BTreeMap;
 
@@ -107,8 +107,8 @@ pub struct NousNeighborsParams {
 }
 
 /// Parameters for `nous_annotate`.
-// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
-#[derive(Clone, Deserialize, Serialize, JsonSchema)]
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only the target fact and owner session; no secrets
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousAnnotateParams {
     /// Owning agent (nous) that is authoring the annotation. Must be explicit;
@@ -119,24 +119,11 @@ pub struct NousAnnotateParams {
     pub fact_id: String,
     /// Annotation content — agent-authored note or observation.
     pub content: String,
-    /// Capability token for write authorization.
-    pub write_token: String,
-}
-
-impl std::fmt::Debug for NousAnnotateParams {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NousAnnotateParams")
-            .field("session_id", &self.session_id)
-            .field("fact_id", &self.fact_id)
-            .field("content", &self.content)
-            .field("write_token", &"[redacted]")
-            .finish()
-    }
 }
 
 /// Parameters for `nous_supersede`.
-// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
-#[derive(Clone, Deserialize, Serialize, JsonSchema)]
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only fact IDs and owner; no secrets
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousSupersedeParams {
     /// ID of the fact being superseded.
@@ -149,25 +136,11 @@ pub struct NousSupersedeParams {
     pub nous_id: String,
     /// Reason for supersession.
     pub reason: String,
-    /// Capability token for write authorization.
-    pub write_token: String,
-}
-
-impl std::fmt::Debug for NousSupersedeParams {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NousSupersedeParams")
-            .field("old_fact_id", &self.old_fact_id)
-            .field("new_fact_id", &self.new_fact_id)
-            .field("nous_id", &self.nous_id)
-            .field("reason", &self.reason)
-            .field("write_token", &"[redacted]")
-            .finish()
-    }
 }
 
 /// Parameters for `nous_forget`.
-// WARNING: manual Debug omits write_token to prevent credential leak in tracing spans
-#[derive(Clone, Deserialize, Serialize, JsonSchema)]
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only fact ID and owner; no secrets
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousForgetParams {
     /// ID of the fact to forget.
@@ -177,19 +150,6 @@ pub struct NousForgetParams {
     pub nous_id: String,
     /// Reason for forgetting.
     pub reason: String,
-    /// Capability token for write authorization.
-    pub write_token: String,
-}
-
-impl std::fmt::Debug for NousForgetParams {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NousForgetParams")
-            .field("fact_id", &self.fact_id)
-            .field("nous_id", &self.nous_id)
-            .field("reason", &self.reason)
-            .field("write_token", &"[redacted]")
-            .finish()
-    }
 }
 
 /// Default search limit when the caller omits one.
@@ -1075,23 +1035,22 @@ impl MemoryServer {
     ///     "fact_id": "f-abc-123",
     ///     "content": "This fact was verified against external source X",
     ///     "session_id": "agent-uuid",
-    ///     "write_token": "..."
     ///   }
     /// }
     /// ```
     #[tool(
         name = "nous_annotate",
         description = "Create an annotation on an owned fact in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
-                         Requires write capability token. Returns the created annotation ID."
+                         Write capability must be configured server-side. Returns the created annotation ID."
     )]
     #[tracing::instrument(skip_all, fields(tool = "nous_annotate"))]
     async fn nous_annotate(
         &self,
         Parameters(params): Parameters<NousAnnotateParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // Validate write authorization first, before any side effects
-        self.validate_write_token(&params.write_token)
-            .map_err(rmcp::ErrorData::from)?;
+        // WHY: write authorization is server-side; there is no credential in the
+        // model-visible tool arguments.
+        self.require_write_token().map_err(rmcp::ErrorData::from)?;
 
         if params.fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1245,23 +1204,22 @@ impl MemoryServer {
     ///     "new_fact_id": "f-abc-124",
     ///     "nous_id": "alice",
     ///     "reason": "Updated with more recent information",
-    ///     "write_token": "..."
     ///   }
     /// }
     /// ```
     #[tool(
         name = "nous_supersede",
         description = "Mark one owned fact as superseded by another in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
-                         Requires write capability token. Returns the supersession record ID."
+                         Write capability must be configured server-side. Returns the supersession record ID."
     )]
     #[tracing::instrument(skip_all, fields(tool = "nous_supersede"))]
     async fn nous_supersede(
         &self,
         Parameters(params): Parameters<NousSupersedeParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // Validate write authorization first
-        self.validate_write_token(&params.write_token)
-            .map_err(rmcp::ErrorData::from)?;
+        // WHY: write authorization is server-side; there is no credential in the
+        // model-visible tool arguments.
+        self.require_write_token().map_err(rmcp::ErrorData::from)?;
 
         if params.old_fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1447,23 +1405,22 @@ impl MemoryServer {
     ///     "fact_id": "f-abc-123",
     ///     "nous_id": "alice",
     ///     "reason": "Fact is no longer valid",
-    ///     "write_token": "..."
     ///   }
     /// }
     /// ```
     #[tool(
         name = "nous_forget",
         description = "Soft-delete an owned fact in the aletheia nous local knowledge store; not kanon mnemosyne's durable corpus. \
-                         Requires write capability token. Returns forgotten_at timestamp."
+                         Write capability must be configured server-side. Returns forgotten_at timestamp."
     )]
     #[tracing::instrument(skip_all, fields(tool = "nous_forget"))]
     async fn nous_forget(
         &self,
         Parameters(params): Parameters<NousForgetParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // Validate write authorization first
-        self.validate_write_token(&params.write_token)
-            .map_err(rmcp::ErrorData::from)?;
+        // WHY: write authorization is server-side; there is no credential in the
+        // model-visible tool arguments.
+        self.require_write_token().map_err(rmcp::ErrorData::from)?;
 
         if params.fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1689,38 +1646,34 @@ mod tests {
     }
 
     #[test]
-    fn nous_annotate_params_requires_write_token_and_owner() {
-        // Missing write_token
-        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"note"}"#;
-        assert!(serde_json::from_str::<NousAnnotateParams>(json).is_err());
+    fn nous_annotate_params_requires_owner() {
         // Missing session_id (owner)
-        let json = r#"{"fact_id":"f-abc-123","content":"note","write_token":"sekrit"}"#;
+        let json = r#"{"fact_id":"f-abc-123","content":"note"}"#;
         assert!(serde_json::from_str::<NousAnnotateParams>(json).is_err());
     }
 
     #[test]
     fn nous_annotate_params_round_trip() {
-        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"verified","write_token":"sekrit"}"#;
+        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"verified"}"#;
         let params: NousAnnotateParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.session_id, "agent-uuid".to_owned());
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.content, "verified");
-        assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousAnnotateParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.write_token, "sekrit");
+        assert_eq!(back.session_id, "agent-uuid");
     }
 
     #[test]
     fn nous_supersede_params_round_trip() {
-        let json = r#"{"old_fact_id":"f-old","new_fact_id":"f-new","nous_id":"alice","reason":"updated","write_token":"sekrit"}"#;
+        let json =
+            r#"{"old_fact_id":"f-old","new_fact_id":"f-new","nous_id":"alice","reason":"updated"}"#;
         let params: NousSupersedeParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.old_fact_id, "f-old");
         assert_eq!(params.new_fact_id, "f-new");
         assert_eq!(params.nous_id, "alice");
         assert_eq!(params.reason, "updated");
-        assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousSupersedeParams = serde_json::from_str(&out).unwrap();
@@ -1729,17 +1682,55 @@ mod tests {
 
     #[test]
     fn nous_forget_params_round_trip() {
-        let json =
-            r#"{"fact_id":"f-abc-123","nous_id":"alice","reason":"stale","write_token":"sekrit"}"#;
+        let json = r#"{"fact_id":"f-abc-123","nous_id":"alice","reason":"stale"}"#;
         let params: NousForgetParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.nous_id, "alice");
         assert_eq!(params.reason, "stale");
-        assert_eq!(params.write_token, "sekrit");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousForgetParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.nous_id, "alice");
+    }
+
+    #[test]
+    fn write_tool_schemas_expose_no_credential_field() {
+        // WHY: regression test for #5068 — the capability token must never be
+        // advertised as part of the model-visible input schema.
+        use schemars::JsonSchema;
+
+        let annotate_schema =
+            NousAnnotateParams::json_schema(&mut schemars::SchemaGenerator::default());
+        let annotate_props = annotate_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("annotate schema properties");
+        assert!(
+            !annotate_props.contains_key("write_token"),
+            "nous_annotate schema must not contain write_token"
+        );
+
+        let supersede_schema =
+            NousSupersedeParams::json_schema(&mut schemars::SchemaGenerator::default());
+        let supersede_props = supersede_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("supersede schema properties");
+        assert!(
+            !supersede_props.contains_key("write_token"),
+            "nous_supersede schema must not contain write_token"
+        );
+
+        let forget_schema =
+            NousForgetParams::json_schema(&mut schemars::SchemaGenerator::default());
+        let forget_props = forget_schema
+            .get("properties")
+            .and_then(serde_json::Value::as_object)
+            .expect("forget schema properties");
+        assert!(
+            !forget_props.contains_key("write_token"),
+            "nous_forget schema must not contain write_token"
+        );
     }
 
     #[tokio::test]
@@ -2030,7 +2021,6 @@ mod tests {
             session_id: "alice".to_owned(),
             fact_id: "f-target-1".to_owned(),
             content: "verified by external source".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_annotate(Parameters(params)).await.unwrap();
         let text = result
@@ -2079,7 +2069,6 @@ mod tests {
             session_id: "alice".to_owned(),
             fact_id: "f-bob-1".to_owned(),
             content: "verified by external source".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_annotate(Parameters(params)).await;
         assert!(result.is_err(), "alice must not annotate bob's fact");
@@ -2115,7 +2104,6 @@ mod tests {
             new_fact_id: "f-new-1".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_supersede(Parameters(params)).await.unwrap();
         let text = result
@@ -2173,7 +2161,6 @@ mod tests {
             new_fact_id: "f-new-alice".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_supersede(Parameters(params)).await;
         assert!(
@@ -2202,7 +2189,6 @@ mod tests {
             fact_id: "f-bob-1".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "stale".to_owned(),
-            write_token: "a".repeat(32),
         };
         let result = server.nous_forget(Parameters(params)).await;
         assert!(result.is_err(), "alice must not forget bob's fact");

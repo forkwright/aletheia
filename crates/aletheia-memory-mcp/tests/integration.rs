@@ -375,8 +375,7 @@ async fn write_tool_rejected_without_token_env_set() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "content": "test annotation",
-                    "session_id": "alice",
-                    "write_token": "fake"
+                    "session_id": "alice"
                 })
                 .as_object()
                 .expect("object")
@@ -395,64 +394,7 @@ async fn write_tool_rejected_without_token_env_set() {
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
 }
 
-/// Test that write tools reject wrong tokens.
-#[tokio::test]
-#[expect(
-    clippy::expect_used,
-    reason = "test: panics on unexpected protocol failure are acceptable"
-)]
-async fn write_tool_rejected_with_wrong_token() {
-    let store = seed_store();
-    // Create server with an explicit write token (avoids env var manipulation)
-    let server = MemoryServer::with_write_token(store, None, Some(VALID_WRITE_TOKEN.to_owned()));
-
-    let (server_tx, client_rx) = tokio::io::duplex(4096);
-    let (client_tx, server_rx) = tokio::io::duplex(4096);
-
-    let server_handle = tokio::spawn(async move {
-        server
-            .serve((server_rx, server_tx))
-            .await
-            .expect("server serve")
-            .waiting()
-            .await
-            .expect("server waiting")
-    });
-
-    let client_info = ClientInfo::new(
-        ClientCapabilities::default(),
-        Implementation::new("test-client", "0.1.0"),
-    );
-
-    let client = client_info
-        .serve((client_rx, client_tx))
-        .await
-        .expect("client handshake");
-
-    // Try to call nous_annotate with wrong token
-    let result = client
-        .call_tool(
-            CallToolRequestParams::new("nous_annotate").with_arguments(
-                serde_json::json!({
-                    "fact_id": "f-test-0001",
-                    "content": "test annotation",
-                    "session_id": "alice",
-                    "write_token": "wrong-token"
-                })
-                .as_object()
-                .expect("object")
-                .clone(),
-            ),
-        )
-        .await;
-
-    assert!(result.is_err(), "nous_annotate must fail with wrong token");
-
-    drop(client);
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server_handle).await;
-}
-
-/// Test happy path: write tools work with correct token.
+/// Test happy path: write tools work when a capability token is configured server-side.
 #[tokio::test]
 #[expect(
     clippy::expect_used,
@@ -504,8 +446,7 @@ async fn write_tool_accepts_correct_token() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "content": "This fact is well-established",
-                    "session_id": "alice",
-                    "write_token": VALID_WRITE_TOKEN
+                    "session_id": "alice"
                 })
                 .as_object()
                 .expect("object")
@@ -572,8 +513,7 @@ async fn write_tool_accepts_correct_token() {
                     "old_fact_id": "f-test-0001",
                     "new_fact_id": "f-test-0002",
                     "nous_id": "alice",
-                    "reason": "Updated with fresher information",
-                    "write_token": VALID_WRITE_TOKEN
+                    "reason": "Updated with fresher information"
                 })
                 .as_object()
                 .expect("object")
@@ -606,8 +546,7 @@ async fn write_tool_accepts_correct_token() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "nous_id": "alice",
-                    "reason": "Fact is outdated",
-                    "write_token": VALID_WRITE_TOKEN
+                    "reason": "Fact is outdated"
                 })
                 .as_object()
                 .expect("object")
@@ -735,8 +674,8 @@ async fn nous_stats_last_updated_ignores_superseded_facts() {
         store.insert_fact(&fact).expect("insert fact");
     }
 
-    let server = MemoryServer::with_write_token(store, None, None)
-        .with_nous_id(Some("alice".to_owned()));
+    let server =
+        MemoryServer::with_write_token(store, None, None).with_nous_id(Some("alice".to_owned()));
     let (server_tx, client_rx) = tokio::io::duplex(4096);
     let (client_tx, server_rx) = tokio::io::duplex(4096);
     let server_handle = tokio::spawn(async move {
