@@ -301,32 +301,68 @@ pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Res
 /// Recursively decrypt all `enc:`-prefixed string values in a TOML value tree.
 ///
 /// If `primary_key` is `None`, logs a warning for each encrypted value found
-/// and leaves it unchanged (plaintext fallback).
-pub(crate) fn decrypt_toml_values(value: &mut toml::Value, primary_key: Option<&[u8; KEY_LEN]>) {
+/// and leaves it unchanged (plaintext fallback). A present-but-wrong key that
+/// fails to decrypt a value is recorded as a failure path rather than silently
+/// leaving ciphertext in place.
+///
+/// Returns `Ok(())` when every encrypted value was decrypted (or skipped when
+/// no key is available). Returns `Err(paths)` when one or more values could not
+/// be decrypted; `paths` contains the dotted/ indexed locations of the failures.
+pub(crate) fn decrypt_toml_values(
+    value: &mut toml::Value,
+    primary_key: Option<&[u8; KEY_LEN]>,
+) -> Result<(), Vec<String>> {
+    let mut failures = Vec::new();
+    decrypt_toml_values_recursive(value, primary_key, String::new(), &mut failures);
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
+}
+
+fn decrypt_toml_values_recursive(
+    value: &mut toml::Value,
+    primary_key: Option<&[u8; KEY_LEN]>,
+    path: String,
+    failures: &mut Vec<String>,
+) {
     match value {
         toml::Value::String(s) if is_encrypted(s) => {
             if let Some(key) = primary_key {
                 match decrypt_value(s, key) {
                     Ok(plaintext) => *s = plaintext,
                     Err(e) => {
-                        warn!(error = %e, "failed to decrypt config value, leaving encrypted");
+                        warn!(error = %e, path = %path, "failed to decrypt config value");
+                        failures.push(path);
                     }
                 }
             } else {
                 warn!(
+                    path = %path,
                     "encrypted config value found but no primary key available \
                      -- value will remain encrypted"
                 );
             }
         }
         toml::Value::Table(table) => {
-            for (_key, val) in table.iter_mut() {
-                decrypt_toml_values(val, primary_key);
+            for (key, val) in table.iter_mut() {
+                let child_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                decrypt_toml_values_recursive(val, primary_key, child_path, failures);
             }
         }
         toml::Value::Array(arr) => {
-            for item in arr {
-                decrypt_toml_values(item, primary_key);
+            for (i, item) in arr.iter_mut().enumerate() {
+                decrypt_toml_values_recursive(
+                    item,
+                    primary_key,
+                    format!("{path}[{i}]"),
+                    failures,
+                );
             }
         }
         _ => {
@@ -534,7 +570,7 @@ mod tests {
             "#
         );
         let mut value: toml::Value = toml::from_str(&toml_str).unwrap();
-        decrypt_toml_values(&mut value, Some(&key));
+        decrypt_toml_values(&mut value, Some(&key)).unwrap();
 
         let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
         assert_eq!(
@@ -555,7 +591,7 @@ mod tests {
             "#
         );
         let mut value: toml::Value = toml::from_str(&toml_str).unwrap();
-        decrypt_toml_values(&mut value, None);
+        decrypt_toml_values(&mut value, None).unwrap();
 
         let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
         assert!(

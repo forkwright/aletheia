@@ -351,8 +351,14 @@ fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
         }
     }
 
-    encrypt::decrypt_toml_values(value, primary_key.as_ref());
-    Ok(())
+    match encrypt::decrypt_toml_values(value, primary_key.as_ref()) {
+        Ok(()) => Ok(()),
+        Err(failures) if !failures.is_empty() => Err(crate::error::ConfigDecryptSnafu {
+            fields: failures.join(", "),
+        }
+        .build()),
+        Err(_) => Ok(()),
+    }
 }
 
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
@@ -795,6 +801,45 @@ archiveBeforeDelete = true
         );
         assert_eq!(config.maintenance.retention.max_sessions_per_nous, 200);
         assert!(config.maintenance.retention.archive_before_delete);
+    }
+
+    #[test]
+    fn wrong_primary_key_fails_config_load() {
+        let mut jail = EnvJail::new();
+        let key1_path = jail.directory().join("key1.key");
+        let key2_path = jail.directory().join("key2.key");
+        crate::encrypt::generate_primary_key(&key1_path).unwrap();
+        crate::encrypt::generate_primary_key(&key2_path).unwrap();
+
+        let key1 = crate::encrypt::load_primary_key(&key1_path)
+            .unwrap()
+            .expect("key1 loaded");
+        let encrypted = crate::encrypt::encrypt_value("synthetic-secret", &key1).unwrap();
+
+        // WHY: point the resolver at key2 so the loader has a present but
+        // wrong key for the ciphertext.
+        jail.set_env(
+            "ALETHEIA_PRIMARY_KEY",
+            key2_path.to_str().expect("utf-8 key path"),
+        );
+        jail.create_file(
+            "config/aletheia.toml",
+            &format!(
+                "[gateway.auth]\nmode = \"token\"\nsigningKey = \"{encrypted}\"\n"
+            ),
+        );
+
+        let oikos = Oikos::from_root(jail.directory());
+        let result = load_config(&oikos);
+        assert!(
+            result.is_err(),
+            "present-but-wrong primary key must fail config load closed"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("encrypted config fields cannot be decrypted"),
+            "error should mention encrypted fields: {msg}"
+        );
     }
 
     #[test]
