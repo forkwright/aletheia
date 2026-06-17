@@ -6526,6 +6526,7 @@ dependencies = [
  "jiff",
  "koina",
  "landlock",
+ "libc",
  "poiesis-charts",
  "poiesis-core",
  "poiesis-diff",
