@@ -101,10 +101,10 @@ pub fn emit(
     if !series_name.is_empty() {
         let _ = write!(
             out,
-            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-size=\"24\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
+            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" class=\"code\" font-size=\"24\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
             x = coord(cx),
             y = coord(cy - 50.0),
-            font = theme.font_sans,
+            font = theme.font_mono,
             fill = fill,
             label = escape_xml(&series_name),
         );
@@ -226,6 +226,20 @@ mod tests {
         )
         .expect("second emit");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn series_name_uses_mono_font() {
+        let theme = ResolvedTheme::summus_stub();
+        let svg = emit(
+            &stat_chart(42.0, Unit::Number, "Users"),
+            &theme,
+            &Canvas::Deck(DeckCanvas::default()),
+            ColorMode::Resolved,
+        )
+        .expect("stat emits");
+        assert!(svg.contains("class=\"code\""));
+        assert!(svg.contains(&theme.font_mono));
     }
 
     #[test]
