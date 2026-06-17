@@ -111,6 +111,27 @@ impl fmt::Display for BackoffStrategy {
     }
 }
 
+/// Return an explicit retry-after delay, or compute one from a backoff strategy.
+///
+/// The `attempt` argument uses the same 0-indexed convention as
+/// [`BackoffStrategy::delay_for_attempt`]. When `retry_after` is present, it is
+/// returned exactly. Otherwise the strategy delay is optionally raised to
+/// `minimum_delay`.
+#[must_use]
+pub fn retry_after_or_strategy_delay(
+    strategy: &BackoffStrategy,
+    attempt: u32,
+    retry_after: Option<Duration>,
+    minimum_delay: Option<Duration>,
+) -> Duration {
+    if let Some(delay) = retry_after {
+        return delay;
+    }
+
+    let delay = strategy.delay_for_attempt(attempt);
+    minimum_delay.map_or(delay, |minimum| delay.max(minimum))
+}
+
 /// Configuration for retry behavior.
 ///
 /// Pairs a [`BackoffStrategy`] with a maximum retry count. Use
@@ -484,6 +505,47 @@ mod tests {
             exponential_steps(31, 2, 1000),
             1000,
             "attempt beyond exponent cap should still produce capped value"
+        );
+    }
+
+    #[test]
+    fn retry_after_or_strategy_delay_prefers_retry_after() {
+        let strategy = BackoffStrategy::Constant {
+            delay: Duration::from_millis(100),
+        };
+        assert_eq!(
+            retry_after_or_strategy_delay(
+                &strategy,
+                0,
+                Some(Duration::from_secs(5)),
+                Some(Duration::from_secs(10)),
+            ),
+            Duration::from_secs(5),
+            "retry-after must be returned exactly"
+        );
+    }
+
+    #[test]
+    fn retry_after_or_strategy_delay_delegates_to_strategy() {
+        let strategy = BackoffStrategy::Fixed {
+            delays: vec![Duration::from_millis(100), Duration::from_millis(250)],
+        };
+        assert_eq!(
+            retry_after_or_strategy_delay(&strategy, 1, None, None),
+            Duration::from_millis(250),
+            "missing retry-after should use the strategy delay for the attempt"
+        );
+    }
+
+    #[test]
+    fn retry_after_or_strategy_delay_applies_minimum_without_retry_after() {
+        let strategy = BackoffStrategy::Constant {
+            delay: Duration::from_millis(25),
+        };
+        assert_eq!(
+            retry_after_or_strategy_delay(&strategy, 0, None, Some(Duration::from_millis(100)),),
+            Duration::from_millis(100),
+            "minimum delay should floor strategy-derived delays"
         );
     }
 
