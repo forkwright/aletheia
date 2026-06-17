@@ -238,7 +238,6 @@ mod tests {
                     "thinkingBudget": 2000,
                     "contextTokens": 8000,
                     "maxOutputTokens": 4000,
-                    "timeoutSeconds": 60,
                     "toolTimeouts": {
                         "defaultMs": 5000
                     }

@@ -212,14 +212,6 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
                     true,
                     false,
                 ),
-                field(
-                    "agents.defaults.timeoutSeconds",
-                    "Turn Timeout (s)",
-                    agents.get("timeoutSeconds"),
-                    FieldType::Integer,
-                    true,
-                    false,
-                ),
             ],
         });
 
@@ -504,7 +496,6 @@ mod tests {
                     "thinkingBudget": 2000,
                     "contextTokens": 8000,
                     "maxOutputTokens": 4000,
-                    "timeoutSeconds": 60,
                     "toolTimeouts": {
                         "defaultMs": 5000
                     }

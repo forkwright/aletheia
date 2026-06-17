@@ -66,7 +66,6 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 | `contextTokens` | u32 | `200000` | Context window budget (tokens) |
 | `maxOutputTokens` | u32 | `16384` | Max tokens per response |
 | `bootstrapMaxTokens` | u32 | `40000` | Max tokens for bootstrap context injection |
-| `timeoutSeconds` | u32 | `300` | LLM call timeout |
 | `thinkingEnabled` | bool | `false` | Enable extended thinking |
 | `thinkingBudget` | u32 | `10000` | Max tokens for extended thinking |
 | `maxToolIterations` | u32 | `200` | Safety limit on consecutive tool use per turn |
