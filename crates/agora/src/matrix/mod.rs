@@ -114,6 +114,7 @@ pub struct MatrixProvider {
     accounts: HashMap<String, MatrixAccount>,
     default_account: Option<String>,
     circuit_breaker_threshold: u32,
+    halted_health_check_interval: Duration,
 }
 
 impl MatrixProvider {
@@ -124,6 +125,7 @@ impl MatrixProvider {
             accounts: HashMap::new(),
             default_account: None,
             circuit_breaker_threshold: 5,
+            halted_health_check_interval: Duration::from_secs(60),
         }
     }
 
@@ -134,6 +136,9 @@ impl MatrixProvider {
             accounts: HashMap::new(),
             default_account: None,
             circuit_breaker_threshold: config.circuit_breaker_threshold,
+            halted_health_check_interval: Duration::from_secs(
+                config.halted_health_check_interval_secs,
+            ),
         }
     }
 
@@ -197,6 +202,7 @@ impl MatrixProvider {
                     user_id,
                     token,
                     self.circuit_breaker_threshold,
+                    self.halted_health_check_interval,
                 )
                 .instrument(span),
             );
@@ -319,10 +325,18 @@ impl std::fmt::Debug for MatrixProvider {
             .field("accounts", &self.accounts.keys().collect::<Vec<_>>())
             .field("default_account", &self.default_account)
             .field("circuit_breaker_threshold", &self.circuit_breaker_threshold)
+            .field(
+                "halted_health_check_interval",
+                &self.halted_health_check_interval,
+            )
             .finish()
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "sync_loop is a single cohesive state machine; the shared halted-state recovery               loop requires these parameters together — splitting would obscure the state transitions"
+)]
 async fn sync_loop(
     client: client::MatrixClient,
     tx: mpsc::Sender<InboundMessage>,
@@ -331,6 +345,7 @@ async fn sync_loop(
     user_id: Option<String>,
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
+    halted_health_check_interval: Duration,
 ) {
     tracing::info!("Matrix sync started");
     let mut consecutive_failures = 0_u32;
@@ -358,11 +373,34 @@ async fn sync_loop(
                         if consecutive_failures >= circuit_breaker_threshold {
                             tracing::error!(
                                 consecutive_failures,
-                                "Matrix sync halted after repeated failures"
+                                "Matrix sync halted after repeated failures; will probe for recovery"
                             );
-                            return;
+                            // WHY: mirror Signal provider resilience — enter halted state with
+                            // periodic health probes and backoff rather than exiting permanently;
+                            // this avoids requiring a full process restart after a transient
+                            // Matrix homeserver outage.
+                            loop {
+                                tokio::select! {
+                                    biased;
+                                    () = cancel.cancelled() => {
+                                        tracing::info!("cancellation received, stopping Matrix sync");
+                                        return;
+                                    }
+                                    () = tokio::time::sleep(halted_health_check_interval) => {}
+                                }
+                                if client.health().await {
+                                    tracing::info!(
+                                        previous_failures = consecutive_failures,
+                                        "Matrix health check passed, resuming sync"
+                                    );
+                                    consecutive_failures = 0;
+                                    break;
+                                }
+                                tracing::debug!("Matrix health check failed, remaining halted");
+                            }
+                        } else {
+                            tokio::time::sleep(interval).await;
                         }
-                        tokio::time::sleep(interval).await;
                     }
                 }
             }
