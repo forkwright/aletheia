@@ -200,7 +200,7 @@ impl FromStr for Ulid {
         }
 
         let mut value: u128 = 0;
-        for &byte in s.as_bytes() {
+        for (idx, &byte) in s.as_bytes().iter().enumerate() {
             if byte >= 128 {
                 return Err(DecodeError {
                     reason: "non-ASCII character",
@@ -209,10 +209,21 @@ impl FromStr for Ulid {
             let digit = decode_crockford(byte).ok_or(DecodeError {
                 reason: "invalid Crockford base32 character",
             })?;
-            value = value
-                .checked_shl(5)
-                .ok_or(DecodeError { reason: "overflow" })?
-                | u128::from(digit);
+
+            // WHY (#5632): the first base32 digit contributes the top 5 bits
+            // of a 130-bit logical value, but ULID uses only 128 bits. The top
+            // two bits must therefore be zero, restricting the first character
+            // to Crockford values 0-7. Check before shifting so an out-of-range
+            // first digit is rejected before it can wrap in the u128 accumulator.
+            if idx == 0 && digit > 7 {
+                return Err(DecodeError {
+                    reason: "value exceeds ULID maximum (first character must be 0-7)",
+                });
+            }
+
+            // Shifting by 5 can never overflow u128 (checked_shl would only
+            // return None for rhs >= 128), so plain `<<` is correct.
+            value = (value << 5) | u128::from(digit);
         }
 
         Ok(Self(value))
@@ -287,6 +298,32 @@ mod tests {
     #[test]
     fn invalid_char_rejected() {
         assert!("0000000000000000000000000U".parse::<Ulid>().is_err()); // U not in Crockford
+    }
+
+    #[test]
+    fn first_char_out_of_range_rejected() {
+        // WHY (#5632): the first base32 digit contributes the top 5 bits of a
+        // 130-bit logical value; ULID uses only 128 bits, so values 8-31 are
+        // out of range and must not silently truncate.
+        assert!(
+            "8ZZZZZZZZZZZZZZZZZZZZZZZZZ".parse::<Ulid>().is_err(),
+            "first char 8 exceeds ULID maximum"
+        );
+        assert!(
+            "80000000000000000000000000".parse::<Ulid>().is_err(),
+            "first char 8 with zero tail still exceeds 128 bits"
+        );
+        assert!(
+            "Z0000000000000000000000000".parse::<Ulid>().is_err(),
+            "first char Z exceeds ULID maximum"
+        );
+    }
+
+    #[test]
+    fn max_valid_ulid_parses() {
+        // 7ZZZ...Z is the largest spec-conformant ULID and equals u128::MAX.
+        let parsed: Ulid = "7ZZZZZZZZZZZZZZZZZZZZZZZZZ".parse().unwrap();
+        assert_eq!(parsed.as_u128(), u128::MAX);
     }
 
     #[test]
