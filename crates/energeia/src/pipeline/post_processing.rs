@@ -101,6 +101,37 @@ impl PipelineStage for PostProcessingStage {
                 }
             }
 
+            // WHY: Create and immediately update one SessionRecord per outcome so
+            // status dashboards and training exports reflect real per-session data
+            // rather than showing zero sessions for a completed dispatch.
+            for outcome in &ctx.outcomes {
+                match store.create_session(store_id, outcome.prompt_number) {
+                    Ok(session_store_id) => {
+                        let update = crate::store::records::SessionUpdate {
+                            status: Some(outcome.status),
+                            session_id: outcome.session_id.clone(),
+                            cost_usd: Some(outcome.cost_usd),
+                            num_turns: Some(outcome.num_turns),
+                            duration_ms: Some(outcome.duration_ms),
+                            pr_url: outcome.pr_url.clone(),
+                            error: outcome.error.clone(),
+                        };
+                        if let Err(e) = store.update_session(&session_store_id, update) {
+                            tracing::warn!(
+                                error = %e,
+                                prompt_number = outcome.prompt_number,
+                                "failed to update session record"
+                            );
+                        }
+                    }
+                    Err(e) => tracing::warn!(
+                        error = %e,
+                        prompt_number = outcome.prompt_number,
+                        "failed to create session record"
+                    ),
+                }
+            }
+
             let status = if ctx.aborted {
                 crate::store::records::DispatchStatus::Failed
             } else {
@@ -110,6 +141,14 @@ impl PipelineStage for PostProcessingStage {
                 tracing::warn!(error = %e, "failed to finish dispatch record");
             }
         }
+
+        // WHY: QA verdict and dispatch metrics are recorded unconditionally so
+        // counters move for every dispatch, even when no persistent store is attached.
+        for verdict in &ctx.qa_verdicts {
+            crate::metrics::prometheus::record_qa_verdict(&ctx.spec.project, &verdict.to_string());
+        }
+        let dispatch_status = if ctx.aborted { "failed" } else { "completed" };
+        crate::metrics::prometheus::record_dispatch(&ctx.spec.project, dispatch_status);
 
         tracing::info!(
             dispatch_id = %ctx.dispatch_id,

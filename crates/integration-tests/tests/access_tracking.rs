@@ -5,10 +5,6 @@
     clippy::indexing_slicing,
     reason = "test: vec indices valid after length assertions"
 )]
-#![expect(
-    clippy::too_many_lines,
-    reason = "integration test: single test covers the full audit invariant set"
-)]
 
 use std::sync::Arc;
 
@@ -178,6 +174,7 @@ fn default_stability_by_fact_type() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn knowledge_graph_data_audit_asserts_seeded_invariants() {
     let store = open_store(4);
     let provider = MockEmbeddingProvider::new(4);

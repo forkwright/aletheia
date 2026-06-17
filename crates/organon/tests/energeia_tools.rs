@@ -3,6 +3,7 @@
 //! Creates an in-memory `EnergeiaStore` + `MockEngine`, registers all 9 tools with
 //! real `EnergeiaServices`, calls each with valid input, and verifies that each
 //! returns a non-error `ToolResult`.
+#![allow(clippy::doc_markdown)]
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,

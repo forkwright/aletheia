@@ -356,7 +356,6 @@ impl Reranker for HttpReranker {
 #[cfg(test)]
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
-    #![expect(clippy::unwrap_used, reason = "test assertions")]
     #![expect(
         clippy::indexing_slicing,
         reason = "recall reranker tests: bounded indexing on known-small vecs"
@@ -669,7 +668,10 @@ mod tests {
             matches!(result, Err(EpistemeError::RerankerFailed { .. })),
             "rerank should fail clearly when scoring is not implemented"
         );
-        let msg = result.unwrap_err().to_string();
+        let Err(err) = result else {
+            panic!("rerank should have failed");
+        };
+        let msg = err.to_string();
         assert!(
             msg.contains("not yet implemented"),
             "error message should explain scoring is not yet implemented: {msg}"

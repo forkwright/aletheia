@@ -167,7 +167,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #![expect(clippy::expect_used, clippy::unwrap_used, reason = "test assertions")]
+    #![expect(clippy::expect_used, reason = "test assertions")]
     use std::collections::HashSet;
     use std::sync::{Arc, RwLock};
 
@@ -271,7 +271,10 @@ mod tests {
 
         let result = executor.execute(&input, &ctx).await;
         assert!(result.is_err(), "expected Err for malformed formula");
-        let err_msg = format!("{:?}", result.unwrap_err());
+        let Err(err) = result else {
+            panic!("expected Err for malformed formula");
+        };
+        let err_msg = format!("{err:?}");
         assert!(
             err_msg.contains("malformed") || err_msg.contains("unbalanced"),
             "expected diagnostic message about malformed formula: {err_msg}"

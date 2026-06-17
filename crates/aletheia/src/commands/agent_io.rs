@@ -1985,6 +1985,8 @@ fn truncate_for_review(value: &str, max_chars: usize) -> String {
     }
 }
 
+// async required when migrate-qdrant feature is enabled; with the feature
+// disabled this function has no await points.
 #[cfg_attr(
     not(feature = "migrate-qdrant"),
     expect(

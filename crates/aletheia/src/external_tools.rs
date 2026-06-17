@@ -690,11 +690,7 @@ fn mcp_result_to_tool_result(result: rmcp::model::CallToolResult) -> ToolResult 
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        reason = "test assertions"
-    )]
+    #![expect(clippy::expect_used, reason = "test assertions")]
     use super::*;
 
     /// WHY: reqwest requires a rustls `CryptoProvider` to be installed. In
@@ -873,6 +869,7 @@ no_endpoint = { type = "mcp" }
     }
 
     #[cfg(feature = "mcp")]
+    #[allow(clippy::disallowed_methods)]
     fn fake_mcp_server_script() -> (tempfile::TempDir, std::path::PathBuf) {
         let dir = tempfile::tempdir().expect("tempdir");
         let script = dir.path().join("fake-mcp.sh");
@@ -941,8 +938,8 @@ done
         let result =
             register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
         assert_eq!(result.len(), 1);
-        assert!(result[0].available);
-        assert_eq!(result[0].name, "echo");
+        assert!(result.first().is_some_and(|e| e.available));
+        assert_eq!(result.first().map(|e| e.name.as_str()), Some("echo"));
 
         let tool_name = ToolName::new("echo").expect("tool name");
         let def = registry.get_def(&tool_name).expect("tool def");

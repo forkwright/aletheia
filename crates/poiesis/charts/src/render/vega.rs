@@ -265,7 +265,10 @@ mod tests {
             &Canvas::Deck(DeckCanvas::default()),
         );
         let mark = spec.get("mark").expect("mark present");
-        assert_eq!(mark.get("type").and_then(|v| v.as_str()), Some("rect"));
+        assert_eq!(
+            mark.get("type").and_then(serde_json::Value::as_str),
+            Some("rect")
+        );
     }
 
     #[test]
@@ -278,7 +281,7 @@ mod tests {
         );
         let colors = spec
             .pointer("/config/range/category")
-            .and_then(|v| v.as_array())
+            .and_then(serde_json::Value::as_array)
             .expect("category range");
         assert_eq!(colors.len(), 3);
         assert_eq!(colors[0].as_str(), Some("#232E54"));
@@ -298,8 +301,14 @@ mod tests {
             .expect("data values");
         assert_eq!(data.len(), 1);
         let row = &data[0];
-        assert_eq!(row.get("x").and_then(|v| v.as_str()), Some("ColA"));
-        assert_eq!(row.get("y").and_then(|v| v.as_str()), Some("Row1"));
+        assert_eq!(
+            row.get("x").and_then(serde_json::Value::as_str),
+            Some("ColA")
+        );
+        assert_eq!(
+            row.get("y").and_then(serde_json::Value::as_str),
+            Some("Row1")
+        );
         assert_eq!(
             row.get("value").and_then(serde_json::Value::as_f64),
             Some(42.0)
@@ -334,7 +343,10 @@ mod tests {
         let theme = ResolvedTheme::summus_stub();
         let spec = build_spec(&chart, &theme, &Canvas::Deck(DeckCanvas::default()));
         let mark = spec.get("mark").expect("mark present");
-        assert_eq!(mark.get("type").and_then(|v| v.as_str()), Some("bar"));
+        assert_eq!(
+            mark.get("type").and_then(serde_json::Value::as_str),
+            Some("bar")
+        );
     }
 
     #[test]
@@ -365,7 +377,7 @@ mod tests {
         );
         let title = spec.get("title").expect("title present");
         assert_eq!(
-            title.get("text").and_then(|v| v.as_str()),
+            title.get("text").and_then(serde_json::Value::as_str),
             Some("Heat Test")
         );
     }
@@ -409,7 +421,10 @@ mod tests {
         let theme = ResolvedTheme::summus_stub();
         let spec = build_spec(&chart, &theme, &Canvas::Deck(DeckCanvas::default()));
         let mark = spec.get("mark").expect("mark present");
-        assert_eq!(mark.get("type").and_then(|v| v.as_str()), Some("boxplot"));
+        assert_eq!(
+            mark.get("type").and_then(serde_json::Value::as_str),
+            Some("boxplot")
+        );
     }
 
     #[test]
@@ -440,6 +455,9 @@ mod tests {
         let theme = ResolvedTheme::summus_stub();
         let spec = build_spec(&chart, &theme, &Canvas::Deck(DeckCanvas::default()));
         let mark = spec.get("mark").expect("mark present");
-        assert_eq!(mark.get("type").and_then(|v| v.as_str()), Some("point"));
+        assert_eq!(
+            mark.get("type").and_then(serde_json::Value::as_str),
+            Some("point")
+        );
     }
 }
