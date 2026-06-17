@@ -15,7 +15,13 @@
 //! - Stable domain (volatility ≈ 0) → 1.5× base stability
 //! - Neutral (volatility = 0.5) → 1.0× (unchanged)
 //! - Volatile domain (volatility ≈ 1) → 0.5× base stability
-#![cfg_attr(not(test), allow(dead_code))]
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "succession module wired through daemon volatility task; unused outside test harness"
+    )
+)]
 
 use serde::{Deserialize, Serialize};
 

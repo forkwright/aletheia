@@ -274,3 +274,39 @@ async fn mod_n_boundary_triggers_identity_reinjection() {
         "mod-N boundary should inject identity reminder"
     );
 }
+
+#[tokio::test]
+async fn injector_truncates_multibyte_content_without_panic() {
+    // WHY(#4736): truncation must occur on a char boundary. A byte-index
+    // truncate at key_info_max_chars would split a 2-byte char and panic.
+    let store = Arc::new(FjallWorkingCheckpointStore::open_in_memory().expect("open store"));
+    let hook = WorkingCheckpointInjector::new(Some(store.clone()));
+
+    // 2-byte chars guarantee a byte-index cut at 2000 lands mid-character.
+    let long_content = "é".repeat(2500);
+    store
+        .write_checkpoint("ses-mb", 1, &long_content)
+        .expect("write");
+
+    let mut pipeline = PipelineContext {
+        system_prompt: Some("Base prompt.".to_owned()),
+        remaining_tokens: 100_000,
+        ..PipelineContext::default()
+    };
+    let mut ctx = QueryContext {
+        pipeline: &mut pipeline,
+        nous_id: "test-agent",
+        session_id: "ses-mb",
+        turn_number: 2,
+        user_message: "hello",
+    };
+
+    let result = hook.before_query(&mut ctx).await;
+    assert_eq!(result, HookResult::Continue, "hook should continue");
+
+    let prompt = ctx.pipeline.system_prompt.as_ref().expect("prompt");
+    assert!(
+        prompt.contains("...[truncated]"),
+        "oversized multibyte checkpoint should be truncated with marker"
+    );
+}

@@ -742,10 +742,12 @@ async fn run_extraction(
                             facts_persisted = result.facts_inserted,
                             "extraction persisted to knowledge store"
                         );
+                        mneme::metrics::record_extraction(nous_id, true);
                     }
                     Err(e) => {
                         warn!(nous_id = %nous_id, error = %e, "extraction persist failed");
                         crate::metrics::record_background_failure(nous_id, "extraction_persist");
+                        mneme::metrics::record_extraction(nous_id, false);
                     }
                 }
             }
@@ -763,6 +765,8 @@ async fn run_extraction(
         Err(e) => {
             warn!(nous_id = %nous_id, error = %e, "extraction failed");
             crate::metrics::record_background_failure(nous_id, "extraction");
+            #[cfg(feature = "knowledge-store")]
+            mneme::metrics::record_extraction(nous_id, false);
         }
     }
 }

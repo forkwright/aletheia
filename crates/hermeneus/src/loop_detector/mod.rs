@@ -111,7 +111,7 @@ pub enum LoopDetectorError {
 /// [`LoopDetectorError::DoomLoopDetected`].
 #[derive(Debug, Clone)]
 pub struct DoomLoopDetector {
-    ring: Vec<ToolCallSignature>,
+    ring: VecDeque<ToolCallSignature>,
     capacity: usize,
     k: usize,
 }
@@ -141,7 +141,7 @@ impl DoomLoopDetector {
 
     fn new_unchecked(capacity: usize, k: usize) -> Self {
         Self {
-            ring: Vec::with_capacity(capacity),
+            ring: VecDeque::with_capacity(capacity),
             capacity,
             k,
         }
@@ -158,13 +158,14 @@ impl DoomLoopDetector {
     /// Returns [`LoopDetectorError::DoomLoopDetected`] when the threshold
     /// is crossed.
     pub fn record(&mut self, sig: ToolCallSignature) -> Result<(), LoopDetectorError> {
-        self.ring.push(sig);
-        if self.ring.len() > self.capacity {
-            self.ring.remove(0);
+        if self.ring.len() == self.capacity {
+            self.ring.pop_front();
         }
+        self.ring.push_back(sig);
 
-        if self.ring.len() >= self.k
-            && let Some(tail) = self.ring.get(self.ring.len() - self.k..)
+        let len = self.ring.len();
+        if len >= self.k
+            && let Some(tail) = self.ring.make_contiguous().get(len - self.k..)
             && let Some(first) = tail.first()
             && tail.iter().all(|s| s == first)
         {
