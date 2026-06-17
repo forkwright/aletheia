@@ -577,6 +577,9 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
     store
+        .create_session("ses-1", "test-agent", "main", None, None)
+        .expect("create session");
+    store
         .insert_distillation_summary("ses-1", "cached distillation summary")
         .expect("insert summary");
     let session = SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
@@ -735,6 +738,9 @@ async fn execute_timeout_streaming_with_distillation_returns_degraded_response()
     pipeline_config.stage_budget.execute_secs = 1;
 
     let store = SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .create_session("ses-3", "test-agent", "main", None, None)
+        .expect("create session");
     store
         .insert_distillation_summary("ses-3", "cached distillation summary")
         .expect("insert summary");
