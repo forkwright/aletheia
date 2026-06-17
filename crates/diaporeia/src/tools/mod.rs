@@ -25,7 +25,8 @@ use crate::error::{
     BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, DuplicateSessionSnafu,
     FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
     NoteStoreSnafu, NoteStoreUnavailableSnafu, NousNotFoundSnafu, PipelineSnafu, RepomixPackSnafu,
-    RepomixUnavailableSnafu, SerializationSnafu, SessionStoreSnafu, UnauthorizedSnafu,
+    RepomixUnavailableSnafu, SerializationSnafu, SessionNotFoundSnafu, SessionStoreSnafu,
+    UnauthorizedSnafu,
 };
 use crate::rate_limit::Tier;
 use crate::server::DiaporeiaServer;
@@ -40,29 +41,60 @@ const AGENT_ONLY_TOOLS: &[&str] = &[
     "system_health",
 ];
 
-/// Extract role from request context by validating the Bearer token.
+/// Default page size for `session_list`.
 ///
-/// When a `JwtManager` is available, validates the signature before
-/// extracting claims (closes the payload-only decode bypass from #3337).
-/// In single-operator mode (`auth.mode = "none"`), returns the configured
-/// `none_role`, falling back to `Readonly` when the config is malformed.
+/// Mirrors pylon's `pagination::DEFAULT_LIMIT` so MCP and HTTP surfaces expose
+/// the same cap to callers.
+const DEFAULT_SESSION_LIST_LIMIT: usize = 50;
+
+/// Maximum page size for `session_list`.
+///
+/// Mirrors pylon's `pagination::MAX_LIMIT`.
+const MAX_SESSION_LIST_LIMIT: usize = 1_000;
+
+/// Verified caller identity extracted from the request context.
+///
+/// Mirrors pylon's `Claims` shape so MCP tools can apply the same
+/// first-party scoping, visibility, and caller-identity policy as the
+/// HTTP API (#4841).
+#[derive(Debug, Clone)]
+struct Caller {
+    /// Subject identifier (user or service principal).
+    sub: String,
+    /// Authorization role governing MCP access.
+    role: Role,
+    /// Optional nous scope: when set, restricts access to a single agent.
+    nous_id: Option<String>,
+}
+
+/// Extract the full verified caller identity from the request context.
+///
+/// In single-operator mode (`auth.mode = "none"`), returns a synthetic caller
+/// with the configured `none_role` and no scope. Otherwise validates the
+/// Bearer token and returns the full claims, including the optional `nous_id`
+/// scope.
 ///
 /// Returns `None` only when auth info is unavailable or the token is invalid.
-async fn extract_role(
+async fn extract_caller(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
-) -> Option<Role> {
+) -> Option<Caller> {
     let config = server.state.config.read().await;
 
-    // NOTE: Single-operator mode has no auth; use the default role.
+    // NOTE: Single-operator mode has no auth; use the configured default role.
     if config.gateway.auth.mode == "none" {
-        return config
+        let role = config
             .gateway
             .auth
             .none_role
             .parse::<Role>()
             .ok()
-            .or(Some(Role::Readonly));
+            .unwrap_or(Role::Readonly);
+        return Some(Caller {
+            sub: "anonymous".to_owned(),
+            role,
+            nous_id: None,
+        });
     }
 
     let parts = context.extensions.get::<http::request::Parts>()?;
@@ -78,7 +110,11 @@ async fn extract_role(
     // instead of just decoding the payload. This prevents role spoofing
     // on direct MCP connections that bypass the gateway.
     if let Some(ref jwt) = server.state.jwt_manager {
-        return jwt.validate(token).ok().map(|claims| claims.role);
+        return jwt.validate(token).ok().map(|claims| Caller {
+            sub: claims.sub,
+            role: claims.role,
+            nous_id: claims.nous_id,
+        });
     }
 
     // INVARIANT: jwt_manager must be Some when auth_mode != "none".
@@ -87,6 +123,23 @@ async fn extract_role(
         "INVARIANT violation: jwt_manager is None but auth_mode != \"none\" — denying MCP tool access"
     );
     None
+}
+
+/// Extract role from request context by validating the Bearer token.
+///
+/// When a `JwtManager` is available, validates the signature before
+/// extracting claims (closes the payload-only decode bypass from #3337).
+/// In single-operator mode (`auth.mode = "none"`), returns the configured
+/// `none_role`, falling back to `Readonly` when the config is malformed.
+///
+/// Returns `None` only when auth info is unavailable or the token is invalid.
+async fn extract_role(
+    server: &DiaporeiaServer,
+    context: &RequestContext<rmcp::RoleServer>,
+) -> Option<Role> {
+    extract_caller(server, context)
+        .await
+        .map(|caller| caller.role)
 }
 
 /// Check if the caller has operator-level access or above.
@@ -138,6 +191,160 @@ async fn require_role(
             .build()
             .into())
         }
+    }
+}
+
+/// Require at least the given role for a verified caller.
+fn require_caller_role(
+    caller: &Caller,
+    minimum: Role,
+    operation: &str,
+) -> Result<(), rmcp::ErrorData> {
+    if caller.role >= minimum {
+        Ok(())
+    } else {
+        tracing::warn!(
+            caller_role = %caller.role,
+            required_role = %minimum,
+            operation,
+            "MCP RBAC denied",
+        );
+        Err(UnauthorizedSnafu {
+            message: format!("{operation} requires {minimum} role or above"),
+        }
+        .build()
+        .into())
+    }
+}
+
+/// Resolve the effective `nous_id` for a scoped operation.
+///
+/// - If the caller has a scoped `nous_id`, the request is forced to that
+///   scope; a contradictory caller-supplied value is rejected.
+/// - If the caller is an unscoped Operator/Admin, the caller-supplied value
+///   (if any) is honored.
+/// - Agent callers without a scope are rejected (fail closed).
+fn resolve_nous_scope(
+    caller: &Caller,
+    requested: Option<&str>,
+    operation: &str,
+) -> Result<Option<String>, rmcp::ErrorData> {
+    match (caller.nous_id.as_deref(), requested) {
+        (Some(scoped), Some(requested)) if scoped != requested => {
+            tracing::warn!(
+                caller_scope = %scoped,
+                requested_scope = %requested,
+                operation,
+                "MCP scoped access denied: contradictory nous_id",
+            );
+            Err(UnauthorizedSnafu {
+                message: format!("{operation}: access denied for this agent"),
+            }
+            .build()
+            .into())
+        }
+        (Some(scoped), _) => Ok(Some(scoped.to_owned())),
+        (None, _) if caller.role == Role::Agent => {
+            tracing::warn!(
+                operation,
+                "MCP scoped access denied: agent token lacks nous_id scope",
+            );
+            Err(UnauthorizedSnafu {
+                message: format!("{operation}: agent token must be scoped to a nous_id"),
+            }
+            .build()
+            .into())
+        }
+        (None, requested) => Ok(requested.map(str::to_owned)),
+    }
+}
+
+/// Reject the request if the caller's scoped `nous_id` does not match the
+/// target agent.
+fn require_nous_access_for_caller(
+    caller: &Caller,
+    target_nous_id: &str,
+    operation: &str,
+) -> Result<(), rmcp::ErrorData> {
+    if let Some(ref scoped) = caller.nous_id
+        && scoped != target_nous_id
+    {
+        tracing::warn!(
+            caller_scope = %scoped,
+            target_nous_id,
+            operation,
+            "MCP scoped access denied: cross-agent access",
+        );
+        return Err(UnauthorizedSnafu {
+            message: format!("{operation}: access denied for this agent"),
+        }
+        .build()
+        .into());
+    }
+    if caller.role == Role::Agent && caller.nous_id.is_none() {
+        return Err(UnauthorizedSnafu {
+            message: format!("{operation}: agent token must be scoped to a nous_id"),
+        }
+        .build()
+        .into());
+    }
+    Ok(())
+}
+
+/// Return whether a nous agent is visible to the caller.
+///
+/// Mirrors pylon's `nous_visible_to_claims`: a scoped caller only sees its own
+/// agent; private agents are only visible to Operator/Admin.
+fn nous_visible_to_caller(caller: &Caller, config: &nous::config::NousConfig) -> bool {
+    let in_scope = caller
+        .nous_id
+        .as_deref()
+        .is_none_or(|scoped| scoped == config.id.as_ref());
+    let private_visible = !config.private || caller.role >= Role::Operator;
+    in_scope && private_visible
+}
+
+/// Return whether a recall result is visible to the caller.
+///
+/// Enforces the same first-party visibility rule as the recall pipeline:
+/// private and restricted facts are visible only to the owning agent unless
+/// the caller is an unscoped Operator/Admin.
+fn recall_visible_to_caller(
+    caller: &Caller,
+    fact_nous_id: &str,
+    visibility: mneme::knowledge::Visibility,
+) -> bool {
+    // Unscoped Operator/Admin may read any fact in the store.
+    if caller.role >= Role::Operator && caller.nous_id.is_none() {
+        return true;
+    }
+
+    let own = caller
+        .nous_id
+        .as_deref()
+        .is_some_and(|scoped| scoped == fact_nous_id);
+    let shared = matches!(
+        visibility,
+        mneme::knowledge::Visibility::Shared | mneme::knowledge::Visibility::Published
+    );
+    own || shared
+}
+
+/// Return a verified nous identifier for memory/note operations.
+///
+/// Agent callers must be scoped. Unscoped Operator/Admin callers fall back to
+/// their subject so the store always receives a verified author.
+fn effective_nous_id(caller: &Caller, operation: &str) -> Result<String, rmcp::ErrorData> {
+    if caller.role == Role::Agent {
+        caller.nous_id.clone().ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: format!("{operation}: agent token must be scoped to a nous_id"),
+            }
+            .build()
+            .into()
+        })
+    } else {
+        Ok(caller.nous_id.clone().unwrap_or_else(|| caller.sub.clone()))
     }
 }
 
@@ -420,12 +627,29 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "session_list").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "session_list requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "session_list")?;
+        let effective_nous =
+            resolve_nous_scope(&caller, params.nous_id.as_deref(), "session_list")?;
+
         let store = self.state.session_store.lock().await;
         let sessions = store
-            .list_sessions(params.nous_id.as_deref())
+            .list_sessions(effective_nous.as_deref())
             .context(SessionStoreSnafu {})
             .map_err(rmcp::ErrorData::from)?;
+
+        // WHY(#4841): cap the response size to the same first-party limit pylon
+        // uses for session list endpoints.
+        let limit = params
+            .limit
+            .unwrap_or(DEFAULT_SESSION_LIST_LIMIT)
+            .min(MAX_SESSION_LIST_LIMIT);
+        let sessions: Vec<_> = sessions.into_iter().take(limit).collect();
 
         let summaries: Vec<serde_json::Value> = sessions
             .iter()
@@ -534,10 +758,37 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "session_history").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "session_history requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "session_history")?;
+
         let store = self.state.session_store.lock().await;
+        let session = store
+            .find_session_by_id(&params.session_id)
+            .context(SessionStoreSnafu {})
+            .map_err(rmcp::ErrorData::from)?
+            .ok_or_else(|| {
+                SessionNotFoundSnafu {
+                    id: params.session_id.clone(),
+                }
+                .build()
+            })?;
+        require_nous_access_for_caller(&caller, &session.nous_id, "session_history")?;
+
+        // WHY(#4841): apply the same first-party history caps as pylon.
+        let config = self.state.config.read().await;
+        let limit = params
+            .limit
+            .map_or(config.api_limits.default_history_limit, |l| {
+                u32::try_from(l.max(0)).unwrap_or(u32::MAX)
+            })
+            .min(config.api_limits.max_history_limit);
         let messages = store
-            .get_history(&params.session_id, params.limit)
+            .get_history(&params.session_id, Some(i64::from(limit)))
             .context(SessionStoreSnafu {})
             .map_err(rmcp::ErrorData::from)?;
 
@@ -569,8 +820,14 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "nous_list").await?;
-        let show_reliability = is_operator_or_above(self, &context).await;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "nous_list requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "nous_list")?;
+        let show_reliability = caller.role >= Role::Operator;
         let statuses = if show_reliability {
             self.state.nous_manager.list_all().await
         } else {
@@ -579,6 +836,12 @@ impl DiaporeiaServer {
 
         let list: Vec<serde_json::Value> = statuses
             .iter()
+            .filter(|s| {
+                self.state
+                    .nous_manager
+                    .get_config(&s.id)
+                    .is_some_and(|cfg| nous_visible_to_caller(&caller, cfg))
+            })
             .map(|s| {
                 if show_reliability {
                     serde_json::json!({
@@ -618,8 +881,31 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "nous_status").await?;
-        let show_reliability = is_operator_or_above(self, &context).await;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "nous_status requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "nous_status")?;
+        let show_reliability = caller.role >= Role::Operator;
+
+        let config = self
+            .state
+            .nous_manager
+            .get_config(&params.nous_id)
+            .context(NousNotFoundSnafu {
+                id: params.nous_id.clone(),
+            })
+            .map_err(rmcp::ErrorData::from)?;
+        if !nous_visible_to_caller(&caller, config) {
+            return Err(NousNotFoundSnafu {
+                id: params.nous_id.clone(),
+            }
+            .build()
+            .into());
+        }
+
         let handle = self
             .state
             .nous_manager
@@ -674,7 +960,13 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "nous_tools").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "nous_tools requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "nous_tools")?;
         let config = self
             .state
             .nous_manager
@@ -683,6 +975,13 @@ impl DiaporeiaServer {
                 id: params.nous_id.clone(),
             })
             .map_err(rmcp::ErrorData::from)?;
+        if !nous_visible_to_caller(&caller, config) {
+            return Err(NousNotFoundSnafu {
+                id: params.nous_id.clone(),
+            }
+            .build()
+            .into());
+        }
 
         let active = HashSet::new();
         let surface = self.state.tool_registry.effective_surface(SurfaceInputs {
@@ -739,17 +1038,31 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "knowledge_search").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "knowledge_search requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Operator, "knowledge_search")?;
         let config = require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
         {
+            let effective_nous =
+                resolve_nous_scope(&caller, params.nous_id.as_deref(), "knowledge_search")?;
             let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
+            let mut search_params = params;
+            search_params.nous_id = effective_nous;
             let results = search_knowledge_store(
                 &store,
-                &params,
+                &search_params,
                 config.mcp.knowledge_graph.max_search_results,
             )?;
+            let results: Vec<_> = results
+                .into_iter()
+                .filter(|r| recall_visible_to_caller(&caller, &r.nous_id, r.visibility))
+                .collect();
             let json = serde_json::to_string_pretty(&results)
                 .context(SerializationSnafu {})
                 .map_err(rmcp::ErrorData::from)?;
@@ -779,11 +1092,19 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Agent, "knowledge_recall").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "knowledge_recall requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "knowledge_recall")?;
         let config = require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
         {
+            let effective_nous =
+                resolve_nous_scope(&caller, params.nous_id.as_deref(), "knowledge_recall")?;
             let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
             let limit = params
                 .limit
@@ -802,15 +1123,22 @@ impl DiaporeiaServer {
                     )
                 })?;
 
-            // Optionally filter to a single nous_id.
-            let results: Vec<_> = if let Some(ref nous_id) = params.nous_id {
-                results
-                    .into_iter()
-                    .filter(|r| r.source_id.contains(nous_id.as_str()))
-                    .collect()
-            } else {
-                results
-            };
+            // WHY(#4841): enforce first-party ownership and visibility rather
+            // than trusting caller-supplied `nous_id` or `source_id` substrings.
+            let results: Vec<_> = results
+                .into_iter()
+                .filter(|r| {
+                    let owned_by_scope = effective_nous
+                        .as_deref()
+                        .is_some_and(|scoped| scoped == r.nous_id.as_str());
+                    let shared = matches!(
+                        r.visibility,
+                        mneme::knowledge::Visibility::Shared
+                            | mneme::knowledge::Visibility::Published
+                    );
+                    owned_by_scope || shared
+                })
+                .collect();
 
             let json = serde_json::to_string_pretty(&results)
                 .context(SerializationSnafu {})
@@ -838,7 +1166,13 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "knowledge_get").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "knowledge_get requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "knowledge_get")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -860,6 +1194,15 @@ impl DiaporeiaServer {
                     .build(),
                 )
             })?;
+            if !recall_visible_to_caller(&caller, &fact.nous_id, fact.visibility) {
+                // WHY(#4841): hide the fact's existence from unauthorized callers
+                // rather than leaking that the ID is valid.
+                return Err(FactNotFoundSnafu {
+                    id: params.fact_id.clone(),
+                }
+                .build()
+                .into());
+            }
             let json = serde_json::to_string_pretty(&fact)
                 .context(SerializationSnafu {})
                 .map_err(rmcp::ErrorData::from)?;
@@ -1082,7 +1425,17 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Agent, "knowledge_graph_neighbors").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "knowledge_graph_neighbors requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "knowledge_graph_neighbors")?;
+        // WHY(#4841): Agent callers must be scoped; unscoped traversal would let
+        // them wander across party boundaries. Operator/Admin callers may remain
+        // unscoped for administrative traversal.
+        resolve_nous_scope(&caller, None, "knowledge_graph_neighbors")?;
         let config = require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -1431,13 +1784,39 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "memory_note").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "memory_note requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "memory_note")?;
 
         let store = self
             .state
             .note_store
             .clone()
             .ok_or_else(|| NoteStoreUnavailableSnafu {}.build())?;
+
+        // WHY(#4841): derive session and nous identity from verified claims.
+        // Agent callers may only touch their own caller-sub session; only
+        // Operator/Admin may supply a cross-session session_id.
+        let (session_id, nous_id) = if caller.role >= Role::Operator {
+            (
+                params.session_id.clone(),
+                effective_nous_id(&caller, "memory_note")?,
+            )
+        } else {
+            if params.session_id != caller.sub {
+                return Err(UnauthorizedSnafu {
+                    message: "memory_note: cross-session access denied".to_owned(),
+                }
+                .build()
+                .into());
+            }
+            let nous_id = effective_nous_id(&caller, "memory_note")?;
+            (caller.sub.clone(), nous_id)
+        };
 
         match params.action.as_str() {
             "add" => {
@@ -1451,7 +1830,7 @@ impl DiaporeiaServer {
                 })?;
                 let category = params.category.as_deref().unwrap_or("context");
                 let note_id = store
-                    .add_note(&params.session_id, "mcp-client", category, &content)
+                    .add_note(&session_id, &nous_id, category, &content)
                     .map_err(|e| {
                         rmcp::ErrorData::from(
                             NoteStoreSnafu {
@@ -1465,7 +1844,7 @@ impl DiaporeiaServer {
                 )]))
             }
             "list" => {
-                let notes = store.get_notes(&params.session_id).map_err(|e| {
+                let notes = store.get_notes(&session_id).map_err(|e| {
                     rmcp::ErrorData::from(
                         NoteStoreSnafu {
                             message: e.to_string(),
@@ -1495,6 +1874,21 @@ impl DiaporeiaServer {
                         .build(),
                     )
                 })?;
+                // WHY(#4841): confirm the note belongs to the caller's session
+                // before deleting; the underlying store is keyed by note id only.
+                let notes = store.get_notes(&session_id).map_err(|e| {
+                    rmcp::ErrorData::from(
+                        NoteStoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build(),
+                    )
+                })?;
+                if !notes.iter().any(|n| n.id == note_id) {
+                    return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+                        format!("Note {note_id} not found."),
+                    )]));
+                }
                 let deleted = store.delete_note(note_id).map_err(|e| {
                     rmcp::ErrorData::from(
                         NoteStoreSnafu {
@@ -1532,13 +1926,36 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "memory_blackboard").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "memory_blackboard requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Agent, "memory_blackboard")?;
 
         let store = self
             .state
             .blackboard_store
             .clone()
             .ok_or_else(|| BlackboardStoreUnavailableSnafu {}.build())?;
+
+        // WHY(#4841): derive the verified author from claims. Agent callers
+        // cannot spoof another agent; Operator/Admin may supply an explicit
+        // cross-scope author.
+        let verified_author = if caller.role >= Role::Operator {
+            params.author.clone().unwrap_or_else(|| caller.sub.clone())
+        } else {
+            let author = effective_nous_id(&caller, "memory_blackboard")?;
+            if params.author.as_deref().is_some_and(|a| a != author) {
+                return Err(UnauthorizedSnafu {
+                    message: "memory_blackboard: cross-agent author denied".to_owned(),
+                }
+                .build()
+                .into());
+            }
+            author
+        };
 
         match params.action.as_str() {
             "write" => {
@@ -1558,14 +1975,6 @@ impl DiaporeiaServer {
                         .build(),
                     )
                 })?;
-                let author = params.author.ok_or_else(|| {
-                    rmcp::ErrorData::from(
-                        InvalidInputSnafu {
-                            message: "author is required for 'write' action".to_owned(),
-                        }
-                        .build(),
-                    )
-                })?;
                 let ttl = params.ttl_seconds.ok_or_else(|| {
                     rmcp::ErrorData::from(
                         InvalidInputSnafu {
@@ -1574,14 +1983,16 @@ impl DiaporeiaServer {
                         .build(),
                     )
                 })?;
-                store.write(&key, &value, &author, ttl).map_err(|e| {
-                    rmcp::ErrorData::from(
-                        BlackboardStoreSnafu {
-                            message: e.to_string(),
-                        }
-                        .build(),
-                    )
-                })?;
+                store
+                    .write(&key, &value, &verified_author, ttl)
+                    .map_err(|e| {
+                        rmcp::ErrorData::from(
+                            BlackboardStoreSnafu {
+                                message: e.to_string(),
+                            }
+                            .build(),
+                        )
+                    })?;
                 Ok(CallToolResult::success(vec![rmcp::model::Content::text(
                     format!("Blackboard entry '{key}' written."),
                 )]))
@@ -1651,15 +2062,7 @@ impl DiaporeiaServer {
                         .build(),
                     )
                 })?;
-                let author = params.author.ok_or_else(|| {
-                    rmcp::ErrorData::from(
-                        InvalidInputSnafu {
-                            message: "author is required for 'delete' action".to_owned(),
-                        }
-                        .build(),
-                    )
-                })?;
-                let deleted = store.delete(&key, &author).map_err(|e| {
+                let deleted = store.delete(&key, &verified_author).map_err(|e| {
                     rmcp::ErrorData::from(
                         BlackboardStoreSnafu {
                             message: e.to_string(),
@@ -1696,11 +2099,19 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "memory_search").await?;
+        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+            UnauthorizedSnafu {
+                message: "memory_search requires authentication".to_owned(),
+            }
+            .build()
+        })?;
+        require_caller_role(&caller, Role::Operator, "memory_search")?;
         let config = require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
         {
+            let effective_nous =
+                resolve_nous_scope(&caller, params.nous_id.as_deref(), "memory_search")?;
             let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
             let limit = params
                 .limit
@@ -1719,14 +2130,21 @@ impl DiaporeiaServer {
                     )
                 })?;
 
-            let results: Vec<_> = if let Some(ref nous_id) = params.nous_id {
-                results
-                    .into_iter()
-                    .filter(|r| r.source_id.contains(nous_id.as_str()))
-                    .collect()
-            } else {
-                results
-            };
+            // WHY(#4841): enforce first-party ownership and visibility.
+            let results: Vec<_> = results
+                .into_iter()
+                .filter(|r| {
+                    let owned_by_scope = effective_nous
+                        .as_deref()
+                        .is_some_and(|scoped| scoped == r.nous_id.as_str());
+                    let shared = matches!(
+                        r.visibility,
+                        mneme::knowledge::Visibility::Shared
+                            | mneme::knowledge::Visibility::Published
+                    );
+                    owned_by_scope || shared
+                })
+                .collect();
 
             let json = serde_json::to_string_pretty(&results)
                 .context(SerializationSnafu {})
