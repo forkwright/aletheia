@@ -17,17 +17,13 @@
 
 use std::fmt::Write as _;
 
+use super::shared::{emit_svg_open, escape_xml, nice_domain};
 use crate::Result;
 use crate::format::{coord, format_number};
-use crate::model::{Chart, CiteOrScalar, CiteOrText, Unit};
+use crate::model::{Chart, CiteOrScalar, Unit};
 use crate::render::canvas::{Canvas, PlotBox};
 use crate::scale::{self, Scale};
 use crate::theme::{ColorMode, ResolvedTheme};
-
-// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
-// literal mandated by the SVG spec. Renderers match it as an opaque string;
-// substituting `https://` produces SVG that browsers refuse to render.
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// Emit the scatter chart SVG.
 ///
@@ -86,21 +82,6 @@ fn point_x(p: &crate::model::Point) -> Option<f64> {
         Some(CiteOrScalar::Scalar(v)) => Some(*v),
         None => None,
     }
-}
-
-fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
-    let _ = write!(
-        out,
-        "<svg xmlns=\"{ns}\" \
-         viewBox=\"0 0 {w} {h}\" \
-         preserveAspectRatio=\"{aspect}\" \
-         role=\"img\" aria-label=\"{aria}\">",
-        ns = SVG_NAMESPACE,
-        w = canvas.width(),
-        h = canvas.height(),
-        aspect = canvas.preserve_aspect_ratio(),
-        aria = aria_label(chart),
-    );
 }
 
 fn emit_gridlines(out: &mut String, plot: &PlotBox, y_scale: &Scale, y_ticks: &[f64]) {
@@ -215,40 +196,6 @@ fn emit_labels(
     }
     out.push_str("</g>");
     Ok(())
-}
-
-fn nice_domain(values: &[f64]) -> (f64, f64) {
-    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-    for v in values {
-        if *v < lo {
-            lo = *v;
-        }
-        if *v > hi {
-            hi = *v;
-        }
-    }
-    if lo > 0.0 {
-        lo = 0.0;
-    }
-    if !lo.is_finite() || !hi.is_finite() {
-        return (0.0, 1.0);
-    }
-    scale::nice(lo, hi)
-}
-
-fn aria_label(chart: &Chart) -> String {
-    match &chart.title {
-        Some(CiteOrText::Text(t)) => escape_xml(t),
-        Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
-        None => "scatter chart".to_owned(),
-    }
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]

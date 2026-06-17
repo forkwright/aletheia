@@ -14,18 +14,12 @@
 
 use std::fmt::Write as _;
 
+use super::shared::{SVG_NAMESPACE, escape_xml};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, CiteOrText};
 use crate::render::canvas::Canvas;
 use crate::theme::{ColorMode, ResolvedTheme};
-
-// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
-// literal mandated by the SVG spec. Renderers (browsers, ImageMagick,
-// LibreOffice) match it as an opaque string; it is never fetched. Substituting
-// `https://` produces SVG that browsers refuse to render (the namespace string
-// must match the spec verbatim). See SVG 1.1 §1.3.
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// Emit the stat chart SVG.
 ///
@@ -144,13 +138,6 @@ pub fn emit(
 
     out.push_str("</g></svg>");
     Ok(out)
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]

@@ -15,17 +15,12 @@
 
 use std::fmt::Write as _;
 
+use super::shared::{emit_svg_open, escape_xml};
 use crate::Result;
 use crate::format::{coord, format_number};
-use crate::model::{Chart, CiteOrText, NumFormat, ToneRef, Unit};
+use crate::model::{Chart, NumFormat, ToneRef, Unit};
 use crate::render::canvas::Canvas;
 use crate::theme::{ColorMode, ResolvedTheme};
-
-// WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
-// literal mandated by the SVG spec. Renderers match it as an opaque string;
-// it is never fetched. Substituting `https://` produces SVG that browsers
-// refuse to render. See SVG 1.1 §1.3.
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
 
 /// Emit the doughnut chart SVG.
 ///
@@ -177,36 +172,6 @@ pub fn emit(
 fn polar_to_xy(cx: f64, cy: f64, r: f64, angle_rad: f64) -> (f64, f64) {
     let svg_angle = angle_rad - std::f64::consts::FRAC_PI_2;
     (cx + r * svg_angle.cos(), cy + r * svg_angle.sin())
-}
-
-fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
-    let _ = write!(
-        out,
-        "<svg xmlns=\"{ns}\" \
-         viewBox=\"0 0 {w} {h}\" \
-         preserveAspectRatio=\"{aspect}\" \
-         role=\"img\" aria-label=\"{aria}\">",
-        ns = SVG_NAMESPACE,
-        w = canvas.width(),
-        h = canvas.height(),
-        aspect = canvas.preserve_aspect_ratio(),
-        aria = aria_label(chart),
-    );
-}
-
-fn aria_label(chart: &Chart) -> String {
-    match &chart.title {
-        Some(CiteOrText::Text(t)) => escape_xml(t),
-        Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
-        None => "doughnut chart".to_owned(),
-    }
-}
-
-fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
