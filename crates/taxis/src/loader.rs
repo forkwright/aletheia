@@ -361,20 +361,34 @@ fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
     }
 }
 
+/// Decrypt any `enc:` values in a parsed TOML tree and serialize it back.
+///
+/// Returns an error if encrypted values are found but the decryption key is
+/// missing, or if the decrypted value tree cannot be re-serialized. This
+/// prevents the server from silently starting with undecrypted `enc:` values
+/// or leaking ciphertext when re-serialization fails.
+fn decrypt_toml_value_to_string(value: &mut toml::Value) -> Result<String> {
+    decrypt_toml_value(value)?;
+
+    toml::to_string(value).map_err(|e| {
+        SerializeTomlSnafu {
+            reason: e.to_string(),
+        }
+        .build()
+    })
+}
+
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
 ///
 /// Returns an error if encrypted values are found but the decryption key is
-/// missing. This prevents the server from silently starting with undecrypted
-/// `enc:` values in place of real secrets.
+/// missing, or if the decrypted value tree cannot be re-serialized.
 fn decrypt_toml_content(content: &str) -> Result<String> {
     let mut value: toml::Value = match toml::from_str(content) {
         Ok(v) => v,
         Err(_) => return Ok(content.to_owned()),
     };
 
-    decrypt_toml_value(&mut value)?;
-
-    Ok(toml::to_string(&value).unwrap_or_else(|_| content.to_owned()))
+    decrypt_toml_value_to_string(&mut value)
 }
 
 /// Read a standalone TOML file, apply env-var interpolation and decrypt
@@ -801,6 +815,21 @@ archiveBeforeDelete = true
         );
         assert_eq!(config.maintenance.retention.max_sessions_per_nous, 200);
         assert!(config.maintenance.retention.archive_before_delete);
+    }
+
+    #[test]
+    fn decrypt_toml_value_to_string_propagates_serialize_failure() {
+        let mut table = toml::map::Map::new();
+        table.insert("bad".to_owned(), toml::Value::Float(f64::NAN));
+        let mut value = toml::Value::Table(table);
+
+        // WHY: toml cannot represent NaN, so re-serialization must fail. The
+        // old implementation silently returned the original ciphertext string.
+        let result = decrypt_toml_value_to_string(&mut value);
+        assert!(
+            result.is_err(),
+            "non-serializable TOML value must propagate an error instead of returning content"
+        );
     }
 
     #[test]
