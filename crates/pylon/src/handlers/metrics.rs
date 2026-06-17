@@ -34,11 +34,18 @@ pub(crate) const METRICS_CONTENT_TYPE: &str =
 )]
 pub async fn expose(
     State(state): State<MetricsState>,
-    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    request: axum::extract::Request,
 ) -> axum::response::Response {
     // SECURITY(#4995): Restrict to loopback when loopback_only_metrics is set.
-    // This is the default when gateway.bind = "localhost".
-    if state.loopback_only_metrics && !peer.ip().is_loopback() {
+    // This is the default when gateway.bind = "localhost". ConnectInfo is only
+    // present when the router is served through `into_make_service_with_connect_info`;
+    // unit tests invoke handlers directly without it, so treat a missing peer as
+    // non-loopback (deny-by-default under the loopback-only policy).
+    let is_loopback = request
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .is_some_and(|ci| ci.ip().is_loopback());
+    if state.loopback_only_metrics && !is_loopback {
         return (
             axum::http::StatusCode::FORBIDDEN,
             [(axum::http::header::CONTENT_TYPE, "text/plain")],
