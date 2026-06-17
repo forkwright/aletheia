@@ -459,11 +459,8 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "test helpers write/remove files directly; synchronous access matches the test contract"
-)]
+#[allow(clippy::disallowed_methods)]
+#[allow(clippy::expect_used)]
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
     use super::*;

@@ -166,8 +166,6 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
     use std::collections::HashSet;
