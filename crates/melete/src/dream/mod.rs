@@ -12,6 +12,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use snafu::ResultExt;
@@ -171,6 +172,11 @@ pub struct DreamEngine {
     /// WHY: `AtomicI64` because we need lock-free reads FROM the gate check
     /// hot path. i64 holds Unix seconds until year ~292 billion.
     last_scan_at: AtomicI64,
+    /// Handle to the in-flight background consolidation task, if any.
+    ///
+    /// WHY(#5734): storing the handle lets us observe panics and await
+    /// completion at shutdown instead of dropping it and losing the result.
+    active_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl std::fmt::Debug for DreamEngine {
@@ -192,6 +198,7 @@ impl DreamEngine {
             distill,
             probe: ProbeVerifier::new(ProbeConfig::default()),
             last_scan_at: AtomicI64::new(0),
+            active_task: Mutex::new(None),
         }
     }
 
@@ -312,7 +319,9 @@ impl DreamEngine {
         let target = Arc::clone(target);
         let provider = Arc::clone(provider);
 
-        tokio::spawn(
+        // WHY(#5734): keep the JoinHandle so panics surface at shutdown/join
+        // instead of being silently discarded by Tokio's default panic hook.
+        let handle = tokio::spawn(
             async move {
                 tracing::info!("auto-dream consolidation started");
                 let start = std::time::Instant::now();
@@ -354,6 +363,34 @@ impl DreamEngine {
             }
             .instrument(tracing::info_span!("auto_dream_consolidation")),
         );
+
+        let mut guard = self
+            .active_task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = Some(handle);
+    }
+
+    /// Wait for any in-flight consolidation task to finish.
+    ///
+    /// Call this from the shutdown path to avoid aborting a consolidation
+    /// mid-flight, which could leave the lock mtime stale and cause the next
+    /// run to re-process already-merged sessions.
+    ///
+    /// # Errors
+    ///
+    /// Returns the task's [`JoinError`] if the consolidation task panicked or
+    /// was aborted.
+    pub async fn shutdown(&self) -> std::result::Result<(), tokio::task::JoinError> {
+        let handle = self
+            .active_task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(handle) = handle {
+            handle.await?;
+        }
+        Ok(())
     }
 
     /// Execute the consolidation pipeline.

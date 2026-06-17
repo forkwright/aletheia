@@ -85,6 +85,27 @@ impl ConsolidationTarget for MockConsolidationTarget {
     }
 }
 
+/// Consolidation target that panics during merge to exercise failure paths.
+struct PanickingTarget;
+
+impl ConsolidationTarget for PanickingTarget {
+    fn merge_flush(
+        &self,
+        _flush: &MemoryFlush,
+        _nous_id: &str,
+    ) -> std::result::Result<MergeReport, std::io::Error> {
+        panic!("merge_flush exploded");
+    }
+
+    fn mark_contradictions_stale(
+        &self,
+        _log: &ContradictionLog,
+        _nous_id: &str,
+    ) -> std::result::Result<usize, std::io::Error> {
+        Ok(0)
+    }
+}
+
 /// Write bytes to a file (test helper).
 ///
 /// WHY: `std::fs::write` is disallowed by melete's clippy.toml.
@@ -410,6 +431,42 @@ async fn on_turn_complete_spawns_background_task() {
 
     // NOTE: give the background task time to complete.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+}
+
+#[tokio::test]
+async fn on_turn_complete_surfaces_panic_and_releases_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".consolidate-lock");
+
+    let config = make_config(lock_path.clone());
+    let engine = Arc::new(DreamEngine::new(config));
+
+    let transcripts = vec![sample_transcript("session-001", "alice")];
+    let source: Arc<dyn TranscriptSource> =
+        Arc::new(MockTranscriptSource::with_transcripts(transcripts));
+    let target: Arc<dyn ConsolidationTarget> = Arc::new(PanickingTarget);
+
+    let summary = "## Summary\nBorrow checker overview\n\
+                    ## Key Decisions\n- Use references\n\
+                    ## Task Context\nLearning Rust";
+    let provider: Arc<dyn LlmProvider> =
+        Arc::new(hermeneus::test_utils::MockProvider::new(summary));
+
+    engine.on_turn_complete(&source, &target, &provider);
+
+    let join_result = engine.shutdown().await;
+    assert!(
+        join_result.is_err(),
+        "panic in spawned task must surface as join error"
+    );
+    let Err(err) = join_result else {
+        panic!("join result must be an error");
+    };
+    assert!(err.is_panic(), "join error must be a panic");
+
+    // WHY: the AcquiredLock Drop performs rollback; because there was no
+    // prior consolidation, rollback deletes the lock file.
+    assert!(!lock_path.exists(), "lock must be rolled back after panic");
 }
 
 #[test]
