@@ -10,7 +10,15 @@ use regex::Regex;
 /// Compile a static regex from a literal pattern.
 macro_rules! static_regex {
     ($name:ident, $pattern:expr) => {
-        static $name: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new($pattern).ok());
+        // WHY (#5603): these patterns are compile-time constants. A regex that
+        // fails to compile is a programmer error; failing closed (panic on
+        // first access) prevents silent credential leakage through logs.
+        #[allow(
+            clippy::expect_used,
+            reason = "static regex patterns are compile-time constants and must be valid"
+        )]
+        static $name: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new($pattern).expect("BUG: static regex must compile"));
     };
 }
 
@@ -34,11 +42,8 @@ pub fn redact_sensitive(value: &str) -> String {
     result
 }
 
-fn replace_sensitive(regex: &LazyLock<Option<Regex>>, value: &str, replacement: &str) -> String {
-    match regex.as_ref() {
-        Some(regex) => regex.replace_all(value, replacement).into_owned(),
-        None => value.to_owned(),
-    }
+fn replace_sensitive(regex: &LazyLock<Regex>, value: &str, replacement: &str) -> String {
+    regex.replace_all(value, replacement).into_owned()
 }
 
 #[cfg(test)]
@@ -91,6 +96,20 @@ mod tests {
     #[test]
     fn handles_empty_input() {
         assert_eq!(redact_sensitive(""), "");
+    }
+
+    #[test]
+    #[should_panic(expected = "BUG: static regex must compile")]
+    #[expect(
+        clippy::invalid_regex,
+        reason = "intentionally malformed regex to verify fail-closed behavior"
+    )]
+    fn invalid_regex_pattern_panics_fail_closed() {
+        // WHY (#5603): a malformed static regex must never fall back to
+        // returning the original string, which would leak credentials. This
+        // test would *pass* (incorrectly) under the old fail-open code.
+        static_regex!(RE_INVALID, r"(?<unclosed");
+        let _ = replace_sensitive(&RE_INVALID, "secret", "***");
     }
 
     #[test]
