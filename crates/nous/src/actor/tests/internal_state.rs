@@ -49,6 +49,36 @@ fn mark_turn_active_auto_wakes_from_dormant() {
     assert_eq!(actor.channel.status, NousLifecycle::Active);
 }
 
+// ── turn.rs: cancellation reverts turn counter ───────────────────────────────
+
+#[tokio::test]
+async fn cancelled_turn_reverts_in_memory_turn_counter() {
+    let (mut actor, _tx, _dir) =
+        make_test_actor_with_providers(pending_providers(), PipelineConfig::default());
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+
+    let result = actor
+        .execute_turn_with_panic_boundary(
+            "main",
+            None,
+            "hello",
+            tracing::info_span!("test-cancel"),
+            cancel,
+        )
+        .await;
+
+    assert!(result.is_err(), "cancelled turn must return an error");
+    let session = actor
+        .sessions
+        .get("main")
+        .expect("session should exist after cancellation");
+    assert_eq!(
+        session.turn, 0,
+        "cancelled turn must not advance the in-memory turn counter"
+    );
+}
+
 // ── turn.rs: record_pipeline_panic ───────────────────────────────────────────
 
 #[test]
