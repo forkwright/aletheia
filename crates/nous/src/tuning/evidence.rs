@@ -22,6 +22,30 @@ pub struct EvidenceResult {
     pub is_significant: bool,
 }
 
+impl EvidenceResult {
+    /// Smart constructor used by [`validate_evidence`].
+    ///
+    /// Computes `delta` and `is_significant` from the half-means and the
+    /// full-sample standard deviation.
+    #[must_use]
+    pub fn new(
+        mean_before: f64,
+        mean_after: f64,
+        stddev: f64,
+        significance_threshold: f64,
+    ) -> Self {
+        let delta = mean_after - mean_before;
+        let is_significant = delta.abs() > significance_threshold * stddev;
+        Self {
+            mean_before,
+            mean_after,
+            delta,
+            stddev,
+            is_significant,
+        }
+    }
+}
+
 /// Validate evidence by splitting observations into before/after halves and
 /// checking whether the delta is statistically significant.
 ///
@@ -49,7 +73,6 @@ pub fn validate_evidence(values: &[f64], significance_threshold: f64) -> Option<
 
     let mean_before = mean(before);
     let mean_after = mean(after);
-    let delta = mean_after - mean_before;
     let stddev = standard_deviation(values);
 
     // WHY: zero variance means all values are identical — no signal.
@@ -57,15 +80,12 @@ pub fn validate_evidence(values: &[f64], significance_threshold: f64) -> Option<
         return None;
     }
 
-    let is_significant = delta.abs() > significance_threshold * stddev;
-
-    Some(EvidenceResult {
+    Some(EvidenceResult::new(
         mean_before,
         mean_after,
-        delta,
         stddev,
-        is_significant,
-    })
+        significance_threshold,
+    ))
 }
 
 /// Arithmetic mean.
@@ -84,7 +104,7 @@ fn mean(values: &[f64]) -> f64 {
     values.iter().sum::<f64>() / n
 }
 
-/// Population standard deviation.
+/// Sample standard deviation (Bessel's correction applied).
 ///
 /// Returns `0.0` for slices with fewer than 2 elements.
 #[expect(
@@ -98,7 +118,7 @@ fn standard_deviation(values: &[f64]) -> f64 {
     }
     let m = mean(values);
     let n = values.len() as f64; // kanon:ignore RUST/as-cast
-    let variance = values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / n;
+    let variance = values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / (n - 1.0);
     variance.sqrt()
 }
 
@@ -125,7 +145,10 @@ mod tests {
     #[test]
     fn stddev_of_values() {
         let sd = standard_deviation(&[2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]);
-        assert!((sd - 2.0).abs() < 0.01, "stddev should be ~2.0, got {sd}");
+        assert!(
+            (sd - 2.138).abs() < 0.01,
+            "stddev should be ~2.138, got {sd}"
+        );
     }
 
     #[test]
