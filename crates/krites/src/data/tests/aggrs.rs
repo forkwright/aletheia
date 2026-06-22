@@ -378,10 +378,7 @@ fn test_variance_empty_and_single() {
     let mut empty = parse_aggr("variance").expect("test assertion").clone();
     empty.normal_init(&[]).expect("test assertion");
     let empty_aggr = empty.normal_op.expect("test assertion");
-    assert_eq!(
-        empty_aggr.get().expect("test assertion"),
-        DataValue::Null
-    );
+    assert_eq!(empty_aggr.get().expect("test assertion"), DataValue::Null);
 
     let mut one = parse_aggr("variance").expect("test assertion").clone();
     one.normal_init(&[]).expect("test assertion");
@@ -395,10 +392,7 @@ fn test_std_dev_empty_and_single() {
     let mut empty = parse_aggr("std_dev").expect("test assertion").clone();
     empty.normal_init(&[]).expect("test assertion");
     let empty_aggr = empty.normal_op.expect("test assertion");
-    assert_eq!(
-        empty_aggr.get().expect("test assertion"),
-        DataValue::Null
-    );
+    assert_eq!(empty_aggr.get().expect("test assertion"), DataValue::Null);
 
     let mut one = parse_aggr("std_dev").expect("test assertion").clone();
     one.normal_init(&[]).expect("test assertion");
