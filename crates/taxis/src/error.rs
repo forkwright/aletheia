@@ -17,22 +17,6 @@ use snafu::Snafu;
 )]
 // kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive]; false positive from attribute ordering
 pub enum Error {
-    /// The instance root directory does not exist.
-    #[snafu(display("instance root not found: {}", path.display()))]
-    InstanceNotFound {
-        path: PathBuf,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// A required configuration file was not found.
-    #[snafu(display("config not found: {}", path.display()))]
-    ConfigNotFound {
-        path: PathBuf,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Failed to read a configuration file.
     #[snafu(display("failed to read config from {}", path.display()))]
     ReadConfig {
