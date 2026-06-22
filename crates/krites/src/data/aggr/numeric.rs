@@ -52,6 +52,12 @@ impl NormalAggrObj for AggrVariance {
     }
 
     fn get(&self) -> Result<DataValue> {
+        // WHY: SQL VAR_SAMP returns NULL for fewer than 2 rows. The
+        // sample-variance formula divides by (count - 1), so count < 2
+        // evaluates to 0.0/0.0 = NaN instead of a meaningful result.
+        if self.count < 2 {
+            return Ok(DataValue::Null);
+        }
         #[expect(
             clippy::as_conversions,
             clippy::cast_precision_loss,
@@ -92,6 +98,12 @@ impl NormalAggrObj for AggrStdDev {
     }
 
     fn get(&self) -> Result<DataValue> {
+        // WHY: SQL STDDEV_SAMP returns NULL for fewer than 2 rows.
+        // Standard deviation is sqrt(variance), so it inherits the same
+        // degenerate cases that produce NaN for count < 2.
+        if self.count < 2 {
+            return Ok(DataValue::Null);
+        }
         #[expect(
             clippy::as_conversions,
             clippy::cast_precision_loss,
