@@ -295,6 +295,20 @@ impl Factbase {
                     .fail();
                 }
             }
+            // WHY: The formula is the canonical dependency set for a Derived
+            // fact; validating only `inputs` lets references that the evaluator
+            // will actually use slip through as `UnknownFact` at resolve time.
+            if let Source::Derived { formula, .. } = &fact.source {
+                for ref_id in expr_fact_ids(formula) {
+                    if !self.facts.contains_key(ref_id) {
+                        return UnknownFactSnafu {
+                            id: ref_id.as_str(),
+                            referenced_by: format!("formula of fact {}", fact.id),
+                        }
+                        .fail();
+                    }
+                }
+            }
         }
         self.detect_cycle()?;
         Ok(())
@@ -479,6 +493,20 @@ fn source_inputs(source: &Source) -> Vec<&FactId> {
         Source::Reference { fact } => vec![fact],
         Source::Derived { inputs, .. } => inputs.iter().collect(),
         Source::Sql { .. } | Source::Manual { .. } | Source::File { .. } => Vec::new(),
+    }
+}
+
+/// Borrow every fact id referenced by a `Derived` expression.
+//
+// WHY: The formula is the canonical dependency set for a Derived fact; this
+// helper lets validation compare it against the factbase.
+fn expr_fact_ids(expr: &Expr) -> Vec<&FactId> {
+    match expr {
+        Expr::Add { a, b }
+        | Expr::Sub { a, b }
+        | Expr::Mul { a, b }
+        | Expr::Div { a, b } => vec![a, b],
+        Expr::Sum { terms } => terms.iter().collect(),
     }
 }
 
@@ -960,5 +988,28 @@ mod tests {
         let fb = Factbase::new();
         let chain = fb.claim_citation_chain(&ClaimId::new("ghost").unwrap());
         assert_eq!(chain, None);
+    }
+
+    #[test]
+    fn derived_formula_unknown_fact_rejects_even_when_inputs_valid() {
+        let mut fb = Factbase::new();
+        fb.add_fact(manual_fact("a", Scalar::Count { value: 1 }, Unit::Count));
+        fb.add_fact(Fact {
+            id: FactId::new("d").unwrap(),
+            value: Scalar::Count { value: 0 },
+            unit: Unit::Count,
+            source: Source::Derived {
+                formula: Expr::Add {
+                    a: FactId::new("a").unwrap(),
+                    b: FactId::new("b").unwrap(),
+                },
+                inputs: vec![FactId::new("a").unwrap()],
+            },
+            captured: ts(),
+        });
+        let err = fb
+            .validate()
+            .expect_err("formula ref outside inputs must reject");
+        assert!(matches!(err, FactbaseError::UnknownFact { id, .. } if id == "b"));
     }
 }
