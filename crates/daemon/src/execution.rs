@@ -119,6 +119,7 @@ async fn execute_command(
             }
             .fail();
         }
+        // kanon:ignore TESTING/sleep-in-test — production timeout arm in tokio::select!, not a test sleep
         _ = tokio::time::sleep(timeout) => {
             return error::CommandTimedOutSnafu {
                 command: cmd.to_owned(),
@@ -503,10 +504,9 @@ pub(crate) async fn execute_builtin_with_behavior(
             execute_lesson_extraction(nous_id, knowledge_executor).await
         }
         BuiltinTask::SelfPrompt => {
-            // NOTE: SelfPrompt is dispatched inline by the runner after
-            // extracting a follow-up from prosoche output. This arm handles
-            // the case where it's registered as a standalone task (should not
-            // happen in normal operation).
+            // SelfPrompt is dispatched inline by the runner after extracting
+            // a follow-up from prosoche output; reaching this arm via
+            // standalone task registration is a misconfiguration.
             Ok(ExecutionResult::failed(Some(
                 "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
             )))
@@ -1112,3 +1112,7 @@ fn persist_facts<'a>(
 #[cfg(test)]
 #[path = "execution_tests.rs"]
 mod execution_tests;
+
+#[cfg(test)]
+#[path = "execution_knowledge_tests.rs"]
+mod execution_knowledge_tests;
