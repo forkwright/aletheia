@@ -14,7 +14,7 @@
 )]
 
 use graphe::store::SessionStore;
-use graphe::types::{Role, SessionStatus};
+use graphe::types::{Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType};
 use koina::ulid::Ulid;
 use tempfile::TempDir;
 
@@ -301,4 +301,101 @@ fn open_in_memory_creates_isolated_stores() {
         in_b.is_none(),
         "store_b should not see sessions created in store_a"
     );
+}
+
+#[test]
+fn create_session_classifies_session_type() {
+    // WHY: the store must derive the correct lifecycle class from the
+    // session key so user chat, daemon work, and one-shot tasks are
+    // separated without every caller threading explicit metadata.
+    let (store, _dir) = fresh_store();
+
+    let cases: &[(&str, SessionType)] = &[
+        ("main", SessionType::Primary),
+        ("signal-group", SessionType::Primary),
+        ("imported:2026-01-01", SessionType::Primary),
+        ("restored:backup", SessionType::Primary),
+        ("prosoche-wake", SessionType::Background),
+        ("daemon:prosoche", SessionType::Background),
+        ("daemon:self-prompt", SessionType::Background),
+        ("daemon:evolution", SessionType::Background),
+        ("daemon:reflection", SessionType::Background),
+        ("daemon:probe-audit", SessionType::Background),
+        ("ask:demiurge", SessionType::Ephemeral),
+        ("spawn:coder", SessionType::Ephemeral),
+        ("dispatch:task", SessionType::Ephemeral),
+        ("ephemeral:one-off", SessionType::Ephemeral),
+    ];
+
+    for (idx, (key, expected)) in cases.iter().enumerate() {
+        let id = format!("ses-{idx}");
+        let session = store
+            .create_session(&id, "nous-int-test", key, None, None)
+            .expect("create_session succeeds");
+        assert_eq!(
+            session.session_type, *expected,
+            "key '{key}' should classify as {expected:?}"
+        );
+    }
+}
+
+#[test]
+fn import_session_preserves_session_type() {
+    // WHY: exported/restored sessions must keep their original lifecycle
+    // class — a daemon session imported on a new node must not become a
+    // primary conversation just because the key was recreated locally.
+    let (store, _dir) = fresh_store();
+
+    for (idx, stype) in [
+        SessionType::Primary,
+        SessionType::Background,
+        SessionType::Ephemeral,
+    ]
+    .iter()
+    .enumerate()
+    {
+        let id = format!("ses-imp-{idx}");
+        let key = format!("key-{id}");
+        let session = Session {
+            id: id.clone(),
+            nous_id: "nous-int-test".to_owned(),
+            session_key: key.clone(),
+            status: SessionStatus::Active,
+            model: None,
+            session_type: *stype,
+            created_at: "2024-01-01T00:00:00Z".to_owned(),
+            updated_at: "2024-01-01T00:00:00Z".to_owned(),
+            metrics: SessionMetrics {
+                token_count_estimate: 0,
+                message_count: 0,
+                last_input_tokens: 0,
+                bootstrap_hash: None,
+                distillation_count: 0,
+                last_distilled_at: None,
+                computed_context_tokens: 0,
+            },
+            origin: SessionOrigin {
+                parent_session_id: None,
+                thread_id: None,
+                transport: None,
+                display_name: None,
+            },
+            artefact_meta: None,
+        };
+
+        let imported = store.import_session(&session, false).expect("import succeeds");
+        assert_eq!(
+            imported.session_type, *stype,
+            "imported session {id} must retain {stype:?}"
+        );
+
+        let roundtrip = store
+            .find_session_by_id(&id)
+            .expect("query succeeds")
+            .expect("session exists after import");
+        assert_eq!(
+            roundtrip.session_type, *stype,
+            "re-read session {id} must retain {stype:?}"
+        );
+    }
 }
