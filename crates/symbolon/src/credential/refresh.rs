@@ -91,6 +91,13 @@ pub(super) struct RefreshState {
     pub subscription_type: Option<String>,
 }
 
+impl RefreshState {
+    /// Returns `true` if the in-memory access token is non-empty and can be used.
+    pub(super) fn has_token(&self) -> bool {
+        !self.current_token.expose_secret().is_empty()
+    }
+}
+
 /// Wraps a credential file with background OAuth token refresh.
 ///
 /// Cleanup is registered at construction time via [`CleanupRegistry`](koina::cleanup::CleanupRegistry): the
@@ -198,7 +205,7 @@ impl CredentialProvider for RefreshingCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
         if let Ok(guard) = self.state.read()
             && let Some(ref s) = *guard
-            && !s.current_token.expose_secret().is_empty()
+            && s.has_token()
         {
             return Some(Credential {
                 secret: s.current_token.clone(),

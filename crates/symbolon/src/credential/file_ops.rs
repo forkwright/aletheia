@@ -1,12 +1,11 @@
 //! Credential file format and atomic I/O with encryption.
 
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
-
-use std::time::{Duration, SystemTime};
 
 use crate::encrypt::{
     ENCRYPTED_SENTINEL, commit_key_file, decrypt, encrypt, load_key, load_or_generate_key,
