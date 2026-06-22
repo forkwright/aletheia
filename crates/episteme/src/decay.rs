@@ -13,22 +13,22 @@ use crate::knowledge::{EpistemicTier, FactType, KnowledgeStage, StageTransition}
 /// Default reinforcement boost per explicit reinforcement event.
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_reinforcement_boost`.
-pub const DEFAULT_REINFORCEMENT_BOOST: f64 = 0.02;
+pub(crate) const DEFAULT_REINFORCEMENT_BOOST: f64 = 0.02;
 
 /// Default maximum cumulative reinforcement bonus (caps at 50 reinforcements).
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_max_reinforcement_bonus`.
-pub const DEFAULT_MAX_REINFORCEMENT_BONUS: f64 = 1.0;
+pub(crate) const DEFAULT_MAX_REINFORCEMENT_BONUS: f64 = 1.0;
 
 /// Default multiplier bonus per distinct agent that accessed a fact.
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_cross_agent_bonus_per_agent`.
-pub const DEFAULT_CROSS_AGENT_BONUS_PER_AGENT: f64 = 0.15;
+pub(crate) const DEFAULT_CROSS_AGENT_BONUS_PER_AGENT: f64 = 0.15;
 
 /// Default maximum cross-agent multiplier (caps at 5 distinct agents → 1.75×).
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::decay_max_cross_agent_multiplier`.
-pub const DEFAULT_MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
+pub(crate) const DEFAULT_MAX_CROSS_AGENT_MULTIPLIER: f64 = 1.75;
 
 /// Configuration for multi-factor decay computation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,28 +77,59 @@ impl DecayConfig {
 #[derive(Debug, Clone)]
 pub(crate) struct DecayFactors {
     /// Hours since the fact was last accessed (or created if never accessed).
-    pub age_hours: f64,
+    age_hours: f64,
     /// Classified fact type.
-    pub fact_type: FactType,
+    fact_type: FactType,
     /// Epistemic confidence tier.
-    pub tier: EpistemicTier,
+    tier: EpistemicTier,
     /// Total access count across all agents.
-    pub access_count: u32,
+    access_count: u32,
     /// Number of explicit reinforcement events.
-    pub reinforcement_count: u32,
+    reinforcement_count: u32,
     /// Number of distinct agents that accessed this fact.
-    pub distinct_agent_count: u32,
+    distinct_agent_count: u32,
     /// Domain volatility score in [0.0, 1.0] (from succession module).
-    pub volatility: f64,
+    volatility: f64,
+}
+
+impl DecayFactors {
+    pub(crate) fn new(
+        age_hours: f64,
+        fact_type: FactType,
+        tier: EpistemicTier,
+        access_count: u32,
+        reinforcement_count: u32,
+        distinct_agent_count: u32,
+        volatility: f64,
+    ) -> Self {
+        Self {
+            age_hours,
+            fact_type,
+            tier,
+            access_count,
+            reinforcement_count,
+            distinct_agent_count,
+            volatility: volatility.clamp(0.0, 1.0),
+        }
+    }
 }
 
 /// Result of multi-factor decay computation.
 #[derive(Debug, Clone)]
 pub(crate) struct DecayResult {
     /// Combined decay score in [0.0, 1.0]. Higher = better retained.
-    pub score: f64,
+    pub(crate) score: f64,
     /// Computed lifecycle stage based on the decay score.
-    pub stage: KnowledgeStage,
+    pub(crate) stage: KnowledgeStage,
+}
+
+impl DecayResult {
+    fn new(score: f64) -> Self {
+        Self {
+            score,
+            stage: KnowledgeStage::from_decay_score(score),
+        }
+    }
 }
 
 /// Compute the multi-factor decay score for a single fact.
@@ -150,10 +181,7 @@ pub(crate) fn compute_decay(config: &DecayConfig, factors: &DecayFactors) -> Dec
     );
     let score = (weighted * cross_agent_mult).clamp(0.0, 1.0);
 
-    DecayResult {
-        score,
-        stage: KnowledgeStage::from_decay_score(score),
-    }
+    DecayResult::new(score)
 }
 
 /// FSRS power-law recency score.
