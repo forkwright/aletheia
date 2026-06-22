@@ -4732,9 +4732,15 @@ workspace = "nous/{agent_id}"
             !meta.lossless,
             "export with known gaps must not claim lossless"
         );
-        let sections: Vec<&str> =
-            meta.omitted_sections.iter().map(|s| s.section.as_str()).collect();
-        assert!(sections.contains(&"memory"), "memory omission must be recorded");
+        let sections: Vec<&str> = meta
+            .omitted_sections
+            .iter()
+            .map(|s| s.section.as_str())
+            .collect();
+        assert!(
+            sections.contains(&"memory"),
+            "memory omission must be recorded"
+        );
         assert!(
             sections.contains(&"workspace_binary_files"),
             "binary file omission must be recorded"
