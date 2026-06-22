@@ -356,6 +356,7 @@ mod tests {
         record_tool_failure("n1", "read");
         record_stream_event_dropped("n1", "full");
         record_training_capture_rejected("n1", "non_authored");
+        record_dpo_pair("n1");
         record_health_poller_restart();
 
         let out = encode(&r);
@@ -369,6 +370,7 @@ mod tests {
             "aletheia_tool_failures_total",
             "aletheia_stream_events_dropped_total",
             "aletheia_training_capture_rejected_total",
+            "aletheia_dpo_pairs_captured_total",
             "aletheia_nous_health_poller_restarts_total",
         ] {
             assert!(out.contains(metric), "missing `{metric}` in: {out}");
