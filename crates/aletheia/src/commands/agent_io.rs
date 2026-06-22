@@ -128,6 +128,9 @@ pub(crate) struct ImportArgs {
     /// Skip restoring workspace files
     #[arg(long)]
     pub skip_workspace: bool,
+    /// Skip importing typed knowledge (facts, entities, relationships)
+    #[arg(long)]
+    pub skip_knowledge: bool,
     /// Overwrite existing workspace files
     #[arg(long)]
     pub force: bool,
@@ -718,6 +721,24 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         });
     }
 
+    // WHY(#5102): memory/vector/graph state is not yet serialized, so the
+    // export metadata must record the omission rather than claim losslessness.
+    omitted_sections.push(OmittedSection {
+        section: "memory".to_owned(),
+        reason: "vectors_and_graph_not_exported".to_owned(),
+        count: None,
+    });
+
+    // WHY(#5102): binary workspace files are enumerated but their contents are
+    // not serialized; record them as omitted so importers can warn/reject.
+    if !workspace.binary_files.is_empty() {
+        omitted_sections.push(OmittedSection {
+            section: "workspace_binary_files".to_owned(),
+            reason: "binary_content_not_exported".to_owned(),
+            count: Some(workspace.binary_files.len()),
+        });
+    }
+
     let knowledge = match export_knowledge(&oikos, &args.nous_id) {
         Ok(k) => k,
         Err(err) => {
@@ -1199,6 +1220,18 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 .with_whatever_context(|_| format!("failed to write {}", target.display()))?;
             summary.workspace_files += 1;
         }
+
+        // WHY(#5102): binary workspace files are recorded by path but their
+        // contents are not carried in the portability format. Report the omission
+        // clearly instead of silently dropping them.
+        if !agent_file.workspace.binary_files.is_empty() {
+            eprintln!(
+                "  WARN: skipping {} binary workspace file(s) (contents not included in export): {:?}",
+                agent_file.workspace.binary_files.len(),
+                agent_file.workspace.binary_files
+            );
+            summary.skipped_categories.push("workspace_binary_files");
+        }
     }
 
     // Write config entry.
@@ -1488,7 +1521,9 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     // facts when the caller only wanted to skip session history. Knowledge
     // (facts, entities, relationships) is typed data that belongs to the agent
     // regardless of whether session history is restored.
-    if let Some(knowledge) = &agent_file.knowledge {
+    if args.skip_knowledge {
+        summary.skipped_categories.push("knowledge");
+    } else if let Some(knowledge) = &agent_file.knowledge {
         let counts = import_knowledge(&oikos, &nous_id, knowledge)?;
         summary.facts = counts.facts;
         summary.entities = counts.entities;
@@ -2560,6 +2595,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
+                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -2598,6 +2634,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
+                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -2678,6 +2715,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
+                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -2797,6 +2835,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
+                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -3048,6 +3087,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: false,
             skip_workspace: false,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3102,6 +3142,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: true,
             skip_workspace: false,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3152,6 +3193,7 @@ workspace = "nous/{agent_id}"
             target_id: Some("dest-nous".to_owned()),
             skip_sessions: true,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3187,6 +3229,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: true,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3222,6 +3265,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: true,
             skip_workspace: false,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3250,6 +3294,7 @@ workspace = "nous/{agent_id}"
             target_id: Some("../../../../tmp/escaped".to_owned()),
             skip_sessions: true,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3279,6 +3324,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: true,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3524,6 +3570,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
+                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -3730,6 +3777,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
+                skip_knowledge: false,
                 // WHY: write_agent_config above pre-creates the dest nous dir, so
                 // import must overwrite it; the [embedding] config still applies.
                 force: true,
@@ -3868,6 +3916,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: false,
                 skip_workspace: false,
+                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -3983,6 +4032,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: true,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4013,6 +4063,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: true,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4038,6 +4089,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: false,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4064,6 +4116,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: false,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4090,6 +4143,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: false,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4116,6 +4170,7 @@ workspace = "nous/{agent_id}"
             target_id: None,
             skip_sessions: false,
             skip_workspace: true,
+            skip_knowledge: false,
             force: false,
             dry_run: false,
             allow_unknown_values: true,
@@ -4481,6 +4536,7 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: true,
                 skip_workspace: true,
+                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -4635,6 +4691,165 @@ workspace = "nous/{agent_id}"
         assert!(
             !rendered.contains(secret),
             "secret value must not leak into the review surface: {rendered}"
+        );
+    }
+
+    /// WHY(#5102): binary workspace files are enumerated but not serialized, so
+    /// the export metadata must record the omission instead of claiming losslessness.
+    #[test]
+    fn export_records_binary_workspace_files_and_memory_omissions_5102() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        // WHY: PNG magic bytes are not valid UTF-8, so the collector treats this
+        // as a binary file and records only its path.
+        std::fs::write(
+            oikos.nous_dir("alice").join("avatar.png"),
+            &[0x89, 0x50, 0x4e, 0x47],
+        )
+        .unwrap();
+
+        let output = dir.path().join("alice.agent.json");
+        let args = ExportArgs {
+            nous_id: "alice".to_owned(),
+            output: Some(output.clone()),
+            archived: false,
+            max_messages: 0,
+            compact: false,
+            force: false,
+            allow_partial: false,
+        };
+        export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
+        assert_eq!(exported.workspace.binary_files, vec!["avatar.png"]);
+        let meta = exported
+            .export_metadata
+            .expect("metadata must be present for a partial export");
+        assert!(
+            !meta.lossless,
+            "export with known gaps must not claim lossless"
+        );
+        let sections: Vec<&str> = meta
+            .omitted_sections
+            .iter()
+            .map(|s| s.section.as_str())
+            .collect();
+        assert!(
+            sections.contains(&"memory"),
+            "memory omission must be recorded"
+        );
+        assert!(
+            sections.contains(&"workspace_binary_files"),
+            "binary file omission must be recorded"
+        );
+        let binary = meta
+            .omitted_sections
+            .iter()
+            .find(|s| s.section == "workspace_binary_files")
+            .unwrap();
+        assert_eq!(binary.count, Some(1));
+    }
+
+    /// WHY(#5102): importers must not silently drop binary workspace files.
+    /// They are reported as skipped and are not written to disk.
+    #[test]
+    fn import_skips_binary_workspace_files_5102() {
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+
+        let mut agent_file = sample_agent_file();
+        agent_file.workspace.binary_files = vec!["avatar.png".to_owned()];
+        agent_file.export_metadata = Some(mneme::portability::ExportMetadata {
+            lossless: false,
+            omitted_sections: vec![mneme::portability::OmittedSection {
+                section: "workspace_binary_files".to_owned(),
+                reason: "binary_content_not_exported".to_owned(),
+                count: Some(1),
+            }],
+            truncations: vec![],
+        });
+        let import_path = dest.path().join("agent.agent.json");
+        std::fs::write(
+            &import_path,
+            serde_json::to_string_pretty(&agent_file).unwrap(),
+        )
+        .unwrap();
+
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: import_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                skip_knowledge: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .unwrap();
+
+        let nous_dir = dest_oikos.nous_dir("imported-agent");
+        assert!(nous_dir.join("SOUL.md").exists());
+        assert!(
+            !nous_dir.join("avatar.png").exists(),
+            "binary file must not be created"
+        );
+    }
+
+    /// WHY(#5102): session and knowledge skipping must be independent flags.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn import_skip_knowledge_flag_omits_typed_knowledge_5102() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        seed_typed_knowledge(&source_oikos, "alice");
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                skip_knowledge: true,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .unwrap();
+
+        assert!(
+            imported_facts(&dest_oikos, "alice").is_empty(),
+            "knowledge must be skipped when --skip-knowledge is set"
         );
     }
 }
