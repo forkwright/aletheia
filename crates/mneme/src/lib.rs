@@ -132,6 +132,13 @@ pub mod types {
     };
 }
 
+/// Idempotent turn-finalization primitives.
+///
+/// WHY: `nous::finalize` uses `usage_exists_for_turn` as the dedup guard, but
+/// messages are appended before usage is recorded. The types here let
+/// downstream detect and recover partially finalized turns (#4691).
+pub mod finalize;
+
 // ── Training data types (eidos) ───────────────────────────────────────
 //
 // NOTE: training capture *logic* (the JSONL writer, quality gate, and
