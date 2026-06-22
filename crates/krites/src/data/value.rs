@@ -539,6 +539,12 @@ impl From<i64> for DataValue {
 
 impl From<f64> for DataValue {
     fn from(v: f64) -> Self {
+        // INVARIANT: NaN must not enter the DataValue graph as a valid
+        // numeric node. Downstream Datalog arithmetic treats NaN as a
+        // poison value that propagates silently through rules.
+        if v.is_nan() {
+            return DataValue::Null;
+        }
         DataValue::Num(Num::Float(v))
     }
 }
