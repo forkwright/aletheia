@@ -21,8 +21,8 @@ impl TaskRunner {
     /// `interval.tick()` is cancel-safe (a dropped tick simply delays the next
     /// poll), and `CancellationToken::cancelled()` is cancel-safe. If this
     /// future is dropped between iterations, in-flight tasks continue running
-    /// on the Tokio executor; their `JoinHandle`s are held in `self.in_flight`
-    /// and will be abandoned (not awaited) on DROP.
+    /// on the Tokio executor; the normal shutdown path below aborts and awaits
+    /// them so that teardown does not outlive the work they are performing.
     #[tracing::instrument(skip_all)]
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
@@ -73,6 +73,7 @@ impl TaskRunner {
         // on the Tokio executor with no observer to collect their results.
         let in_flight_count = self.in_flight.len();
         let drained: Vec<_> = self.in_flight.drain().collect();
+        let mut handles = Vec::with_capacity(drained.len());
         for (task_id, in_flight) in drained {
             tracing::debug!(
                 task_id = %task_id,
@@ -81,6 +82,7 @@ impl TaskRunner {
             );
             in_flight.cancel.cancel();
             in_flight.handle.abort();
+            handles.push(in_flight.handle);
             self.unregister_watchdog_process(&task_id);
         }
         if in_flight_count > 0 {
@@ -89,6 +91,16 @@ impl TaskRunner {
                 cancelled = in_flight_count,
                 "in-flight tasks cancelled on shutdown"
             );
+        }
+
+        // WHY: `abort()` is only a cancellation request; awaiting the
+        // `JoinHandle` guarantees the task has actually stopped before the
+        // runner returns. `JoinError` is expected for aborted tasks and is
+        // intentionally ignored here.
+        for handle in handles {
+            // NOTE: the awaited task may return a `JoinError` from the abort
+            // above; that is expected and does not need to be propagated.
+            let _result = handle.await;
         }
     }
 
