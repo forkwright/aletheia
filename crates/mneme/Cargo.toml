@@ -8,8 +8,14 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[lints]
-workspace = true
+[[test]]
+name = "proptest_embedding"
+path = "tests/proptest_embedding.rs"
+required-features = ["test-support"]
+
+[[test]]
+name = "ts_compat"
+path = "tests/ts_compat.rs"
 
 [features]
 # WHY: graphe's fjall backend is now unconditional. mneme re-exports the
@@ -53,11 +59,10 @@ tempfile = { workspace = true }
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-[[test]]
-name = "proptest_embedding"
-path = "tests/proptest_embedding.rs"
-required-features = ["test-support"]
+[lints]
+workspace = true
 
-[[test]]
-name = "ts_compat"
-path = "tests/ts_compat.rs"
+[package.metadata.kanon]
+maturity = "production"
+since = "2025-06-01"
+exit-criteria = "stable facade; exit when sub-crate decomposition is revisited or facade is retired"

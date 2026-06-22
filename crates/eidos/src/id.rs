@@ -98,6 +98,16 @@ define_id!(
     CausalEdgeId
 );
 
+define_id!(
+    /// Unique identifier for a benchmark eval run.
+    EvalRunId
+);
+
+define_id!(
+    /// Unique identifier for a question within an eval run.
+    QuestionId
+);
+
 /// Validation errors for knowledge-domain identifiers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
