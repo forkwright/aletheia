@@ -26,6 +26,12 @@ pub use refresh::{
 
 pub use pkce::OAuthProvider;
 
+/// Alias for the canonical clock-skew leeway constant defined in [`crate::jwt`].
+///
+/// WHY: the OAuth credential chain and the JWT validation path must share one
+/// canonical value so policy changes cannot drift apart.
+use crate::jwt::DEFAULT_CLOCK_SKEW_LEEWAY_SECS as CLOCK_SKEW_LEEWAY_SECS;
+
 /// Caller-rendered action emitted by interactive OAuth credential flows.
 // kanon:ignore RUST/no-debug-derive-on-public-types — OAuthRequiredAction is a UI-facing action enum with no secrets; Debug is required for CLI logging
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,13 +91,10 @@ const OAUTH_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
 /// Refresh when token has less than this many seconds remaining.
 const REFRESH_THRESHOLD_SECS: u64 = 3600;
 
-/// Clock skew tolerance for token expiry checks (seconds).
-///
-/// WHY: clock differences between the OAuth provider and local system
-/// cause freshly obtained tokens to appear expired. 30 seconds is
-/// conservative enough to catch genuine expiry while tolerating
-/// typical NTP drift.
-const CLOCK_SKEW_LEEWAY_SECS: u64 = 30;
+// INVARIANT: the credential module does not redeclare the leeway value.
+// The alias imported above forces the OAuth expiry path to use the same
+// definition as the JWT validation path.
+const _: () = assert!(CLOCK_SKEW_LEEWAY_SECS == crate::jwt::DEFAULT_CLOCK_SKEW_LEEWAY_SECS);
 
 /// How often the background refresh task checks token expiry.
 const REFRESH_CHECK_INTERVAL_SECS: u64 = 60;
@@ -112,3 +115,17 @@ mod credential_file_tests;
 mod env_provider_tests;
 #[cfg(test)]
 mod refreshing_tests;
+
+#[cfg(test)]
+mod clock_skew_tests {
+    // WHY: regression for #5478. The OAuth expiry path must derive its
+    // clock-skew leeway from the same canonical constant as the JWT path.
+    #[test]
+    fn credential_leeway_matches_jwt_canonical_value() {
+        assert_eq!(
+            super::CLOCK_SKEW_LEEWAY_SECS,
+            crate::jwt::DEFAULT_CLOCK_SKEW_LEEWAY_SECS
+        );
+        assert_eq!(super::CLOCK_SKEW_LEEWAY_SECS, 30);
+    }
+}
