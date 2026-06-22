@@ -8,7 +8,7 @@ use std::mem;
 use std::ops::Bound;
 use std::sync::Arc;
 
-use crossbeam::sync::{ShardedLock, ShardedLockReadGuard, ShardedLockWriteGuard};
+use crossbeam::sync::{ShardedLock, ShardedLockReadGuard};
 use itertools::Itertools;
 
 use crate::data::tuple::{Tuple, check_key_for_validity};
@@ -23,7 +23,8 @@ type Result<T> = StorageResult<T>;
 
 /// Create a database backed by memory.
 /// This is the fastest storage, but non-persistent.
-/// Supports concurrent readers but only a single writer.
+/// Concurrent readers are not blocked by an open writer; writers apply
+/// their deltas under a short exclusive lock only at commit time.
 #[expect(
     clippy::result_large_err,
     reason = "InternalError carries structured context — boxing deferred to avoid API churn across engine internals"
@@ -49,11 +50,16 @@ impl<'s> Storage<'s> for MemStorage {
 
     fn transact(&'s self, write: bool) -> Result<Self::Tx> {
         Ok(if write {
-            let wtr = self
+            // WHY: Take a point-in-time snapshot of the base map so the writer
+            // body does not hold the exclusive lock. Readers can proceed while
+            // the writer builds its delta. The snapshot is cloned under a brief
+            // read lock; writers serialize only at commit time.
+            let snapshot = self
                 .store
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            MemTx::Writer(wtr, BTreeMap::default())
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            MemTx::Writer(Arc::clone(&self.store), snapshot, BTreeMap::default())
         } else {
             let rdr = self
                 .store
@@ -87,7 +93,8 @@ impl<'s> Storage<'s> for MemStorage {
 pub enum MemTx<'s> {
     Reader(ShardedLockReadGuard<'s, BTreeMap<Vec<u8>, Vec<u8>>>),
     Writer(
-        ShardedLockWriteGuard<'s, BTreeMap<Vec<u8>, Vec<u8>>>,
+        Arc<ShardedLock<BTreeMap<Vec<u8>, Vec<u8>>>>,
+        BTreeMap<Vec<u8>, Vec<u8>>,
         BTreeMap<Vec<u8>, Option<Vec<u8>>>,
     ),
 }
@@ -96,9 +103,9 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     fn get(&self, key: &[u8], _for_update: bool) -> Result<Option<Vec<u8>>> {
         Ok(match self {
             MemTx::Reader(rdr) => rdr.get(key).cloned(),
-            MemTx::Writer(wtr, cache) => match cache.get(key) {
+            MemTx::Writer(_, snapshot, cache) => match cache.get(key) {
                 Some(r) => r.clone(),
-                None => wtr.get(key).cloned(),
+                None => snapshot.get(key).cloned(),
             },
         })
     }
@@ -138,13 +145,16 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     fn del_range_from_persisted(&mut self, lower: &[u8], upper: &[u8]) -> Result<()> {
         match self {
             MemTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
-            MemTx::Writer(wtr, _) => {
-                let keys = wtr
+            MemTx::Writer(_, snapshot, cache) => {
+                // WHY: Range deletes are recorded in the delta instead of
+                // mutating the base map immediately. This keeps the writer
+                // body lock-free and lets commit merge all changes at once.
+                let keys = snapshot
                     .range(lower.to_vec()..upper.to_vec())
-                    .map(|kv| kv.0.clone())
+                    .map(|(k, _)| k.clone())
                     .collect_vec();
-                for k in &keys {
-                    wtr.remove(k);
+                for k in keys {
+                    cache.insert(k, None);
                 }
                 Ok(())
             }
@@ -154,9 +164,9 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     fn exists(&self, key: &[u8], _for_update: bool) -> Result<bool> {
         Ok(match self {
             MemTx::Reader(rdr) => rdr.contains_key(key),
-            MemTx::Writer(wtr, cache) => match cache.get(key) {
+            MemTx::Writer(_, snapshot, cache) => match cache.get(key) {
                 Some(r) => r.is_some(),
-                None => wtr.contains_key(key),
+                None => snapshot.contains_key(key),
             },
         })
     }
@@ -164,16 +174,19 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     fn commit(&mut self) -> Result<()> {
         match self {
             MemTx::Reader(_) => Ok(()),
-            MemTx::Writer(wtr, cached) => {
+            MemTx::Writer(store, _snapshot, cached) => {
                 let mut cache = BTreeMap::default();
                 mem::swap(&mut cache, cached);
+                let mut store_guard = store
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 for (k, mv) in cache {
                     match mv {
                         None => {
-                            wtr.remove(&k);
+                            store_guard.remove(&k);
                         }
                         Some(v) => {
-                            wtr.insert(k, v);
+                            store_guard.insert(k, v);
                         }
                     }
                 }
@@ -199,9 +212,9 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
                 rdr.range(lower.to_vec()..upper.to_vec())
                     .map(|(k, v)| Ok(decode_tuple_from_kv(k, v, None))),
             ),
-            MemTx::Writer(wtr, cache) => Box::new(CacheIter {
+            MemTx::Writer(_, snapshot, cache) => Box::new(CacheIter {
                 change_iter: cache.range(lower.to_vec()..upper.to_vec()).fuse(),
-                db_iter: wtr.range(lower.to_vec()..upper.to_vec()).fuse(),
+                db_iter: snapshot.range(lower.to_vec()..upper.to_vec()).fuse(),
                 change_cache: None,
                 db_cache: None,
             }),
@@ -225,7 +238,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
                 }
                 .map(Ok),
             ),
-            MemTx::Writer(stored, delta) => Box::new(
+            MemTx::Writer(_, stored, delta) => Box::new(
                 SkipDualIterator {
                     stored,
                     delta,
@@ -255,9 +268,9 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
                 rdr.range(lower.to_vec()..upper.to_vec())
                     .map(|(k, v)| Ok((k.clone(), v.clone()))),
             ),
-            MemTx::Writer(wtr, cache) => Box::new(CacheIterRaw {
+            MemTx::Writer(_, snapshot, cache) => Box::new(CacheIterRaw {
                 change_iter: cache.range(lower.to_vec()..upper.to_vec()).fuse(),
-                db_iter: wtr.range(lower.to_vec()..upper.to_vec()).fuse(),
+                db_iter: snapshot.range(lower.to_vec()..upper.to_vec()).fuse(),
                 change_cache: None,
                 db_cache: None,
             }),
@@ -270,9 +283,9 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     {
         Ok(match self {
             MemTx::Reader(rdr) => rdr.range(lower.to_vec()..upper.to_vec()).count(),
-            MemTx::Writer(wtr, cache) => (CacheIterRaw {
+            MemTx::Writer(_, snapshot, cache) => (CacheIterRaw {
                 change_iter: cache.range(lower.to_vec()..upper.to_vec()).fuse(),
-                db_iter: wtr.range(lower.to_vec()..upper.to_vec()).fuse(),
+                db_iter: snapshot.range(lower.to_vec()..upper.to_vec()).fuse(),
                 change_cache: None,
                 db_cache: None,
             })
