@@ -133,6 +133,15 @@ pub struct ToolServices {
     pub knowledge: Option<Arc<dyn KnowledgeSearchService>>,
     pub working_checkpoint_store: Option<Arc<dyn crate::types::WorkingCheckpointStore>>,
     pub http_client: reqwest::Client,
+    /// HTTP client with reqwest auto-redirect disabled, used by tools that
+    /// perform their own SSRF-safe redirect validation (web_fetch, http_request).
+    ///
+    /// WHY: reqwest does not expose a way to reconfigure an existing client's
+    /// redirect policy, so the runtime supplies a pre-built SSRF-safe client
+    /// alongside the general-purpose `http_client`. Both clients should be
+    /// constructed from the same operator HTTP configuration (proxy, TLS CA,
+    /// connection pool) so uniform policy enforcement is possible.
+    pub ssrf_http_client: reqwest::Client,
     /// In-memory vault for session-scoped secrets (AWS SSO keys, API tokens, etc.).
     ///
     /// Referenced via `{{secret:<name>}}` or `$SECRET(<name>)` placeholders in

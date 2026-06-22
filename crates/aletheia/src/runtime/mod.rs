@@ -604,6 +604,11 @@ impl RuntimeBuilder {
             planning,
             knowledge: knowledge_search,
             http_client: reqwest::Client::new(),
+            ssrf_http_client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
             server_tool_config: organon::types::ServerToolConfig::default(),

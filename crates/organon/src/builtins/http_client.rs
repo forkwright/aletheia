@@ -11,7 +11,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use indexmap::IndexMap;
-use reqwest::{Method, StatusCode, redirect};
+use reqwest::{Method, StatusCode};
 
 use koina::http::{
     HostResolver, TokioHostResolver, validate_url_not_internal,
@@ -27,6 +27,18 @@ use crate::types::{
 };
 
 use super::workspace::{extract_opt_str, extract_opt_u64, extract_str};
+
+#[expect(
+    clippy::result_large_err,
+    reason = "ToolResult grew by receipt field; boxing would change public API"
+)]
+fn require_services(
+    ctx: &ToolContext,
+) -> std::result::Result<&crate::types::ToolServices, ToolResult> {
+    ctx.services
+        .as_deref()
+        .ok_or_else(|| ToolResult::error("tool services not configured"))
+}
 
 /// Headers that must never be forwarded from LLM input.
 ///
@@ -128,6 +140,7 @@ async fn send_with_safe_redirects<R>(
     url: &str,
     headers: &HashMap<String, String>,
     body: Option<&str>,
+    timeout: std::time::Duration,
     resolver: &R,
 ) -> std::result::Result<reqwest::Response, String>
 where
@@ -141,6 +154,7 @@ where
     loop {
         let mut req = client
             .request(current_method.clone(), current_url.clone())
+            .timeout(timeout)
             .header(
                 "User-Agent",
                 concat!(
@@ -192,9 +206,14 @@ impl ToolExecutor for HttpRequestExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
+            let services = match require_services(ctx) {
+                Ok(s) => s,
+                Err(r) => return Ok(r),
+            };
+
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let method_str = extract_opt_str(&input.arguments, "method").unwrap_or("GET");
             let body = extract_opt_str(&input.arguments, "body");
@@ -221,21 +240,13 @@ impl ToolExecutor for HttpRequestExecutor {
                 return Ok(ToolResult::error(msg));
             }
 
-            let client = match reqwest::Client::builder()
-                .redirect(redirect::Policy::none())
-                .timeout(std::time::Duration::from_secs(timeout_secs))
-                .build()
-            {
-                Ok(c) => c,
-                Err(e) => return Ok(ToolResult::error(format!("client build failed: {e}"))),
-            };
-
             let response = match send_with_safe_redirects(
-                &client,
+                &services.ssrf_http_client,
                 method.clone(),
                 url,
                 &headers,
                 body,
+                std::time::Duration::from_secs(timeout_secs),
                 &TokioHostResolver,
             )
             .await

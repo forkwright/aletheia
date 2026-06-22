@@ -442,6 +442,11 @@ mod tests {
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),
                 http_client: reqwest::Client::new(),
+                ssrf_http_client: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
                 secret_vault: hermeneus::secret::SecretVault::new(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),

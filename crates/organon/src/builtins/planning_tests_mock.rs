@@ -44,6 +44,11 @@ pub(super) fn test_ctx_with_planning(planning: Arc<dyn PlanningService>) -> Tool
             planning: Some(planning),
             knowledge: None,
             http_client: reqwest::Client::new(),
+            ssrf_http_client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),

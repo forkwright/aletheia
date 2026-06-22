@@ -162,6 +162,11 @@ fn tool_services_with_messenger() -> Arc<organon::types::ToolServices> {
         knowledge: None,
         working_checkpoint_store: None,
         http_client: reqwest::Client::new(),
+        ssrf_http_client: reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new()),
         secret_vault: hermeneus::secret::SecretVault::new(),
         lazy_tool_catalog: Vec::new(),
         server_tool_config: organon::types::ServerToolConfig::default(),

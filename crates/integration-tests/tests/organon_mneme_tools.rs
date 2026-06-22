@@ -78,6 +78,11 @@ fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
             planning: None,
             knowledge: None,
             http_client: reqwest::Client::new(),
+            ssrf_http_client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
@@ -611,6 +616,11 @@ fn ctx_with_knowledge(svc: Arc<dyn KnowledgeSearchService>) -> ToolContext {
             planning: None,
             knowledge: Some(svc),
             http_client: reqwest::Client::new(),
+            ssrf_http_client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
