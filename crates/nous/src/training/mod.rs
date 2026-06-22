@@ -574,7 +574,11 @@ impl TrainingCapture {
             if name != "conversations.jsonl" && !name.starts_with("training-") {
                 continue;
             }
-            if !name.ends_with(".jsonl") {
+            if !std::path::Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("jsonl"))
+            {
                 continue;
             }
 
@@ -602,16 +606,16 @@ impl TrainingCapture {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
                     let version_u32 = value
                         .get("schema_version")
-                        .and_then(|v| v.as_u64())
+                        .and_then(serde_json::Value::as_u64)
                         .and_then(|n| u32::try_from(n).ok())
                         .unwrap_or(0);
-                    if !saw_record {
+                    if saw_record {
+                        schema_min = schema_min.min(version_u32);
+                        schema_max = schema_max.max(version_u32);
+                    } else {
                         schema_min = version_u32;
                         schema_max = version_u32;
                         saw_record = true;
-                    } else {
-                        schema_min = schema_min.min(version_u32);
-                        schema_max = schema_max.max(version_u32);
                     }
                     if let Some(serde_json::Value::String(turn_id)) = value.get("turn_id") {
                         captured_turn_ids.insert(turn_id.clone());
@@ -619,12 +623,12 @@ impl TrainingCapture {
                 } else {
                     // Unparseable durable row forces the schema range to include
                     // the unknown-version bucket.
-                    if !saw_record {
+                    if saw_record {
+                        schema_min = 0;
+                    } else {
                         schema_min = 0;
                         schema_max = 0;
                         saw_record = true;
-                    } else {
-                        schema_min = schema_min.min(0);
                     }
                 }
             }

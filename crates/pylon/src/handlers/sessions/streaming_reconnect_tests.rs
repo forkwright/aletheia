@@ -431,7 +431,7 @@ fn turn_complete_event_payload_includes_cache_tokens() {
 
 #[tokio::test]
 async fn emit_turn_result_events_buffered_includes_cache_tokens() {
-    let (state, _tmp, handle) = reconnect_running_test_state().await;
+    let (_state, _tmp, handle) = reconnect_running_test_state().await;
     let (tx, mut rx) = mpsc::channel::<(u64, SseEvent)>(8);
 
     let result = nous::pipeline::TurnResult {

@@ -177,3 +177,7 @@ unknown-git = "deny"
 # tagged releases). These are first-party crates in the fleet mono-repo constellation;
 # git sources are expected until crates.io publication is decided.
 allow-org.github = ["forkwright"]
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0186"
+reason = "memmap2 unsound (unchecked pointer offset); reached transitively via candle-core (safetensors mmap weight load) + grep-searcher, both pin memmap2 ^0.9 with no compatible upgrade; the unsound offset path is not exercised by these consumers. review-by: 2026-12-01"

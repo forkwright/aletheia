@@ -4,6 +4,7 @@
 //! [`CompletionResponse`] while emitting [`StreamEvent`]s for live UI.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 use reqwest::Response;
 use serde::Deserialize;
@@ -23,7 +24,7 @@ fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
     let mut msg = format!("{prefix}: {err}");
     let mut source = err.source();
     while let Some(s) = source {
-        msg.push_str(&format!(": {s}"));
+        let _ = write!(msg, ": {s}");
         source = s.source();
     }
     msg
