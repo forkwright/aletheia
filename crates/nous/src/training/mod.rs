@@ -462,11 +462,6 @@ pub struct TrainingCapture {
     /// User messages where the top non-user class exceeds this threshold
     /// are rejected from training data.
     classifier_threshold: f32,
-    /// Durable turn identifiers already present in the corpus.
-    ///
-    /// WHY: populated by scanning every shard at initialization so retried
-    /// or replayed committed turns do not create duplicate JSONL rows.
-    captured_turn_ids: HashSet<String>,
 }
 
 impl TrainingCapture {
@@ -551,7 +546,6 @@ impl TrainingCapture {
             pii_filter_enabled: config.pii_filter_enabled,
             classifier,
             classifier_threshold: config.author_classifier_threshold,
-            captured_turn_ids,
         })
     }
 
@@ -591,7 +585,13 @@ impl TrainingCapture {
             // shards. A non-empty line that fails JSON parsing still represents
             // a durable byte on disk and is counted as a record, but its schema
             // version is treated as unknown (0) for safety.
-            let content = fs::read_to_string(&path).unwrap_or_default();
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "shard unreadable; counting as zero records");
+                    String::new()
+                }
+            };
             let mut record_count = 0u64;
             for line in content.lines() {
                 if line.trim().is_empty() {
@@ -1002,6 +1002,10 @@ pub use pii::redact as redact_pii;
 #[cfg(test)]
 #[path = "../training_tests.rs"]
 mod training_tests;
+
+#[cfg(test)]
+#[path = "../training_reconciliation_tests.rs"]
+mod training_reconciliation_tests;
 
 #[cfg(test)]
 mod pii_filter_disabled_regression {
