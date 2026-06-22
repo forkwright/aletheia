@@ -50,6 +50,7 @@ const NS_OFFICE_DOC_RELS: &str =
 /// # Errors
 ///
 /// Returns [`ThemeError::ZipWrite`] if any ZIP entry fails to write.
+// kanon:ignore RUST/pub-visibility — consumed cross-crate by organon::builtins::render_pptx_report
 pub fn emit_base_pptx(theme: &ResolvedTheme) -> Result<Vec<u8>, ThemeError> {
     let buf = Vec::new();
     let cursor = std::io::Cursor::new(buf);
@@ -369,15 +370,17 @@ mod tests {
         let cursor = std::io::Cursor::new(bytes);
         let mut archive = zip::ZipArchive::new(cursor).expect("valid zip archive");
 
+        // Collect names before the mutable borrow from `by_name` so the
+        // immutable borrow does not overlap with the ZipFile's mutable borrow.
+        let names: std::collections::HashSet<String> =
+            archive.file_names().map(ToOwned::to_owned).collect();
+
         let mut content_types = archive
             .by_name("[Content_Types].xml")
             .expect("[Content_Types].xml entry");
         let mut xml = String::new();
         std::io::Read::read_to_string(&mut content_types, &mut xml)
             .expect("read [Content_Types].xml as string");
-
-        let names: std::collections::HashSet<String> =
-            archive.file_names().map(ToOwned::to_owned).collect();
 
         // NOTE: regex is already a workspace dependency; this keeps the test
         // self-contained without adding an XML parser crate.
