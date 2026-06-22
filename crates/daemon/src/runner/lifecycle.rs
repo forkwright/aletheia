@@ -203,6 +203,7 @@ impl TaskRunner {
                             knowledge_store,
                             daemon_behavior: &daemon_behavior,
                             cancel: task_cancel_child,
+                            timeout,
                         },
                     )
                     .await
