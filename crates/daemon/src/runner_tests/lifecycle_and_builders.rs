@@ -2,6 +2,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::Notify;
@@ -640,6 +641,64 @@ async fn shutdown_completes_within_timeout() {
     assert!(
         result.is_ok(),
         "shutdown should complete well within {timeout:?}"
+    );
+}
+
+/// Shutdown must await in-flight `JoinHandle`s so that tasks observe
+/// cancellation before `run()` returns.
+#[tokio::test]
+async fn shutdown_awaits_inflight_tasks_before_returning() {
+    let shutdown = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", shutdown.clone());
+
+    let task_cancel = CancellationToken::new();
+    let task_cancel_child = task_cancel.child_token();
+    let observed = Arc::new(AtomicBool::new(false));
+    let observed_clone = Arc::clone(&observed);
+
+    let handle = tokio::spawn(
+        async move {
+            // WHY: loop until cancellation propagates, then record that the
+            // task had a chance to observe shutdown before being awaited.
+            while !task_cancel_child.is_cancelled() {
+                tokio::task::yield_now().await;
+            }
+            observed_clone.store(true, Ordering::SeqCst);
+            Ok(ExecutionResult::success(None))
+        }
+        .instrument(tracing::info_span!("test_inflight_task")),
+    );
+
+    runner.in_flight.insert(
+        "long-task".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: task_cancel,
+            started_at: Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .expect("test start instant should fit before now"),
+            timeout: Duration::from_secs(60),
+            warned: false,
+        },
+    );
+
+    let run_handle = tokio::spawn(
+        async move {
+            runner.run().await;
+        }
+        .instrument(tracing::info_span!("test_runner")),
+    );
+
+    shutdown.cancel();
+
+    let result = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
+    assert!(
+        result.is_ok(),
+        "runner should return after shutdown is signalled"
+    );
+    assert!(
+        observed.load(Ordering::SeqCst),
+        "in-flight task should observe cancellation before run() returns"
     );
 }
 
