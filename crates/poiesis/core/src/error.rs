@@ -10,6 +10,7 @@ use snafu::Snafu;
 /// Errors raised when constructing a typed identifier (`ComponentId`,
 /// `ThemeId`, `FactId`, `ClaimId`, `SheetName`, `DataSourceId`).
 #[derive(Debug, Clone, PartialEq, Eq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum IdError {
     /// The input string was empty.
@@ -49,6 +50,7 @@ pub enum IdError {
 /// Errors raised when parsing a typed value (`Scalar`, `Unit`, `AspectRatio`,
 /// `Tolerance`).
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum ScalarError {
     /// Unknown unit name.
@@ -79,6 +81,7 @@ pub enum ScalarError {
 
 /// Errors raised when validating or resolving a `Factbase`.
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum FactbaseError {
     /// A `FactId` referenced from a `Claim` or `Derived`/`Reference` source
@@ -126,6 +129,7 @@ pub enum FactbaseError {
 /// Errors raised by the component registry: discovery, schema parse, slot
 /// validation.
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum RegistryError {
     /// A pack directory was missing a required artifact.
@@ -179,6 +183,7 @@ pub enum RegistryError {
 
 /// Errors raised when parsing or validating a [`crate::envelope::DeliverableSpec`].
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum SpecError {
     /// A required `Meta` field was missing.
@@ -227,6 +232,7 @@ pub enum SpecError {
 
 /// Umbrella error covering every parse-don't-validate boundary in this crate.
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 pub enum PoiesisError {
     /// Identifier construction failed.
     #[snafu(display("{source}"))]

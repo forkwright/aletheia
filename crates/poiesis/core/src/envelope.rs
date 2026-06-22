@@ -18,12 +18,45 @@ use crate::error::{MissingMetaFieldSnafu, SpecError, UnknownThemeSnafu};
 use crate::factbase::Factbase;
 use crate::ids::{ComponentId, ThemeId};
 
+/// Raw deserialization shape for [`Meta`] — serde deserialises into this first;
+/// [`TryFrom`] then enforces the required-title invariant.
+#[derive(Deserialize)]
+struct MetaRaw {
+    title: String,
+    #[serde(default)]
+    author: Option<String>,
+    #[serde(default)]
+    created: Option<Timestamp>,
+    #[serde(default)]
+    subject: Option<String>,
+    #[serde(default)]
+    keywords: Vec<String>,
+}
+
+impl TryFrom<MetaRaw> for Meta {
+    type Error = SpecError;
+
+    fn try_from(raw: MetaRaw) -> Result<Self, Self::Error> {
+        if raw.title.is_empty() {
+            return MissingMetaFieldSnafu { field: "title" }.fail();
+        }
+        Ok(Self {
+            title: raw.title,
+            author: raw.author,
+            created: raw.created,
+            subject: raw.subject,
+            keywords: raw.keywords,
+        })
+    }
+}
+
 /// Typed metadata required by every deliverable.
 ///
 /// Required fields are enforced at parse time: a [`Meta`] without `title`
 /// cannot be constructed. Optional fields are typed as `Option<…>` so the
 /// `None` case is explicit at the call site.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "MetaRaw")]
 pub struct Meta {
     /// Deliverable title; required.
     pub title: String,
@@ -216,14 +249,14 @@ impl DeliverableSpec {
 #[cfg(test)]
 #[expect(clippy::expect_used, clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    use jiff::Timestamp;
+    use serde_json::json;
+
     use super::*;
     use crate::bodies::{Sheet, Slide, Workbook, WorkbookCell};
     use crate::factbase::{Fact, Source};
     use crate::ids::{ComponentId, FactId, SheetName, ThemeId};
-    use crate::scalar::ScalarKind;
-    use crate::scalar::{AspectRatio, Scalar, Unit};
-    use jiff::Timestamp;
-    use serde_json::json;
+    use crate::scalar::{AspectRatio, Scalar, ScalarKind, Unit};
 
     fn ts() -> Timestamp {
         Timestamp::UNIX_EPOCH
@@ -255,14 +288,17 @@ mod tests {
     }
 
     fn sheet_fixture(name: &str, headers: Vec<String>, column_types: Vec<ScalarKind>) -> Sheet {
-        Sheet {
-            name: SheetName::new(name).unwrap(),
-            headers,
-            rows: vec![vec![WorkbookCell::Lit {
+        let row = (0..headers.len())
+            .map(|_| WorkbookCell::Lit {
                 value: Scalar::Text {
                     value: "ok".to_owned(),
                 },
-            }]],
+            })
+            .collect();
+        Sheet {
+            name: SheetName::new(name).unwrap(),
+            headers,
+            rows: vec![row],
             column_types,
         }
     }

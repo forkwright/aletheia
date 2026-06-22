@@ -104,6 +104,7 @@ impl Sheet {
 /// the "no naked numbers" rule into the workbook body). Free-form labels
 /// remain as `Lit(Scalar::Text)`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkbookCell {
     /// A typed literal value (typically `Scalar::Text` for labels).
@@ -148,9 +149,10 @@ impl From<Document> for DocumentBody {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    use serde_json::json;
+
     use super::*;
     use crate::ids::ComponentId;
-    use serde_json::json;
 
     #[test]
     fn deck_round_trips_via_serde() {
