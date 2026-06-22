@@ -23,7 +23,7 @@ use crate::data::functions::current_validity;
 use crate::parse::parse_script;
 
 /// File extension for Datalog rule files loaded by the hot-reloader.
-pub const RULE_EXTENSION: &str = "mnm";
+pub(crate) const RULE_EXTENSION: &str = "mnm";
 
 /// Event emitted by the hot-reload watcher.
 #[derive(Debug, Clone)]
@@ -50,6 +50,16 @@ pub struct RuleSource {
     pub last_loaded: jiff::Timestamp,
 }
 
+impl RuleSource {
+    /// Create a new [`RuleSource`] with the given filename and the current UTC timestamp.
+    pub fn new(filename: String) -> Self {
+        Self {
+            filename,
+            last_loaded: jiff::Timestamp::now(),
+        }
+    }
+}
+
 /// An atomically-swappable set of Datalog rules loaded from disk.
 #[derive(Debug, Clone, Default)]
 pub struct RuleSet {
@@ -59,6 +69,18 @@ pub struct RuleSet {
     pub sources: Vec<RuleSource>,
     /// Number of source files.
     pub source_count: usize,
+}
+
+impl RuleSet {
+    /// Build a [`RuleSet`] from validated rule text and the per-file source metadata.
+    pub fn new(rules_text: Arc<str>, sources: Vec<RuleSource>) -> Self {
+        let source_count = sources.len();
+        Self {
+            rules_text,
+            sources,
+            source_count,
+        }
+    }
 }
 
 /// Error type for hot-reload operations.
@@ -108,9 +130,9 @@ impl From<HotReloadError> for crate::error::Error {
 /// the in-memory [`RuleSet`] atomically.
 #[expect(
     dead_code,
-    reason = "public API surface — fields retained for inspection and drop semantics"
+    reason = "fields retained for drop semantics — watcher and sender must outlive the task"
 )]
-pub struct HotReloader {
+pub(crate) struct HotReloader {
     rule_dir: PathBuf,
     reload_tx: mpsc::Sender<ReloadEvent>,
     _watcher: notify::RecommendedWatcher,
@@ -132,6 +154,10 @@ impl HotReloader {
     #[expect(
         clippy::type_complexity,
         reason = "fixed_rules mirror type from Db runtime"
+    )]
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "called from tests; not yet wired into non-test Db startup")
     )]
     pub fn start(
         rule_dir: impl AsRef<Path>,
@@ -262,14 +288,10 @@ impl HotReloader {
                 .to_string_lossy()
                 .to_string();
             texts.push(text);
-            sources.push(RuleSource {
-                filename,
-                last_loaded: jiff::Timestamp::now(),
-            });
+            sources.push(RuleSource::new(filename));
         }
 
         let rules_text: Arc<str> = texts.join("\n").into();
-        let source_count = sources.len();
 
         // WHY: parse to validate before the swap; a parse failure keeps the old ruleset.
         if !texts.is_empty() {
@@ -285,11 +307,7 @@ impl HotReloader {
             })?;
         }
 
-        Ok(RuleSet {
-            rules_text,
-            sources,
-            source_count,
-        })
+        Ok(RuleSet::new(rules_text, sources))
     }
 }
 
@@ -310,7 +328,7 @@ mod tests {
     use crate::runtime::db::Db;
     use crate::storage::mem::MemStorage;
 
-    fn test_db() -> Db<MemStorage> {
+    fn fresh_mem_db() -> Db<MemStorage> {
         crate::storage::mem::new_mem_db().unwrap()
     }
 
@@ -328,7 +346,7 @@ mod tests {
 
         std::fs::write(rule_dir.join("test.mnm"), "rule_a[x] := x = 1\n").unwrap();
 
-        let db = test_db();
+        let db = fresh_mem_db();
         let fixed_rules = Arc::clone(&db.fixed_rules);
         let (_reloader, mut rx, store) = HotReloader::start(rule_dir, &fixed_rules).unwrap();
 
@@ -356,7 +374,7 @@ mod tests {
 
         std::fs::write(rule_dir.join("good.mnm"), "good_rule[x] := x = 1\n").unwrap();
 
-        let db = test_db();
+        let db = fresh_mem_db();
         let fixed_rules = Arc::clone(&db.fixed_rules);
         let (_reloader, mut rx, store) = HotReloader::start(rule_dir, &fixed_rules).unwrap();
 
@@ -380,15 +398,17 @@ mod tests {
 
         std::fs::write(rule_dir.join("test.mnm"), "rule[x] := x = 1\n").unwrap();
 
-        let db = test_db();
+        let db = fresh_mem_db();
         let fixed_rules = Arc::clone(&db.fixed_rules);
         let (_reloader, mut rx, store) = HotReloader::start(rule_dir, &fixed_rules).unwrap();
 
         let _ = timeout(Duration::from_millis(100), rx.recv()).await;
 
+        // Write all three files without sleeping — they all land inside the same
+        // debounce window. Virtual time is advanced automatically by Tokio once
+        // every task is blocked on a timer.
         for i in 0..3 {
             std::fs::write(rule_dir.join("test.mnm"), format!("rule[x] := x = {i}\n")).unwrap();
-            tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
         let event = wait_for_event(&mut rx).await;
