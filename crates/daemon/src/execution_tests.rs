@@ -8,6 +8,7 @@ use std::future::Future;
 use std::io::Write as _;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
@@ -224,7 +225,13 @@ fn current_facts(
 
 #[tokio::test]
 async fn execute_command_success_captures_stdout() {
-    let result = execute_command("echo hello").await.expect("should succeed");
+    let result = execute_command(
+        "echo hello",
+        CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .expect("should succeed");
     assert!(result.is_success());
     let output = result.output.expect("should have output");
     assert!(
@@ -235,7 +242,7 @@ async fn execute_command_success_captures_stdout() {
 
 #[tokio::test]
 async fn execute_command_failure_returns_error() {
-    let err = execute_command("exit 7")
+    let err = execute_command("exit 7", CancellationToken::new(), Duration::from_secs(60))
         .await
         .expect_err("non-zero exit should fail");
     let msg = err.to_string();
@@ -250,12 +257,69 @@ async fn execute_command_failure_returns_error() {
 async fn execute_command_failure_uses_stderr_in_reason() {
     // WHY: When a command writes to stderr and exits non-zero, the error
     // reason should contain the stderr output rather than the bare exit code.
-    let err = execute_command("echo 'something failed' >&2; exit 1")
-        .await
-        .expect_err("should fail");
+    let err = execute_command(
+        "echo 'something failed' >&2; exit 1",
+        CancellationToken::new(),
+        Duration::from_secs(60),
+    )
+    .await
+    .expect_err("should fail");
     assert!(
         err.to_string().contains("something failed"),
         "expected stderr in reason, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn execute_command_respects_cancellation_token() {
+    // WHY: graceful cancellation must terminate a command promptly instead of
+    // waiting for the outer 2× in-flight watchdog.
+    let cancel = CancellationToken::new();
+    let cancel_for_task = cancel.clone();
+    let start = std::time::Instant::now();
+
+    let handle = tokio::spawn(async move {
+        execute_command("sleep 30", cancel_for_task, Duration::from_secs(60)).await
+    });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    cancel.cancel();
+
+    let err = handle
+        .await
+        .expect("join should succeed")
+        .expect_err("should be cancelled");
+    assert!(
+        err.to_string().contains("cancelled"),
+        "expected cancelled error, got: {err}"
+    );
+    assert!(
+        start.elapsed() < Duration::from_secs(2),
+        "cancelled command should exit quickly, took {:?}",
+        start.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn execute_command_respects_per_task_timeout() {
+    // WHY: a per-task timeout independent of the outer watchdog kills hung
+    // commands even when no explicit cancellation request is issued.
+    let start = std::time::Instant::now();
+    let err = execute_command(
+        "sleep 30",
+        CancellationToken::new(),
+        Duration::from_millis(250),
+    )
+    .await
+    .expect_err("should time out");
+    assert!(
+        err.to_string().contains("timed out"),
+        "expected timeout error, got: {err}"
+    );
+    assert!(
+        start.elapsed() < Duration::from_secs(2),
+        "timed-out command should exit quickly, took {:?}",
+        start.elapsed()
     );
 }
 
@@ -342,6 +406,7 @@ async fn routing_store_refresh_builtin_refreshes_attached_store() {
             knowledge_store: None,
             daemon_behavior: &daemon_behavior,
             cancel: CancellationToken::new(),
+            timeout: Duration::from_mins(5),
         },
     )
     .await
@@ -432,6 +497,7 @@ async fn prosoche_no_bridge_uses_context_knowledge_store() {
             knowledge_store: Some(Arc::clone(&store)),
             daemon_behavior: &daemon_behavior,
             cancel: CancellationToken::new(),
+            timeout: Duration::from_mins(5),
         },
     )
     .await

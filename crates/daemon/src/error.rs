@@ -39,6 +39,23 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Shell command was cancelled before completion.
+    #[snafu(display("command cancelled: {command}"))]
+    CommandCancelled {
+        command: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Shell command exceeded its per-task timeout.
+    #[snafu(display("command timed out after {timeout_secs}s: {command}"))]
+    CommandTimedOut {
+        command: String,
+        timeout_secs: u64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Task disabled after consecutive failures.
     #[snafu(display("task {task_id} disabled after {failures} consecutive failures"))]
     TaskDisabled {
