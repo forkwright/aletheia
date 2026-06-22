@@ -59,6 +59,8 @@ pub(crate) mod derived_rules;
 #[cfg(feature = "mneme-engine")]
 mod entity;
 #[cfg(feature = "mneme-engine")]
+mod entity_dedup;
+#[cfg(feature = "mneme-engine")]
 mod facts;
 #[cfg(feature = "mneme-engine")]
 pub(crate) mod marshal;

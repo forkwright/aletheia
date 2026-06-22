@@ -74,6 +74,13 @@ impl EntityMergeCandidate {
             merge_score,
         }
     }
+
+    /// Classify this candidate into a [`MergeDecision`] under `tuning`.
+    #[cfg(any(feature = "mneme-engine", test))]
+    #[must_use]
+    pub fn decision(&self, tuning: &DedupTuning) -> MergeDecision {
+        MergeDecision::from_score(self.merge_score, tuning)
+    }
 }
 
 /// Decision based on the merge score thresholds.
@@ -143,6 +150,12 @@ impl MergeRecord {
             relationships_redirected,
             merged_at,
         }
+    }
+
+    /// Whether the merge actually transferred any fact links or relationship edges.
+    #[must_use]
+    pub fn is_effective(&self) -> bool {
+        self.facts_transferred > 0 || self.relationships_redirected > 0
     }
 }
 
@@ -669,3 +682,7 @@ pub(crate) fn pick_canonical<'a>(
 #[cfg(test)]
 #[path = "dedup_tests.rs"]
 mod dedup_tests;
+
+#[cfg(test)]
+#[path = "dedup_path_a_tests.rs"]
+mod dedup_path_a_tests;
