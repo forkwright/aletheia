@@ -41,6 +41,8 @@ proptest = { workspace = true }
 tempfile = { workspace = true }
 criterion = { workspace = true }
 tokio-util = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
 
 # WHY: session create + message append are on the hot path of every
 # turn. Track regressions so schema or index changes surface in CI.

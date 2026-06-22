@@ -19,11 +19,13 @@ use serde::{Deserialize, Serialize};
 /// - **v2** (#4163): faithful round-trip. Producers populate every populated
 ///   slot from live stores; consumers preserve session status, timestamps,
 ///   metrics, and per-message `created_at`/`is_distilled` on import.
+/// - **v3** (#4590): binary workspace files round-trip. `workspace.binaryFiles`
+///   now carries base64-encoded bytes, size, and sha256 instead of bare paths.
 ///
 /// The version bump declares the fidelity contract: consumers MUST reject
 /// older versions (or pipe them through a migration) so they cannot silently
 /// drop fields that v2 expects to round-trip.
-pub const AGENT_FILE_VERSION: u32 = 2;
+pub const AGENT_FILE_VERSION: u32 = 3;
 
 /// Machine-readable metadata describing the completeness of an export.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -107,7 +109,7 @@ pub struct NousInfo {
     pub config: serde_json::Value,
 }
 
-/// Workspace file snapshot: text content included, binary paths listed.
+/// Workspace file snapshot: text content included, binary files fully encoded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[expect(
@@ -116,7 +118,21 @@ pub struct NousInfo {
 )]
 pub struct WorkspaceData {
     pub files: HashMap<String, String>,
-    pub binary_files: Vec<String>,
+    pub binary_files: Vec<BinaryFileEntry>,
+}
+
+/// A binary workspace file with base64 content, size, and integrity hash.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct BinaryFileEntry {
+    pub path: String,
+    pub content: String,
+    pub size: usize,
+    pub sha256: String,
 }
 
 /// Session snapshot with full message history and metadata.
@@ -285,6 +301,17 @@ pub struct FactEntityEdge {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+
+    fn binary_entry(path: &str, bytes: &[u8]) -> BinaryFileEntry {
+        BinaryFileEntry {
+            path: path.to_owned(),
+            content: base64::engine::general_purpose::STANDARD.encode(bytes),
+            size: bytes.len(),
+            sha256: format!("{:x}", Sha256::digest(bytes)),
+        }
+    }
 
     fn sample_agent_file() -> AgentFile {
         AgentFile {
@@ -302,7 +329,10 @@ mod tests {
                     ("memory/notes.md".to_owned(), "# Notes\n".to_owned()),
                     ("config.yaml".to_owned(), "key: value\n".to_owned()),
                 ]),
-                binary_files: vec!["avatar.png".to_owned()],
+                binary_files: vec![binary_entry(
+                    "avatar.png",
+                    b"\x89PNG\r\n\x1a\n",
+                )],
             },
             sessions: vec![ExportedSession {
                 id: "ses-001".to_owned(),
@@ -385,6 +415,34 @@ mod tests {
     }
 
     #[test]
+    fn binary_file_content_round_trips() {
+        let bytes: Vec<u8> = vec![
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff,
+        ];
+        let entry = binary_entry("assets/icon.png", &bytes);
+        let workspace = WorkspaceData {
+            files: HashMap::new(),
+            binary_files: vec![entry.clone()],
+        };
+
+        let json = serde_json::to_string(&workspace).expect("WorkspaceData serializable");
+        let restored: WorkspaceData =
+            serde_json::from_str(&json).expect("WorkspaceData deserializable");
+
+        assert_eq!(restored.binary_files.len(), 1);
+        let restored_entry = &restored.binary_files[0];
+        assert_eq!(restored_entry.path, entry.path);
+        assert_eq!(restored_entry.size, entry.size);
+        assert_eq!(restored_entry.sha256, entry.sha256);
+        assert_eq!(restored_entry.content, entry.content);
+
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(&restored_entry.content)
+            .expect("content is valid base64");
+        assert_eq!(decoded, bytes, "decoded bytes must match original");
+    }
+
+    #[test]
     fn camel_case_json_keys() {
         let agent = sample_agent_file();
         let value: serde_json::Value =
@@ -396,6 +454,12 @@ mod tests {
         let ws = value.get("workspace").expect("workspace key must exist");
         assert!(ws.get("binaryFiles").is_some(), "missing binaryFiles");
         assert!(ws.get("binary_files").is_none(), "snake_case leaked");
+
+        let bf = &ws["binaryFiles"][0];
+        assert!(bf.get("path").is_some(), "missing path");
+        assert!(bf.get("content").is_some(), "missing content");
+        assert!(bf.get("size").is_some(), "missing size");
+        assert!(bf.get("sha256").is_some(), "missing sha256");
 
         let session = &value["sessions"][0];
         assert!(session.get("sessionKey").is_some(), "missing sessionKey");
@@ -472,7 +536,7 @@ mod tests {
 
     #[test]
     fn format_version_constant() {
-        assert_eq!(AGENT_FILE_VERSION, 2);
+        assert_eq!(AGENT_FILE_VERSION, 3);
     }
 
     #[test]
