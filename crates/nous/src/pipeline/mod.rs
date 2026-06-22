@@ -813,6 +813,7 @@ pub async fn assemble_context_conditional(
         ctx,
         extra_sections,
         task_hint,
+        turn_number,
         crate::bootstrap::LlmRecipe::from_task_hint(task_hint, is_cold_start),
         None,
     )
@@ -845,6 +846,11 @@ pub async fn assemble_context_conditional_with_cache(
     recipe: crate::bootstrap::LlmRecipe,
     cache: Option<&crate::bootstrap::BootstrapFileCache>,
 ) -> crate::error::Result<()> {
+    let recipe = if turn_number == 1 {
+        crate::bootstrap::LlmRecipe::ColdStart
+    } else {
+        recipe
+    };
     let mut budget = TokenBudget::new(
         u64::from(nous_config.generation.context_window),
         pipeline_config.history_budget_ratio,

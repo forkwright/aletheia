@@ -799,6 +799,7 @@ pub(super) async fn run_execute_stage(
             // WHY: a None distillation summary means the session has never been
             // distilled — for a hard timeout we fail instead of serving a generic
             // unavailable message, while other transient errors still degrade.
+            //
             // WHY(#4730, #5245): use a bounded wait instead of try_lock() so a
             // briefly-contended store does not silently produce a no-cache result.
             // 50ms is well under any LLM latency — contention at this point is transient.

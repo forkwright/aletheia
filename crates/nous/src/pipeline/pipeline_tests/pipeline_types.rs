@@ -5,9 +5,13 @@ use super::*;
 #[test]
 fn guard_result_equality() {
     assert_eq!(
-        GuardResult::Allow,
-        GuardResult::Allow,
-        "Allow should equal Allow"
+        GuardResult::Rejected {
+            reason: "test".to_owned()
+        },
+        GuardResult::Rejected {
+            reason: "test".to_owned()
+        },
+        "Rejected with same reason should be equal"
     );
     assert_ne!(
         GuardResult::Allow,
