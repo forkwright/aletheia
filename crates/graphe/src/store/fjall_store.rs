@@ -1956,22 +1956,12 @@ impl SessionStore {
             .unwrap_or(Timestamp::UNIX_EPOCH);
 
         let mut removed: u64 = 0;
-        let entries = fs::read_dir(&archive_dir).map_err(|e| {
-            error::IoSnafu {
-                path: archive_dir.clone(),
-                source: e,
-            }
-            .build()
-        })?;
+        let entries = fs::read_dir(&archive_dir)
+            .context(error::IoSnafu { path: archive_dir.clone() })?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| {
-                error::IoSnafu {
-                    path: archive_dir.clone(),
-                    source: e,
-                }
-                .build()
-            })?;
+            let entry =
+                entry.context(error::IoSnafu { path: archive_dir.clone() })?;
             let path = entry.path();
             let is_json = path.extension() == Some(std::ffi::OsStr::new("json"));
             if !is_json {
