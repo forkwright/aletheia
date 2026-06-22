@@ -4734,7 +4734,7 @@ workspace = "nous/{agent_id}"
         // as a binary file and records only its path.
         std::fs::write(
             oikos.nous_dir("alice").join("avatar.png"),
-            &[0x89, 0x50, 0x4e, 0x47],
+            [0x89, 0x50, 0x4e, 0x47],
         )
         .unwrap();
 

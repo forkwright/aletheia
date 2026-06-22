@@ -24,3 +24,7 @@ id = "RUSTSEC-2025-0052"
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0097"
 # WHY: rand 0.8 unsound; transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Mirrors .cargo/audit.toml + deny.toml.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0186"
+# WHY: memmap2 unsound; transitive via candle-core (safetensors mmap) + grep-searcher; no upgrade (pinned ^0.9). Mirrors deny.toml + .cargo/audit.toml. review-by: 2026-12-01.

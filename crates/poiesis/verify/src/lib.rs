@@ -503,7 +503,7 @@ mod tests {
             "failed parse must surface an error note"
         );
         assert!(
-            arith.note.as_ref().unwrap().contains("foo"),
+            arith.note.as_ref().expect("note set").contains("foo"),
             "note must mention the offending token"
         );
     }

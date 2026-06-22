@@ -92,28 +92,6 @@ pub(crate) struct DecayFactors {
     volatility: f64,
 }
 
-impl DecayFactors {
-    pub(crate) fn new(
-        age_hours: f64,
-        fact_type: FactType,
-        tier: EpistemicTier,
-        access_count: u32,
-        reinforcement_count: u32,
-        distinct_agent_count: u32,
-        volatility: f64,
-    ) -> Self {
-        Self {
-            age_hours,
-            fact_type,
-            tier,
-            access_count,
-            reinforcement_count,
-            distinct_agent_count,
-            volatility: volatility.clamp(0.0, 1.0),
-        }
-    }
-}
-
 /// Result of multi-factor decay computation.
 #[derive(Debug, Clone)]
 pub(crate) struct DecayResult {

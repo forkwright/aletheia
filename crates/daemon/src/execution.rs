@@ -113,14 +113,14 @@ async fn execute_command(
     let output = tokio::select! {
         biased;
         output = tokio::process::Command::new("sh").args(["-c", cmd]).output() => output,
-        _ = cancel.cancelled() => {
+        () = cancel.cancelled() => {
             return error::CommandCancelledSnafu {
                 command: cmd.to_owned(),
             }
             .fail();
         }
         // kanon:ignore TESTING/sleep-in-test — production timeout arm in tokio::select!, not a test sleep
-        _ = tokio::time::sleep(timeout) => {
+        () = tokio::time::sleep(timeout) => {
             return error::CommandTimedOutSnafu {
                 command: cmd.to_owned(),
                 timeout_secs: timeout.as_secs(),
