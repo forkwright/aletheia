@@ -148,8 +148,7 @@ impl Default for RecallWeights {
     clippy::struct_excessive_bools,
     reason = "recall controls are independent operator knobs (enabled, iterative, inject_metadata, late_inject_anchor); not a state machine"
 )]
-pub struct RecallSettings {
-    // kanon:ignore RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon)
+pub struct RecallSettings { // kanon:ignore RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon)
     /// Whether semantic recall is enabled for this agent.
     pub enabled: bool,
     /// Maximum number of recalled facts to inject per turn.
@@ -467,7 +466,8 @@ fn default_agent_enabled() -> bool {
     reason = "hook toggles are a genuine set of independent feature flags, not a state machine"
 )]
 #[rustfmt::skip]
-pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields,RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon, dianoia)
+// kanon:ignore RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon, dianoia)
+pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields — many independent deployment knobs; splitting would fragment config locality
     // --- Safety ---
     /// Consecutive identical tool-call sequences before loop detection fires. Default: 3.
     pub safety_loop_detection_threshold: u32,

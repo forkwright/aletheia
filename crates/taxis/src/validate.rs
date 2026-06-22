@@ -902,8 +902,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                 };
                 if endpoint.is_empty() {
                     errors.push(format!("tools.{group}.{name}.endpoint must not be empty"));
-                } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) {
-                    // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
+                } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) { // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                     errors.push(format!(
                         "tools.{group}.{name}.endpoint must use http:// or https://"
                     ));
@@ -923,10 +922,10 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                         "tools.{group}.{name}: mcp tools require either endpoint or command"
                     ));
                 }
+                // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                 if has_endpoint
                     && let Some(endpoint) = entry.get("endpoint").and_then(Value::as_str)
                     && !(endpoint.starts_with("http://") || endpoint.starts_with("https://"))
-                // kanon:ignore SECURITY/insecure-transport — scheme prefix literals for validation, not connection URLs
                 {
                     errors.push(format!(
                         "tools.{group}.{name}.endpoint must use http:// or https://"
