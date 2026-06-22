@@ -246,10 +246,7 @@ enum SourceResolution {
 /// SQL sources are always unresolvable (execution is not in scope for this
 /// crate). A `Ref` to a missing or forward-declared claim is unresolvable and
 /// carries a diagnostic so the caller can surface the authoring error.
-fn resolve_source(
-    source: &Source,
-    resolved_claims: &HashMap<String, f64>,
-) -> SourceResolution {
+fn resolve_source(source: &Source, resolved_claims: &HashMap<String, f64>) -> SourceResolution {
     match source {
         Source::Sql { .. } => SourceResolution::Unresolvable { diagnostic: None },
         Source::Derived { formula, .. } => arithmetic::eval(formula).map_or_else(
