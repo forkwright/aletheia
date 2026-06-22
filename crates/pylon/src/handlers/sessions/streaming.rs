@@ -55,6 +55,8 @@ fn turn_complete_event_payload(
         "turn_id": turn_id,
         "input_tokens": result.usage.input_tokens,
         "output_tokens": result.usage.output_tokens,
+        "cache_read_tokens": result.usage.cache_read_tokens,
+        "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
     })
 }
@@ -333,6 +335,16 @@ pub async fn send_message(
                     reason = "serde_json::Value Index returns Null for absent keys, never panics"
                 )]
                 let output_tokens = cached["output_tokens"].as_u64().unwrap_or(0);
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
+                let cache_read_tokens = cached["cache_read_tokens"].as_u64().unwrap_or(0);
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
+                let cache_write_tokens = cached["cache_write_tokens"].as_u64().unwrap_or(0);
 
                 // WHY(#3276): Use (seq, event) pair for type-compatibility with
                 // the normal streaming path. Idempotency replays use seq=0 since
@@ -346,6 +358,8 @@ pub async fn send_message(
                             usage: UsageData {
                                 input_tokens,
                                 output_tokens,
+                                cache_read_tokens,
+                                cache_write_tokens,
                             },
                             request_id: Some(request_id.0.clone()),
                         },
@@ -493,6 +507,8 @@ pub async fn send_message(
                             "stop_reason": result.stop_reason,
                             "input_tokens": result.usage.input_tokens,
                             "output_tokens": result.usage.output_tokens,
+                            "cache_read_tokens": result.usage.cache_read_tokens,
+                            "cache_write_tokens": result.usage.cache_write_tokens,
                         })
                         .to_string();
                         idem_cache.complete(
@@ -543,6 +559,8 @@ pub async fn send_message(
                         usage: UsageData {
                             input_tokens: 0,
                             output_tokens: 0,
+                            cache_read_tokens: 0,
+                            cache_write_tokens: 0,
                         },
                         request_id: Some(request_id_str.clone()),
                     };
@@ -1288,6 +1306,8 @@ async fn emit_turn_result_events_buffered(
         usage: UsageData {
             input_tokens: result.usage.input_tokens,
             output_tokens: result.usage.output_tokens,
+            cache_read_tokens: result.usage.cache_read_tokens,
+            cache_write_tokens: result.usage.cache_write_tokens,
         },
         request_id: request_id.map(ToOwned::to_owned),
     };
@@ -1415,9 +1435,6 @@ pub async fn reconnect_turn(
     let max_live = Duration::from_secs(5 * 60);
 
     let reconnect_task = tokio::spawn(async move {
-        let deadline = tokio::time::sleep(max_live);
-        tokio::pin!(deadline);
-
         let mut last_seq = last_event_id;
         let initial = handle.snapshot_after(last_seq).await;
         let live = initial.state == crate::turn_buffer::TurnState::Running;
@@ -1441,40 +1458,42 @@ pub async fn reconnect_turn(
 
         // Replay and stream: snapshot_after is race-free (WHY: see #5453).
         let mut snapshot = initial;
-        loop {
-            for event in snapshot.events {
-                let sse_event = Event::default()
-                    .event(event.event_type)
-                    .data(event.data)
-                    .id(event.seq.to_string());
-                last_seq = event.seq;
-                if tx.send(Ok(sse_event)).await.is_err() {
-                    return;
+        // SAFETY: cancel-safe. timeout wraps a future and is cancel-safe.
+        let timed_out = tokio::time::timeout(max_live, async move {
+            loop {
+                for event in snapshot.events {
+                    let sse_event = Event::default()
+                        .event(event.event_type)
+                        .data(event.data)
+                        .id(event.seq.to_string());
+                    last_seq = event.seq;
+                    if tx.send(Ok(sse_event)).await.is_err() {
+                        return;
+                    }
                 }
-            }
 
-            if snapshot.state != crate::turn_buffer::TurnState::Running {
-                break;
-            }
-
-            tokio::select! {
-                biased;
-                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                () = shutdown_token.cancelled() => {
-                    tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                if snapshot.state != crate::turn_buffer::TurnState::Running {
                     break;
                 }
-                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                () = task_cancel.cancelled() => break,
-                // SAFETY: cancel-safe. tokio::time::sleep is cancel-safe.
-                () = &mut deadline => {
-                    tracing::warn!("reconnect_turn exceeded max live time; closing stream");
-                    break;
+
+                tokio::select! {
+                    biased;
+                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                    () = shutdown_token.cancelled() => {
+                        tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                        break;
+                    }
+                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                    () = task_cancel.cancelled() => break,
+                    // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
+                    () = snapshot.notified => {}
                 }
-                // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
-                () = snapshot.notified => {}
+                snapshot = handle.snapshot_after(last_seq).await;
             }
-            snapshot = handle.snapshot_after(last_seq).await;
+        })
+        .await;
+        if timed_out.is_err() {
+            tracing::warn!("reconnect_turn exceeded max live time; closing stream");
         }
     });
 
