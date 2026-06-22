@@ -201,14 +201,13 @@ impl AuthService {
 
         self.store.revoke_token(&consumed_jti, &consumed_exp)?;
 
-        let access = self
-            .jwt
-            .issue_access(&claims.sub, claims.role, claims.nous_id.as_deref())?;
-        let refresh = self.jwt.issue_refresh(&claims.sub, claims.role)?;
+        // WHY: reuse `JwtManager::refresh` for issuance so the token-rotation
+        // logic lives in exactly one place in the production path.
+        let pair = self.jwt.refresh(refresh_token)?;
 
         Ok(TokenPair {
-            access_token: SecretString::from(access),
-            refresh_token: SecretString::from(refresh),
+            access_token: pair.access_token,
+            refresh_token: pair.refresh_token,
         })
     }
 

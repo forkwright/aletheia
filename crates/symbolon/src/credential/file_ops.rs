@@ -252,15 +252,6 @@ impl CredentialFile {
 
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
-    // WHY: exercised only under `#[cfg(test)]`; non-test builds must still
-    // see this as intentionally-unused public-API surface.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "refresh logic inlined in refresh_loop; kept as public API"
-        )
-    )]
     pub(crate) fn needs_refresh(&self) -> bool {
         match self.seconds_remaining() {
             // WHY: REFRESH_THRESHOLD_SECS is a small constant that fits in i64
