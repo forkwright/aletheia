@@ -1,4 +1,4 @@
-# kanon:ignore WORKFLOW/llm-corpus-required -- standalone workspace (#3988); kanon:ignore CI/no-ci-workflows -- parent repository CI owns this excluded desktop workspace (#3988); kanon:ignore RELEASES/no-release-please-config -- release metadata is owned by the parent repository (#3988); kanon:ignore RELEASES/no-release-workflow -- release workflow is owned by the parent repository (#3988)
+# kanon:ignore WORKFLOW/llm-corpus-required -- standalone workspace (#3988); kanon:ignore CI/no-ci-workflows -- parent repository CI owns this excluded desktop workspace (#3988); kanon:ignore CI/public-repo-missing-security-yml -- security workflow is owned by the parent repository (#3988); kanon:ignore RELEASES/no-release-please-config -- release metadata is owned by the parent repository (#3988); kanon:ignore RELEASES/no-release-workflow -- release workflow is owned by the parent repository (#3988)
 # WHY: Explicit [workspace] prevents cargo from walking up to the root
 # workspace and failing with "not in workspace" when building standalone.
 [workspace]
@@ -171,6 +171,11 @@ unused_self = "warn"
 # Architectural boundary enforcement — must stay in sync with [workspace.lints.clippy]
 disallowed_methods = "deny"
 disallowed_types = "deny"
+
+[package.metadata.kanon]
+maturity = "beta"
+since = "2026-06-22"
+exit-criteria = "issue:forkwright/aletheia#3870"
 
 [package.metadata.basanos]
 kind = "ui-substrate"

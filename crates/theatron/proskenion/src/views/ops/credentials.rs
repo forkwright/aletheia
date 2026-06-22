@@ -175,9 +175,7 @@ const BTN_STD: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_DANGER: &str = "\
@@ -188,9 +186,7 @@ const BTN_DANGER: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_CONFIRM: &str = "\
@@ -201,9 +197,7 @@ const BTN_CONFIRM: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_CANCEL: &str = "\
@@ -214,9 +208,7 @@ const BTN_CANCEL: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_DISABLED: &str = "\
