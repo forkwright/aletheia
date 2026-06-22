@@ -56,7 +56,6 @@ fn resolve_tool_group_policy(agent_id: &str, policy: &AgentToolGroupPolicy) -> T
         AgentToolGroupPolicy::AllowAll => ToolGroupPolicy::AllowAll {
             reason: "explicit agents toolGroups = \"all\"".to_owned(),
         },
-        AgentToolGroupPolicy::DenyAll => ToolGroupPolicy::DenyAll,
         AgentToolGroupPolicy::Groups(names) => {
             let mut groups = Vec::with_capacity(names.len());
             for name in names {

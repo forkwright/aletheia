@@ -148,8 +148,8 @@ impl Default for RecallWeights {
     clippy::struct_excessive_bools,
     reason = "recall controls are independent operator knobs (enabled, iterative, inject_metadata, late_inject_anchor); not a state machine"
 )]
+// kanon:ignore RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon)
 pub struct RecallSettings {
-    // kanon:ignore RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon)
     /// Whether semantic recall is enabled for this agent.
     pub enabled: bool,
     /// Maximum number of recalled facts to inject per turn.

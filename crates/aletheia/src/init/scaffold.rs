@@ -417,8 +417,10 @@ mod tests {
         };
 
         let rendered = render_config(&answers);
-        let parsed: AletheiaConfig = toml::from_str(&rendered)
-            .expect("rendered config must match the typed AletheiaConfig schema");
+        let parsed: AletheiaConfig = match toml::from_str(&rendered) {
+            Ok(v) => v,
+            Err(e) => panic!("rendered config must match the typed AletheiaConfig schema: {e}"),
+        };
         assert_eq!(
             parsed.agents.defaults.model_defaults.context_tokens, 200_000,
             "schema-valid contextTokens key must be parsed"

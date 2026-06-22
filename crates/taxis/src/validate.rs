@@ -902,8 +902,8 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                 };
                 if endpoint.is_empty() {
                     errors.push(format!("tools.{group}.{name}.endpoint must not be empty"));
+                // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                 } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) {
-                    // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                     errors.push(format!(
                         "tools.{group}.{name}.endpoint must use http:// or https://"
                     ));
