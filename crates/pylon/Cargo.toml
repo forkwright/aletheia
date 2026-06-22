@@ -54,6 +54,7 @@ tracing = { workspace = true }
 prometheus-client = { workspace = true }
 
 # Types
+indexmap = { workspace = true, features = ["std"] }
 
 # Hashing for ETag computation
 sha2 = { workspace = true }

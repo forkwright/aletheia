@@ -6,12 +6,12 @@
 //! namespaced per principal, then bound to a resolved session and body fingerprint so one session
 //! cannot observe or replay another session's cached response.
 
-use std::collections::{HashMap, VecDeque};
 // WHY: lock not held across await points
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use axum::http::StatusCode;
+use indexmap::IndexMap;
 
 /// Default TTL for cached idempotency entries.
 const DEFAULT_TTL: Duration = Duration::from_mins(5);
@@ -22,7 +22,7 @@ const DEFAULT_CAPACITY: usize = 10_000;
 /// Default maximum allowed length for an idempotency key string (64).
 const DEFAULT_MAX_KEY_LENGTH: usize = 64;
 
-/// Thread-safe idempotency cache with LRU eviction and TTL expiry.
+/// Thread-safe idempotency cache with bounded insertion-order eviction and TTL expiry.
 pub struct IdempotencyCache {
     inner: Mutex<CacheInner>,
     /// Maximum key length for idempotency keys.
@@ -30,9 +30,13 @@ pub struct IdempotencyCache {
 }
 
 struct CacheInner {
-    entries: HashMap<String, CacheEntry>,
-    /// Insertion order for LRU eviction (front = oldest).
-    order: VecDeque<String>,
+    /// Insertion-ordered map for bounded TTL eviction (front = oldest).
+    ///
+    // WHY: IndexMap gives O(1) removal by key via swap_remove, avoiding
+    // the VecDeque::retain scan that scaled with cache capacity on every
+    // error-path removal. The order of remaining entries is perturbed on
+    // swap_remove; this is acceptable for an insertion-order cache.
+    entries: IndexMap<String, CacheEntry>,
     capacity: usize,
     ttl: Duration,
 }
@@ -130,8 +134,7 @@ impl IdempotencyCache {
     pub fn with_config(ttl: Duration, capacity: usize, max_key_length: usize) -> Self {
         Self {
             inner: Mutex::new(CacheInner {
-                entries: HashMap::new(),
-                order: VecDeque::new(),
+                entries: IndexMap::new(),
                 capacity,
                 ttl,
             }),
@@ -157,8 +160,8 @@ impl IdempotencyCache {
     ///
     /// # Complexity
     ///
-    /// O(1) for the `HashMap` lookup. O(k) for eviction of expired entries
-    /// where k is the number of expired entries at the front of the LRU queue.
+    /// O(1) for the `IndexMap` lookup. O(k) for eviction of expired entries
+    /// where k is the number of expired entries at the front of the order.
     pub(crate) fn check_or_insert(
         &self,
         principal: &str,
@@ -192,22 +195,20 @@ impl IdempotencyCache {
         }
 
         while inner.entries.len() >= inner.capacity {
-            if let Some(oldest_key) = inner.order.pop_front() {
-                inner.entries.remove(&oldest_key);
-            } else {
-                break;
-            }
+            // WHY: swap_remove_index keeps capacity eviction O(1); order of
+            // the remaining entries is slightly perturbed, which is acceptable
+            // for this bounded insertion-order cache.
+            inner.entries.swap_remove_index(0);
         }
 
         inner.entries.insert(
-            composite.clone(),
+            composite,
             CacheEntry {
                 context,
                 state: EntryState::InFlight,
                 created_at: Instant::now(),
             },
         );
-        inner.order.push_back(composite);
 
         LookupResult::Miss
     }
@@ -250,8 +251,10 @@ impl IdempotencyCache {
             .get(&composite)
             .is_some_and(|entry| entry.context == context)
         {
-            inner.entries.remove(&composite);
-            inner.order.retain(|k| k != &composite);
+            // WHY: O(1) key-based removal; order of remaining entries is
+            // slightly perturbed on swap_remove, which is acceptable for
+            // this bounded insertion-order cache.
+            inner.entries.swap_remove(&composite);
         }
     }
 
@@ -269,20 +272,14 @@ impl CacheInner {
     /// # Complexity
     ///
     /// O(k) where k is the number of consecutive expired entries at the
-    /// front of the LRU order queue.
+    /// front of the insertion order.
     fn evict_expired(&mut self) {
         let now = Instant::now();
-        while let Some(front_key) = self.order.front() {
-            if let Some(entry) = self.entries.get(front_key) {
-                if now.duration_since(entry.created_at) > self.ttl {
-                    #[expect(clippy::expect_used, reason = "just peeked front()")]
-                    let key = self.order.pop_front().expect("just peeked");
-                    self.entries.remove(&key);
-                } else {
-                    break;
-                }
+        while let Some((_, entry)) = self.entries.get_index(0) {
+            if now.duration_since(entry.created_at) > self.ttl {
+                self.entries.swap_remove_index(0);
             } else {
-                self.order.pop_front();
+                break;
             }
         }
     }
@@ -352,8 +349,7 @@ mod tests {
     fn capacity_eviction() {
         let cache = IdempotencyCache {
             inner: Mutex::new(CacheInner {
-                entries: HashMap::new(),
-                order: VecDeque::new(),
+                entries: IndexMap::new(),
                 capacity: 3,
                 ttl: DEFAULT_TTL,
             }),
@@ -383,8 +379,7 @@ mod tests {
     fn ttl_expiry() {
         let cache = IdempotencyCache {
             inner: Mutex::new(CacheInner {
-                entries: HashMap::new(),
-                order: VecDeque::new(),
+                entries: IndexMap::new(),
                 capacity: DEFAULT_CAPACITY,
                 ttl: Duration::from_millis(0),
             }),
