@@ -40,7 +40,10 @@ test-full = ["test-core", "embed-candle", "online-tests"]
 eidos = { path = "../eidos" }
 graphe = { path = "../graphe", default-features = false }
 episteme = { path = "../episteme", default-features = false }
+jiff = { workspace = true }
 krites = { path = "../krites", optional = true }
+serde = { workspace = true }
+snafu = { workspace = true }
 
 [dev-dependencies]
 episteme = { path = "../episteme", features = ["test-support"] }
