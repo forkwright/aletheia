@@ -276,9 +276,13 @@ impl AdaptiveConcurrencyLimiter {
             crate::metrics::set_concurrency_latency_ewma(&self.provider_name, ewma);
         }
 
-        // Wake one parked caller; it will re-check the limit and re-park if
-        // the slot was already taken by another waiter.
-        self.notify.notify_one();
+        // Wake one waiter per newly available slot. A single release usually
+        // frees exactly one slot; an additive limit increase frees additional
+        // slots. The acquire loop re-checks the limit and re-parks if needed.
+        let available = new_limit.saturating_sub(new_in_flight);
+        for _ in 0..available {
+            self.notify.notify_one();
+        }
     }
 }
 
