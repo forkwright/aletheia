@@ -54,6 +54,7 @@ fn resolve_scalar(cell: &WorkbookCell, facts: &BTreeMap<FactId, ResolvedFact>) -
     match cell {
         WorkbookCell::Lit { value } => Some(value.clone()),
         WorkbookCell::Cite { fact } => facts.get(fact).map(|r| r.value.clone()),
+        &_ => None,
     }
 }
 

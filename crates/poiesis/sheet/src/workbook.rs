@@ -129,6 +129,7 @@ fn resolve_cell(
                 id: fact.as_str().to_owned(),
             }),
         },
+        &_ => Err(crate::error::WorkbookError::UnsupportedCellKind),
     }
 }
 
