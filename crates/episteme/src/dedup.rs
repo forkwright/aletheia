@@ -435,7 +435,13 @@ pub(crate) struct EntityInfo {
     pub(crate) name: String,
     pub(crate) entity_type: String,
     pub(crate) aliases: Vec<String>,
+    /// Number of relationships where this entity appears as source or target.
     pub(crate) relationship_count: u32,
+    /// Number of facts linked to this entity via `fact_entities`.
+    ///
+    /// WHY: participates in canonical-entity selection so a fact-rich entity
+    /// survives merges even when it has fewer relationships (#5855).
+    pub(crate) fact_count: u32,
     pub(crate) created_at: jiff::Timestamp,
     /// Cached embedding of [`Self::name`] loaded from the entities relation
     /// (`name_embedding` column, added in schema v13). `None` for entities
@@ -634,7 +640,12 @@ pub(crate) fn classify_candidates(
 }
 
 /// Choose which entity becomes canonical: the one with more relationships,
-/// tie-broken by oldest `created_at`.
+/// tie-broken by fact count, then by oldest `created_at`.
+///
+/// WHY: relationship count is the strongest signal of graph centrality, but
+/// early-ingestion entities can accumulate many facts before relationships
+/// are recorded. Fact count prevents a shallow, relationship-richer entity
+/// from becoming the canonical identity of a dense knowledge cluster (#5855).
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn pick_canonical<'a>(
     a: &'a EntityInfo,
@@ -643,6 +654,10 @@ pub(crate) fn pick_canonical<'a>(
     if a.relationship_count > b.relationship_count {
         (a, b)
     } else if b.relationship_count > a.relationship_count {
+        (b, a)
+    } else if a.fact_count > b.fact_count {
+        (a, b)
+    } else if b.fact_count > a.fact_count {
         (b, a)
     } else if a.created_at <= b.created_at {
         (a, b)

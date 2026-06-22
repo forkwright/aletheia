@@ -15,12 +15,25 @@ fn entity(
     rels: u32,
     created: &str,
 ) -> EntityInfo {
+    entity_with_facts(id, name, etype, aliases, rels, 0, created)
+}
+
+fn entity_with_facts(
+    id: &str,
+    name: &str,
+    etype: &str,
+    aliases: Vec<&str>,
+    rels: u32,
+    facts: u32,
+    created: &str,
+) -> EntityInfo {
     EntityInfo {
         id: EntityId::new(id).expect("valid test id"),
         name: name.to_owned(),
         entity_type: etype.to_owned(),
         aliases: aliases.into_iter().map(String::from).collect(),
         relationship_count: rels,
+        fact_count: facts,
         created_at: ts(created),
         name_embedding: None,
     }
@@ -688,6 +701,23 @@ fn canonical_tiebreak_oldest() {
         EntityId::new("e2").expect("valid test id"),
         "older entity should be canonical"
     );
+}
+
+#[test]
+fn canonical_fact_count_tiebreak() {
+    // WHY (#5855): when relationship counts tie, the fact-richer entity must
+    // survive as canonical even if it has fewer relationships overall than a
+    // relationship-richer competitor. Here `b` has fewer relationships (1 vs 2)
+    // but many more facts (50 vs 1), so it should be canonical.
+    let a = entity_with_facts("e1", "Alice Test", "person", vec![], 2, 1, "2026-01-02");
+    let b = entity_with_facts("e2", "alice test", "person", vec![], 1, 50, "2026-01-01");
+    let (canonical, merged) = pick_canonical(&a, &b);
+    assert_eq!(
+        canonical.id,
+        EntityId::new("e2").expect("valid test id"),
+        "fact-richer entity should be canonical when relationship counts tie"
+    );
+    assert_eq!(merged.id, EntityId::new("e1").expect("valid test id"));
 }
 
 #[test]

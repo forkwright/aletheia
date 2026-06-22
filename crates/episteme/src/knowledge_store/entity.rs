@@ -907,6 +907,7 @@ impl KnowledgeStore {
             let name_embedding = super::marshal::extract_optional_f32_vec(&row[5])?;
 
             let rel_count = self.count_relationships(&id_str)?;
+            let fact_count = self.count_facts(&id_str)?;
 
             let id = crate::id::EntityId::new(&id_str).context(crate::error::InvalidIdSnafu)?;
             entities.push(crate::dedup::EntityInfo {
@@ -915,6 +916,7 @@ impl KnowledgeStore {
                 entity_type,
                 aliases,
                 relationship_count: u32::try_from(rel_count).unwrap_or(0),
+                fact_count: u32::try_from(fact_count).unwrap_or(0),
                 created_at,
                 name_embedding,
             });
@@ -1001,6 +1003,25 @@ impl KnowledgeStore {
         let script = r"?[count(src)] :=
             *relationships{src, dst},
             (src = $eid or dst = $eid)";
+        let rows = self.run_read(script, params)?;
+        if let Some(row) = rows.rows.first()
+            && let Some(val) = row.first()
+        {
+            return extract_int(val);
+        }
+        Ok(0)
+    }
+
+    /// Count facts linked to an entity via `fact_entities`.
+    fn count_facts(&self, entity_id: &str) -> crate::error::Result<i64> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let mut params = BTreeMap::new();
+        params.insert("eid".to_owned(), DataValue::Str(entity_id.into()));
+        let script = r"?[count(fact_id)] :=
+            *fact_entities{fact_id, entity_id},
+            entity_id = $eid";
         let rows = self.run_read(script, params)?;
         if let Some(row) = rows.rows.first()
             && let Some(val) = row.first()
