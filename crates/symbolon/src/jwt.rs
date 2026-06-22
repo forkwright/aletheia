@@ -256,13 +256,6 @@ impl JwtManager {
     }
 
     /// Refresh a token pair: validate the refresh token, issue a new access + refresh pair.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "auth facade internals; only exercised by crate-level tests"
-        )
-    )]
     #[instrument(skip(self, refresh_token))]
     pub(crate) fn refresh(&self, refresh_token: &str) -> Result<TokenPair> {
         let claims = self.validate(refresh_token)?;

@@ -1,3 +1,4 @@
+// kanon:ignore STORAGE/no-migration-checksum -- auth facade has no schema migrations; AuthStore uses a static fjall partition list without versioned migrations
 //! Unified auth facade composing JWT, API keys, password auth, and RBAC.
 
 use std::path::Path;
@@ -44,6 +45,13 @@ pub struct AdminClaims {
     pub role: Role,
     /// Optional nous scope carried by the token.
     pub nous_id: Option<String>,
+}
+
+impl AdminClaims {
+    /// Returns `true` if the admin token is scoped to a specific nous instance.
+    pub fn is_nous_scoped(&self) -> bool {
+        self.nous_id.is_some()
+    }
 }
 
 impl AuthService {
@@ -201,14 +209,13 @@ impl AuthService {
 
         self.store.revoke_token(&consumed_jti, &consumed_exp)?;
 
-        let access = self
-            .jwt
-            .issue_access(&claims.sub, claims.role, claims.nous_id.as_deref())?;
-        let refresh = self.jwt.issue_refresh(&claims.sub, claims.role)?;
+        // WHY: reuse `JwtManager::refresh` for issuance so the token-rotation
+        // logic lives in exactly one place in the production path.
+        let pair = self.jwt.refresh(refresh_token)?;
 
         Ok(TokenPair {
-            access_token: SecretString::from(access),
-            refresh_token: SecretString::from(refresh),
+            access_token: pair.access_token,
+            refresh_token: pair.refresh_token,
         })
     }
 
