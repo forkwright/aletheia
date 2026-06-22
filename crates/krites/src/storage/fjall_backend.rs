@@ -162,7 +162,6 @@ impl<'s> Storage<'s> for FjallStorage {
         })?;
         Ok(())
     }
-
 }
 
 #[non_exhaustive]
