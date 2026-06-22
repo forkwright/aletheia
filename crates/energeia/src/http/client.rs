@@ -85,7 +85,7 @@ impl HttpEngine {
     /// closed the fd. This is benign in production (claude binary is
     /// stable) but flaky in tests where mock scripts are written milliseconds
     /// before exec. Retry up to 3 times with 5ms backoff. See #2990.
-    fn launch(mut cmd: Command) -> Result<ProcessSessionHandle> {
+    async fn launch(mut cmd: Command) -> Result<ProcessSessionHandle> {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
         // INVARIANT: kill_on_drop ensures cleanup if the handle is dropped
@@ -108,7 +108,7 @@ impl HttpEngine {
                         }
                         .build());
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(5 * attempt));
+                    tokio::time::sleep(std::time::Duration::from_millis(5 * attempt)).await;
                     match cmd.spawn() {
                         Ok(c) => break c,
                         Err(e2) if e2.raw_os_error() == Some(26) => {
@@ -220,7 +220,7 @@ impl DispatchEngine for HttpEngine {
                 "spawning session"
             );
 
-            let handle = Self::launch(cmd)?;
+            let handle = Self::launch(cmd).await?;
             let boxed: Box<dyn SessionHandle> = Box::new(handle);
             Ok(boxed)
         })
@@ -243,7 +243,7 @@ impl DispatchEngine for HttpEngine {
 
             tracing::debug!(session_id, prompt_len = prompt.len(), "resuming session");
 
-            let handle = Self::launch(cmd)?;
+            let handle = Self::launch(cmd).await?;
             let boxed: Box<dyn SessionHandle> = Box::new(handle);
             Ok(boxed)
         })
