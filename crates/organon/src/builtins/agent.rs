@@ -406,7 +406,7 @@ mod tests {
     use crate::testing::install_crypto_provider;
     use crate::types::{
         ServerToolConfig, SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolContext,
-        ToolInput, ToolServices,
+        ToolHttpClients, ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {
@@ -441,12 +441,7 @@ mod tests {
                 knowledge: None,
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),
-                http_client: reqwest::Client::new(),
-                ssrf_http_client: reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new()),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),

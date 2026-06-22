@@ -138,7 +138,7 @@ impl ToolExecutor for WebFetchExecutor {
             }
 
             let response =
-                match get_with_safe_redirects(&services.ssrf_http_client, url, &TokioHostResolver)
+                match get_with_safe_redirects(&services.http_clients.ssrf_safe, url, &TokioHostResolver)
                     .await
                 {
                     Ok(r) => r,
@@ -354,9 +354,10 @@ mod tests {
     use koina::http::ResolveHostFuture;
     use koina::id::{NousId, SessionId, ToolName};
 
-    use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    use crate::testing::install_crypto_provider;
+    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolHttpClients, ToolServices};
 
     use super::*;
 
@@ -399,12 +400,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
-                ssrf_http_client: reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new()),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),
@@ -569,8 +565,10 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
-                ssrf_http_client,
+                http_clients: ToolHttpClients {
+                    general: reqwest::Client::new(),
+                    ssrf_safe: ssrf_http_client,
+                },
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),

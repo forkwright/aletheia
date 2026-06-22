@@ -241,7 +241,7 @@ impl ToolExecutor for HttpRequestExecutor {
             }
 
             let response = match send_with_safe_redirects(
-                &services.ssrf_http_client,
+                &services.http_clients.ssrf_safe,
                 method.clone(),
                 url,
                 &headers,

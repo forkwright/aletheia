@@ -3,7 +3,7 @@
 mod context;
 mod services;
 
-pub use context::{ServerToolConfig, ToolContext, ToolServices};
+pub use context::{ServerToolConfig, ToolContext, ToolHttpClients, ToolServices};
 pub use services::{
     BlackboardEntry, BlackboardStore, CrossNousService, DatalogResult, FactSummary,
     KnowledgeSearchService, MemoryResult, MessageService, NoteEntry, NoteStore, PlanningPlanInput,

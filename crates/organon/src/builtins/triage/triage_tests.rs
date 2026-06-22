@@ -10,7 +10,7 @@ use koina::id::{NousId, SessionId, ToolName};
 use super::*;
 use crate::testing::install_crypto_provider;
 use crate::types::{
-    ServerToolConfig, ToolContext, ToolGroupId, ToolGroupPolicy, ToolInput, ToolServices,
+    ServerToolConfig, ToolContext, ToolGroupId, ToolGroupPolicy, ToolHttpClients, ToolInput, ToolServices,
 };
 
 fn test_ctx() -> ToolContext {
@@ -30,12 +30,7 @@ fn test_ctx() -> ToolContext {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
-            ssrf_http_client: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new()),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),

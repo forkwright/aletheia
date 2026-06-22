@@ -228,7 +228,13 @@ async fn execute_command(
     let skills: Vec<String> = nous_manager
         .get_config(nous_id)
         .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()))
-        .and_then(|knowledge_store| knowledge_store.find_skills_for_nous(nous_id, 50).ok())
+        .and_then(|knowledge_store| match knowledge_store.find_skills_for_nous(nous_id, 50) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                warn!(error = %e, "failed to load skills for nous");
+                None
+            }
+        })
         .map(|facts| {
             facts
                 .iter()
@@ -244,7 +250,13 @@ async fn execute_command(
 
     let blackboard_entries: Vec<String> = nous_manager
         .blackboard_store()
-        .and_then(|blackboard_store| blackboard_store.list().ok())
+        .and_then(|blackboard_store| match blackboard_store.list() {
+            Ok(v) => Some(v),
+            Err(e) => {
+                warn!(error = %e, "failed to list blackboard entries");
+                None
+            }
+        })
         .map(|entries| {
             entries
                 .iter()
@@ -312,12 +324,12 @@ mod tests {
     use nous::adapters::SessionBlackboardAdapter;
     use nous::manager::NousManager;
     use organon::registry::ToolRegistry;
-    use organon::types::{BlackboardStore, ToolServices};
+    use organon::types::{BlackboardStore, ToolHttpClients, ToolServices};
     use taxis::oikos::Oikos;
     use tokio::sync::Mutex;
 
-    use super::*;
     use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
+    use super::*;
 
     #[expect(
         clippy::disallowed_methods,
@@ -353,12 +365,14 @@ mod tests {
             planning: None,
             knowledge: None,
             working_checkpoint_store: None,
-            http_client: reqwest::Client::new(),
-            ssrf_http_client: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new()),
+            http_clients: ToolHttpClients {
+                general: reqwest::Client::new(),
+                ssrf_safe: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
+            },
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: Vec::new(),
             server_tool_config: organon::types::ServerToolConfig::default(),

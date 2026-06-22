@@ -37,8 +37,8 @@ use organon::error::KnowledgeAdapterError;
 use organon::registry::ToolRegistry;
 use organon::testing::install_crypto_provider;
 use organon::types::{
-    FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolInput,
-    ToolServices,
+    FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolHttpClients,
+    ToolInput, ToolServices,
 };
 
 const KNOWLEDGE_DIM: usize = 384;
@@ -77,12 +77,14 @@ fn ctx_with_notes_bb(store: &Arc<Mutex<SessionStore>>) -> ToolContext {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
-            ssrf_http_client: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new()),
+            http_clients: ToolHttpClients {
+                general: reqwest::Client::new(),
+                ssrf_safe: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
+            },
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
@@ -615,12 +617,14 @@ fn ctx_with_knowledge(svc: Arc<dyn KnowledgeSearchService>) -> ToolContext {
             spawn: None,
             planning: None,
             knowledge: Some(svc),
-            http_client: reqwest::Client::new(),
-            ssrf_http_client: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new()),
+            http_clients: ToolHttpClients {
+                general: reqwest::Client::new(),
+                ssrf_safe: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
+            },
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
