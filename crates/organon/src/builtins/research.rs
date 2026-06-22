@@ -137,16 +137,13 @@ impl ToolExecutor for WebFetchExecutor {
                 return Ok(ToolResult::error(msg));
             }
 
-            let response = match get_with_safe_redirects(
-                &services.ssrf_http_client,
-                url,
-                &TokioHostResolver,
-            )
-            .await
-            {
-                Ok(r) => r,
-                Err(e) => return Ok(ToolResult::error(e)),
-            };
+            let response =
+                match get_with_safe_redirects(&services.ssrf_http_client, url, &TokioHostResolver)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => return Ok(ToolResult::error(e)),
+                };
 
             if !response.status().is_success() {
                 return Ok(ToolResult::error(format!("HTTP {}", response.status())));
@@ -540,9 +537,15 @@ mod tests {
         };
 
         let result = executor.execute(&input, &ctx).await.expect("execute");
-        assert!(!result.is_error, "expected successful fetch, got: {result:?}");
         assert!(
-            result.content.text_summary().contains("hello from configured client"),
+            !result.is_error,
+            "expected successful fetch, got: {result:?}"
+        );
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("hello from configured client"),
             "expected response from local server, got: {result:?}"
         );
 
