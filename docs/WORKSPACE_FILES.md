@@ -130,7 +130,7 @@ Files organized by **subject**, not by agent. This prevents:
 
 ### Scaffold drift note
 
-`aletheia add-nous` currently creates `nous/{id}/workspace/drafts/` and
+`aletheia add-nous` creates `nous/{id}/workspace/drafts/` and
 `nous/{id}/workspace/scripts/` even though the file-location rule above says
 working files belong in `theke/`. Those directories are created by the scaffold
 but are not part of the runtime bootstrap. If you use them, treat them as a

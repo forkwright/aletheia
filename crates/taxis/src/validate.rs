@@ -19,7 +19,14 @@ pub struct ValidationError {
     pub errors: Vec<String>,
     #[snafu(implicit)]
     /// Source location captured by snafu.
-    pub location: snafu::Location,
+    pub(crate) location: snafu::Location,
+}
+
+impl ValidationError {
+    /// Returns the collected validation error messages.
+    pub fn errors(&self) -> &[String] {
+        &self.errors
+    }
 }
 
 /// Validate an entire [`AletheiaConfig`] by checking each section.
@@ -186,6 +193,7 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         check_positive_u32(defaults, "contextTokens", errors);
         check_positive_u32(defaults, "maxOutputTokens", errors);
         check_positive_u32(defaults, "bootstrapMaxTokens", errors);
+        check_positive_u32(defaults, "timeoutSeconds", errors);
         check_positive_u32(defaults, "thinkingBudget", errors);
 
         // WHY: Cap token budgets at a sane maximum to prevent misconfiguration.
@@ -233,6 +241,13 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
             errors.push(format!(
                 "agency must be \"unrestricted\", \"standard\", or \"restricted\", got \"{agency}\""
             ));
+        }
+
+        if let Some(timeouts) = defaults.get("toolTimeouts")
+            && let Some(val) = timeouts.get("defaultMs").and_then(Value::as_u64)
+            && val == 0
+        {
+            errors.push("toolTimeouts.defaultMs must be positive".to_owned());
         }
 
         // INVARIANT: Bootstrap budget must fit within the context window.
@@ -887,7 +902,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                 };
                 if endpoint.is_empty() {
                     errors.push(format!("tools.{group}.{name}.endpoint must not be empty"));
-                } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) {
+                } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) { // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                     errors.push(format!(
                         "tools.{group}.{name}.endpoint must use http:// or https://"
                     ));
@@ -909,14 +924,14 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                 }
                 if has_endpoint
                     && let Some(endpoint) = entry.get("endpoint").and_then(Value::as_str)
-                    && !(endpoint.starts_with("http://") || endpoint.starts_with("https://"))
+                    && !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) // kanon:ignore SECURITY/insecure-transport — scheme prefix literals for validation, not connection URLs
                 {
                     errors.push(format!(
                         "tools.{group}.{name}.endpoint must use http:// or https://"
                     ));
                 }
             }
-            _ => {}
+            _ => {} // other tool types carry no additional endpoint constraints
         }
     }
 }

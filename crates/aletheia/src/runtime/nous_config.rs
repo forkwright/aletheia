@@ -75,6 +75,7 @@ fn resolve_tool_group_policy(agent_id: &str, policy: &AgentToolGroupPolicy) -> T
             }
             ToolGroupPolicy::groups(groups)
         }
+        _ => ToolGroupPolicy::DenyAll,
     }
 }
 

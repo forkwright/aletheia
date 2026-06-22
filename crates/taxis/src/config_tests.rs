@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — init-wiring and recall-config tests are discrete groups that grow together
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use super::*;

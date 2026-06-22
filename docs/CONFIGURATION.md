@@ -434,7 +434,7 @@ models = ["llama3.1-70b"]
 | Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); registered via the credential chain, declarative entries are accepted but skipped by the registry to avoid duplicates. |
 | Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); registered via the credential chain, declarative entries are accepted but do not change startup behavior. |
 
-The `aletheia add-nous` scaffolding command currently validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
+The `aletheia add-nous` scaffolding command validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
 
 ---
 
@@ -566,7 +566,7 @@ Background maintenance tasks. Some run automatically when the server is running;
 
 Drift detection compares the live instance root against the sibling
 `instance.example` template. If the template directory is unavailable, the task
-reports degraded/failed rather than clean.
+reports degraded or failed.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -622,7 +622,7 @@ shows them as `planned`/`unavailable` (`crates/aletheia/src/commands/maintenance
 Implemented knowledge-maintenance tasks also return `unavailable` when the
 knowledge store cannot be opened (for example, when the `recall` feature is
 disabled or the knowledge database directory does not exist). `aletheia maintenance run all`
-skips unavailable knowledge tasks rather than aborting the whole batch.
+skips unavailable knowledge tasks; the remaining batch continues.
 
 ### maintenance.knowledge_maintenance_serendipity
 
@@ -819,7 +819,7 @@ Filesystem sandbox applied to tool execution. When enabled, tools are restricted
 
 Defaults are defined in `crates/taxis/src/config/maintenance.rs` and mirrored by the execution policy in `crates/organon/src/sandbox/config.rs`; `gateway.auth.none_role` is defined in `crates/taxis/src/config/gateway.rs`.
 
-Combined default posture: a fresh config binds the gateway to localhost and uses bearer-token auth, but rate limiting is disabled, sandbox violations are logged rather than blocked, exec child processes keep outbound network egress, and switching `gateway.auth.mode` to `"none"` without changing `gateway.auth.none_role` grants anonymous callers the `admin` role. For production-like deployments, set the restrictive values explicitly.
+Combined default posture: a fresh config binds the gateway to localhost and uses bearer-token auth, but rate limiting is disabled, sandbox violations are logged, not blocked; exec child processes keep outbound network egress; and switching `gateway.auth.mode` to `"none"` without changing `gateway.auth.none_role` grants anonymous callers the `admin` role. For production deployments, set the restrictive values explicitly.
 
 ```toml
 [sandbox]
