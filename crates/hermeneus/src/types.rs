@@ -613,6 +613,12 @@ pub enum StopReason {
     StopSequence,
     /// Provider safety/content filter stopped generation.
     ContentFiltered,
+    /// Provider returned a stop reason this adapter does not yet model.
+    ///
+    /// WHY: Collapsing unknown values into [`EndTurn`](Self::EndTurn) makes
+    /// provider drift and safety signals look like ordinary success. Preserving
+    /// them lets downstream callers decide how to report degraded completions.
+    Unknown,
 }
 
 impl StopReason {
@@ -626,6 +632,7 @@ impl StopReason {
             Self::MaxTokens => "max_tokens",
             Self::StopSequence => "stop_sequence",
             Self::ContentFiltered => "content_filtered",
+            Self::Unknown => "unknown",
         }
     }
 }

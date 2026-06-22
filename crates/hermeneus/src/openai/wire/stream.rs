@@ -268,7 +268,9 @@ fn map_finish_reason(reason: &str) -> StopReason {
         "length" => StopReason::MaxTokens,
         "tool_calls" | "function_call" => StopReason::ToolUse,
         "content_filter" => StopReason::ContentFiltered,
-        _ => StopReason::EndTurn,
+        // WHY: Collapsing unknown finish reasons into end_turn hides provider
+        // drift and safety signals. Preserve them as Unknown.
+        _ => StopReason::Unknown,
     }
 }
 

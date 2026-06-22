@@ -271,13 +271,18 @@ impl ResponsesResponse {
 
         let stop_reason = if saw_function_call {
             StopReason::ToolUse
-        } else if status.as_deref() == Some("incomplete")
-            && incomplete_details
+        } else if status.as_deref() == Some("incomplete") {
+            // WHY: The Responses API reports why a turn was incomplete. Map the
+            // known provider reasons to our stop reasons and preserve anything
+            // else as [`StopReason::Unknown`] so callers can see degraded output.
+            match incomplete_details
                 .as_ref()
                 .and_then(|details| details.reason.as_deref())
-                .is_some_and(|reason| reason == "max_output_tokens")
-        {
-            StopReason::MaxTokens
+            {
+                Some("max_output_tokens") => StopReason::MaxTokens,
+                Some("content_filter") => StopReason::ContentFiltered,
+                _ => StopReason::Unknown,
+            }
         } else {
             StopReason::EndTurn
         };
@@ -341,11 +346,14 @@ fn map_finish_reason(reason: &str) -> StopReason {
         "content_filter" => StopReason::ContentFiltered,
         "stop" | "" => StopReason::EndTurn,
         other => {
+            // WHY: Unknown finish reasons are provider drift, not success.
+            // Preserve the signal as [`StopReason::Unknown`] instead of
+            // collapsing it into a clean end_turn.
             tracing::debug!(
                 reason = other,
-                "unknown OpenAI finish_reason; treating as end_turn"
+                "unknown OpenAI finish_reason; preserving as unknown"
             );
-            StopReason::EndTurn
+            StopReason::Unknown
         }
     }
 }
@@ -434,6 +442,22 @@ mod tests {
         let parsed: ChatCompletionResponse = serde_json::from_str(body).unwrap();
         let resp = parsed.into_response().unwrap();
         assert_eq!(resp.stop_reason, StopReason::ContentFiltered);
+    }
+
+    #[test]
+    fn unknown_finish_reason_maps_to_unknown() {
+        let body = r#"{
+            "id": "chatcmpl-unknown",
+            "model": "qwen",
+            "choices": [{
+                "message": { "role": "assistant", "content": "" },
+                "finish_reason": "some_future_reason",
+                "index": 0
+            }]
+        }"#;
+        let parsed: ChatCompletionResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.stop_reason, StopReason::Unknown);
     }
 
     #[test]
