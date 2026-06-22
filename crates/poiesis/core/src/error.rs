@@ -205,6 +205,24 @@ pub enum SpecError {
         /// The body kind expected.
         expected: &'static str,
     },
+    /// A [`crate::bodies::Sheet`] violates a structural invariant: either
+    /// `column_types.len()` does not equal `headers.len()`, or a row does not
+    /// contain exactly `headers.len()` cells.
+    #[snafu(display(
+        "sheet {sheet:?} shape mismatch: expected {expected} columns, got {got} at {location}",
+        location = row.map_or_else(|| "column_types".to_string(), |r| format!("row {r}"))
+    ))]
+    SheetShapeMismatch {
+        /// The sheet display name that failed validation.
+        sheet: String,
+        /// `None` for a `column_types` length mismatch; `Some(index)` for the
+        /// offending row.
+        row: Option<usize>,
+        /// The expected column count (`headers.len()`).
+        expected: usize,
+        /// The actual column count that was found.
+        got: usize,
+    },
 }
 
 /// Umbrella error covering every parse-don't-validate boundary in this crate.

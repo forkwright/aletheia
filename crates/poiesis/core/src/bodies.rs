@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::document::Document;
+use crate::error::{SheetShapeMismatchSnafu, SpecError};
 use crate::ids::{ComponentId, FactId, SheetName};
 use crate::scalar::{AspectRatio, Scalar, ScalarKind};
 
@@ -54,8 +55,47 @@ pub struct Sheet {
     /// The data rows; each row must have `headers.len()` cells.
     pub rows: Vec<Vec<WorkbookCell>>,
     /// Per-column scalar kind; drives format-at-the-boundary in the
-    /// rendering crate.
+    /// rendering crate. Must have exactly `headers.len()` entries.
     pub column_types: Vec<ScalarKind>,
+}
+
+impl Sheet {
+    /// Validate the structural invariants documented on [`Sheet`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpecError::SheetShapeMismatch`] when `column_types.len()` or
+    /// any row length does not equal `headers.len()`.
+    pub fn validate(&self) -> Result<(), SpecError> {
+        let expected = self.headers.len();
+
+        // INVARIANT: column_types and headers describe the same columns.
+        if self.column_types.len() != expected {
+            return SheetShapeMismatchSnafu {
+                sheet: self.name.as_str().to_owned(),
+                row: None,
+                expected,
+                got: self.column_types.len(),
+            }
+            .fail();
+        }
+
+        // INVARIANT: every row matches the header width so renderers never
+        // have to silently drop cells.
+        for (row_idx, row) in self.rows.iter().enumerate() {
+            if row.len() != expected {
+                return SheetShapeMismatchSnafu {
+                    sheet: self.name.as_str().to_owned(),
+                    row: Some(row_idx),
+                    expected,
+                    got: row.len(),
+                }
+                .fail();
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// A workbook cell value.
