@@ -5,6 +5,7 @@
 // has a single home and execution can stay focused on session management.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::time::Instant;
 
 use aletheia_routing::types::TaskCategory;
@@ -230,7 +231,119 @@ async fn append_after_action_record(ctx: &PipelineContext) -> Result<(), Pipelin
             stage: "post_processing",
         })?;
 
+    prune_old_after_action_files(log_dir, ctx.config.routing.window_days)
+        .await
+        .context(StageSnafu {
+            stage: "post_processing",
+        })?;
+
     Ok(())
+}
+
+/// Remove after-action JSONL files whose date is outside the configured window.
+///
+/// WHY: Issue 5669. Without pruning, each completed dispatch appends one line to
+/// the current day-file and old day-files accumulate without bound.
+async fn prune_old_after_action_files(
+    log_dir: &Path,
+    window_days: u64,
+) -> Result<(), PipelineError> {
+    if window_days == 0 {
+        return Ok(());
+    }
+
+    let cutoff = {
+        // INVARIANT: window_days is an operator-configured retention bound;
+        // multiplying by 24h stays well within signed duration range.
+        #[expect(
+            clippy::expect_used,
+            reason = "bounded subtraction from now is infallible for realistic day counts"
+        )]
+        let span = jiff::SignedDuration::from_hours(
+            i64::try_from(window_days).unwrap_or(i64::MAX) * 24,
+        );
+        Timestamp::now()
+            .checked_sub(span)
+            .expect("timestamp subtraction within realistic day range")
+    };
+
+    let mut entries = tokio::fs::read_dir(log_dir)
+        .await
+        .map_err(|e| crate::error::IoSnafu { path: log_dir.to_owned() }.into_error(e))
+        .context(StageSnafu {
+            stage: "post_processing",
+        })?;
+
+    let mut pruned = 0u32;
+
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| crate::error::IoSnafu { path: log_dir.to_owned() }.into_error(e))
+        .context(StageSnafu {
+            stage: "post_processing",
+        })?
+    {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".jsonl") {
+            continue;
+        }
+        let Some(file_date) = parse_after_action_date(name) else {
+            continue;
+        };
+        let file_ts = file_date
+            .at(0, 0, 0, 0)
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .timestamp();
+        if file_ts < cutoff {
+            if let Err(e) = tokio::fs::remove_file(&path).await {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "failed to remove old after-action jsonl file"
+                );
+            } else {
+                pruned += 1;
+            }
+        }
+    }
+
+    if pruned > 0 {
+        tracing::info!(
+            count = pruned,
+            log_dir = %log_dir.display(),
+            window_days,
+            "pruned old after-action jsonl files"
+        );
+    }
+
+    Ok(())
+}
+
+fn parse_after_action_date(name: &str) -> Option<jiff::civil::Date> {
+    let stem = name.strip_suffix(".jsonl")?;
+    let mut parts = stem.split('-');
+    let year = parts.next()?.parse::<i16>().ok()?;
+    let month = parts.next()?.parse::<i8>().ok()?;
+    let day = parts.next()?.parse::<i8>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    if !(1..=12).contains(&month) || day < 1 {
+        return None;
+    }
+    let max_day = match month {
+        2 => 29,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if day > max_day {
+        return None;
+    }
+    Some(jiff::civil::date(year, month, day))
 }
 
 /// Build the [`AfterActionRecord`] from the current pipeline context.
@@ -355,6 +468,7 @@ mod tests {
     use crate::prompt::PromptSpec;
     use crate::qa::QaGate;
     use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict, SessionStatus};
+    use jiff::Timestamp;
 
     use super::PostProcessingStage;
 
@@ -635,8 +749,14 @@ mod tests {
             prompt_components: None,
         }];
 
-        // Seed an old file to simulate a prior day's log.
-        let old_file = tmp.path().join("2026-04-16.jsonl");
+        // Seed a file from yesterday to simulate a prior day's log. It is
+        // inside the default 7-day window and should survive pruning.
+        let yesterday = Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(24))
+            .expect("yesterday is a valid timestamp")
+            .strftime("%Y-%m-%d")
+            .to_string();
+        let old_file = tmp.path().join(format!("{yesterday}.jsonl"));
         std::fs::write(&old_file, "{\"old\":true}\n").expect("write old file");
 
         let mut ctx =
@@ -664,7 +784,7 @@ mod tests {
         for entry in entries {
             let name = entry.expect("valid entry").file_name();
             let name = name.to_string_lossy();
-            if name == "2026-04-16.jsonl" {
+            if name == old_file.file_name().unwrap().to_string_lossy() {
                 found_old = true;
             } else if name.ends_with(".jsonl") {
                 found_new = true;
@@ -672,6 +792,81 @@ mod tests {
         }
         assert!(found_old, "old file should be preserved");
         assert!(found_new, "new file for current date should be created");
+    }
+
+    #[tokio::test]
+    async fn prunes_files_outside_routing_window() {
+        // WHY: Issue 5669. Day-files older than the configured window must be
+        // deleted so the after-actions directory does not grow without bound.
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+
+            prompt_components: None,
+        }];
+
+        let old_date = Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(10 * 24))
+            .expect("ten days ago is a valid timestamp")
+            .strftime("%Y-%m-%d")
+            .to_string();
+        let recent_date = Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(2 * 24))
+            .expect("two days ago is a valid timestamp")
+            .strftime("%Y-%m-%d")
+            .to_string();
+
+        let old_file = tmp.path().join(format!("{old_date}.jsonl"));
+        let recent_file = tmp.path().join(format!("{recent_date}.jsonl"));
+        std::fs::write(&old_file, "{\"old\":true}\n").expect("write old file");
+        std::fs::write(&recent_file, "{\"recent\":true}\n").expect("write recent file");
+
+        let mut ctx =
+            make_context_with_prompts(vec![success_mock_outcome("s1", 0.50, 10)], prompts);
+        ctx.after_action_log_dir = Some(tmp.path().to_path_buf());
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        ExecutionStage
+            .run(&mut ctx)
+            .await
+            .expect("execution must succeed");
+        PostProcessingStage
+            .run(&mut ctx)
+            .await
+            .expect("post_processing must succeed");
+
+        let entries: Vec<_> = std::fs::read_dir(tmp.path()).expect("read dir").collect();
+        assert!(
+            !entries.iter().any(|e| {
+                e.as_ref()
+                    .expect("valid entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(&old_date)
+            }),
+            "old file outside the 7-day window should be pruned"
+        );
+        assert!(
+            entries.iter().any(|e| {
+                e.as_ref()
+                    .expect("valid entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(&recent_date)
+            }),
+            "recent file inside the window should be preserved"
+        );
     }
 
     #[tokio::test]
