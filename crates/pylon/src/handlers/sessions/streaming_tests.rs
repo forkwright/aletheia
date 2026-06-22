@@ -509,6 +509,8 @@ fn sse_event_message_complete_serializes_correctly() {
         usage: UsageData {
             input_tokens: 100,
             output_tokens: 200,
+            cache_read_tokens: 50,
+            cache_write_tokens: 25,
         },
         request_id: Some("req-456".to_owned()),
     };
@@ -946,5 +948,89 @@ fn idempotency_guard_shared_completion_flag() {
             LookupResult::Conflict
         ),
         "shared completion flag must keep the in-flight entry intact"
+    );
+}
+
+#[test]
+fn turn_complete_event_payload_includes_cache_tokens() {
+    let result = nous::pipeline::TurnResult {
+        content: "cache-enabled response".to_owned(),
+        tool_calls: Vec::new(),
+        usage: nous::pipeline::TurnUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 1000,
+            cache_write_tokens: 200,
+            ..nous::pipeline::TurnUsage::default()
+        },
+        signals: Vec::new(),
+        stop_reason: "end_turn".to_owned(),
+        degraded: None,
+        reasoning: String::new(),
+        model_used: "test-model".to_owned(),
+        tool_surface_hashes: Vec::new(),
+    };
+
+    let payload = turn_complete_event_payload("ses-1", "nous-1", "turn-1", &result);
+
+    assert_eq!(
+        payload
+            .get("cache_read_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(1000)
+    );
+    assert_eq!(
+        payload
+            .get("cache_write_tokens")
+            .and_then(serde_json::Value::as_u64),
+        Some(200)
+    );
+}
+
+#[tokio::test]
+async fn emit_turn_result_events_buffered_includes_cache_tokens() {
+    let (state, _tmp, handle) = reconnect_running_test_state().await;
+    let (tx, mut rx) = mpsc::channel::<(u64, SseEvent)>(8);
+
+    let result = nous::pipeline::TurnResult {
+        content: "response with cache".to_owned(),
+        tool_calls: Vec::new(),
+        usage: nous::pipeline::TurnUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 1000,
+            cache_write_tokens: 200,
+            ..nous::pipeline::TurnUsage::default()
+        },
+        signals: Vec::new(),
+        stop_reason: "end_turn".to_owned(),
+        degraded: None,
+        reasoning: String::new(),
+        model_used: "test-model".to_owned(),
+        tool_surface_hashes: Vec::new(),
+    };
+
+    emit_turn_result_events_buffered(&tx, &handle, &result, Some("req-cache")).await;
+    drop(tx);
+
+    let mut complete: Option<serde_json::Value> = None;
+    while let Some((_seq, event)) = rx.recv().await {
+        if let SseEvent::MessageComplete { usage, .. } = event {
+            let json = serde_json::to_value(usage).expect("usage serializes");
+            complete = Some(json);
+            break;
+        }
+    }
+
+    let usage = complete.expect("message_complete event must be emitted");
+    assert_eq!(usage.get("input_tokens").and_then(serde_json::Value::as_u64), Some(100));
+    assert_eq!(usage.get("output_tokens").and_then(serde_json::Value::as_u64), Some(50));
+    assert_eq!(
+        usage.get("cache_read_tokens").and_then(serde_json::Value::as_u64),
+        Some(1000)
+    );
+    assert_eq!(
+        usage.get("cache_write_tokens").and_then(serde_json::Value::as_u64),
+        Some(200)
     );
 }

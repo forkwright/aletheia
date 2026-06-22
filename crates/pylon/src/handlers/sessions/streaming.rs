@@ -55,6 +55,8 @@ fn turn_complete_event_payload(
         "turn_id": turn_id,
         "input_tokens": result.usage.input_tokens,
         "output_tokens": result.usage.output_tokens,
+        "cache_read_tokens": result.usage.cache_read_tokens,
+        "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
     })
 }
@@ -333,6 +335,16 @@ pub async fn send_message(
                     reason = "serde_json::Value Index returns Null for absent keys, never panics"
                 )]
                 let output_tokens = cached["output_tokens"].as_u64().unwrap_or(0);
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
+                let cache_read_tokens = cached["cache_read_tokens"].as_u64().unwrap_or(0);
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
+                let cache_write_tokens = cached["cache_write_tokens"].as_u64().unwrap_or(0);
 
                 // WHY(#3276): Use (seq, event) pair for type-compatibility with
                 // the normal streaming path. Idempotency replays use seq=0 since
@@ -346,6 +358,8 @@ pub async fn send_message(
                             usage: UsageData {
                                 input_tokens,
                                 output_tokens,
+                                cache_read_tokens,
+                                cache_write_tokens,
                             },
                             request_id: Some(request_id.0.clone()),
                         },
@@ -493,6 +507,8 @@ pub async fn send_message(
                             "stop_reason": result.stop_reason,
                             "input_tokens": result.usage.input_tokens,
                             "output_tokens": result.usage.output_tokens,
+                            "cache_read_tokens": result.usage.cache_read_tokens,
+                            "cache_write_tokens": result.usage.cache_write_tokens,
                         })
                         .to_string();
                         idem_cache.complete(
@@ -543,6 +559,8 @@ pub async fn send_message(
                         usage: UsageData {
                             input_tokens: 0,
                             output_tokens: 0,
+                            cache_read_tokens: 0,
+                            cache_write_tokens: 0,
                         },
                         request_id: Some(request_id_str.clone()),
                     };
@@ -1288,6 +1306,8 @@ async fn emit_turn_result_events_buffered(
         usage: UsageData {
             input_tokens: result.usage.input_tokens,
             output_tokens: result.usage.output_tokens,
+            cache_read_tokens: result.usage.cache_read_tokens,
+            cache_write_tokens: result.usage.cache_write_tokens,
         },
         request_id: request_id.map(ToOwned::to_owned),
     };
