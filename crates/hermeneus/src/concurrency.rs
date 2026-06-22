@@ -276,8 +276,9 @@ impl AdaptiveConcurrencyLimiter {
             crate::metrics::set_concurrency_latency_ewma(&self.provider_name, ewma);
         }
 
-        // Wake any parked callers; they will re-check the limit.
-        self.notify.notify_waiters();
+        // Wake one parked caller; it will re-check the limit and re-park if
+        // the slot was already taken by another waiter.
+        self.notify.notify_one();
     }
 }
 
