@@ -15,9 +15,7 @@ use koina::system::{Environment, RealSystem};
 
 use super::file_ops::CredentialFile;
 use super::providers::FileCredentialProvider;
-use super::{
-    OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, REFRESH_CHECK_INTERVAL_SECS, unix_epoch_ms,
-};
+use super::{OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, REFRESH_CHECK_INTERVAL_SECS, unix_epoch_ms};
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
 /// OAuth error response from the token endpoint.
