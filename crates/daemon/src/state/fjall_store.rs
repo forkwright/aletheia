@@ -161,10 +161,11 @@ mod tests {
         store.save(&state).unwrap();
         let loaded = store.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].task_id, state.task_id);
-        assert_eq!(loaded[0].last_run_ts, state.last_run_ts);
-        assert_eq!(loaded[0].run_count, state.run_count);
-        assert_eq!(loaded[0].consecutive_failures, state.consecutive_failures);
+        let got = loaded.first().unwrap();
+        assert_eq!(got.task_id, state.task_id);
+        assert_eq!(got.last_run_ts, state.last_run_ts);
+        assert_eq!(got.run_count, state.run_count);
+        assert_eq!(got.consecutive_failures, state.consecutive_failures);
     }
 
     #[test]
@@ -189,8 +190,9 @@ mod tests {
         let reopened = TaskStateStore::open(tmp.path()).unwrap();
         let loaded = reopened.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].task_id, "task::knowledge-maintenance");
-        assert_eq!(loaded[0].run_count, 3);
+        let got = loaded.first().unwrap();
+        assert_eq!(got.task_id, "task::knowledge-maintenance");
+        assert_eq!(got.run_count, 3);
     }
 
     #[test]
@@ -216,7 +218,8 @@ mod tests {
 
         let loaded = store.load_all().unwrap();
         assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].run_count, 2);
-        assert_eq!(loaded[0].last_run_ts, Some("2026-06-22T16:00:00Z".to_owned()));
+        let got = loaded.first().unwrap();
+        assert_eq!(got.run_count, 2);
+        assert_eq!(got.last_run_ts, Some("2026-06-22T16:00:00Z".to_owned()));
     }
 }
