@@ -114,12 +114,15 @@ pub struct ArithCheck {
     pub formula: String,
     /// Expected result from the manifest.
     pub expected: f64,
-    /// Actual evaluated result.
-    pub actual: f64,
-    /// Absolute difference.
-    pub diff: f64,
+    /// Actual evaluated result, if evaluation succeeded.
+    pub actual: Option<f64>,
+    /// Absolute difference, if evaluation succeeded.
+    pub diff: Option<f64>,
     /// True iff diff <= tolerance.
     pub pass: bool,
+    /// Human-readable note, usually set when evaluation failed.
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 /// Summary of a full manifest verification run.
@@ -177,16 +180,32 @@ fn verify_claim(claim: &Claim, resolved_claims: &HashMap<String, f64>) -> ClaimR
         }
     }
 
-    let arith_result = claim.arithmetic.as_ref().and_then(|arith| {
+    let arith_result = claim.arithmetic.as_ref().map(|arith| {
         match arithmetic::check(&arith.formula, arith.result, claim.tolerance) {
-            Ok(r) => Some(ArithCheck {
+            Ok(r) => ArithCheck {
                 formula: arith.formula.clone(),
                 expected: arith.result,
-                actual: r.actual,
-                diff: r.diff,
+                actual: Some(r.actual),
+                diff: Some(r.diff),
                 pass: r.pass,
-            }),
-            Err(_) => None,
+                note: None,
+            },
+            Err(e) => {
+                // WHY: a present but unparseable formula must fail the claim
+                // rather than silently disappearing as None.
+                let detail = match &e {
+                    VerifyError::Eval { detail, .. } => detail.clone(),
+                    _ => e.to_string(),
+                };
+                ArithCheck {
+                    formula: arith.formula.clone(),
+                    expected: arith.result,
+                    actual: None,
+                    diff: None,
+                    pass: false,
+                    note: Some(detail),
+                }
+            }
         }
     });
 
@@ -262,7 +281,7 @@ fn determine_outcome(
         None => {
             // No resolvable source; fall back to arithmetic-only check.
             match arith_result {
-                Some(a) => (a.pass, Some(a.diff), Some(a.actual)),
+                Some(a) => (a.pass, a.diff, a.actual),
                 None => {
                     // Nothing resolvable — inconclusive (treat as pass).
                     (true, None, None)
@@ -446,6 +465,50 @@ mod tests {
             .as_ref()
             .expect("must have arith_check");
         assert!(arith.pass, "arithmetic formula check must PASS");
+        assert!(arith.note.is_none(), "passing check must have no note");
+    }
+
+    #[test]
+    fn malformed_arithmetic_formula_fails_with_note() {
+        let manifest = VerifyManifest {
+            report: "r.typ".to_owned(),
+            claims: vec![Claim {
+                id: "c".to_owned(),
+                text: "total".to_owned(),
+                value: 0.0,
+                unit: "dollars".to_owned(),
+                location: "line 1".to_owned(),
+                sources: vec![Source::Derived {
+                    formula: "0".to_owned(),
+                    result: None,
+                }],
+                arithmetic: Some(Arithmetic {
+                    formula: "78187 + foo".to_owned(),
+                    result: 107_784.0,
+                }),
+                tolerance: 1.0,
+                status: None,
+            }],
+        };
+        let v = Verifier::new();
+        let results = v.verify(&manifest);
+        assert!(
+            !results[0].pass,
+            "unparseable arithmetic formula must cause the claim to fail"
+        );
+        let arith = results[0]
+            .arith_check
+            .as_ref()
+            .expect("must have arith_check");
+        assert!(!arith.pass, "failed parse must set pass=false");
+        assert!(
+            arith.note.is_some(),
+            "failed parse must surface an error note"
+        );
+        assert!(
+            arith.note.as_ref().unwrap().contains("foo"),
+            "note must mention the offending token"
+        );
     }
 
     #[test]
