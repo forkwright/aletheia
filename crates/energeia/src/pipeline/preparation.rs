@@ -79,12 +79,18 @@ impl PipelineStage for PreparationStage {
             || cfg.scope.is_some();
 
         if should_split {
+            let cache = crate::prompt_cache::StaticPrefixCache::load(
+                cfg.role.as_deref(),
+                cfg.standards_dir.as_deref(),
+                &cfg.standards,
+            )
+            .await
+            .context(StageSnafu { stage: self.name() })?;
+
             for prompt in &mut ctx.prompts {
-                let components = crate::prompt_cache::PromptComponents::build(
-                    cfg.role.as_deref(),
+                let components = crate::prompt_cache::PromptComponents::build_with_cache(
+                    &cache,
                     &ctx.spec.project,
-                    cfg.standards_dir.as_deref(),
-                    &cfg.standards,
                     cfg.scope.as_deref(),
                     &prompt.body,
                 );
@@ -375,5 +381,96 @@ mod tests {
             err.to_string().contains("no prompts"),
             "no reason in: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn preparation_reuses_static_prefix_cache_for_multiple_prompts() {
+        // WHY: Issue 5686: role/standards files must be read once per dispatch,
+        // not once per prompt. Loading them for every prompt blocks the Tokio
+        // worker and wastes I/O on identical content.
+        use std::io::Write as _;
+
+        let dir = tempfile::TempDir::new().expect("create temp dir");
+        let role_path = dir.path().join("role.md");
+        {
+            let mut f = std::fs::File::create(&role_path).expect("create role file");
+            f.write_all(b"File-based role definition.")
+                .expect("write role file");
+        }
+        let std_path = dir.path().join("RUST.md");
+        {
+            let mut f = std::fs::File::create(&std_path).expect("create standard file");
+            f.write_all(b"Use clippy.").expect("write standard file");
+        }
+
+        let prompts = vec![
+            PromptSpec {
+                number: 1,
+                description: "first".to_owned(),
+                depends_on: vec![],
+                context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                worktree: crate::prompt::WorktreePolicy::default(),
+                acceptance_criteria: vec![],
+                blast_radius: vec![],
+                body: "do first".to_owned(),
+                prompt_components: None,
+            },
+            PromptSpec {
+                number: 2,
+                description: "second".to_owned(),
+                depends_on: vec![1],
+                context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                worktree: crate::prompt::WorktreePolicy::default(),
+                acceptance_criteria: vec![],
+                blast_radius: vec![],
+                body: "do second".to_owned(),
+                prompt_components: None,
+            },
+            PromptSpec {
+                number: 3,
+                description: "third".to_owned(),
+                depends_on: vec![1],
+                context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                worktree: crate::prompt::WorktreePolicy::default(),
+                acceptance_criteria: vec![],
+                blast_radius: vec![],
+                body: "do third".to_owned(),
+                prompt_components: None,
+            },
+        ];
+
+        let config = OrchestratorConfig::default()
+            .role(role_path.to_str().expect("role path is utf-8"))
+            .standards_dir(dir.path())
+            .standards(vec!["RUST".to_owned()]);
+        let mut ctx = make_context_with_config(prompts, config);
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation should succeed");
+
+        let prefixes: Vec<String> = ctx
+            .prompts
+            .iter()
+            .map(|p| {
+                p.prompt_components
+                    .as_ref()
+                    .expect("prompt components should be set")
+                    .static_prefix
+                    .clone()
+            })
+            .collect();
+
+        assert!(
+            prefixes.iter().all(|p| p == &prefixes[0]),
+            "all prompts must share the same static prefix"
+        );
+        assert!(prefixes[0].contains("File-based role definition."));
+        assert!(prefixes[0].contains("Use clippy."));
+        assert!(prefixes[0].contains("Validation Gate"));
     }
 }

@@ -8,7 +8,12 @@
 //! `cache_control: {type: "ephemeral"}` when dispatched through hermeneus,
 //! allowing cache hits on repeated dispatches for the same role.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use snafu::ResultExt as _;
+
+use crate::error::{IoSnafu, Result};
 
 /// Split prompt for cache-aware dispatch.
 ///
@@ -27,6 +32,101 @@ pub struct PromptComponents {
     /// Dynamic content that changes per dispatch: project state + scope +
     /// prompt body.
     pub dynamic_suffix: String,
+}
+
+/// Cache for static prompt-prefix inputs loaded from disk.
+///
+/// WHY: Role and standards files are identical across every prompt in a dispatch,
+/// but `PromptComponents::build` was reading them once per prompt. Loading them
+/// once and reusing `Arc<str>` contents removes blocking I/O from the async
+/// preparation loop and eliminates redundant reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticPrefixCache {
+    role: Option<Arc<str>>,
+    standards: Vec<(String, Arc<str>>)>,
+}
+
+impl StaticPrefixCache {
+    /// Load the role text and selected standards from disk once per dispatch.
+    ///
+    /// Uses `tokio::fs` so the async preparation stage does not block a Tokio
+    /// worker thread on file I/O.
+    pub async fn load(
+        role: Option<&str>,
+        standards_dir: Option<&Path>,
+        standards: &[String],
+    ) -> Result<Self> {
+        let role = if let Some(role_text) = role {
+            let path = Path::new(role_text);
+            if tokio::fs::try_exists(path)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(path = %role_text, error = %e, "failed to stat role file");
+                    false
+                })
+            {
+                let content = tokio::fs::read_to_string(path)
+                    .await
+                    .context(IoSnafu {
+                        path: PathBuf::from(role_text),
+                    })?;
+                Some(Arc::<str>::from(content))
+            } else {
+                Some(Arc::<str>::from(role_text))
+            }
+        } else {
+            None
+        };
+
+        let mut loaded_standards = Vec::new();
+        if let Some(dir) = standards_dir {
+            for name in standards {
+                let path = dir.join(format!("{name}.md"));
+                if tokio::fs::try_exists(&path)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(path = %path.display(), error = %e, "failed to stat standard");
+                        false
+                    })
+                {
+                    match tokio::fs::read_to_string(&path).await {
+                        Ok(text) => loaded_standards.push((name.clone(), Arc::<str>::from(text))),
+                        Err(e) => {
+                            tracing::warn!(path = %path.display(), error = %e, "failed to read standard");
+                        }
+                    }
+                } else {
+                    tracing::warn!(path = %path.display(), "standard file not found");
+                }
+            }
+        }
+
+        Ok(Self {
+            role,
+            standards: loaded_standards,
+        })
+    }
+
+    /// Build the static prefix from cached role and standards contents.
+    fn build_static_prefix(&self) -> String {
+        const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
+
+        let mut parts: Vec<String> = Vec::new();
+
+        if let Some(role) = &self.role
+            && !role.is_empty()
+        {
+            parts.push(role.to_string());
+        }
+
+        for (_, text) in &self.standards {
+            parts.push(text.to_string());
+        }
+
+        parts.push(VALIDATION_GATE.to_owned());
+
+        parts.join("\n\n---\n\n")
+    }
 }
 
 impl PromptComponents {
@@ -52,6 +152,13 @@ impl PromptComponents {
     /// 1. Project state line (`Project: {project}`)
     /// 2. Scope context (if provided)
     /// 3. Original prompt body
+    ///
+    /// # Note
+    ///
+    /// This synchronous constructor reads role/standards files with `std::fs`.
+    /// Callers running inside an async context should use [`StaticPrefixCache::load`]
+    /// once and then [`PromptComponents::build_with_cache`] per prompt to avoid
+    /// blocking the runtime.
     #[must_use]
     pub fn build(
         role: Option<&str>,
@@ -62,6 +169,26 @@ impl PromptComponents {
         prompt_body: &str,
     ) -> Self {
         let static_prefix = build_static_prefix(role, standards_dir, standards);
+        let dynamic_suffix = build_dynamic_suffix(project, scope, prompt_body);
+
+        Self {
+            static_prefix,
+            dynamic_suffix,
+        }
+    }
+
+    /// Build components using a pre-loaded [`StaticPrefixCache`].
+    ///
+    /// WHY: Performs no file I/O, so it is safe to call from an async stage for
+    /// every prompt after the cache has been loaded once.
+    #[must_use]
+    pub fn build_with_cache(
+        cache: &StaticPrefixCache,
+        project: &str,
+        scope: Option<&str>,
+        prompt_body: &str,
+    ) -> Self {
+        let static_prefix = cache.build_static_prefix();
         let dynamic_suffix = build_dynamic_suffix(project, scope, prompt_body);
 
         Self {
@@ -308,5 +435,48 @@ mod tests {
         );
 
         assert!(components.static_prefix.contains("Use clippy."));
+    }
+
+    #[tokio::test]
+    async fn cache_loads_role_and_standards_once() {
+        let dir = TempDir::new().unwrap();
+        let role_path = dir.path().join("role.md");
+        {
+            let mut f = std::fs::File::create(&role_path).unwrap();
+            f.write_all(b"Cached role definition.").unwrap();
+        }
+        let std_path = dir.path().join("RUST.md");
+        {
+            let mut f = std::fs::File::create(&std_path).unwrap();
+            f.write_all(b"Cached standard.").unwrap();
+        }
+
+        let cache = StaticPrefixCache::load(
+            Some(role_path.to_str().unwrap()),
+            Some(dir.path()),
+            &["RUST".to_owned()],
+        )
+        .await
+        .expect("cache load should succeed");
+
+        let c1 = PromptComponents::build_with_cache(&cache, "proj1", Some("scope1"), "task one");
+        let c2 = PromptComponents::build_with_cache(&cache, "proj2", Some("scope2"), "task two");
+
+        assert_eq!(c1.static_prefix, c2.static_prefix);
+        assert!(c1.static_prefix.contains("Cached role definition."));
+        assert!(c1.static_prefix.contains("Cached standard."));
+        assert!(c1.static_prefix.contains("Validation Gate"));
+        assert_ne!(c1.dynamic_suffix, c2.dynamic_suffix);
+    }
+
+    #[tokio::test]
+    async fn cache_build_with_literal_role_skips_disk() {
+        // WHY: A role value that is not a path must be treated as literal text.
+        let cache = StaticPrefixCache::load(Some("Literal role."), None, &[])
+            .await
+            .expect("cache load should succeed");
+
+        let components = PromptComponents::build_with_cache(&cache, "proj", None, "body");
+        assert!(components.static_prefix.contains("Literal role."));
     }
 }
