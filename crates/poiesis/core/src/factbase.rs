@@ -502,10 +502,9 @@ fn source_inputs(source: &Source) -> Vec<&FactId> {
 // helper lets validation compare it against the factbase.
 fn expr_fact_ids(expr: &Expr) -> Vec<&FactId> {
     match expr {
-        Expr::Add { a, b }
-        | Expr::Sub { a, b }
-        | Expr::Mul { a, b }
-        | Expr::Div { a, b } => vec![a, b],
+        Expr::Add { a, b } | Expr::Sub { a, b } | Expr::Mul { a, b } | Expr::Div { a, b } => {
+            vec![a, b]
+        }
         Expr::Sum { terms } => terms.iter().collect(),
     }
 }
