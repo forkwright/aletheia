@@ -102,9 +102,22 @@ fn consume_number(
     chars: &mut std::iter::Peekable<std::str::CharIndices<'_>>,
 ) -> Result<(f64, usize), VerifyError> {
     // Find the end of the number by peeking ahead.
+    // WHY: f64::from_str accepts an optional signed exponent (`5e+3`,
+    // `2.1e-2`), so the scanner must consume a single `+` or `-` that
+    // immediately follows an `e` or `E`.
+    let mut last_was_e = false;
     let end = loop {
         match chars.peek() {
-            Some((_, c)) if c.is_ascii_digit() || *c == '.' || *c == 'e' || *c == 'E' => {
+            Some((_, c)) if c.is_ascii_digit() || *c == '.' => {
+                last_was_e = false;
+                chars.next();
+            }
+            Some((_, 'e' | 'E')) => {
+                last_was_e = true;
+                chars.next();
+            }
+            Some((_, '+' | '-')) if last_was_e => {
+                last_was_e = false;
                 chars.next();
             }
             Some((idx, _)) => break *idx,
@@ -312,6 +325,30 @@ mod tests {
     fn eval_negative_unary() {
         let v = eval("-5 + 3").expect("must eval");
         assert!(approx(v, -2.0), "-5 + 3 must be -2");
+    }
+
+    #[test]
+    fn eval_scientific_notation_positive_exponent() {
+        let v = eval("5e+3").expect("must eval");
+        assert!(approx(v, 5000.0), "5e+3 must be 5000");
+    }
+
+    #[test]
+    fn eval_scientific_notation_negative_exponent() {
+        let v = eval("5e-3").expect("must eval");
+        assert!(approx(v, 0.005), "5e-3 must be 0.005");
+    }
+
+    #[test]
+    fn eval_scientific_notation_float_with_signed_exponent() {
+        let v = eval("2.1e+10").expect("must eval");
+        assert!(approx(v, 2.1e10), "2.1e+10 must evaluate correctly");
+    }
+
+    #[test]
+    fn eval_scientific_notation_small_negative_exponent() {
+        let v = eval("2.1e-2").expect("must eval");
+        assert!(approx(v, 0.021), "2.1e-2 must be 0.021");
     }
 
     #[test]
