@@ -78,58 +78,19 @@ impl HttpEngine {
     }
 
     /// Spawn a subprocess and return a session handle.
-    ///
-    /// WHY: includes a tiny ETXTBSY retry loop. On Linux, `exec()` can return
-    /// ETXTBSY ("Text file busy") if the kernel's still cleaning up a
-    /// concurrent writer's handle on the binary, even when the writer has
-    /// closed the fd. This is benign in production (claude binary is
-    /// stable) but flaky in tests where mock scripts are written milliseconds
-    /// before exec. Retry up to 3 times with 5ms backoff. See #2990.
-    async fn launch(mut cmd: Command) -> Result<ProcessSessionHandle> {
+    fn launch(mut cmd: Command) -> Result<ProcessSessionHandle> {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
         // INVARIANT: kill_on_drop ensures cleanup if the handle is dropped
         // without explicit wait/abort.
         cmd.kill_on_drop(true);
 
-        let mut child = match cmd.spawn() {
-            Ok(c) => c,
-            Err(e) if e.raw_os_error() == Some(26) => {
-                // ETXTBSY = 26 on Linux. Retry up to 3 times.
-                let mut last_err = e;
-                let mut attempt = 0;
-                loop {
-                    attempt += 1;
-                    if attempt > 3 {
-                        return Err(error::EngineSnafu {
-                            detail: format!(
-                                "failed to spawn claude subprocess after {attempt} ETXTBSY retries: {last_err}"
-                            ),
-                        }
-                        .build());
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(5 * attempt)).await;
-                    match cmd.spawn() {
-                        Ok(c) => break c,
-                        Err(e2) if e2.raw_os_error() == Some(26) => {
-                            last_err = e2;
-                        }
-                        Err(e2) => {
-                            return Err(error::EngineSnafu {
-                                detail: format!("failed to spawn claude subprocess: {e2}"),
-                            }
-                            .build());
-                        }
-                    }
-                }
+        let mut child = cmd.spawn().map_err(|e| {
+            error::EngineSnafu {
+                detail: format!("failed to spawn claude subprocess: {e}"),
             }
-            Err(e) => {
-                return Err(error::EngineSnafu {
-                    detail: format!("failed to spawn claude subprocess: {e}"),
-                }
-                .build());
-            }
-        };
+            .build()
+        })?;
 
         let stdout = child.stdout.take().ok_or_else(|| {
             error::EngineSnafu {
@@ -220,7 +181,7 @@ impl DispatchEngine for HttpEngine {
                 "spawning session"
             );
 
-            let handle = Self::launch(cmd).await?;
+            let handle = Self::launch(cmd)?;
             let boxed: Box<dyn SessionHandle> = Box::new(handle);
             Ok(boxed)
         })
@@ -243,7 +204,7 @@ impl DispatchEngine for HttpEngine {
 
             tracing::debug!(session_id, prompt_len = prompt.len(), "resuming session");
 
-            let handle = Self::launch(cmd).await?;
+            let handle = Self::launch(cmd)?;
             let boxed: Box<dyn SessionHandle> = Box::new(handle);
             Ok(boxed)
         })
@@ -505,9 +466,10 @@ mod tests {
 
     #[test]
     fn http_engine_is_send_sync() {
-        const _: fn() = || {
-            fn assert<T: Send + Sync>() {}
-            assert::<HttpEngine>();
-        };
+        fn require_send_sync<T: Send + Sync>(_: &T) {}
+        let engine = HttpEngine::new("test-model");
+        require_send_sync(&engine);
+        let handle = std::thread::spawn(move || drop(engine));
+        assert!(handle.join().is_ok());
     }
 }
