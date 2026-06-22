@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use fjall::{KeyspaceCreateOptions, Readable as _, SingleWriterTxDatabase};
+use fjall::{KeyspaceCreateOptions, PersistMode, Readable as _, SingleWriterTxDatabase};
 use snafu::ResultExt as _;
 
 use crate::error::{self, Result};
@@ -47,6 +47,21 @@ impl TaskStateStore {
         })?;
 
         Ok(Self { db: fdb.db })
+    }
+
+    /// Flush the fjall journal to stable storage so committed writes survive
+    /// power loss or an unclean shutdown.
+    ///
+    /// Call this after every `tx.commit()` on the operational write path.
+    /// Task-state writes are low frequency (once per task completion), so the
+    /// synchronous fsync cost is acceptable.
+    fn ensure_durable(&self) -> Result<()> {
+        self.db.persist(PersistMode::SyncAll).map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall persist task-state: {e}"),
+            }
+            .build()
+        })
     }
 
     /// Load all persisted task states.
@@ -115,6 +130,93 @@ impl TaskStateStore {
             .build()
         })?;
 
+        // WHY(#5752): without an explicit fsync, tx.commit() leaves the
+        // task-state record in the OS page cache. A crash before the next
+        // fjall flush makes `restore_state()` read stale state and
+        // `check_missed_cron_catchup()` can re-fire a task that already ran.
+        self.ensure_durable()?;
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_and_load_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = TaskStateStore::open(tmp.path()).unwrap();
+
+        let state = TaskState {
+            task_id: "task::cleanup".to_owned(),
+            last_run_ts: Some("2026-06-22T12:00:00Z".to_owned()),
+            run_count: 7,
+            consecutive_failures: 1,
+            ..TaskState::default()
+        };
+
+        store.save(&state).unwrap();
+        let loaded = store.load_all().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].task_id, state.task_id);
+        assert_eq!(loaded[0].last_run_ts, state.last_run_ts);
+        assert_eq!(loaded[0].run_count, state.run_count);
+        assert_eq!(loaded[0].consecutive_failures, state.consecutive_failures);
+    }
+
+    #[test]
+    fn save_survives_store_reopen() {
+        // WHY(#5752): this test simulates a daemon restart. The store must
+        // fsync on save so the task-state record is still present after the
+        // old handle is dropped and a new one opens the same directory.
+        let tmp = tempfile::tempdir().unwrap();
+
+        {
+            let store = TaskStateStore::open(tmp.path()).unwrap();
+            let state = TaskState {
+                task_id: "task::knowledge-maintenance".to_owned(),
+                last_run_ts: Some("2026-06-22T15:30:00Z".to_owned()),
+                run_count: 3,
+                consecutive_failures: 0,
+                ..TaskState::default()
+            };
+            store.save(&state).unwrap();
+        }
+
+        let reopened = TaskStateStore::open(tmp.path()).unwrap();
+        let loaded = reopened.load_all().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].task_id, "task::knowledge-maintenance");
+        assert_eq!(loaded[0].run_count, 3);
+    }
+
+    #[test]
+    fn save_updates_existing_task_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = TaskStateStore::open(tmp.path()).unwrap();
+
+        store
+            .save(&TaskState {
+                task_id: "task::drift".to_owned(),
+                run_count: 1,
+                ..TaskState::default()
+            })
+            .unwrap();
+        store
+            .save(&TaskState {
+                task_id: "task::drift".to_owned(),
+                run_count: 2,
+                last_run_ts: Some("2026-06-22T16:00:00Z".to_owned()),
+                ..TaskState::default()
+            })
+            .unwrap();
+
+        let loaded = store.load_all().unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].run_count, 2);
+        assert_eq!(loaded[0].last_run_ts, Some("2026-06-22T16:00:00Z".to_owned()));
     }
 }
