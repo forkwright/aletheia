@@ -230,21 +230,19 @@ async fn execute_command(
             .get_config(nous_id)
             .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()));
         match store {
-            Some(knowledge_store) => {
-                match knowledge_store.find_skills_for_nous(nous_id, 50) {
-                    Ok(facts) => facts
-                        .iter()
-                        .map(|fact| {
-                            serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
-                                .map_or_else(|_| fact.id.to_string(), |skill| skill.name)
-                        })
-                        .collect(),
-                    Err(e) => {
-                        warn!(error = %e, "failed to load skills for nous");
-                        Vec::new()
-                    }
+            Some(knowledge_store) => match knowledge_store.find_skills_for_nous(nous_id, 50) {
+                Ok(facts) => facts
+                    .iter()
+                    .map(|fact| {
+                        serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
+                            .map_or_else(|_| fact.id.to_string(), |skill| skill.name)
+                    })
+                    .collect(),
+                Err(e) => {
+                    warn!(error = %e, "failed to load skills for nous");
+                    Vec::new()
                 }
-            }
+            },
             None => Vec::new(),
         }
     };
