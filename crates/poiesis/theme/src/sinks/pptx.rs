@@ -381,8 +381,8 @@ mod tests {
 
         // NOTE: regex is already a workspace dependency; this keeps the test
         // self-contained without adding an XML parser crate.
-        let re = regex::Regex::new(r#"Override\s+PartName="([^"]+)""#)
-            .expect("valid PartName regex");
+        let re =
+            regex::Regex::new(r#"Override\s+PartName="([^"]+)""#).expect("valid PartName regex");
         let overrides: Vec<&str> = re
             .captures_iter(&xml)
             .map(|cap| cap.get(1).expect("PartName capture group").as_str())
