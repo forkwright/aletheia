@@ -15,8 +15,7 @@ use std::default::Default;
 use std::fmt::{Debug, Formatter};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use compact_str::CompactString;
 use crossbeam::channel::{Receiver, bounded, unbounded};
@@ -88,7 +87,7 @@ impl Drop for RunningQueryCleanup {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if let Some(handle) = map.remove(&self.id) {
-            handle.poison.0.store(true, Ordering::Relaxed);
+            handle.poison.set_killed();
         }
     }
 }
@@ -535,9 +534,17 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 }
 
-/// Used for user-initiated termination of running queries
+/// Used for user-initiated termination of running queries.
+///
+/// INVARIANT: `killed` and `deadline` are checked cooperatively by the query
+/// evaluator; `set_timeout` stores a monotonic deadline and `check` evaluates
+/// it, so no per-query thread is required.
 #[derive(Clone, Default)]
-pub struct Poison(pub(crate) Arc<AtomicBool>);
+pub struct Poison {
+    pub(crate) killed: Arc<AtomicBool>,
+    // WHY: parking_lot::Mutex avoids poisoned-lock failures on deadline reads.
+    pub(crate) deadline: Arc<parking_lot::Mutex<Option<Instant>>>,
+}
 
 /// Typed error for query cancellation: enables downstream matching without string parsing.
 #[derive(Debug, Snafu)]
@@ -545,19 +552,32 @@ pub struct Poison(pub(crate) Arc<AtomicBool>);
 pub(crate) struct ProcessKilled;
 
 impl Poison {
-    /// Check whether the query has been cancelled.
+    /// Check whether the query has been cancelled or has passed its timeout.
     ///
     /// # Errors
     ///
-    /// Returns a query-killed error if the user initiated termination.
+    /// Returns a query-killed error if the user initiated termination or the
+    /// timeout deadline has elapsed.
     #[must_use = "caller must propagate the query-killed error"]
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
-        if self.0.load(Ordering::Relaxed) {
+        if self.killed.load(Ordering::Relaxed) {
+            QueryKilledSnafu.fail()?;
+        }
+        if let Some(deadline) = *self.deadline.lock()
+            && Instant::now() >= deadline
+        {
+            self.killed.store(true, Ordering::Relaxed);
             QueryKilledSnafu.fail()?;
         }
         Ok(())
     }
+
+    /// Mark the query as killed without waiting for a timeout.
+    pub(crate) fn set_killed(&self) {
+        self.killed.store(true, Ordering::Relaxed);
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn set_timeout(&self, _secs: f64) -> Result<()> {
         UnsupportedSnafu {
@@ -566,16 +586,14 @@ impl Poison {
         }
         .fail()?
     }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn set_timeout(&self, secs: f64) -> Result<()> {
-        let pill = self.clone();
-        thread::spawn(move || {
-            // INVARIANT: Duration::from_secs_f64 saturates non-finite and
-            // out-of-range f64 to Duration::MAX, matching the previous
-            // truncating-cast behavior without UB.
-            thread::sleep(Duration::from_secs_f64(secs.max(0.0)));
-            pill.0.store(true, Ordering::Relaxed);
-        });
+        // INVARIANT: Duration::from_secs_f64 saturates non-finite and
+        // out-of-range f64 to Duration::MAX, matching the previous
+        // truncating-cast behavior without UB.
+        let deadline = Instant::now() + Duration::from_secs_f64(secs.max(0.0));
+        *self.deadline.lock() = Some(deadline);
         Ok(())
     }
 }
