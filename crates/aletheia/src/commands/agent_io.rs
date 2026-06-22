@@ -7,7 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::Args;
-use mneme::types::validate_session_or_agent_id;
+use mneme::types::parse_session_or_agent_id;
 use snafu::prelude::*;
 
 use crate::error::Result;
@@ -1337,13 +1337,13 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         })?;
 
         for session in &agent_file.sessions {
-            validate_session_or_agent_id(&session.id).with_whatever_context(|_| {
+            parse_session_or_agent_id(&session.id).with_whatever_context(|_| {
                 format!(
                     "imported session {} uses a reserved internal prefix",
                     session.id
                 )
             })?;
-            validate_session_or_agent_id(&session.session_key).with_whatever_context(|_| {
+            parse_session_or_agent_id(&session.session_key).with_whatever_context(|_| {
                 format!("imported session {} has a reserved session_key", session.id)
             })?;
 

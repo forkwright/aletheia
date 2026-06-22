@@ -127,8 +127,8 @@ pub mod types {
         SessionStatus, SessionType, UsageRecord,
     };
     pub use graphe::types::{
-        ReservedIdPrefixError, ReservedIdPrefixSnafu, is_reserved_session_prefix,
-        validate_session_or_agent_id,
+        ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,
+        parse_session_or_agent_id,
     };
 }
 

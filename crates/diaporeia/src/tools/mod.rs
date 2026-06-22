@@ -17,7 +17,7 @@ use tracing::Instrument as _;
 
 use koina::http::BEARER_PREFIX;
 use koina::id::SessionId;
-use mneme::types::validate_session_or_agent_id;
+use mneme::types::parse_session_or_agent_id;
 use organon::surface::{SurfaceAvailability, SurfaceInputs};
 use symbolon::types::Role;
 
@@ -556,7 +556,7 @@ impl DiaporeiaServer {
         self.rate_limiter.check(Tier::Expensive)?;
         require_role(self, &context, Role::Operator, "session_create").await?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
-        validate_session_or_agent_id(&params.nous_id).map_err(|e| {
+        parse_session_or_agent_id(&params.nous_id).map_err(|e| {
             rmcp::ErrorData::from(
                 InvalidInputSnafu {
                     message: e.to_string(),
@@ -564,7 +564,7 @@ impl DiaporeiaServer {
                 .build(),
             )
         })?;
-        validate_session_or_agent_id(session_key).map_err(|e| {
+        parse_session_or_agent_id(session_key).map_err(|e| {
             rmcp::ErrorData::from(
                 InvalidInputSnafu {
                     message: e.to_string(),
