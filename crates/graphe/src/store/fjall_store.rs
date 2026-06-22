@@ -125,6 +125,7 @@ const PARTITIONS: &[&str] = &[
 /// Open with [`SessionStore::open`] for persistent storage or
 /// [`SessionStore::open_in_memory`] for ephemeral storage (test-only; uses a
 /// `TempDir` that is cleaned up on drop).
+// kanon:ignore RUST/pub-visibility — re-exported by mneme (pub use graphe::store::SessionStore)
 pub struct SessionStore {
     db: Arc<SingleWriterTxDatabase>,
     path: PathBuf,
@@ -167,10 +168,14 @@ impl SessionStore {
             }
             .build()
         })?;
+        // WHY: mirrors the production layout where the caller passes
+        // `<data_dir>/sessions` to `open()`. Storing `<tmp_dir>/sessions` here
+        // ensures `self.path.parent()` resolves to an isolated per-test
+        // directory rather than the shared /tmp root.
         let path = fdb
             ._temp_dir
             .as_ref()
-            .map_or_else(std::env::temp_dir, |dir| dir.path().to_path_buf());
+            .map_or_else(std::env::temp_dir, |dir| dir.path().join("sessions"));
         Ok(Self::from_fjall_db(fdb, path))
     }
 
@@ -643,7 +648,7 @@ impl SessionStore {
         Ok(sessions)
     }
 
-    /// Sets the status field and refreshes the session's `updated_at` timestamp.
+    /// Overwrite the session status field and refresh its `updated_at` timestamp.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         let _guard = self
@@ -1951,17 +1956,23 @@ impl SessionStore {
             return Ok(0);
         }
 
+        // WHY: Span::days is a calendar unit that requires a timezone for
+        // Timestamp arithmetic — checked_sub returns None and silently falls
+        // back to UNIX_EPOCH. Hours are a fixed-duration time unit and work
+        // directly against Timestamp without a timezone context.
         let cutoff = Timestamp::now()
-            .checked_sub(i64::from(ttl_days).days())
+            .checked_sub((i64::from(ttl_days) * 24).hours())
             .unwrap_or(Timestamp::UNIX_EPOCH);
 
         let mut removed: u64 = 0;
-        let entries = fs::read_dir(&archive_dir)
-            .context(error::IoSnafu { path: archive_dir.clone() })?;
+        let entries = fs::read_dir(&archive_dir).context(error::IoSnafu {
+            path: archive_dir.clone(),
+        })?;
 
         for entry in entries {
-            let entry =
-                entry.context(error::IoSnafu { path: archive_dir.clone() })?;
+            let entry = entry.context(error::IoSnafu {
+                path: archive_dir.clone(),
+            })?;
             let path = entry.path();
             let is_json = path.extension() == Some(std::ffi::OsStr::new("json"));
             if !is_json {

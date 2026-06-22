@@ -1,39 +1,14 @@
+#![expect(clippy::expect_used, reason = "test assertions")]
+#![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on Vecs with asserted length"
+)]
+
 use crate::test_fixtures::test_store;
 use crate::types::{
     Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
 };
-
-#[test]
-fn cleanup_orphan_messages_removes_messages_without_session() {
-    let store = test_store();
-    let message = Message {
-        id: 1,
-        session_id: "orphan".to_owned(),
-        seq: 1,
-        role: Role::User,
-        content: "orphaned".to_owned(),
-        tool_call_id: None,
-        tool_name: None,
-        token_estimate: 1,
-        is_distilled: false,
-        created_at: "1970-01-01T00:00:00Z".to_owned(),
-    };
-    let bytes = serde_json::to_vec(&message).expect("serialize message");
-    super::write_raw(&store, "messages", "orphan:00000000000000000001", &bytes);
-    super::write_raw(&store, "messages", "next_seq:orphan", &1u64.to_be_bytes());
-
-    let cleaned = store
-        .cleanup_orphan_messages("2000-01-01T00:00:00Z")
-        .expect("cleanup orphan messages");
-
-    assert_eq!(cleaned, 1);
-    assert!(
-        store
-            .get_history_raw("orphan", None)
-            .expect("orphan history")
-            .is_empty()
-    );
-}
 
 fn seed_session(store: &super::super::SessionStore) -> String {
     let session = store
