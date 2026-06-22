@@ -67,6 +67,19 @@ fn truncate_output(mut output: String) -> String {
     output
 }
 
+/// WHY: Enforce the line limit when the backend (grep fallback) doesn't
+/// natively support --max-count. The ripgrep path passes `--max-count`
+/// directly, so it already honors the per-file contract.
+fn limit_lines(output: &str, max_lines: usize) -> String {
+    output.lines().take(max_lines).fold(String::new(), |mut acc, line| {
+        if !acc.is_empty() {
+            acc.push('\n');
+        }
+        acc.push_str(line);
+        acc
+    })
+}
+
 /// WHY: Subprocess commands (grep, find, ls) must not run indefinitely.
 /// A 60-second wall-clock timeout prevents hung processes from consuming
 /// resources. On timeout the shared runner kills and reaps the child.
@@ -154,6 +167,7 @@ impl ToolExecutor for GrepExecutor {
                     &path,
                     case_sensitive,
                     glob_filter,
+                    max_results,
                 )
             });
 
@@ -164,16 +178,6 @@ impl ToolExecutor for GrepExecutor {
                     }
 
                     let text = truncate_output(out.stdout);
-                    // WHY: Enforce the line limit in case the backend (grep fallback) doesn't
-                    // natively support --max-count.
-                    let n = usize::try_from(max_results).unwrap_or(usize::MAX);
-                    let text = text.lines().take(n).fold(String::new(), |mut acc, line| {
-                        if !acc.is_empty() {
-                            acc.push('\n');
-                        }
-                        acc.push_str(line);
-                        acc
-                    });
                     Ok(ToolResult::text(text))
                 }
                 Err(SubprocessError::Timeout(_)) => Ok(ToolResult::error(
@@ -232,6 +236,7 @@ fn try_grep_fallback(
     path: &Path,
     case_sensitive: bool,
     glob_filter: Option<&str>,
+    max_results: u64,
 ) -> std::result::Result<SubprocessOutput, SubprocessError> {
     let mut args = vec!["-rn".to_owned()];
     if !case_sensitive {
@@ -242,11 +247,14 @@ fn try_grep_fallback(
     }
     args.push(pattern.to_owned());
     args.push(path.to_string_lossy().into_owned());
-    run_command(
+    let mut output = run_command(
         runner,
         ctx,
         SubprocessRequest::new(program.to_os_string(), ctx.workspace.clone()).args(args),
-    )
+    )?;
+    let n = usize::try_from(max_results).unwrap_or(usize::MAX);
+    output.stdout = limit_lines(&output.stdout, n);
+    Ok(output)
 }
 
 struct FindExecutor {
