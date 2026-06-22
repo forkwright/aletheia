@@ -204,10 +204,7 @@ impl AfterActionStore {
     /// Returns `Ok(())` on success. Future implementations may perform I/O
     /// (e.g. persisting outcomes), in which case an `AfterActionStoreError`
     /// is returned and must be logged by the caller.
-    pub async fn record_outcome(
-        &self,
-        outcome: &TurnOutcome,
-    ) -> Result<(), AfterActionStoreError> {
+    pub async fn record_outcome(&self, outcome: &TurnOutcome) -> Result<(), AfterActionStoreError> {
         let key = (outcome.provider.clone(), outcome.task_category);
         let mut cache = self.cache.write().await;
         record_stats(cache.entry(key.clone()).or_default(), outcome.success);
