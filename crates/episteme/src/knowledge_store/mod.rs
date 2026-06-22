@@ -487,7 +487,7 @@ pub struct SerendipityDiscoveryReport {
     pub items_modified: u64,
     /// Number of candidate discoveries evaluated.
     pub discovery_count: u64,
-    /// ID of the fact selected for serendipity injection, if any.
+    /// Fact ID of the discovery selected for injection into the next turn, if any.
     pub selected_fact_id: Option<String>,
     /// Human-readable reason why the selected discovery was interesting.
     pub selected_connection_reason: Option<String>,

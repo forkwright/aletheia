@@ -3,10 +3,9 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 use snafu::ResultExt;
-
-use super::marshal::{extract_bool, extract_float, extract_int, extract_str};
 use tracing::instrument;
 
+use super::marshal::{extract_bool, extract_float, extract_int, extract_str};
 use super::{KnowledgeStore, queries};
 
 #[cfg(feature = "mneme-engine")]
@@ -427,7 +426,13 @@ impl KnowledgeStore {
             }
             .build()
         })?;
-        super::marshal::extract_optional_f32_vec(&row[0])
+        let val = row.get(0).ok_or_else(|| {
+            crate::error::EngineQuerySnafu {
+                message: format!("embedding row for {entity_id} is empty"),
+            }
+            .build()
+        })?;
+        super::marshal::extract_optional_f32_vec(val)
     }
 
     /// Populate `name_embedding` for entities whose column is NULL.
