@@ -136,7 +136,15 @@ impl Router for RecordingRouter {
         let outcome = outcome.clone();
         tokio::spawn(
             async move {
-                store.record_outcome(&outcome).await;
+                if let Err(error) = store.record_outcome(&outcome).await {
+                    tracing::error!(
+                        error = %error,
+                        provider = %outcome.provider,
+                        category = %outcome.task_category,
+                        success = outcome.success,
+                        "recording router failed to store after-action outcome"
+                    );
+                }
             }
             .instrument(tracing::Span::current()),
         );

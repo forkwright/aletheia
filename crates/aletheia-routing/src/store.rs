@@ -200,7 +200,14 @@ impl AfterActionStore {
     /// refresh window. That is an acceptable trade-off: the store still
     /// captures short-term signal and dispatch routing decisions in the same
     /// window benefit.
-    pub async fn record_outcome(&self, outcome: &TurnOutcome) {
+    ///
+    /// Returns `Ok(())` on success. Future implementations may perform I/O
+    /// (e.g. persisting outcomes), in which case an `AfterActionStoreError`
+    /// is returned and must be logged by the caller.
+    pub async fn record_outcome(
+        &self,
+        outcome: &TurnOutcome,
+    ) -> Result<(), AfterActionStoreError> {
         let key = (outcome.provider.clone(), outcome.task_category);
         let mut cache = self.cache.write().await;
         record_stats(cache.entry(key.clone()).or_default(), outcome.success);
@@ -208,6 +215,7 @@ impl AfterActionStore {
 
         let mut interactive = self.interactive.write().await;
         record_stats(interactive.entry(key).or_default(), outcome.success);
+        Ok(())
     }
 
     /// Re-scan the JSONL log directory and rebuild the in-memory cache.
@@ -674,7 +682,7 @@ mod tests {
                 success: i < 4,
                 is_interactive: true,
             };
-            store.record_outcome(&outcome).await;
+            store.record_outcome(&outcome).await.unwrap();
         }
 
         let stats = store
@@ -711,7 +719,7 @@ mod tests {
                 success: i == 0, // 1 success, 1 failure
                 is_interactive: true,
             };
-            store.record_outcome(&outcome).await;
+            store.record_outcome(&outcome).await.unwrap();
         }
 
         // Both paths' data should be visible in the same cache
