@@ -94,7 +94,10 @@ const REFRESH_THRESHOLD_SECS: u64 = 3600;
 // INVARIANT: the credential module does not redeclare the leeway value.
 // The alias imported above forces the OAuth expiry path to use the same
 // definition as the JWT validation path.
-const _: () = assert!(CLOCK_SKEW_LEEWAY_SECS == crate::jwt::DEFAULT_CLOCK_SKEW_LEEWAY_SECS);
+const _: () = assert!(
+    CLOCK_SKEW_LEEWAY_SECS == crate::jwt::DEFAULT_CLOCK_SKEW_LEEWAY_SECS,
+    "CLOCK_SKEW_LEEWAY_SECS must match DEFAULT_CLOCK_SKEW_LEEWAY_SECS to keep OAuth and JWT expiry checks consistent"
+);
 
 /// How often the background refresh task checks token expiry.
 const REFRESH_CHECK_INTERVAL_SECS: u64 = 60;
