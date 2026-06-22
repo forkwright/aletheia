@@ -256,7 +256,7 @@ pub(crate) fn Memory() -> Element {
             );
 
             if !search.is_empty() {
-                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(search);
                 url.push_str(&format!("&filter={encoded}"));
             }
 
@@ -265,7 +265,7 @@ pub(crate) fn Memory() -> Element {
             // store still narrows the rest client-side via the visible() set.
             if let Some(ft) = type_filter.first() {
                 let encoded: String =
-                    form_urlencoded::byte_serialize(ft.wire().as_bytes()).collect();
+                    keryx::url::encode_path_segment(ft.wire());
                 url.push_str(&format!("&fact_type={encoded}"));
             }
             if let Some(tier) = tier_filter.first() {
@@ -327,7 +327,7 @@ pub(crate) fn Memory() -> Element {
             }
 
             if !search.is_empty() {
-                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(search);
                 url.push_str(&format!("&q={encoded}"));
             }
 
@@ -347,7 +347,7 @@ pub(crate) fn Memory() -> Element {
 
             for et in &type_filter {
                 let encoded: String =
-                    form_urlencoded::byte_serialize(et.label().as_bytes()).collect();
+                    keryx::url::encode_path_segment(et.label());
                 url.push_str(&format!("&entity_type={encoded}"));
             }
 
@@ -356,7 +356,7 @@ pub(crate) fn Memory() -> Element {
             }
 
             for agent in &agent_filter {
-                let encoded: String = form_urlencoded::byte_serialize(agent.as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(agent);
                 url.push_str(&format!("&agent={encoded}"));
             }
 
@@ -424,7 +424,7 @@ pub(crate) fn Memory() -> Element {
         spawn(async move {
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = form_urlencoded::byte_serialize(id.as_bytes()).collect();
+            let encoded: String = keryx::url::encode_path_segment(id);
 
             let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
             let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");

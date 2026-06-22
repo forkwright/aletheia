@@ -167,7 +167,7 @@ pub(crate) fn ForgetFactDialog(
                                     let client = authenticated_client(&cfg);
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
+                                        keryx::url::encode_path_segment(id);
                                     let url = format!("{base}/api/v1/knowledge/facts/{encoded}/forget");
                                     match client
                                         .post(&url)
@@ -263,7 +263,7 @@ pub(crate) fn RestoreFactDialog(
                                     let client = authenticated_client(&cfg);
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
+                                        keryx::url::encode_path_segment(id);
                                     let url = format!("{base}/api/v1/knowledge/facts/{encoded}/restore");
                                     match client.post(&url).send().await {
                                         Ok(resp) if resp.status().is_success() => {
@@ -381,7 +381,7 @@ pub(crate) fn AdjustConfidenceDialog(
                                     let client = authenticated_client(&cfg);
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
+                                        keryx::url::encode_path_segment(id);
                                     let url = format!("{base}/api/v1/knowledge/facts/{encoded}/confidence");
                                     match client
                                         .put(&url)
@@ -495,7 +495,7 @@ pub(crate) fn ChangeSensitivityDialog(
                                     let client = authenticated_client(&cfg);
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
-                                        form_urlencoded::byte_serialize(id.as_bytes()).collect();
+                                        keryx::url::encode_path_segment(id);
                                     let url = format!("{base}/api/v1/knowledge/facts/{encoded}/sensitivity");
                                     match client
                                         .put(&url)

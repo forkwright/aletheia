@@ -396,7 +396,7 @@ fn load_file(
     spawn(async move {
         let client = authenticated_client(&cfg);
         let base = cfg.server_url.trim_end_matches('/');
-        let encoded: String = form_urlencoded::byte_serialize(path.as_bytes()).collect();
+        let encoded: String = keryx::url::encode_path_segment(path);
         let url = format!("{base}/api/v1/workspace/files/content?path={encoded}");
 
         match client.get(&url).send().await {

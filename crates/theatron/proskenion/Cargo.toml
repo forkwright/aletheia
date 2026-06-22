@@ -37,6 +37,11 @@ tag = "v1.3.0"
 version = "1.3.0"
 features = ["logging"]
 
+[workspace.dependencies.keryx]
+git = "https://github.com/forkwright/theatron.git"
+tag = "v1.3.0"
+version = "1.3.0"
+
 [package]
 name = "proskenion"
 # WHY: explicit values instead of workspace inheritance because this crate
@@ -62,6 +67,7 @@ themelion = { workspace = true }
 skeue = { workspace = true }
 gramma = { workspace = true }
 bathron = { workspace = true }
+keryx = { workspace = true }
 
 # UI framework
 # WHY: Pinned to the same exact patch theatron's workspace pins (=0.7.6).
@@ -113,9 +119,6 @@ tracing = "0.1"
 
 # Error handling
 snafu = "0.8"
-
-# URL encoding
-form_urlencoded = "1"
 
 # Futures
 futures-util = "0.3"

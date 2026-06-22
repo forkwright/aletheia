@@ -116,7 +116,7 @@ pub(crate) fn ToolDetailView(
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
             let days = date_range.days();
-            let encoded = form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>();
+            let encoded = keryx::url::encode_path_segment(name);
             let url = format!("{base}/api/tool-stats?days={days}&tool={encoded}");
 
             match client.get(&url).send().await {

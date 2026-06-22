@@ -149,13 +149,13 @@ pub(crate) fn Sessions() -> Element {
 
                 if let Some(cursor) = &cursor {
                     let encoded: String =
-                        form_urlencoded::byte_serialize(cursor.as_bytes()).collect();
+                        keryx::url::encode_path_segment(cursor);
                     url.push_str(&format!("&after={encoded}"));
                 }
 
                 if !search.is_empty() {
                     let encoded: String =
-                        form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                        keryx::url::encode_path_segment(search);
                     url.push_str(&format!("&search={encoded}"));
                 }
 
@@ -168,7 +168,7 @@ pub(crate) fn Sessions() -> Element {
 
                 for agent in &agent_filter {
                     let encoded: String =
-                        form_urlencoded::byte_serialize(agent.as_bytes()).collect();
+                        keryx::url::encode_path_segment(agent);
                     url.push_str(&format!("&nous_id={encoded}"));
                 }
 
@@ -233,7 +233,7 @@ pub(crate) fn Sessions() -> Element {
                 let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
                 let encoded: String =
-                    form_urlencoded::byte_serialize(session_id.as_ref().as_bytes()).collect();
+                    keryx::url::encode_path_segment(session_id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/history");
 
                 let mut detail = SessionDetailStore {
@@ -344,7 +344,7 @@ pub(crate) fn Sessions() -> Element {
                 let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
                 let encoded: String =
-                    form_urlencoded::byte_serialize(id.as_ref().as_bytes()).collect();
+                    keryx::url::encode_path_segment(id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/archive");
 
                 match client.post(&url).send().await {
@@ -380,7 +380,7 @@ pub(crate) fn Sessions() -> Element {
                 let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
                 let encoded: String =
-                    form_urlencoded::byte_serialize(id.as_ref().as_bytes()).collect();
+                    keryx::url::encode_path_segment(id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/unarchive");
 
                 match client.post(&url).send().await {

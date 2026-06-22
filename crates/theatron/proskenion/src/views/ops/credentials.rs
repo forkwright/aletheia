@@ -24,7 +24,7 @@ fn credential_validate_url(base: &str, id: &str) -> String {
 }
 
 fn credential_rotate_url(base: &str, provider: &str) -> String {
-    let encoded = form_urlencoded::byte_serialize(provider.as_bytes()).collect::<String>();
+    let encoded = keryx::url::encode_path_segment(provider);
     format!("{}/rotate?provider={encoded}", credentials_url(base))
 }
 
