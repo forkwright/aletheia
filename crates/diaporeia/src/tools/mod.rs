@@ -1909,7 +1909,7 @@ impl DiaporeiaServer {
             }
             other => Err(rmcp::ErrorData::from(
                 InvalidInputSnafu {
-                    message: format!("unknown action: {other}; expected add, list, or delete"),
+                    message: format!("unknown action: {other}; expected add, list, or delete"), // kanon:ignore RUST/format-sql — error message string, not a SQL query
                 }
                 .build(),
             )),
@@ -2464,7 +2464,7 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "knowledge-store")]
-    fn test_fact(id: &str, nous_id: &str, content: &str) -> mneme::knowledge::Fact {
+    fn make_fact(id: &str, nous_id: &str, content: &str) -> mneme::knowledge::Fact {
         use mneme::id::FactId;
         use mneme::knowledge::{
             EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
@@ -2506,7 +2506,7 @@ mod tests {
     }
 
     #[cfg(feature = "knowledge-store")]
-    fn test_entity(id: &str, name: &str, entity_type: &str) -> mneme::knowledge::Entity {
+    fn make_entity(id: &str, name: &str, entity_type: &str) -> mneme::knowledge::Entity {
         let now = jiff::Timestamp::now();
         mneme::knowledge::Entity {
             id: mneme::id::EntityId::new(id).expect("valid entity id"),
@@ -2519,7 +2519,7 @@ mod tests {
     }
 
     #[cfg(feature = "knowledge-store")]
-    fn test_relationship(src: &str, dst: &str, relation: &str) -> mneme::knowledge::Relationship {
+    fn make_relationship(src: &str, dst: &str, relation: &str) -> mneme::knowledge::Relationship {
         mneme::knowledge::Relationship {
             src: mneme::id::EntityId::new(src).expect("valid src id"),
             dst: mneme::id::EntityId::new(dst).expect("valid dst id"),
@@ -2570,7 +2570,7 @@ mod tests {
         );
     }
 
-    fn test_server_state(
+    fn make_server_state(
         store: Arc<tokio::sync::Mutex<mneme::store::SessionStore>>,
         oikos: Arc<taxis::oikos::Oikos>,
     ) -> Arc<crate::state::DiaporeiaState> {
@@ -2616,7 +2616,7 @@ mod tests {
         let store = Arc::new(tokio::sync::Mutex::new(
             mneme::store::SessionStore::open(&oikos.sessions_db()).expect("open sessions store"),
         ));
-        let state = test_server_state(Arc::clone(&store), oikos);
+        let state = make_server_state(Arc::clone(&store), oikos);
         let server =
             DiaporeiaServer::with_state(state, &taxis::config::McpRateLimitConfig::default());
 
@@ -2697,7 +2697,7 @@ mod tests {
     fn knowledge_search_uses_store_for_hit_and_miss() {
         let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
         store
-            .insert_fact(&test_fact(
+            .insert_fact(&make_fact(
                 "f-rust-search",
                 "alice",
                 "Rust borrow checker prevents memory unsafety",
@@ -2732,17 +2732,17 @@ mod tests {
     fn graph_neighbors_depth_expands_past_direct_neighbors() {
         let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
         for entity in [
-            test_entity("e1", "Alice", "person"),
-            test_entity("e2", "Aletheia", "project"),
-            test_entity("e3", "Diaporeia", "crate"),
-            test_entity("e4", "MCP", "protocol"),
+            make_entity("e1", "Alice", "person"),
+            make_entity("e2", "Aletheia", "project"),
+            make_entity("e3", "Diaporeia", "crate"),
+            make_entity("e4", "MCP", "protocol"),
         ] {
             store.insert_entity(&entity).expect("insert entity");
         }
         for relationship in [
-            test_relationship("e1", "e2", "works_on"),
-            test_relationship("e2", "e3", "contains"),
-            test_relationship("e3", "e4", "implements"),
+            make_relationship("e1", "e2", "works_on"),
+            make_relationship("e2", "e3", "contains"),
+            make_relationship("e3", "e4", "implements"),
         ] {
             store
                 .insert_relationship(&relationship)

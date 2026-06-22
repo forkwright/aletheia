@@ -9,9 +9,9 @@ use organon::receipts::{ReceiptLedger, ReceiptSigner};
 use organon::types::ToolGroupId;
 use tracing::{info, instrument};
 
-use crate::config::NousConfig;
-
 use mneme::types::parse_session_or_agent_id;
+
+use crate::config::NousConfig;
 
 /// Active session state held in memory.
 #[derive(Debug, Clone)]

@@ -1480,7 +1480,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 
         // Best-effort: remove marker on success. On failure the marker remains
         // so a re-run auto-enables force mode and resumes safely.
-        let _ = std::fs::remove_file(&resume_marker);
+        let _ = std::fs::remove_file(&resume_marker); // kanon:ignore RUST/no-silent-result-swallow — best-effort; if removal fails the marker persists so a re-run auto-enables force mode and resumes safely
     }
 
     // WHY: knowledge import is independent of session import. Previously this
@@ -1884,57 +1884,61 @@ fn format_pending_skill_for_review(
     use std::fmt::Write as _;
 
     let mut out = String::new();
-    let _ = writeln!(out, "  ID: {}", fact.id);
-    let _ = writeln!(out, "  Name: {}", ps.skill.name);
-    let _ = writeln!(
+    writeln!(out, "  ID: {}", fact.id).ok();
+    writeln!(out, "  Name: {}", ps.skill.name).ok();
+    writeln!(
         out,
         "  Description: {}",
         ps.skill.description.lines().next().unwrap_or("")
-    );
-    let _ = writeln!(out, "  Tools: {}", ps.skill.tools_used.join(", "));
-    let _ = writeln!(out, "  Tags: {}", ps.skill.domain_tags.join(", "));
-    let _ = writeln!(out, "  Steps: {}", ps.skill.steps.len());
-    let _ = writeln!(out, "  Status: {}", ps.status);
-    let _ = writeln!(out, "  Candidate: {}", ps.candidate_id);
+    )
+    .ok();
+    writeln!(out, "  Tools: {}", ps.skill.tools_used.join(", ")).ok();
+    writeln!(out, "  Tags: {}", ps.skill.domain_tags.join(", ")).ok();
+    writeln!(out, "  Steps: {}", ps.skill.steps.len()).ok();
+    writeln!(out, "  Status: {}", ps.status).ok();
+    writeln!(out, "  Candidate: {}", ps.candidate_id).ok();
     let source_session = ps
         .source_session_id
         .as_deref()
         .or(fact.provenance.source_session_id.as_deref())
         .or_else(|| ps.source_evidence.session_refs.first().map(String::as_str))
         .unwrap_or("unknown");
-    let _ = writeln!(out, "  Source session: {source_session}");
+    writeln!(out, "  Source session: {source_session}").ok();
     if !ps.source_evidence.session_refs.is_empty() {
-        let _ = writeln!(
+        writeln!(
             out,
             "  Evidence sessions: {}",
             ps.source_evidence.session_refs.join(", ")
-        );
+        )
+        .ok();
     }
     if !ps.source_evidence.sequence_hashes.is_empty() {
-        let _ = writeln!(
+        writeln!(
             out,
             "  Sequence hashes: {}",
             ps.source_evidence.sequence_hashes.join(", ")
-        );
+        )
+        .ok();
     }
     if let Some(ref audit) = ps.extraction_audit {
-        let _ = writeln!(
+        writeln!(
             out,
             "  Extraction: prompt {}:{}, response {}:{}",
             audit.user_prompt_ref.algorithm,
             audit.user_prompt_ref.digest,
             audit.response_ref.algorithm,
             audit.response_ref.digest
-        );
+        )
+        .ok();
     }
     if let Some(observation) = ps.source_evidence.observations.first() {
-        let _ = writeln!(out, "  Evidence tools:");
+        writeln!(out, "  Evidence tools:").ok();
         for tool in &observation.tool_calls {
-            let _ = writeln!(out, "{}", format_tool_evidence_for_review(tool));
+            writeln!(out, "{}", format_tool_evidence_for_review(tool)).ok();
         }
     }
-    let _ = writeln!(out, "  Extracted: {}", ps.extracted_at);
-    let _ = writeln!(out);
+    writeln!(out, "  Extracted: {}", ps.extracted_at).ok();
+    writeln!(out).ok();
     out
 }
 
