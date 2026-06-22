@@ -87,7 +87,12 @@ impl FinalizeToken {
     /// dedup guard on retry.
     #[must_use]
     pub fn stable_key(&self) -> String {
-        format!("finalize:{session_id}:{turn_id}:{stage}", session_id = self.session_id, turn_id = self.turn_id, stage = self.stage)
+        format!(
+            "finalize:{session_id}:{turn_id}:{stage}",
+            session_id = self.session_id,
+            turn_id = self.turn_id,
+            stage = self.stage
+        )
     }
 }
 

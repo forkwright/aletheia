@@ -68,18 +68,27 @@ impl WorkingCheckpointStore for InMemoryCheckpointStore {
     type Error = InMemoryCheckpointError;
 
     fn update(&self, key: &str, value: &str) -> Result<(), Self::Error> {
-        let mut guard = self.inner.lock().map_err(|_| InMemoryCheckpointError::Poisoned)?;
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| InMemoryCheckpointError::Poisoned)?;
         guard.insert(key.to_owned(), value.to_owned());
         Ok(())
     }
 
     fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
-        let guard = self.inner.lock().map_err(|_| InMemoryCheckpointError::Poisoned)?;
+        let guard = self
+            .inner
+            .lock()
+            .map_err(|_| InMemoryCheckpointError::Poisoned)?;
         Ok(guard.get(key).cloned())
     }
 
     fn list_keys(&self) -> Result<Vec<String>, Self::Error> {
-        let guard = self.inner.lock().map_err(|_| InMemoryCheckpointError::Poisoned)?;
+        let guard = self
+            .inner
+            .lock()
+            .map_err(|_| InMemoryCheckpointError::Poisoned)?;
         Ok(guard.keys().cloned().collect())
     }
 }
@@ -92,8 +101,13 @@ mod tests {
     #[test]
     fn in_memory_store_roundtrip() {
         let store = InMemoryCheckpointStore::new();
-        store.update("goal", "finish audit").expect("update succeeds");
-        assert_eq!(store.get("goal").expect("get succeeds"), Some("finish audit".to_owned()));
+        store
+            .update("goal", "finish audit")
+            .expect("update succeeds");
+        assert_eq!(
+            store.get("goal").expect("get succeeds"),
+            Some("finish audit".to_owned())
+        );
     }
 
     #[test]
@@ -101,7 +115,10 @@ mod tests {
         let store = InMemoryCheckpointStore::new();
         store.update("goal", "first").expect("update succeeds");
         store.update("goal", "second").expect("update succeeds");
-        assert_eq!(store.get("goal").expect("get succeeds"), Some("second".to_owned()));
+        assert_eq!(
+            store.get("goal").expect("get succeeds"),
+            Some("second".to_owned())
+        );
     }
 
     #[test]
