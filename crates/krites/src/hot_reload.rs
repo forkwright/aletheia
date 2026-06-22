@@ -145,7 +145,9 @@ impl HotReloader {
         let rule_store = Arc::new(ArcSwap::new(Arc::new(initial_ruleset)));
 
         let (reload_tx, reload_rx) = mpsc::channel::<ReloadEvent>(8);
-        let (notify_tx, mut notify_rx) = mpsc::unbounded_channel::<()>();
+        // WHY: capacity 1 is enough for debounced coalescing; duplicate tokens
+        // are noise and can be dropped without losing a reload signal.
+        let (notify_tx, mut notify_rx) = mpsc::channel::<()>(1);
 
         let watcher = {
             let notify_tx = notify_tx.clone();
@@ -156,7 +158,10 @@ impl HotReloader {
                             || event.kind.is_create()
                             || event.kind.is_remove())
                     {
-                        let _ = notify_tx.send(());
+                        // WHY: drop duplicate tokens on a full channel. The
+                        // debounce loop coalesces all tokens into one reload,
+                        // so an already-pending signal is sufficient.
+                        let _ = notify_tx.try_send(());
                     }
                 },
                 notify::Config::default(),
