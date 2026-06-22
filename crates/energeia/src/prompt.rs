@@ -236,11 +236,9 @@ pub async fn load_queue_async(dir: &Path) -> Result<Vec<PromptSpec>> {
 
     let mut specs: Vec<PromptSpec> = Vec::new();
 
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .context(IoSnafu { path: dir.to_owned() })?
-    {
+    while let Some(entry) = entries.next_entry().await.context(IoSnafu {
+        path: dir.to_owned(),
+    })? {
         let path: PathBuf = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;

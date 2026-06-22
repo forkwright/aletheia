@@ -15,6 +15,8 @@ use snafu::ResultExt as _;
 
 use crate::error::{IoSnafu, Result};
 
+const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
+
 /// Split prompt for cache-aware dispatch.
 ///
 /// The [`static_prefix`](Self::static_prefix) contains content identical
@@ -43,7 +45,7 @@ pub struct PromptComponents {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaticPrefixCache {
     role: Option<Arc<str>>,
-    standards: Vec<(String, Arc<str>>)>,
+    standards: Vec<(String, Arc<str>)>,
 }
 
 impl StaticPrefixCache {
@@ -58,18 +60,13 @@ impl StaticPrefixCache {
     ) -> Result<Self> {
         let role = if let Some(role_text) = role {
             let path = Path::new(role_text);
-            if tokio::fs::try_exists(path)
-                .await
-                .unwrap_or_else(|e| {
-                    tracing::warn!(path = %role_text, error = %e, "failed to stat role file");
-                    false
-                })
-            {
-                let content = tokio::fs::read_to_string(path)
-                    .await
-                    .context(IoSnafu {
-                        path: PathBuf::from(role_text),
-                    })?;
+            if tokio::fs::try_exists(path).await.unwrap_or_else(|e| {
+                tracing::warn!(path = %role_text, error = %e, "failed to stat role file");
+                false
+            }) {
+                let content = tokio::fs::read_to_string(path).await.context(IoSnafu {
+                    path: PathBuf::from(role_text),
+                })?;
                 Some(Arc::<str>::from(content))
             } else {
                 Some(Arc::<str>::from(role_text))
@@ -82,13 +79,10 @@ impl StaticPrefixCache {
         if let Some(dir) = standards_dir {
             for name in standards {
                 let path = dir.join(format!("{name}.md"));
-                if tokio::fs::try_exists(&path)
-                    .await
-                    .unwrap_or_else(|e| {
-                        tracing::warn!(path = %path.display(), error = %e, "failed to stat standard");
-                        false
-                    })
-                {
+                if tokio::fs::try_exists(&path).await.unwrap_or_else(|e| {
+                    tracing::warn!(path = %path.display(), error = %e, "failed to stat standard");
+                    false
+                }) {
                     match tokio::fs::read_to_string(&path).await {
                         Ok(text) => loaded_standards.push((name.clone(), Arc::<str>::from(text))),
                         Err(e) => {
@@ -109,8 +103,6 @@ impl StaticPrefixCache {
 
     /// Build the static prefix from cached role and standards contents.
     fn build_static_prefix(&self) -> String {
-        const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
-
         let mut parts: Vec<String> = Vec::new();
 
         if let Some(role) = &self.role
@@ -233,8 +225,6 @@ fn build_static_prefix(
     standards_dir: Option<&Path>,
     standards: &[String],
 ) -> String {
-    const VALIDATION_GATE: &str = "\n## Validation Gate\n\nBefore finishing, run the full validation suite (format, lint, test) and confirm all acceptance criteria pass.";
-
     let mut parts: Vec<String> = Vec::new();
 
     if let Some(role_text) = role {
