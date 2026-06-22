@@ -71,13 +71,16 @@ fn truncate_output(mut output: String) -> String {
 /// natively support --max-count. The ripgrep path passes `--max-count`
 /// directly, so it already honors the per-file contract.
 fn limit_lines(output: &str, max_lines: usize) -> String {
-    output.lines().take(max_lines).fold(String::new(), |mut acc, line| {
-        if !acc.is_empty() {
-            acc.push('\n');
-        }
-        acc.push_str(line);
-        acc
-    })
+    output
+        .lines()
+        .take(max_lines)
+        .fold(String::new(), |mut acc, line| {
+            if !acc.is_empty() {
+                acc.push('\n');
+            }
+            acc.push_str(line);
+            acc
+        })
 }
 
 /// WHY: Subprocess commands (grep, find, ls) must not run indefinitely.
