@@ -503,11 +503,9 @@ pub(crate) async fn execute_builtin_with_behavior(
         BuiltinTask::LessonExtraction => {
             execute_lesson_extraction(nous_id, knowledge_executor).await
         }
-        BuiltinTask::SelfPrompt => {
-            Ok(ExecutionResult::failed(Some(
-                "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
-            )))
-        }
+        BuiltinTask::SelfPrompt => Ok(ExecutionResult::failed(Some(
+            "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
+        ))),
         BuiltinTask::ProposeRules => {
             let data_dir = maintenance.map_or_else(
                 || {
