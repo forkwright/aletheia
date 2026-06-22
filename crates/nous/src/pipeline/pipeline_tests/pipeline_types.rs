@@ -216,6 +216,86 @@ async fn assemble_context_populates_pipeline() {
 }
 
 #[tokio::test]
+async fn assemble_context_conditional_turn_one_selects_cold_start() {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use taxis::oikos::Oikos;
+
+    use crate::bootstrap::TaskHint;
+    use crate::config::{NousConfig, PipelineConfig};
+
+    let dir = TempDir::new().expect("create temp dir");
+    let root = dir.path();
+    fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+    fs::create_dir_all(root.join("shared")).expect("create shared dir");
+    fs::create_dir_all(root.join("theke")).expect("create theke dir");
+    fs::create_dir_all(root.join("_llm")).expect("create _llm dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.")
+        .expect("write SOUL.md");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::write(
+        root.join("_llm/l1-context.md"),
+        "cold start l1 signal: ".to_owned() + &"word ".repeat(200),
+    )
+    .expect("write L1 context");
+
+    let oikos = Oikos::from_root(root);
+    let mut config = NousConfig {
+        id: Arc::from("test-agent"),
+        ..NousConfig::default()
+    };
+    // WHY: keep the bootstrap cap small so the large L1 section only fits when
+    // it is Required (cold start). In-session turns should drop it as Optional.
+    config.generation.bootstrap_max_tokens = 20;
+    let pipeline_config = PipelineConfig::default();
+
+    let mut cold_ctx = PipelineContext::default();
+    assemble_context_conditional(
+        &oikos,
+        &config,
+        &pipeline_config,
+        &mut cold_ctx,
+        Vec::new(),
+        TaskHint::General,
+        1,
+    )
+    .await
+    .expect("turn 1 context assembly should succeed");
+    let cold_prompt = cold_ctx.system_prompt.expect("system prompt present");
+    assert!(
+        cold_prompt.contains("cold start l1 signal"),
+        "turn 1 (cold start) should keep L1 content as Required"
+    );
+
+    let mut warm_ctx = PipelineContext::default();
+    assemble_context_conditional(
+        &oikos,
+        &config,
+        &pipeline_config,
+        &mut warm_ctx,
+        Vec::new(),
+        TaskHint::General,
+        2,
+    )
+    .await
+    .expect("turn 2 context assembly should succeed");
+    let warm_prompt = warm_ctx.system_prompt.expect("system prompt present");
+    assert!(
+        !warm_prompt.contains("cold start l1 signal"),
+        "turn 2 (in session) should drop L1 content as Optional under budget pressure"
+    );
+}
+
+#[tokio::test]
 async fn run_pipeline_simple() {
     use std::collections::HashSet;
     use std::fs;

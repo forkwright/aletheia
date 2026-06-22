@@ -745,6 +745,7 @@ pub async fn assemble_context(
         ctx,
         Vec::new(),
         TaskHint::General,
+        0,
     )
     .await
 }
@@ -774,6 +775,7 @@ pub async fn assemble_context_with_extra(
         ctx,
         extra_sections,
         TaskHint::General,
+        0,
     )
     .await
 }
@@ -783,12 +785,17 @@ pub async fn assemble_context_with_extra(
 /// Only workspace files relevant to the given [`TaskHint`] are loaded.
 /// Identity-tier files always load; operational files load based on the hint.
 ///
+/// `turn_number` controls cold-start recipe selection: turn 1 selects the
+/// [`ColdStart`](crate::bootstrap::LlmRecipe::ColdStart) recipe, which gives
+/// L1 workspace content Required priority. Other turns select the recipe
+/// implied by `task_hint`.
+///
 /// # Cancel safety
 ///
 /// Not cancel-safe. If cancelled after the bootstrap assembler has
 /// partially written to `ctx`, the context will be in an inconsistent
 /// state. Callers should not use this in `select!` branches.
-#[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint))]
+#[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint, turn_number))]
 pub async fn assemble_context_conditional(
     oikos: &Oikos,
     nous_config: &NousConfig,
@@ -796,7 +803,9 @@ pub async fn assemble_context_conditional(
     ctx: &mut PipelineContext,
     extra_sections: Vec<BootstrapSection>,
     task_hint: TaskHint,
+    turn_number: u64,
 ) -> crate::error::Result<()> {
+    let is_cold_start = turn_number == 1;
     assemble_context_conditional_with_cache(
         oikos,
         nous_config,
@@ -804,7 +813,7 @@ pub async fn assemble_context_conditional(
         ctx,
         extra_sections,
         task_hint,
-        crate::bootstrap::LlmRecipe::from_task_hint(task_hint, false),
+        crate::bootstrap::LlmRecipe::from_task_hint(task_hint, is_cold_start),
         None,
     )
     .await
@@ -817,7 +826,10 @@ pub async fn assemble_context_conditional(
 /// they are fresh (mtime unchanged and within TTL), eliminating redundant disk
 /// reads across pipeline turns (#3388). When `None`, behaviour matches the
 /// legacy path that re-reads every file every turn.
-#[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint))]
+///
+/// `turn_number` is forwarded to recipe selection so that turn 1 selects the
+/// cold-start recipe even when the caller already knows the desired recipe.
+#[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint, turn_number))]
 #[expect(
     clippy::too_many_arguments,
     reason = "recipe parameter required for explicit cold-start/refactor control (#3366)"
@@ -829,6 +841,7 @@ pub async fn assemble_context_conditional_with_cache(
     ctx: &mut PipelineContext,
     extra_sections: Vec<BootstrapSection>,
     task_hint: TaskHint,
+    turn_number: u64,
     recipe: crate::bootstrap::LlmRecipe,
     cache: Option<&crate::bootstrap::BootstrapFileCache>,
 ) -> crate::error::Result<()> {
@@ -988,6 +1001,7 @@ pub(crate) async fn run_pipeline(
                 &mut ctx,
                 extra_bootstrap,
                 task_hint,
+                input.session.turn,
                 recipe,
                 bootstrap_cache,
                 emitter,

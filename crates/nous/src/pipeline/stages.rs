@@ -136,6 +136,7 @@ pub(super) async fn run_context_stage(
     ctx: &mut PipelineContext,
     extra_bootstrap: Vec<BootstrapSection>,
     task_hint: TaskHint,
+    turn_number: u64,
     recipe: LlmRecipe,
     bootstrap_cache: Option<&BootstrapFileCache>,
     emitter: &EventEmitter,
@@ -154,6 +155,7 @@ pub(super) async fn run_context_stage(
         ctx,
         extra_bootstrap,
         task_hint,
+        turn_number,
         recipe,
         bootstrap_cache,
     )
