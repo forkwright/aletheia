@@ -260,7 +260,7 @@ impl AfterActionStore {
         path: &Path,
         map: &mut HashMap<(ProviderId, TaskCategory), RollingStats>,
     ) -> Result<(), AfterActionStoreError> {
-        let file = match tokio::fs::File::open(path).await {
+        let file = match tokio::fs::File::open(path).await { // kanon:ignore PERFORMANCE/no-blocking-io-in-async — uses tokio::fs async API, not blocking std::fs
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
             Err(e) => {
