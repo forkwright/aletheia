@@ -246,8 +246,11 @@ impl PingPongDetector {
         if self.ring.len() >= self.k {
             // WHY: avoid a per-call Vec allocation; make_contiguous gives a
             // borrowed tail slice while preserving logical order.
-            let len = self.ring.len();
-            let tail = &self.ring.make_contiguous()[len - self.k..];
+            let contiguous = self.ring.make_contiguous();
+            let len = contiguous.len();
+            let Some(tail) = contiguous.get(len - self.k..) else {
+                return Ok(());
+            };
             if let Some((a, b)) = Self::is_strict_alternation(tail) {
                 return PingPongDetectedSnafu {
                     tool_a: format!("{:016x}", a.name_hash),

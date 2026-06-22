@@ -577,7 +577,7 @@ mod tests {
         assert_eq!(l.in_flight(), 0);
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time trait bound check; compilation fails if bounds are not satisfied
     fn limiter_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<AdaptiveConcurrencyLimiter>();
@@ -734,7 +734,7 @@ mod tests {
         assert_eq!(lim.limit(), 5, "error should decrease limit");
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time trait bound check; compilation fails if bounds are not satisfied
     fn layer_is_clone_send() {
         fn assert_clone_send<T: Clone + Send>() {}
         assert_clone_send::<ConcurrencyLayer>();
