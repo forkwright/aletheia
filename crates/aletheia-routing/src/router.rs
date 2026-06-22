@@ -1,7 +1,7 @@
 //! The [`Router`] trait, the core abstraction shared between dispatch and
 //! interactive routing paths.
 
-use crate::types::{RequestFeatures, RoutingDecision, RouterError, TurnOutcome};
+use crate::types::{RequestFeatures, RouterError, RoutingDecision, TurnOutcome};
 
 /// Re-export `BoxFuture` for use in [`Router`] implementations.
 ///
