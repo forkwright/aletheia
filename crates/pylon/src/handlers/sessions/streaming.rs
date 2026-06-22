@@ -1435,9 +1435,6 @@ pub async fn reconnect_turn(
     let max_live = Duration::from_secs(5 * 60);
 
     let reconnect_task = tokio::spawn(async move {
-        let deadline = tokio::time::sleep(max_live);
-        tokio::pin!(deadline);
-
         let mut last_seq = last_event_id;
         let initial = handle.snapshot_after(last_seq).await;
         let live = initial.state == crate::turn_buffer::TurnState::Running;
@@ -1461,40 +1458,42 @@ pub async fn reconnect_turn(
 
         // Replay and stream: snapshot_after is race-free (WHY: see #5453).
         let mut snapshot = initial;
-        loop {
-            for event in snapshot.events {
-                let sse_event = Event::default()
-                    .event(event.event_type)
-                    .data(event.data)
-                    .id(event.seq.to_string());
-                last_seq = event.seq;
-                if tx.send(Ok(sse_event)).await.is_err() {
-                    return;
+        // SAFETY: cancel-safe. timeout wraps a future and is cancel-safe.
+        let timed_out = tokio::time::timeout(max_live, async move {
+            loop {
+                for event in snapshot.events {
+                    let sse_event = Event::default()
+                        .event(event.event_type)
+                        .data(event.data)
+                        .id(event.seq.to_string());
+                    last_seq = event.seq;
+                    if tx.send(Ok(sse_event)).await.is_err() {
+                        return;
+                    }
                 }
-            }
 
-            if snapshot.state != crate::turn_buffer::TurnState::Running {
-                break;
-            }
-
-            tokio::select! {
-                biased;
-                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                () = shutdown_token.cancelled() => {
-                    tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                if snapshot.state != crate::turn_buffer::TurnState::Running {
                     break;
                 }
-                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                () = task_cancel.cancelled() => break,
-                // SAFETY: cancel-safe. tokio::time::sleep is cancel-safe.
-                () = &mut deadline => {
-                    tracing::warn!("reconnect_turn exceeded max live time; closing stream");
-                    break;
+
+                tokio::select! {
+                    biased;
+                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                    () = shutdown_token.cancelled() => {
+                        tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                        break;
+                    }
+                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                    () = task_cancel.cancelled() => break,
+                    // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
+                    () = snapshot.notified => {}
                 }
-                // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
-                () = snapshot.notified => {}
+                snapshot = handle.snapshot_after(last_seq).await;
             }
-            snapshot = handle.snapshot_after(last_seq).await;
+        })
+        .await;
+        if timed_out.is_err() {
+            tracing::warn!("reconnect_turn exceeded max live time; closing stream");
         }
     });
 
