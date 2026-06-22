@@ -244,13 +244,11 @@ impl PingPongDetector {
         self.ring.push_back(sig);
 
         if self.ring.len() >= self.k {
-            let tail: Vec<_> = self
-                .ring
-                .iter()
-                .skip(self.ring.len() - self.k)
-                .copied()
-                .collect();
-            if let Some((a, b)) = Self::is_strict_alternation(&tail) {
+            // WHY: avoid a per-call Vec allocation; make_contiguous gives a
+            // borrowed tail slice while preserving logical order.
+            let len = self.ring.len();
+            let tail = &self.ring.make_contiguous()[len - self.k..];
+            if let Some((a, b)) = Self::is_strict_alternation(tail) {
                 return PingPongDetectedSnafu {
                     tool_a: format!("{:016x}", a.name_hash),
                     tool_b: format!("{:016x}", b.name_hash),
