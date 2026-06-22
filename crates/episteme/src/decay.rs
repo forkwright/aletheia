@@ -279,6 +279,15 @@ pub(crate) fn compute_effective_stability_with_reinforcement(
     let base = crate::recall::compute_effective_stability(fact_type, tier, access_count);
     let reinforcement_mult =
         1.0 + (f64::from(reinforcement_count) * reinforcement_boost).min(max_reinforcement_bonus);
+
+    // WHY: Training facts are permanent records of session outcomes and are
+    // not subject to normal memory-decay mechanisms, including domain
+    // volatility. Applying the volatility multiplier would inflate their
+    // effective stability beyond the documented 4x base tier multiplier.
+    if tier == EpistemicTier::Training {
+        return base * reinforcement_mult;
+    }
+
     let volatility_mult = crate::succession::volatility_multiplier(volatility);
     base * reinforcement_mult * volatility_mult
 }
@@ -719,6 +728,28 @@ mod tests {
         assert!(
             (capped - DEFAULT_MAX_REINFORCEMENT_BONUS).abs() < f64::EPSILON,
             "reinforcement should cap at {DEFAULT_MAX_REINFORCEMENT_BONUS}, got {capped}"
+        );
+    }
+
+    /// WHY (#5869): Training facts are permanent and must not be affected by
+    /// domain volatility. In a stable domain the volatility multiplier would
+    /// otherwise inflate stability to 6x base instead of the documented 4x.
+    #[test]
+    fn training_tier_ignores_volatility_multiplier() {
+        let stability = compute_effective_stability_with_reinforcement(
+            FactType::Observation,
+            EpistemicTier::Training,
+            0,
+            0,
+            0.0, // stable domain: volatility_multiplier returns 1.5
+            DEFAULT_REINFORCEMENT_BOOST,
+            DEFAULT_MAX_REINFORCEMENT_BONUS,
+        );
+        // Observation base stability (72) * Training tier multiplier (4.0).
+        let expected = 72.0 * 4.0;
+        assert!(
+            (stability - expected).abs() < f64::EPSILON,
+            "Training tier should ignore volatility multiplier: {stability} != {expected}"
         );
     }
 
