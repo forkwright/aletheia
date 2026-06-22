@@ -218,9 +218,9 @@ impl DeliverableSpec {
 mod tests {
     use super::*;
     use crate::bodies::{Sheet, Slide, Workbook, WorkbookCell};
-    use crate::scalar::ScalarKind;
     use crate::factbase::{Fact, Source};
     use crate::ids::{ComponentId, FactId, SheetName, ThemeId};
+    use crate::scalar::ScalarKind;
     use crate::scalar::{AspectRatio, Scalar, Unit};
     use jiff::Timestamp;
     use serde_json::json;
@@ -291,14 +291,22 @@ mod tests {
             meta: Meta::new("Q1 receipts").unwrap(),
             theme: ThemeId::new("summus").unwrap(),
             facts: empty_factbase(),
-            body: Body::Workbook(Workbook { sheets: vec![sheet] }),
+            body: Body::Workbook(Workbook {
+                sheets: vec![sheet],
+            }),
         };
         let err = spec
             .validate(&ComponentRegistry::new(), &[])
             .expect_err("column_types width mismatch must reject");
         match err {
             crate::error::PoiesisError::Spec {
-                source: SpecError::SheetShapeMismatch { sheet, row, expected, got },
+                source:
+                    SpecError::SheetShapeMismatch {
+                        sheet,
+                        row,
+                        expected,
+                        got,
+                    },
             } => {
                 assert_eq!(sheet, "q1");
                 assert_eq!(row, None);
@@ -326,14 +334,22 @@ mod tests {
             meta: Meta::new("Q1 receipts").unwrap(),
             theme: ThemeId::new("summus").unwrap(),
             facts: empty_factbase(),
-            body: Body::Workbook(Workbook { sheets: vec![sheet] }),
+            body: Body::Workbook(Workbook {
+                sheets: vec![sheet],
+            }),
         };
         let err = spec
             .validate(&ComponentRegistry::new(), &[])
             .expect_err("row width mismatch must reject");
         match err {
             crate::error::PoiesisError::Spec {
-                source: SpecError::SheetShapeMismatch { sheet, row, expected, got },
+                source:
+                    SpecError::SheetShapeMismatch {
+                        sheet,
+                        row,
+                        expected,
+                        got,
+                    },
             } => {
                 assert_eq!(sheet, "q1");
                 assert_eq!(row, Some(0));
@@ -355,7 +371,9 @@ mod tests {
             meta: Meta::new("Q1 receipts").unwrap(),
             theme: ThemeId::new("summus").unwrap(),
             facts: empty_factbase(),
-            body: Body::Workbook(Workbook { sheets: vec![sheet] }),
+            body: Body::Workbook(Workbook {
+                sheets: vec![sheet],
+            }),
         };
         spec.validate(&ComponentRegistry::new(), &[])
             .expect("well-formed sheet validates");
