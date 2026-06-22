@@ -321,9 +321,8 @@ mod tests {
 
     #[test]
     fn seed_fact_increases_visible_count() {
-        let scope =
-            IsolatedMemory::open(EvalScope::new("run-1", "q-1").expect("valid scope"))
-                .expect("open scope");
+        let scope = IsolatedMemory::open(EvalScope::new("run-1", "q-1").expect("valid scope"))
+            .expect("open scope");
         assert_eq!(scope.visible_fact_count().expect("count"), 0);
         scope
             .seed_fact("fact-1", "seeded haystack fact")
