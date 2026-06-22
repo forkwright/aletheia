@@ -383,7 +383,9 @@ fn import_session_preserves_session_type() {
             artefact_meta: None,
         };
 
-        let imported = store.import_session(&session, false).expect("import succeeds");
+        let imported = store
+            .import_session(&session, false)
+            .expect("import succeeds");
         assert_eq!(
             imported.session_type, *stype,
             "imported session {id} must retain {stype:?}"
