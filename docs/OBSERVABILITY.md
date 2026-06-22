@@ -68,7 +68,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `aletheia_sessions_total` | Counter | `nous_id`, `session_type` | Sessions created |
+| `aletheia_sessions_total` | Counter | `session_type` | Sessions created |
 | `aletheia_backup_duration_seconds` | Histogram | `status` | Backup duration (`ok` or `error`) |
 
 > **Note:** `aletheia_backup_duration_seconds` is live. The runtime installs `RuntimeBackupMetricsRecorder` (`crates/aletheia/src/runtime/mod.rs:594`), and the daemon's whole-instance backup task records each run (`crates/daemon/src/execution.rs:436-448`). Semantics: failures always record `status="error"`; success records `status="ok"` only when the run produced a backup (`report.backup_path.is_some()`) — skipped backups record nothing. Backup staleness alerting should use the local backup set cadence configured under `[maintenance.backup]`.
