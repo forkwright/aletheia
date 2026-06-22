@@ -503,7 +503,7 @@ mod tests {
                 if n == 0 {
                     break;
                 }
-                buf.extend_from_slice(&chunk[..n]);
+                buf.extend_from_slice(chunk.get(..n).expect("n is bounded by chunk.len()"));
                 if buf.windows(4).any(|w| w == b"\r\n\r\n") {
                     break;
                 }

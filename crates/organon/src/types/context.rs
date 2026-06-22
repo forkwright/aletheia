@@ -131,7 +131,7 @@ impl ServerToolConfig {
 ///
 /// `general` is a standard client for outbound requests.
 /// `ssrf_safe` has auto-redirect disabled so tools that perform their own
-/// SSRF-safe redirect validation (web_fetch, http_request) can revalidate
+/// SSRF-safe redirect validation (`web_fetch`, `http_request`) can revalidate
 /// each hop before following it.
 ///
 /// WHY: reqwest does not expose a way to reconfigure an existing client's
