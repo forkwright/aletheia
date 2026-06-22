@@ -157,7 +157,10 @@ impl HotReloader {
     )]
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "called from tests; not yet wired into non-test Db startup")
+        expect(
+            dead_code,
+            reason = "called from tests; not yet wired into non-test Db startup"
+        )
     )]
     pub fn start(
         rule_dir: impl AsRef<Path>,
