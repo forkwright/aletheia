@@ -350,6 +350,7 @@ fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
 /// Check process memory (RSS) via `/proc/self/status` on Linux.
 ///
 /// Returns an attention item if RSS exceeds reasonable thresholds.
+#[cfg(target_os = "linux")]
 fn check_memory() -> Vec<AttentionItem> {
     match read_process_rss_kb() {
         Ok(resident_kb) => {
@@ -372,7 +373,15 @@ fn check_memory() -> Vec<AttentionItem> {
     }
 }
 
+/// Non-Linux stub: `/proc/self/status` is not available on this platform.
+#[cfg(not(target_os = "linux"))]
+fn check_memory() -> Vec<AttentionItem> {
+    tracing::trace!("process RSS check not supported on this platform");
+    Vec::new()
+}
+
 /// Read the `VmRSS` value from `/proc/self/status`.
+#[cfg(target_os = "linux")]
 fn read_process_rss_kb() -> std::io::Result<u64> {
     let contents = std::fs::read_to_string("/proc/self/status")?;
     parse_vmrss(&contents)
