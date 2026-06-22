@@ -42,6 +42,14 @@ pub struct PipelineInput {
     pub config: PipelineConfig,
 }
 
+impl PipelineInput {
+    /// Construct a pipeline input from its constituent parts.
+    #[must_use]
+    pub fn new(content: String, session: SessionState, config: PipelineConfig) -> Self {
+        Self { content, session, config }
+    }
+}
+
 /// Output from a pipeline stage.
 #[derive(Debug, Clone)]
 pub struct PipelineContext {
@@ -671,6 +679,14 @@ pub struct TurnResult {
     pub model_used: String,
     /// Opaque effective tool-surface hash refs observed during this turn.
     pub tool_surface_hashes: Vec<String>,
+}
+
+impl TurnResult {
+    /// Returns `true` when the pipeline fell back to degraded mode this turn.
+    #[must_use]
+    pub fn is_degraded(&self) -> bool {
+        self.degraded.is_some()
+    }
 }
 
 /// Re-export so callers can use `pipeline::DegradedMode` as the canonical path.

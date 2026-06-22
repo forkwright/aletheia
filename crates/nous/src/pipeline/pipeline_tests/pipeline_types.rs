@@ -4,15 +4,10 @@ use super::*;
 
 #[test]
 fn guard_result_equality() {
-    assert_eq!(
-        GuardResult::Rejected {
-            reason: "test".to_owned()
-        },
-        GuardResult::Rejected {
-            reason: "test".to_owned()
-        },
-        "Rejected with same reason should be equal"
-    );
+    let reason = "test".to_owned();
+    let r1 = GuardResult::Rejected { reason: reason.clone() };
+    let r2 = GuardResult::Rejected { reason };
+    assert_eq!(r1, r2, "Rejected with same reason should be equal");
     assert_ne!(
         GuardResult::Allow,
         GuardResult::Rejected {
@@ -250,6 +245,11 @@ async fn assemble_context_conditional_turn_one_selects_cold_start() {
         "cold start l1 signal: ".to_owned() + &"word ".repeat(200),
     )
     .expect("write L1 context");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+    )]
+    fs::write(root.join("_llm/manifest.toml"), "").expect("write manifest.toml");
 
     let oikos = Oikos::from_root(root);
     let mut config = NousConfig {
