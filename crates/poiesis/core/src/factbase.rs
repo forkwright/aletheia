@@ -452,8 +452,7 @@ impl Factbase {
                 }
                 return CycleSnafu { path }.fail();
             }
-            // Mark::None: proceed to mark InProgress and recurse
-            _ => {}
+            Some(Mark::None) | None => { /* not yet visited — proceed to mark InProgress */ }
         }
         marks.insert(node, Mark::InProgress);
         stack.push(node);
