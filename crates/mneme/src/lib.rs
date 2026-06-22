@@ -127,8 +127,8 @@ pub mod types {
         SessionStatus, SessionType, UsageRecord,
     };
     pub use graphe::types::{
-        ReservedIdPrefixError, ReservedIdPrefixSnafu, is_reserved_session_prefix,
-        validate_session_or_agent_id,
+        ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,
+        parse_session_or_agent_id,
     };
 }
 
@@ -354,7 +354,7 @@ mod facade_surface_tests {
         Visibility, default_stability_hours, far_future, format_timestamp, parse_timestamp,
     };
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time export check: if types can't be named, compilation fails
     fn curated_knowledge_surface_is_exported() {
         // Naming each curated type pins it to the facade contract without
         // constructing values; the function items pin the curated helpers.

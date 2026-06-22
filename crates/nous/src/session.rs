@@ -9,9 +9,9 @@ use organon::receipts::{ReceiptLedger, ReceiptSigner};
 use organon::types::ToolGroupId;
 use tracing::{info, instrument};
 
-use crate::config::NousConfig;
+use mneme::types::parse_session_or_agent_id;
 
-use mneme::types::validate_session_or_agent_id;
+use crate::config::NousConfig;
 
 /// Active session state held in memory.
 #[derive(Debug, Clone)]
@@ -112,8 +112,8 @@ impl SessionState {
         session_key: String,
         config: &NousConfig,
     ) -> Result<Self, mneme::types::ReservedIdPrefixError> {
-        validate_session_or_agent_id(&id)?;
-        validate_session_or_agent_id(&session_key)?;
+        parse_session_or_agent_id(&id)?;
+        parse_session_or_agent_id(&session_key)?;
         Ok(Self::new(id, session_key, config))
     }
 

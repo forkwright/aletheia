@@ -53,9 +53,14 @@ impl SessionType {
     }
 
     /// Classify session type from key pattern.
+    ///
+    /// WHY: Session keys encode origin conventions. Internal daemon work is
+    /// always background; one-shot tool prefixes are ephemeral; everything
+    /// else defaults to primary so user chat and imported/restored sessions
+    /// remain first-class.
     #[must_use]
     pub(crate) fn from_key(key: &str) -> Self {
-        if key.contains("prosoche") {
+        if key.starts_with("daemon:") || key.contains("prosoche") {
             Self::Background
         } else if key.starts_with("ask:")
             || key.starts_with("spawn:")
@@ -125,16 +130,30 @@ pub fn is_reserved_session_prefix(value: &str) -> bool {
         .any(|prefix| value.starts_with(prefix))
 }
 
-/// Validates that `value` does not start with a reserved internal prefix.
+/// A session or agent identifier that has been verified to not use a reserved prefix.
 ///
-/// Returns `Ok(())` for ordinary user-supplied identifiers and `Err` when the
-/// identifier targets an internal namespace such as `cross:`.
+/// Constructed only via [`parse_session_or_agent_id`]. Callers that need the
+/// raw string can call [`ValidatedId::as_str`] or let the value drop.
+pub struct ValidatedId<'a>(&'a str);
+
+impl<'a> ValidatedId<'a> {
+    /// Return the validated identifier as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &'a str {
+        self.0
+    }
+}
+
+/// Parses `value` as a user-supplied session or agent identifier.
+///
+/// Returns a [`ValidatedId`] when `value` does not start with any reserved
+/// internal prefix, or [`ReservedIdPrefixError`] when it does.
 ///
 /// # Errors
 ///
 /// Returns [`ReservedIdPrefixError`] when `value` starts with a reserved
-/// internal prefix.
-pub fn validate_session_or_agent_id(value: &str) -> Result<(), ReservedIdPrefixError> {
+/// internal prefix such as `cross:`.
+pub fn parse_session_or_agent_id(value: &str) -> Result<ValidatedId<'_>, ReservedIdPrefixError> {
     if let Some(prefix) = RESERVED_SESSION_PREFIXES
         .iter()
         .find(|prefix| value.starts_with(**prefix))
@@ -145,13 +164,14 @@ pub fn validate_session_or_agent_id(value: &str) -> Result<(), ReservedIdPrefixE
         }
         .build());
     }
-    Ok(())
+    Ok(ValidatedId(value))
 }
 
 /// Error returned when an identifier uses a reserved internal prefix.
 // kanon:ignore RUST/no-debug-derive-on-public-types — error contains only the offending prefix and value; safe to derive
 #[derive(Debug, snafu::Snafu)]
 #[snafu(visibility(pub))]
+#[non_exhaustive]
 pub enum ReservedIdPrefixError {
     /// Identifier starts with a reserved internal prefix.
     #[snafu(display("identifier uses reserved internal prefix '{prefix}': {value}"))]
@@ -368,11 +388,46 @@ mod tests {
 
     #[test]
     fn session_type_from_key() {
+        // WHY: user chat and imported/restored sessions must stay primary.
         assert_eq!(SessionType::from_key("main"), SessionType::Primary);
+        assert_eq!(SessionType::from_key("signal-group"), SessionType::Primary);
+        assert_eq!(
+            SessionType::from_key("imported:2026-01-01"),
+            SessionType::Primary
+        );
+        assert_eq!(
+            SessionType::from_key("restored:backup"),
+            SessionType::Primary
+        );
+
+        // WHY: daemon autonomous work and prosoche attention loops are
+        // background, not operator-primary sessions.
         assert_eq!(
             SessionType::from_key("prosoche-wake"),
             SessionType::Background
         );
+        assert_eq!(
+            SessionType::from_key("daemon:prosoche"),
+            SessionType::Background
+        );
+        assert_eq!(
+            SessionType::from_key("daemon:self-prompt"),
+            SessionType::Background
+        );
+        assert_eq!(
+            SessionType::from_key("daemon:evolution"),
+            SessionType::Background
+        );
+        assert_eq!(
+            SessionType::from_key("daemon:reflection"),
+            SessionType::Background
+        );
+        assert_eq!(
+            SessionType::from_key("daemon:probe-audit"),
+            SessionType::Background
+        );
+
+        // WHY: one-shot tool/dispatch sessions are ephemeral.
         assert_eq!(
             SessionType::from_key("ask:demiurge"),
             SessionType::Ephemeral
@@ -386,7 +441,6 @@ mod tests {
             SessionType::from_key("ephemeral:one-off"),
             SessionType::Ephemeral
         );
-        assert_eq!(SessionType::from_key("signal-group"), SessionType::Primary);
     }
 
     #[test]
@@ -564,7 +618,7 @@ mod tests {
 
     #[test]
     fn reserved_prefix_rejects_cross_session_key() {
-        let result = validate_session_or_agent_id("cross:alice");
+        let result = parse_session_or_agent_id("cross:alice");
         assert!(
             result.is_err(),
             "cross:-prefixed identifiers must be rejected for user-supplied IDs"
@@ -579,7 +633,7 @@ mod tests {
     fn reserved_prefix_accepts_ordinary_ids() {
         for id in ["ses-123", "alice", "ask:demiurge", "spawn:coder"] {
             assert!(
-                validate_session_or_agent_id(id).is_ok(),
+                parse_session_or_agent_id(id).is_ok(),
                 "'{id}' should not be a reserved prefix"
             );
         }
@@ -599,6 +653,10 @@ mod tests {
             SessionType::Background
         );
         assert_eq!(
+            SessionType::from_key("daemon:prosoche"),
+            SessionType::Background
+        );
+        assert_eq!(
             SessionType::from_key(SessionType::Background.as_str()),
             SessionType::Primary,
             "plain 'background' string has no prefix match, defaults to Primary"
@@ -609,6 +667,18 @@ mod tests {
                 SessionType::from_key(&key),
                 SessionType::Ephemeral,
                 "key '{key}' should resolve to Ephemeral"
+            );
+        }
+        for daemon_key in &[
+            "daemon:self-prompt",
+            "daemon:evolution",
+            "daemon:reflection",
+            "daemon:probe-audit",
+        ] {
+            assert_eq!(
+                SessionType::from_key(daemon_key),
+                SessionType::Background,
+                "key '{daemon_key}' should resolve to Background"
             );
         }
         assert_eq!(
