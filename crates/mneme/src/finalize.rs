@@ -16,6 +16,7 @@ use std::fmt;
 /// later stage implies all earlier stages have been reached for the same
 /// `FinalizeToken`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub enum FinalizeStage {
     /// No finalize side effects recorded yet.
     Started,
@@ -50,8 +51,10 @@ impl fmt::Display for FinalizeStage {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FinalizeToken {
     /// Owning session identifier.
+    // kanon:ignore RUST/primitive-for-domain-id WHY: SessionId lives in koina::id which is not a dependency of mneme; plain String until koina is wired as a dep
     pub session_id: String,
     /// Turn identifier that is being finalized.
+    // kanon:ignore RUST/primitive-for-domain-id WHY: TurnId lives in koina::id which is not a dependency of mneme; plain String until koina is wired as a dep
     pub turn_id: String,
     /// Last stage known to have been reached.
     pub stage: FinalizeStage,
@@ -97,7 +100,7 @@ impl FinalizeToken {
 }
 
 /// Diagnostic payload emitted when a partial finalization is detected or repaired.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PartialFinalizeDiagnostic {
     /// Token that was found in a non-terminal state.
     pub token: FinalizeToken,
@@ -105,8 +108,26 @@ pub struct PartialFinalizeDiagnostic {
     pub action: PartialFinalizeAction,
 }
 
+impl PartialFinalizeDiagnostic {
+    /// Create a diagnostic payload for a detected partial finalization.
+    #[must_use]
+    pub fn new(token: FinalizeToken, action: PartialFinalizeAction) -> Self {
+        Self { token, action }
+    }
+}
+
+impl fmt::Debug for PartialFinalizeDiagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PartialFinalizeDiagnostic")
+            .field("token_stage", &self.token.stage)
+            .field("action", &self.action)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Recovery action taken for a partial finalization.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PartialFinalizeAction {
     /// Missing stages were completed deterministically.
     Completed,
@@ -115,7 +136,6 @@ pub enum PartialFinalizeAction {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

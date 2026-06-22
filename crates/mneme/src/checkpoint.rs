@@ -8,13 +8,14 @@
 //! `episteme` internals.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 /// Storage backend for agent-curated working-memory checkpoints.
 ///
 /// WHY: Checkpoints are small, agent-readable key/value notes that should
 /// survive across turns and be injectable into later context. A dedicated
 /// trait keeps the hook/tool decoupled from any specific backend.
+// kanon:ignore RUST/pub-visibility WHY: WorkingCheckpointStore is the intended cross-crate storage contract for the mneme memory facade; downstream runtime crates wire a durable backend through this surface
 pub trait WorkingCheckpointStore: Send + Sync {
     /// Error returned by store operations.
     type Error: std::error::Error + Send + Sync + 'static;
@@ -36,7 +37,7 @@ pub trait WorkingCheckpointStore: Send + Sync {
 /// lightweight runtimes.
 #[derive(Debug, Default)]
 pub struct InMemoryCheckpointStore {
-    inner: Mutex<HashMap<String, String>>,
+    inner: RwLock<HashMap<String, String>>,
 }
 
 impl InMemoryCheckpointStore {
@@ -49,6 +50,7 @@ impl InMemoryCheckpointStore {
 
 /// Error type for the in-memory checkpoint store.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum InMemoryCheckpointError {
     /// The store lock was poisoned by a panicking thread.
     Poisoned,
@@ -64,14 +66,15 @@ impl std::fmt::Display for InMemoryCheckpointError {
 
 impl std::error::Error for InMemoryCheckpointError {}
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: InMemoryCheckpointStore is the reference implementation shipped alongside the trait; moving to a consumer crate would invert the dependency direction
 impl WorkingCheckpointStore for InMemoryCheckpointStore {
     type Error = InMemoryCheckpointError;
 
     fn update(&self, key: &str, value: &str) -> Result<(), Self::Error> {
         let mut guard = self
             .inner
-            .lock()
-            .map_err(|_| InMemoryCheckpointError::Poisoned)?;
+            .write()
+            .map_err(|_guard| InMemoryCheckpointError::Poisoned)?;
         guard.insert(key.to_owned(), value.to_owned());
         Ok(())
     }
@@ -79,16 +82,16 @@ impl WorkingCheckpointStore for InMemoryCheckpointStore {
     fn get(&self, key: &str) -> Result<Option<String>, Self::Error> {
         let guard = self
             .inner
-            .lock()
-            .map_err(|_| InMemoryCheckpointError::Poisoned)?;
+            .read()
+            .map_err(|_guard| InMemoryCheckpointError::Poisoned)?;
         Ok(guard.get(key).cloned())
     }
 
     fn list_keys(&self) -> Result<Vec<String>, Self::Error> {
         let guard = self
             .inner
-            .lock()
-            .map_err(|_| InMemoryCheckpointError::Poisoned)?;
+            .read()
+            .map_err(|_guard| InMemoryCheckpointError::Poisoned)?;
         Ok(guard.keys().cloned().collect())
     }
 }

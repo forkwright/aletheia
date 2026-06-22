@@ -369,7 +369,8 @@ mod facade_surface_tests {
         Visibility, default_stability_hours, far_future, format_timestamp, parse_timestamp,
     };
 
-    #[test] // kanon:ignore TESTING/tautological-test — compile-time export check: if types can't be named, compilation fails
+    // kanon:ignore TESTING/tautological-test WHY: this is a compile-time surface existence check; the test "passes" when the import block above compiles successfully
+    #[test]
     fn curated_knowledge_surface_is_exported() {
         // Naming each curated type pins it to the facade contract without
         // constructing values; the function items pin the curated helpers.
