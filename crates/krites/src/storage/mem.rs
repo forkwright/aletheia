@@ -113,7 +113,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     fn put(&mut self, key: &[u8], val: &[u8]) -> Result<()> {
         match self {
             MemTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
-            MemTx::Writer(_, cache) => {
+            MemTx::Writer(_, _, cache) => {
                 cache.insert(key.to_vec(), Some(val.to_vec()));
                 Ok(())
             }
@@ -135,7 +135,7 @@ impl<'s> StoreTx<'s> for MemTx<'s> {
     fn del(&mut self, key: &[u8]) -> Result<()> {
         match self {
             MemTx::Reader(_) => Err(WriteInReadTransactionSnafu.build()),
-            MemTx::Writer(_, cache) => {
+            MemTx::Writer(_, _, cache) => {
                 cache.insert(key.to_vec(), None);
                 Ok(())
             }

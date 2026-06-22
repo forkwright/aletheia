@@ -163,24 +163,6 @@ impl<'s> Storage<'s> for FjallStorage {
         Ok(())
     }
 
-    /// Verify the default fjall persist mode defers fsyncs for routine writes.
-    ///
-    /// WHY: The production memory path issues many small fact writes per turn.
-    /// Buffering by default avoids an fsync per transaction; durability can be
-    /// opted into through `DbConfig::with_persist_mode(PersistMode::SyncAll)`.
-    #[test]
-    fn default_persist_mode_is_buffer() -> InternalResult<()> {
-        let temp_dir = TempDir::new().unwrap_or_else(|_| {
-            unreachable!("INVARIANT: temp dir creation should not fail in tests")
-        });
-        let db = new_krites_fjall(temp_dir.path())?;
-        assert_eq!(
-            db.db.persist_mode,
-            crate::runtime::db::PersistMode::Buffer,
-            "default fjall persist mode should defer fsyncs"
-        );
-        Ok(())
-    }
 }
 
 #[non_exhaustive]
@@ -581,6 +563,20 @@ mod tests {
     use crate::data::value::{DataValue, Validity};
     use crate::error::InternalResult;
     use crate::runtime::db::ScriptMutability;
+
+    #[test]
+    fn default_persist_mode_is_buffer() -> InternalResult<()> {
+        let temp_dir = TempDir::new().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
+        let db = new_krites_fjall(temp_dir.path())?;
+        assert_eq!(
+            db.db.persist_mode,
+            crate::runtime::db::PersistMode::Buffer,
+            "default fjall persist mode should defer fsyncs"
+        );
+        Ok(())
+    }
 
     fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
         let temp_dir = TempDir::new().unwrap_or_else(|_| {
