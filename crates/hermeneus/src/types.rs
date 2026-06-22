@@ -31,7 +31,7 @@ impl ToolResultType {
     #[must_use]
     pub fn classify(tool_name: &str) -> Self {
         let lower = tool_name.to_lowercase();
-        // WHY: classification mirrors CC's COMPACTABLE_TOOLS whitelist.
+        // WHY: classification mirrors Claude Code's COMPACTABLE_TOOLS whitelist.
         // NOTE: web check before search because "web_search" should match WebResult, not SearchResult.
         if lower.contains("read")
             || lower.contains("edit")
@@ -73,6 +73,13 @@ pub struct ToolResultAge {
     pub tool_type: ToolResultType,
     /// Original token count before any compaction.
     pub original_tokens: u64,
+}
+
+impl ToolResultAge {
+    /// Construct aging metadata for a newly-created tool result.
+    pub fn new(created_at: jiff::Timestamp, tool_type: ToolResultType, original_tokens: u64) -> Self {
+        Self { created_at, tool_type, original_tokens }
+    }
 }
 
 /// A message in the conversation.
