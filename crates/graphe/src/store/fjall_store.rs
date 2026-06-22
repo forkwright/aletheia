@@ -31,6 +31,7 @@
     reason = "usize↔i64 for seq counters: values never exceed i64::MAX in practice"
 )]
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -1926,6 +1927,106 @@ impl SessionStore {
         }
 
         Ok(primary_message_count)
+    }
+
+    /// Prune session archive files older than `ttl_days` from the instance's
+    /// `archive/sessions/` directory.
+    ///
+    /// Only `.json` files are considered. Files whose metadata cannot be read,
+    /// or whose removal fails, are logged and skipped so that one bad archive
+    /// does not abort the whole retention pass.
+    ///
+    /// Returns the number of files removed.
+    ///
+    /// # Errors
+    /// Returns an error if the archive directory cannot be read.
+    #[instrument(skip(self))]
+    pub fn prune_session_archives(&self, ttl_days: u32) -> Result<u64> {
+        use jiff::{Timestamp, ToSpan as _};
+
+        // WHY: the store path is `<data_dir>/sessions`; archives live next to
+        // the store under `<data_dir>/archive/sessions`.
+        let archive_dir = self.session_archive_dir()?;
+        if !archive_dir.exists() {
+            return Ok(0);
+        }
+
+        let cutoff = Timestamp::now()
+            .checked_sub(i64::from(ttl_days).days())
+            .unwrap_or(Timestamp::UNIX_EPOCH);
+
+        let mut removed: u64 = 0;
+        let entries = fs::read_dir(&archive_dir).map_err(|e| {
+            error::IoSnafu {
+                path: archive_dir.clone(),
+                source: e,
+            }
+            .build()
+        })?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                error::IoSnafu {
+                    path: archive_dir.clone(),
+                    source: e,
+                }
+                .build()
+            })?;
+            let path = entry.path();
+            let is_json = path.extension() == Some(std::ffi::OsStr::new("json"));
+            if !is_json {
+                continue;
+            }
+
+            let metadata = match entry.metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "skipping archive file with unreadable metadata");
+                    continue;
+                }
+            };
+            let modified = match metadata.modified() {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "skipping archive file with unreadable mtime");
+                    continue;
+                }
+            };
+            let millis = match modified.duration_since(std::time::UNIX_EPOCH) {
+                Ok(d) => d.as_millis(),
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "skipping archive file with mtime before Unix epoch");
+                    continue;
+                }
+            };
+            let file_ts = jiff::Timestamp::from_millisecond(i64::try_from(millis).unwrap_or(0))
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+            if file_ts < cutoff {
+                if let Err(e) = fs::remove_file(&path) {
+                    warn!(path = %path.display(), error = %e, "failed to remove stale session archive");
+                    continue;
+                }
+                info!(path = %path.display(), ttl_days, "pruned stale session archive");
+                removed = removed.saturating_add(1);
+            }
+        }
+
+        Ok(removed)
+    }
+
+    /// Return the directory used for session JSON archives.
+    ///
+    /// WHY: callers outside graphe (e.g. `aletheia::session_retention`) compute
+    /// the same path as the store's parent directory plus `archive/sessions`.
+    /// Keeping the derivation here ensures both sides agree on the location.
+    fn session_archive_dir(&self) -> Result<PathBuf> {
+        let data_dir = self.path.parent().ok_or_else(|| {
+            storage_error(format!(
+                "session store path has no parent: {}",
+                self.path.display()
+            ))
+        })?;
+        Ok(data_dir.join("archive").join("sessions"))
     }
 
     /// Delete a blackboard entry. Only the original author can delete.
