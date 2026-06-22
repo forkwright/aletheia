@@ -236,8 +236,7 @@ async fn assemble_context_conditional_turn_one_selects_cold_start() {
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
-    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.")
-        .expect("write SOUL.md");
+    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").expect("write SOUL.md");
     #[expect(
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
