@@ -165,12 +165,14 @@ impl ToolExecutor for GrepExecutor {
                 try_grep_fallback(
                     &self.runner,
                     ctx,
-                    &self.grep_program,
-                    pattern,
-                    &path,
-                    case_sensitive,
-                    glob_filter,
-                    max_results,
+                    RgRequest {
+                        program: self.grep_program.as_os_str(),
+                        pattern,
+                        path: &path,
+                        max_results,
+                        case_sensitive,
+                        glob_filter,
+                    },
                 )
             });
 
@@ -234,28 +236,23 @@ fn try_rg(
 fn try_grep_fallback(
     runner: &SubprocessRunner,
     ctx: &ToolContext,
-    program: &OsStr,
-    pattern: &str,
-    path: &Path,
-    case_sensitive: bool,
-    glob_filter: Option<&str>,
-    max_results: u64,
+    request: RgRequest<'_>,
 ) -> std::result::Result<SubprocessOutput, SubprocessError> {
     let mut args = vec!["-rn".to_owned()];
-    if !case_sensitive {
+    if !request.case_sensitive {
         args.push("-i".to_owned());
     }
-    if let Some(glob) = glob_filter {
+    if let Some(glob) = request.glob_filter {
         args.push(format!("--include={glob}"));
     }
-    args.push(pattern.to_owned());
-    args.push(path.to_string_lossy().into_owned());
+    args.push(request.pattern.to_owned());
+    args.push(request.path.to_string_lossy().into_owned());
     let mut output = run_command(
         runner,
         ctx,
-        SubprocessRequest::new(program.to_os_string(), ctx.workspace.clone()).args(args),
+        SubprocessRequest::new(request.program.to_os_string(), ctx.workspace.clone()).args(args),
     )?;
-    let n = usize::try_from(max_results).unwrap_or(usize::MAX);
+    let n = usize::try_from(request.max_results).unwrap_or(usize::MAX);
     output.stdout = limit_lines(&output.stdout, n);
     Ok(output)
 }
@@ -460,7 +457,7 @@ impl ToolExecutor for LsExecutor {
 
             let path = canonicalize_and_revalidate(path, ctx, &input.name)?;
 
-            let entries = match std::fs::read_dir(&path) {
+            let mut entries = match tokio::fs::read_dir(&path).await {
                 Ok(rd) => rd,
                 Err(e) => {
                     return Ok(ToolResult::error(format!(
@@ -473,14 +470,14 @@ impl ToolExecutor for LsExecutor {
             let mut dirs: Vec<(String, u64, SystemTime)> = Vec::new();
             let mut files: Vec<(String, u64, SystemTime)> = Vec::new();
 
-            for entry in entries.flatten() {
+            while let Ok(Some(entry)) = entries.next_entry().await {
                 let name = entry.file_name().to_string_lossy().into_owned();
 
                 if !show_all && name.starts_with('.') {
                     continue;
                 }
 
-                let Ok(meta) = entry.metadata() else {
+                let Ok(meta) = entry.metadata().await else {
                     continue;
                 };
 
