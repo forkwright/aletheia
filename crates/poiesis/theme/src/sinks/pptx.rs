@@ -129,9 +129,9 @@ static CONTENT_TYPES: LazyLock<String> = LazyLock::new(|| {
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
-  <Override PartName="/ppt/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
-  <Override PartName="/ppt/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
-  <Override PartName="/ppt/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
   <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
 </Types>"#,
     )
@@ -359,5 +359,48 @@ mod tests {
         let a = emit_base_pptx(&summus()).expect("first");
         let b = emit_base_pptx(&summus()).expect("second");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
+    }
+
+    #[test]
+    fn pptx_content_types_override_part_names_resolve_to_zip_entries() {
+        // WHY: ECMA-376 §13.2.2 requires each Override PartName to match the
+        // actual ZIP entry path exactly; a mismatch makes the package malformed.
+        let bytes = emit_base_pptx(&summus()).expect("emit base pptx");
+        let cursor = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(cursor).expect("valid zip archive");
+
+        let mut content_types = archive
+            .by_name("[Content_Types].xml")
+            .expect("[Content_Types].xml entry");
+        let mut xml = String::new();
+        std::io::Read::read_to_string(&mut content_types, &mut xml)
+            .expect("read [Content_Types].xml as string");
+
+        let names: std::collections::HashSet<String> =
+            archive.file_names().map(ToOwned::to_owned).collect();
+
+        // NOTE: regex is already a workspace dependency; this keeps the test
+        // self-contained without adding an XML parser crate.
+        let re = regex::Regex::new(r#"Override\s+PartName="([^"]+)""#)
+            .expect("valid PartName regex");
+        let overrides: Vec<&str> = re
+            .captures_iter(&xml)
+            .map(|cap| cap.get(1).expect("PartName capture group").as_str())
+            .collect();
+        assert!(
+            !overrides.is_empty(),
+            "[Content_Types].xml must contain at least one Override"
+        );
+
+        for part_name in overrides {
+            // PartName is an absolute package path (`/ppt/...`); ZIP entry names
+            // omit the leading slash.
+            let entry_name = part_name.strip_prefix('/').unwrap_or(part_name);
+            assert!(
+                names.contains(entry_name),
+                "Override PartName {part_name:?} must resolve to a ZIP entry; \
+                 available entries: {names:?}"
+            );
+        }
     }
 }
