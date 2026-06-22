@@ -23,7 +23,8 @@ type Result<T> = std::result::Result<T, crate::error::WorkbookError>;
 ///
 /// `theme` drives header formatting via [`crate::format::header_format`] and
 /// cell number formats via [`crate::format::cell_format`].
-pub fn render_workbook( // kanon:ignore RUST/pub-visibility — public crate API re-exported from lib.rs; no sibling consumer yet
+pub fn render_workbook(
+    // kanon:ignore RUST/pub-visibility — public crate API re-exported from lib.rs; no sibling consumer yet
     wb: &Workbook,
     facts: &BTreeMap<FactId, ResolvedFact>,
     theme: &ResolvedTheme,
