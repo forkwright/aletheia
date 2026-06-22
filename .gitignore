@@ -142,6 +142,9 @@ target/
 .dispatch.err
 .dispatch*
 
+# Kanon substrate — runtime fjall key-value store; never source
+.kanon/substrate/
+
 # Dispatch-agent runtime artifacts — accidentally committed via #4401/#4408.
 # Out-of-tree dispatch build dir + per-vendor agent stdout logs; never source.
 target-local/
