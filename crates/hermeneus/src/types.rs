@@ -77,8 +77,16 @@ pub struct ToolResultAge {
 
 impl ToolResultAge {
     /// Construct aging metadata for a newly-created tool result.
-    pub fn new(created_at: jiff::Timestamp, tool_type: ToolResultType, original_tokens: u64) -> Self {
-        Self { created_at, tool_type, original_tokens }
+    pub fn new(
+        created_at: jiff::Timestamp,
+        tool_type: ToolResultType,
+        original_tokens: u64,
+    ) -> Self {
+        Self {
+            created_at,
+            tool_type,
+            original_tokens,
+        }
     }
 }
 
