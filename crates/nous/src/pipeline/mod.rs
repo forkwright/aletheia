@@ -46,7 +46,11 @@ impl PipelineInput {
     /// Construct a pipeline input from its constituent parts.
     #[must_use]
     pub fn new(content: String, session: SessionState, config: PipelineConfig) -> Self {
-        Self { content, session, config }
+        Self {
+            content,
+            session,
+            config,
+        }
     }
 }
 

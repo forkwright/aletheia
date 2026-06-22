@@ -5,7 +5,9 @@ use super::*;
 #[test]
 fn guard_result_equality() {
     let reason = "test".to_owned();
-    let r1 = GuardResult::Rejected { reason: reason.clone() };
+    let r1 = GuardResult::Rejected {
+        reason: reason.clone(),
+    };
     let r2 = GuardResult::Rejected { reason };
     assert_eq!(r1, r2, "Rejected with same reason should be equal");
     assert_ne!(
@@ -240,10 +242,11 @@ async fn assemble_context_conditional_turn_one_selects_cold_start() {
         clippy::disallowed_methods,
         reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
     )]
-    fs::write(
-        root.join("_llm/l1-context.md"),
-        "cold start l1 signal: ".to_owned() + &"word ".repeat(200),
-    )
+    fs::write(root.join("_llm/l1-context.md"), {
+        let mut s = String::from("cold start l1 signal: ");
+        s.push_str(&"word ".repeat(200));
+        s
+    })
     .expect("write L1 context");
     #[expect(
         clippy::disallowed_methods,
