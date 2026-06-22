@@ -76,6 +76,7 @@ impl RoleContract {
                 out.push_str("### Tool Group Policy\n\n");
                 out.push_str("- deny\n\n");
             }
+            _ => {}
         }
 
         if !self.constraints.is_empty() {
