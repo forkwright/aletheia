@@ -504,9 +504,6 @@ pub(crate) async fn execute_builtin_with_behavior(
             execute_lesson_extraction(nous_id, knowledge_executor).await
         }
         BuiltinTask::SelfPrompt => {
-            // SelfPrompt is dispatched inline by the runner after extracting
-            // a follow-up from prosoche output; reaching this arm via
-            // standalone task registration is a misconfiguration.
             Ok(ExecutionResult::failed(Some(
                 "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
             )))
