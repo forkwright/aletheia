@@ -10,7 +10,8 @@ use koina::id::{NousId, SessionId};
 use crate::error::PlanningAdapterError;
 use crate::testing::install_crypto_provider;
 use crate::types::{
-    PlanningPlanInput, PlanningService, ServerToolConfig, ToolContext, ToolHttpClients, ToolServices,
+    PlanningPlanInput, PlanningService, ServerToolConfig, ToolContext, ToolHttpClients,
+    ToolServices,
 };
 
 pub(super) fn test_ctx() -> ToolContext {

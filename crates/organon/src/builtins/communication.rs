@@ -337,8 +337,8 @@ mod tests {
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        CrossNousService, MessageService, ServerToolConfig, ToolContext, ToolHttpClients, ToolInput,
-        ToolServices,
+        CrossNousService, MessageService, ServerToolConfig, ToolContext, ToolHttpClients,
+        ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {

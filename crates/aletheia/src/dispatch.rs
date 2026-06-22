@@ -228,13 +228,15 @@ async fn execute_command(
     let skills: Vec<String> = nous_manager
         .get_config(nous_id)
         .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()))
-        .and_then(|knowledge_store| match knowledge_store.find_skills_for_nous(nous_id, 50) {
-            Ok(v) => Some(v),
-            Err(e) => {
-                warn!(error = %e, "failed to load skills for nous");
-                None
-            }
-        })
+        .and_then(
+            |knowledge_store| match knowledge_store.find_skills_for_nous(nous_id, 50) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    warn!(error = %e, "failed to load skills for nous");
+                    None
+                }
+            },
+        )
         .map(|facts| {
             facts
                 .iter()
@@ -328,8 +330,8 @@ mod tests {
     use taxis::oikos::Oikos;
     use tokio::sync::Mutex;
 
-    use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
     use super::*;
+    use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
 
     #[expect(
         clippy::disallowed_methods,

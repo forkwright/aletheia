@@ -10,7 +10,8 @@ use koina::id::{NousId, SessionId, ToolName};
 use super::*;
 use crate::testing::install_crypto_provider;
 use crate::types::{
-    ServerToolConfig, ToolContext, ToolGroupId, ToolGroupPolicy, ToolHttpClients, ToolInput, ToolServices,
+    ServerToolConfig, ToolContext, ToolGroupId, ToolGroupPolicy, ToolHttpClients, ToolInput,
+    ToolServices,
 };
 
 fn test_ctx() -> ToolContext {

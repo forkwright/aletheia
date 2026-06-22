@@ -137,13 +137,16 @@ impl ToolExecutor for WebFetchExecutor {
                 return Ok(ToolResult::error(msg));
             }
 
-            let response =
-                match get_with_safe_redirects(&services.http_clients.ssrf_safe, url, &TokioHostResolver)
-                    .await
-                {
-                    Ok(r) => r,
-                    Err(e) => return Ok(ToolResult::error(e)),
-                };
+            let response = match get_with_safe_redirects(
+                &services.http_clients.ssrf_safe,
+                url,
+                &TokioHostResolver,
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(e) => return Ok(ToolResult::error(e)),
+            };
 
             if !response.status().is_success() {
                 return Ok(ToolResult::error(format!("HTTP {}", response.status())));
@@ -357,7 +360,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolHttpClients, ToolServices};
+    use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolServices};
 
     use super::*;
 

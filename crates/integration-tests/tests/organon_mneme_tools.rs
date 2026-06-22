@@ -37,8 +37,8 @@ use organon::error::KnowledgeAdapterError;
 use organon::registry::ToolRegistry;
 use organon::testing::install_crypto_provider;
 use organon::types::{
-    FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext, ToolHttpClients,
-    ToolInput, ToolServices,
+    FactSummary, KnowledgeSearchService, MemoryResult, ServerToolConfig, ToolContext,
+    ToolHttpClients, ToolInput, ToolServices,
 };
 
 const KNOWLEDGE_DIM: usize = 384;
