@@ -139,6 +139,14 @@ pub mod types {
 /// downstream detect and recover partially finalized turns (#4691).
 pub mod finalize;
 
+/// Working-memory checkpoint storage contract.
+///
+/// WHY: the working-checkpoint hook is enabled by default but the runtime
+/// passes no store, leaving the hook/tool as no-ops. This module defines the
+/// storage surface so a downstream runtime can wire a durable backend
+/// through the memory boundary (#4688).
+pub mod checkpoint;
+
 // ── Training data types (eidos) ───────────────────────────────────────
 //
 // NOTE: training capture *logic* (the JSONL writer, quality gate, and
