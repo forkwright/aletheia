@@ -102,6 +102,9 @@ pub struct ClaimResult {
     pub pass: bool,
     /// Result of the arithmetic sub-check, if an `arithmetic` formula was provided.
     pub arith_check: Option<ArithCheck>,
+    /// Human-readable diagnostics for resolvable issues such as a broken `Ref`.
+    #[serde(default)]
+    pub diagnostics: Vec<String>,
 }
 
 /// Result of the arithmetic formula sub-check.
@@ -156,13 +159,22 @@ impl VerifyResult {
 
 fn verify_claim(claim: &Claim, resolved_claims: &HashMap<String, f64>) -> ClaimResult {
     let mut source_value: Option<f64> = None;
+    let mut diagnostics = Vec::new();
 
     for src in &claim.sources {
-        if let Some(v) = resolve_source(src, resolved_claims) {
-            source_value = Some(v);
-            break;
+        match resolve_source(src, resolved_claims) {
+            SourceResolution::Value(v) => {
+                source_value = Some(v);
+                break;
+            }
+            SourceResolution::Unresolvable { diagnostic } => {
+                // NOTE: keep trying later sources; a broken Ref should not
+                // hide a later resolvable source.
+                if let Some(msg) = diagnostic {
+                    diagnostics.push(msg);
+                }
+            }
         }
-        // None: source not resolvable (SQL or unresolved Ref) — try next.
     }
 
     let arith_result = claim.arithmetic.as_ref().and_then(|arith| {
@@ -195,17 +207,42 @@ fn verify_claim(claim: &Claim, resolved_claims: &HashMap<String, f64>) -> ClaimR
         unit: claim.unit.clone(),
         pass,
         arith_check: arith_result,
+        diagnostics,
     }
 }
 
-/// Resolve a single source to a scalar f64, or None if unresolvable.
+/// Outcome of resolving a single source.
 ///
-/// SQL sources always return None (execution not in scope for this crate).
-fn resolve_source(source: &Source, resolved_claims: &HashMap<String, f64>) -> Option<f64> {
+/// `Unresolvable` carries an optional diagnostic so that broken `Ref`s can be
+/// distinguished from intentionally skipped sources such as SQL.
+enum SourceResolution {
+    /// Source resolved to a numeric value.
+    Value(f64),
+    /// Source could not be resolved; an attached diagnostic explains why.
+    Unresolvable { diagnostic: Option<String> },
+}
+
+/// Resolve a single source.
+///
+/// SQL sources are always unresolvable (execution is not in scope for this
+/// crate). A `Ref` to a missing or forward-declared claim is unresolvable and
+/// carries a diagnostic so the caller can surface the authoring error.
+fn resolve_source(
+    source: &Source,
+    resolved_claims: &HashMap<String, f64>,
+) -> SourceResolution {
     match source {
-        Source::Sql { .. } => None,
-        Source::Derived { formula, .. } => arithmetic::eval(formula).ok(), // kanon:ignore RUST/silent-error-ok — arithmetic eval failure falls back to None; error detail not needed for source resolution
-        Source::Ref { ref_id } => resolved_claims.get(ref_id.as_str()).copied(),
+        Source::Sql { .. } => SourceResolution::Unresolvable { diagnostic: None },
+        Source::Derived { formula, .. } => arithmetic::eval(formula).map_or_else(
+            |_| SourceResolution::Unresolvable { diagnostic: None },
+            SourceResolution::Value,
+        ),
+        Source::Ref { ref_id } => match resolved_claims.get(ref_id.as_str()) {
+            Some(&value) => SourceResolution::Value(value),
+            None => SourceResolution::Unresolvable {
+                diagnostic: Some(format!("reference '{ref_id}' not found")),
+            },
+        },
     }
 }
 
@@ -331,6 +368,55 @@ mod tests {
     }
 
     #[test]
+    fn broken_reference_emits_diagnostic() {
+        let manifest = VerifyManifest {
+            report: "r.typ".to_owned(),
+            claims: vec![
+                Claim {
+                    id: "base".to_owned(),
+                    text: "100".to_owned(),
+                    value: 100.0,
+                    unit: "dollars".to_owned(),
+                    location: "line 1".to_owned(),
+                    sources: vec![Source::Derived {
+                        formula: "100".to_owned(),
+                        result: None,
+                    }],
+                    arithmetic: None,
+                    tolerance: 0.0,
+                    status: None,
+                },
+                Claim {
+                    id: "ref_check".to_owned(),
+                    text: "also 100".to_owned(),
+                    value: 100.0,
+                    unit: "dollars".to_owned(),
+                    location: "line 2".to_owned(),
+                    sources: vec![Source::Ref {
+                        ref_id: "does_not_exist".to_owned(),
+                    }],
+                    arithmetic: None,
+                    tolerance: 0.0,
+                    status: None,
+                },
+            ],
+        };
+        let v = Verifier::new();
+        let results = v.verify(&manifest);
+        assert_eq!(results.len(), 2, "must have two results");
+        assert!(results[0].pass, "base claim must PASS");
+        assert!(
+            results[1].pass,
+            "unresolvable reference-only claim must remain inconclusive (pass)"
+        );
+        assert_eq!(
+            results[1].diagnostics,
+            vec!["reference 'does_not_exist' not found"],
+            "broken reference must surface a diagnostic"
+        );
+    }
+
+    #[test]
     fn arithmetic_check_independent() {
         let manifest = VerifyManifest {
             report: "r.typ".to_owned(),
@@ -409,6 +495,7 @@ mod tests {
                 unit: "n".to_owned(),
                 pass: true,
                 arith_check: None,
+                diagnostics: vec![],
             },
             ClaimResult {
                 id: "b".to_owned(),
@@ -420,6 +507,7 @@ mod tests {
                 unit: "n".to_owned(),
                 pass: false,
                 arith_check: None,
+                diagnostics: vec![],
             },
         ];
         let r = VerifyResult::from_claims(claims);
