@@ -63,19 +63,18 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 |-------|------|---------|-------------|
 | `model.primary` | string | `"claude-sonnet-4-6"` | Primary model ID |
 | `model.fallbacks` | string[] | `[]` | Fallback model IDs, tried in order |
-| `context_tokens` | u32 | `200000` | Context window budget (tokens) |
-| `max_output_tokens` | u32 | `16384` | Max tokens per response |
-| `bootstrap_max_tokens` | u32 | `40000` | Max tokens for bootstrap context injection |
-| `timeout_seconds` | u32 | `300` | LLM call timeout |
-| `thinking_enabled` | bool | `false` | Enable extended thinking |
-| `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
-| `max_tool_iterations` | u32 | `200` | Safety limit on consecutive tool use per turn |
-| `allowed_roots` | string[] | `[]` | Filesystem paths the agent may access |
+| `contextTokens` | u32 | `200000` | Context window budget (tokens) |
+| `maxOutputTokens` | u32 | `16384` | Max tokens per response |
+| `bootstrapMaxTokens` | u32 | `40000` | Max tokens for bootstrap context injection |
+| `timeoutSeconds` | u32 | `300` | LLM call timeout |
+| `thinkingEnabled` | bool | `false` | Enable extended thinking |
+| `thinkingBudget` | u32 | `10000` | Max tokens for extended thinking |
+| `maxToolIterations` | u32 | `200` | Safety limit on consecutive tool use per turn |
+| `allowedRoots` | string[] | `[]` | Filesystem paths the agent may access |
 | `toolGroups` | `"all"`, `"deny"`, or string[] | `"deny"` | Tool-group policy. Missing or empty values deny all groups. |
-| `tool_timeouts` | object | see `agents.defaults.tool_timeouts` section | Per-tool execution timeout overrides |
-| `working_state_ttl_secs` | u64 | `604800` | Working-state expiry window (7 days) |
-| `working_state_max_task_stack` | usize | `10` | Maximum working-state task stack depth before oldest entries are evicted |
-| `tool_datalog_default_timeout_secs` | f64 | `5.0` | Default Datalog memory tool timeout |
+| `workingStateTtlSecs` | u64 | `604800` | Working-state expiry window (7 days) |
+| `workingStateMaxTaskStack` | usize | `10` | Maximum working-state task stack depth before oldest entries are evicted |
+| `toolDatalogDefaultTimeoutSecs` | f64 | `5.0` | Default Datalog memory tool timeout |
 
 #### agents.defaults.caching
 
@@ -83,13 +82,6 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether prompt caching is active |
 | `strategy` | string | `"auto"` | Caching strategy: `"auto"` (cache system prompt and large context blocks) or `"disabled"` |
-
-#### agents.defaults.tool_timeouts
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `default_ms` | u64 | `120000` | Default timeout for all tools (ms) |
-| `overrides` | map<string, u64> | `{}` | Per-tool timeout overrides keyed by tool name |
 
 ### agents.list[]
 
@@ -102,8 +94,8 @@ Each entry defines a nous (agent). Fields not specified inherit from `agents.def
 | `default` | bool | no | `false` | Default agent for unrouted messages |
 | `workspace` | string | yes | -- | Path to agent workspace directory |
 | `model` | object | no | inherits | Per-agent model override `{ primary, fallbacks }` |
-| `thinking_enabled` | bool | no | inherits | Per-agent thinking override |
-| `allowed_roots` | string[] | no | `[]` | Additional filesystem roots (merged with defaults) |
+| `thinkingEnabled` | bool | no | inherits | Per-agent thinking override |
+| `allowedRoots` | string[] | no | `[]` | Additional filesystem roots (merged with defaults) |
 | `domains` | string[] | no | `[]` | Knowledge domains (e.g. `"code"`, `"research"`) |
 
 ```toml
@@ -111,15 +103,9 @@ Each entry defines a nous (agent). Fields not specified inherit from `agents.def
 primary = "claude-sonnet-4-6"
 
 [agents.defaults]
-context_tokens = 200000
-thinking_enabled = false
+contextTokens = 200000
+thinkingEnabled = false
 toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
-
-[agents.defaults.tool_timeouts]
-default_ms = 120000
-
-[agents.defaults.tool_timeouts.overrides]
-exec = 300000
 
 [[agents.list]]
 id = "main"
@@ -130,7 +116,7 @@ workspace = "/srv/aletheia/instance/nous/main"
 id = "research"
 name = "Scholar"
 workspace = "/srv/aletheia/instance/nous/research"
-thinking_enabled = true
+thinkingEnabled = true
 domains = ["research", "analysis"]
 
 [agents.list.model]
@@ -534,7 +520,7 @@ Daemon watchdog, prosoche anomaly detection, and runner output summarization.
 ## tool_limits
 
 Deployment-wide organon tool size and timeout limits. Agent-specific overrides
-still belong under `agents.defaults.tool_timeouts`.
+are not supported; use `toolLimits` to configure deployment-wide defaults.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -818,7 +804,7 @@ packs = [
 
 ## sandbox
 
-Filesystem sandbox applied to tool execution. When enabled, tools are restricted to the paths explicitly listed in `agents.*.allowed_roots` plus any extra paths declared here.
+Filesystem sandbox applied to tool execution. When enabled, tools are restricted to the paths explicitly listed in `agents.defaults.allowedRoots` and per-agent `allowedRoots` plus any extra paths declared here.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

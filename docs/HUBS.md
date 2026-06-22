@@ -60,7 +60,7 @@ Navigation index for concepts that touch many components.
 
 **Contracts:**
 - Tools register with `name`, `description`, `schema`, typed tags, tool groups, and `auto_activate` flag (`organon::types`)
-- Tool dispatch caps at `max_tool_iterations` configured per agent (`nous::execute`)
+- Tool dispatch caps at `maxToolIterations` configured per agent (`nous::execute`)
 - Tool results must be backed by receipts when the active pipeline is verifying tool-use integrity
 - Tool results are encoded as `ContentBlock::ToolResult` and appended to turn history
 

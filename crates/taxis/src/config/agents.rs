@@ -240,6 +240,7 @@ impl Default for RecallSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentModelDefaults {
     /// Primary model and fallback chain.
     pub model: ModelSpec,
@@ -283,6 +284,7 @@ impl Default for AgentModelDefaults {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentDefaults {
     /// Model and generation settings.
     #[serde(flatten)]
@@ -370,6 +372,7 @@ impl Default for CachingConfig {
 /// Definition of a single nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct NousDefinition {
     /// Unique agent identifier (matches the `nous/{id}/` directory name).
     pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: id maps to the agent's directory name in TOML, not a runtime domain identifier
@@ -456,6 +459,7 @@ fn default_agent_enabled() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "hook toggles are a genuine set of independent feature flags, not a state machine"

@@ -186,7 +186,6 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         check_positive_u32(defaults, "contextTokens", errors);
         check_positive_u32(defaults, "maxOutputTokens", errors);
         check_positive_u32(defaults, "bootstrapMaxTokens", errors);
-        check_positive_u32(defaults, "timeoutSeconds", errors);
         check_positive_u32(defaults, "thinkingBudget", errors);
 
         // WHY: Cap token budgets at a sane maximum to prevent misconfiguration.
@@ -234,13 +233,6 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
             errors.push(format!(
                 "agency must be \"unrestricted\", \"standard\", or \"restricted\", got \"{agency}\""
             ));
-        }
-
-        if let Some(timeouts) = defaults.get("toolTimeouts")
-            && let Some(val) = timeouts.get("defaultMs").and_then(Value::as_u64)
-            && val == 0
-        {
-            errors.push("toolTimeouts.defaultMs must be positive".to_owned());
         }
 
         // INVARIANT: Bootstrap budget must fit within the context window.

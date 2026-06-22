@@ -271,6 +271,25 @@ fn minimal_yaml_parses() {
 }
 
 #[test]
+fn snake_case_agent_keys_are_rejected() {
+    let json = r#"{
+        "agents": {
+            "defaults": {
+                "context_tokens": 100000,
+                "max_output_tokens": 8192
+            },
+            "list": []
+        }
+    }"#;
+    let err = serde_json::from_str::<AletheiaConfig>(json)
+        .expect_err("snake_case agent keys should be rejected after fixing the schema");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "deny_unknown_fields should reject snake_case keys: {err}"
+    );
+}
+
+#[test]
 fn camel_case_compat() {
     let yaml = r#"{
         "agents": {

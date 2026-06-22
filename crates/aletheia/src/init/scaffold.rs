@@ -228,7 +228,7 @@ mode = "{auth_mode}"
 
 # --- Agents ---
 [agents.defaults]
-context_tokens = 200000  # auto-upgraded to 1M for Opus models
+contextTokens = 200000  # auto-upgraded to 1M for Opus models
 # Tool profile: least-privilege-starter
 toolGroups = ["read", "plan", "verify"]
 # Tool profile: full-power-local
@@ -237,11 +237,11 @@ toolGroups = ["read", "plan", "verify"]
 # configured external tool servers, and `spawn_subtask` delegates work to
 # child agents.
 # toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
-max_output_tokens = 16384
-timeout_seconds = 300
-# thinking_enabled = false
-# thinking_budget = 10000
-# max_tool_iterations = 50
+maxOutputTokens = 16384
+timeoutSeconds = 300
+# thinkingEnabled = false
+# thinkingBudget = 10000
+# maxToolIterations = 50
 
 [agents.defaults.model]
 primary = "{model}"
@@ -397,6 +397,36 @@ mod tests {
                 "rendered config must parse for model id {model}"
             );
         }
+    }
+
+    #[test]
+    fn render_config_uses_schema_valid_agent_keys() {
+        use taxis::config::AletheiaConfig;
+
+        let answers = Answers {
+            root: PathBuf::from("/tmp/aletheia-init"),
+            api_key: None,
+            api_provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-6".to_owned(),
+            agent_id: "alice".to_owned(),
+            agent_name: "Alice".to_owned(),
+            bind: "localhost".to_owned(),
+            auth_mode: "none".to_owned(),
+            timezone: "America/Chicago".to_owned(),
+            credential_source: "auto".to_owned(),
+        };
+
+        let rendered = render_config(&answers);
+        let parsed: AletheiaConfig = toml::from_str(&rendered)
+            .expect("rendered config must match the typed AletheiaConfig schema");
+        assert_eq!(
+            parsed.agents.defaults.model_defaults.context_tokens, 200_000,
+            "schema-valid contextTokens key must be parsed"
+        );
+        assert_eq!(
+            parsed.agents.defaults.model_defaults.max_output_tokens, 16_384,
+            "schema-valid maxOutputTokens key must be parsed"
+        );
     }
 
     #[test]
