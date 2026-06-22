@@ -868,8 +868,12 @@ mod manifest_reconciliation_tests {
                 .truncate(true)
                 .open(&manifest_path)
                 .expect("open manifest");
-            f.write_all(serde_json::to_string_pretty(&stale_manifest).expect("serialize").as_bytes())
-                .expect("write manifest");
+            f.write_all(
+                serde_json::to_string_pretty(&stale_manifest)
+                    .expect("serialize")
+                    .as_bytes(),
+            )
+            .expect("write manifest");
         }
 
         let capture = TrainingCapture::new(tmp.path(), &test_config()).expect("init");
@@ -919,7 +923,8 @@ mod manifest_reconciliation_tests {
                 .truncate(true)
                 .open(&manifest_path)
                 .expect("open manifest");
-            f.write_all(b"this is not valid json").expect("write garbage");
+            f.write_all(b"this is not valid json")
+                .expect("write garbage");
         }
 
         let result = TrainingCapture::new(tmp.path(), &test_config());
@@ -940,7 +945,9 @@ mod manifest_reconciliation_tests {
         let shard_path = dir.join("training-20260101-0001.jsonl");
         write_shard(
             &shard_path,
-            &[r#"{"schema_version":5,"session_id":"s1","nous_id":"n","user_message":"a","assistant_response":"b","model":"m","tokens":1,"timestamp":"1970-01-01T00:00:00Z"}"#],
+            &[
+                r#"{"schema_version":5,"session_id":"s1","nous_id":"n","user_message":"a","assistant_response":"b","model":"m","tokens":1,"timestamp":"1970-01-01T00:00:00Z"}"#,
+            ],
         );
         let stale_manifest = TrainingManifest {
             shards: vec![ShardEntry {
@@ -960,8 +967,12 @@ mod manifest_reconciliation_tests {
                 .truncate(true)
                 .open(&manifest_path)
                 .expect("open manifest");
-            f.write_all(serde_json::to_string_pretty(&stale_manifest).expect("serialize").as_bytes())
-                .expect("write manifest");
+            f.write_all(
+                serde_json::to_string_pretty(&stale_manifest)
+                    .expect("serialize")
+                    .as_bytes(),
+            )
+            .expect("write manifest");
         }
 
         let capture = TrainingCapture::new(tmp.path(), &test_config()).expect("init");
