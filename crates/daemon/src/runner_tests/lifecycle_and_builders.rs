@@ -1,7 +1,7 @@
 //! Lifecycle, builder pattern, and basic failure handling tests.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -774,4 +774,3 @@ fn backoff_cleared_on_success() {
     assert!(runner.tasks[0].backoff_until.is_none());
     assert_eq!(runner.tasks[0].consecutive_failures, 0);
 }
-
