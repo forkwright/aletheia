@@ -49,10 +49,7 @@ pub struct EvalScope {
 impl EvalScope {
     /// Create a new official-parity scope for `(eval_run_id, question_id)`.
     #[must_use]
-    pub fn new(
-        eval_run_id: impl Into<String>,
-        question_id: impl Into<String>,
-    ) -> Self {
+    pub fn new(eval_run_id: impl Into<String>, question_id: impl Into<String>) -> Self {
         Self {
             eval_run_id: eval_run_id.into(),
             question_id: question_id.into(),
@@ -114,7 +111,8 @@ impl IsolatedMemory {
     /// Returns [`BenchmarkError::KnowledgeStore`] or [`BenchmarkError::SessionStore`]
     /// when the underlying in-memory stores cannot be initialized.
     pub fn open(scope: EvalScope) -> Result<Self, BenchmarkError> {
-        let knowledge = KnowledgeStore::open_mem().context(crate::benchmark::error::KnowledgeStoreSnafu)?;
+        let knowledge =
+            KnowledgeStore::open_mem().context(crate::benchmark::error::KnowledgeStoreSnafu)?;
         let sessions =
             SessionStore::open_in_memory().context(crate::benchmark::error::SessionStoreSnafu)?;
         Ok(Self {
@@ -168,11 +166,7 @@ impl IsolatedMemory {
     ///
     /// Returns [`BenchmarkError::InvalidFactId`] if `fact_id` fails domain
     /// validation, or [`BenchmarkError::InsertFact`] if the store rejects it.
-    pub fn seed_fact(
-        &self,
-        fact_id: &str,
-        content: &str,
-    ) -> Result<FactId, BenchmarkError> {
+    pub fn seed_fact(&self, fact_id: &str, content: &str) -> Result<FactId, BenchmarkError> {
         let id = FactId::new(fact_id).map_err(|source| {
             crate::benchmark::error::BenchmarkError::InvalidFactId {
                 id: fact_id.to_owned(),
