@@ -19,7 +19,9 @@ use crate::state::ProvidersState;
 
 #[path = "providers_dto.rs"]
 mod providers_dto;
-pub use providers_dto::{ModelProviderReadiness, ProviderInfo, ProviderListResponse, ProviderRouteResponse};
+pub use providers_dto::{
+    ModelProviderReadiness, ProviderInfo, ProviderListResponse, ProviderRouteResponse,
+};
 
 /// Query parameters for `GET /api/v1/providers/route`.
 #[derive(Debug, Deserialize)]
@@ -55,10 +57,7 @@ pub async fn list(
 
     let mut infos = Vec::with_capacity(providers.len());
     for provider in providers {
-        let provider_config = config
-            .providers
-            .iter()
-            .find(|p| p.name == provider.name());
+        let provider_config = config.providers.iter().find(|p| p.name == provider.name());
 
         let health = state
             .provider_registry
@@ -79,7 +78,11 @@ pub async fn list(
             base_url: provider_config
                 .map(|p| redact_base_url(p.base_url.as_deref()))
                 .unwrap_or_else(|| "default".to_owned()),
-            supported_models: provider.supported_models().iter().map(|&m| m.to_owned()).collect(),
+            supported_models: provider
+                .supported_models()
+                .iter()
+                .map(|&m| m.to_owned())
+                .collect(),
             configured_models: provider_config
                 .map(|p| p.models.clone())
                 .unwrap_or_default(),
@@ -132,13 +135,12 @@ pub async fn route(
         .provider_registry
         .find_provider(model)
         .map(|p| {
-            let health = state
-                .provider_registry
-                .provider_health(p.name())
-                .unwrap_or(hermeneus::health::ProviderHealth::Down {
+            let health = state.provider_registry.provider_health(p.name()).unwrap_or(
+                hermeneus::health::ProviderHealth::Down {
                     since: jiff::Timestamp::now(),
                     reason: hermeneus::health::DownReason::ConsecutiveFailures,
-                });
+                },
+            );
             (Some(p.name().to_owned()), Some(health))
         })
         .unwrap_or_default();
@@ -230,9 +232,9 @@ fn health_reason_wire(health: &hermeneus::health::ProviderHealth) -> Option<Stri
             hermeneus::health::DownReason::ConsecutiveFailures => {
                 "down: consecutive failures".to_owned()
             }
-            hermeneus::health::DownReason::RateLimited { retry_after_ms } => format!(
-                "down: rate limited (retry_after_ms={retry_after_ms})"
-            ),
+            hermeneus::health::DownReason::RateLimited { retry_after_ms } => {
+                format!("down: rate limited (retry_after_ms={retry_after_ms})")
+            }
             hermeneus::health::DownReason::AuthFailure => "down: authentication failure".to_owned(),
             hermeneus::health::DownReason::Timeout => "down: timeout".to_owned(),
         }),
