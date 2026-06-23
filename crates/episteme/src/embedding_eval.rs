@@ -44,6 +44,7 @@ use crate::embedding::EmbeddingProvider;
     reason = "snafu error variant fields (message, location) are self-documenting via display format"
 )]
 // kanon:ignore RUST/non-exhaustive-enum — already #[non_exhaustive] above (linter only inspects the attribute immediately preceding the enum; known false positive when another attribute intervenes).
+// kanon:ignore RUST/pub-visibility — EvalError is the public error type for the embedding eval API; callers of measure_baseline and compare_models (in aletheia and mneme) need to inspect error variants
 pub enum EvalError {
     /// A JSONL line could not be parsed as an [`EvalQuery`].
     #[snafu(display("failed to parse eval dataset line {line}: {message}"))]
@@ -111,6 +112,7 @@ pub enum EvalError {
 }
 
 /// Result type for eval operations.
+// kanon:ignore RUST/pub-visibility — public return type alias for the embedding eval API; paired with the public EvalError type consumed by aletheia and mneme callers
 pub type EvalResult<T> = std::result::Result<T, EvalError>;
 
 // ── Dataset ───────────────────────────────────────────────────────────────────
@@ -121,6 +123,12 @@ pub type EvalResult<T> = std::result::Result<T, EvalError>;
 /// before an evaluation can proceed.
 #[derive(Debug)]
 pub(crate) struct CorpusValidated(());
+
+impl CorpusValidated {
+    fn new() -> Self {
+        Self(())
+    }
+}
 
 /// A single labelled evaluation query.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -242,7 +250,7 @@ impl EvalDataset {
         corpus: &[(String, String)],
     ) -> EvalResult<CorpusValidated> {
         if self.permissive {
-            return Ok(CorpusValidated(()));
+            return Ok(CorpusValidated::new());
         }
 
         let corpus_ids: std::collections::HashSet<&str> =
@@ -270,7 +278,7 @@ impl EvalDataset {
             }
         }
 
-        Ok(CorpusValidated(()))
+        Ok(CorpusValidated::new())
     }
 }
 

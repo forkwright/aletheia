@@ -406,11 +406,11 @@ fn evaluate_accepts_empty_relevant_ids() {
     let provider = mock();
     let metrics = evaluate_model(&provider, &ds, &simple_corpus(), 3)
         .expect("empty relevant_ids should not fail validation");
-    assert_eq!(
-        metrics.recall_at_k, 0.0,
+    assert!(
+        metrics.recall_at_k.abs() < f64::EPSILON,
         "empty relevant_ids cannot produce a hit"
     );
-    assert_eq!(metrics.mrr, 0.0, "empty relevant_ids yield zero MRR");
+    assert!(metrics.mrr.abs() < f64::EPSILON, "empty relevant_ids yield zero MRR");
 }
 
 #[test]
