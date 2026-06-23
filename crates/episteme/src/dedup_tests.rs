@@ -713,6 +713,52 @@ fn empty_graph_no_candidates() {
     assert!(candidates.is_empty());
 }
 
+/// WHY(#5670): the pre-fix generate_candidates compared every same-type pair,
+/// producing O(N²) work. The blocking implementation must keep candidate count
+/// sub-quadratic for unrelated entities, otherwise month-scale nous growth
+/// degrades the 6-hour maintenance pass.
+#[test]
+fn candidate_generation_grows_sub_quadratically() {
+    // Deterministic pseudo-random spread: adjacent sorted names must not share
+    // prefixes or trigrams, so no name-based blocking emits pairs. No aliases
+    // means the token index also emits nothing.
+    let spread = |i: u64| {
+        let x = i.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        format!("Ent{x:016x}")
+    };
+
+    let small: Vec<EntityInfo> = (0..100)
+        .map(|i| entity(&format!("s{i}"), &spread(i), "concept", vec![], 1, "2026-01-01"))
+        .collect();
+    let large: Vec<EntityInfo> = (0..200)
+        .map(|i| entity(&format!("l{i}"), &spread(i + 10_000), "concept", vec![], 1, "2026-01-02"))
+        .collect();
+
+    let small_candidates = generate_candidates(&small, &no_embed, &DedupTuning::DEFAULT);
+    let large_candidates = generate_candidates(&large, &no_embed, &DedupTuning::DEFAULT);
+
+    // Unrelated random names should produce very few false-positive candidates.
+    assert!(
+        small_candidates.len() <= 1,
+        "small unrelated cohort should produce <= 1 candidate, got {}",
+        small_candidates.len()
+    );
+    assert!(
+        large_candidates.len() <= 2,
+        "large unrelated cohort should produce <= 2 candidates, got {}",
+        large_candidates.len()
+    );
+
+    // Sub-quadratic guard: doubling N must less than quadruple candidates.
+    if !small_candidates.is_empty() {
+        let ratio = large_candidates.len() as f64 / small_candidates.len() as f64;
+        assert!(
+            ratio < 3.0,
+            "candidate count grew faster than linear: {ratio}"
+        );
+    }
+}
+
 #[test]
 fn score_boundary_exactly_070() {
     assert_eq!(

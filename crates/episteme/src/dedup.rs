@@ -312,15 +312,16 @@ fn jaro(s1: &str, s2: &str) -> f64 {
 #[cfg(any(feature = "mneme-engine", test))]
 #[must_use]
 pub(crate) fn aliases_overlap(a: &[String], b: &[String]) -> bool {
-    for alias_a in a {
-        let lower_a = alias_a.to_lowercase();
-        for alias_b in b {
-            if alias_b.to_lowercase() == lower_a {
-                return true;
-            }
-        }
+    if a.is_empty() || b.is_empty() {
+        return false;
     }
-    false
+    // WHY(#5670): O(a+b) HashSet membership replaces the previous O(a×b)
+    // nested loop, which became a hotspot inside the O(N²) candidate loop.
+    let normalized: std::collections::HashSet<String> =
+        a.iter().map(|alias| alias.to_lowercase()).collect();
+    b.iter()
+        .map(|alias| alias.to_lowercase())
+        .any(|alias| normalized.contains(&alias))
 }
 
 /// Check if either entity's name appears as an alias in the other (case-insensitive).
@@ -427,21 +428,103 @@ pub(crate) fn make_embedding_lookup(
 /// is supplied by the closure — for pairs whose stored `name_embedding`
 /// is `None`, [`make_embedding_lookup`] returns `0.0` so the pipeline
 /// degrades to the pre-fix score range (#4165 Path A).
+///
+/// # Complexity
+///
+/// Previous implementation compared every same-type pair (O(N²)). This
+/// version blocks entities by type, then emits candidate pairs from:
+///
+/// 1. A normalized token index (names + aliases) — covers exact names,
+///    alias overlap, and name-in-alias matches in O(N·k) index work.
+/// 2. A sorted-name sliding window — covers approximate Jaro-Winkler
+///    matches in O(N·window) comparisons per type.
+///
+/// The full similarity and embedding checks run only over the emitted
+/// candidate pairs.
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn generate_candidates(
     entities: &[EntityInfo],
     embed_similarities: &dyn Fn(&EntityId, &EntityId) -> f64,
     tuning: &DedupTuning,
 ) -> Vec<EntityMergeCandidate> {
+    use std::collections::{HashMap, HashSet};
+
+    // HOW: number of lexicographic neighbours examined per entity. A fixed
+    // window makes the sorted-name scan O(N·window) while still catching
+    // real-world Jaro-Winkler matches, which tend to cluster in sorted order.
+    const SORTED_WINDOW: usize = 100;
+
     let mut candidates = Vec::new();
 
-    for (i, a) in entities.iter().enumerate() {
-        for b in &entities[i + 1..] {
-            let type_match = a.entity_type == b.entity_type;
+    // Group indices by entity_type so cross-type pairs are never considered.
+    let mut by_type: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, entity) in entities.iter().enumerate() {
+        by_type.entry(&entity.entity_type).or_default().push(i);
+    }
 
-            if !type_match {
-                continue;
+    for indices in by_type.values() {
+        let count = indices.len();
+        if count < 2 {
+            continue;
+        }
+
+        // Token index: each normalized name and alias maps to the entities
+        // that carry it. Any bucket with k entries contributes O(k²) pairs,
+        // but each pair is materialised only once via the deduplicating set.
+        let mut token_to_indices: HashMap<String, Vec<usize>> = HashMap::new();
+        for &idx in indices {
+            let entity = &entities[idx];
+            token_to_indices
+                .entry(entity.name.to_lowercase())
+                .or_default()
+                .push(idx);
+            for alias in &entity.aliases {
+                token_to_indices
+                    .entry(alias.to_lowercase())
+                    .or_default()
+                    .push(idx);
             }
+        }
+
+        // Sorted sliding window over lower-cased names for approximate matches.
+        let mut sorted: Vec<(usize, String)> = indices
+            .iter()
+            .map(|&idx| (idx, entities[idx].name.to_lowercase()))
+            .collect();
+        sorted.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let mut pair_set: HashSet<(usize, usize)> = HashSet::new();
+
+        for bucket in token_to_indices.values() {
+            for i in 0..bucket.len() {
+                for &j in &bucket[i + 1..] {
+                    let a = bucket[i];
+                    let b = j;
+                    if a < b {
+                        pair_set.insert((a, b));
+                    } else {
+                        pair_set.insert((b, a));
+                    }
+                }
+            }
+        }
+
+        for i in 0..sorted.len() {
+            let idx_a = sorted[i].0;
+            let window_end = (i + 1 + SORTED_WINDOW).min(sorted.len());
+            for &entry in &sorted[i + 1..window_end] {
+                let idx_b = entry.0;
+                if idx_a < idx_b {
+                    pair_set.insert((idx_a, idx_b));
+                } else {
+                    pair_set.insert((idx_b, idx_a));
+                }
+            }
+        }
+
+        for &(idx_a, idx_b) in &pair_set {
+            let a = &entities[idx_a];
+            let b = &entities[idx_b];
 
             let name_sim = jaro_winkler_ci(&a.name, &b.name);
             let alias_overlap = aliases_overlap(&a.aliases, &b.aliases)
@@ -456,7 +539,7 @@ pub(crate) fn generate_candidates(
             }
 
             let merge_score =
-                compute_merge_score(name_sim, embed_sim, type_match, alias_overlap, tuning);
+                compute_merge_score(name_sim, embed_sim, true, alias_overlap, tuning);
 
             candidates.push(EntityMergeCandidate {
                 entity_a: a.id.clone(),
@@ -465,7 +548,7 @@ pub(crate) fn generate_candidates(
                 name_b: b.name.clone(),
                 name_similarity: name_sim,
                 embed_similarity: embed_sim,
-                type_match,
+                type_match: true,
                 alias_overlap,
                 merge_score,
             });
