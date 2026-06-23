@@ -583,18 +583,14 @@ impl NousActor {
     /// sufficient (e.g. a knowledge query echo or verification acknowledgement).
     /// This keeps the cross-nous contract end-to-end without forcing every
     /// collaboration message through the full pipeline.
-    fn handle_knowledge_payload(
-        &self,
-        payload: &KnowledgePayload,
-        from: &str,
-    ) -> Option<String> {
+    fn handle_knowledge_payload(&self, payload: &KnowledgePayload, from: &str) -> Option<String> {
         match payload {
             KnowledgePayload::Verify { fact_content, .. } => {
                 Some(format!("verify acknowledged from {from}: {fact_content}"))
             }
-            KnowledgePayload::Query { query, filters } => {
-                Some(format!("query acknowledged from {from}: {query} filters={filters:?}"))
-            }
+            KnowledgePayload::Query { query, filters } => Some(format!(
+                "query acknowledged from {from}: {query} filters={filters:?}"
+            )),
             _ => {
                 debug!(?payload, "cross-nous fire-and-forget knowledge payload");
                 None

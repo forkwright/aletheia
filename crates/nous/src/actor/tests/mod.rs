@@ -672,11 +672,7 @@ fn spawn_test_actor_with_cross() -> (
 
 async fn spawn_test_actor_in_router(
     router: Arc<crate::cross::CrossNousRouter>,
-) -> (
-    NousHandle,
-    tokio::task::JoinHandle<()>,
-    tempfile::TempDir,
-) {
+) -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::TempDir) {
     let (dir, oikos) = test_oikos();
     let providers = test_providers();
     let tools = Arc::new(ToolRegistry::new());
@@ -684,7 +680,9 @@ async fn spawn_test_actor_in_router(
     let pipeline_config = PipelineConfig::default();
 
     let (cross_tx, cross_rx) = tokio::sync::mpsc::channel(32);
-    router.register(config.id.to_string(), cross_tx.clone()).await;
+    router
+        .register(config.id.to_string(), cross_tx.clone())
+        .await;
 
     let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
         config,

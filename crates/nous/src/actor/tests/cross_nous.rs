@@ -110,7 +110,10 @@ async fn cross_nous_ask_honors_target_session() {
     assert_eq!(reply_b.from, "test-agent");
 
     let status = handle.status().await.expect("actor should be alive");
-    assert_eq!(status.session_count, 2, "two distinct target sessions should exist");
+    assert_eq!(
+        status.session_count, 2,
+        "two distinct target sessions should exist"
+    );
 
     handle.shutdown().await.expect("shutdown");
     join.await.expect("join");
