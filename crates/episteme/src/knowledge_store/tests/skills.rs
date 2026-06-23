@@ -110,6 +110,56 @@ fn make_pending_skill_fact(id: &str, nous_id: &str, skill_name: &str) -> Fact {
     }
 }
 
+fn make_skill_fact_with_tools(
+    id: &str,
+    nous_id: &str,
+    skill_name: &str,
+    tools_used: &[&str],
+) -> Fact {
+    let content = serde_json::to_string(&crate::skill::SkillContent {
+        name: skill_name.to_owned(),
+        description: format!("Skill: {skill_name}"),
+        steps: vec!["step 1".to_owned()],
+        tools_used: tools_used.iter().map(|t| (*t).to_owned()).collect(),
+        domain_tags: vec!["test".to_owned()],
+        origin: "seeded".to_owned(),
+        triggers: vec![],
+        always: false,
+    })
+    .expect("skill content serializes to JSON");
+    Fact {
+        id: crate::id::FactId::new(id).expect("valid test id"),
+        nous_id: nous_id.to_owned(),
+        content,
+        fact_type: "skill".to_owned(),
+        temporal: FactTemporal {
+            valid_from: test_ts("2026-01-01"),
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: test_ts("2026-03-01T00:00:00Z"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.5,
+            tier: EpistemicTier::Assumed,
+            source_session_id: None,
+            stability_hours: 2190.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: crate::knowledge::FactSensitivity::Public,
+        visibility: crate::knowledge::Visibility::Private,
+        scope: None,
+        project_id: None,
+    }
+}
+
 #[test]
 fn find_skills_for_nous_returns_only_skills() {
     let store = make_store();
@@ -241,6 +291,32 @@ fn search_skills_bm25() {
     assert!(
         results.iter().any(|f| f.id.as_str() == "sk-docker"),
         "search should find docker skill"
+    );
+}
+
+#[test]
+fn find_duplicate_skill_empty_tools_distinct_names_not_duplicate() {
+    let store = make_store();
+    let existing = make_skill_fact_with_tools("sk-planning", "alice", "planning", &[]);
+    store.insert_fact(&existing).expect("insert planning skill");
+
+    let candidate = crate::skill::SkillContent {
+        name: "summarization".to_owned(),
+        description: "Skill: summarization".to_owned(),
+        steps: vec!["step 1".to_owned()],
+        tools_used: vec![],
+        domain_tags: vec!["test".to_owned()],
+        origin: "extracted".to_owned(),
+        triggers: vec![],
+        always: false,
+    };
+
+    let duplicate = store
+        .find_duplicate_skill("alice", &candidate)
+        .expect("find_duplicate_skill should not error");
+    assert!(
+        duplicate.is_none(),
+        "distinct no-tool skills should not be declared duplicates"
     );
 }
 

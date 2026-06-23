@@ -296,13 +296,18 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 }
 
 /// Compute Jaccard overlap between two tool lists.
+///
+/// Returns 1.0 for identical non-empty sets and 0.0 for disjoint sets or when
+/// both lists are empty.
 #[expect(
     clippy::cast_precision_loss,
     reason = "tool list lengths are small (<50); precision loss is negligible"
 )]
 fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
+    // WHY: Two skills with no tools share no overlap; a 1.0 score would make
+    // the dedup heuristic treat any pair of no-tool skills as duplicates.
     if a.is_empty() && b.is_empty() {
-        return 1.0;
+        return 0.0;
     }
     let set_a: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
     let set_b: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
