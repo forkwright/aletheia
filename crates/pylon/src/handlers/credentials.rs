@@ -17,6 +17,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 /// Response body for credential list and mutation endpoints.
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only secret-safe credential metadata; no raw credential material is present in this type
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CredentialsListResponse {
     /// Secret-safe credential metadata.
@@ -27,13 +28,15 @@ pub struct CredentialsListResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CredentialResponse {
     /// Stable identifier in `{provider}:{role}` form.
+    // kanon:ignore RUST/primitive-for-domain-id — id mirrors ManagedCredential.id, a compound {provider}:{role} string; newtype would require cross-crate coordination
     pub id: String,
     /// Provider name associated with the credential.
     pub provider: String,
     /// Role of this credential for its provider.
     pub role: String,
-    /// Redacted key preview, never raw secret material.
-    pub masked_key: String,
+    /// Redacted preview of the credential, never raw secret material.
+    #[serde(rename = "masked_key")]
+    pub redacted_preview: String,
     /// Local validation status.
     pub status: String,
     /// Last validation timestamp when produced by a validation call.
@@ -297,14 +300,12 @@ fn map_symbolon_error(err: symbolon::error::Error) -> ApiError {
             location: snafu::location!(),
         },
         symbolon::error::Error::Io { .. } | symbolon::error::Error::Storage { .. } => {
-            tracing::error!(error = %err, "credential store error");
             ApiError::Internal {
                 message: err.to_string(),
                 location: snafu::location!(),
             }
         }
         _ => {
-            tracing::error!(error = %err, "credential API error");
             ApiError::Internal {
                 message: err.to_string(),
                 location: snafu::location!(),
@@ -326,7 +327,7 @@ impl From<ManagedCredential> for CredentialResponse {
             id: credential.id,
             provider: credential.provider,
             role: credential.role.as_str().to_owned(),
-            masked_key: credential.redacted_preview,
+            redacted_preview: credential.redacted_preview,
             status: status_str(credential.status).to_owned(),
             last_validated: credential.last_validated,
             // WHY: no authoritative provider/session telemetry exists yet, so
