@@ -50,10 +50,8 @@ fn query_killed_maps_to_typed_timeout() {
     // WHY: Construct the typed Krites error directly so the test is independent
     // of the `:timeout` poison mechanism and proves the mapping contract.
     let engine_err = crate::engine::error::QueryKilledSnafu.build();
-    let err = KnowledgeStore::map_engine_err(
-        engine_err,
-        Some(std::time::Duration::from_millis(50)),
-    );
+    let err =
+        KnowledgeStore::map_engine_err(engine_err, Some(std::time::Duration::from_millis(50)));
 
     assert!(
         matches!(err, crate::error::Error::QueryTimeout { secs } if (secs - 0.05).abs() < f64::EPSILON),
