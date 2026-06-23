@@ -9,6 +9,7 @@ mod spawn_guard;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use snafu::ResultExt;
@@ -122,7 +123,7 @@ async fn execute_with_dispatch(
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
-    let mut tool_surface_hashes: Vec<String> = Vec::new();
+    let mut tool_surface_hashes: HashSet<String> = HashSet::new();
 
     let thinking = config
         .generation
@@ -171,9 +172,7 @@ async fn execute_with_dispatch(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        if !tool_surface_hashes.contains(&surface_hash) {
-            tool_surface_hashes.push(surface_hash);
-        }
+        tool_surface_hashes.insert(surface_hash);
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
@@ -434,7 +433,7 @@ async fn execute_with_dispatch(
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
         model_used: turn_model,
-        tool_surface_hashes,
+        tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }
 
@@ -511,7 +510,7 @@ pub async fn execute_streaming(
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
-    let mut tool_surface_hashes: Vec<String> = Vec::new();
+    let mut tool_surface_hashes: HashSet<String> = HashSet::new();
 
     let thinking = config
         .generation
@@ -556,9 +555,7 @@ pub async fn execute_streaming(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        if !tool_surface_hashes.contains(&surface_hash) {
-            tool_surface_hashes.push(surface_hash);
-        }
+        tool_surface_hashes.insert(surface_hash);
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
@@ -793,6 +790,6 @@ pub async fn execute_streaming(
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
         model_used: turn_model,
-        tool_surface_hashes,
+        tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }
