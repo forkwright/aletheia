@@ -305,12 +305,10 @@ fn map_symbolon_error(err: symbolon::error::Error) -> ApiError {
                 location: snafu::location!(),
             }
         }
-        _ => {
-            ApiError::Internal {
-                message: err.to_string(),
-                location: snafu::location!(),
-            }
-        }
+        _ => ApiError::Internal {
+            message: err.to_string(),
+            location: snafu::location!(),
+        },
     }
 }
 
