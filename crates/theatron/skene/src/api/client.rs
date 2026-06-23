@@ -58,8 +58,8 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
 }
 
 /// Build the reqwest client used for long-lived SSE/streaming connections.
-// kanon:ignore RUST/missing-http-timeout — SSE connections are long-lived; a request-level timeout would terminate the stream prematurely; connect_timeout guards against connection hang
 pub(crate) fn build_streaming_client(token: Option<&str>) -> Result<Client> {
+    // kanon:ignore RUST/missing-http-timeout — SSE connections are long-lived; a request-level timeout would terminate the stream prematurely; connect_timeout guards against connection hang
     Client::builder()
         .cookie_store(true)
         .connect_timeout(CONNECT_TIMEOUT)

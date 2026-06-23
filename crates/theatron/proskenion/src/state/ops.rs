@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — state module with co-located tests; splitting would fragment invariants from their assertions
 //! Ops dashboard state: agent status cards, service health, and toggle controls.
 
 use std::collections::HashMap;
