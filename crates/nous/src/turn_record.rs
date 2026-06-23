@@ -21,6 +21,7 @@ use crate::error;
 /// Lifecycle statuses for a turn attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum TurnAttemptStatus {
     /// Turn accepted by the actor and the pipeline is starting.
     Accepted,
@@ -50,11 +51,11 @@ pub struct TurnAttemptRecord {
     /// Schema version for forward compatibility.
     pub version: u32,
     /// Canonical turn identity (ULID).
-    pub turn_id: String,
+    pub turn_id: String, // kanon:ignore RUST/primitive-for-domain-id
     /// Session this turn belongs to.
-    pub session_id: String,
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id
     /// Owning agent identifier.
-    pub nous_id: String,
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id
     /// Current status.
     pub status: TurnAttemptStatus,
     /// Pipeline stage that emitted this record, when relevant.

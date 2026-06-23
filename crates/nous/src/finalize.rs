@@ -67,7 +67,7 @@ impl Default for FinalizeConfig {
 
 /// Result of the finalize stage.
 #[derive(Debug, Clone)]
-pub struct FinalizeResult {
+pub(crate) struct FinalizeResult {
     /// Number of messages persisted.
     pub messages_persisted: usize,
     /// Whether usage was recorded.
@@ -166,8 +166,7 @@ pub(crate) fn finalize(
         TurnAttemptStatus::FinalizePending,
     );
     pending.model = Some(session.model.clone());
-    crate::turn_record::persist_turn_attempt(store, &session.nous_id, &pending)
-        .context(error::StoreSnafu)?;
+    crate::turn_record::persist_turn_attempt(store, &session.nous_id, &pending)?;
 
     let mut messages_persisted = 0usize;
 
@@ -268,8 +267,7 @@ pub(crate) fn finalize(
         TurnAttemptStatus::Completed,
     );
     completed.model = Some(session.model.clone());
-    crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)
-        .context(error::StoreSnafu)?;
+    crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
 
     debug!(messages_persisted, usage_recorded, "finalize complete");
     Ok(FinalizeResult {
