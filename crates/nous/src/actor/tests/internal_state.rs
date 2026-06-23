@@ -505,7 +505,8 @@ impl LlmProvider for HangingProvider {
     fn complete<'a>(
         &'a self,
         _request: &'a CompletionRequest,
-    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
         Box::pin(std::future::pending())
     }
 
