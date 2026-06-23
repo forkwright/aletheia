@@ -930,8 +930,8 @@ pub(super) async fn run_finalize_stage(
         ) {
             Ok(fr) => {
                 debug!(
-                    messages = fr.messages_persisted,
-                    usage = fr.usage_recorded,
+                    messages = fr.messages_persisted(),
+                    usage = fr.usage_recorded(),
                     "finalize complete"
                 );
                 span.record("status", "ok");

@@ -68,10 +68,25 @@ impl Default for FinalizeConfig {
 /// Result of the finalize stage.
 #[derive(Debug, Clone)]
 pub(crate) struct FinalizeResult {
-    /// Number of messages persisted.
-    pub messages_persisted: usize,
-    /// Whether usage was recorded.
-    pub usage_recorded: bool,
+    messages_persisted: usize,
+    usage_recorded: bool,
+}
+
+impl FinalizeResult {
+    fn new(messages_persisted: usize, usage_recorded: bool) -> Self {
+        Self {
+            messages_persisted,
+            usage_recorded,
+        }
+    }
+
+    pub(crate) fn messages_persisted(&self) -> usize {
+        self.messages_persisted
+    }
+
+    pub(crate) fn usage_recorded(&self) -> bool {
+        self.usage_recorded
+    }
 }
 
 /// Returns true for stop reasons that represent a partial terminal outcome
@@ -142,10 +157,7 @@ pub(crate) fn finalize(
             turn_id = %session.turn_id,
             "finalize called twice for same turn, skipping duplicate"
         );
-        return Ok(FinalizeResult {
-            messages_persisted: 0,
-            usage_recorded: false,
-        });
+        return Ok(FinalizeResult::new(0, false));
     }
 
     // WHY: ensure session row exists before child messages: FK constraint on messages table would otherwise fail
@@ -270,10 +282,7 @@ pub(crate) fn finalize(
     crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
 
     debug!(messages_persisted, usage_recorded, "finalize complete");
-    Ok(FinalizeResult {
-        messages_persisted,
-        usage_recorded,
-    })
+    Ok(FinalizeResult::new(messages_persisted, usage_recorded))
 }
 
 #[expect(
