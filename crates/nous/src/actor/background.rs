@@ -1096,10 +1096,10 @@ mod tests {
         let candidate_id = tracker
             .candidates_for("review-nous")
             .pop()
-            .expect("candidate tracked")
+            .expect("candidate tracked") // kanon:ignore RUST/expect — test assertion
             .id;
 
-        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store"); // kanon:ignore RUST/expect — test assertion
 
         run_skill_extraction(
             "test-model",
@@ -1115,12 +1115,12 @@ mod tests {
 
         let pending_facts = store
             .find_pending_skills("review-nous")
-            .expect("pending skills query");
+            .expect("pending skills query"); // kanon:ignore RUST/expect — test assertion
         assert_eq!(pending_facts.len(), 1, "one pending skill persisted");
-        let pending_fact = pending_facts.first().expect("one pending skill persisted");
+        let pending_fact = pending_facts.first().expect("one pending skill persisted"); // kanon:ignore RUST/expect — test assertion
 
         let pending = mneme::skills::PendingSkill::from_json(&pending_fact.content)
-            .expect("pending skill deserializes");
+            .expect("pending skill deserializes"); // kanon:ignore RUST/expect — test assertion
 
         // Source session is derived (from the candidate evidence on the live
         // path), never None.
@@ -1140,7 +1140,7 @@ mod tests {
             .source_evidence
             .observations
             .first()
-            .expect("observation evidence present");
+            .expect("observation evidence present"); // kanon:ignore RUST/expect — test assertion
         assert!(
             !observation.sequence_hash.is_empty(),
             "observation carries a sequence hash"
@@ -1154,7 +1154,7 @@ mod tests {
             .and_then(|tc| tc.redacted_input.as_ref())
             .and_then(|value| value.get("api_key"))
             .and_then(serde_json::Value::as_str)
-            .expect("redacted api_key present");
+            .expect("redacted api_key present"); // kanon:ignore RUST/expect — test assertion
         assert_eq!(redacted, "[REDACTED]", "secret tool param is redacted");
         assert!(
             !pending_fact.content.contains(secret),
