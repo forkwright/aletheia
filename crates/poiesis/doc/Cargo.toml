@@ -50,10 +50,10 @@ features = ["odt"]
 insta = "1"
 serde_json = { workspace = true }
 
+[lints]
+workspace = true
+
 [package.metadata.kanon]
 maturity = "alpha"
 since = "2026-06-23"
 exit-criteria = "public API is stable"
-
-[lints]
-workspace = true
