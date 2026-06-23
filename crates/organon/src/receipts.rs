@@ -1,13 +1,14 @@
 //! HMAC-SHA256 tool-call receipts. Per-session ephemeral key.
 //! Active verification on cited receipts; hallucination detection on missing/mismatched.
 
+use std::collections::{HashMap, VecDeque};
+
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, KeyInit, Mac};
 use regex::Regex;
 use sha2::Sha256;
 use snafu::Snafu;
-use std::collections::{HashMap, VecDeque};
 
 const RECEIPT_SEPARATOR: &str = "\x1f"; // ASCII unit separator
 

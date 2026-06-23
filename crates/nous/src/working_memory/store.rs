@@ -138,9 +138,10 @@ impl FjallWorkingCheckpointStore {
         }
 
         if to_remove.len() > keep_n {
+            let take_n = to_remove.len() - keep_n;
             let mut tx = self.db.write_tx();
-            for key in to_remove.into_iter().take(to_remove.len() - keep_n) {
-                tx.remove(&partition, &key);
+            for key in to_remove.into_iter().take(take_n) {
+                tx.remove(&partition, &*key);
             }
             tx.commit()
                 .map_err(|e| organon::error::StoreError::StoreIo {
