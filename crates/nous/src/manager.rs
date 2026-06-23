@@ -183,8 +183,8 @@ impl ActorEntry {
 /// Manages the lifecycle of all nous actors.
 // NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
 // actor state. Kept flat because splitting would scatter logically-paired fields.
+// kanon:ignore NAMING/struct-name-vague-hub — public API surface; renaming is a breaking change outside this lane's scope
 pub struct NousManager {
-    // kanon:ignore NAMING/struct-name-vague-hub — public API surface; renaming is a breaking change outside this lane's scope
     actors: HashMap<String, ActorEntry>,
     providers: Arc<ProviderRegistry>,
     tools: Arc<ToolRegistry>,
