@@ -26,9 +26,5 @@ pub(crate) fn inspect_pdf_impl(bytes: &[u8]) -> Result<PdfSummary> {
         }
     };
 
-    Ok(PdfSummary {
-        pages,
-        page_count_reliable,
-        text_snippets,
-    })
+    Ok(PdfSummary::new(pages, page_count_reliable, text_snippets))
 }
