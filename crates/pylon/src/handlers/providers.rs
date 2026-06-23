@@ -81,9 +81,7 @@ pub async fn list(
                 .iter()
                 .map(|&m| m.to_owned())
                 .collect(),
-            configured_models: provider_config
-                .map(|p| p.models.clone())
-                .unwrap_or_default(),
+            configured_models: provider_config.map_or_else(Vec::new, |p| p.models.clone()),
             health: health_status_wire(&health),
             health_reason: health_reason_wire(&health),
             auth_source: provider_config
@@ -141,7 +139,7 @@ pub async fn route(
             );
             (Some(p.name().to_owned()), Some(health))
         })
-        .unwrap_or_default();
+        .unwrap_or_else(|| (None, None));
 
     Ok(Json(ProviderRouteResponse {
         model: model.to_owned(),
@@ -175,7 +173,7 @@ pub fn resolve_model_readiness(
                     );
                     (Some(p.name().to_owned()), Some(health))
                 })
-                .unwrap_or_default();
+                .unwrap_or_else(|| (None, None));
 
             ModelProviderReadiness {
                 model: model.clone(),
