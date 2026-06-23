@@ -85,8 +85,8 @@ impl BackupEntry {
     /// Returns the number of seconds elapsed since this backup was created.
     pub fn age_secs(&self, now: SystemTime) -> u64 {
         now.duration_since(self.created)
-            .unwrap_or_default()
-            .as_secs()
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
     }
 }
 
