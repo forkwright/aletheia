@@ -261,6 +261,7 @@ impl SpawnService for SpawnServiceImpl {
             stage_budget: StageBudget::default(),
             training: crate::training::TrainingConfig::default(),
             reflection_enabled: false,
+            history: crate::config::TurnHistoryPolicy::default(),
         };
 
         let providers = Arc::clone(&self.providers);

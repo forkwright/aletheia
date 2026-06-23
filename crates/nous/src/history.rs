@@ -37,7 +37,7 @@ impl Default for HistoryConfig {
 
 /// Result of the history stage.
 #[derive(Debug, Clone)]
-pub struct HistoryResult {
+pub struct HistoryResult { // kanon:ignore TOPOLOGY/shallow-struct — result bag passed across pipeline stage boundary; no in-file behavior by design
     /// Number of messages loaded from store.
     pub messages_loaded: usize,
     /// Total tokens consumed by loaded history.
@@ -128,7 +128,7 @@ pub(crate) fn load_history(
         match msg.role {
             Role::System => continue,
             Role::ToolResult if !config.include_tool_messages => continue,
-            _ => {}
+            _ => {} // kanon:ignore RUST/empty-match-arm — all other roles proceed to message inclusion below
         }
 
         let role = match msg.role {

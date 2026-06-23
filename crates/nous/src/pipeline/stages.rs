@@ -793,6 +793,7 @@ pub(super) async fn run_execute_stage(
     let result = match execute_result {
         Ok(turn_result) => turn_result,
         Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
+            // kanon:ignore RUST/commented-code — WHY explanatory text, not commented-out code
             // WHY: a None distillation summary means the session has never been
             // distilled — for a hard timeout we fail instead of serving a generic
             // unavailable message, while other transient errors still degrade.
