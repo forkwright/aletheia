@@ -616,7 +616,7 @@ pub async fn execute_streaming(
         let response = match streaming_provider
             .complete_streaming(&request, &mut |event| {
                 if let Err(e) = tx.try_send(TurnStreamEvent::LlmDelta(event.clone())) {
-                    record_llm_stream_send_error(&nous_id, &event, &e);
+                    record_llm_stream_send_error(nous_id.as_ref(), &event, &e);
                 }
             })
             .await

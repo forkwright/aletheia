@@ -24,6 +24,7 @@ use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
 use crate::stream::TurnStreamEvent;
 
 /// Result of dispatching tool calls, including optional loop warning.
+// kanon:ignore TOPOLOGY/shallow-struct — internal dispatch result carrier used only within the execute module
 pub(super) struct DispatchResult {
     /// Tool result content blocks to send back to the LLM.
     pub blocks: Vec<ContentBlock>,

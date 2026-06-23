@@ -7651,6 +7651,7 @@ dependencies = [
  "axum 0.8.9",
  "axum-server",
  "dianoia",
+ "futures",
  "hermeneus",
  "http-body-util",
  "indexmap 2.14.0",

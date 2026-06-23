@@ -433,10 +433,7 @@ async fn streaming_dropped_llm_deltas_record_metric() {
     // text deltas, asserting that the drop counter increments with the
     // `text_delta` event type label.
     let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(DeltaEmitter::new(
-        5,
-        make_text_response("done"),
-    )));
+    providers.register(Box::new(DeltaEmitter::new(5, make_text_response("done"))));
 
     let tools = ToolRegistry::new();
     let (tx, _rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(1);
@@ -459,7 +456,9 @@ async fn streaming_dropped_llm_deltas_record_metric() {
     .expect("execute_streaming");
 
     let mut buf = String::new();
-    registry.encode(&mut buf).expect("encoding into String is infallible");
+    registry
+        .encode(&mut buf)
+        .expect("encoding into String is infallible");
 
     assert!(
         buf.contains("aletheia_stream_events_dropped_total"),

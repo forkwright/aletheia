@@ -69,10 +69,7 @@ async fn subscribe_includes_event_id_and_timestamp() {
 
     let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
     let text = String::from_utf8_lossy(&bytes);
-    assert!(
-        text.contains("id: 1"),
-        "expected SSE id field, got: {text}"
-    );
+    assert!(text.contains("id: 1"), "expected SSE id field, got: {text}");
     assert!(
         text.contains("\"at\":"),
         "expected event timestamp in payload, got: {text}"

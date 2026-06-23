@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — nous handler covers agent CRUD, tool management, and recovery; tracked for split in #4201
 //! Nous (agent) information endpoints.
 
 use axum::Json;

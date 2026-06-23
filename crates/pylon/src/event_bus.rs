@@ -11,8 +11,8 @@
 //! event rather than silently lost.
 
 use std::collections::VecDeque;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, Arc};
 
 use tokio::sync::broadcast;
 
@@ -120,12 +120,13 @@ impl EventBus {
     ///
     /// The returned snapshot contains replay events and a live receiver. If
     /// `last_id` is older than the oldest retained journal entry, `has_gap` is
-    /// set and the caller must emit a typed gap event before replaying.
+    /// set and the caller must inject a typed `stream_gap` event before the
+    /// replayed events.
     pub(crate) fn subscribe_from(
         &self,
         last_id: u64,
     ) -> (JournalSnapshot, broadcast::Receiver<DomainEvent>) {
-        let mut journal = self
+        let journal = self
             .journal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -140,18 +141,14 @@ impl EventBus {
         };
 
         if let (Some(oldest), Some(_newest)) = (oldest_id, newest_id) {
-            if last_id > 0 && last_id + 1 < oldest {
-                // The client is asking for events that have already fallen out
-                // of the bounded journal.
+            if last_id > 0 && oldest > last_id {
+                // The client's last-seen event has been evicted from the journal;
+                // continuity from last_id cannot be guaranteed.
                 snapshot.has_gap = true;
                 snapshot.gap_first_missed_id = last_id + 1;
-                snapshot.gap_last_missed_id = oldest.saturating_sub(1);
+                snapshot.gap_last_missed_id = oldest;
             }
-            snapshot.replay = journal
-                .iter()
-                .filter(|e| e.id > last_id)
-                .cloned()
-                .collect();
+            snapshot.replay = journal.iter().filter(|e| e.id > last_id).cloned().collect();
         }
 
         let rx = self.tx.subscribe();
@@ -174,7 +171,11 @@ mod tests {
         let id = bus.next_id();
         let mut rx = bus.subscribe();
 
-        bus.publish(DomainEvent::new(id, "test.topic", serde_json::json!({"k": 1})));
+        bus.publish(DomainEvent::new(
+            id,
+            "test.topic",
+            serde_json::json!({"k": 1}),
+        ));
 
         let event = rx.try_recv().expect("should receive event");
         assert_eq!(event.id, id);
@@ -186,8 +187,15 @@ mod tests {
     fn event_bus_no_subscriber_does_not_panic() {
         let bus = EventBus::new(16);
         let id = bus.next_id();
-        // Publish with no subscribers: must not panic, even though the event is dropped.
         bus.publish(DomainEvent::new(id, "test.topic", serde_json::json!({})));
+        // Even with no live subscribers, the event is retained in the journal.
+        let (snapshot, _rx) = bus.subscribe_from(0);
+        assert_eq!(
+            snapshot.replay.len(),
+            1,
+            "event should be retained in journal"
+        );
+        assert_eq!(snapshot.replay[0].id, id);
     }
 
     /// Verify that a lagging subscriber receives `RecvError::Lagged` when the channel
@@ -200,7 +208,11 @@ mod tests {
         // Publish 3 events into a capacity-2 channel without reading.
         for i in 0_u32..3 {
             let id = bus.next_id();
-            bus.publish(DomainEvent::new(id, "lag.topic", serde_json::json!({"i": i})));
+            bus.publish(DomainEvent::new(
+                id,
+                "lag.topic",
+                serde_json::json!({"i": i}),
+            ));
         }
 
         // The receiver should report a lag (skipped messages) on next recv.

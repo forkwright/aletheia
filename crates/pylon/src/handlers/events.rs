@@ -42,10 +42,7 @@ const STREAM_LAGGED_EVENT: &str = "stream_lagged";
 /// Parse a `Last-Event-ID` value from the `Last-Event-ID` header or the
 /// `last_event_id` query parameter.
 fn parse_last_event_id(headers: &HeaderMap, query: &SubscribeParams) -> Option<u64> {
-    if let Some(value) = headers
-        .get("Last-Event-ID")
-        .and_then(|v| v.to_str().ok())
-    {
+    if let Some(value) = headers.get("Last-Event-ID").and_then(|v| v.to_str().ok()) {
         return value.parse().ok();
     }
     query.last_event_id.as_ref()?.parse().ok()
@@ -56,7 +53,7 @@ fn parse_last_event_id(headers: &HeaderMap, query: &SubscribeParams) -> Option<u
 /// Returns `None` when the event does not match the requested topics or scoped
 /// visibility.
 fn domain_event_to_sse(
-    event: DomainEvent,
+    event: &DomainEvent,
     topics: &[String],
     scoped_nous_id: Option<&str>,
 ) -> Option<Result<Event, Infallible>> {
@@ -75,7 +72,7 @@ fn domain_event_to_sse(
     }
 
     let id = event.id.to_string();
-    match serde_json::to_string(&event) {
+    match serde_json::to_string(event) {
         Ok(data) => Some(Ok(Event::default().event(&event.topic).id(id).data(data))),
         Err(e) => {
             warn!(error = %e, topic = %event.topic, "failed to serialize domain event");
@@ -88,6 +85,10 @@ fn domain_event_to_sse(
 }
 
 /// Build a gap SSE event carrying the range of missed ids.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "return type must match stream item type Result<Event, Infallible>"
+)]
 fn gap_event(first_missed: u64, last_missed: u64) -> Result<Event, Infallible> {
     let data = serde_json::json!({
         "first_missed_id": first_missed,
@@ -188,11 +189,13 @@ pub async fn subscribe(
     let topics_for_replay = topics.clone();
     let scoped_for_replay = scoped_nous_id.clone();
     let replay_stream = stream::iter(replay.into_iter().filter_map(move |event| {
-        domain_event_to_sse(event, &topics_for_replay, scoped_for_replay.as_deref())
+        domain_event_to_sse(&event, &topics_for_replay, scoped_for_replay.as_deref())
     }));
 
     let gap_stream = if has_gap {
-        Some(stream::iter(std::iter::once(gap_event(gap_first, gap_last))))
+        Some(stream::iter(std::iter::once(gap_event(
+            gap_first, gap_last,
+        ))))
     } else {
         None
     };
@@ -201,35 +204,39 @@ pub async fn subscribe(
     // replayed id. The broadcast receiver starts at the channel's current tail,
     // which may overlap with the journal replay; de-duplicating by id prevents
     // emitting the same event twice.
-    let live_stream = BroadcastStream::new(rx).filter_map(move |result| match result {
-        Ok(event) if event.id > max_replayed_id => {
-            domain_event_to_sse(event, &topics, scoped_nous_id.as_deref())
-        }
-        Ok(_) => None,
-        Err(BroadcastStreamRecvError::Lagged(n)) => {
-            // WHY: Silently swallowing lag would let clients believe they saw
-            // every event. Emit a typed control event carrying the dropped
-            // count so the loss is observable and recoverable upstream.
-            warn!(
-                subscriber_id = %subscriber_id,
-                dropped = n,
-                "event subscriber lagged; surfacing loss to client"
-            );
-            let data = serde_json::json!({"dropped": n});
-            let data =
-                serde_json::to_string(&data).unwrap_or_else(|_| "{\"dropped\":0}".to_owned());
-            Some(Ok(Event::default().event(STREAM_LAGGED_EVENT).data(data)))
-        }
+    let live_stream = BroadcastStream::new(rx).filter_map(move |result| {
+        let item = match result {
+            Ok(event) if event.id > max_replayed_id => {
+                domain_event_to_sse(&event, &topics, scoped_nous_id.as_deref())
+            }
+            Ok(_) => None,
+            Err(BroadcastStreamRecvError::Lagged(n)) => {
+                // WHY: Silently swallowing lag would let clients believe they saw
+                // every event. Emit a typed control event carrying the dropped
+                // count so the loss is observable and recoverable upstream.
+                warn!(
+                    subscriber_id = %subscriber_id,
+                    dropped = n,
+                    "event subscriber lagged; surfacing loss to client"
+                );
+                let data = serde_json::json!({"dropped": n});
+                let data =
+                    serde_json::to_string(&data).unwrap_or_else(|_| "{\"dropped\":0}".to_owned());
+                Some(Ok(Event::default().event(STREAM_LAGGED_EVENT).data(data)))
+            }
+        };
+        std::future::ready(item)
     });
 
     // WHY(#4910): Stream order is: gap event (if any), replay events, live
     // events. This lets a reconnecting client learn about unrecoverable loss
     // before receiving the retained tail of the stream.
-    let stream: futures::stream::BoxStream<'static, Result<Event, Infallible>> = if let Some(gap) = gap_stream {
-        gap.chain(replay_stream).chain(live_stream).boxed()
-    } else {
-        replay_stream.chain(live_stream).boxed()
-    };
+    let stream: futures::stream::BoxStream<'static, Result<Event, Infallible>> =
+        if let Some(gap) = gap_stream {
+            gap.chain(replay_stream).chain(live_stream).boxed()
+        } else {
+            replay_stream.chain(live_stream).boxed()
+        };
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
@@ -251,6 +258,7 @@ pub async fn subscribe(
     ),
     security(("bearer_auth" = []))
 )]
+// kanon:ignore API/unused-auth-param — extractor enforces authentication; no per-claim RBAC needed for topic discovery
 #[instrument(skip(_claims))]
 pub async fn discovery(_claims: Claims) -> impl IntoResponse {
     // WHY: Discovery must only advertise topics that have a current pylon
