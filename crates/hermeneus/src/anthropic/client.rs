@@ -41,23 +41,42 @@ pub struct ProviderBehavior {
     pub sse_retry_ms: u64,
 }
 
+impl ProviderBehavior {
+    /// Create a new behavior configuration.
+    pub fn new(non_streaming_timeout: Duration, sse_retry_ms: u64) -> Self {
+        Self { non_streaming_timeout, sse_retry_ms }
+    }
+}
+
+/// HTTP endpoint for the Anthropic Messages API.
+struct ApiEndpoint {
+    base_url: String,
+    api_version: String,
+}
+
+/// Model routing claims for this provider instance.
+struct ModelCatalog {
+    /// Model IDs this instance claims for registry routing. The first-party
+    /// catalog by default; an operator-declared compatible endpoint claims
+    /// exactly its configured model list instead.
+    refs: &'static [&'static str],
+    /// Whether `refs` came from operator configuration.
+    has_operator_refs: bool,
+}
+
 /// Anthropic Messages API provider.
 pub struct AnthropicProvider {
     // kanon:ignore RUST/pub-visibility
     client: Client,
     credential_provider: Arc<dyn CredentialProvider>,
-    base_url: String,
-    api_version: String,
+    endpoint: ApiEndpoint,
     max_retries: u32,
     pricing: HashMap<String, ModelPricing>,
     health: Arc<ProviderHealthTracker>,
     /// CC profile for request mimicry. `Some` when using OAuth credentials.
     cc_profile: Option<super::cc_profile::CcProfile>,
-    /// Per-request timeout for non-streaming completions.
-    non_streaming_timeout: Duration,
-    /// Default retry delay in milliseconds for SSE stream errors (rate-limit,
-    /// overload). Configurable via `providerBehavior.sseDefaultRetryMs` (#4886).
-    sse_retry_ms: u64,
+    /// Runtime behavior overrides (timeouts, retry delays).
+    behavior: ProviderBehavior,
     /// Prompt cache policy (#3410). When `Disabled`, all `cache_control`
     /// markers are scrubbed before the wire request is built so operator
     /// content never enters Anthropic's prompt cache.
@@ -66,12 +85,8 @@ pub struct AnthropicProvider {
     /// `"anthropic"` for the first-party endpoint; operator-declared
     /// compatible endpoints carry their config name (e.g. `"kimi-coding"`).
     instance_name: String,
-    /// Model IDs this instance claims for registry routing. The first-party
-    /// catalog by default; an operator-declared compatible endpoint claims
-    /// exactly its configured model list instead.
-    model_refs: &'static [&'static str],
-    /// Whether `model_refs` came from operator configuration.
-    has_operator_model_refs: bool,
+    /// Model routing claims for this instance.
+    catalog: ModelCatalog,
     /// Where this instance's traffic terminates, for the recall
     /// sensitivity filter (#3404, #3413).
     deployment_target: DeploymentTarget,
@@ -124,12 +139,10 @@ const NON_STREAMING_TIMEOUT: Duration = Duration::from_mins(2);
 /// HTTP headers sent on every outbound Anthropic request to opt out of
 /// using operator traffic for model training (#3406).
 ///
-/// Anthropic has not publicly documented a single canonical header name for
-/// per-request training opt-out, so we send both the hyphenated
-/// `anthropic-disable-training` form and an `anthropic-training-opt-out`
-/// alias. Both are harmless no-ops if the server ignores them and either
-/// may match the accepted name once verified. The constant lives here so
-/// the follow-up verification issue has a single call site to update.
+/// Anthropic's canonical training-opt-out header name is undocumented, so
+/// we send both `anthropic-disable-training` and `anthropic-training-opt-out`
+/// as a belt-and-suspenders measure: both are harmless no-ops if unrecognized,
+/// and at least one will match the accepted form.
 const ANTHROPIC_TRAINING_OPTOUT_HEADERS: &[&str] =
     &["anthropic-disable-training", "anthropic-training-opt-out"];
 
@@ -203,29 +216,32 @@ impl AnthropicProvider {
             credential_provider: Arc::new(StaticCredentialProvider {
                 key: api_key.clone(),
             }),
-            base_url: config
-                .base_url
-                .clone()
-                .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
-            api_version: DEFAULT_API_VERSION.to_owned(),
+            endpoint: ApiEndpoint {
+                base_url: config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
+                api_version: DEFAULT_API_VERSION.to_owned(),
+            },
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
-            non_streaming_timeout: NON_STREAMING_TIMEOUT,
-            sse_retry_ms: super::error::SSE_DEFAULT_RETRY_MS,
+            behavior: ProviderBehavior::new(NON_STREAMING_TIMEOUT, super::error::SSE_DEFAULT_RETRY_MS),
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
-            model_refs: model_refs(config),
-            has_operator_model_refs: !config.models.is_empty(),
+            catalog: ModelCatalog {
+                refs: model_refs(config),
+                has_operator_refs: !config.models.is_empty(),
+            },
             deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
+        if !provider.endpoint.base_url.starts_with("https://") && !is_loopback_url(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
-                    provider.base_url
+                    provider.endpoint.base_url
                 ),
             }
             .build());
@@ -261,29 +277,32 @@ impl AnthropicProvider {
         let provider = Self {
             client: build_http_client()?,
             credential_provider: provider,
-            base_url: config
-                .base_url
-                .clone()
-                .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
-            api_version: DEFAULT_API_VERSION.to_owned(),
+            endpoint: ApiEndpoint {
+                base_url: config
+                    .base_url
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
+                api_version: DEFAULT_API_VERSION.to_owned(),
+            },
             max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
-            non_streaming_timeout: NON_STREAMING_TIMEOUT,
-            sse_retry_ms: super::error::SSE_DEFAULT_RETRY_MS,
+            behavior: ProviderBehavior::new(NON_STREAMING_TIMEOUT, super::error::SSE_DEFAULT_RETRY_MS),
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
-            model_refs: model_refs(config),
-            has_operator_model_refs: !config.models.is_empty(),
+            catalog: ModelCatalog {
+                refs: model_refs(config),
+                has_operator_refs: !config.models.is_empty(),
+            },
             deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.base_url.starts_with("https://") && !is_loopback_url(&provider.base_url) {
+        if !provider.endpoint.base_url.starts_with("https://") && !is_loopback_url(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
-                    provider.base_url
+                    provider.endpoint.base_url
                 ),
             }
             .build());
@@ -300,8 +319,8 @@ impl AnthropicProvider {
         behavior: &ProviderBehavior,
     ) -> Result<Self> {
         let mut this = Self::with_credential_provider(provider, config)?;
-        this.non_streaming_timeout = behavior.non_streaming_timeout;
-        this.sse_retry_ms = behavior.sse_retry_ms;
+        this.behavior.non_streaming_timeout = behavior.non_streaming_timeout;
+        this.behavior.sse_retry_ms = behavior.sse_retry_ms;
         Ok(this)
     }
 
@@ -386,7 +405,7 @@ impl AnthropicProvider {
 
             let mut response = match self
                 .client
-                .post(format!("{}/v1/messages", self.base_url))
+                .post(format!("{}/v1/messages", self.endpoint.base_url))
                 .headers(headers)
                 .body(body.clone())
                 .timeout(STREAMING_TIMEOUT)
@@ -450,7 +469,7 @@ impl AnthropicProvider {
                     }
                     on_event(event);
                 },
-                self.sse_retry_ms,
+                self.behavior.sse_retry_ms,
             )
             .await;
 
@@ -756,11 +775,11 @@ impl AnthropicProvider {
         }
         headers.insert(
             "anthropic-version",
-            HeaderValue::from_str(&self.api_version).map_err(|e| {
+            HeaderValue::from_str(&self.endpoint.api_version).map_err(|e| {
                 error::ProviderInitSnafu {
                     message: format!(
                         "api_version {:?} contains invalid HTTP header characters: {e}",
-                        self.api_version
+                        self.endpoint.api_version
                     ),
                 }
                 .build()
@@ -772,10 +791,9 @@ impl AnthropicProvider {
         // contract, but we belt-and-suspenders the header so any future policy
         // shift or misrouted request still carries an explicit refusal.
         //
-        // Anthropic has not publicly documented a single canonical header name
-        // for per-request training opt-out. The value `anthropic-training-opt-out`
-        // is a defensive placeholder pending verification against Anthropic's
-        // API reference; see the follow-up issue noted in the PR body.
+        // Both header names are sent because Anthropic's canonical training-opt-out
+        // header is undocumented; sending both ensures coverage regardless of
+        // which form the server accepts, and both are harmless no-ops if ignored.
         for name in ANTHROPIC_TRAINING_OPTOUT_HEADERS {
             headers.insert(*name, HeaderValue::from_static("true"));
         }
@@ -868,14 +886,14 @@ impl AnthropicProvider {
             // CodeQL: cleartext-transmission false positive. Both constructors
             // (`from_config` and `with_credential_provider`) reject non-HTTPS base
             // URLs unless the target is loopback (localhost / 127.0.0.1). The
-            // `base_url` field is immutable after construction, so by the time we
-            // reach this request the scheme has already been validated.
+            // `endpoint.base_url` is immutable after construction, so by the time
+            // we reach this request the scheme has already been validated.
             let response = match self
                 .client
-                .post(format!("{}/v1/messages", self.base_url))
+                .post(format!("{}/v1/messages", self.endpoint.base_url))
                 .headers(headers)
                 .body(body.clone())
-                .timeout(self.non_streaming_timeout)
+                .timeout(self.behavior.non_streaming_timeout)
                 .send()
                 .await
             {
@@ -1023,7 +1041,7 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        self.model_refs
+        self.catalog.refs
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -1031,7 +1049,7 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        if self.has_operator_model_refs && self.model_refs.contains(&model) {
+        if self.catalog.has_operator_refs && self.catalog.refs.contains(&model) {
             Some(MatchKind::Exact)
         } else if model.starts_with("claude-") {
             Some(MatchKind::CatchAll)
@@ -1065,8 +1083,8 @@ impl std::fmt::Debug for AnthropicProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AnthropicProvider")
             .field("credential_provider", &self.credential_provider.name())
-            .field("base_url", &self.base_url)
-            .field("api_version", &self.api_version)
+            .field("base_url", &self.endpoint.base_url)
+            .field("api_version", &self.endpoint.api_version)
             .field("max_retries", &self.max_retries)
             .finish_non_exhaustive()
     }
