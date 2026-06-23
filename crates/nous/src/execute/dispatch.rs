@@ -269,14 +269,22 @@ fn record_stream_send_error<T>(
                 tool = tool_name,
                 kind, "streaming approval event dropped: channel buffer full"
             );
-            crate::metrics::record_stream_event_dropped(tool_ctx.nous_id.as_ref(), "buffer_full");
+            crate::metrics::record_stream_event_dropped(
+                tool_ctx.nous_id.as_ref(),
+                kind,
+                "buffer_full",
+            );
         }
         tokio::sync::mpsc::error::TrySendError::Closed(_) => {
             debug!(
                 tool = tool_name,
                 kind, "streaming approval event dropped: receiver disconnected"
             );
-            crate::metrics::record_stream_event_dropped(tool_ctx.nous_id.as_ref(), "disconnected");
+            crate::metrics::record_stream_event_dropped(
+                tool_ctx.nous_id.as_ref(),
+                kind,
+                "disconnected",
+            );
         }
     }
 }
