@@ -78,3 +78,46 @@ pub fn parse_sheet_names(workbook_xml: &str) -> Vec<String> {
     }
     sheet_names
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_shared_strings_returns_text_content() {
+        let xml = r#"<sst><si><t>Hello</t></si><si><t>World</t></si></sst>"#;
+        let result = extract_shared_strings(xml);
+        assert_eq!(result, vec!["Hello", "World"]);
+    }
+
+    #[test]
+    fn extract_shared_strings_concatenates_multiple_t_elements() {
+        let xml = r#"<sst><si><t>foo</t><t>bar</t></si></sst>"#;
+        let result = extract_shared_strings(xml);
+        assert_eq!(result, vec!["foobar"]);
+    }
+
+    #[test]
+    fn extract_text_from_slide_joins_a_t_elements() {
+        let xml = r#"<p:sp><a:t>Hello</a:t><a:t>world</a:t></p:sp>"#;
+        let result = extract_text_from_slide(xml);
+        assert_eq!(result, "Hello world");
+    }
+
+    #[test]
+    fn extract_text_from_slide_empty_returns_empty_string() {
+        assert_eq!(extract_text_from_slide("<p:sp></p:sp>"), "");
+    }
+
+    #[test]
+    fn parse_sheet_names_returns_names_in_order() {
+        let xml = r#"<workbook><sheets><sheet name="Alpha" r:id="rId1"/><sheet name="Beta" r:id="rId2"/></sheets></workbook>"#;
+        let result = parse_sheet_names(xml);
+        assert_eq!(result, vec!["Alpha", "Beta"]);
+    }
+
+    #[test]
+    fn parse_sheet_names_no_sheets_returns_empty() {
+        assert!(parse_sheet_names("<workbook><sheets/></workbook>").is_empty());
+    }
+}

@@ -8,7 +8,12 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[lints]
-workspace = true
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "OOXML parsing API is stable and consumed by at least two released crates"
 
 [dependencies]
+
+[lints]
+workspace = true
