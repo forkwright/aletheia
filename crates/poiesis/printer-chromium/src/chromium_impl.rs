@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use chromiumoxide::{Browser, BrowserConfig};
 use futures::StreamExt as _;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, warn, Instrument as _};
 
 use crate::{PrintOptions, PrinterError};
 
@@ -42,7 +42,10 @@ pub(crate) async fn print_to_pdf_inner(
         source: Box::from(e),
     })?;
 
-    let handler_task = tokio::spawn(async move { while let Some(_ev) = handler.next().await {} });
+    let handler_task = tokio::spawn(
+        async move { while let Some(_ev) = handler.next().await {} }
+            .instrument(tracing::Span::current()),
+    );
 
     let render_result = render_with_browser(&mut browser, html, opts, started).await;
     let cleanup_result = cleanup_browser(&mut browser, Duration::from_secs(5)).await;
