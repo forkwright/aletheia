@@ -169,7 +169,7 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap, Error> {
 
     if let Some(t) = token {
         let value = header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{t}"))
-            .map_err(|_| InvalidTokenSnafu.build())?;
+            .map_err(|_source| InvalidTokenSnafu.build())?;
         headers.insert(header::AUTHORIZATION, value);
     }
 
@@ -395,8 +395,7 @@ fn parse_error_body(
         (
             status
                 .canonical_reason()
-                .map(str::to_lowercase)
-                .unwrap_or_else(|| "error".to_owned())
+                .map_or_else(|| "error".to_owned(), str::to_lowercase)
                 .replace(' ', "_"),
             format!("{operation} failed: {text}"),
             None,
@@ -405,6 +404,7 @@ fn parse_error_body(
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

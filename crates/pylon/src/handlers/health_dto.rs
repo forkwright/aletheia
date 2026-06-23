@@ -19,6 +19,7 @@ pub struct HealthResponse {
     /// Crate version from `Cargo.toml`.
     pub version: String,
     /// Build git SHA when available from the build environment.
+    // kanon:ignore RUST/primitive-for-domain-id — wire DTO field; git SHA is sourced from build env, not a first-party domain ID
     pub git_sha: String,
     /// Seconds since server start.
     pub uptime_seconds: u64,

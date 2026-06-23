@@ -1303,16 +1303,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn timed_check_returns_timeout_on_slow_future() {
-        let check = timed_check("slow_check", async {
-            tokio::time::sleep(Duration::from_mins(1)).await; // kanon:ignore TESTING/sleep-in-test -- start_paused = true drives virtual time, not wall clock
-            HealthCheck {
-                name: "slow_check".to_owned(),
-                status: "pass".to_owned(),
-                message: None,
-                details: None,
-            }
-        })
-        .await;
+        let check = timed_check("slow_check", std::future::pending()).await;
         assert_eq!(check.status, "timeout");
         assert_eq!(check.name, "slow_check");
         assert!(check.message.unwrap().contains("timed out"));
