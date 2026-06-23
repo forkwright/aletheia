@@ -375,6 +375,20 @@ pub struct BootstrapSection {
     pub slot: BootstrapSlot,
 }
 
+impl BootstrapSection {
+    /// Construct a section with all fields specified.
+    pub fn new(
+        name: String,
+        priority: SectionPriority,
+        content: String,
+        tokens: u64,
+        truncatable: bool,
+        slot: BootstrapSlot,
+    ) -> Self {
+        Self { name, priority, content, tokens, truncatable, slot }
+    }
+}
+
 /// Result of bootstrap assembly.
 #[derive(Debug, Clone)]
 pub struct BootstrapResult {
@@ -392,6 +406,29 @@ pub struct BootstrapResult {
     pub total_tokens: u64,
     /// The task hint used for conditional loading.
     pub task_hint: TaskHint,
+}
+
+impl BootstrapResult {
+    /// Construct a result with all fields specified.
+    pub fn new(
+        system_prompt: String,
+        sections_included: Vec<String>,
+        sections_truncated: Vec<String>,
+        sections_dropped: Vec<String>,
+        sections_filtered: Vec<String>,
+        total_tokens: u64,
+        task_hint: TaskHint,
+    ) -> Self {
+        Self {
+            system_prompt,
+            sections_included,
+            sections_truncated,
+            sections_dropped,
+            sections_filtered,
+            total_tokens,
+            task_hint,
+        }
+    }
 }
 
 /// Workspace file specification for cascade resolution.
@@ -1472,7 +1509,7 @@ impl<'a> BootstrapAssembler<'a> {
             }
             LlmRecipe::InSession => (SectionPriority::Optional, true),
             LlmRecipe::Refactor => (SectionPriority::Important, true),
-            LlmRecipe::None => unreachable!("None recipe is filtered before path resolution"),
+            LlmRecipe::None => (SectionPriority::Optional, true),
         }
     }
 
