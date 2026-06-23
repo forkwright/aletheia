@@ -40,7 +40,9 @@ const OVERALL_TIMEOUT: Duration = Duration::from_secs(10);
     ),
 )]
 pub async fn check() -> impl IntoResponse {
-    Json(LivenessResponse { status: "healthy".to_owned() })
+    Json(LivenessResponse {
+        status: "healthy".into(),
+    })
 }
 
 /// GET /api/v1/system/health: operator-only readiness and diagnostics.
@@ -1071,7 +1073,9 @@ mod tests {
 
     #[test]
     fn liveness_response_serializes_only_status() {
-        let resp = LivenessResponse { status: "healthy".to_owned() };
+        let resp = LivenessResponse {
+            status: "healthy".into(),
+        };
         let json = serde_json::to_value(&resp).unwrap();
         let object = json.as_object().unwrap();
         assert_eq!(object.len(), 1);
