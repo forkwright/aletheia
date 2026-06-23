@@ -50,7 +50,10 @@ pub(crate) async fn print_to_pdf_inner(
 
     match (render_result, cleanup_result) {
         (Ok(pdf_bytes), Ok(())) => Ok(pdf_bytes),
-        (Ok(_pdf_bytes), Err(cleanup_error)) => Err(cleanup_error),
+        (Ok(pdf_bytes), Err(cleanup_error)) => {
+            warn!(error = %cleanup_error, "Chromium cleanup failed; returning successful PDF");
+            Ok(pdf_bytes)
+        }
         (Err(render_error), Ok(())) => Err(render_error),
         (Err(render_error), Err(cleanup_error)) => {
             error!(error = %cleanup_error, "Chromium cleanup failed after render error");
