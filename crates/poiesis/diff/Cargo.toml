@@ -19,10 +19,10 @@ poiesis-ooxml-parse = { path = "../ooxml-parse" }
 poiesis-sheet = { path = "../sheet" }
 serde_json = { workspace = true }
 
+[lints]
+workspace = true
+
 [package.metadata.kanon]
 maturity = "alpha"
 since = "2026-06-23"
 exit-criteria = "diff API is stable and integrated into a release workflow"
-
-[lints]
-workspace = true

@@ -1,5 +1,4 @@
-# kanon:ignore ORCHESTRATION/main-worktree-commit-prohibited -- operator-authorized agent session (aletheia-v1-tracks-mm)
-# kanon:ignore MANIFEST/no-license -- workspace manifest; license declared in [workspace.package]
+# kanon:ignore ORCHESTRATION/main-worktree-commit-prohibited -- operator-authorized agent session (aletheia-v1-tracks-mm); kanon:ignore MANIFEST/no-license -- workspace manifest; license declared in [workspace.package]
 [workspace]
 resolver = "2"
 members = [

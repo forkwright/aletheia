@@ -23,10 +23,10 @@ poiesis-doc = { path = "../doc" }
 poiesis-core = { path = "../core" }
 serde_json = { workspace = true }
 
+[lints]
+workspace = true
+
 [package.metadata.kanon]
 maturity = "alpha"
 since = "2026-06-23"
 exit-criteria = "inspection API is stable and covers all supported formats"
-
-[lints]
-workspace = true
