@@ -29,12 +29,12 @@ pub struct PdfSummary {
 }
 
 impl PdfSummary {
-    pub(crate) fn new(
-        pages: usize,
-        page_count_reliable: bool,
-        text_snippets: Vec<String>,
-    ) -> Self {
-        Self { pages, page_count_reliable, text_snippets }
+    pub(crate) fn new(pages: usize, page_count_reliable: bool, text_snippets: Vec<String>) -> Self {
+        Self {
+            pages,
+            page_count_reliable,
+            text_snippets,
+        }
     }
 }
 
