@@ -296,8 +296,24 @@ impl KnowledgeStore {
             String::from("old_is_forgotten"),
             DataValue::Bool(old_fact.lifecycle.is_forgotten),
         );
-        params.insert(String::from("old_forgotten_at"), DataValue::Null);
-        params.insert(String::from("old_forget_reason"), DataValue::Null);
+        params.insert(
+            String::from("old_forgotten_at"),
+            old_fact
+                .lifecycle
+                .forgotten_at
+                .as_ref()
+                .map(|ts| DataValue::Str(format_timestamp(ts).into()))
+                .unwrap_or(DataValue::Null),
+        );
+        params.insert(
+            String::from("old_forget_reason"),
+            old_fact
+                .lifecycle
+                .forget_reason
+                .as_ref()
+                .map(|r| DataValue::Str(r.as_str().into()))
+                .unwrap_or(DataValue::Null),
+        );
         params.insert(
             String::from("old_scope"),
             old_fact
@@ -2065,6 +2081,48 @@ mod tests {
         assert!(
             forgotten_ids.contains("qfi-gone"),
             "forgotten fact must appear in forgotten ids"
+        );
+    }
+
+    // ── Supersede provenance ───────────────────────────────────────────────────
+
+    #[test]
+    fn supersede_preserves_forget_provenance_on_old_row() {
+        let store = make_store();
+        let old_fact = make_fact("sup-old", "alice", "Old forgotten fact");
+        store.insert_fact(&old_fact).expect("insert old");
+        store
+            .forget_fact(
+                &crate::id::FactId::new("sup-old").expect("valid test id"),
+                ForgetReason::Outdated,
+            )
+            .expect("forget old");
+
+        let new_fact = make_fact("sup-new", "alice", "Replacement fact");
+        let forgotten = store
+            .read_facts_by_id("sup-old")
+            .expect("read old before supersede")
+            .into_iter()
+            .next()
+            .expect("old fact exists");
+        let original_forgotten_at = forgotten.lifecycle.forgotten_at.expect("forgotten_at set");
+
+        store.supersede_fact(&forgotten, &new_fact).expect("supersede");
+
+        let versions = store.read_facts_by_id("sup-old").expect("read after supersede");
+        let superseded = versions
+            .iter()
+            .find(|f| f.lifecycle.superseded_by.is_some())
+            .expect("find superseded old row");
+        assert_eq!(
+            superseded.lifecycle.forgotten_at,
+            Some(original_forgotten_at),
+            "superseded row must retain forgotten_at"
+        );
+        assert_eq!(
+            superseded.lifecycle.forget_reason,
+            Some(ForgetReason::Outdated),
+            "superseded row must retain forget_reason"
         );
     }
 }
