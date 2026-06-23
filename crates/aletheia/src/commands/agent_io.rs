@@ -367,8 +367,11 @@ fn export_knowledge(
         .into_iter()
         .map(|(fact_id, entity_id)| FactEntityEdge { fact_id, entity_id })
         .collect();
-    fact_entity_edges
-        .sort_by(|a, b| a.fact_id.cmp(&b.fact_id).then(a.entity_id.cmp(&b.entity_id)));
+    fact_entity_edges.sort_by(|a, b| {
+        a.fact_id
+            .cmp(&b.fact_id)
+            .then(a.entity_id.cmp(&b.entity_id))
+    });
 
     let entity_ids: std::collections::HashSet<String> = entities
         .iter()
@@ -391,8 +394,7 @@ fn export_knowledge(
     // subsequent exports to report a spurious memory omission (#6015).
     let has_unexported_vectors = {
         use std::collections::BTreeMap;
-        const HAS_NON_FACT_EMBEDDINGS: &str =
-            "?[id] := *embeddings{id, nous_id: $nous_id, source_type}, source_type != 'fact'\n:limit 1";
+        const HAS_NON_FACT_EMBEDDINGS: &str = "?[id] := *embeddings{id, nous_id: $nous_id, source_type}, source_type != 'fact'\n:limit 1";
         let mut params = BTreeMap::new();
         params.insert(
             "nous_id".to_owned(),
