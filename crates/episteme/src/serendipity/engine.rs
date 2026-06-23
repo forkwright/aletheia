@@ -42,7 +42,7 @@ impl EntityActivity {
     clippy::too_many_lines,
     reason = "orchestrates the full serendipity maintenance flow"
 )]
-pub(super) fn discover_serendipitous_facts(
+pub(crate) fn discover_serendipitous_facts(
     store: &KnowledgeStore,
     nous_id: &str,
 ) -> crate::error::Result<SerendipityDiscoveryReport> {
