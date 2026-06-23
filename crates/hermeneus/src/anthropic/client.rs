@@ -44,7 +44,10 @@ pub struct ProviderBehavior {
 impl ProviderBehavior {
     /// Create a new behavior configuration.
     pub fn new(non_streaming_timeout: Duration, sse_retry_ms: u64) -> Self {
-        Self { non_streaming_timeout, sse_retry_ms }
+        Self {
+            non_streaming_timeout,
+            sse_retry_ms,
+        }
     }
 }
 
@@ -227,7 +230,10 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
-            behavior: ProviderBehavior::new(NON_STREAMING_TIMEOUT, super::error::SSE_DEFAULT_RETRY_MS),
+            behavior: ProviderBehavior::new(
+                NON_STREAMING_TIMEOUT,
+                super::error::SSE_DEFAULT_RETRY_MS,
+            ),
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             catalog: ModelCatalog {
@@ -237,7 +243,9 @@ impl AnthropicProvider {
             deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.endpoint.base_url.starts_with("https://") && !is_loopback_url(&provider.endpoint.base_url) {
+        if !provider.endpoint.base_url.starts_with("https://")
+            && !is_loopback_url(&provider.endpoint.base_url)
+        {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
@@ -288,7 +296,10 @@ impl AnthropicProvider {
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
-            behavior: ProviderBehavior::new(NON_STREAMING_TIMEOUT, super::error::SSE_DEFAULT_RETRY_MS),
+            behavior: ProviderBehavior::new(
+                NON_STREAMING_TIMEOUT,
+                super::error::SSE_DEFAULT_RETRY_MS,
+            ),
             prompt_cache_mode: config.prompt_cache_mode,
             instance_name: instance_name(config),
             catalog: ModelCatalog {
@@ -298,7 +309,9 @@ impl AnthropicProvider {
             deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.endpoint.base_url.starts_with("https://") && !is_loopback_url(&provider.endpoint.base_url) {
+        if !provider.endpoint.base_url.starts_with("https://")
+            && !is_loopback_url(&provider.endpoint.base_url)
+        {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
@@ -584,11 +597,14 @@ impl AnthropicProvider {
         // overload events), the terminal span must report "rate_limited" so
         // operators can distinguish exhausted rate-limit sequences from true
         // 4xx/5xx errors.
-        let terminal_status = last_error
+        let terminal_status = if last_error
             .as_ref()
             .is_some_and(|e| matches!(e, error::Error::RateLimited { .. }))
-            .then_some("rate_limited")
-            .unwrap_or("error");
+        {
+            "rate_limited"
+        } else {
+            "error"
+        };
         tracing::Span::current().record("llm.status", terminal_status);
 
         crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
@@ -1009,11 +1025,14 @@ impl AnthropicProvider {
             tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64); // kanon:ignore RUST/as-cast
         }
         tracing::Span::current().record("llm.retries", self.max_retries);
-        let terminal_status = last_error
+        let terminal_status = if last_error
             .as_ref()
             .is_some_and(|e| matches!(e, error::Error::RateLimited { .. }))
-            .then_some("rate_limited")
-            .unwrap_or("error");
+        {
+            "rate_limited"
+        } else {
+            "error"
+        };
         tracing::Span::current().record("llm.status", terminal_status);
 
         crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
