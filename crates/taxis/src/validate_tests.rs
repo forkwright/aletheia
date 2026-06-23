@@ -16,7 +16,10 @@ fn rejects_stale_timeout_seconds_field() {
     // operators get a loud error instead of a silent no-op. (#5788)
     let json = r#"{"agents": {"defaults": {"timeoutSeconds": 300}}}"#;
     let result: Result<crate::config::AletheiaConfig, _> = serde_json::from_str(json);
-    assert!(result.is_err(), "stale timeoutSeconds field should be rejected");
+    assert!(
+        result.is_err(),
+        "stale timeoutSeconds field should be rejected"
+    );
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("timeoutSeconds") || err.contains("unknown field"),
