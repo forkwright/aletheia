@@ -114,8 +114,8 @@ fn set_value_at_path(value: &mut Value, path: &str, replacement: Value) {
 
 /// A single changed field between two config versions.
 #[derive(Debug, Clone)]
+// kanon:ignore TOPOLOGY/shallow-struct — plain data carrier for diff output; callers pattern-match fields directly
 pub struct ConfigChange {
-    // kanon:ignore TOPOLOGY/shallow-struct — plain data carrier for diff output; callers pattern-match fields directly
     /// Dotted path to the changed field (e.g. `agents.defaults.thinkingBudget`).
     pub path: String,
     /// Whether this change requires a restart to take effect.
@@ -234,8 +234,8 @@ pub enum ReloadError {
 }
 
 /// Outcome of a successful reload preparation.
+// kanon:ignore TOPOLOGY/shallow-struct — plain output carrier; callers destructure fields directly after prepare_reload
 pub struct ReloadOutcome {
-    // kanon:ignore TOPOLOGY/shallow-struct — plain output carrier; callers destructure fields directly after prepare_reload
     /// The validated new config ready to be swapped in.
     pub new_config: AletheiaConfig,
     /// Diff between the old (current) and new config.
