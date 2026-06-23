@@ -8,11 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[package.metadata.kanon]
-maturity = "alpha"
-since = "2026-06-23"
-exit-criteria = "diff API is stable and integrated into a release workflow"
-
 [dependencies]
 snafu = { workspace = true }
 tracing = { workspace = true }
@@ -23,6 +18,11 @@ poiesis-ooxml-parse = { path = "../ooxml-parse" }
 [dev-dependencies]
 poiesis-sheet = { path = "../sheet" }
 serde_json = { workspace = true }
+
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "diff API is stable and integrated into a release workflow"
 
 [lints]
 workspace = true
