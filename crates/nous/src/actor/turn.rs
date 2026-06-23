@@ -741,6 +741,13 @@ impl NousActor {
             () = turn_cancel.cancelled() => {
                 pipeline_task.abort();
                 let _ = pipeline_task.await;
+                // WHY: the turn counter was advanced before the pipeline task
+                // was spawned. Since the task never completed, revert the
+                // in-memory increment so the next successful turn does not
+                // leave a visible gap in the session's turn numbering.
+                if let Some(session) = self.sessions.get_mut(session_key) {
+                    session.revert_turn();
+                }
                 Ok(Err(crate::error::TurnCancelledSnafu {
                     reason: "request cancelled".to_owned(),
                 }.build()))

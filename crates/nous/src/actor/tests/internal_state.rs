@@ -9,6 +9,9 @@
     reason = "test assertions may unwrap after prior checks"
 )]
 
+use std::future::Future;
+use std::pin::Pin;
+
 use super::*;
 
 #[test]
@@ -492,4 +495,63 @@ fn make_turn_result_with_content(
         model_used: "test-model".to_owned(),
         tool_surface_hashes: Vec::new(),
     }
+}
+// ── turn.rs: spawn_pipeline_task cancellation ───────────────────────────────
+
+/// Provider that never returns, so the execute stage hangs until cancelled.
+struct HangingProvider;
+
+impl LlmProvider for HangingProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>> {
+        Box::pin(std::future::pending())
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &str {
+        "hanging-provider"
+    }
+}
+
+#[tokio::test]
+async fn cancelled_turn_reverts_turn_counter() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.services.providers.register(Box::new(HangingProvider));
+
+    let session_key = "cancel-test";
+    let turn_cancel = CancellationToken::new();
+    turn_cancel.cancel();
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        actor.spawn_pipeline_task(
+            session_key,
+            None,
+            "hello",
+            None,
+            None,
+            tracing::Span::current(),
+            turn_cancel,
+        ),
+    )
+    .await;
+
+    let result = result.expect("spawn_pipeline_task should resolve quickly after cancellation");
+    assert!(
+        matches!(result, Ok(Err(crate::error::Error::TurnCancelled { .. }))),
+        "cancelled turn should return TurnCancelled"
+    );
+    let session = actor
+        .sessions
+        .get(session_key)
+        .expect("session should exist after cancelled turn");
+    assert_eq!(
+        session.turn, 0,
+        "turn counter should not advance when turn is cancelled"
+    );
 }
