@@ -512,7 +512,7 @@ pub(crate) fn generate_candidates(
         for i in 0..sorted.len() {
             let idx_a = sorted[i].0;
             let window_end = (i + 1 + SORTED_WINDOW).min(sorted.len());
-            for &entry in &sorted[i + 1..window_end] {
+            for entry in &sorted[i + 1..window_end] {
                 let idx_b = entry.0;
                 if idx_a < idx_b {
                     pair_set.insert((idx_a, idx_b));
