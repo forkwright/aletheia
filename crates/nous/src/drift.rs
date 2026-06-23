@@ -324,6 +324,7 @@ impl Default for DriftDetector {
 /// Compute mean and population standard deviation of a slice.
 ///
 /// Returns `(0.0, 0.0)` for empty slices.
+#[cfg(test)]
 #[expect(
     clippy::cast_precision_loss,
     clippy::as_conversions,
@@ -366,6 +367,7 @@ where
 /// Compute mean of a slice.
 ///
 /// Returns `0.0` if the slice is empty.
+#[cfg(test)]
 #[expect(
     clippy::cast_precision_loss,
     clippy::as_conversions,
