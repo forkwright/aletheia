@@ -600,10 +600,9 @@ mod tests {
             .expect("staged NuExtract model should run synthetic inference");
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time trait bound check; fails to compile if Send+Sync is lost
     fn nuextract_provider_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
-        // kanon:ignore TESTING/tautological-test — compile-time trait bound check; fails to compile if Send+Sync is lost
         assert_send_sync::<NuExtractProvider>();
     }
 }
