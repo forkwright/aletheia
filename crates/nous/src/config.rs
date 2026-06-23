@@ -573,7 +573,6 @@ impl Default for StageBudget {
 const fn default_reflection_secs() -> u32 {
     30
 }
-
 #[cfg(test)]
 #[expect(
     clippy::expect_used,

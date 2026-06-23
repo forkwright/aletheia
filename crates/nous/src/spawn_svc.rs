@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — spawn service + full integration test suite; test extraction into submodule planned
 //! Ephemeral sub-agent spawning service.
 
 use std::future::Future;
@@ -62,6 +63,7 @@ pub struct SpawnServiceImpl {
 }
 
 /// Parent runtime dependencies inherited by ephemeral sub-agents.
+// kanon:ignore TOPOLOGY/shallow-struct — dependency bag for wiring parent services into spawned actors; no in-file behavior by design
 pub struct InheritedSpawnServices {
     /// Shared embedding provider inherited from the parent runtime.
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
@@ -725,16 +727,9 @@ mod tests {
             .expect("spawn")
         });
 
-        for _ in 0..50 {
-            if stuck.started() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert!(
-            stuck.started(),
-            "stuck provider should have started the child turn"
-        );
+        tokio::time::timeout(Duration::from_secs(2), stuck.wait_started())
+            .await
+            .expect("stuck provider should start within 2 seconds");
 
         parent_cancel.cancel();
         let result = tokio::time::timeout(Duration::from_secs(3), task)
@@ -763,6 +758,7 @@ mod tests {
 
     struct StuckProviderInner {
         started: std::sync::atomic::AtomicBool,
+        started_notify: tokio::sync::Notify,
         dropped: std::sync::atomic::AtomicBool,
         dropped_notify: tokio::sync::Notify,
         completed: std::sync::atomic::AtomicBool,
@@ -773,6 +769,7 @@ mod tests {
             Self {
                 inner: Arc::new(StuckProviderInner {
                     started: std::sync::atomic::AtomicBool::new(false),
+                    started_notify: tokio::sync::Notify::new(),
                     dropped: std::sync::atomic::AtomicBool::new(false),
                     dropped_notify: tokio::sync::Notify::new(),
                     completed: std::sync::atomic::AtomicBool::new(false),
@@ -790,6 +787,15 @@ mod tests {
 
         fn started(&self) -> bool {
             self.inner.started.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        async fn wait_started(&self) {
+            let notified = self.inner.started_notify.notified();
+            tokio::pin!(notified);
+            if self.inner.started.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            notified.await;
         }
 
         fn completed(&self) -> bool {
@@ -822,6 +828,7 @@ mod tests {
             self.inner
                 .started
                 .store(true, std::sync::atomic::Ordering::SeqCst);
+            self.inner.started_notify.notify_waiters();
             std::task::Poll::Pending
         }
     }
