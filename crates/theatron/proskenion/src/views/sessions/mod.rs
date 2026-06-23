@@ -6,7 +6,7 @@ pub(crate) mod list;
 pub(crate) mod search;
 
 use dioxus::prelude::*;
-use skene::api::types::{HistoryResponse, Session};
+use skene::api::types::{HistoryResponse, PaginatedSessionsResponse, Session};
 use skene::id::SessionId;
 
 use crate::api::client::authenticated_client;
@@ -185,7 +185,7 @@ pub(crate) fn Sessions() -> Element {
                         };
 
                         let (sessions, has_more, new_cursor) =
-                            if let Ok(envelope) = serde_json::from_str::<SessionsPage>(&text) {
+                            if let Ok(envelope) = serde_json::from_str::<PaginatedSessionsResponse>(&text) {
                                 // WHY: has_more without a cursor cannot be continued.
                                 let more = envelope.has_more && envelope.next_cursor.is_some();
                                 (envelope.items, more, envelope.next_cursor)
@@ -569,17 +569,6 @@ pub(crate) fn Sessions() -> Element {
             }
         }
     }
-}
-
-/// Paginated envelope for the sessions list endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct SessionsPage {
-    #[serde(alias = "sessions")]
-    items: Vec<Session>,
-    #[serde(default)]
-    has_more: bool,
-    #[serde(default)]
-    next_cursor: Option<String>,
 }
 
 #[cfg(test)]

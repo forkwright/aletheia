@@ -12,8 +12,8 @@ use super::error::{
     parse_retry_after_secs,
 };
 use super::types::{
-    Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, NousTool,
-    NousToolsResponse, Session, SessionsResponse,
+    Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
+    NousTool, NousToolsResponse, PaginatedSessionsResponse, Session, SessionsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -246,6 +246,65 @@ impl ApiClient {
             operation: "sessions response",
         })?;
         Ok(wrapper.sessions)
+    }
+
+    /// Fetch sessions with pagination, search, and status filtering.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn sessions_paginated(
+        &self,
+        params: &ListSessionsRequest,
+    ) -> Result<PaginatedSessionsResponse> {
+        let mut path = String::from("/api/v1/sessions");
+        let mut sep = '?';
+
+        let mut push_param = |name: &str, value: &str| {
+            path.push(sep);
+            sep = '&';
+            path.push_str(name);
+            path.push('=');
+            path.extend(form_urlencoded::byte_serialize(value.as_bytes()));
+        };
+
+        if let Some(nous_id) = &params.nous_id {
+            push_param("nous_id", nous_id);
+        }
+        if let Some(search) = &params.search {
+            push_param("search", search);
+        }
+        if let Some(status) = &params.status {
+            push_param("status", status);
+        }
+        if let Some(limit) = params.limit {
+            push_param("limit", &limit.to_string());
+        }
+        if let Some(after) = &params.after {
+            push_param("after", after);
+        }
+
+        let resp = self
+            .request(reqwest::Method::GET, &path)
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load sessions paginated",
+            })?;
+        Self::check_auth(&resp)?;
+        let resp = Self::check_status(resp, "sessions paginated request").await?;
+        let wrapper: PaginatedSessionsResponse = resp.json().await.context(HttpSnafu {
+            operation: "sessions paginated response",
+        })?;
+        Ok(wrapper)
     }
 
     /// Fetch message history for a session.

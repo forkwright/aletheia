@@ -95,6 +95,26 @@ impl Session {
     }
 }
 
+/// Query parameters for listing sessions with pagination and filtering.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ListSessionsRequest {
+    /// Filter to sessions belonging to this agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nous_id: Option<String>,
+    /// Free-text search across session key and display name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search: Option<String>,
+    /// Filter to sessions in this status.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// Maximum number of sessions to return.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    /// Cursor for the next page.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+}
+
 /// A single message from session history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryMessage {
@@ -465,6 +485,22 @@ pub struct SessionsResponse {
     /// List of sessions.
     #[serde(alias = "items")]
     pub sessions: Vec<Session>,
+}
+
+/// Paginated response from the sessions list endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedSessionsResponse {
+    /// Sessions in the current page.
+    #[serde(alias = "sessions")]
+    pub items: Vec<Session>,
+    /// Whether more pages are available.
+    pub has_more: bool,
+    /// Cursor for fetching the next page.
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+    /// Total number of sessions matching the query.
+    #[serde(default)]
+    pub total: Option<u64>,
 }
 
 /// A tool available to an agent, with its enablement state.
@@ -840,5 +876,49 @@ mod tests {
         assert_eq!(resp.tools.len(), 2);
         assert!(resp.tools[0].enabled);
         assert!(!resp.tools[1].enabled);
+    }
+
+    #[test]
+    fn list_sessions_request_serializes_only_set_fields() {
+        let params = ListSessionsRequest {
+            nous_id: Some("syn".to_string()),
+            search: None,
+            status: Some("active".to_string()),
+            limit: Some(25),
+            after: None,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"nous_id\":\"syn\""));
+        assert!(json.contains("\"status\":\"active\""));
+        assert!(json.contains("\"limit\":25"));
+        assert!(!json.contains("\"search\""));
+        assert!(!json.contains("\"after\""));
+    }
+
+    #[test]
+    fn paginated_sessions_response_deserialization() {
+        let json = r#"{
+            "sessions": [{"id": "s1", "nous_id": "syn", "session_key": "main"}],
+            "has_more": true,
+            "next_cursor": "c2",
+            "total": 42
+        }"#;
+        let resp: PaginatedSessionsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.items.len(), 1);
+        assert!(resp.has_more);
+        assert_eq!(resp.next_cursor.as_deref(), Some("c2"));
+        assert_eq!(resp.total, Some(42));
+    }
+
+    #[test]
+    fn paginated_sessions_response_accepts_items_alias() {
+        let json = r#"{
+            "items": [{"id": "s2", "nous_id": "syn", "session_key": "main"}],
+            "has_more": false
+        }"#;
+        let resp: PaginatedSessionsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.items.len(), 1);
+        assert!(!resp.has_more);
+        assert!(resp.next_cursor.is_none());
     }
 }
