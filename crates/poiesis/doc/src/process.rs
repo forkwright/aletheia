@@ -2,9 +2,9 @@
 
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::process::{Command, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
+use wait_timeout::ChildExt as _;
 
 #[derive(Debug)]
 pub(crate) enum CommandOutputError {
@@ -47,33 +47,32 @@ pub(crate) fn output_with_timeout(
     let mut child = cmd
         .spawn()
         .map_err(|source| CommandOutputError::Spawn { source })?;
-    let started = Instant::now();
 
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|source| CommandOutputError::Wait { source })?
-        {
+    // WHY: wait_timeout blocks on the OS child-exit notification instead of
+    // polling with try_wait/sleep, eliminating the busy-wait loop.
+    let status = child
+        .wait_timeout(timeout)
+        .map_err(|source| CommandOutputError::Wait { source })?;
+
+    match status {
+        Some(status) => {
             let stdout = read_temp_output(&mut stdout)?;
             let stderr = read_temp_output(&mut stderr)?;
-            return Ok(Output {
+            Ok(Output {
                 status,
                 stdout,
                 stderr,
-            });
+            })
         }
-
-        if started.elapsed() >= timeout {
+        None => {
             let kill_error = child.kill().err().map(|err| err.to_string());
             let wait_error = child.wait().err().map(|err| err.to_string());
-            return Err(CommandOutputError::Timeout {
+            Err(CommandOutputError::Timeout {
                 timeout,
                 kill_error,
                 wait_error,
-            });
+            })
         }
-
-        std::thread::sleep(PROCESS_POLL_INTERVAL);
     }
 }
 

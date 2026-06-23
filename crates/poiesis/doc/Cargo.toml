@@ -43,6 +43,9 @@ tracing = { workspace = true }
 # Temp file for Pandoc AST subprocess contract
 tempfile = "3"
 
+# Blocking child wait with timeout — replaces the busy-wait try_wait loop.
+wait-timeout = "0.2"
+
 [dev-dependencies]
 insta = "1"
 serde_json = { workspace = true }
