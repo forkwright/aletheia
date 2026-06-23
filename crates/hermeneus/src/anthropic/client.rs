@@ -561,10 +561,23 @@ impl AnthropicProvider {
             tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64); // kanon:ignore RUST/as-cast
         }
         tracing::Span::current().record("llm.retries", self.max_retries);
-        tracing::Span::current().record("llm.status", "error");
+        // WHY: when retries are exhausted after 429s (HTTP rate-limit or SSE
+        // overload events), the terminal span must report "rate_limited" so
+        // operators can distinguish exhausted rate-limit sequences from true
+        // 4xx/5xx errors.
+        let terminal_status = last_error
+            .as_ref()
+            .is_some_and(|e| matches!(e, error::Error::RateLimited { .. }))
+            .then_some("rate_limited")
+            .unwrap_or("error");
+        tracing::Span::current().record("llm.status", terminal_status);
 
         crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
-        crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
+        crate::metrics::record_latency(
+            &request.model,
+            terminal_status,
+            start.elapsed().as_secs_f64(),
+        );
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {
@@ -943,7 +956,7 @@ impl AnthropicProvider {
                     .await;
             self.health.record_error(&err);
 
-            if status == 401 || ((400..500).contains(&status) && status != 429) {
+            if status == 401 || (400..500).contains(&status) {
                 #[expect(
                     clippy::cast_possible_truncation,
                     clippy::as_conversions,
@@ -956,12 +969,14 @@ impl AnthropicProvider {
                 tracing::Span::current().record("llm.retries", attempt);
                 if status == 401 {
                     tracing::Span::current().record("llm.status", "auth_failed");
-                } else if status == 429 {
-                    tracing::Span::current().record("llm.status", "rate_limited");
-                } else {
-                    tracing::Span::current().record("llm.status", "error");
+                    return Err(err);
                 }
-                return Err(err);
+                // WHY: 429 is retried with backoff; only record the terminal
+                // "rate_limited" status after retries are exhausted (see below).
+                if status != 429 {
+                    tracing::Span::current().record("llm.status", "error");
+                    return Err(err);
+                }
             }
 
             last_error = Some(err);
@@ -976,10 +991,15 @@ impl AnthropicProvider {
             tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64); // kanon:ignore RUST/as-cast
         }
         tracing::Span::current().record("llm.retries", self.max_retries);
-        tracing::Span::current().record("llm.status", "error");
+        let terminal_status = last_error
+            .as_ref()
+            .is_some_and(|e| matches!(e, error::Error::RateLimited { .. }))
+            .then_some("rate_limited")
+            .unwrap_or("error");
+        tracing::Span::current().record("llm.status", terminal_status);
 
         crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
-        crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
+        crate::metrics::record_latency(&request.model, terminal_status, start.elapsed().as_secs_f64());
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {
