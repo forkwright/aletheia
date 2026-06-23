@@ -164,13 +164,7 @@ impl ReceiptLedger {
         result: String,
         ts: jiff::Timestamp,
     ) {
-        let entry = EmittedReceipt::new(
-            receipt.clone(),
-            tool_name,
-            args_json,
-            result,
-            ts,
-        );
+        let entry = EmittedReceipt::new(receipt.clone(), tool_name, args_json, result, ts);
 
         // WHY: receipt tokens are unique; replacing an existing entry must not
         // create a duplicate FIFO slot.

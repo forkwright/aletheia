@@ -128,13 +128,12 @@ impl FjallWorkingCheckpointStore {
 
         let mut to_remove = Vec::new();
         for guard in snap.prefix(&partition, prefix.as_bytes()) {
-            let (key, _) =
-                guard
-                    .into_inner()
-                    .map_err(|e| organon::error::StoreError::StoreIo {
-                        context: format!("working checkpoint prune iter failed: {e}"),
-                        source: std::io::Error::other("fjall iter error"),
-                    })?;
+            let (key, _) = guard
+                .into_inner()
+                .map_err(|e| organon::error::StoreError::StoreIo {
+                    context: format!("working checkpoint prune iter failed: {e}"),
+                    source: std::io::Error::other("fjall iter error"),
+                })?;
             to_remove.push(key);
         }
 

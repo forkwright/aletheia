@@ -285,10 +285,7 @@ impl DriftDetector {
         reason = "u64→f64: per-turn response token counts are far below f64 mantissa precision"
     )]
     fn check_response_length(&self) -> Option<DriftEvent> {
-        let values = self
-            .window
-            .iter()
-            .map(|m| m.response_tokens as f64); // kanon:ignore RUST/as-cast
+        let values = self.window.iter().map(|m| m.response_tokens as f64); // kanon:ignore RUST/as-cast
         self.check_metric(
             values,
             self.window.len(),
@@ -300,12 +297,7 @@ impl DriftDetector {
     /// Check for rising tool error rate.
     fn check_tool_error_rate(&self) -> Option<DriftEvent> {
         let values = self.window.iter().map(|m| m.tool_error_rate);
-        self.check_metric(
-            values,
-            self.window.len(),
-            DriftMetric::ToolErrorRate,
-            true,
-        )
+        self.check_metric(values, self.window.len(), DriftMetric::ToolErrorRate, true)
     }
 
     /// Check for increasing user correction frequency.
