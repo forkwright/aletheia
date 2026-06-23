@@ -1,7 +1,7 @@
-use super::{entity, no_embed};
 use super::super::{
     DedupTuning, MergeDecision, classify_candidates, compute_merge_score, generate_candidates,
 };
+use super::{entity, no_embed};
 
 #[test]
 fn score_boundary_exactly_070() {
