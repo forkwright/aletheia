@@ -753,7 +753,10 @@ diff --git a/Cargo.toml b/Cargo.toml
         };
         let lesson = extract_lessons(diff, &config);
         assert!(
-            !lesson.facts.iter().any(|f| f.predicate == "had tests modified"),
+            !lesson
+                .facts
+                .iter()
+                .any(|f| f.predicate == "had tests modified"),
             "a function named `test_*` with no test additions should not tag tests as modified"
         );
     }
@@ -778,7 +781,10 @@ diff --git a/Cargo.toml b/Cargo.toml
         };
         let lesson = extract_lessons(diff, &config);
         assert!(
-            lesson.facts.iter().any(|f| f.predicate == "had tests modified"),
+            lesson
+                .facts
+                .iter()
+                .any(|f| f.predicate == "had tests modified"),
             "`#[test]` additions inside a non-test-named function should tag tests as modified"
         );
     }
