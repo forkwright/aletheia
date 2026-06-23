@@ -80,9 +80,20 @@ fn tokenize(input: &str) -> Result<Vec<Token>, VerifyError> {
                 tokens.push(Token::Num(num));
             }
             _ => {
+                // Collect the full contiguous word so the diagnostic names the
+                // complete offending token, not just its first character.
+                let mut word = String::from(ch);
+                while let Some(&(_, c)) = chars.peek() {
+                    if c.is_alphanumeric() || c == '_' {
+                        word.push(c);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
                 return Err(VerifyError::Eval {
                     formula: input.to_owned(),
-                    detail: format!("unexpected character '{ch}' at byte {idx}"),
+                    detail: format!("unexpected token '{word}' at byte {idx}"),
                 });
             }
         }

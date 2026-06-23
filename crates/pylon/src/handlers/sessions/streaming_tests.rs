@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::HeaderMap;
-use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
