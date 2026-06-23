@@ -207,13 +207,16 @@ impl DriftDetector {
     /// `higher_is_worse`: when `true` (e.g. error rates), a positive
     /// deviation triggers drift. When `false` (e.g. response length), a
     /// negative deviation (drop) triggers drift.
-    fn check_metric(
+    fn check_metric<I>(
         &self,
-        values: &[f64],
+        values: I,
+        n: usize,
         metric: DriftMetric,
         higher_is_worse: bool,
-    ) -> Option<DriftEvent> {
-        let n = values.len();
+    ) -> Option<DriftEvent>
+    where
+        I: Iterator<Item = f64> + Clone,
+    {
         let recent_size = self.config.recent_size.min(n);
         let baseline_end = n.saturating_sub(recent_size);
 
@@ -230,17 +233,11 @@ impl DriftDetector {
             return None;
         }
 
-        // SAFETY: baseline_end > 0 checked above, and baseline_end <= n
-        #[expect(
-            clippy::indexing_slicing,
-            reason = "baseline_end > 0 and <= values.len()"
-        )]
-        let baseline_slice = &values[..baseline_end];
-        #[expect(clippy::indexing_slicing, reason = "baseline_end <= values.len()")]
-        let recent_slice = &values[baseline_end..];
+        let baseline_iter = values.clone().take(baseline_end);
+        let recent_iter = values.clone().skip(baseline_end);
 
-        let (baseline, std_dev) = mean_and_stddev(baseline_slice);
-        let recent = slice_mean(recent_slice);
+        let (baseline, std_dev) = mean_and_stddev_iter(baseline_iter);
+        let recent = iter_mean(recent_iter);
 
         // WHY: when baseline variance is zero (perfectly stable metrics) but
         // recent values differ, that is definitive drift. Use a synthetic
@@ -282,35 +279,47 @@ impl DriftDetector {
     ///
     /// A significant drop in output tokens indicates the model is producing
     /// shorter, potentially lower-quality responses.
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::as_conversions,
+        reason = "u64→f64: per-turn response token counts are far below f64 mantissa precision"
+    )]
     fn check_response_length(&self) -> Option<DriftEvent> {
-        #[expect(
-            clippy::cast_precision_loss,
-            clippy::as_conversions,
-            reason = "u64→f64: per-turn response token counts are far below f64 mantissa precision"
-        )]
-        let values: Vec<f64> = self
+        let values = self
             .window
             .iter()
-            .map(|m| m.response_tokens as f64) // kanon:ignore RUST/as-cast
-            .collect();
-
-        self.check_metric(&values, DriftMetric::ResponseLength, false)
+            .map(|m| m.response_tokens as f64); // kanon:ignore RUST/as-cast
+        self.check_metric(
+            values,
+            self.window.len(),
+            DriftMetric::ResponseLength,
+            false,
+        )
     }
 
     /// Check for rising tool error rate.
     fn check_tool_error_rate(&self) -> Option<DriftEvent> {
-        let values: Vec<f64> = self.window.iter().map(|m| m.tool_error_rate).collect();
-        self.check_metric(&values, DriftMetric::ToolErrorRate, true)
+        let values = self.window.iter().map(|m| m.tool_error_rate);
+        self.check_metric(
+            values,
+            self.window.len(),
+            DriftMetric::ToolErrorRate,
+            true,
+        )
     }
 
     /// Check for increasing user correction frequency.
     fn check_user_corrections(&self) -> Option<DriftEvent> {
-        let values: Vec<f64> = self
+        let values = self
             .window
             .iter()
-            .map(|m| if m.user_correction { 1.0 } else { 0.0 })
-            .collect();
-        self.check_metric(&values, DriftMetric::UserCorrections, true)
+            .map(|m| if m.user_correction { 1.0 } else { 0.0 });
+        self.check_metric(
+            values,
+            self.window.len(),
+            DriftMetric::UserCorrections,
+            true,
+        )
     }
 }
 
@@ -339,6 +348,29 @@ fn mean_and_stddev(values: &[f64]) -> (f64, f64) {
     (mean, variance.sqrt())
 }
 
+/// Compute mean and population standard deviation from an iterator.
+///
+/// Returns `(0.0, 0.0)` for empty iterators.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::as_conversions,
+    reason = "usize→f64: drift window sizes are bounded by config (tens of samples), far below f64 mantissa precision"
+)]
+fn mean_and_stddev_iter<I>(values: I) -> (f64, f64)
+where
+    I: Iterator<Item = f64> + Clone,
+{
+    let count = values.clone().count();
+    if count == 0 {
+        return (0.0, 0.0);
+    }
+
+    let n = count as f64; // kanon:ignore RUST/as-cast
+    let mean = values.clone().sum::<f64>() / n;
+    let variance = values.clone().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
+    (mean, variance.sqrt())
+}
+
 /// Compute mean of a slice.
 ///
 /// Returns `0.0` if the slice is empty.
@@ -354,6 +386,31 @@ fn slice_mean(values: &[f64]) -> f64 {
 
     let len = values.len() as f64; // kanon:ignore RUST/as-cast
     values.iter().sum::<f64>() / len
+}
+
+/// Compute mean of an iterator.
+///
+/// Returns `0.0` for an empty iterator.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::as_conversions,
+    reason = "usize→f64: drift window sizes are bounded by config (tens of samples), far below f64 mantissa precision"
+)]
+fn iter_mean<I>(values: I) -> f64
+where
+    I: Iterator<Item = f64>,
+{
+    let mut sum = 0.0;
+    let mut count = 0usize;
+    for v in values {
+        sum += v;
+        count += 1;
+    }
+    if count == 0 {
+        return 0.0;
+    }
+
+    sum / (count as f64) // kanon:ignore RUST/as-cast
 }
 
 #[cfg(test)]
