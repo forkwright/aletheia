@@ -78,7 +78,7 @@ fn accumulate(a: Scalar, b: Scalar) -> Result<Scalar, WorkbookError> {
             // entire XLSX totals row without surfacing an error. Reject it here
             // so the caller gets an explicit failure instead of silent #NUM!.
             let sum = va + vb;
-            Scalar::new_ratio(sum).map_err(|_| WorkbookError::NonFiniteRatio { value: sum })
+            Scalar::new_ratio(sum).map_err(|_e| WorkbookError::NonFiniteRatio { value: sum })
         }
         (a, _) => Ok(a),
     }

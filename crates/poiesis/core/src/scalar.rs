@@ -21,6 +21,8 @@ use crate::error::{
 /// `ScalarKind` is what the model carries when it needs to talk about a
 /// scalar's *type* without an instance — workbook column types are the
 /// motivating consumer.
+// kanon:ignore RUST/non-exhaustive-enum — mirrors Scalar variants; exhaustive
+// match is part of the stable API alongside Scalar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScalarKind {
@@ -218,6 +220,8 @@ impl Scalar {
 /// underlying ratio; it tells the renderer to format `0.42` as `42%`. The
 /// QA gate uses units to reject arithmetic that crosses incompatible
 /// dimensions.
+// kanon:ignore RUST/non-exhaustive-enum — exhaustive match is part of the
+// stable API; new units are an explicit additive evolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Unit {
