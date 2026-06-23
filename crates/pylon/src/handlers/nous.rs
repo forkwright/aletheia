@@ -27,39 +27,39 @@ fn ensure_agent_definition<'a>(
     config: &'a mut AletheiaConfig,
     runtime: &NousConfig,
 ) -> Result<&'a mut NousDefinition, ApiError> {
-    if let Some(existing) = config
+    let idx = config
         .agents
         .list
-        .iter_mut()
-        .find(|agent| agent.id == runtime.id.as_ref())
-    {
-        return Ok(existing);
+        .iter()
+        .position(|agent| agent.id == runtime.id.as_ref());
+
+    if idx.is_none() {
+        config.agents.list.push(NousDefinition {
+            id: runtime.id.to_string(),
+            name: runtime.name.clone(),
+            enabled: true,
+            model: None,
+            workspace: runtime.workspace.to_string_lossy().into_owned(),
+            thinking_enabled: None,
+            agency: None,
+            allowed_roots: Vec::new(),
+            domains: Vec::new(),
+            default: false,
+            private: runtime.private,
+            episteme_cohort: None,
+            recall: None,
+            tool_allowlist: None,
+            tool_groups: None,
+            recall_profile: None,
+            behavior: None,
+        });
     }
 
-    config.agents.list.push(NousDefinition {
-        id: runtime.id.to_string(),
-        name: runtime.name.clone(),
-        enabled: true,
-        model: None,
-        workspace: runtime.workspace.to_string_lossy().into_owned(),
-        thinking_enabled: None,
-        agency: None,
-        allowed_roots: Vec::new(),
-        domains: Vec::new(),
-        default: false,
-        private: runtime.private,
-        episteme_cohort: None,
-        recall: None,
-        tool_allowlist: None,
-        tool_groups: None,
-        recall_profile: None,
-        behavior: None,
-    });
-
+    let idx = idx.unwrap_or(config.agents.list.len() - 1);
     config
         .agents
         .list
-        .last_mut()
+        .get_mut(idx)
         .ok_or_else(|| ApiError::Internal {
             message: "agent list was empty after push".to_owned(),
             location: snafu::location!(),
