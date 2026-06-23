@@ -777,9 +777,12 @@ async fn run_extraction(
     clippy::too_many_lines,
     reason = "three-phase skill extraction pipeline: extract, persist, lifecycle; splitting would obscure the sequential flow"
 )]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "background skill extraction runner needs provider state, ids, evidence, tracker, and optional store"
+#[cfg_attr(
+    feature = "knowledge-store",
+    expect(
+        clippy::too_many_arguments,
+        reason = "background skill extraction runner needs provider state, ids, evidence, tracker, and optional store"
+    )
 )]
 /// Run skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
@@ -793,6 +796,9 @@ async fn run_skill_extraction(
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
     use mneme::skills::SkillExtractor;
+    // source_session_id is only consumed inside the knowledge-store branch below.
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = source_session_id;
 
     let candidates = tracker.candidates_for(nous_id);
     let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {

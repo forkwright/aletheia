@@ -187,10 +187,6 @@ pub async fn git_status(
 }
 
 /// GET /api/v1/workspace/files/content
-#[expect(
-    clippy::disallowed_methods,
-    reason = "workspace content endpoints intentionally use synchronous filesystem reads for bounded local file access"
-)]
 #[utoipa::path(
     get,
     path = "/api/v1/workspace/files/content",
@@ -241,7 +237,7 @@ pub async fn file_content(
         .build());
     }
 
-    let bytes = std::fs::read(&path).map_err(|e| {
+    let bytes = tokio::fs::read(&path).await.map_err(|e| {
         InternalSnafu {
             message: format!("failed to read workspace file {}: {e}", path.display()),
         }
