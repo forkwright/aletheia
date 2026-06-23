@@ -273,7 +273,7 @@ fn select_injection_picks_surprising_fact() {
 
     assert!(injection.is_some(), "should select an injection");
     let injection = injection.expect("injection exists");
-    assert_eq!(injection.fact_id, "fact-ml-1");
+    assert_eq!(injection.fact_id.as_str(), "fact-ml-1");
     assert!(injection.surprise_score > 0.0);
 }
 
