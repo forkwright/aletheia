@@ -520,7 +520,7 @@ impl NousActor {
         // payloads continue to run a normal turn in the target session.
         if let Some(ref payload) = envelope.message.payload {
             if expects_reply {
-                if let Some(reply_content) = self.handle_knowledge_payload(payload, &from) {
+                if let Some(reply_content) = Self::handle_knowledge_payload(payload, &from) {
                     self.send_cross_reply(in_reply_to, reply_content).await;
                 }
                 return Ok(());
@@ -585,7 +585,7 @@ impl NousActor {
     /// sufficient (e.g. a knowledge query echo or verification acknowledgement).
     /// This keeps the cross-nous contract end-to-end without forcing every
     /// collaboration message through the full pipeline.
-    fn handle_knowledge_payload(&self, payload: &KnowledgePayload, from: &str) -> Option<String> {
+    fn handle_knowledge_payload(payload: &KnowledgePayload, from: &str) -> Option<String> {
         match payload {
             KnowledgePayload::Verify { fact_content, .. } => {
                 Some(format!("verify acknowledged from {from}: {fact_content}"))

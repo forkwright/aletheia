@@ -196,6 +196,7 @@ async fn run_tool_with_limits(
         Arc::new(tool_limits),
         None,
         None,
+        None,
     );
 
     // WHY: the unified dispatcher fail-closes mandatory-approval tools on
@@ -347,6 +348,7 @@ async fn reload_config_updates_tool_limits_for_existing_actor() {
         CancellationToken::new(),
         taxis::config::NousBehaviorConfig::default(),
         Arc::new(taxis::config::ToolLimitsConfig::default()),
+        None,
         None,
         None,
     );
@@ -738,6 +740,7 @@ fn spawn_test_actor_with_router(
         Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         router,
+        None, // cross_router
     );
     (handle, join, dir)
 }
