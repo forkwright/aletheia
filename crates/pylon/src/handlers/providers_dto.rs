@@ -32,7 +32,7 @@ pub struct ProviderInfo {
     /// Diagnostic reason when health is not `"up"`.
     pub health_reason: Option<String>,
     /// Credential source class: `"env:<VAR>"` or `"none"`.
-    pub credential_source_class: String,
+    pub auth_source: String,
     /// Whether the provider is currently available for routing.
     pub available: bool,
 }

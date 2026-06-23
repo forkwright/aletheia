@@ -9,12 +9,10 @@ use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use serde::Deserialize;
 use symbolon::types::Role;
+use utoipa::IntoParams;
 
 use crate::error::{ApiError, BadRequestSnafu};
 use crate::extract::{Claims, require_role};
-use crate::handlers::providers_dto::{
-    ModelProviderReadiness, ProviderInfo, ProviderListResponse, ProviderRouteResponse,
-};
 use crate::state::ProvidersState;
 
 #[path = "providers_dto.rs"]
@@ -24,7 +22,7 @@ pub use providers_dto::{
 };
 
 /// Query parameters for `GET /api/v1/providers/route`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct RouteQuery {
     /// Model identifier to resolve.
     model: String,
@@ -88,7 +86,7 @@ pub async fn list(
                 .unwrap_or_default(),
             health: health_status_wire(&health),
             health_reason: health_reason_wire(&health),
-            credential_source_class: provider_config
+            auth_source: provider_config
                 .map(credential_source_class)
                 .unwrap_or_else(|| "none".to_owned()),
             available: matches!(health, hermeneus::health::ProviderHealth::Up),
@@ -200,6 +198,7 @@ fn provider_kind_wire(kind: &taxis::config::ProviderKind) -> String {
         taxis::config::ProviderKind::OpenAiCompatible => "openai-compatible".to_owned(),
         taxis::config::ProviderKind::ClaudeCode => "claude-code".to_owned(),
         taxis::config::ProviderKind::CodexOauth => "codex-oauth".to_owned(),
+        _ => "unknown".to_owned(),
     }
 }
 
@@ -208,6 +207,7 @@ fn deployment_target_wire(target: &taxis::config::DeploymentTarget) -> String {
         taxis::config::DeploymentTarget::Cloud => "cloud".to_owned(),
         taxis::config::DeploymentTarget::LocalHosted => "local-hosted".to_owned(),
         taxis::config::DeploymentTarget::Embedded => "embedded".to_owned(),
+        _ => "cloud".to_owned(),
     }
 }
 
@@ -216,6 +216,7 @@ fn health_status_wire(health: &hermeneus::health::ProviderHealth) -> String {
         hermeneus::health::ProviderHealth::Up => "up".to_owned(),
         hermeneus::health::ProviderHealth::Degraded { .. } => "degraded".to_owned(),
         hermeneus::health::ProviderHealth::Down { .. } => "down".to_owned(),
+        _ => "unknown".to_owned(),
     }
 }
 
@@ -237,7 +238,9 @@ fn health_reason_wire(health: &hermeneus::health::ProviderHealth) -> Option<Stri
             }
             hermeneus::health::DownReason::AuthFailure => "down: authentication failure".to_owned(),
             hermeneus::health::DownReason::Timeout => "down: timeout".to_owned(),
+            _ => "down: unknown".to_owned(),
         }),
+        _ => None,
     }
 }
 

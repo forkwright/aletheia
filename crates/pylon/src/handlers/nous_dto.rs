@@ -60,7 +60,7 @@ pub struct NousSummary {
     /// Fallback models tried after primary-model failures.
     pub fallback_models: Vec<String>,
     /// Per-model provider readiness for the agent's model chain.
-    pub provider_readiness: Vec<super::providers::ModelProviderReadiness>,
+    pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Lifecycle status (e.g. `"active"`).
     pub status: String,
     /// Tool toggle summaries for the agent.
@@ -81,7 +81,7 @@ pub struct NousStatus {
     /// Whether complexity-based model routing is enabled.
     pub complexity_routing_enabled: bool,
     /// Per-model provider readiness for the agent's model chain.
-    pub provider_readiness: Vec<super::providers::ModelProviderReadiness>,
+    pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Maximum context window in tokens.
     pub context_window: u32,
     /// Maximum output tokens per turn.
