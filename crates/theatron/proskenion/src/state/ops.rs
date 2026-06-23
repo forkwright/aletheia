@@ -592,7 +592,7 @@ mod tests {
         let response = skene::api::types::HealthResponse {
             status: "degraded".to_string(),
             version: "0.13.1".to_string(),
-            git_sha: "abc123".to_string(),
+            git_sha: "abc123".into(),
             uptime_seconds: 300,
             checks: vec![skene::api::types::HealthCheck {
                 name: "providers".to_string(),

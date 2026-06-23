@@ -58,6 +58,7 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
 }
 
 /// Build the reqwest client used for long-lived SSE/streaming connections.
+// kanon:ignore RUST/missing-http-timeout — SSE connections are long-lived; a request-level timeout would terminate the stream prematurely; connect_timeout guards against connection hang
 pub(crate) fn build_streaming_client(token: Option<&str>) -> Result<Client> {
     Client::builder()
         .cookie_store(true)
@@ -187,8 +188,10 @@ impl ApiClient {
                 operation: "health details response",
             })
         } else {
-            Self::check_status(resp, "health details request").await?;
-            unreachable!("check_status returns Ok only for success status codes")
+            let resp = Self::check_status(resp, "health details request").await?;
+            resp.json().await.context(HttpSnafu {
+                operation: "health details response",
+            })
         }
     }
 

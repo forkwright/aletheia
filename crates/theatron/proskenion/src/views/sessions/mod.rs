@@ -258,7 +258,10 @@ pub(crate) fn Sessions() -> Element {
                             wrapper.messages
                         } else {
                             serde_json::from_str::<Vec<skene::api::types::HistoryMessage>>(&text)
-                                .unwrap_or_default()
+                                .unwrap_or_else(|e| {
+                                    tracing::warn!(error = %e, "history response is not a message array; using empty history");
+                                    Vec::new()
+                                })
                         };
 
                         let mut user_count = 0u32;

@@ -31,5 +31,10 @@ tracing = { workspace = true }
 pulldown-cmark = "0.13"
 tempfile = "3"
 
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "public API stabilized with full newtype coverage for all domain identifiers"
+
 [lints]
 workspace = true
