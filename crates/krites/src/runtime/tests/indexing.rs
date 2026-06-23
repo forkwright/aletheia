@@ -211,16 +211,19 @@ fn when_fts_near_has_three_literals_chain_must_hold() {
     )
     .expect("creating FTS index should succeed");
     let res = db
-        .run_default(r"?[id] := ~docs:fts{id, text | query: 'NEAR(2 fox quick brown)', k: 10}")
+        .run_default(r"?[id] := ~docs:fts{id, text | query: 'NEAR/2(fox quick brown)', k: 10}")
         .expect("three-term NEAR query should succeed");
-    let ids: std::collections::HashSet<_> =
-        res.rows.iter().map(|r| r[0].clone()).collect();
+    let ids: std::collections::HashSet<String> = res
+        .rows
+        .iter()
+        .filter_map(|r| r[0].get_str().map(str::to_owned))
+        .collect();
     assert!(
-        ids.contains(&crate::DataValue::from("match")),
+        ids.contains("match"),
         "chain NEAR should match doc where all terms are within distance"
     );
     assert!(
-        !ids.contains(&crate::DataValue::from("fp")),
+        !ids.contains("fp"),
         "chain NEAR must not return false positives where middle term is far from last term"
     );
 }
