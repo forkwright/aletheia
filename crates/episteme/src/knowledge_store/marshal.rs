@@ -1605,7 +1605,7 @@ mod tests {
             crate::knowledge::Visibility::Shared.as_str().into(),
         )))
         .expect("valid visibility decodes");
-        assert_eq!(ok, crate::knowledge::Visibility::Shared);
+        assert_eq!(ok, crate::knowledge::Visibility::Shared, "decoded visibility must round-trip to Shared");
     }
 
     #[test]
@@ -1624,7 +1624,8 @@ mod tests {
                 crate::knowledge::MemoryScope::Project.as_str().into()
             )))
             .expect("valid scope ok"),
-            Some(crate::knowledge::MemoryScope::Project)
+            Some(crate::knowledge::MemoryScope::Project),
+            "decoded scope must round-trip to Project"
         );
     }
 
@@ -1632,7 +1633,8 @@ mod tests {
     fn parse_optional_project_id_nulls_ok_but_garbage_errors() {
         assert_eq!(
             parse_optional_project_id(Some(&DataValue::Null)).expect("null project ok"),
-            None
+            None,
+            "SQL null project id must decode to None"
         );
         assert!(
             parse_optional_project_id(Some(&DataValue::Str("not-a-hash".into()))).is_err(),
@@ -1644,7 +1646,8 @@ mod tests {
         assert_eq!(
             parse_optional_project_id(Some(&DataValue::Str(project.as_str().into())))
                 .expect("valid project ok"),
-            Some(project)
+            Some(project),
+            "decoded project id must round-trip to the original value"
         );
     }
 

@@ -225,6 +225,33 @@ pub struct DedupInput<'a> {
     pub existing_embedding: Option<&'a [f32]>,
 }
 
+impl<'a> DedupInput<'a> {
+    /// Construct a [`DedupInput`] for comparing a candidate skill against an existing one.
+    pub fn new(
+        candidate: &'a SkillContent,
+        candidate_confidence: f64,
+        candidate_usage: u32,
+        existing: &'a SkillContent,
+        existing_confidence: f64,
+        existing_usage: u32,
+        existing_id: &'a str,
+        candidate_embedding: Option<&'a [f32]>,
+        existing_embedding: Option<&'a [f32]>,
+    ) -> Self {
+        Self {
+            candidate,
+            candidate_confidence,
+            candidate_usage,
+            existing,
+            existing_confidence,
+            existing_usage,
+            existing_id,
+            candidate_embedding,
+            existing_embedding,
+        }
+    }
+}
+
 /// Check whether a candidate skill duplicates an existing one.
 ///
 /// Uses embedding cosine similarity when embeddings are provided.
