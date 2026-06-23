@@ -447,6 +447,30 @@ impl ProviderRegistry {
             .map(|e| e.health.health())
     }
 
+    /// Check whether the named provider may receive traffic.
+    ///
+    /// This is the authoritative gate: it performs cooldown recovery and
+    /// single-flight probe election, so registry-level routing and provider-local
+    /// execution see the same availability decision.
+    ///
+    /// Returns `None` if no provider with `name` is registered.
+    /// Returns `Some(Ok(()))` if the provider is `Up`, `Degraded`, or has been
+    /// elected as the single recovery probe.
+    /// Returns `Some(Err(health))` if the provider is `Down` (before cooldown),
+    /// `Down(AuthFailure)`, or a probe is already in flight.
+    ///
+    /// # Complexity
+    ///
+    /// O(p) where p is the number of registered providers.
+    #[must_use]
+    pub fn check_available(&self, name: &str) -> Option<Result<(), ProviderHealth>> {
+        // kanon:ignore RUST/pub-visibility
+        self.providers
+            .iter()
+            .find(|e| e.provider.name() == name)
+            .map(|e| e.health.check_available())
+    }
+
     /// Record a successful request for the named provider.
     pub fn record_success(&self, name: &str) {
         // kanon:ignore RUST/pub-visibility
@@ -645,6 +669,68 @@ mod tests {
         let mut registry = ProviderRegistry::new();
         registry.register(Box::new(MockProvider::new("mock response")));
         assert!(registry.find_streaming_provider("mock-model-v1").is_none());
+    }
+
+    #[test]
+    fn registry_check_available_unknown_provider() {
+        let registry = ProviderRegistry::new();
+        assert_eq!(registry.check_available("nonexistent"), None);
+    }
+
+    #[test]
+    fn registry_check_available_up() {
+        let mut registry = ProviderRegistry::new();
+        registry.register(Box::new(MockProvider::new("mock response")));
+        assert_eq!(registry.check_available("mock"), Some(Ok(())));
+    }
+
+    #[test]
+    fn registry_check_available_performs_cooldown_recovery() {
+        use crate::error::ApiRequestSnafu;
+
+        let mut registry = ProviderRegistry::new();
+        registry.register_with_config(
+            Box::new(MockProvider::new("mock response")),
+            HealthConfig {
+                consecutive_failure_threshold: 1,
+                down_cooldown_ms: 1, // 1ms cooldown
+                ..HealthConfig::default()
+            },
+        );
+
+        let err = ApiRequestSnafu {
+            message: "forced timeout".to_owned(),
+        }
+        .build();
+        registry.record_error("mock", &err);
+        assert!(
+            matches!(registry.provider_health("mock"), Some(ProviderHealth::Down { .. })),
+            "provider should be Down after crossing threshold"
+        );
+        assert!(
+            registry.check_available("mock").unwrap().is_err(),
+            "request before cooldown must fail"
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
+        assert_eq!(
+            registry.check_available("mock"),
+            Some(Ok(())),
+            "first caller after cooldown is elected as the probe"
+        );
+        assert!(
+            matches!(
+                registry.provider_health("mock"),
+                Some(ProviderHealth::Probing { .. })
+            ),
+            "registry health must reflect the in-flight probe"
+        );
+
+        // Subsequent callers fail fast while the probe is in flight.
+        assert!(
+            registry.check_available("mock").unwrap().is_err(),
+            "concurrent callers must fail fast during probe"
+        );
     }
 
     #[test]
