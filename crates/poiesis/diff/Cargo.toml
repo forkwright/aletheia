@@ -16,6 +16,7 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 zip = "8"
 indexmap = { workspace = true }
+poiesis-ooxml-parse = { path = "../ooxml-parse" }
 
 [dev-dependencies]
 poiesis-sheet = { path = "../sheet" }

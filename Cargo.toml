@@ -48,6 +48,7 @@ members = [
     "crates/poiesis/printer-chromium",
     "crates/poiesis/diff",
     "crates/poiesis/inspect",
+    "crates/poiesis/ooxml-parse",
     "crates/gnosis",
     "crates/aletheia-sessions-migrate",
 ]

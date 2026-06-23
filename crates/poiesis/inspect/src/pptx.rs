@@ -2,27 +2,11 @@
 
 use std::io::Cursor;
 
+use poiesis_ooxml_parse::extract_text_from_slide;
 use zip::ZipArchive;
 
 use crate::PresentationSummary;
 use crate::error::Result;
-
-/// Extract text content from slide XML using simple string matching.
-fn extract_text_from_slide(xml_data: &str) -> String {
-    let mut text_content = String::new();
-
-    for chunk in xml_data.split("<a:t>") {
-        if let Some(end) = chunk.find("</a:t>")
-            && let Some(text) = chunk.get(..end)
-            && !text.is_empty()
-        {
-            text_content.push_str(text);
-            text_content.push(' ');
-        }
-    }
-
-    text_content.trim().to_string()
-}
 
 pub(crate) fn inspect_pptx_impl(bytes: &[u8]) -> Result<PresentationSummary> {
     let cursor = Cursor::new(bytes);

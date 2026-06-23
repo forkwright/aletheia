@@ -3,6 +3,7 @@
 use std::io::Cursor;
 
 use indexmap::IndexMap;
+use poiesis_ooxml_parse::{extract_shared_strings, parse_sheet_names};
 use zip::ZipArchive;
 
 use crate::CellDiff;
@@ -13,29 +14,6 @@ type SheetCells = IndexMap<(u32, u32), String>;
 
 /// Map of sheet names to their cell data across a workbook, in workbook order.
 type WorkbookData = IndexMap<String, SheetCells>;
-
-/// Extract shared strings from `xl/sharedStrings.xml`.
-fn extract_shared_strings(xml_data: &str) -> Vec<String> {
-    let mut strings = Vec::new();
-    for chunk in xml_data.split("<si>") {
-        if let Some(end) = chunk.find("</si>")
-            && let Some(si) = chunk.get(..end)
-        {
-            let mut text = String::new();
-            for t_chunk in si.split("<t") {
-                if let Some(gt) = t_chunk.find('>')
-                    && let Some(after_gt) = t_chunk.get(gt + 1..)
-                    && let Some(lt) = after_gt.find("</t>")
-                    && let Some(slice) = after_gt.get(..lt)
-                {
-                    text.push_str(slice);
-                }
-            }
-            strings.push(text);
-        }
-    }
-    strings
-}
 
 /// Parse cell value from XML worksheet using simple string matching,
 /// resolving shared-string indices via `shared_strings`.
@@ -121,22 +99,8 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
         content
     };
 
-    // NOTE: rust_xlsxwriter emits compact XML — multiple sheet tags may share a line.
-    let mut sheet_names = Vec::new();
-    for sheet_xml in workbook_xml.split("<sheet").skip(1) {
-        let Some(start) = sheet_xml.find("name=\"") else {
-            continue;
-        };
-        let Some(rest) = sheet_xml.get(start + 6..) else {
-            continue;
-        };
-        let Some(end) = rest.find('"') else {
-            continue;
-        };
-        let Some(sheet_name) = rest.get(..end) else {
-            continue;
-        };
-        sheet_names.push(sheet_name.to_string());
+    let sheet_names = parse_sheet_names(&workbook_xml);
+    for sheet_name in &sheet_names {
         workbook_data.insert(sheet_name.to_string(), IndexMap::new());
     }
 

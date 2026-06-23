@@ -18,6 +18,7 @@ zip = "8"
 pdf-extract = "0.10"
 lopdf = "0.38"
 indexmap = { workspace = true }
+poiesis-ooxml-parse = { path = "../ooxml-parse" }
 
 [dev-dependencies]
 poiesis-sheet = { path = "../sheet" }
