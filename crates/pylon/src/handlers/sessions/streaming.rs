@@ -53,7 +53,9 @@ async fn gateway_keepalive(
     text: &'static str,
 ) -> KeepAlive {
     let secs = config.read().await.gateway.sse_heartbeat_interval_secs;
-    KeepAlive::new().interval(Duration::from_secs(secs)).text(text)
+    KeepAlive::new()
+        .interval(Duration::from_secs(secs))
+        .text(text)
 }
 
 fn turn_complete_event_payload(
@@ -391,7 +393,7 @@ pub async fn send_message(
                     },
                 };
                 return Ok(
-                    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await),
+                    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await)
                 );
             }
             LookupResult::Conflict => {
@@ -966,9 +968,7 @@ pub async fn stream_turn(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        gateway_keepalive(&state.config, "heartbeat").await,
-    ))
+    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "heartbeat").await))
 }
 
 /// GET /api/v1/events: global SSE keep-alive channel.
@@ -993,7 +993,12 @@ pub async fn events(
     // WHY: emit periodic comment-only events so the connection stays alive and
     // proxies do not close it. Domain events flow through the EventBus stream
     // on /api/v1/events/subscribe, not this channel.
-    let heartbeat_secs = state.config.read().await.gateway.sse_heartbeat_interval_secs;
+    let heartbeat_secs = state
+        .config
+        .read()
+        .await
+        .gateway
+        .sse_heartbeat_interval_secs;
     // WHY(#5156): Derive the interval from gateway config so the server
     // keepalive cadence stays in sync with the client read timeout and any
     // reverse-proxy idle timeouts.
