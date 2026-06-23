@@ -202,6 +202,15 @@ impl OpenAiProvider {
             .build());
         }
 
+        // WHY(#4894): First-party OpenAI requires a real API key. Loopback
+        // OpenAI-compatible endpoints may omit auth, but the Responses API
+        // targeted at api.openai.com must be authenticated.
+        if config.api_family == OpenAiApiFamily::Responses && config.api_key.is_none() {
+            return Err(error::ProviderInitSnafu {
+                message: "first-party OpenAI provider requires an API key; set api_key_env or use provider_type = \"openai-compatible\" for loopback endpoints".to_owned(),
+            }.build());
+        }
+
         let client = build_http_client()?;
         let model_refs = leak_models(&config.models);
 
@@ -817,6 +826,49 @@ mod tests {
         // the enum would let Cloud providers admit `Internal`/`Confidential` facts.
         assert!(DeploymentTarget::Cloud < DeploymentTarget::LocalHosted);
         assert!(DeploymentTarget::LocalHosted < DeploymentTarget::Embedded);
+    }
+
+    #[test]
+    fn first_party_openai_rejects_missing_api_key() {
+        let config = OpenAiProviderConfig {
+            name: "openai".to_owned(),
+            base_url: "https://api.openai.com/v1".to_owned(),
+            api_family: OpenAiApiFamily::Responses,
+            ..Default::default()
+        };
+        let err = OpenAiProvider::new(config).unwrap_err();
+        assert!(
+            err.to_string().contains("API key"),
+            "error must mention missing API key: {err}"
+        );
+    }
+
+    #[test]
+    fn openai_compatible_allows_missing_api_key() {
+        let config = OpenAiProviderConfig {
+            name: "local".to_owned(),
+            base_url: "http://127.0.0.1:8088/v1".to_owned(),
+            models: vec!["qwen".to_owned()],
+            api_family: OpenAiApiFamily::ChatCompletions,
+            ..Default::default()
+        };
+        let provider = OpenAiProvider::new(config).unwrap();
+        assert_eq!(provider.name(), "local");
+        assert!(provider.supports_model("qwen"));
+    }
+
+    #[test]
+    fn first_party_openai_accepts_api_key() {
+        let config = OpenAiProviderConfig {
+            name: "openai".to_owned(),
+            base_url: "https://api.openai.com/v1".to_owned(),
+            api_key: Some(SecretString::from("sk-test")),
+            api_family: OpenAiApiFamily::Responses,
+            models: vec!["gpt-4o".to_owned()],
+            ..Default::default()
+        };
+        let provider = OpenAiProvider::new(config).unwrap();
+        assert!(provider.supports_model("gpt-4o"));
     }
 
     #[test]
