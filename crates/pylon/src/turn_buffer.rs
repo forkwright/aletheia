@@ -43,7 +43,11 @@ pub(crate) struct BufferedEvent {
 
 impl BufferedEvent {
     fn new(seq: u64, event_type: String, data: String) -> Self {
-        Self { seq, event_type, data }
+        Self {
+            seq,
+            event_type,
+            data,
+        }
     }
 }
 
@@ -178,8 +182,16 @@ pub(crate) struct TurnBufferSnapshot {
 }
 
 impl TurnBufferSnapshot {
-    fn new(events: Vec<BufferedEvent>, state: TurnState, notified: Pin<Box<OwnedNotified>>) -> Self {
-        Self { events, state, notified }
+    fn new(
+        events: Vec<BufferedEvent>,
+        state: TurnState,
+        notified: Pin<Box<OwnedNotified>>,
+    ) -> Self {
+        Self {
+            events,
+            state,
+            notified,
+        }
     }
 }
 
@@ -481,7 +493,7 @@ mod tests {
         let registry = Arc::new(TurnBufferRegistry::new());
 
         let buf = registry.get_or_create("ses-1", "slow-turn").await;
-        let _inner_guard = buf.lock().await;
+        let inner_guard = buf.lock().await;
 
         let registry_for_reap = Arc::clone(&registry);
         let reap_task = tokio::spawn(async move {
@@ -501,8 +513,8 @@ mod tests {
             "get_or_create must not be blocked while reaper awaits an inner lock"
         );
 
-        drop(_inner_guard);
-        reap_task.await.unwrap();
+        drop(inner_guard);
+        assert!(reap_task.await.is_ok(), "reaper task panicked");
     }
 
     #[tokio::test]
