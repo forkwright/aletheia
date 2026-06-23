@@ -187,6 +187,45 @@ fn when_fts_index_created_text_search_finds_matching_rows() {
 }
 
 #[test]
+fn when_fts_near_has_three_literals_chain_must_hold() {
+    // WHY: NEAR is left-to-right chained proximity. A doc where the first and
+    // third terms are close and the first and second are close, but the second
+    // and third are far apart, must not be returned.
+    let db = DbInstance::default();
+    db.run_default(r":create docs {id: String => text: String}")
+        .expect("creating docs relation should succeed");
+    db.run_default(
+        r"?[id, text] <- [
+            ['match', 'quick brown fox'],
+            ['fp', 'brown a fox a quick'],
+            ['none', 'something else entirely']
+        ] :put docs {id => text}",
+    )
+    .expect("inserting docs should succeed");
+    db.run_default(
+        r"::fts create docs:fts {
+            extractor: text,
+            tokenizer: Simple,
+            filters: [Lowercase]
+        }",
+    )
+    .expect("creating FTS index should succeed");
+    let res = db
+        .run_default(r"?[id] := ~docs:fts{id, text | query: 'NEAR(2 fox quick brown)', k: 10}")
+        .expect("three-term NEAR query should succeed");
+    let ids: std::collections::HashSet<_> =
+        res.rows.iter().map(|r| r[0].clone()).collect();
+    assert!(
+        ids.contains(&crate::DataValue::from("match")),
+        "chain NEAR should match doc where all terms are within distance"
+    );
+    assert!(
+        !ids.contains(&crate::DataValue::from("fp")),
+        "chain NEAR must not return false positives where middle term is far from last term"
+    );
+}
+
+#[test]
 fn when_lsh_index_created_exact_match_found_across_thresholds() {
     for i in 1..10 {
         let f = f64::from(i) / 10.;
