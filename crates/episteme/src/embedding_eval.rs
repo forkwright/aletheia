@@ -1022,10 +1022,8 @@ mod tests {
 
     #[test]
     fn validate_rejects_unknown_relevant_id() {
-        let ds = EvalDataset::from_jsonl_str(
-            r#"{"query":"missing","relevant_ids":["id-ghost"]}"#,
-        )
-        .expect("dataset must parse");
+        let ds = EvalDataset::from_jsonl_str(r#"{"query":"missing","relevant_ids":["id-ghost"]}"#)
+            .expect("dataset must parse");
         let err = ds
             .validate_against_corpus(&simple_corpus())
             .expect_err("unknown relevant id must fail closed");
