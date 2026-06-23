@@ -1038,7 +1038,7 @@ pub(crate) async fn run_pipeline(
             "history",
             &mut time_budget,
             emitter,
-            run_history_stage(config, &mut ctx, &input, session_store, emitter),
+            run_history_stage(config, pipeline_config, &mut ctx, &input, session_store, emitter),
         )
         .await?;
         stages_completed += 1;
