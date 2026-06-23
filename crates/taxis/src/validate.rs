@@ -14,7 +14,8 @@ use crate::workspace_schema::validate_agent_workspaces;
 /// Validation error with collected messages.
 #[derive(Debug, Snafu)]
 #[snafu(display("config validation failed:\n  - {}", errors.join("\n  - ")))]
-pub struct ValidationError { // kanon:ignore TOPOLOGY/shallow-struct — snafu derive provides display and Error impl; pub fields are the error surface
+pub struct ValidationError {
+    // kanon:ignore TOPOLOGY/shallow-struct — snafu derive provides display and Error impl; pub fields are the error surface
     /// Collected validation error messages.
     pub errors: Vec<String>,
     #[snafu(implicit)]
@@ -925,7 +926,8 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                 // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                 if has_endpoint
                     && let Some(endpoint) = entry.get("endpoint").and_then(Value::as_str)
-                    && !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) // kanon:ignore SECURITY/insecure-transport — string literal for scheme validation, not an actual endpoint
+                    && !(endpoint.starts_with("http://") || endpoint.starts_with("https://"))
+                // kanon:ignore SECURITY/insecure-transport — string literal for scheme validation, not an actual endpoint
                 {
                     errors.push(format!(
                         "tools.{group}.{name}.endpoint must use http:// or https://"
