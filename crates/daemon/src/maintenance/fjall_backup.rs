@@ -4,8 +4,13 @@
 //! If the fjall DB files are corrupted or the machine dies, all session and
 //! knowledge data is lost. This module implements periodic file-level backups
 //! with configurable retention.
+//!
+//! WHY(#4645): backups are built in a hidden staging directory, verified, then
+//! atomically published. A `backup-complete.json` manifest marks a completed
+//! restore point so interrupted backups are never listed or pruned.
 
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -62,7 +67,7 @@ pub struct BackupEntry {
     pub name: String,
     /// Full path to the backup directory.
     pub path: PathBuf,
-    /// When the backup was created (from directory mtime).
+    /// When the backup was created (from manifest `created_at`).
     pub created: SystemTime,
     /// Total size of the backup in bytes.
     pub size_bytes: u64,
@@ -84,6 +89,40 @@ pub struct FjallVerifyResult {
     pub seqno: Option<u64>,
 }
 
+/// Manifest format version for fjall backups.
+const MANIFEST_VERSION: &str = "aletheia-fjall-backup-v1";
+
+/// Filename of the completion marker inside a published backup directory.
+///
+/// WHY(#4645): a backup is only considered complete and restorable once this
+/// manifest has been written. `list_backups` and pruning rely on its presence.
+const COMPLETE_MARKER: &str = "backup-complete.json";
+
+/// Prefix for hidden staging directories inside `backup_dir`.
+///
+/// WHY(#4645): staging directories are skipped by `list_backups` so an
+/// in-progress or crashed backup is never listed as a valid restore point.
+const STAGING_DIR_PREFIX: &str = ".aletheia-fjall-backup-staging.";
+
+/// Manifest describing a completed fjall backup.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct FjallBackupManifest {
+    /// Manifest format version.
+    version: String,
+    /// ISO 8601 timestamp when the backup was created.
+    created_at: String,
+    /// Absolute source path the backup was copied from.
+    source_path: PathBuf,
+    /// Total bytes copied.
+    bytes_copied: u64,
+    /// Number of files copied.
+    files_copied: u32,
+    /// Fjall sequence number captured during verification, if available.
+    seqno: Option<u64>,
+    /// Whether the staged copy was successfully verified.
+    verified: bool,
+}
+
 /// Manages fjall knowledge store backups.
 pub struct FjallBackup {
     config: FjallBackupConfig,
@@ -101,6 +140,24 @@ impl FjallBackup {
     /// The backup directory name uses ISO 8601 format: `YYYYMMDD-HHMMSS`.
     /// After creating the backup, old backups beyond `retention_count` are pruned.
     pub fn create_backup(&self) -> error::Result<FjallBackupReport> {
+        self.create_backup_with_quiesce(|| Ok(()))
+    }
+
+    /// Create a backup with an optional quiesce hook.
+    ///
+    /// WHY(#4645): the caller can flush the live fjall store (e.g., call
+    /// `persist(SyncAll)`) and pause writers before the filesystem copy begins.
+    /// Fjall itself does not yet expose an online checkpoint API, so a
+    /// caller-supplied quiesce hook is the strongest consistency guarantee
+    /// available.
+    ///
+    /// The backup is built in a hidden staging directory, verified, then
+    /// atomically renamed into place. A `backup-complete.json` manifest is
+    /// written so interrupted backups are never listed or pruned.
+    pub fn create_backup_with_quiesce<F>(&self, quiesce: F) -> error::Result<FjallBackupReport>
+    where
+        F: FnOnce() -> error::Result<()>,
+    {
         if !self.config.source_dir.exists() {
             info!(
                 source = %self.config.source_dir.display(),
@@ -116,32 +173,174 @@ impl FjallBackup {
             ),
         })?;
 
-        // WHY: include subsecond precision to avoid collisions when backups
-        // are triggered in rapid succession (e.g., tests or manual runs).
-        let timestamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S%.3f").to_string();
-        let backup_path = self.config.backup_dir.join(&timestamp);
+        // WHY(#4645): remove staging directories left behind by crashed or
+        // interrupted backup runs before starting a new one.
+        self.cleanup_stale_staging_dirs()?;
+
+        let (staging_path, final_path) = self.prepare_staging_path()?;
+
+        // WHY(#4645): if the caller can quiesce the live store (flush WAL, pause
+        // writers), invoke that hook before reading files from disk.
+        quiesce()?;
+
+        let source_has_version_marker = self.config.source_dir.join("version").is_file();
 
         let (bytes_copied, files_copied) =
-            copy_dir_recursive(&self.config.source_dir, &backup_path)?;
+            copy_dir_recursive(&self.config.source_dir, &staging_path)?;
+
+        // WHY(#4645): verify the staged copy before publishing. If the source is
+        // a real fjall store, open it read-only and iterate every partition. If
+        // the source is not a fjall store (e.g., tests or migration fixtures),
+        // verification is skipped but we still require a manifest marker.
+        let mut verify_seqno = None;
+        let mut verified = false;
+        if source_has_version_marker {
+            let verify = Self::verify_store(&staging_path)?;
+            if let Some(err) = verify.first_error {
+                return error::MaintenanceInvariantSnafu {
+                    context: format!("staged backup verification failed: {err}"),
+                }
+                .fail();
+            }
+            verify_seqno = verify.seqno;
+            verified = true;
+        }
+
+        self.write_manifest(
+            &staging_path,
+            &FjallBackupManifest {
+                version: String::from(MANIFEST_VERSION),
+                created_at: jiff::Zoned::now().to_string(),
+                source_path: self.config.source_dir.clone(),
+                bytes_copied,
+                files_copied,
+                seqno: verify_seqno,
+                verified,
+            },
+        )?;
+
+        // WHY(#4645): atomic publish on the same filesystem as backup_dir.
+        // `std::fs::rename` is atomic on Unix when source and destination are
+        // on the same filesystem; we created staging inside backup_dir above.
+        fs::rename(&staging_path, &final_path).context(error::MaintenanceIoSnafu {
+            context: format!(
+                "publishing fjall backup from {} to {}",
+                staging_path.display(),
+                final_path.display()
+            ),
+        })?;
 
         info!(
-            backup = %backup_path.display(),
+            backup = %final_path.display(),
             files = files_copied,
             bytes = bytes_copied,
+            verified,
             "fjall backup created"
         );
 
         let backups_pruned = self.prune_old_backups()?;
 
         Ok(FjallBackupReport {
-            backup_path: Some(backup_path),
+            backup_path: Some(final_path),
             bytes_copied,
             files_copied,
             backups_pruned,
         })
     }
 
+    /// Prepare a staging directory and the final publish path for a new backup.
+    fn prepare_staging_path(&self) -> error::Result<(PathBuf, PathBuf)> {
+        // WHY: include subsecond precision to avoid collisions when backups
+        // are triggered in rapid succession (e.g., tests or manual runs).
+        let timestamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S%.3f").to_string();
+        let final_path = self.config.backup_dir.join(&timestamp);
+
+        if final_path.exists() {
+            return error::MaintenanceInvariantSnafu {
+                context: format!("backup path already exists: {}", final_path.display()),
+            }
+            .fail();
+        }
+
+        // WHY(#4645): build into a hidden staging directory inside backup_dir so
+        // the final rename is on the same filesystem and therefore atomic.
+        let staging_temp = tempfile::Builder::new()
+            .prefix(STAGING_DIR_PREFIX)
+            .tempdir_in(&self.config.backup_dir)
+            .context(error::MaintenanceIoSnafu {
+                context: format!(
+                    "creating fjall staging dir in {}",
+                    self.config.backup_dir.display()
+                ),
+            })?;
+        let staging_path = staging_temp.keep();
+
+        Ok((staging_path, final_path))
+    }
+
+    /// Write the completion manifest into a staged backup directory.
+    fn write_manifest(&self, path: &Path, manifest: &FjallBackupManifest) -> error::Result<()> {
+        let manifest_path = path.join(COMPLETE_MARKER);
+        let manifest_json = serde_json::to_string_pretty(manifest)
+            .map_err(std::io::Error::other)
+            .context(error::MaintenanceIoSnafu {
+                context: format!("serializing fjall backup manifest {}", manifest_path.display()),
+            })?;
+
+        let mut file = fs::File::create(&manifest_path).context(error::MaintenanceIoSnafu {
+            context: format!("creating fjall backup manifest {}", manifest_path.display()),
+        })?;
+        file.write_all(manifest_json.as_bytes())
+            .context(error::MaintenanceIoSnafu {
+                context: format!("writing fjall backup manifest {}", manifest_path.display()),
+            })?;
+        file.sync_all().context(error::MaintenanceIoSnafu {
+            context: format!("syncing fjall backup manifest {}", manifest_path.display()),
+        })?;
+
+        Ok(())
+    }
+
+    /// Remove leftover staging directories from prior interrupted runs.
+    fn cleanup_stale_staging_dirs(&self) -> error::Result<()> {
+        if !self.config.backup_dir.exists() {
+            return Ok(());
+        }
+
+        let dir = fs::read_dir(&self.config.backup_dir).context(error::MaintenanceIoSnafu {
+            context: format!(
+                "reading fjall backup dir {}",
+                self.config.backup_dir.display()
+            ),
+        })?;
+
+        for entry in dir {
+            let entry = entry.context(error::MaintenanceIoSnafu {
+                context: "reading backup entry",
+            })?;
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+
+            if name.starts_with(STAGING_DIR_PREFIX) && path.is_dir() {
+                if let Err(e) = fs::remove_dir_all(&path) {
+                    warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "failed to remove stale fjall backup staging directory"
+                    );
+                } else {
+                    info!(path = %path.display(), "removed stale fjall backup staging directory");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// List existing backups, newest first.
+    ///
+    /// WHY(#4645): only backups containing a `backup-complete.json` manifest are
+    /// returned. In-progress staging directories are ignored.
     pub fn list_backups(&self) -> error::Result<Vec<BackupEntry>> {
         if !self.config.backup_dir.exists() {
             return Ok(Vec::new());
@@ -160,17 +359,29 @@ impl FjallBackup {
                 context: "reading backup entry",
             })?;
             let path = entry.path();
-            if !path.is_dir() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+
+            // WHY(#4645): ignore in-progress staging directories and backups
+            // that were not atomically published.
+            if name.starts_with(STAGING_DIR_PREFIX)
+                || !path.is_dir()
+                || !path.join(COMPLETE_MARKER).is_file()
+            {
                 continue;
             }
-            let metadata = entry.metadata().context(error::MaintenanceIoSnafu {
-                context: format!("reading backup metadata: {}", path.display()),
-            })?;
-            let created = metadata.modified().context(error::MaintenanceIoSnafu {
-                context: format!("reading backup mtime: {}", path.display()),
-            })?;
+
+            // WHY(#4645): order by the manifest's recorded `created_at` rather
+            // than directory mtime, which a restore/rsync/touch can rewrite and
+            // would corrupt auto-prune ordering.
+            let Some(created) = manifest_created_time(&path) else {
+                warn!(
+                    path = %path.display(),
+                    "skipping fjall backup with unreadable or malformed manifest"
+                );
+                continue;
+            };
+
             let size_bytes = dir_size(&path);
-            let name = entry.file_name().to_string_lossy().into_owned();
             entries.push(BackupEntry {
                 name,
                 path,
@@ -279,6 +490,9 @@ impl FjallBackup {
     }
 
     /// Remove old backups beyond the configured retention count.
+    ///
+    /// WHY(#4645): only completed backups are considered for pruning because
+    /// `list_backups` filters out in-progress staging directories.
     fn prune_old_backups(&self) -> error::Result<u32> {
         let entries = self.list_backups()?;
         let mut pruned = 0u32;
@@ -301,6 +515,18 @@ impl FjallBackup {
 
         Ok(pruned)
     }
+}
+
+/// Parse the `created_at` field from a backup's manifest into a [`SystemTime`].
+///
+/// WHY(#4645): returns `None` if the manifest is missing, unreadable, or the
+/// timestamp cannot be parsed so malformed backups are never auto-pruned on a
+/// wrong assumption about their age.
+fn manifest_created_time(backup_path: &Path) -> Option<SystemTime> {
+    let manifest_json = fs::read_to_string(backup_path.join(COMPLETE_MARKER)).ok()?;
+    let manifest: FjallBackupManifest = serde_json::from_str(&manifest_json).ok()?;
+    let zoned: jiff::Zoned = manifest.created_at.parse().ok()?;
+    Some(SystemTime::from(zoned.timestamp()))
 }
 
 /// Recursively copy a directory. Returns `(bytes_copied, files_copied)`.
@@ -500,14 +726,32 @@ mod tests {
         fs::set_permissions(path.as_ref(), perms).expect("set fixture permissions");
     }
 
+    /// Create a real fjall store with a small amount of data for backup tests.
+    fn make_fjall_store(path: &Path) {
+        fs::create_dir_all(path).expect("create store dir");
+        let db = fjall::SingleWriterTxDatabase::builder(path)
+            .worker_threads_unchecked(0)
+            .open()
+            .expect("open test fjall store");
+        let partition = db
+            .keyspace("test_data", fjall::KeyspaceCreateOptions::default)
+            .expect("create test partition");
+        for i in 0..5u8 {
+            partition
+                .insert(format!("key-{i}"), vec![i])
+                .expect("insert test key");
+        }
+        db.persist(fjall::PersistMode::SyncAll)
+            .expect("persist test store");
+        drop(db);
+    }
+
     #[test]
-    fn create_backup_copies_files() {
+    fn create_backup_stages_verifies_and_publishes() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let source = tmp.path().join("knowledge.fjall");
         let backup_dir = tmp.path().join("backups");
-        fs::create_dir_all(&source).unwrap();
-        write_fixture(source.join("data.sst"), "sst data");
-        write_fixture(source.join("manifest"), "manifest data");
+        make_fjall_store(&source);
 
         let config = FjallBackupConfig {
             enabled: true,
@@ -520,9 +764,27 @@ mod tests {
         let manager = FjallBackup::new(config);
         let report = manager.create_backup().expect("backup succeeds");
 
-        assert!(report.backup_path.is_some());
-        assert_eq!(report.files_copied, 2);
+        let backup_path = report.backup_path.expect("backup path set");
+        assert!(backup_path.exists());
+        assert!(backup_path.join(COMPLETE_MARKER).is_file());
+        assert_eq!(backup_path.parent(), Some(backup_dir.as_path()));
+        assert!(report.files_copied > 0);
         assert!(report.bytes_copied > 0);
+
+        // No staging directories should remain after a successful publish.
+        let staging_left = fs::read_dir(&backup_dir)
+            .expect("read backup dir")
+            .flatten()
+            .any(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                name.starts_with(STAGING_DIR_PREFIX)
+            });
+        assert!(!staging_left, "staging directory leaked after publish");
+
+        // The published backup must be a valid fjall store.
+        let verify = FjallBackup::verify_store(&backup_path).expect("verify published backup");
+        assert!(verify.first_error.is_none());
+        assert_eq!(verify.total_keys, 5);
 
         let backups = manager.list_backups().expect("list succeeds");
         assert_eq!(backups.len(), 1);
@@ -533,8 +795,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let source = tmp.path().join("knowledge.fjall");
         let backup_dir = tmp.path().join("backups");
-        fs::create_dir_all(&source).unwrap();
-        write_fixture(source.join("data"), "data");
+        make_fjall_store(&source);
 
         let config = FjallBackupConfig {
             enabled: true,
@@ -583,6 +844,124 @@ mod tests {
         let manager = FjallBackup::new(config);
         let backups = manager.list_backups().expect("list succeeds");
         assert!(backups.is_empty());
+    }
+
+    #[test]
+    fn list_backups_skips_incomplete_staging() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let backup_dir = tmp.path().join("backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+
+        // Create a fake staging directory that mimics a crashed backup.
+        let staging = backup_dir.join(format!("{STAGING_DIR_PREFIX}crashed"));
+        fs::create_dir_all(&staging).unwrap();
+        write_fixture(staging.join("partial.sst"), "partial data");
+
+        let config = FjallBackupConfig {
+            backup_dir,
+            ..FjallBackupConfig::default()
+        };
+        let manager = FjallBackup::new(config);
+        let backups = manager.list_backups().expect("list succeeds");
+        assert!(backups.is_empty(), "staging directory must not be listed");
+    }
+
+    #[test]
+    fn prune_only_completed_backups() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source = tmp.path().join("knowledge.fjall");
+        let backup_dir = tmp.path().join("backups");
+        make_fjall_store(&source);
+
+        let config = FjallBackupConfig {
+            enabled: true,
+            source_dir: source,
+            backup_dir: backup_dir.clone(),
+            interval_hours: 24,
+            retention_count: 1,
+        };
+        let manager = FjallBackup::new(config);
+
+        // Create two completed backups.
+        manager.create_backup().expect("backup 1 succeeds");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        manager.create_backup().expect("backup 2 succeeds");
+
+        // Inject an incomplete staging directory.
+        let staging = backup_dir.join(format!("{STAGING_DIR_PREFIX}incomplete"));
+        fs::create_dir_all(&staging).unwrap();
+        write_fixture(staging.join("partial.sst"), "partial data");
+
+        // Prune should reduce completed backups to retention_count.
+        let pruned = manager.prune_old_backups().expect("prune succeeds");
+        assert_eq!(pruned, 1, "should prune one completed backup");
+
+        let listed = manager.list_backups().expect("list succeeds");
+        assert_eq!(listed.len(), 1, "only one completed backup should remain");
+
+        // The incomplete staging directory must survive pruning.
+        assert!(staging.exists(), "incomplete staging must not be pruned");
+    }
+
+    #[test]
+    fn create_backup_cleans_stale_staging_and_restores() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source = tmp.path().join("knowledge.fjall");
+        let backup_dir = tmp.path().join("backups");
+        make_fjall_store(&source);
+
+        // Simulate an interrupted previous backup run.
+        let stale = backup_dir.join(format!("{STAGING_DIR_PREFIX}interrupted"));
+        fs::create_dir_all(&stale).unwrap();
+        write_fixture(stale.join("partial.sst"), "partial data");
+
+        let config = FjallBackupConfig {
+            enabled: true,
+            source_dir: source,
+            backup_dir: backup_dir.clone(),
+            interval_hours: 24,
+            retention_count: 7,
+        };
+        let manager = FjallBackup::new(config);
+
+        let report = manager.create_backup().expect("backup succeeds");
+        let backup_path = report.backup_path.expect("backup path set");
+
+        // The stale staging directory from the interrupted run must be gone.
+        assert!(!stale.exists(), "stale staging directory should be cleaned");
+
+        // The new backup must be restorable.
+        let verify = FjallBackup::verify_store(&backup_path).expect("verify restored backup");
+        assert!(verify.first_error.is_none());
+        assert_eq!(verify.total_keys, 5);
+    }
+
+    #[test]
+    fn create_backup_with_quiesce_calls_hook() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source = tmp.path().join("knowledge.fjall");
+        let backup_dir = tmp.path().join("backups");
+        make_fjall_store(&source);
+
+        let config = FjallBackupConfig {
+            enabled: true,
+            source_dir: source,
+            backup_dir,
+            interval_hours: 24,
+            retention_count: 7,
+        };
+        let manager = FjallBackup::new(config);
+
+        let mut quiesce_called = false;
+        let report = manager
+            .create_backup_with_quiesce(|| {
+                quiesce_called = true;
+                Ok(())
+            })
+            .expect("backup succeeds");
+
+        assert!(quiesce_called, "quiesce hook must be invoked");
+        assert!(report.backup_path.is_some());
     }
 
     #[test]
