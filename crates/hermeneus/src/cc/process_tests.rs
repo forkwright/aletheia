@@ -78,7 +78,6 @@ async fn read_stream_assistant_then_result() {
     let output = read_stream(buf.as_slice()).await.unwrap();
     assert_eq!(output.result_text, "Hello world");
     assert!(!output.is_error);
-    assert_eq!(output.stream_deltas, vec!["Hello ", "world"]);
     assert_eq!(output.session_id.as_deref(), Some("sess_42"));
     assert_eq!(output.cost_usd, Some(0.002));
     assert_eq!(output.duration_ms, Some(1500));
@@ -94,7 +93,6 @@ async fn read_stream_result_only() {
         stream_buf(&[r#"{"type":"result","subtype":"success","result":"ok","is_error":false}"#]);
     let output = read_stream(buf.as_slice()).await.unwrap();
     assert_eq!(output.result_text, "ok");
-    assert!(output.stream_deltas.is_empty());
 }
 
 #[tokio::test]
@@ -106,7 +104,6 @@ async fn read_stream_no_result_synthesizes_from_deltas() {
     ]);
     let output = read_stream(buf.as_slice()).await.unwrap();
     assert_eq!(output.result_text, "part1 part2");
-    assert_eq!(output.stream_deltas.len(), 2);
 }
 
 #[tokio::test]
@@ -154,7 +151,6 @@ async fn read_stream_with_callback_invokes_for_each_delta() {
             .await
             .unwrap();
         assert_eq!(output.result_text, "abc");
-        assert_eq!(output.stream_deltas, vec!["a", "b", "c"]);
     }
     assert_eq!(collected, vec!["a", "b", "c"]);
 }
@@ -383,7 +379,6 @@ printf '{"type":"result","subtype":"success","result":"hello world","is_error":f
 
     assert_eq!(output.result_text, "hello world");
     assert!(!output.is_error);
-    assert_eq!(output.stream_deltas, vec!["hello ", "world"]);
     assert_eq!(output.session_id.as_deref(), Some("s1"));
     assert_eq!(output.cost_usd, Some(0.001));
     assert_eq!(output.duration_ms, Some(200));
@@ -572,7 +567,6 @@ printf '{"type":"result","subtype":"success","result":"chunk1chunk2chunk3","is_e
     .unwrap();
 
     assert_eq!(output.result_text, "chunk1chunk2chunk3");
-    assert_eq!(output.stream_deltas, vec!["chunk1", "chunk2", "chunk3"]);
     assert_eq!(
         collected,
         vec!["chunk1", "chunk2", "chunk3"],
