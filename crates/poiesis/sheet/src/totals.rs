@@ -7,16 +7,23 @@ use poiesis_core::factbase::ResolvedFact;
 use poiesis_core::ids::FactId;
 use poiesis_core::scalar::{Money, Scalar, ScalarKind};
 
+use crate::error::WorkbookError;
+
 /// Compute per-column totals for a sheet.
 ///
 /// Returns one `Option<Scalar>` per column header. Numeric columns
 /// (`Count`, `Money`, `Ratio`) are summed across all data rows; `Text` and
 /// `Date` columns always return `None`. Columns with no resolvable numeric
 /// values also return `None`.
-pub(crate) fn compute_totals(
+///
+/// # Errors
+///
+/// Returns [`WorkbookError::NonFiniteRatio`] if a `Ratio` column contains a
+/// non-finite `f64` value or the running total becomes non-finite.
+pub fn compute_totals(
     sheet: &Sheet,
     facts: &BTreeMap<FactId, ResolvedFact>,
-) -> Vec<Option<Scalar>> {
+) -> Result<Vec<Option<Scalar>>, WorkbookError> {
     let ncols = sheet.headers.len();
     let mut totals: Vec<Option<Scalar>> = vec![None; ncols];
 
@@ -40,14 +47,14 @@ pub(crate) fn compute_totals(
             };
             acc = Some(match acc {
                 None => scalar,
-                Some(a) => accumulate(a, scalar),
+                Some(a) => accumulate(a, scalar)?,
             });
         }
         if let Some(slot) = totals.get_mut(col_idx) {
             *slot = acc;
         }
     }
-    totals
+    Ok(totals)
 }
 
 fn resolve_scalar(cell: &WorkbookCell, facts: &BTreeMap<FactId, ResolvedFact>) -> Option<Scalar> {
@@ -58,17 +65,51 @@ fn resolve_scalar(cell: &WorkbookCell, facts: &BTreeMap<FactId, ResolvedFact>) -
     }
 }
 
-fn accumulate(a: Scalar, b: Scalar) -> Scalar {
+fn accumulate(a: Scalar, b: Scalar) -> Result<Scalar, WorkbookError> {
     match (a, b) {
-        (Scalar::Count { value: va }, Scalar::Count { value: vb }) => Scalar::Count {
+        (Scalar::Count { value: va }, Scalar::Count { value: vb }) => Ok(Scalar::Count {
             value: va.saturating_add(vb),
-        },
-        (Scalar::Money { value: va }, Scalar::Money { value: vb }) => Scalar::Money {
+        }),
+        (Scalar::Money { value: va }, Scalar::Money { value: vb }) => Ok(Scalar::Money {
             value: Money::from_micros(va.micros().saturating_add(vb.micros())),
-        },
+        }),
         (Scalar::Ratio { value: va }, Scalar::Ratio { value: vb }) => {
-            Scalar::Ratio { value: va + vb }
+            // WHY: NaN is toxic — NaN + anything = NaN — and would corrupt the
+            // entire XLSX totals row without surfacing an error. Reject it here
+            // so the caller gets an explicit failure instead of silent #NUM!.
+            let sum = va + vb;
+            Scalar::new_ratio(sum).map_err(|_| WorkbookError::NonFiniteRatio { value: sum })
         }
-        (a, _) => a,
+        (a, _) => Ok(a),
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accumulate_ratio_sums_finite() {
+        let a = Scalar::Ratio { value: 0.5 };
+        let b = Scalar::Ratio { value: 0.25 };
+        let got = accumulate(a, b).expect("sum");
+        assert_eq!(got, Scalar::Ratio { value: 0.75 });
+    }
+
+    #[test]
+    fn accumulate_ratio_rejects_nan_operand() {
+        let a = Scalar::Ratio { value: f64::NAN };
+        let b = Scalar::Ratio { value: 1.0 };
+        let err = accumulate(a, b).expect_err("nan fails");
+        assert!(matches!(err, WorkbookError::NonFiniteRatio { .. }));
+    }
+
+    #[test]
+    fn accumulate_ratio_rejects_infinite_total() {
+        let a = Scalar::Ratio { value: f64::MAX };
+        let b = Scalar::Ratio { value: f64::MAX };
+        let err = accumulate(a, b).expect_err("inf total fails");
+        assert!(matches!(err, WorkbookError::NonFiniteRatio { .. }));
     }
 }

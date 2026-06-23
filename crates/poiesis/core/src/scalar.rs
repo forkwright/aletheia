@@ -13,7 +13,7 @@ use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{
-    BadAspectSnafu, BadMoneySnafu, BadToleranceSnafu, ScalarError, UnknownUnitSnafu,
+    BadAspectSnafu, BadMoneySnafu, BadRatioSnafu, BadToleranceSnafu, ScalarError, UnknownUnitSnafu,
 };
 
 /// The kind tag describing the shape of a [`Scalar`].
@@ -186,6 +186,19 @@ pub enum Scalar {
 }
 
 impl Scalar {
+    /// Construct a finite ratio scalar.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScalarError::BadRatio`] if `value` is `NaN`, `Infinity`, or
+    /// `-Infinity`.
+    pub fn new_ratio(value: f64) -> Result<Self, ScalarError> {
+        if !value.is_finite() {
+            return BadRatioSnafu { value }.fail();
+        }
+        Ok(Self::Ratio { value })
+    }
+
     /// The kind tag of this scalar.
     #[must_use]
     pub fn kind(&self) -> ScalarKind {
@@ -507,5 +520,27 @@ mod tests {
         let json = serde_json::to_string(&s).expect("ser");
         let back: Scalar = serde_json::from_str(&json).expect("de");
         assert_eq!(back, s);
+    }
+
+    #[test]
+    fn ratio_accepts_finite() {
+        let got = Scalar::new_ratio(0.42).expect("finite");
+        assert_eq!(got, Scalar::Ratio { value: 0.42 });
+    }
+
+    #[test]
+    fn ratio_rejects_non_finite() {
+        assert!(matches!(
+            Scalar::new_ratio(f64::NAN),
+            Err(ScalarError::BadRatio { .. })
+        ));
+        assert!(matches!(
+            Scalar::new_ratio(f64::INFINITY),
+            Err(ScalarError::BadRatio { .. })
+        ));
+        assert!(matches!(
+            Scalar::new_ratio(f64::NEG_INFINITY),
+            Err(ScalarError::BadRatio { .. })
+        ));
     }
 }

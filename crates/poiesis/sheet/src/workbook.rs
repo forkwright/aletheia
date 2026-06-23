@@ -91,7 +91,7 @@ fn render_sheet(
         }
     }
 
-    let totals = compute_totals(sheet, facts);
+    let totals = compute_totals(sheet, facts)?;
     let totals_row =
         u32::try_from(sheet.rows.len()).map_err(|e| crate::error::WorkbookError::XlsxWrite {
             message: format!("row count exceeds u32 max: {e}"),
@@ -169,6 +169,11 @@ fn write_scalar(
             ws.write_with_format(row, col, dollars, fmt)?;
         }
         Scalar::Ratio { value } => {
+            // WHY: Worksheets cannot represent NaN/Inf; writing them silently
+            // corrupts dependent formulas as #NUM! / #VALUE!. Fail explicitly.
+            if !value.is_finite() {
+                return Err(crate::error::WorkbookError::NonFiniteRatio { value: *value });
+            }
             ws.write_with_format(row, col, *value, fmt)?;
         }
         Scalar::Text { value } => {
@@ -199,4 +204,30 @@ fn unit_for_total(
         }
     }
     kind_default_unit(kind)
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_scalar_rejects_nan_ratio() {
+        let mut xlsx_wb = XlsxWorkbook::new();
+        let ws = xlsx_wb.add_worksheet();
+        let fmt = Format::default();
+        let scalar = Scalar::Ratio { value: f64::NAN };
+        let err = write_scalar(ws, 0, 0, &scalar, &fmt).expect_err("nan rejected");
+        assert!(matches!(err, crate::error::WorkbookError::NonFiniteRatio { .. }));
+    }
+
+    #[test]
+    fn write_scalar_rejects_infinite_ratio() {
+        let mut xlsx_wb = XlsxWorkbook::new();
+        let ws = xlsx_wb.add_worksheet();
+        let fmt = Format::default();
+        let scalar = Scalar::Ratio { value: f64::INFINITY };
+        let err = write_scalar(ws, 0, 0, &scalar, &fmt).expect_err("inf rejected");
+        assert!(matches!(err, crate::error::WorkbookError::NonFiniteRatio { .. }));
+    }
 }

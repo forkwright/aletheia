@@ -41,6 +41,12 @@ pub enum WorkbookError {
         /// The fact id that was not found.
         id: String,
     },
+    /// A ratio value was not finite and cannot be written to a worksheet.
+    #[snafu(display("ratio value {value} is not finite"))]
+    NonFiniteRatio {
+        /// The offending value.
+        value: f64,
+    },
     /// `rust_xlsxwriter` returned an error.
     #[snafu(display("XLSX write error: {message}"))]
     XlsxWrite {

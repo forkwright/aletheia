@@ -77,6 +77,12 @@ pub enum ScalarError {
         /// The offending input string.
         input: String,
     },
+    /// A ratio value was not a finite `f64`.
+    #[snafu(display("ratio {value} is not finite"))]
+    BadRatio {
+        /// The offending value.
+        value: f64,
+    },
 }
 
 /// Errors raised when validating or resolving a `Factbase`.
