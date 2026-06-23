@@ -194,8 +194,8 @@ fn measure_baseline_records_metrics_without_gate() {
     let provider = mock();
     let corpus = simple_corpus();
     let dataset = simple_dataset();
-    let run = measure_baseline(&provider, &dataset, &corpus, 3)
-        .expect("measure_baseline must succeed");
+    let run =
+        measure_baseline(&provider, &dataset, &corpus, 3).expect("measure_baseline must succeed");
     assert_eq!(
         run.mode,
         EvalRunMode::Measurement,
@@ -387,10 +387,9 @@ fn validate_rejects_unknown_relevant_id() {
 
 #[test]
 fn validate_rejects_duplicate_relevant_id() {
-    let ds = EvalDataset::from_jsonl_str(
-        r#"{"query":"dup","relevant_ids":["id-alice","id-alice"]}"#,
-    )
-    .expect("dataset must parse");
+    let ds =
+        EvalDataset::from_jsonl_str(r#"{"query":"dup","relevant_ids":["id-alice","id-alice"]}"#)
+            .expect("dataset must parse");
     let err = ds
         .validate_against_corpus(&simple_corpus())
         .expect_err("duplicate relevant id must fail closed");
