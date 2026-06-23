@@ -81,12 +81,7 @@ pub struct TurnAttemptRecord {
 
 impl TurnAttemptRecord {
     /// Create a new lifecycle record for a turn.
-    pub fn new(
-        turn_id: &Ulid,
-        session_id: &str,
-        nous_id: &str,
-        status: TurnAttemptStatus,
-    ) -> Self {
+    pub fn new(turn_id: &Ulid, session_id: &str, nous_id: &str, status: TurnAttemptStatus) -> Self {
         Self {
             version: 1,
             turn_id: turn_id.to_string(),
@@ -190,7 +185,8 @@ mod tests {
             },
             ..crate::config::NousConfig::default()
         };
-        let session = crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
+        let session =
+            crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
         (store, session)
     }
 

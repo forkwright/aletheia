@@ -661,9 +661,12 @@ mod tests {
 
         finalize(&store, &session, "Hi", &result, &config).expect("first finalize");
         // Remove the usage row so only the completed note remains.
-        store.cleanup_usage_records("ses-1", 0).expect("clear usage");
+        store
+            .cleanup_usage_records("ses-1", 0)
+            .expect("clear usage");
 
-        let fr2 = finalize(&store, &session, "Hi again", &result, &config).expect("second finalize");
+        let fr2 =
+            finalize(&store, &session, "Hi again", &result, &config).expect("second finalize");
         assert_eq!(fr2.messages_persisted, 0);
         assert!(!fr2.usage_recorded);
 

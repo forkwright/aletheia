@@ -54,8 +54,6 @@ pub mod metrics;
 pub mod pipeline;
 /// Semantic recall stage: vector search over knowledge memories.
 pub mod recall;
-/// Durable turn-attempt lifecycle records and finalize idempotency.
-pub(crate) mod turn_record;
 /// Task-specific _llm/ loading recipes for multi-resolution context.
 pub mod recipes;
 /// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
@@ -83,6 +81,8 @@ pub mod tasks;
 pub mod training;
 /// Self-tuning feedback loop: evidence-based parameter change proposals.
 pub mod tuning;
+/// Durable turn-attempt lifecycle records and finalize idempotency.
+pub(crate) mod turn_record;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
 pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
