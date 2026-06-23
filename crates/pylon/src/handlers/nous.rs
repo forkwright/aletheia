@@ -8,6 +8,7 @@ use symbolon::types::Role;
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
+use crate::handlers::providers::resolve_model_readiness;
 use crate::state::NousState;
 
 use nous::config::NousConfig;
@@ -127,11 +128,15 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
             let agent_id = c.id.as_ref();
             let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
             let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, agent_id));
+            let mut models = vec![c.generation.model.clone()];
+            models.extend(c.generation.fallback_models.clone());
             NousSummary {
                 id: c.id.to_string(),
                 name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
                 enabled,
                 model: c.generation.model.clone(),
+                fallback_models: c.generation.fallback_models.clone(),
+                provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
                 status: "active".to_owned(),
                 tools,
             }
@@ -190,9 +195,16 @@ pub async fn get_status(
         None => ("unknown".to_owned(), 0, 0, None, None, false),
     };
 
+    let mut status_models = vec![config.generation.model.clone()];
+    status_models.extend(config.generation.fallback_models.clone());
+
     Ok(Json(NousStatus {
         id: config.id.to_string(),
         model: config.generation.model.clone(),
+        fallback_models: config.generation.fallback_models.clone(),
+        retries_before_fallback: config.generation.retries_before_fallback,
+        complexity_routing_enabled: config.generation.complexity.enabled,
+        provider_readiness: resolve_model_readiness(&state.provider_registry, &status_models),
         context_window: config.generation.context_window,
         max_output_tokens: config.generation.max_output_tokens,
         thinking_enabled: config.generation.thinking_enabled,
@@ -315,6 +327,9 @@ pub async fn update_enabled(
         None => "unknown".to_owned(),
     };
 
+    let mut summary_models = vec![runtime.generation.model.clone()];
+    summary_models.extend(runtime.generation.fallback_models.clone());
+
     Ok(Json(NousSummary {
         id: runtime.id.to_string(),
         name: runtime
@@ -323,6 +338,8 @@ pub async fn update_enabled(
             .unwrap_or_else(|| runtime.id.to_string()),
         enabled,
         model: runtime.generation.model.clone(),
+        fallback_models: runtime.generation.fallback_models.clone(),
+        provider_readiness: resolve_model_readiness(&state.provider_registry, &summary_models),
         status,
         tools,
     }))
@@ -770,12 +787,14 @@ mod tests {
         fn assert_nous_state_fields(state: &NousState) {
             use std::sync::Arc;
 
+            use hermeneus::provider::ProviderRegistry;
             use nous::manager::NousManager;
             use organon::registry::ToolRegistry;
             use taxis::config::AletheiaConfig;
 
             let _: &Arc<NousManager> = &state.nous_manager;
             let _: &Arc<ToolRegistry> = &state.tool_registry;
+            let _: &Arc<ProviderRegistry> = &state.provider_registry;
             let _: &Arc<tokio::sync::RwLock<AletheiaConfig>> = &state.config;
         }
         // If the above compiles, NousState contains both required fields.
@@ -790,6 +809,8 @@ mod tests {
                 name: "Alice".to_owned(),
                 enabled: true,
                 model: "anthropic/claude-opus-4-6".to_owned(),
+                fallback_models: vec![],
+                provider_readiness: vec![],
                 status: "active".to_owned(),
                 tools: vec![],
             }],
@@ -815,6 +836,8 @@ mod tests {
             name: "bob".to_owned(), // fallback case: name == id
             enabled: false,
             model: "anthropic/claude-sonnet-4-6".to_owned(),
+            fallback_models: vec![],
+            provider_readiness: vec![],
             status: "active".to_owned(),
             tools: vec![],
         };
@@ -829,6 +852,10 @@ mod tests {
         let status = NousStatus {
             id: "syn".to_owned(),
             model: "anthropic/claude-opus-4-6".to_owned(),
+            fallback_models: vec![],
+            retries_before_fallback: 2,
+            complexity_routing_enabled: false,
+            provider_readiness: vec![],
             context_window: 200_000,
             max_output_tokens: 4096,
             thinking_enabled: true,
