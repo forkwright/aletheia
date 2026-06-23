@@ -40,7 +40,7 @@ const OVERALL_TIMEOUT: Duration = Duration::from_secs(10);
     ),
 )]
 pub async fn check() -> impl IntoResponse {
-    Json(LivenessResponse { status: "healthy" })
+    Json(LivenessResponse { status: "healthy".to_owned() })
 }
 
 /// GET /api/v1/system/health: operator-only readiness and diagnostics.
@@ -129,8 +129,8 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     .await
     .unwrap_or_else(|_| {
         vec![HealthCheck {
-            name: "overall",
-            status: "fail",
+            name: "overall".to_owned(),
+            status: "fail".to_owned(),
             message: Some("health check timed out".to_owned()),
             details: None,
         }]
@@ -158,9 +158,9 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     (
         http_status,
         HealthResponse {
-            status,
-            version: env!("CARGO_PKG_VERSION"),
-            git_sha: option_env!("GIT_SHA").unwrap_or("unknown"),
+            status: status.to_owned(),
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            git_sha: option_env!("GIT_SHA").unwrap_or("unknown").to_owned(),
             uptime_seconds: uptime,
             checks,
             data_dir: state.oikos.data().to_string_lossy().into_owned(),
@@ -176,8 +176,8 @@ async fn check_gateway_security(state: &HealthState) -> HealthCheck {
 fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
     if auth_mode == "none" && !taxis::validate::is_loopback_bind(bind) {
         return HealthCheck {
-            name: "gateway_security",
-            status: "fail",
+            name: "gateway_security".to_owned(),
+            status: "fail".to_owned(),
             message: Some(format!(
                 "unsafe gateway posture: auth.mode = \"none\" with non-loopback bind '{bind}'"
             )),
@@ -186,8 +186,8 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
     }
     if auth_mode == "none" {
         return HealthCheck {
-            name: "gateway_security",
-            status: "warn",
+            name: "gateway_security".to_owned(),
+            status: "warn".to_owned(),
             message: Some(
                 "auth.mode = \"none\" is limited to loopback but remains unauthenticated"
                     .to_owned(),
@@ -196,8 +196,8 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
         };
     }
     HealthCheck {
-        name: "gateway_security",
-        status: "pass",
+        name: "gateway_security".to_owned(),
+        status: "pass".to_owned(),
         message: None,
         details: None,
     }
@@ -227,8 +227,8 @@ async fn timed_check(
     match tokio::time::timeout(CHECK_TIMEOUT, future).await {
         Ok(check) => check,
         Err(_elapsed) => HealthCheck {
-            name,
-            status: "timeout",
+            name: name.to_owned(),
+            status: "timeout".to_owned(),
             message: Some(format!(
                 "{name} check timed out after {}s",
                 CHECK_TIMEOUT.as_secs()
@@ -242,8 +242,8 @@ async fn timed_check(
 async fn check_session_store(state: &HealthState) -> HealthCheck {
     let store_ok = state.session_store.lock().await.ping().is_ok();
     HealthCheck {
-        name: "session_store",
-        status: if store_ok { "pass" } else { "fail" },
+        name: "session_store".to_owned(),
+        status: (if store_ok { "pass" } else { "fail" }).to_owned(),
         message: if store_ok {
             None
         } else {
@@ -257,8 +257,8 @@ async fn check_session_store(state: &HealthState) -> HealthCheck {
 fn check_provider_availability(state: &HealthState) -> HealthCheck {
     let has_providers = !state.provider_registry.providers().is_empty();
     HealthCheck {
-        name: "providers",
-        status: if has_providers { "pass" } else { "warn" },
+        name: "providers".to_owned(),
+        status: (if has_providers { "pass" } else { "warn" }).to_owned(),
         message: if has_providers {
             None
         } else {
@@ -300,8 +300,8 @@ fn check_nous_health_poller(
     };
 
     HealthCheck {
-        name: "nous_health_poller",
-        status,
+        name: "nous_health_poller".to_owned(),
+        status: status.to_owned(),
         message,
         details: None,
     }
@@ -314,8 +314,8 @@ async fn check_nous_actors(state: &HealthState) -> HealthCheck {
 
     if actor_health.is_empty() || any_dead {
         return HealthCheck {
-            name: "nous_actors",
-            status: "fail",
+            name: "nous_actors".to_owned(),
+            status: "fail".to_owned(),
             message: if actor_health.is_empty() {
                 Some("no nous actors registered".to_owned())
             } else {
@@ -337,8 +337,8 @@ async fn check_nous_actors(state: &HealthState) -> HealthCheck {
 
     if degraded.is_empty() {
         HealthCheck {
-            name: "nous_actors",
-            status: "pass",
+            name: "nous_actors".to_owned(),
+            status: "pass".to_owned(),
             message: None,
             details: None,
         }
@@ -361,8 +361,8 @@ async fn check_nous_actors(state: &HealthState) -> HealthCheck {
             })
             .collect();
         HealthCheck {
-            name: "nous_actors",
-            status: "warn",
+            name: "nous_actors".to_owned(),
+            status: "warn".to_owned(),
             message: Some(format!(
                 "background health degraded: {}",
                 summaries.join("; ")
@@ -419,8 +419,8 @@ fn provider_reachability_check(
     let providers = registry.providers();
     if providers.is_empty() {
         return HealthCheck {
-            name: "provider_reachability",
-            status: "warn",
+            name: "provider_reachability".to_owned(),
+            status: "warn".to_owned(),
             message: Some("no providers to check".to_owned()),
             details: None,
         };
@@ -462,8 +462,8 @@ fn provider_reachability_check(
     let message = provider_reachability_message(status, &provider_details, optional_names);
 
     HealthCheck {
-        name: "provider_reachability",
-        status,
+        name: "provider_reachability".to_owned(),
+        status: status.to_owned(),
         message,
         details: Some(serde_json::json!({ "providers": provider_details })),
     }
@@ -568,8 +568,8 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
 
     let Some(provider) = state.embedding_provider.as_ref() else {
         return HealthCheck {
-            name: "embedding_provider",
-            status: "warn",
+            name: "embedding_provider".to_owned(),
+            status: "warn".to_owned(),
             message: Some("no embedding provider configured".to_owned()),
             details: None,
         };
@@ -579,8 +579,8 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
 
     if model_name == LOADING_MODEL_NAME {
         HealthCheck {
-            name: "embedding_provider",
-            status: "warn",
+            name: "embedding_provider".to_owned(),
+            status: "warn".to_owned(),
             message: Some(
                 "degraded: embedding-loading (model initializing — \
                  recall unavailable until load completes)"
@@ -590,8 +590,8 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
         }
     } else if mneme::embedding::is_degraded_provider(provider.as_ref()) {
         HealthCheck {
-            name: "embedding_provider",
-            status: "warn",
+            name: "embedding_provider".to_owned(),
+            status: "warn".to_owned(),
             message: Some(
                 "degraded: no-embeddings (embedding model failed to load at startup — \
                  recall falls back to BM25)"
@@ -601,8 +601,8 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
         }
     } else {
         HealthCheck {
-            name: "embedding_provider",
-            status: "pass",
+            name: "embedding_provider".to_owned(),
+            status: "pass".to_owned(),
             message: None,
             details: None,
         }
@@ -641,8 +641,8 @@ fn check_prosoche_heartbeat_path(
     };
 
     HealthCheck {
-        name: "prosoche_heartbeat_path",
-        status: "pass",
+        name: "prosoche_heartbeat_path".to_owned(),
+        status: "pass".to_owned(),
         message: Some(message),
         details: None,
     }
@@ -663,8 +663,8 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
             Ok(p) => p,
             Err(e) => {
                 return HealthCheck {
-                    name: "config_readable",
-                    status: "fail",
+                    name: "config_readable".to_owned(),
+                    status: "fail".to_owned(),
                     message: Some(format!("config path validation failed: {e}")),
                     details: None,
                 };
@@ -678,8 +678,8 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
                 // failure here means the parent directory itself is outside
                 // the instance root, which is a real misconfiguration.
                 return HealthCheck {
-                    name: "config_readable",
-                    status: "warn",
+                    name: "config_readable".to_owned(),
+                    status: "warn".to_owned(),
                     message: Some(format!("config path validation failed: {e}")),
                     details: None,
                 };
@@ -693,15 +693,15 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
                 // WHY: also verify the in-memory config lock is readable.
                 let _config = state.config.read().await;
                 HealthCheck {
-                    name: "config_readable",
-                    status: "pass",
+                    name: "config_readable".to_owned(),
+                    status: "pass".to_owned(),
                     message: None,
                     details: None,
                 }
             } else {
                 HealthCheck {
-                    name: "config_readable",
-                    status: "warn",
+                    name: "config_readable".to_owned(),
+                    status: "warn".to_owned(),
                     message: Some(format!(
                         "config path exists but is not a file: {}",
                         config_path.display()
@@ -713,8 +713,8 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
         Err(e) => {
             // WHY: warn, not fail — the config file may not exist yet (first run).
             HealthCheck {
-                name: "config_readable",
-                status: "warn",
+                name: "config_readable".to_owned(),
+                status: "warn".to_owned(),
                 message: Some(format!(
                     "cannot read config file at {}: {e}",
                     config_path.display()
@@ -768,23 +768,23 @@ fn check_credential_validity(
 
             if remaining_secs < leeway_i64 {
                 return HealthCheck {
-                    name: "credential_validity",
-                    status: "warn",
+                    name: "credential_validity".to_owned(),
+                    status: "warn".to_owned(),
                     message: Some("credential file token has expired".to_owned()),
                     details: None,
                 };
             } else if remaining_secs < warning_i64 {
                 return HealthCheck {
-                    name: "credential_validity",
-                    status: "warn",
+                    name: "credential_validity".to_owned(),
+                    status: "warn".to_owned(),
                     message: Some("credential file token expires soon".to_owned()),
                     details: None,
                 };
             }
         }
         return HealthCheck {
-            name: "credential_validity",
-            status: "pass",
+            name: "credential_validity".to_owned(),
+            status: "pass".to_owned(),
             message: None,
             details: None,
         };
@@ -794,8 +794,8 @@ fn check_credential_validity(
         symbolon::credential::claude_code_default_path().is_some_and(|p| p.exists());
     if cc_credentials {
         HealthCheck {
-            name: "credential_validity",
-            status: "pass",
+            name: "credential_validity".to_owned(),
+            status: "pass".to_owned(),
             message: Some(
                 "Claude Code credentials available (CC provider handles auth)".to_owned(),
             ),
@@ -803,8 +803,8 @@ fn check_credential_validity(
         }
     } else {
         HealthCheck {
-            name: "credential_validity",
-            status: "warn",
+            name: "credential_validity".to_owned(),
+            status: "warn".to_owned(),
             message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no Claude Code credentials)".to_owned()),
             details: None,
         }
@@ -824,8 +824,8 @@ fn check_env_oauth_token(
 ) -> HealthCheck {
     if key.is_empty() {
         return HealthCheck {
-            name: "credential_validity",
-            status: "warn",
+            name: "credential_validity".to_owned(),
+            status: "warn".to_owned(),
             message: Some("ANTHROPIC_API_KEY is set but empty".to_owned()),
             details: None,
         };
@@ -838,16 +838,16 @@ fn check_env_oauth_token(
                 exp_secs.saturating_sub(now_secs.saturating_add(clock_skew_leeway));
             if remaining_secs == 0 {
                 return HealthCheck {
-                    name: "credential_validity",
-                    status: "warn",
+                    name: "credential_validity".to_owned(),
+                    status: "warn".to_owned(),
                     message: Some("OAuth token has expired".to_owned()),
                     details: None,
                 };
             }
             if remaining_secs <= expiry_warning_threshold {
                 return HealthCheck {
-                    name: "credential_validity",
-                    status: "warn",
+                    name: "credential_validity".to_owned(),
+                    status: "warn".to_owned(),
                     message: Some("OAuth token expires soon".to_owned()),
                     details: None,
                 };
@@ -856,8 +856,8 @@ fn check_env_oauth_token(
     }
 
     HealthCheck {
-        name: "credential_validity",
-        status: "pass",
+        name: "credential_validity".to_owned(),
+        status: "pass".to_owned(),
         message: None,
         details: None,
     }
@@ -873,8 +873,8 @@ fn provider_credential_scope_check(state: &HealthState) -> Option<HealthCheck> {
 
     if provider_names.is_empty() {
         return Some(HealthCheck {
-            name: "credential_validity",
-            status: "warn",
+            name: "credential_validity".to_owned(),
+            status: "warn".to_owned(),
             message: Some(
                 "no providers registered; credential validity cannot be checked".to_owned(),
             ),
@@ -890,8 +890,8 @@ fn provider_credential_scope_check(state: &HealthState) -> Option<HealthCheck> {
     }
 
     Some(HealthCheck {
-        name: "credential_validity",
-        status: "pass",
+        name: "credential_validity".to_owned(),
+        status: "pass".to_owned(),
         message: Some(format!(
             "registered providers do not use pylon-managed Anthropic credentials: {}",
             provider_names.join(", ")
@@ -912,8 +912,8 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
 
     if let Err(e) = tokio::fs::create_dir_all(&data_dir).await {
         return HealthCheck {
-            name: "storage_writable",
-            status: "fail",
+            name: "storage_writable".to_owned(),
+            status: "fail".to_owned(),
             message: Some(format!("cannot create data directory: {e}")),
             details: None,
         };
@@ -923,8 +923,8 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
     // root to prevent path-traversal if oikos is misconfigured.
     if let Err(e) = koina::fs::validate_within_root(&data_dir, instance_root) {
         return HealthCheck {
-            name: "storage_writable",
-            status: "fail",
+            name: "storage_writable".to_owned(),
+            status: "fail".to_owned(),
             message: Some(format!("data directory path validation failed: {e}")),
             details: None,
         };
@@ -936,8 +936,8 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
     // (defense-in-depth against crafted data_dir values).
     if let Err(e) = koina::fs::validate_within_root(&test_file, &data_dir) {
         return HealthCheck {
-            name: "storage_writable",
-            status: "fail",
+            name: "storage_writable".to_owned(),
+            status: "fail".to_owned(),
             message: Some(format!("test file path validation failed: {e}")),
             details: None,
         };
@@ -947,15 +947,15 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
         Ok(()) => {
             let _ = tokio::fs::remove_file(&test_file).await;
             HealthCheck {
-                name: "storage_writable",
-                status: "pass",
+                name: "storage_writable".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             }
         }
         Err(e) => HealthCheck {
-            name: "storage_writable",
-            status: "fail",
+            name: "storage_writable".to_owned(),
+            status: "fail".to_owned(),
             message: Some(format!("data directory is not writable: {e}")),
             details: None,
         },
@@ -1055,9 +1055,9 @@ mod tests {
     #[test]
     fn health_response_serializes_all_fields() {
         let resp = HealthResponse {
-            status: "healthy",
-            version: "1.0.0",
-            git_sha: "abc123",
+            status: "healthy".to_owned(),
+            version: "1.0.0".to_owned(),
+            git_sha: "abc123".to_owned(),
             uptime_seconds: 300,
             checks: vec![],
             data_dir: "/tmp/instance/data".to_owned(),
@@ -1071,7 +1071,7 @@ mod tests {
 
     #[test]
     fn liveness_response_serializes_only_status() {
-        let resp = LivenessResponse { status: "healthy" };
+        let resp = LivenessResponse { status: "healthy".to_owned() };
         let json = serde_json::to_value(&resp).unwrap();
         let object = json.as_object().unwrap();
         assert_eq!(object.len(), 1);
@@ -1088,8 +1088,8 @@ mod tests {
     #[test]
     fn health_check_pass_omits_message_when_none() {
         let check = HealthCheck {
-            name: "session_store",
-            status: "pass",
+            name: "session_store".to_owned(),
+            status: "pass".to_owned(),
             message: None,
             details: None,
         };
@@ -1103,8 +1103,8 @@ mod tests {
     #[test]
     fn health_check_fail_includes_message() {
         let check = HealthCheck {
-            name: "providers",
-            status: "fail",
+            name: "providers".to_owned(),
+            status: "fail".to_owned(),
             message: Some("no LLM providers registered".to_owned()),
             details: None,
         };
@@ -1192,14 +1192,14 @@ mod tests {
     fn aggregate_status_unhealthy_when_any_check_fails() {
         let checks = [
             HealthCheck {
-                name: "a",
-                status: "pass",
+                name: "a".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             },
             HealthCheck {
-                name: "b",
-                status: "fail",
+                name: "b".to_owned(),
+                status: "fail".to_owned(),
                 message: Some("down".to_owned()),
                 details: None,
             },
@@ -1218,14 +1218,14 @@ mod tests {
     fn aggregate_status_degraded_when_any_check_warns() {
         let checks = [
             HealthCheck {
-                name: "a",
-                status: "pass",
+                name: "a".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             },
             HealthCheck {
-                name: "b",
-                status: "warn",
+                name: "b".to_owned(),
+                status: "warn".to_owned(),
                 message: Some("no providers".to_owned()),
                 details: None,
             },
@@ -1244,14 +1244,14 @@ mod tests {
     fn aggregate_status_healthy_when_all_pass() {
         let checks = [
             HealthCheck {
-                name: "session_store",
-                status: "pass",
+                name: "session_store".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             },
             HealthCheck {
-                name: "providers",
-                status: "pass",
+                name: "providers".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             },
@@ -1270,14 +1270,14 @@ mod tests {
     fn aggregate_status_unhealthy_when_any_check_times_out() {
         let checks = [
             HealthCheck {
-                name: "a",
-                status: "pass",
+                name: "a".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             },
             HealthCheck {
-                name: "b",
-                status: "timeout",
+                name: "b".to_owned(),
+                status: "timeout".to_owned(),
                 message: Some("check timed out after 5s".to_owned()),
                 details: None,
             },
@@ -1302,8 +1302,8 @@ mod tests {
         let check = timed_check("slow_check", async {
             tokio::time::sleep(Duration::from_mins(1)).await; // kanon:ignore TESTING/sleep-in-test -- start_paused = true drives virtual time, not wall clock
             HealthCheck {
-                name: "slow_check",
-                status: "pass",
+                name: "slow_check".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             }
@@ -1318,8 +1318,8 @@ mod tests {
     async fn timed_check_returns_result_on_fast_future() {
         let check = timed_check("fast_check", async {
             HealthCheck {
-                name: "fast_check",
-                status: "pass",
+                name: "fast_check".to_owned(),
+                status: "pass".to_owned(),
                 message: None,
                 details: None,
             }

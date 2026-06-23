@@ -1,29 +1,25 @@
 // WHY: wire DTO
 //! Health endpoint response wire shapes.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Public liveness response for unauthenticated health probes.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LivenessResponse {
     /// Minimal process status. If this response is returned, pylon is alive.
-    #[schema(value_type = String)]
-    pub status: &'static str,
+    pub status: String,
 }
 
 /// Operator-only health response combining all subsystem checks.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
     /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
-    #[schema(value_type = String)]
-    pub status: &'static str,
+    pub status: String,
     /// Crate version from `Cargo.toml`.
-    #[schema(value_type = String)]
-    pub version: &'static str,
+    pub version: String,
     /// Build git SHA when available from the build environment.
-    #[schema(value_type = String)]
-    pub git_sha: &'static str,
+    pub git_sha: String,
     /// Seconds since server start.
     pub uptime_seconds: u64,
     /// Individual subsystem check results.
@@ -33,14 +29,12 @@ pub struct HealthResponse {
 }
 
 /// Result of a single subsystem health check.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthCheck {
     /// Subsystem name (e.g. `"session_store"`, `"providers"`).
-    #[schema(value_type = String)]
-    pub name: &'static str,
+    pub name: String,
     /// Check outcome: `"pass"`, `"warn"`, `"fail"`, or `"timeout"`.
-    #[schema(value_type = String)]
-    pub status: &'static str,
+    pub status: String,
     /// Diagnostic message when status is not `"pass"`.
     pub message: Option<String>,
     /// Structured per-subsystem details that are safe to expose to the

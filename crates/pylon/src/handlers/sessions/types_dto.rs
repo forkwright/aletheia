@@ -71,7 +71,7 @@ pub struct HistoryParams {
 pub type ListSessionsResponse = crate::pagination::PaginatedResponse<SessionListItem>;
 
 /// Session summary for list endpoints.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SessionListItem {
     /// Session identifier.
     pub id: String,
@@ -117,14 +117,14 @@ pub struct SessionResponse {
 }
 
 /// Response for `GET /api/v1/sessions/{id}/history`.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HistoryResponse {
     /// Conversation messages in chronological order.
     pub messages: Vec<HistoryMessage>,
 }
 
 /// A single message in the conversation history.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HistoryMessage {
     /// Database row ID.
     pub id: i64,

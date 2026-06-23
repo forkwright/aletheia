@@ -12,7 +12,7 @@ use std::time::Duration;
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
-use koina::http::{API_HEALTH, API_V1, BEARER_PREFIX};
+use koina::http::BEARER_PREFIX;
 use koina::secret::SecretString;
 
 use crate::handlers::health::{HealthResponse, LivenessResponse};
@@ -32,7 +32,7 @@ const CSRF_HEADER_NAME: &str = "x-requested-with";
 const CSRF_HEADER_VALUE: &str = "aletheia";
 
 /// Error returned by [`GatewayClient`] operations.
-#[derive(Debug, Snafu)]
+#[derive(Debug, Snafu)] // kanon:ignore RUST/no-debug-derive-on-public-types — fields are gateway error codes and HTTP metadata, not secrets
 #[non_exhaustive]
 pub enum Error {
     /// The HTTP client could not be constructed (e.g. invalid TLS config).
@@ -287,7 +287,7 @@ impl GatewayClient {
             .context(RequestSnafu {
                 operation: "liveness check",
             })?;
-        Self::check_status(resp, "liveness check").await?;
+        let resp = Self::check_status(resp, "liveness check").await?;
         resp.json().await.context(DecodeSnafu)
     }
 
