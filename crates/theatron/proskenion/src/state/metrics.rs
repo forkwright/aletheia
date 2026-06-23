@@ -1,6 +1,8 @@
 // kanon:ignore RUST/file-too-long -- metrics state split is tracked under #3988
 //! Metrics state: token usage, cost tracking, and budget management.
 
+use crate::state::meta::MetricSource;
+
 // -- Enums --------------------------------------------------------------------
 
 /// Time granularity for metric series.
@@ -356,6 +358,20 @@ pub(crate) struct CostMetricsResponse {
     pub prev_week_cost: f64,
     #[serde(default)]
     pub prev_month_cost: f64,
+    /// Whether the cost figures are computed from real telemetry or placeholders.
+    #[serde(default)]
+    pub source: MetricSource,
+}
+
+impl CostMetricsResponse {
+    /// Returns true when the server has only returned zeroed placeholder cost data.
+    pub(crate) fn is_placeholder(&self) -> bool {
+        self.today_cost == 0.0
+            && self.week_cost == 0.0
+            && self.month_cost == 0.0
+            && self.series.iter().all(|p| p.cost_usd == 0.0)
+            && self.agents.iter().all(|a| a.total_cost == 0.0)
+    }
 }
 
 // -- Budget config (local-only) -----------------------------------------------

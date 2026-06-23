@@ -362,7 +362,7 @@ pub(crate) fn compute_acceleration(values: &[f64]) -> TrendDirection {
 // -- Memory health ------------------------------------------------------------
 
 /// Source of a metric value so the UI can label honest/partial/unavailable data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
 pub(crate) enum MetricSource {
     /// Computed client-side from backend graph/fact data.
     #[default]
