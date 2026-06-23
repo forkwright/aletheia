@@ -252,8 +252,7 @@ async fn execute_embedding_request(
             return EmbedFailedSnafu {
                 message: format!(
                     "embedding response index {} out of bounds (batch size {})",
-                    entry.index,
-                    batch_size
+                    entry.index, batch_size
                 ),
             }
             .fail();
@@ -414,9 +413,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/embeddings"))
-            .respond_with(
-                ResponseTemplate::new(500).set_body_string("internal server error"),
-            )
+            .respond_with(ResponseTemplate::new(500).set_body_string("internal server error"))
             .expect(1)
             .mount(&server)
             .await;
