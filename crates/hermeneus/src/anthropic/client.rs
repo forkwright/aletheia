@@ -999,7 +999,11 @@ impl AnthropicProvider {
         tracing::Span::current().record("llm.status", terminal_status);
 
         crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
-        crate::metrics::record_latency(&request.model, terminal_status, start.elapsed().as_secs_f64());
+        crate::metrics::record_latency(
+            &request.model,
+            terminal_status,
+            start.elapsed().as_secs_f64(),
+        );
 
         Err(last_error.unwrap_or_else(|| {
             error::ApiRequestSnafu {
