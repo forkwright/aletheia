@@ -131,4 +131,53 @@ mod tests {
         assert_eq!(diff.before.as_deref(), Some("old"));
         assert_eq!(diff.after.as_deref(), Some("new"));
     }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_detects_sheet_present_only_in_workbook_b() {
+        // WHY: diff_workbooks previously iterated only workbook_a sheets,
+        // silently dropping entire sheets added in workbook_b.
+        let before = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Existing",
+                    "columns": [],
+                    "rows": []
+                }
+            ]
+        });
+        let after = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Existing",
+                    "columns": [],
+                    "rows": []
+                },
+                {
+                    "name": "Added",
+                    "columns": [],
+                    "rows": [["x"], ["y"]]
+                }
+            ]
+        });
+
+        let bytes_a = poiesis_sheet::render_xlsx(&before).expect("render a");
+        let bytes_b = poiesis_sheet::render_xlsx(&after).expect("render b");
+
+        let diffs = diff_workbooks(&bytes_a, &bytes_b).expect("diff must succeed");
+        let added: Vec<_> = diffs.into_iter().filter(|d| d.sheet == "Added").collect();
+
+        assert_eq!(added.len(), 2, "expected two inserted cells in Added sheet");
+        for diff in &added {
+            assert_eq!(diff.before, None, "added cells have no before value");
+            assert!(diff.after.is_some(), "added cells have an after value");
+        }
+
+        let values: std::collections::HashSet<_> = added
+            .iter()
+            .map(|d| d.after.as_deref().expect("after value").to_string())
+            .collect();
+        assert!(values.contains("x"));
+        assert!(values.contains("y"));
+    }
 }
