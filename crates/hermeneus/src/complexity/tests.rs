@@ -310,7 +310,12 @@ fn route_model_disabled_returns_sonnet() {
 fn route_model_disabled_uses_configured_thresholds() {
     // WHY(#5834): when routing is disabled, the complexity diagnostic must
     // still reflect operator-configured thresholds, not compile-time defaults.
-    let mut inp = input("analyze this code and investigate the failing tests");
+    // Query must score 70 (between default high=70 and configured high=85) so
+    // the old bug (default thresholds) would report Opus while the fix reports
+    // Sonnet, and the score >= 50 assertion is satisfied.
+    let mut inp = input(
+        "analyze this complex codebase, investigate the root cause and then design a fix",
+    );
     inp.message_count = 5;
 
     let config = ComplexityConfig {
