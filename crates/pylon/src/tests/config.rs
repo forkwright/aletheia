@@ -118,6 +118,34 @@ async fn update_section_preserves_cold_gateway_value_in_live_response() {
 }
 
 #[tokio::test]
+async fn update_section_rejects_semantic_invalidity_after_merge() {
+    // WHY(#4583): A partial update that lowers contextTokens below the existing
+    // bootstrapMaxTokens must be rejected before persisting, because the merged
+    // config would fail the same validation that reload enforces.
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/agents",
+        Some(serde_json::json!({
+            "defaults": { "contextTokens": 30_000 }
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "validation_failed");
+    let errors = body["error"]["details"]["errors"].as_array().unwrap();
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("bootstrapMaxTokens")),
+        "expected bootstrapMaxTokens/contextTokens invariant error, got: {errors:?}"
+    );
+}
+
+#[tokio::test]
 async fn update_section_malformed_body_returns_422() {
     let (app, _dir) = app().await;
     let req = authed_request(
