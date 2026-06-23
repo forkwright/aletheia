@@ -217,7 +217,10 @@ mod tests {
             }
         };
         let summary = inspect_pdf(&bytes).expect("inspect must succeed");
-        assert_eq!(summary.pages, 1, "single-paragraph doc should report one page");
+        assert_eq!(
+            summary.pages, 1,
+            "single-paragraph doc should report one page"
+        );
         assert!(
             summary.page_count_reliable,
             "page count from a valid PDF must be marked reliable"
