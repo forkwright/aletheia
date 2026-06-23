@@ -68,6 +68,30 @@ pub enum EvalError {
         location: snafu::Location,
     },
 
+    /// A query references corpus IDs that do not exist in the evaluated corpus.
+    #[snafu(display(
+        "eval dataset validation failed for query {query:?} (line {line:?}): unknown relevant id {id:?}"
+    ))]
+    UnknownRelevantId {
+        query: String,
+        line: Option<usize>,
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A query lists the same relevant ID more than once.
+    #[snafu(display(
+        "eval dataset validation failed for query {query:?} (line {line:?}): duplicate relevant id {id:?}"
+    ))]
+    DuplicateRelevantId {
+        query: String,
+        line: Option<usize>,
+        id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Embedding a text failed.
     #[snafu(display("embedding failed during eval: {message}"))]
     EmbedFailed {
@@ -101,6 +125,12 @@ pub struct EvalQuery {
     /// Optional human-readable description (ignored during evaluation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Source line number in the JSONL file (1-indexed).
+    ///
+    /// WHY: recorded at load time so validation errors can point operators at
+    /// the exact line containing a stale or typo’d `relevant_ids` entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_line: Option<usize>,
 }
 
 /// A set of labelled queries for embedding evaluation.
@@ -110,6 +140,12 @@ pub struct EvalQuery {
 pub struct EvalDataset {
     /// The labelled queries.
     pub queries: Vec<EvalQuery>,
+    /// When `true`, unknown or duplicate `relevant_ids` are reported as warnings
+    /// instead of failing the evaluation.
+    ///
+    /// WHY: fail-closed is the default for gates; permissive mode is only for
+    /// exploratory dataset inspection.
+    pub(crate) permissive: bool,
 }
 
 impl EvalDataset {
@@ -128,16 +164,30 @@ impl EvalDataset {
             if line.is_empty() {
                 continue;
             }
-            let q: EvalQuery = serde_json::from_str(line).map_err(|e| {
+            let mut q: EvalQuery = serde_json::from_str(line).map_err(|e| {
                 ParseFailedSnafu {
                     line: idx + 1,
                     message: e.to_string(),
                 }
                 .build()
             })?;
+            // WHY: line numbers are metadata for validation failures; they are
+            // not part of the persisted query schema.
+            q.source_line = Some(idx + 1);
             queries.push(q);
         }
-        Ok(Self { queries })
+        Ok(Self {
+            queries,
+            permissive: false,
+        })
+    }
+
+    /// Set whether unknown/duplicate `relevant_ids` should be treated as warnings
+    /// rather than hard failures.
+    #[must_use]
+    pub fn permissive(mut self, value: bool) -> Self {
+        self.permissive = value;
+        self
     }
 
     /// Load a JSONL file from disk into an [`EvalDataset`].
@@ -167,6 +217,47 @@ impl EvalDataset {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.queries.is_empty()
+    }
+
+    /// Verify that every `relevant_ids` entry exists in the corpus and that no
+    /// ID is repeated inside a single query.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EvalError::UnknownRelevantId`] or
+    /// [`EvalError::DuplicateRelevantId`] when the dataset is inconsistent with
+    /// the corpus. Permissive datasets skip this check.
+    pub fn validate_against_corpus(&self, corpus: &[(String, String)]) -> EvalResult<()> {
+        if self.permissive {
+            return Ok(());
+        }
+
+        let corpus_ids: std::collections::HashSet<&str> =
+            corpus.iter().map(|(id, _)| id.as_str()).collect();
+
+        for q in &self.queries {
+            let mut seen = std::collections::HashSet::new();
+            for id in &q.relevant_ids {
+                if !corpus_ids.contains(id.as_str()) {
+                    return UnknownRelevantIdSnafu {
+                        query: q.query.clone(),
+                        line: q.source_line,
+                        id: id.clone(),
+                    }
+                    .fail();
+                }
+                if !seen.insert(id.as_str()) {
+                    return DuplicateRelevantIdSnafu {
+                        query: q.query.clone(),
+                        line: q.source_line,
+                        id: id.clone(),
+                    }
+                    .fail();
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -300,6 +391,9 @@ pub(crate) fn evaluate_model(
     if dataset.is_empty() {
         return EmptyDatasetSnafu.fail();
     }
+    // WHY: dataset/corpus inconsistency must fail closed so typos and stale
+    // labels surface as dataset errors instead of silent model misses.
+    dataset.validate_against_corpus(corpus)?;
 
     // Embed corpus in one batch.
     let corpus_texts: Vec<&str> = corpus.iter().map(|(_, t)| t.as_str()).collect();
@@ -740,7 +834,10 @@ mod tests {
     fn evaluate_empty_dataset_errors() {
         let provider = mock();
         let corpus = simple_corpus();
-        let dataset = EvalDataset { queries: vec![] };
+        let dataset = EvalDataset {
+            queries: vec![],
+            permissive: false,
+        };
         let err =
             evaluate_model(&provider, &dataset, &corpus, 5).expect_err("empty dataset must error");
         assert!(
@@ -920,6 +1017,81 @@ mod tests {
             ds.queries[0].description.as_deref(),
             Some("a test query"),
             "description must round-trip"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_unknown_relevant_id() {
+        let ds = EvalDataset::from_jsonl_str(
+            r#"{"query":"missing","relevant_ids":["id-ghost"]}"#,
+        )
+        .expect("dataset must parse");
+        let err = ds
+            .validate_against_corpus(&simple_corpus())
+            .expect_err("unknown relevant id must fail closed");
+        assert!(
+            matches!(err, EvalError::UnknownRelevantId { .. }),
+            "expected UnknownRelevantId, got {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("id-ghost"),
+            "error should name the unknown id: {msg}"
+        );
+        assert!(
+            msg.contains("line Some(1)"),
+            "error should include source line: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_relevant_id() {
+        let ds = EvalDataset::from_jsonl_str(
+            r#"{"query":"dup","relevant_ids":["id-alice","id-alice"]}"#,
+        )
+        .expect("dataset must parse");
+        let err = ds
+            .validate_against_corpus(&simple_corpus())
+            .expect_err("duplicate relevant id must fail closed");
+        assert!(
+            matches!(err, EvalError::DuplicateRelevantId { .. }),
+            "expected DuplicateRelevantId, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_accepts_empty_relevant_ids() {
+        let ds = EvalDataset::from_jsonl_str(r#"{"query":"no relevant","relevant_ids":[]}"#)
+            .expect("dataset must parse");
+        let provider = mock();
+        let metrics = evaluate_model(&provider, &ds, &simple_corpus(), 3)
+            .expect("empty relevant_ids should not fail validation");
+        assert_eq!(
+            metrics.recall_at_k, 0.0,
+            "empty relevant_ids cannot produce a hit"
+        );
+        assert_eq!(metrics.mrr, 0.0, "empty relevant_ids yield zero MRR");
+    }
+
+    #[test]
+    fn permissive_mode_continues_with_unknown_ids() {
+        let ds = EvalDataset::from_jsonl_str(
+            r#"{"query":"missing","relevant_ids":["id-ghost"]}
+{"query":"valid","relevant_ids":["id-alice"]}"#,
+        )
+        .expect("dataset must parse")
+        .permissive(true);
+
+        // Validation itself should not error in permissive mode.
+        ds.validate_against_corpus(&simple_corpus())
+            .expect("permissive validation should not fail");
+
+        let provider = mock();
+        let metrics = evaluate_model(&provider, &ds, &simple_corpus(), 3)
+            .expect("permissive evaluation should continue");
+        assert!(
+            metrics.recall_at_k >= 0.0 && metrics.recall_at_k <= 1.0,
+            "recall must remain bounded"
         );
     }
 }
