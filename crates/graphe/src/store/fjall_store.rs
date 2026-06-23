@@ -642,7 +642,7 @@ impl SessionStore {
         Ok(sessions)
     }
 
-    /// Update session status.
+    /// Sets the status field and refreshes the session's `updated_at` timestamp.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         let _guard = self
