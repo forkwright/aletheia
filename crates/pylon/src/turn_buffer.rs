@@ -246,33 +246,51 @@ impl TurnBufferRegistry {
     }
 
     /// Remove expired completed/failed turn buffers.
+    ///
+    /// INVARIANT: the outer `buffers` lock is never held across an inner
+    /// `Mutex::lock().await`. We snapshot the candidate entries under a brief
+    /// outer critical section, release the outer lock, inspect each buffer, and
+    /// only re-acquire the outer lock to remove confirmed-expired keys. This
+    /// prevents concurrent `get_or_create`/`get` callers from stalling for the
+    /// entire reaper sweep and eliminates the latent async deadlock surface from
+    /// inconsistent outer→inner vs. inner-only lock ordering.
     pub async fn reap_expired(&self) {
-        let mut map = self.buffers.lock().await;
-        let before = map.len();
         let ttl = self.completed_ttl;
 
+        // WHY: clone the candidate set while holding the outer lock so the
+        // subsequent per-buffer lock awaits cannot block registry-wide lookups.
+        let candidates: Vec<(TurnKey, Arc<Mutex<TurnBuffer>>)> = {
+            let map = self.buffers.lock().await;
+            map.iter()
+                .map(|(key, buffer)| (key.clone(), Arc::clone(buffer)))
+                .collect()
+        };
+
         let mut to_remove = Vec::new();
-        for (key, buffer) in map.iter() {
+        for (key, buffer) in candidates {
             let buf = buffer.lock().await;
             if let Some(finished_at) = buf.finished_at
                 && finished_at.elapsed() > ttl
             {
-                to_remove.push(key.clone());
+                to_remove.push(key);
             }
         }
 
+        if to_remove.is_empty() {
+            return;
+        }
+
+        let mut map = self.buffers.lock().await;
+        let before = map.len();
         for key in &to_remove {
             map.remove(key);
         }
-
         let removed = to_remove.len();
-        if removed > 0 {
-            debug!(
-                removed,
-                remaining = before - removed,
-                "reaped expired turn buffers"
-            );
-        }
+        debug!(
+            removed,
+            remaining = before - removed,
+            "reaped expired turn buffers"
+        );
     }
 }
 
@@ -447,6 +465,40 @@ mod tests {
         let _ = registry.get_or_create("ses-1", "turn-1").await;
         let result = registry.get("ses-1", "turn-1").await;
         assert!(result.is_some());
+    }
+
+    #[tokio::test]
+    async fn reap_does_not_hold_outer_lock_across_inner_await() {
+        // WHY: if reap_expired kept the outer registry lock while awaiting each
+        // inner buffer lock, holding one inner lock would stall every concurrent
+        // get_or_create/get call. This test demonstrates the outer lock is
+        // released before the inner lock is acquired.
+        let registry = Arc::new(TurnBufferRegistry::new());
+
+        let buf = registry.get_or_create("ses-1", "slow-turn").await;
+        let _inner_guard = buf.lock().await;
+
+        let registry_for_reap = Arc::clone(&registry);
+        let reap_task = tokio::spawn(async move {
+            registry_for_reap.reap_expired().await;
+        });
+
+        // Give the reaper a chance to reach the blocked inner lock await.
+        tokio::task::yield_now().await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            registry.get_or_create("ses-1", "other-turn"),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "get_or_create must not be blocked while reaper awaits an inner lock"
+        );
+
+        drop(_inner_guard);
+        reap_task.await.unwrap();
     }
 
     #[tokio::test]
