@@ -6,6 +6,8 @@
 pub mod approval_registry;
 /// Service discovery file writer (Tailscale IP + file-based announcement).
 pub mod discovery;
+/// Typed HTTP client for first-party gateway consumers.
+pub mod client;
 /// API error types with Axum HTTP status code mapping.
 pub(crate) mod error;
 /// In-process broadcast bus for domain events.
