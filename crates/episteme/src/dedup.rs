@@ -44,6 +44,38 @@ pub struct EntityMergeCandidate {
     pub merge_score: f64,
 }
 
+impl EntityMergeCandidate {
+    /// Build a scored merge candidate pair.
+    #[cfg(any(feature = "mneme-engine", test))]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "constructor mirrors the struct's 9 fields directly"
+    )]
+    pub(crate) fn new(
+        entity_a: EntityId,
+        entity_b: EntityId,
+        name_a: String,
+        name_b: String,
+        name_similarity: f64,
+        embed_similarity: f64,
+        type_match: bool,
+        alias_overlap: bool,
+        merge_score: f64,
+    ) -> Self {
+        Self {
+            entity_a,
+            entity_b,
+            name_a,
+            name_b,
+            name_similarity,
+            embed_similarity,
+            type_match,
+            alias_overlap,
+            merge_score,
+        }
+    }
+}
+
 /// Decision based on the merge score thresholds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -89,6 +121,29 @@ pub struct MergeRecord {
     pub relationships_redirected: u32,
     /// When the merge was executed.
     pub merged_at: jiff::Timestamp,
+}
+
+impl MergeRecord {
+    /// Build an audit record for a completed entity merge.
+    pub fn new(
+        canonical_entity_id: EntityId,
+        merged_entity_id: EntityId,
+        merged_entity_name: String,
+        merge_score: f64,
+        facts_transferred: u32,
+        relationships_redirected: u32,
+        merged_at: jiff::Timestamp,
+    ) -> Self {
+        Self {
+            canonical_entity_id,
+            merged_entity_id,
+            merged_entity_name,
+            merge_score,
+            facts_transferred,
+            relationships_redirected,
+            merged_at,
+        }
+    }
 }
 
 /// Default name-similarity weight in the composite merge score.
@@ -540,17 +595,17 @@ pub(crate) fn generate_candidates(
 
             let merge_score = compute_merge_score(name_sim, embed_sim, true, alias_overlap, tuning);
 
-            candidates.push(EntityMergeCandidate {
-                entity_a: a.id.clone(),
-                entity_b: b.id.clone(),
-                name_a: a.name.clone(),
-                name_b: b.name.clone(),
-                name_similarity: name_sim,
-                embed_similarity: embed_sim,
-                type_match: true,
+            candidates.push(EntityMergeCandidate::new(
+                a.id.clone(),
+                b.id.clone(),
+                a.name.clone(),
+                b.name.clone(),
+                name_sim,
+                embed_sim,
+                true,
                 alias_overlap,
                 merge_score,
-            });
+            ));
         }
     }
 
