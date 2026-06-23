@@ -704,7 +704,10 @@ mod tests {
         .build();
         registry.record_error("mock", &err);
         assert!(
-            matches!(registry.provider_health("mock"), Some(ProviderHealth::Down { .. })),
+            matches!(
+                registry.provider_health("mock"),
+                Some(ProviderHealth::Down { .. })
+            ),
             "provider should be Down after crossing threshold"
         );
         assert!(
