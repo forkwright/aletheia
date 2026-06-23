@@ -30,6 +30,19 @@ pub struct CellDiff {
     pub after: Option<String>,
 }
 
+impl CellDiff {
+    /// Construct a new cell diff entry.
+    pub fn new(
+        sheet: impl Into<String>,
+        row: u32,
+        col: u32,
+        before: Option<String>,
+        after: Option<String>,
+    ) -> Self {
+        Self { sheet: sheet.into(), row, col, before, after }
+    }
+}
+
 /// A slide-level difference in a presentation.
 ///
 /// Represents slide content changes between two PPTX presentations.
@@ -42,6 +55,13 @@ pub struct SlideDiff {
     pub before: Option<String>,
     /// Text content after the change.
     pub after: Option<String>,
+}
+
+impl SlideDiff {
+    /// Construct a new slide diff entry.
+    pub fn new(slide_index: usize, before: Option<String>, after: Option<String>) -> Self {
+        Self { slide_index, before, after }
+    }
 }
 
 /// Compare two XLSX workbooks and return a list of cell-level differences.
@@ -71,20 +91,15 @@ mod tests {
     const MINIMAL_XLSX: &[u8] = b"PK\x03\x04";
 
     #[test]
-    fn test_diff_workbooks_accepts_bytes() {
-        // Test that the function accepts byte input; real XLSX parsing
-        // is tested at the integration level
+    fn truncated_zip_bytes_return_error_for_workbooks() {
         let result = diff_workbooks(MINIMAL_XLSX, MINIMAL_XLSX);
-        // May error (invalid XLSX), but shouldn't panic
-        let _ = result;
+        assert!(result.is_err(), "incomplete ZIP should not parse as XLSX");
     }
 
     #[test]
-    fn test_diff_presentations_accepts_bytes() {
-        // Test that the function accepts byte input
+    fn truncated_zip_bytes_return_error_for_presentations() {
         let result = diff_presentations(MINIMAL_XLSX, MINIMAL_XLSX);
-        // May error (invalid PPTX), but shouldn't panic
-        let _ = result;
+        assert!(result.is_err(), "incomplete ZIP should not parse as PPTX");
     }
 
     #[test]
