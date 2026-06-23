@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — NousActor owns all actor state and message-loop logic; cross-nous and lifecycle handlers are cohesive and extracting them would split tightly coupled paths
 //! Tokio actor for a single nous agent instance.
 
 use std::collections::HashMap;
@@ -128,6 +129,7 @@ pub(crate) struct BackgroundFailureState {
 }
 
 /// Runtime state: background tasks, panic tracking, timing.
+// kanon:ignore RUST/struct-too-many-fields — all fields are required per-actor runtime counters (panic, background, timeout tracking); grouping further would obscure the monitoring surface
 pub(crate) struct ActorRuntime {
     /// Background tasks (extraction, distillation, skill analysis).
     background_tasks: JoinSet<()>,
