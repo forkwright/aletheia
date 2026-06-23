@@ -459,7 +459,10 @@ mod tests {
         let (messages, result) =
             load_history(&store, "ses-1", 10_000, &config, "current").expect("load");
 
-        assert_eq!(result.messages_loaded, 2, "policy max_messages should cap load");
+        assert_eq!(
+            result.messages_loaded, 2,
+            "policy max_messages should cap load"
+        );
         assert!(result.truncated, "count cap should set truncated flag");
         assert!(
             !messages.iter().any(|m| m.content == "tool output"),
