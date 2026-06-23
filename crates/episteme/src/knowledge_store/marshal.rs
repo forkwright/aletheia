@@ -1605,7 +1605,11 @@ mod tests {
             crate::knowledge::Visibility::Shared.as_str().into(),
         )))
         .expect("valid visibility decodes");
-        assert_eq!(ok, crate::knowledge::Visibility::Shared, "decoded visibility must round-trip to Shared");
+        assert_eq!(
+            ok,
+            crate::knowledge::Visibility::Shared,
+            "decoded visibility must round-trip to Shared"
+        );
     }
 
     #[test]
