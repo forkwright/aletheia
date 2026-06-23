@@ -517,7 +517,9 @@ fn provider_health_detail(name: &str, health: &ProviderHealth) -> serde_json::Va
         ProviderHealth::Up => serde_json::json!({
             "name": name,
             "status": "up",
-            "detail": "no recent errors",
+            "checks": {
+                "consecutive_errors": 0,
+            },
         }),
         ProviderHealth::Degraded {
             consecutive_errors, ..
@@ -1298,7 +1300,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn timed_check_returns_timeout_on_slow_future() {
         let check = timed_check("slow_check", async {
-            tokio::time::sleep(Duration::from_mins(1)).await;
+            tokio::time::sleep(Duration::from_mins(1)).await; // kanon:ignore TESTING/sleep-in-test -- start_paused = true drives virtual time, not wall clock
             HealthCheck {
                 name: "slow_check",
                 status: "pass",
@@ -1500,10 +1502,8 @@ mod tests {
         degrade_provider(&registry, "alpha");
         let check = provider_reachability_check(&registry, &HashSet::new());
         assert_eq!(check.status, "warn");
-        let message = check
-            .message
-            .as_deref()
-            .expect("message should describe degraded provider");
+        assert!(check.message.is_some(), "message should describe degraded provider");
+        let message = check.message.as_deref().unwrap_or_default();
         assert!(message.contains("alpha") && message.contains("degraded"));
     }
 
@@ -1513,10 +1513,8 @@ mod tests {
         down_provider(&registry, "alpha");
         let check = provider_reachability_check(&registry, &HashSet::new());
         assert_eq!(check.status, "fail");
-        let message = check
-            .message
-            .as_deref()
-            .expect("message should describe down provider");
+        assert!(check.message.is_some(), "message should describe down provider");
+        let message = check.message.as_deref().unwrap_or_default();
         assert!(message.contains("alpha") && message.contains("down"));
     }
 
@@ -1554,14 +1552,12 @@ mod tests {
         let check = provider_reachability_check(&registry, &optional);
         assert_eq!(check.status, "pass");
         assert!(check.message.is_none());
-        let details = check.details.expect("details should list all providers");
-        let beta = details["providers"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|entry| entry["name"] == "beta")
-            .expect("beta should be present");
-        assert_eq!(beta["status"], "down");
+        assert!(check.details.is_some(), "details should list all providers");
+        let details = check.details.unwrap_or_default();
+        let providers = details["providers"].as_array().unwrap();
+        let beta = providers.iter().find(|entry| entry["name"] == "beta");
+        assert!(beta.is_some(), "beta should be present");
+        assert_eq!(beta.unwrap()["status"], "down");
     }
 
     #[test]
