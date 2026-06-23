@@ -7,6 +7,7 @@ use hmac::{Hmac, KeyInit, Mac};
 use regex::Regex;
 use sha2::Sha256;
 use snafu::Snafu;
+use std::collections::{HashMap, VecDeque};
 
 const RECEIPT_SEPARATOR: &str = "\x1f"; // ASCII unit separator
 
@@ -89,10 +90,17 @@ impl ReceiptSigner {
     }
 }
 
-/// Per-session record of every emitted receipt (in-memory ledger).
-#[derive(Debug, Default, Clone)]
+/// Default maximum number of receipts retained per session.
+const DEFAULT_LEDGER_CAPACITY: usize = 500;
+
+/// Per-session record of emitted receipts (in-memory ledger).
+#[derive(Debug, Clone)]
 pub struct ReceiptLedger {
-    entries: Vec<EmittedReceipt>,
+    entries: HashMap<String, EmittedReceipt>,
+    /// WHY: FIFO order of receipt tokens so `record()` can evict the oldest
+    /// entry when the capacity cap is reached. (#5677)
+    order: VecDeque<String>,
+    capacity: usize,
 }
 
 /// One emitted receipt and the tuple it attests.
@@ -131,6 +139,22 @@ impl EmittedReceipt {
 }
 
 impl ReceiptLedger {
+    /// Create a new ledger with the default capacity cap.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_capacity(DEFAULT_LEDGER_CAPACITY)
+    }
+
+    /// Create a new ledger with a custom capacity cap.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: HashMap::with_capacity(capacity),
+            order: VecDeque::with_capacity(capacity),
+            capacity,
+        }
+    }
+
     /// Record an emitted receipt in the ledger.
     pub fn record(
         &mut self,
@@ -140,15 +164,53 @@ impl ReceiptLedger {
         result: String,
         ts: jiff::Timestamp,
     ) {
-        self.entries.push(EmittedReceipt::new(
-            receipt, tool_name, args_json, result, ts,
-        ));
+        let entry = EmittedReceipt::new(
+            receipt.clone(),
+            tool_name,
+            args_json,
+            result,
+            ts,
+        );
+
+        // WHY: receipt tokens are unique; replacing an existing entry must not
+        // create a duplicate FIFO slot.
+        if self.entries.insert(receipt.clone(), entry).is_some() {
+            return;
+        }
+
+        self.order.push_back(receipt);
+
+        // WHY: cap the in-memory ledger so long-running sessions do not grow
+        // without bound. Eviction is FIFO; recent receipts are retained. (#5677)
+        while self.order.len() > self.capacity {
+            if let Some(oldest) = self.order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
     }
 
     /// Look up a receipt by its token.
     #[must_use]
     pub fn lookup(&self, receipt: &str) -> Option<&EmittedReceipt> {
-        self.entries.iter().find(|e| e.receipt == receipt)
+        self.entries.get(receipt)
+    }
+
+    /// Number of receipts currently held.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the ledger is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+impl Default for ReceiptLedger {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -402,5 +464,38 @@ mod tests {
             err,
             HallucinationDetected::HallucinatedReceipt { .. }
         ));
+    }
+
+    #[test]
+    fn ledger_capacity_evicts_oldest_tokens() {
+        let signer = make_signer();
+        let mut ledger = ReceiptLedger::with_capacity(3);
+        let ts = jiff::Timestamp::now();
+
+        let tokens: Vec<String> = (0..4)
+            .map(|i| signer.sign("read_file", &format!("args-{i}"), "result", ts))
+            .collect();
+
+        for (i, token) in tokens.iter().enumerate() {
+            ledger.record(
+                token.clone(),
+                "read_file".to_owned(),
+                format!("args-{i}"),
+                "result".to_owned(),
+                ts,
+            );
+        }
+
+        assert_eq!(ledger.len(), 3, "ledger should be capped at capacity");
+        assert!(
+            ledger.lookup(&tokens[0]).is_none(),
+            "oldest receipt should be evicted"
+        );
+        for token in &tokens[1..] {
+            assert!(
+                ledger.lookup(token).is_some(),
+                "recent receipts should still be present"
+            );
+        }
     }
 }
