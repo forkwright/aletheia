@@ -10,11 +10,11 @@ use axum::response::IntoResponse;
 use koina::system::{Environment, RealSystem};
 use symbolon::types::Role;
 
+use hermeneus::health::{DownReason, ProviderHealth};
+
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
 use crate::state::HealthState;
-
-use hermeneus::health::{DownReason, ProviderHealth};
 
 #[path = "health_dto.rs"]
 mod health_dto;
@@ -517,6 +517,7 @@ fn provider_health_detail(name: &str, health: &ProviderHealth) -> serde_json::Va
         ProviderHealth::Up => serde_json::json!({
             "name": name,
             "status": "up",
+            "detail": "no recent errors",
         }),
         ProviderHealth::Degraded {
             consecutive_errors, ..
@@ -531,6 +532,10 @@ fn provider_health_detail(name: &str, health: &ProviderHealth) -> serde_json::Va
             "status": "down",
             "reason": down_reason_label(reason),
         }),
+        _ => serde_json::json!({
+            "name": name,
+            "status": "unknown",
+        }),
     }
 }
 
@@ -543,6 +548,7 @@ fn down_reason_label(reason: &DownReason) -> String {
         }
         DownReason::AuthFailure => "auth_failure".to_owned(),
         DownReason::Timeout => "timeout".to_owned(),
+        _ => "unknown".to_owned(),
     }
 }
 
@@ -1011,8 +1017,9 @@ fn base64url_decode(s: &str) -> Result<Vec<u8>, ()> {
     reason = "test: vec/JSON indices valid after len assertions"
 )]
 mod tests {
-    use super::*;
     use hermeneus::provider::ProviderRegistry;
+
+    use super::*;
 
     #[test]
     fn health_state_has_all_required_fields() {
@@ -1288,7 +1295,7 @@ mod tests {
         assert_eq!(status, "unhealthy");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn timed_check_returns_timeout_on_slow_future() {
         let check = timed_check("slow_check", async {
             tokio::time::sleep(Duration::from_mins(1)).await;
