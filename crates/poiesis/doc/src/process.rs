@@ -1,7 +1,7 @@
 //! Bounded subprocess helpers for render and probe commands.
 
 use std::io::{Read as _, Seek as _, SeekFrom};
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output, Stdio}; // kanon:ignore RUST/no-direct-process-command — this module is the subprocess substrate for poiesis-doc
 use std::time::Duration;
 
 use wait_timeout::ChildExt as _;

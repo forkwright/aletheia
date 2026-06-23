@@ -7090,6 +7090,7 @@ dependencies = [
  "snafu",
  "tempfile",
  "tracing",
+ "wait-timeout",
  "which 8.0.2",
  "zip 8.5.1",
 ]

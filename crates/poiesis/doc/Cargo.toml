@@ -8,8 +8,10 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[lints]
-workspace = true
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "public API is stable"
 
 [dependencies]
 # DOCX write backend — Apache-2.0, permissive
@@ -20,9 +22,6 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # XML parsing for inspect
 quick-xml = "0.39"
-
-# ODT backend — clean-room ZIP/XML emitter
-poiesis-text = { path = "../text", default-features = false, features = ["odt"] }
 
 # Document model + Typst fast-lane (B-012/B-013)
 poiesis-charts = { path = "../charts" }
@@ -46,6 +45,15 @@ tempfile = "3"
 # Blocking child wait with timeout — replaces the busy-wait try_wait loop.
 wait-timeout = "0.2"
 
+# ODT backend — clean-room ZIP/XML emitter
+[dependencies.poiesis-text]
+path = "../text"
+default-features = false
+features = ["odt"]
+
 [dev-dependencies]
 insta = "1"
 serde_json = { workspace = true }
+
+[lints]
+workspace = true
