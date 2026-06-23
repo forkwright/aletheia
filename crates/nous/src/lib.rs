@@ -54,6 +54,8 @@ pub mod metrics;
 pub mod pipeline;
 /// Semantic recall stage: vector search over knowledge memories.
 pub mod recall;
+/// Durable turn-attempt lifecycle records and finalize idempotency.
+pub(crate) mod turn_record;
 /// Task-specific _llm/ loading recipes for multi-resolution context.
 pub mod recipes;
 /// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
