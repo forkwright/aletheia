@@ -60,15 +60,6 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
-# WHY: "pure Rust, no C++" — rustls replaces openssl across the workspace.
-# WHY: pandoc must stay an external subprocess so we keep the GPL-clean
-# boundary and never link a pandoc Rust binding into the binary.
-deny = [
-    { crate = "openssl-sys", wrappers = [] },
-    { crate = "pandoc", reason = "Aletheia shells out to pandoc as a subprocess; do not link the pandoc crate into the binary." },
-    { crate = "pandoc_ast", reason = "Pandoc AST bindings must stay outside the build; Aletheia uses pandoc as an external subprocess only." },
-]
-
 # Skip entries for duplicates caused by upstream constraints we cannot resolve.
 # Each entry exempts the named version from the multiple-versions check.
 # The newer/canonical version is not listed here and is kept as-is.
@@ -169,6 +160,21 @@ skip = [
     { name = "thiserror", version = "=1.0.69" },
     { name = "thiserror-impl", version = "=1.0.69" },
 ]
+
+# WHY: "pure Rust, no C++" — rustls replaces openssl across the workspace.
+# WHY: pandoc must stay an external subprocess so we keep the GPL-clean
+# boundary and never link a pandoc Rust binding into the binary.
+[[bans.deny]]
+crate = "openssl-sys"
+wrappers = []
+
+[[bans.deny]]
+crate = "pandoc"
+reason = "Aletheia shells out to pandoc as a subprocess; do not link the pandoc crate into the binary."
+
+[[bans.deny]]
+crate = "pandoc_ast"
+reason = "Pandoc AST bindings must stay outside the build; Aletheia uses pandoc as an external subprocess only."
 
 [sources]
 unknown-registry = "deny"

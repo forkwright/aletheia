@@ -81,8 +81,10 @@ pub(crate) enum SseEvent {
 
 /// Token usage summary sent with `message_complete`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-// WHY: the `_tokens` suffix names the unit on the wire (Serialize + ToSchema); dropping it breaks the message_complete API/schema contract.
-#[allow(clippy::struct_field_names)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "the `_tokens` suffix names the unit on the wire; dropping it breaks the message_complete API/schema contract"
+)]
 pub(crate) struct UsageData {
     /// Tokens consumed by the system prompt and conversation history.
     pub input_tokens: u64,

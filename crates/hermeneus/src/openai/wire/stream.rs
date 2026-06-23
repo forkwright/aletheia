@@ -4,8 +4,6 @@
 //! [`CompletionResponse`] while emitting [`StreamEvent`]s for live UI.
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
-
 use reqwest::Response;
 use serde::Deserialize;
 
@@ -21,13 +19,13 @@ use super::response::{ResponsesResponse, TokenDetails, parse_arguments};
 /// by peer"). `is_retryable()` scans for "reset"/"connection", so including
 /// the chain makes network-drop errors retryable before content starts.
 fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
-    let mut msg = format!("{prefix}: {err}");
+    let mut parts = vec![format!("{prefix}: {err}")];
     let mut source = err.source();
     while let Some(s) = source {
-        let _ = write!(msg, ": {s}");
+        parts.push(s.to_string());
         source = s.source();
     }
-    msg
+    parts.join(": ")
 }
 
 #[derive(Debug, Deserialize)]
