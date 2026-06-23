@@ -889,8 +889,10 @@ impl<'a> BootstrapAssembler<'a> {
         let llm_sections = self.resolve_llm_sections(recipe).await?;
         sections.extend(llm_sections);
 
-        // NOTE: stable sort preserves declaration order within same (slot, priority)
-        sections.sort_by_key(|s| (s.slot, s.priority));
+        // WHY(#5829): Allocate budget by priority so Required sections are
+        // protected even when their slot comes after Flexible sections.
+        // Final prompt assembly re-sorts by slot below.
+        sections.sort_by_key(|s| s.priority);
 
         let mut included: Vec<BootstrapSection> = Vec::new();
         let mut truncated_names: Vec<String> = Vec::new();
@@ -944,6 +946,10 @@ impl<'a> BootstrapAssembler<'a> {
                 dropped_names.push(section.name);
             }
         }
+
+        // WHY(#5829): Prompt output stays in slot order; only budget allocation
+        // uses priority as the primary axis.
+        included.sort_by_key(|s| (s.slot, s.priority));
 
         let system_prompt = included
             .iter()
