@@ -302,8 +302,9 @@ impl KnowledgeStore {
                 .lifecycle
                 .forgotten_at
                 .as_ref()
-                .map(|ts| DataValue::Str(format_timestamp(ts).into()))
-                .unwrap_or(DataValue::Null),
+                .map_or(DataValue::Null, |ts| {
+                    DataValue::Str(format_timestamp(ts).into())
+                }),
         );
         params.insert(
             String::from("old_forget_reason"),
@@ -311,8 +312,7 @@ impl KnowledgeStore {
                 .lifecycle
                 .forget_reason
                 .as_ref()
-                .map(|r| DataValue::Str(r.as_str().into()))
-                .unwrap_or(DataValue::Null),
+                .map_or(DataValue::Null, |r| DataValue::Str(r.as_str().into())),
         );
         params.insert(
             String::from("old_scope"),
@@ -2107,9 +2107,13 @@ mod tests {
             .expect("old fact exists");
         let original_forgotten_at = forgotten.lifecycle.forgotten_at.expect("forgotten_at set");
 
-        store.supersede_fact(&forgotten, &new_fact).expect("supersede");
+        store
+            .supersede_fact(&forgotten, &new_fact)
+            .expect("supersede");
 
-        let versions = store.read_facts_by_id("sup-old").expect("read after supersede");
+        let versions = store
+            .read_facts_by_id("sup-old")
+            .expect("read after supersede");
         let superseded = versions
             .iter()
             .find(|f| f.lifecycle.superseded_by.is_some())
