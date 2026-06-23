@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
-use crate::state::planning::{Project, ProjectStore, status_badge_style, status_label};
+use crate::state::planning::{PlanningCapabilities, Project, ProjectStore, status_badge_style, status_label};
 
 #[derive(Debug, Clone)]
 #[expect(dead_code, reason = "project-list route is pending B23 backend work")]
@@ -123,9 +123,17 @@ const PLANNING_NOT_AVAILABLE_BODY: &str = "\
 pub(crate) fn Planning() -> Element {
     let nav = use_navigator();
     let mut fetch_state = use_signal(|| FetchState::NotAvailable);
+    let caps: Signal<PlanningCapabilities> = use_context();
 
     let mut do_refresh = move || {
-        fetch_state.set(FetchState::NotAvailable);
+        if caps.read().projects {
+            // WHY: The project-list API is not mounted on the public Pylon
+            // surface yet, so we surface an explicit unavailable state until
+            // the capability is advertised.
+            fetch_state.set(FetchState::Loading);
+        } else {
+            fetch_state.set(FetchState::NotAvailable);
+        }
     };
 
     use_effect(move || {
