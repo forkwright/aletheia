@@ -8,11 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[package.metadata.kanon]
-maturity = "alpha"
-since = "2026-06-23"
-exit-criteria = "public API is stable"
-
 [dependencies]
 # DOCX write backend — Apache-2.0, permissive
 docx-rs = "0.4"
@@ -54,6 +49,11 @@ features = ["odt"]
 [dev-dependencies]
 insta = "1"
 serde_json = { workspace = true }
+
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "public API is stable"
 
 [lints]
 workspace = true
