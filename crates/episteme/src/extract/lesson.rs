@@ -587,6 +587,16 @@ pub struct LessonPersistResult {
     pub causal_edges_inserted: usize,
 }
 
+impl LessonPersistResult {
+    /// Total number of records written across all categories.
+    pub fn total(&self) -> usize {
+        self.entities_inserted
+            + self.relationships_inserted
+            + self.facts_inserted
+            + self.causal_edges_inserted
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test assertions")]
 mod tests {
@@ -736,7 +746,7 @@ diff --git a/Cargo.toml b/Cargo.toml
     // WHY: #5861 — hunk-header function names must not drive the test-modified
     // heuristic; only actual `+`-prefixed additions should.
     #[test]
-    fn test_context_ignores_hunk_header_without_test_additions() {
+    fn context_ignores_hunk_header_function_named_test_without_added_lines() {
         let diff = r#"diff --git a/src/lib.rs b/src/lib.rs
 --- a/src/lib.rs
 +++ b/src/lib.rs
@@ -762,7 +772,7 @@ diff --git a/Cargo.toml b/Cargo.toml
     }
 
     #[test]
-    fn test_context_detects_test_additions_in_non_test_header() {
+    fn context_detects_test_additions_inside_non_test_named_function() {
         let diff = r#"diff --git a/src/lib.rs b/src/lib.rs
 --- a/src/lib.rs
 +++ b/src/lib.rs
