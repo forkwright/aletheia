@@ -746,6 +746,9 @@ impl NousActor {
                 "session limit reached, evicting oldest session"
             );
             self.sessions.remove(&key);
+            // WHY: keep drift_detectors bounded to live sessions; otherwise
+            // ephemeral session keys leak memory forever. (#5659)
+            self.drift_detectors.remove(&key);
         }
     }
 

@@ -557,5 +557,48 @@ async fn cancelled_turn_reverts_turn_counter() {
     assert_eq!(
         session.turn, 0,
         "turn counter should not advance when turn is cancelled"
+
+
+#[test]
+fn evict_oldest_session_also_removes_drift_detector() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    let oldest_key = "oldest".to_owned();
+
+    let mut oldest_state = SessionState::new(
+        "ses-0".to_owned(),
+        oldest_key.clone(),
+        &test_config(),
+    );
+    oldest_state.last_accessed = Instant::now() - Duration::from_secs(3600);
+    actor.sessions.insert(oldest_key.clone(), oldest_state);
+    actor
+        .drift_detectors
+        .insert(oldest_key.clone(), DriftDetector::default());
+
+    for i in 0..MAX_SESSIONS {
+        let key = format!("session-{i}");
+        actor.sessions.insert(
+            key.clone(),
+            SessionState::new(format!("ses-{i}"), key.clone(), &test_config()),
+        );
+        actor
+            .drift_detectors
+            .insert(key, DriftDetector::default());
+    }
+
+    assert_eq!(actor.sessions.len(), MAX_SESSIONS + 1);
+    assert_eq!(actor.drift_detectors.len(), MAX_SESSIONS + 1);
+
+    actor.evict_oldest_session_if_needed();
+
+    assert_eq!(actor.sessions.len(), MAX_SESSIONS);
+    assert_eq!(
+        actor.drift_detectors.len(),
+        MAX_SESSIONS,
+        "drift_detectors must be pruned when sessions are evicted"
+    );
+    assert!(
+        !actor.drift_detectors.contains_key(&oldest_key),
+        "evicted session's drift detector must be removed"
     );
 }
