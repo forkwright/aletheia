@@ -225,10 +225,17 @@ impl ProviderHealthTracker {
                 let now = Timestamp::now();
                 match &inner.health {
                     ProviderHealth::Up => {
-                        inner.health = ProviderHealth::Degraded {
-                            consecutive_errors: 1,
-                            last_error_at: now,
-                        };
+                        if 1 >= self.config.consecutive_failure_threshold {
+                            inner.health = ProviderHealth::Down {
+                                since: now,
+                                reason: DownReason::ConsecutiveFailures,
+                            };
+                        } else {
+                            inner.health = ProviderHealth::Degraded {
+                                consecutive_errors: 1,
+                                last_error_at: now,
+                            };
+                        }
                     }
                     ProviderHealth::Degraded {
                         consecutive_errors, ..

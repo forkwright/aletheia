@@ -1,5 +1,4 @@
 // kanon:ignore RUST/file-too-long — provider types, trait, registry, and tests colocated; splitting the test module would separate assertions from the implementations they cover
-// kanon:ignore API/mixed-casing — each rename_all convention matches its serialization context: camelCase for JSON wire (ModelPricing), lowercase/snake_case for TOML config enums
 //! LLM provider trait: Anthropic-native with adapter support.
 //!
 //! Defines the interface all providers must implement. Types are modeled
@@ -697,7 +696,6 @@ mod tests {
             HealthConfig {
                 consecutive_failure_threshold: 1,
                 down_cooldown_ms: 1, // 1ms cooldown
-                ..HealthConfig::default()
             },
         );
 
