@@ -198,7 +198,11 @@ pub struct ComplexityScore {
 impl ComplexityScore {
     /// Construct a score from its components.
     pub fn new(score: u32, tier: ModelTier, reason: String) -> Self {
-        Self { score, tier, reason }
+        Self {
+            score,
+            tier,
+            reason,
+        }
     }
 }
 
@@ -241,7 +245,11 @@ pub struct RoutingOutcome {
 impl RoutingOutcome {
     /// Construct an outcome from a routing decision and its result flags.
     pub fn new(decision: RoutingDecision, success: bool, self_escalated: bool) -> Self {
-        Self { decision, success, self_escalated }
+        Self {
+            decision,
+            success,
+            self_escalated,
+        }
     }
 }
 
