@@ -18,6 +18,12 @@ use crate::error;
 /// Partition used for working checkpoints.
 const PARTITION: &str = "working_checkpoints";
 
+/// Maximum number of checkpoints to retain per session.
+///
+/// WHY: `read_latest`/`read_recent` only need recent entries, so older
+/// checkpoints are pruned on write to bound disk usage. (#5707)
+const CHECKPOINT_KEEP_N: usize = 20;
+
 /// Internal record stored in fjall.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct WorkingCheckpointRecord {
@@ -103,6 +109,49 @@ impl FjallWorkingCheckpointStore {
     fn prefix_key(session_id: &str) -> String {
         format!("nous:working_checkpoint:{session_id}:")
     }
+
+    /// Delete all but the `keep_n` most recent checkpoints for a session.
+    fn prune_old(
+        &self,
+        session_id: &str,
+        keep_n: usize,
+    ) -> std::result::Result<(), organon::error::StoreError> {
+        let partition = self
+            .partition()
+            .map_err(|e| organon::error::StoreError::StoreIo {
+                context: format!("working checkpoint prune failed: {e}"),
+                source: std::io::Error::other("fjall error"),
+            })?;
+
+        let prefix = Self::prefix_key(session_id);
+        let snap = self.db.read_tx();
+
+        let mut to_remove = Vec::new();
+        for guard in snap.prefix(&partition, prefix.as_bytes()) {
+            let (key, _) =
+                guard
+                    .into_inner()
+                    .map_err(|e| organon::error::StoreError::StoreIo {
+                        context: format!("working checkpoint prune iter failed: {e}"),
+                        source: std::io::Error::other("fjall iter error"),
+                    })?;
+            to_remove.push(key);
+        }
+
+        if to_remove.len() > keep_n {
+            let mut tx = self.db.write_tx();
+            for key in to_remove.into_iter().take(to_remove.len() - keep_n) {
+                tx.remove(&partition, &key);
+            }
+            tx.commit()
+                .map_err(|e| organon::error::StoreError::StoreIo {
+                    context: format!("working checkpoint prune commit failed: {e}"),
+                    source: std::io::Error::other("fjall commit error"),
+                })?;
+        }
+
+        Ok(())
+    }
 }
 
 impl organon::types::WorkingCheckpointStore for FjallWorkingCheckpointStore {
@@ -145,6 +194,8 @@ impl organon::types::WorkingCheckpointStore for FjallWorkingCheckpointStore {
                 context: format!("working checkpoint commit failed: {e}"),
                 source: std::io::Error::other("fjall commit error"),
             })?;
+
+        self.prune_old(session_id, CHECKPOINT_KEEP_N)?;
 
         Ok(())
     }
