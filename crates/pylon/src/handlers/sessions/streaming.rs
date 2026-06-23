@@ -1432,7 +1432,7 @@ pub async fn reconnect_turn(
 
     // WHY(#5678): Bound the task lifetime to the turn buffer TTL (5 min) so a
     // reconnect to an orphaned Running buffer cannot block indefinitely.
-    let max_live = Duration::from_secs(5 * 60);
+    let max_live = Duration::from_mins(5);
 
     let reconnect_task = tokio::spawn(async move {
         let mut last_seq = last_event_id;

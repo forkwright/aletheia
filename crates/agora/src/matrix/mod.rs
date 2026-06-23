@@ -125,7 +125,7 @@ impl MatrixProvider {
             accounts: HashMap::new(),
             default_account: None,
             circuit_breaker_threshold: 5,
-            halted_health_check_interval: Duration::from_secs(60),
+            halted_health_check_interval: Duration::from_mins(1),
         }
     }
 

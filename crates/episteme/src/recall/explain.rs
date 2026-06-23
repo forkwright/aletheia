@@ -203,9 +203,7 @@ fn term_match_score(content: &str, terms: &[&str]) -> f64 {
 }
 
 fn usize_to_f64(value: usize) -> f64 {
-    u32::try_from(value)
-        .map(f64::from)
-        .unwrap_or(f64::from(u32::MAX))
+    u32::try_from(value).map_or(f64::from(u32::MAX), f64::from)
 }
 
 fn i64_to_f64_saturating(value: i64) -> f64 {

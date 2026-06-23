@@ -228,8 +228,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         let should_recompute = self
             .store
             .load_graph_context()
-            .map(|ctx| ctx.is_stale(graph_staleness_threshold))
-            .unwrap_or(true); // WHY: fail-open — if we can't load context, recompute
+            .map_or(true, |ctx| ctx.is_stale(graph_staleness_threshold)); // WHY: fail-open — if we can't load context, recompute
 
         if !should_recompute {
             let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);

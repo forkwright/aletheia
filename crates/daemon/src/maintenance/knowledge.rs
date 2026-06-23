@@ -129,7 +129,7 @@ impl Default for DerivedRulesConfig {
         // chains against the cost of a full Datalog fixpoint pass.
         Self {
             policy: DerivedMaterializationPolicy::Scheduled,
-            materialization_interval: Duration::from_secs(6 * 60 * 60),
+            materialization_interval: Duration::from_hours(6),
         }
     }
 }

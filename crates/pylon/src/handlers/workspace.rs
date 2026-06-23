@@ -125,7 +125,7 @@ pub async fn list_files(
         });
     }
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|a| a.name.to_lowercase());
     Ok(Json(entries))
 }
 
@@ -729,8 +729,7 @@ fn file_mtime_ms(metadata: &std::fs::Metadata) -> Result<i64, ApiError> {
     })?;
     let millis = modified
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or(0);
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
     Ok(millis)
 }
 

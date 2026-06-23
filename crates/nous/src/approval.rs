@@ -17,7 +17,7 @@ use tracing::warn;
 /// 120s matches the desktop daily-driver UX: long enough to read the
 /// overlay, short enough that a dropped client connection denies the
 /// irreversible action rather than letting it hang the pipeline.
-pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
+pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// A user's decision on a single tool approval request.
 #[derive(Debug, Clone)]

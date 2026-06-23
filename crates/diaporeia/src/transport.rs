@@ -73,8 +73,7 @@ pub fn streamable_http_router_with_config(
             let allow_override = state
                 .config
                 .try_read()
-                .map(|cfg| cfg.gateway.auth.allow_unauthenticated_network_mcp)
-                .unwrap_or(false);
+                .is_ok_and(|cfg| cfg.gateway.auth.allow_unauthenticated_network_mcp);
             assert!(
                 allow_override,
                 concat!(
