@@ -38,10 +38,37 @@ pub struct CredentialResponse {
     pub status: String,
     /// Last validation timestamp when produced by a validation call.
     pub last_validated: Option<String>,
-    /// Request counter reserved for provider metrics.
+    /// Whether per-credential usage counters are backed by authoritative
+    /// provider/session telemetry.
+    ///
+    /// WHY: hardcoded zero counters were previously returned as factual usage
+    /// telemetry. This flag lets the UI hide or mark them unavailable until
+    /// real telemetry exists (#4922).
+    pub usage_counters_available: bool,
+    /// Usage counters when authoritative telemetry is available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_counters: Option<CredentialUsageCounters>,
+}
+
+/// Usage counters backed by authoritative telemetry.
+///
+/// When `CredentialResponse::usage_counters_available` is `false`, this struct
+/// is omitted from the response so placeholder zeros cannot be presented as
+/// real usage.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CredentialUsageCounters {
+    /// Requests counted against this credential today.
     pub requests_today: u64,
-    /// Token counter reserved for provider metrics.
+    /// Tokens consumed through this credential today.
     pub tokens_today: u64,
+    /// Telemetry source (e.g. provider API, local session ledger).
+    pub source: String,
+    /// Freshness indicator for the counters (ISO 8601 timestamp or duration).
+    pub freshness: String,
+    /// Provider/account scope the counters cover.
+    pub scope: String,
+    /// Failure or degraded state, if any.
+    pub state: String,
 }
 
 /// Request body for adding a provider credential.
@@ -302,8 +329,10 @@ impl From<ManagedCredential> for CredentialResponse {
             masked_key: credential.redacted_preview,
             status: status_str(credential.status).to_owned(),
             last_validated: credential.last_validated,
-            requests_today: 0,
-            tokens_today: 0,
+            // WHY: no authoritative provider/session telemetry exists yet, so
+            // omit the counters entirely rather than return hardcoded zeros.
+            usage_counters_available: false,
+            usage_counters: None,
         }
     }
 }
