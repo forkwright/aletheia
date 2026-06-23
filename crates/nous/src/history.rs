@@ -37,7 +37,8 @@ impl Default for HistoryConfig {
 
 /// Result of the history stage.
 #[derive(Debug, Clone)]
-pub struct HistoryResult { // kanon:ignore TOPOLOGY/shallow-struct — result bag passed across pipeline stage boundary; no in-file behavior by design
+pub struct HistoryResult {
+    // kanon:ignore TOPOLOGY/shallow-struct — result bag passed across pipeline stage boundary; no in-file behavior by design
     /// Number of messages loaded from store.
     pub messages_loaded: usize,
     /// Total tokens consumed by loaded history.

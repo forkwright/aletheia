@@ -32,7 +32,8 @@ use crate::working_state::WorkingState;
 
 /// Input to the pipeline: an inbound message.
 #[derive(Debug, Clone)]
-pub struct PipelineInput { // kanon:ignore TOPOLOGY/shallow-struct — input bag passed into the pipeline entry point; no in-file behavior by design
+pub struct PipelineInput {
+    // kanon:ignore TOPOLOGY/shallow-struct — input bag passed into the pipeline entry point; no in-file behavior by design
     /// The user's message content.
     pub content: String,
     /// Session state.
@@ -641,7 +642,8 @@ impl ReflectionResult {
 
 /// Turn result: the output of processing one turn.
 #[derive(Debug, Clone)]
-pub struct TurnResult { // kanon:ignore TOPOLOGY/shallow-struct — output bag returned from the pipeline; no in-file behavior by design
+pub struct TurnResult {
+    // kanon:ignore TOPOLOGY/shallow-struct — output bag returned from the pipeline; no in-file behavior by design
     /// Assistant's response content.
     pub content: String,
     /// Tool calls made during this turn.

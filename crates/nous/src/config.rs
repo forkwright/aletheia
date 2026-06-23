@@ -404,7 +404,11 @@ fn parse_u32_env_override(var_name: &str, raw_value: Option<String>, default: u3
 
 fn resolve_consecutive_mistake_limit(raw: Option<&str>) -> u32 {
     const DEFAULT: u32 = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
-    parse_u32_env_override(CONSECUTIVE_MISTAKE_LIMIT_ENV, raw.map(str::to_owned), DEFAULT)
+    parse_u32_env_override(
+        CONSECUTIVE_MISTAKE_LIMIT_ENV,
+        raw.map(str::to_owned),
+        DEFAULT,
+    )
 }
 
 fn default_consecutive_mistake_limit() -> u32 {
