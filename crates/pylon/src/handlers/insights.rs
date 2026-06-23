@@ -178,9 +178,16 @@ pub async fn get_agent_perf_one(
 )]
 pub async fn get_quality_metrics(
     State(state): State<InsightsState>,
-    _claims: Claims,
+    claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<QualityMetricsResponse>, ApiError> {
+    // SECURITY(#4618): Quality aggregate view requires unscoped Operator.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access aggregate quality metrics",
+        ));
+    }
     validate_metrics_query(&query)?;
 
     let state_clone = state.clone();
@@ -346,9 +353,16 @@ pub async fn get_cost_metrics(
     security(("bearer_auth" = []))
 )]
 pub async fn get_journal(
-    _claims: Claims,
+    claims: Claims,
     Query(query): Query<JournalQuery>,
-) -> Json<JournalResponse> {
+) -> Result<Json<JournalResponse>, ApiError> {
+    // SECURITY(#4618): System journal requires unscoped Operator.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access the system journal",
+        ));
+    }
     warn!(
         source = ?query.source,
         level = ?query.level,
@@ -356,13 +370,13 @@ pub async fn get_journal(
         limit = query.limit,
         "journal endpoint called but no persistent event journal is available in pylon"
     );
-    Json(JournalResponse {
+    Ok(Json(JournalResponse {
         events: Vec::new(),
         data_unavailable: vec![UnavailableMetric {
             metric: "journal".to_owned(),
             reason: "no persistent event journal is available in pylon".to_owned(),
         }],
-    })
+    }))
 }
 
 // ── Computation helpers ──
@@ -1032,7 +1046,7 @@ mod tests {
         assert!(validate_metrics_query(&query(None, Some("2026-02-30"), None)).is_err());
     }
 
-    fn test_session(id: &str, created_at: &str) -> Session {
+    fn session(id: &str, created_at: &str) -> Session {
         Session {
             id: id.to_owned(),
             nous_id: "alice".to_owned(),
@@ -1091,19 +1105,19 @@ mod tests {
     fn token_metrics_use_durable_usage_and_real_period_windows() {
         let rows = vec![
             SessionUsage {
-                session: test_session("today", "2026-06-12"),
+                session: session("today", "2026-06-12"),
                 usage_records: vec![usage("today", 10, 5)],
             },
             SessionUsage {
-                session: test_session("yesterday", "2026-06-11"),
+                session: session("yesterday", "2026-06-11"),
                 usage_records: vec![usage("yesterday", 20, 10)],
             },
             SessionUsage {
-                session: test_session("prev-week", "2026-06-05"),
+                session: session("prev-week", "2026-06-05"),
                 usage_records: vec![usage("prev-week", 30, 15)],
             },
             SessionUsage {
-                session: test_session("prev-month", "2026-05-20"),
+                session: session("prev-month", "2026-05-20"),
                 usage_records: vec![usage("prev-month", 40, 20)],
             },
         ];
