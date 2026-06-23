@@ -243,8 +243,7 @@ fn import_session_refuses_overwrite_without_force() {
 #[test]
 fn import_session_with_force_overwrites_cleanly() {
     let store = test_store();
-    let mut s =
-        import_session_record("ses-imp3", SessionStatus::Active, "2024-04-01T00:00:00Z");
+    let mut s = import_session_record("ses-imp3", SessionStatus::Active, "2024-04-01T00:00:00Z");
     store.import_session(&s, false).expect("first");
     s.status = SessionStatus::Archived;
     s.updated_at = "2024-05-01T00:00:00Z".to_owned();

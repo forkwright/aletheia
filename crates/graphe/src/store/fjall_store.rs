@@ -806,13 +806,7 @@ impl SessionStore {
         for key in &dist_keys {
             tx.remove(&distillations_part, key.as_slice());
         }
-        for key in &note_keys {
-            tx.remove(&notes_part, key.as_slice());
-        }
-        for key in &gid_keys {
-            tx.remove(&notes_part, key.as_slice());
-        }
-        for key in &gid_idx_keys {
+        for key in note_keys.iter().chain(&gid_keys).chain(&gid_idx_keys) {
             tx.remove(&notes_part, key.as_slice());
         }
 
