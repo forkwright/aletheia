@@ -230,9 +230,10 @@ fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &The
     let scroll = if app.viewport.render.auto_scroll {
         0
     } else {
-        // WHY: Clamp before the cast so a large usize scroll_offset does not
+        // WHY: Clamp before the conversion so a large usize scroll_offset does not
         // wrap to u16::MAX and scroll the Paragraph past all visible content.
-        app.viewport.render.scroll_offset.min(u16::MAX as usize) as u16
+        u16::try_from(app.viewport.render.scroll_offset.min(usize::from(u16::MAX)))
+            .unwrap_or(u16::MAX)
     };
     let paragraph = Paragraph::new(lines)
         .block(block)
