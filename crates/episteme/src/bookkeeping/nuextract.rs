@@ -56,9 +56,11 @@ impl Default for NuExtractProviderConfig {
 /// from the returned JSON are lifted into `Extraction`; the LLM fallback is
 /// not used because `NuExtract` is designed for full-coverage extraction rather
 /// than NER-only span tagging.
+// kanon:ignore RUST/pub-visibility — re-exported from episteme::bookkeeping for downstream consumers
 pub struct NuExtractProvider {
     config: NuExtractProviderConfig,
     tokenizer: Tokenizer,
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex intentional: guard only held inside spawn_blocking, never across await points
     session: Arc<Mutex<Session>>,
 }
 
@@ -116,6 +118,7 @@ impl NuExtractProvider {
         Ok(Self {
             config,
             tokenizer,
+            // kanon:ignore RUST/no-arc-mutex-anti-pattern — guard only held in spawn_blocking; see WHY comment in extract_json
             session: Arc::new(Mutex::new(session)),
         })
     }
@@ -299,6 +302,7 @@ fn parse_nuextract_json(decoded: &str) -> BookkeepingResult<serde_json::Value> {
             clippy::string_slice,
             reason = "`start` comes from str::find on `decoded`; ASCII marker length preserves char boundary"
         )]
+        // kanon:ignore RUST/indexing-slicing — index comes from str::find; ASCII marker offset guarantees a char boundary
         let after = &decoded[start + "<|output|>".len()..];
         if let Some(end) = after.find("<|end|>") {
             // WHY: `end` is a byte offset from str::find on `after`; slicing at a
@@ -307,6 +311,7 @@ fn parse_nuextract_json(decoded: &str) -> BookkeepingResult<serde_json::Value> {
                 clippy::string_slice,
                 reason = "`end` comes from str::find on `after`; index is guaranteed a char boundary"
             )]
+            // kanon:ignore RUST/indexing-slicing — index comes from str::find on `after`; guaranteed char boundary
             after[..end].trim()
         } else {
             after.trim()
@@ -598,6 +603,7 @@ mod tests {
     #[test]
     fn nuextract_provider_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
+        // kanon:ignore TESTING/tautological-test — compile-time trait bound check; fails to compile if Send+Sync is lost
         assert_send_sync::<NuExtractProvider>();
     }
 }

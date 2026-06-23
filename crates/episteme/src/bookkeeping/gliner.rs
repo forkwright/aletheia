@@ -64,9 +64,11 @@ impl Default for GlinerProviderConfig {
 /// The constructor loads the tokenizer and ONNX graph up front. Entity spans
 /// are decoded from `GLiNER` logits; relationships and subject-predicate-object
 /// facts remain on the LLM fallback because this model artifact is NER-only.
+// kanon:ignore RUST/pub-visibility — re-exported from mneme::bookkeeping for downstream consumers
 pub struct GlinerExtractionProvider<'a> {
     config: GlinerProviderConfig,
     tokenizer: Tokenizer,
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex intentional: guard only held inside spawn_blocking, never across await points
     session: Arc<Mutex<Session>>,
     fallback: LlmBookkeepingProvider<'a>,
 }
@@ -147,6 +149,7 @@ impl<'a> GlinerExtractionProvider<'a> {
         Ok(Self {
             config,
             tokenizer,
+            // kanon:ignore RUST/no-arc-mutex-anti-pattern — guard only held in spawn_blocking; see WHY comment in extract_entities
             session: Arc::new(Mutex::new(session)),
             fallback: LlmBookkeepingProvider::new(engine, provider),
         })
@@ -713,6 +716,7 @@ mod tests {
     #[test]
     fn gliner_provider_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
+        // kanon:ignore TESTING/tautological-test — compile-time trait bound check; fails to compile if Send+Sync is lost
         assert_send_sync::<GlinerExtractionProvider<'static>>();
     }
 }
