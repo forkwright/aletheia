@@ -13,6 +13,15 @@ pub struct TimeSeriesPoint {
     pub value: f64,
 }
 
+/// Description of a metric that cannot currently be measured.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UnavailableMetric {
+    /// Metric or field name that is not measured.
+    pub metric: String,
+    /// Human-readable reason the metric is unavailable.
+    pub reason: String,
+}
+
 /// Per-agent performance metrics.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentPerformance {
@@ -39,6 +48,9 @@ pub struct AgentPerformance {
     /// Daily time series of tokens-per-response.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tokens_per_response_series: Vec<TimeSeriesPoint>,
+    /// Metrics that are currently not measured by any backing data source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_unavailable: Vec<UnavailableMetric>,
 }
 
 /// Anomaly alert for a single metric.
@@ -87,6 +99,9 @@ pub struct QualitySeries {
 pub struct QualityMetricsResponse {
     /// Time series quality indicators.
     pub series: QualitySeries,
+    /// Metrics that are currently not measured by any backing data source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_unavailable: Vec<UnavailableMetric>,
 }
 
 /// Query parameters shared by desktop metrics views.
@@ -224,6 +239,9 @@ pub struct CostMetricsResponse {
     pub prev_week_cost: f64,
     /// Estimated cost for the previous equivalent month.
     pub prev_month_cost: f64,
+    /// Cost metrics that are currently not measured by any backing data source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_unavailable: Vec<UnavailableMetric>,
 }
 
 /// A single journal event.
@@ -235,6 +253,16 @@ pub struct JournalEvent {
     pub event_type: String,
     /// Human-readable description.
     pub message: String,
+}
+
+/// Response for `GET /api/v1/journal`.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct JournalResponse {
+    /// Journal events matching the query.
+    pub events: Vec<JournalEvent>,
+    /// Metrics that are currently not measured by any backing data source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_unavailable: Vec<UnavailableMetric>,
 }
 
 /// Query parameters for `GET /api/v1/journal`.
