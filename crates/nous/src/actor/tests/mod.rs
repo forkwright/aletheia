@@ -434,6 +434,7 @@ fn spawn_test_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile::Tem
         Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
+        None, // cross_router
     );
     (handle, join, dir)
 }
@@ -498,6 +499,7 @@ fn spawn_panicking_actor() -> (NousHandle, tokio::task::JoinHandle<()>, tempfile
         Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
+        None, // cross_router
     );
     (handle, join, dir)
 }
@@ -531,6 +533,7 @@ fn spawn_test_actor_with_store(
         Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
+        None, // cross_router
     );
     (handle, join, dir)
 }
@@ -578,6 +581,7 @@ fn make_test_actor(
         Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
+        None, // cross_router
     );
     (actor, tx, dir)
 }
@@ -661,8 +665,50 @@ fn spawn_test_actor_with_cross() -> (
         Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
+        None, // cross_router
     );
     (handle, join, cross_tx, dir)
+}
+
+async fn spawn_test_actor_in_router(
+    router: Arc<crate::cross::CrossNousRouter>,
+) -> (
+    NousHandle,
+    tokio::task::JoinHandle<()>,
+    tempfile::TempDir,
+) {
+    let (dir, oikos) = test_oikos();
+    let providers = test_providers();
+    let tools = Arc::new(ToolRegistry::new());
+    let config = test_config();
+    let pipeline_config = PipelineConfig::default();
+
+    let (cross_tx, cross_rx) = tokio::sync::mpsc::channel(32);
+    router.register(config.id.to_string(), cross_tx.clone()).await;
+
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
+        config,
+        pipeline_config,
+        providers,
+        tools,
+        oikos,
+        None,
+        None,
+        None,
+        #[cfg(feature = "knowledge-store")]
+        None,
+        None,
+        Vec::new(),
+        Some(cross_rx),
+        Some(cross_tx),
+        CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
+        None, // audit_log
+        None, // empirical router
+        Some(router),
+    );
+    (handle, join, dir)
 }
 
 fn spawn_test_actor_with_router(
@@ -732,6 +778,7 @@ fn spawn_panicking_actor_with_cross() -> (
         Arc::new(taxis::config::ToolLimitsConfig::default()),
         None, // audit_log
         None, // empirical router
+        None, // cross_router
     );
     (handle, join, cross_tx, dir)
 }

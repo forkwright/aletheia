@@ -469,6 +469,7 @@ impl NousManager {
             self.current_tool_config(),
             self.audit_log.clone(),
             self.empirical_router.clone(),
+            self.router.clone(),
         );
 
         Ok((handle, join_handle, active_turn, turn_started_at_ms))

@@ -24,7 +24,7 @@ use aletheia_routing::{NoOpRouter, Router};
 
 use crate::bootstrap::{BootstrapFileCache, BootstrapSection};
 use crate::config::{NousConfig, PipelineConfig};
-use crate::cross::CrossNousEnvelope;
+use crate::cross::{CrossNousEnvelope, CrossNousReply, knowledge::KnowledgePayload};
 use crate::drift::DriftDetector;
 use crate::message::{NousLifecycle, NousMessage, NousStatus};
 use crate::session::SessionState;
@@ -87,6 +87,12 @@ pub(crate) struct ActorServices {
     /// hold a runtime object. Defaults to [`NoOpRouter`] when no empirical
     /// backend is configured.
     pub(crate) router: Arc<dyn Router>,
+    /// Shared cross-nous router for request/reply delivery.
+    ///
+    /// WHY: replies to cross-nous asks must be routed back through the same
+    /// router that tracks pending replies, not through the outbound fire-and-
+    /// forget channel used for unsolicited messages.
+    pub(crate) cross_router: Option<Arc<crate::cross::CrossNousRouter>>,
 }
 
 /// Data stores for sessions, knowledge, and search.
@@ -213,6 +219,7 @@ impl NousActor {
         tool_config: Arc<taxis::config::ToolLimitsConfig>,
         audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
         router: Option<Arc<dyn Router>>,
+        cross_router: Option<Arc<crate::cross::CrossNousRouter>>,
     ) -> Self {
         #[cfg(feature = "knowledge-store")]
         let skill_loader = knowledge_store
@@ -261,6 +268,7 @@ impl NousActor {
                         provider: Arc::from(String::new()),
                     })
                 }),
+                cross_router,
             },
             stores: ActorStores {
                 session_store,
@@ -488,11 +496,35 @@ impl NousActor {
         &mut self,
         envelope: CrossNousEnvelope,
     ) -> crate::error::Result<()> {
-        let from = &envelope.message.from;
-        let session_key = format!("cross:{from}");
+        let from = envelope.message.from.clone();
+        let session_key = if envelope.message.target_session.is_empty() {
+            format!("cross:{from}")
+        } else {
+            envelope.message.target_session.clone()
+        };
         let content = envelope.message.content.clone();
+        let in_reply_to = envelope.message.id;
+        let expects_reply = envelope.message.expects_reply;
 
-        debug!(from = %from, session_key = %session_key, "processing cross-nous message");
+        debug!(
+            from = %from,
+            session_key = %session_key,
+            expects_reply = expects_reply,
+            "processing cross-nous message"
+        );
+
+        // WHY: typed payloads either drive a typed handler (for request/reply)
+        // or are processed as fire-and-forget notifications. Plain text
+        // payloads continue to run a normal turn in the target session.
+        if let Some(ref payload) = envelope.message.payload {
+            if expects_reply {
+                if let Some(reply_content) = self.handle_knowledge_payload(payload, &from) {
+                    self.send_cross_reply(in_reply_to, reply_content).await;
+                }
+                return Ok(());
+            }
+            debug!(from = %from, ?payload, "cross-nous typed payload received (fire-and-forget)");
+        }
 
         let result = self
             .execute_turn_with_panic_boundary(
@@ -504,6 +536,14 @@ impl NousActor {
             )
             .await;
 
+        if expects_reply {
+            let reply_content = match &result {
+                Ok(turn_result) => turn_result.content.clone(),
+                Err(e) => format!("[cross-nous error: {e}]"),
+            };
+            self.send_cross_reply(in_reply_to, reply_content).await;
+        }
+
         match result {
             Ok(turn_result) => {
                 debug!(from = %from, content_len = turn_result.content.len(), "cross-nous turn completed");
@@ -514,6 +554,51 @@ impl NousActor {
                 Ok(())
             }
             Err(e) => Err(e),
+        }
+    }
+
+    /// Send a [`CrossNousReply`] back to the router for the original ask.
+    ///
+    /// WHY: Replies must use the shared router so the pending-reply entry
+    /// created by `CrossNousRouter::ask` is resolved.
+    async fn send_cross_reply(&self, in_reply_to: koina::ulid::Ulid, content: String) {
+        let Some(ref router) = self.services.cross_router else {
+            warn!(nous_id = %self.id, "cross-nous reply requested but no router available");
+            return;
+        };
+        let reply = CrossNousReply {
+            in_reply_to,
+            from: self.id.clone(),
+            content,
+            created_at: jiff::Timestamp::now(),
+        };
+        if let Err(e) = router.reply(reply).await {
+            warn!(nous_id = %self.id, error = %e, "cross-nous reply failed");
+        }
+    }
+
+    /// Handle a typed [`KnowledgePayload`] and return an optional direct reply.
+    ///
+    /// WHY: Typed payloads bypass the LLM turn when a deterministic response is
+    /// sufficient (e.g. a knowledge query echo or verification acknowledgement).
+    /// This keeps the cross-nous contract end-to-end without forcing every
+    /// collaboration message through the full pipeline.
+    fn handle_knowledge_payload(
+        &self,
+        payload: &KnowledgePayload,
+        from: &str,
+    ) -> Option<String> {
+        match payload {
+            KnowledgePayload::Verify { fact_content, .. } => {
+                Some(format!("verify acknowledged from {from}: {fact_content}"))
+            }
+            KnowledgePayload::Query { query, filters } => {
+                Some(format!("query acknowledged from {from}: {query} filters={filters:?}"))
+            }
+            _ => {
+                debug!(?payload, "cross-nous fire-and-forget knowledge payload");
+                None
+            }
         }
     }
 
