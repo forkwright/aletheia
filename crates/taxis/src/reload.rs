@@ -375,16 +375,16 @@ mod tests {
     #[test]
     fn agent_defaults_hot_reloadable() {
         assert!(
-            !requires_restart("agents.defaults.timeoutSeconds"),
-            "timeout should be hot-reloadable"
-        );
-        assert!(
             !requires_restart("agents.defaults.maxToolIterations"),
             "tool iterations should be hot-reloadable"
         );
         assert!(
             !requires_restart("agents.defaults.thinkingBudget"),
             "thinking budget should be hot-reloadable"
+        );
+        assert!(
+            !requires_restart("agents.defaults.modelDefaults.contextTokens"),
+            "context tokens should be hot-reloadable"
         );
     }
 

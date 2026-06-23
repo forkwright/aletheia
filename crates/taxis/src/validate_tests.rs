@@ -10,13 +10,17 @@ use serde_json::json;
 use super::*;
 
 #[test]
-fn rejects_zero_timeout() {
-    let section = json!({ "defaults": { "timeoutSeconds": 0 } });
-    let result = validate_section("agents", &section);
-    assert!(result.is_err(), "zero timeoutSeconds should be rejected");
+fn rejects_stale_timeout_seconds_field() {
+    // WHY: `agents.defaults.timeoutSeconds` was documented and scaffolded but
+    // never existed on `AgentDefaults`; it is now rejected at parse time so
+    // operators get a loud error instead of a silent no-op. (#5788)
+    let json = r#"{"agents": {"defaults": {"timeoutSeconds": 300}}}"#;
+    let result: Result<crate::config::AletheiaConfig, _> = serde_json::from_str(json);
+    assert!(result.is_err(), "stale timeoutSeconds field should be rejected");
+    let err = result.unwrap_err().to_string();
     assert!(
-        result.unwrap_err().errors[0].contains("timeoutSeconds"),
-        "error should mention timeoutSeconds"
+        err.contains("timeoutSeconds") || err.contains("unknown field"),
+        "error should mention the unknown field: {err}"
     );
 }
 
@@ -70,7 +74,6 @@ fn accepts_valid_agents() {
     let section = json!({
         "defaults": {
             "contextTokens": 200_000,
-            "timeoutSeconds": 300,
             "maxToolIterations": 200,
             "thinkingBudget": 10_000
         }

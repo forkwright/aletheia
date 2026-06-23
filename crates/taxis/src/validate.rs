@@ -193,7 +193,6 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         check_positive_u32(defaults, "contextTokens", errors);
         check_positive_u32(defaults, "maxOutputTokens", errors);
         check_positive_u32(defaults, "bootstrapMaxTokens", errors);
-        check_positive_u32(defaults, "timeoutSeconds", errors);
         check_positive_u32(defaults, "thinkingBudget", errors);
 
         // WHY: Cap token budgets at a sane maximum to prevent misconfiguration.
