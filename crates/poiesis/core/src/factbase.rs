@@ -632,11 +632,10 @@ fn add_scalars(lhs: &Scalar, rhs: &Scalar) -> Result<Scalar, FactbaseError> {
         (Scalar::Money { value: lv }, Scalar::Money { value: rv }) => Ok(Scalar::Money {
             value: Money::from_micros(lv.micros() + rv.micros()),
         }),
-        (Scalar::Ratio { value: lv }, Scalar::Ratio { value: rv }) => {
-            Scalar::new_ratio(lv + rv).map_err(|e| FactbaseError::BadDerived {
+        (Scalar::Ratio { value: lv }, Scalar::Ratio { value: rv }) => Scalar::new_ratio(lv + rv)
+            .map_err(|e| FactbaseError::BadDerived {
                 detail: e.to_string(),
-            })
-        }
+            }),
         _ => DerivedTypeMismatchSnafu {
             detail: format!(
                 "sum requires same-typed operands; got {} and {}",

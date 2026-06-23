@@ -218,7 +218,10 @@ mod tests {
         let fmt = Format::default();
         let scalar = Scalar::Ratio { value: f64::NAN };
         let err = write_scalar(ws, 0, 0, &scalar, &fmt).expect_err("nan rejected");
-        assert!(matches!(err, crate::error::WorkbookError::NonFiniteRatio { .. }));
+        assert!(matches!(
+            err,
+            crate::error::WorkbookError::NonFiniteRatio { .. }
+        ));
     }
 
     #[test]
@@ -226,8 +229,13 @@ mod tests {
         let mut xlsx_wb = XlsxWorkbook::new();
         let ws = xlsx_wb.add_worksheet();
         let fmt = Format::default();
-        let scalar = Scalar::Ratio { value: f64::INFINITY };
+        let scalar = Scalar::Ratio {
+            value: f64::INFINITY,
+        };
         let err = write_scalar(ws, 0, 0, &scalar, &fmt).expect_err("inf rejected");
-        assert!(matches!(err, crate::error::WorkbookError::NonFiniteRatio { .. }));
+        assert!(matches!(
+            err,
+            crate::error::WorkbookError::NonFiniteRatio { .. }
+        ));
     }
 }
