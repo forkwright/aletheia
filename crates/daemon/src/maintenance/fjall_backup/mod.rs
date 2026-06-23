@@ -82,15 +82,6 @@ pub struct BackupEntry {
 }
 
 impl BackupEntry {
-    fn new(name: String, path: PathBuf, created: SystemTime, size_bytes: u64) -> Self {
-        Self {
-            name,
-            path,
-            created,
-            size_bytes,
-        }
-    }
-
     /// Returns the number of seconds elapsed since this backup was created.
     pub fn age_secs(&self, now: SystemTime) -> u64 {
         now.duration_since(self.created).map_or(0, |d| d.as_secs())
@@ -159,6 +150,7 @@ struct FjallBackupManifest {
 }
 
 /// Manages fjall knowledge store backups.
+// kanon:ignore RUST/pub-visibility — consumed by aletheia binary crate (backup subcommand)
 pub struct FjallBackup {
     config: FjallBackupConfig,
 }
