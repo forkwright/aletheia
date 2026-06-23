@@ -576,7 +576,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time Send+Sync bound check; compilation itself is the assertion
     fn tracker_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ProviderHealthTracker>();

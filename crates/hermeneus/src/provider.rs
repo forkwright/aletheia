@@ -1,3 +1,5 @@
+// kanon:ignore RUST/file-too-long — provider types, trait, registry, and tests colocated; splitting the test module would separate assertions from the implementations they cover
+// kanon:ignore API/mixed-casing — each rename_all convention matches its serialization context: camelCase for JSON wire (ModelPricing), lowercase/snake_case for TOML config enums
 //! LLM provider trait: Anthropic-native with adapter support.
 //!
 //! Defines the interface all providers must implement. Types are modeled
@@ -27,6 +29,7 @@ use crate::types::{CompletionRequest, CompletionResponse};
 /// | `Prefix` | Provider matches by a namespaced prefix (e.g. `cc/`, `codex/`) |
 /// | `CatchAll` | Provider matches by a broad family pattern (e.g. any `claude-*`) |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum MatchKind {
     // WHY: lower numeric value = lower specificity; `find_provider` keeps
     // the maximum. Ord derives compare numerically so CatchAll < Prefix < Exact.
@@ -463,7 +466,7 @@ impl ProviderRegistry {
     ///
     /// O(p) where p is the number of registered providers.
     #[must_use]
-    pub fn check_available(&self, name: &str) -> Option<Result<(), ProviderHealth>> {
+    pub fn check_available(&self, name: &str) -> Option<std::result::Result<(), ProviderHealth>> {
         // kanon:ignore RUST/pub-visibility
         self.providers
             .iter()
@@ -614,7 +617,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time Send+Sync bound check; compilation itself is the assertion
     fn mock_provider_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<MockProvider>();
