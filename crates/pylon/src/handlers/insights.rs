@@ -16,9 +16,9 @@ use crate::insights::anomaly::detect_anomalies;
 use crate::state::InsightsState;
 use crate::types::insights::{
     AgentCostRow, AgentPerformance, AgentPerformanceListResponse, AgentTokenRow,
-    CostMetricsResponse, CostSeriesPoint, JournalQuery, JournalResponse, MetricsQuery, ModelTokenRow,
-    QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse, TokenSeriesPoint,
-    UnavailableMetric,
+    CostMetricsResponse, CostSeriesPoint, JournalQuery, JournalResponse, MetricsQuery,
+    ModelTokenRow, QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse,
+    TokenSeriesPoint, UnavailableMetric,
 };
 
 /// Convert `i64` to `f64` losslessly for values that fit in `i32`.
@@ -1152,10 +1152,12 @@ mod tests {
                 reason: "no backing data source for thinking time in pylon".to_owned(),
             }],
         };
-        assert!(response
-            .data_unavailable
-            .iter()
-            .any(|u| u.metric == "thinking_time_ratio"));
+        assert!(
+            response
+                .data_unavailable
+                .iter()
+                .any(|u| u.metric == "thinking_time_ratio")
+        );
     }
 
     #[test]
@@ -1167,10 +1169,12 @@ mod tests {
                 reason: "no persistent event journal is available in pylon".to_owned(),
             }],
         };
-        assert!(response
-            .data_unavailable
-            .iter()
-            .any(|u| u.metric == "journal"));
+        assert!(
+            response
+                .data_unavailable
+                .iter()
+                .any(|u| u.metric == "journal")
+        );
     }
 
     #[test]
@@ -1193,9 +1197,6 @@ mod tests {
             prev_month_output: 0,
         };
         let response = costs_from_tokens(&tokens);
-        assert!(response
-            .data_unavailable
-            .iter()
-            .any(|u| u.metric == "cost"));
+        assert!(response.data_unavailable.iter().any(|u| u.metric == "cost"));
     }
 }
