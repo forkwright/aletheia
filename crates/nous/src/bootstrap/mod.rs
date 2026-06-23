@@ -385,7 +385,14 @@ impl BootstrapSection {
         truncatable: bool,
         slot: BootstrapSlot,
     ) -> Self {
-        Self { name, priority, content, tokens, truncatable, slot }
+        Self {
+            name,
+            priority,
+            content,
+            tokens,
+            truncatable,
+            slot,
+        }
     }
 }
 
@@ -1507,9 +1514,8 @@ impl<'a> BootstrapAssembler<'a> {
                     (SectionPriority::Important, true)
                 }
             }
-            LlmRecipe::InSession => (SectionPriority::Optional, true),
+            LlmRecipe::InSession | LlmRecipe::None => (SectionPriority::Optional, true),
             LlmRecipe::Refactor => (SectionPriority::Important, true),
-            LlmRecipe::None => (SectionPriority::Optional, true),
         }
     }
 
