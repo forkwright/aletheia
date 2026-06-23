@@ -723,6 +723,45 @@ fn notes_crud() {
 }
 
 #[test]
+fn delete_session_removes_notes_via_session_gid_index() {
+    // WHY: regression test for issue #5698 — deleting one session must not
+    // require scanning the global `gid:` key space and must leave other
+    // sessions' notes intact.
+    let store = test_store();
+    store
+        .create_session("ses-a", "syn", "main", None, None)
+        .expect("create a");
+    store
+        .create_session("ses-b", "syn", "secondary", None, None)
+        .expect("create b");
+
+    let id_a = store
+        .add_note("ses-a", "syn", "task", "note for a")
+        .expect("add note to a");
+    let id_b = store
+        .add_note("ses-b", "syn", "task", "note for b")
+        .expect("add note to b");
+
+    let deleted = store.delete_session("ses-a").expect("delete a");
+    assert!(deleted);
+
+    assert!(
+        store.find_session_by_id("ses-a").expect("query a").is_none(),
+        "session a must be removed"
+    );
+    assert!(
+        store.get_notes("ses-a").expect("notes a").is_empty(),
+        "session a notes must be removed"
+    );
+    let remaining = store.get_notes("ses-b").expect("notes b");
+    assert_eq!(remaining.len(), 1, "session b notes must survive");
+    assert_eq!(remaining[0].id, id_b);
+
+    // NOTE: deleting by global id must also clean the reverse index.
+    assert!(store.delete_note(id_b).expect("delete b's note"));
+}
+
+#[test]
 fn delete_session_removes_all_data() {
     let store = test_store();
     store
