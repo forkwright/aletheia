@@ -787,7 +787,9 @@ impl SessionStore {
                 .rsplit(':')
                 .next()
                 .and_then(|s| s.parse::<u64>().ok())
-                .ok_or_else(|| storage_error("corrupt note_gid_idx key: missing global_id".to_owned()))?;
+                .ok_or_else(|| {
+                    storage_error("corrupt note_gid_idx key: missing global_id".to_owned())
+                })?;
             gid_idx_keys.push(idx_key.to_vec());
             gid_keys.push(format!("gid:{}", pad_u64(global_id)).into_bytes());
         }
@@ -1689,10 +1691,9 @@ impl SessionStore {
 
         // WHY: the local key is `{session_id}:{note_id}`; the session id is
         // needed to remove the matching `note_gid_idx:` reverse index entry.
-        let session_id = local_key
-            .rsplit(':')
-            .nth(1)
-            .ok_or_else(|| storage_error("corrupt note local key: missing session_id".to_owned()))?;
+        let session_id = local_key.rsplit(':').nth(1).ok_or_else(|| {
+            storage_error("corrupt note local key: missing session_id".to_owned())
+        })?;
         let gid_idx_key = Self::note_gid_index_key(session_id, note_id.cast_unsigned());
 
         let mut tx = self.db.write_tx();

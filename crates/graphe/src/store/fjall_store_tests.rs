@@ -746,7 +746,10 @@ fn delete_session_removes_notes_via_session_gid_index() {
     assert!(deleted);
 
     assert!(
-        store.find_session_by_id("ses-a").expect("query a").is_none(),
+        store
+            .find_session_by_id("ses-a")
+            .expect("query a")
+            .is_none(),
         "session a must be removed"
     );
     assert!(
