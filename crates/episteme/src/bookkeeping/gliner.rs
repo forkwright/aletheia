@@ -7,6 +7,7 @@
 //! triples to the LLM compatibility provider.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use eidos::bookkeeping::{
     BookkeepingError, BookkeepingProvider, BookkeepingResult, ConversationMessage, ExtractedEntity,
@@ -17,7 +18,6 @@ use ort::value::{Shape, Tensor};
 use tokenizers::Tokenizer;
 use tokenizers::utils::padding::{PaddingParams, PaddingStrategy};
 use tokenizers::utils::truncation::{TruncationParams, TruncationStrategy};
-use tokio::sync::Mutex;
 use tracing::warn;
 
 use super::LlmBookkeepingProvider;
@@ -67,7 +67,7 @@ impl Default for GlinerProviderConfig {
 pub struct GlinerExtractionProvider<'a> {
     config: GlinerProviderConfig,
     tokenizer: Tokenizer,
-    session: Mutex<Session>,
+    session: Arc<Mutex<Session>>,
     fallback: LlmBookkeepingProvider<'a>,
 }
 
@@ -147,7 +147,7 @@ impl<'a> GlinerExtractionProvider<'a> {
         Ok(Self {
             config,
             tokenizer,
-            session: Mutex::new(session),
+            session: Arc::new(Mutex::new(session)),
             fallback: LlmBookkeepingProvider::new(engine, provider),
         })
     }
@@ -164,34 +164,58 @@ impl<'a> GlinerExtractionProvider<'a> {
         }
 
         let input = build_input(&self.tokenizer, &words)?;
-        let mut session = self.session.lock().await;
-        let outputs = session
-            .run(ort::inputs![
-                "input_ids" => Tensor::from_array((Shape::new([1, usize_to_i64(input.input_ids.len())?]), input.input_ids))
-                    .map_err(|err| provider_failed("tensor_input_ids", err))?,
-                "attention_mask" => Tensor::from_array((Shape::new([1, usize_to_i64(input.attention_mask.len())?]), input.attention_mask))
-                    .map_err(|err| provider_failed("tensor_attention_mask", err))?,
-                "words_mask" => Tensor::from_array((Shape::new([1, usize_to_i64(input.words_mask.len())?]), input.words_mask))
-                    .map_err(|err| provider_failed("tensor_words_mask", err))?,
-                "text_lengths" => Tensor::from_array((Shape::new([1, 1]), input.text_lengths))
-                    .map_err(|err| provider_failed("tensor_text_lengths", err))?,
-                "span_idx" => Tensor::from_array((Shape::new([1, usize_to_i64(input.span_idx.len() / 2)?, 2]), input.span_idx))
-                    .map_err(|err| provider_failed("tensor_span_idx", err))?,
-                "span_mask" => Tensor::from_array((Shape::new([1, usize_to_i64(input.span_mask.len())?]), input.span_mask))
-                    .map_err(|err| provider_failed("tensor_span_mask", err))?,
-            ])
-            .map_err(|err| provider_failed("run_inference", err))?;
-        let logits = outputs
-            .get("logits")
-            .ok_or_else(|| provider_failed("decode_logits", "missing logits output"))?;
-        let (shape, data) = logits
-            .try_extract_tensor::<f32>()
-            .map_err(|err| provider_failed("view_logits", err))?;
+        let ModelInput {
+            input_ids,
+            attention_mask,
+            words_mask,
+            text_lengths,
+            span_idx,
+            span_mask,
+            span_pairs,
+            text_words,
+        } = input;
+
+        // WHY: `session.run()` is synchronous CPU-bound ONNX inference that can
+        // stall a tokio worker for hundreds of milliseconds. Offload it to
+        // `spawn_blocking` and use an `std::sync::Mutex` so the guard is only
+        // held inside synchronous blocking context (#5746).
+        let session = Arc::clone(&self.session);
+        let (shape, data) = tokio::task::spawn_blocking(move || {
+            let mut session = session
+                .lock()
+                .map_err(|_| provider_failed("lock_session", "mutex poisoned"))?;
+            let outputs = session
+                .run(ort::inputs![
+                    "input_ids" => Tensor::from_array((Shape::new([1, usize_to_i64(input_ids.len())?]), input_ids))
+                        .map_err(|err| provider_failed("tensor_input_ids", err))?,
+                    "attention_mask" => Tensor::from_array((Shape::new([1, usize_to_i64(attention_mask.len())?]), attention_mask))
+                        .map_err(|err| provider_failed("tensor_attention_mask", err))?,
+                    "words_mask" => Tensor::from_array((Shape::new([1, usize_to_i64(words_mask.len())?]), words_mask))
+                        .map_err(|err| provider_failed("tensor_words_mask", err))?,
+                    "text_lengths" => Tensor::from_array((Shape::new([1, 1]), text_lengths))
+                        .map_err(|err| provider_failed("tensor_text_lengths", err))?,
+                    "span_idx" => Tensor::from_array((Shape::new([1, usize_to_i64(span_idx.len() / 2)?, 2]), span_idx))
+                        .map_err(|err| provider_failed("tensor_span_idx", err))?,
+                    "span_mask" => Tensor::from_array((Shape::new([1, usize_to_i64(span_mask.len())?]), span_mask))
+                        .map_err(|err| provider_failed("tensor_span_mask", err))?,
+                ])
+                .map_err(|err| provider_failed("run_inference", err))?;
+            let logits = outputs
+                .get("logits")
+                .ok_or_else(|| provider_failed("decode_logits", "missing logits output"))?;
+            let (shape, data) = logits
+                .try_extract_tensor::<f32>()
+                .map_err(|err| provider_failed("view_logits", err))?;
+            Ok::<_, BookkeepingError>((shape, data.to_vec()))
+        })
+        .await
+        .map_err(|err| provider_failed("spawn_blocking", err))??;
+
         decode_entities(
-            shape,
-            data,
-            &input.text_words,
-            &input.span_pairs,
+            &shape,
+            &data,
+            &text_words,
+            &span_pairs,
             self.config.threshold,
         )
     }
@@ -684,5 +708,11 @@ mod tests {
             .smoke_infer()
             .await
             .expect("staged GLiNER model should run synthetic inference");
+    }
+
+    #[test]
+    fn gliner_provider_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<GlinerExtractionProvider<'static>>();
     }
 }
