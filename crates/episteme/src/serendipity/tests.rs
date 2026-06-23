@@ -432,6 +432,24 @@ fn graph_snapshot_from_graph_context_populates_nodes_and_edges() {
 }
 
 #[test]
+fn community_novelty_scores_unassigned_above_same_community() {
+    let home = HashSet::from([0_i64]);
+
+    let cross = community_novelty(1, &home);
+    let unassigned = community_novelty(-1, &home);
+    let same = community_novelty(0, &home);
+
+    assert!(
+        cross > unassigned && unassigned > same,
+        "cross-community should be highest, unassigned above same-community floor"
+    );
+    assert!(
+        (same - 0.3).abs() < f64::EPSILON,
+        "same-community should keep the low floor"
+    );
+}
+
+#[test]
 fn graph_snapshot_from_graph_context_infers_missing_nodes_from_edges() {
     let mut ctx = GraphContext::default();
     ctx.pageranks.insert("rust".to_owned(), 0.8);

@@ -519,9 +519,19 @@ pub(crate) fn select_injection<S: ::std::hash::BuildHasher>(
 }
 
 /// Community novelty score: 1.0 if in a different community, 0.3 if same.
+///
+/// Unassigned nodes (`community < 0`, the Louvain sentinel) represent isolated
+/// or obscure entities that are high-novelty candidates for discovery, so they
+/// score above the confirmed same-community floor without reaching the full
+/// cross-community ceiling.
 fn community_novelty(community: i64, home_communities: &HashSet<i64>) -> f64 {
     if community >= 0 && !home_communities.contains(&community) {
         1.0
+    } else if community < 0 {
+        // WHY: Louvain unassigned sentinel (-1) represents isolated or obscure
+        // entities; these are the highest-novelty candidates after confirmed
+        // cross-community nodes and must not be scored as already-known.
+        0.7
     } else {
         0.3
     }
