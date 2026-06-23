@@ -495,9 +495,9 @@ fn provider_reachability_message(
             if health_status == "up" {
                 return None;
             }
-            detail["reason"].as_str().map(|reason| {
-                format!("{name} is {health_status} ({reason})")
-            })
+            detail["reason"]
+                .as_str()
+                .map(|reason| format!("{name} is {health_status} ({reason})"))
         })
         .collect();
 
@@ -1493,7 +1493,10 @@ mod tests {
         degrade_provider(&registry, "alpha");
         let check = provider_reachability_check(&registry, &HashSet::new());
         assert_eq!(check.status, "warn");
-        let message = check.message.as_deref().expect("message should describe degraded provider");
+        let message = check
+            .message
+            .as_deref()
+            .expect("message should describe degraded provider");
         assert!(message.contains("alpha") && message.contains("degraded"));
     }
 
@@ -1503,7 +1506,10 @@ mod tests {
         down_provider(&registry, "alpha");
         let check = provider_reachability_check(&registry, &HashSet::new());
         assert_eq!(check.status, "fail");
-        let message = check.message.as_deref().expect("message should describe down provider");
+        let message = check
+            .message
+            .as_deref()
+            .expect("message should describe down provider");
         assert!(message.contains("alpha") && message.contains("down"));
     }
 
