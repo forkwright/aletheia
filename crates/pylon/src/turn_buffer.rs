@@ -12,7 +12,8 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use tokio::time::Instant;
 
 use tokio::sync::futures::OwnedNotified;
 use tokio::sync::{Mutex, Notify};
@@ -38,6 +39,12 @@ pub(crate) struct BufferedEvent {
     pub event_type: String,
     /// Serialized JSON payload.
     pub data: String,
+}
+
+impl BufferedEvent {
+    fn new(seq: u64, event_type: String, data: String) -> Self {
+        Self { seq, event_type, data }
+    }
 }
 
 /// Result of recording an event into the replay buffer.
@@ -106,11 +113,7 @@ impl TurnBuffer {
 
         if self.events.len() < self.max_events_per_turn {
             self.next_seq += 1;
-            self.events.push(BufferedEvent {
-                seq,
-                event_type,
-                data,
-            });
+            self.events.push(BufferedEvent::new(seq, event_type, data));
             self.notify.notify_waiters();
             return RecordOutcome::Recorded { seq };
         }
@@ -120,17 +123,17 @@ impl TurnBuffer {
             .last()
             .map_or(0, |event| event.seq.saturating_sub(1));
         let retained_limit = self.max_events_per_turn;
-        let gap = BufferedEvent {
+        let gap = BufferedEvent::new(
             seq,
-            event_type: REPLAY_GAP_EVENT_TYPE.to_owned(),
-            data: serde_json::json!({
+            REPLAY_GAP_EVENT_TYPE.to_owned(),
+            serde_json::json!({
                 "type": REPLAY_GAP_EVENT_TYPE,
                 "reason": REPLAY_GAP_REASON_BUFFER_CAPACITY,
                 "dropped_after_seq": dropped_after_seq,
                 "retained_limit": retained_limit,
             })
             .to_string(),
-        };
+        );
         if !self.events.is_empty() {
             self.events.pop();
         }
@@ -172,6 +175,12 @@ pub(crate) struct TurnBufferSnapshot {
     pub events: Vec<BufferedEvent>,
     pub state: TurnState,
     pub notified: Pin<Box<OwnedNotified>>,
+}
+
+impl TurnBufferSnapshot {
+    fn new(events: Vec<BufferedEvent>, state: TurnState, notified: Pin<Box<OwnedNotified>>) -> Self {
+        Self { events, state, notified }
+    }
 }
 
 /// Key for looking up a turn buffer.
@@ -338,11 +347,7 @@ impl TurnBufferHandle {
         let buf = self.inner.lock().await;
         let mut notified = Box::pin(Arc::clone(&buf.notify).notified_owned());
         notified.as_mut().enable();
-        TurnBufferSnapshot {
-            events: buf.events_after(after_seq),
-            state: buf.state.clone(),
-            notified,
-        }
+        TurnBufferSnapshot::new(buf.events_after(after_seq), buf.state.clone(), notified)
     }
 }
 
@@ -485,7 +490,6 @@ mod tests {
 
         // Give the reaper a chance to reach the blocked inner lock await.
         tokio::task::yield_now().await;
-        tokio::time::sleep(Duration::from_millis(10)).await;
 
         let result = tokio::time::timeout(
             Duration::from_secs(1),
@@ -503,6 +507,7 @@ mod tests {
 
     #[tokio::test]
     async fn reap_removes_expired_buffers() {
+        tokio::time::pause();
         let registry =
             TurnBufferRegistry::with_limits(Duration::from_secs(0), DEFAULT_MAX_EVENTS_PER_TURN);
 
@@ -510,8 +515,7 @@ mod tests {
         let handle = TurnBufferHandle::new(buf);
         handle.mark_completed().await;
 
-        // Small delay so elapsed > 0
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::advance(Duration::from_millis(1)).await;
 
         registry.reap_expired().await;
         assert!(registry.get("ses-1", "turn-1").await.is_none());
