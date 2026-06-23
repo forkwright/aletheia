@@ -313,9 +313,8 @@ fn route_model_disabled_uses_configured_thresholds() {
     // Query must score 70 (between default high=70 and configured high=85) so
     // the old bug (default thresholds) would report Opus while the fix reports
     // Sonnet, and the score >= 50 assertion is satisfied.
-    let mut inp = input(
-        "analyze this complex codebase, investigate the root cause and then design a fix",
-    );
+    let mut inp =
+        input("analyze this complex codebase, investigate the root cause and then design a fix");
     inp.message_count = 5;
 
     let config = ComplexityConfig {
