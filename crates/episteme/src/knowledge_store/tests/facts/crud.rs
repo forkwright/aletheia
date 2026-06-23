@@ -54,7 +54,7 @@ fn query_killed_maps_to_typed_timeout() {
         KnowledgeStore::map_engine_err(engine_err, Some(std::time::Duration::from_millis(50)));
 
     assert!(
-        matches!(err, crate::error::Error::QueryTimeout { secs } if (secs - 0.05).abs() < f64::EPSILON),
+        matches!(err, crate::error::Error::QueryTimeout { secs, .. } if (secs - 0.05).abs() < f64::EPSILON),
         "QueryKilled should map to QueryTimeout with the configured duration"
     );
 }
@@ -65,7 +65,7 @@ fn query_killed_without_timeout_maps_to_zero_secs() {
     let err = KnowledgeStore::map_engine_err(engine_err, None);
 
     assert!(
-        matches!(err, crate::error::Error::QueryTimeout { secs } if secs == 0.0),
+        matches!(err, crate::error::Error::QueryTimeout { secs, .. } if secs == 0.0),
         "QueryKilled without a timeout should report 0.0s"
     );
 }
@@ -80,7 +80,7 @@ fn non_killed_engine_error_preserves_diagnostics() {
     let err = KnowledgeStore::map_engine_err(engine_err, Some(std::time::Duration::from_secs(1)));
 
     assert!(
-        matches!(err, crate::error::Error::EngineQuery { message: m } if m == message),
+        matches!(err, crate::error::Error::EngineQuery { message: m, .. } if m == message),
         "non-QueryKilled engine errors should stay EngineQuery and keep their message"
     );
 }
