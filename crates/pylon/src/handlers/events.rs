@@ -162,7 +162,7 @@ pub async fn subscribe(
 
     let last_event_id = parse_last_event_id(&headers, &params).unwrap_or(0);
     let (replay, has_gap, gap_first, gap_last, rx) = if last_event_id > 0 {
-        let (snapshot, rx) = state.event_bus.subscribe_from(last_event_id);
+        let (snapshot, rx) = state.event_bus.subscribe_from(last_event_id).await;
         if snapshot.has_gap {
             warn!(
                 subscriber_id = %subscriber_id,

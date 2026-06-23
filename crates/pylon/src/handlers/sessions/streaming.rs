@@ -509,11 +509,13 @@ pub async fn send_message(
                     .await;
                     buf_handle_task.mark_completed().await;
 
-                    event_bus.publish(crate::event_bus::DomainEvent::new(
-                        event_bus.next_id(),
-                        "turn.complete",
-                        turn_complete_event_payload(&sid, &session.nous_id, &turn_id, &result),
-                    ));
+                    event_bus
+                        .publish(crate::event_bus::DomainEvent::new(
+                            event_bus.next_id(),
+                            "turn.complete",
+                            turn_complete_event_payload(&sid, &session.nous_id, &turn_id, &result),
+                        ))
+                        .await;
 
                     // NOTE: Store the turn summary so cache-hit replays return real data.
                     if let Some(ref key) = idem_key {
@@ -898,11 +900,13 @@ pub async fn stream_turn(
                     }
                     buf_handle_task.mark_completed().await;
 
-                    event_bus.publish(crate::event_bus::DomainEvent::new(
-                        event_bus.next_id(),
-                        "turn.complete",
-                        turn_complete_event_payload(&sid, &aid, &turn_id, &result),
-                    ));
+                    event_bus
+                        .publish(crate::event_bus::DomainEvent::new(
+                            event_bus.next_id(),
+                            "turn.complete",
+                            turn_complete_event_payload(&sid, &aid, &turn_id, &result),
+                        ))
+                        .await;
                 }
                 Err(err) => {
                     // WHY: Log full error internally; span carries session/nous context (#844).

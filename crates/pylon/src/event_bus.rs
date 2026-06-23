@@ -11,8 +11,9 @@
 //! event rather than silently lost.
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use tokio::sync::Mutex;
 
 use tokio::sync::broadcast;
 
@@ -83,7 +84,7 @@ impl EventBus {
     /// If there are no active subscribers the event is dropped; a structured
     /// warning is logged and the `aletheia_event_bus_drops_total` counter is
     /// incremented so operators can detect persistent drop conditions.
-    pub fn publish(&self, event: DomainEvent) {
+    pub async fn publish(&self, event: DomainEvent) {
         if self.tx.receiver_count() == 0 {
             tracing::warn!(
                 topic = %event.topic,
@@ -93,10 +94,7 @@ impl EventBus {
             crate::metrics::record_event_bus_drop(&event.topic, "no_active_subscribers");
         }
         {
-            let mut journal = self
-                .journal
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut journal = self.journal.lock().await;
             if journal.len() >= self.journal_capacity {
                 journal.pop_front();
             }
@@ -122,14 +120,11 @@ impl EventBus {
     /// `last_id` is older than the oldest retained journal entry, `has_gap` is
     /// set and the caller must inject a typed `stream_gap` event before the
     /// replayed events.
-    pub(crate) fn subscribe_from(
+    pub(crate) async fn subscribe_from(
         &self,
         last_id: u64,
     ) -> (JournalSnapshot, broadcast::Receiver<DomainEvent>) {
-        let journal = self
-            .journal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let journal = self.journal.lock().await;
         let oldest_id = journal.front().map(|e| e.id);
         let newest_id = journal.back().map(|e| e.id);
 
@@ -165,8 +160,8 @@ impl EventBus {
 mod tests {
     use super::*;
 
-    #[test]
-    fn event_bus_publish_and_receive() {
+    #[tokio::test]
+    async fn event_bus_publish_and_receive() {
         let bus = EventBus::new(16);
         let id = bus.next_id();
         let mut rx = bus.subscribe();
@@ -175,7 +170,8 @@ mod tests {
             id,
             "test.topic",
             serde_json::json!({"k": 1}),
-        ));
+        ))
+        .await;
 
         let event = rx.try_recv().expect("should receive event");
         assert_eq!(event.id, id);
@@ -183,13 +179,14 @@ mod tests {
         assert_eq!(event.payload.get("k"), Some(&serde_json::json!(1)));
     }
 
-    #[test]
-    fn event_bus_no_subscriber_does_not_panic() {
+    #[tokio::test]
+    async fn event_bus_no_subscriber_does_not_panic() {
         let bus = EventBus::new(16);
         let id = bus.next_id();
-        bus.publish(DomainEvent::new(id, "test.topic", serde_json::json!({})));
+        bus.publish(DomainEvent::new(id, "test.topic", serde_json::json!({})))
+            .await;
         // Even with no live subscribers, the event is retained in the journal.
-        let (snapshot, _rx) = bus.subscribe_from(0);
+        let (snapshot, _rx) = bus.subscribe_from(0).await;
         assert_eq!(
             snapshot.replay.len(),
             1,
@@ -200,8 +197,8 @@ mod tests {
 
     /// Verify that a lagging subscriber receives `RecvError::Lagged` when the channel
     /// fills up, proving that slow/disconnected subscribers are handled gracefully.
-    #[test]
-    fn lagging_subscriber_gets_lagged_error() {
+    #[tokio::test]
+    async fn lagging_subscriber_gets_lagged_error() {
         let bus = EventBus::new(2); // tiny capacity to force lag
         let mut rx = bus.subscribe();
 
@@ -212,7 +209,8 @@ mod tests {
                 id,
                 "lag.topic",
                 serde_json::json!({"i": i}),
-            ));
+            ))
+            .await;
         }
 
         // The receiver should report a lag (skipped messages) on next recv.
@@ -228,32 +226,37 @@ mod tests {
         }
     }
 
-    #[test]
-    fn subscribe_from_replays_missed_events() {
+    #[tokio::test]
+    async fn subscribe_from_replays_missed_events() {
         let bus = EventBus::new(16);
         let id1 = bus.next_id();
-        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)));
+        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)))
+            .await;
         let id2 = bus.next_id();
-        bus.publish(DomainEvent::new(id2, "t", serde_json::json!(2)));
+        bus.publish(DomainEvent::new(id2, "t", serde_json::json!(2)))
+            .await;
 
-        let (snapshot, _rx) = bus.subscribe_from(id1);
+        let (snapshot, _rx) = bus.subscribe_from(id1).await;
         assert_eq!(snapshot.replay.len(), 1);
         assert_eq!(snapshot.replay[0].id, id2);
         assert!(!snapshot.has_gap);
     }
 
-    #[test]
-    fn subscribe_from_reports_gap_when_last_id_too_old() {
+    #[tokio::test]
+    async fn subscribe_from_reports_gap_when_last_id_too_old() {
         let bus = EventBus::new(2);
         // Fill the journal so that id1 is evicted.
         let id1 = bus.next_id();
-        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)));
+        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)))
+            .await;
         let id2 = bus.next_id();
-        bus.publish(DomainEvent::new(id2, "t", serde_json::json!(2)));
+        bus.publish(DomainEvent::new(id2, "t", serde_json::json!(2)))
+            .await;
         let id3 = bus.next_id();
-        bus.publish(DomainEvent::new(id3, "t", serde_json::json!(3)));
+        bus.publish(DomainEvent::new(id3, "t", serde_json::json!(3)))
+            .await;
 
-        let (snapshot, _rx) = bus.subscribe_from(id1);
+        let (snapshot, _rx) = bus.subscribe_from(id1).await;
         assert!(snapshot.has_gap);
         assert_eq!(snapshot.gap_first_missed_id, id2);
         assert_eq!(snapshot.gap_last_missed_id, id2);
@@ -262,15 +265,17 @@ mod tests {
         assert_eq!(snapshot.replay[1].id, id3);
     }
 
-    #[test]
-    fn subscribe_from_zero_replays_all() {
+    #[tokio::test]
+    async fn subscribe_from_zero_replays_all() {
         let bus = EventBus::new(8);
         let id1 = bus.next_id();
-        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)));
+        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)))
+            .await;
         let id2 = bus.next_id();
-        bus.publish(DomainEvent::new(id2, "t", serde_json::json!(2)));
+        bus.publish(DomainEvent::new(id2, "t", serde_json::json!(2)))
+            .await;
 
-        let (snapshot, _rx) = bus.subscribe_from(0);
+        let (snapshot, _rx) = bus.subscribe_from(0).await;
         assert_eq!(snapshot.replay.len(), 2);
         assert_eq!(snapshot.replay[0].id, id1);
         assert_eq!(snapshot.replay[1].id, id2);

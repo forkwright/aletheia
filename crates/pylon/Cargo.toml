@@ -18,11 +18,6 @@ test-full = ["test-core"]
 [lints]
 workspace = true
 
-[package.metadata.kanon]
-maturity = "stable"
-since = "2024-01-01"
-exit-criteria = "n/a — production gateway"
-
 [dependencies]
 # HTTP framework
 axum = { workspace = true }
@@ -81,6 +76,11 @@ mneme = { path = "../mneme" }
 nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
 dianoia = { path = "../dianoia" }
+
+[package.metadata.kanon]
+maturity = "production"
+since = "2024-01-01"
+exit-criteria = "n/a — production gateway"
 
 [dev-dependencies]
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }

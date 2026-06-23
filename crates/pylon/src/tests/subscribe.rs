@@ -36,11 +36,14 @@ async fn subscribe_returns_matching_events() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = resp.into_body();
 
-    state.event_bus.publish(DomainEvent::new(
-        state.event_bus.next_id(),
-        "fact.created",
-        serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
-    ));
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "fact.created",
+            serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
+        ))
+        .await;
 
     let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
     let text = String::from_utf8_lossy(&bytes);
@@ -61,11 +64,14 @@ async fn subscribe_includes_event_id_and_timestamp() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = resp.into_body();
 
-    state.event_bus.publish(DomainEvent::new(
-        state.event_bus.next_id(),
-        "fact.created",
-        serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
-    ));
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "fact.created",
+            serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
+        ))
+        .await;
 
     let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
     let text = String::from_utf8_lossy(&bytes);
@@ -90,11 +96,14 @@ async fn subscribe_filters_unwanted_topics() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = resp.into_body();
 
-    state.event_bus.publish(DomainEvent::new(
-        state.event_bus.next_id(),
-        "fact.created",
-        serde_json::json!({"fact_id": "f-2", "nous_id": "syn"}),
-    ));
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "fact.created",
+            serde_json::json!({"fact_id": "f-2", "nous_id": "syn"}),
+        ))
+        .await;
 
     let bytes = collect_sse_chunks(body, Duration::from_secs(1)).await;
     let text = String::from_utf8_lossy(&bytes);
@@ -184,11 +193,14 @@ async fn subscribe_surfaces_lag_as_sse_control_event() {
     // must be informed that messages were dropped, rather than silently
     // skipping them.
     for i in 0..257 {
-        state.event_bus.publish(DomainEvent::new(
-            state.event_bus.next_id(),
-            "fact.created",
-            serde_json::json!({"fact_id": format!("f-{i}")}),
-        ));
+        state
+            .event_bus
+            .publish(DomainEvent::new(
+                state.event_bus.next_id(),
+                "fact.created",
+                serde_json::json!({"fact_id": format!("f-{i}")}),
+            ))
+            .await;
     }
 
     let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
@@ -209,16 +221,22 @@ async fn subscribe_replays_from_last_event_id() {
     let router = build_router(Arc::clone(&state), &test_security_config());
 
     // Publish two events before subscribing.
-    state.event_bus.publish(DomainEvent::new(
-        state.event_bus.next_id(),
-        "fact.created",
-        serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
-    ));
-    state.event_bus.publish(DomainEvent::new(
-        state.event_bus.next_id(),
-        "fact.created",
-        serde_json::json!({"fact_id": "f-2", "nous_id": "syn"}),
-    ));
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "fact.created",
+            serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
+        ))
+        .await;
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "fact.created",
+            serde_json::json!({"fact_id": "f-2", "nous_id": "syn"}),
+        ))
+        .await;
 
     // Reconnect after event id 1: only event 2 should be replayed.
     let req = authed_get("/api/v1/events/subscribe?topics=fact.created&last_event_id=1");
@@ -246,11 +264,14 @@ async fn subscribe_reports_gap_for_too_old_last_event_id() {
     // WHY: The test EventBus has capacity 256. Publish 258 events so the
     // journal evicts id 1 and 2, making last_event_id=1 unrecoverable.
     for i in 0..258 {
-        state.event_bus.publish(DomainEvent::new(
-            state.event_bus.next_id(),
-            "fact.created",
-            serde_json::json!({"fact_id": format!("f-{i}")}),
-        ));
+        state
+            .event_bus
+            .publish(DomainEvent::new(
+                state.event_bus.next_id(),
+                "fact.created",
+                serde_json::json!({"fact_id": format!("f-{i}")}),
+            ))
+            .await;
     }
 
     let req = authed_get("/api/v1/events/subscribe?topics=fact.created&last_event_id=1");

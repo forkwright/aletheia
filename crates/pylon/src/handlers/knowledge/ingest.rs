@@ -97,15 +97,17 @@ pub async fn ingest(
                 match store.insert_fact(fact) {
                     Ok(()) => {
                         inserted += 1;
-                        event_bus.publish(crate::event_bus::DomainEvent::new(
-                            event_bus.next_id(),
-                            "fact.created",
-                            serde_json::json!({
-                                "fact_id": fact.id.as_str(),
-                                "nous_id": fact.nous_id.as_str(),
-                                "content_preview": truncate(&fact.content, 200),
-                            }),
-                        ));
+                        event_bus
+                            .publish(crate::event_bus::DomainEvent::new(
+                                event_bus.next_id(),
+                                "fact.created",
+                                serde_json::json!({
+                                    "fact_id": fact.id.as_str(),
+                                    "nous_id": fact.nous_id.as_str(),
+                                    "content_preview": truncate(&fact.content, 200),
+                                }),
+                            ))
+                            .await;
                     }
                     Err(e) => {
                         errors.push(IngestFactError {
