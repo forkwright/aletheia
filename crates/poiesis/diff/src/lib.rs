@@ -39,7 +39,13 @@ impl CellDiff {
         before: Option<String>,
         after: Option<String>,
     ) -> Self {
-        Self { sheet: sheet.into(), row, col, before, after }
+        Self {
+            sheet: sheet.into(),
+            row,
+            col,
+            before,
+            after,
+        }
     }
 }
 
@@ -60,7 +66,11 @@ pub struct SlideDiff {
 impl SlideDiff {
     /// Construct a new slide diff entry.
     pub fn new(slide_index: usize, before: Option<String>, after: Option<String>) -> Self {
-        Self { slide_index, before, after }
+        Self {
+            slide_index,
+            before,
+            after,
+        }
     }
 }
 
