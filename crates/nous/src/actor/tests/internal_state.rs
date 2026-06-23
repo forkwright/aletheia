@@ -191,10 +191,10 @@ fn record_background_panic_below_threshold_does_not_degrade_background_health() 
         "background panics must not enter pipeline degraded mode"
     );
     assert_eq!(actor.runtime.background_panic_count, 4);
-    assert_eq!(actor.runtime.background_failure_total_count, 4);
-    assert_eq!(actor.runtime.background_failure_timestamps.len(), 4);
+    assert_eq!(actor.runtime.background_failure.total_count, 4);
+    assert_eq!(actor.runtime.background_failure.timestamps.len(), 4);
     assert_eq!(
-        actor.runtime.background_failure_latest_kind.as_deref(),
+        actor.runtime.background_failure.latest_kind.as_deref(),
         Some("panic")
     );
 
@@ -222,13 +222,14 @@ fn record_background_panic_at_threshold_marks_background_health_degraded() {
         "background panics must not enter pipeline degraded mode"
     );
     assert_eq!(actor.runtime.background_panic_count, 5);
-    assert_eq!(actor.runtime.background_failure_total_count, 5);
-    assert_eq!(actor.runtime.background_failure_timestamps.len(), 5);
+    assert_eq!(actor.runtime.background_failure.total_count, 5);
+    assert_eq!(actor.runtime.background_failure.timestamps.len(), 5);
 
     let degraded_window = Duration::from_secs(actor.nous_behavior.degraded_window_secs);
     let recent = actor
         .runtime
-        .background_failure_timestamps
+        .background_failure
+        .timestamps
         .iter()
         .filter(|t| t.elapsed() <= degraded_window)
         .count();
@@ -514,7 +515,7 @@ impl LlmProvider for HangingProvider {
         &["test-model"]
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "hanging-provider"
     }
 }
@@ -522,7 +523,9 @@ impl LlmProvider for HangingProvider {
 #[tokio::test]
 async fn cancelled_turn_reverts_turn_counter() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
-    actor.services.providers.register(Box::new(HangingProvider));
+    Arc::get_mut(&mut actor.services.providers)
+        .expect("exclusive Arc reference expected in test")
+        .register(Box::new(HangingProvider));
 
     let session_key = "cancel-test";
     let turn_cancel = CancellationToken::new();

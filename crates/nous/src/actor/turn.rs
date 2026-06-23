@@ -297,7 +297,7 @@ impl NousActor {
         clippy::too_many_arguments,
         reason = "pipeline spawn plumbs session, content, stream, gate, span, and cancel; splitting hides the call shape"
     )]
-    async fn spawn_pipeline_task(
+    pub(super) async fn spawn_pipeline_task(
         &mut self,
         session_key: &str,
         db_session_id: Option<&str>,
