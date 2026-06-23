@@ -37,6 +37,7 @@ async fn subscribe_returns_matching_events() {
     let body = resp.into_body();
 
     state.event_bus.publish(DomainEvent::new(
+        state.event_bus.next_id(),
         "fact.created",
         serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
     ));
@@ -51,6 +52,38 @@ async fn subscribe_returns_matching_events() {
 }
 
 #[tokio::test]
+async fn subscribe_includes_event_id_and_timestamp() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events/subscribe?topics=fact.created");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    state.event_bus.publish(DomainEvent::new(
+        state.event_bus.next_id(),
+        "fact.created",
+        serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
+    ));
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("id: 1"),
+        "expected SSE id field, got: {text}"
+    );
+    assert!(
+        text.contains("\"at\":"),
+        "expected event timestamp in payload, got: {text}"
+    );
+    assert!(
+        text.contains("\"id\":1"),
+        "expected event id in payload, got: {text}"
+    );
+}
+
+#[tokio::test]
 async fn subscribe_filters_unwanted_topics() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
@@ -61,6 +94,7 @@ async fn subscribe_filters_unwanted_topics() {
     let body = resp.into_body();
 
     state.event_bus.publish(DomainEvent::new(
+        state.event_bus.next_id(),
         "fact.created",
         serde_json::json!({"fact_id": "f-2", "nous_id": "syn"}),
     ));
@@ -154,6 +188,7 @@ async fn subscribe_surfaces_lag_as_sse_control_event() {
     // skipping them.
     for i in 0..257 {
         state.event_bus.publish(DomainEvent::new(
+            state.event_bus.next_id(),
             "fact.created",
             serde_json::json!({"fact_id": format!("f-{i}")}),
         ));
@@ -168,5 +203,72 @@ async fn subscribe_surfaces_lag_as_sse_control_event() {
     assert!(
         text.contains("dropped"),
         "expected dropped count in lag payload, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn subscribe_replays_from_last_event_id() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    // Publish two events before subscribing.
+    state.event_bus.publish(DomainEvent::new(
+        state.event_bus.next_id(),
+        "fact.created",
+        serde_json::json!({"fact_id": "f-1", "nous_id": "syn"}),
+    ));
+    state.event_bus.publish(DomainEvent::new(
+        state.event_bus.next_id(),
+        "fact.created",
+        serde_json::json!({"fact_id": "f-2", "nous_id": "syn"}),
+    ));
+
+    // Reconnect after event id 1: only event 2 should be replayed.
+    let req = authed_get("/api/v1/events/subscribe?topics=fact.created&last_event_id=1");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("\"fact_id\":\"f-2\""),
+        "expected replay of event 2, got: {text}"
+    );
+    assert!(
+        !text.contains("\"fact_id\":\"f-1\""),
+        "event 1 should not be replayed, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn subscribe_reports_gap_for_too_old_last_event_id() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    // WHY: The test EventBus has capacity 256. Publish 258 events so the
+    // journal evicts id 1 and 2, making last_event_id=1 unrecoverable.
+    for i in 0..258 {
+        state.event_bus.publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "fact.created",
+            serde_json::json!({"fact_id": format!("f-{i}")}),
+        ));
+    }
+
+    let req = authed_get("/api/v1/events/subscribe?topics=fact.created&last_event_id=1");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: stream_gap"),
+        "expected stream_gap control event, got: {text}"
+    );
+    assert!(
+        text.contains("first_missed_id"),
+        "expected gap metadata, got: {text}"
     );
 }

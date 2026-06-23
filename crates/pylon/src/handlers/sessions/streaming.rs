@@ -510,6 +510,7 @@ pub async fn send_message(
                     buf_handle_task.mark_completed().await;
 
                     event_bus.publish(crate::event_bus::DomainEvent::new(
+                        event_bus.next_id(),
                         "turn.complete",
                         turn_complete_event_payload(&sid, &session.nous_id, &turn_id, &result),
                     ));
@@ -898,6 +899,7 @@ pub async fn stream_turn(
                     buf_handle_task.mark_completed().await;
 
                     event_bus.publish(crate::event_bus::DomainEvent::new(
+                        event_bus.next_id(),
                         "turn.complete",
                         turn_complete_event_payload(&sid, &aid, &turn_id, &result),
                     ));

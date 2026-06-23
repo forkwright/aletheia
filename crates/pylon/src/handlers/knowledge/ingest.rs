@@ -98,6 +98,7 @@ pub async fn ingest(
                     Ok(()) => {
                         inserted += 1;
                         event_bus.publish(crate::event_bus::DomainEvent::new(
+                            event_bus.next_id(),
                             "fact.created",
                             serde_json::json!({
                                 "fact_id": fact.id.as_str(),
