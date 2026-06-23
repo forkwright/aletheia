@@ -492,12 +492,16 @@ fn score_complexity_for_config(
     config: &ComplexityConfig,
 ) -> ComplexityScore {
     let mut complexity = score_complexity(input);
-    complexity.tier = tier_from_score(
-        complexity.score,
-        config.no_llm_threshold,
-        config.low_threshold,
-        config.high_threshold,
-    );
+    // WHY: agent-level tier overrides are sticky and must dominate operator
+    // thresholds. Re-applying thresholds would silently demote the override.
+    if input.tier_override.is_none() {
+        complexity.tier = tier_from_score(
+            complexity.score,
+            config.no_llm_threshold,
+            config.low_threshold,
+            config.high_threshold,
+        );
+    }
     complexity
 }
 
