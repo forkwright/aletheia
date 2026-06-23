@@ -32,6 +32,7 @@ use crate::session::SessionState;
 mod background;
 mod spawn;
 mod turn;
+mod turn_quality;
 
 pub(crate) use spawn::{spawn, validate_workspace};
 
