@@ -14,7 +14,7 @@ Anthropic LLM client with streaming, retries, fallback, health tracking, and cos
 2. `src/provider.rs`: LlmProvider trait, ProviderRegistry, ModelPricing
 3. `src/anthropic/client.rs`: AnthropicProvider (HTTP client, retries, streaming)
 4. `src/error.rs`: Error variants and `is_retryable()` classification
-5. `src/health.rs`: ProviderHealth state machine (Up/Degraded/Down)
+5. `src/health.rs`: ProviderHealth state machine (Up/Degraded/Down/Probing)
 
 ## Key types
 
@@ -31,7 +31,7 @@ Anthropic LLM client with streaming, retries, fallback, health tracking, and cos
 ## Patterns
 
 - **Retry + backoff**: exponential (1s base, 2x factor, 30s max), 3 retries default. Jitter ±25%.
-- **Health circuit breaker**: 5 consecutive errors -> Down. 60s cooldown. AuthFailure never auto-recovers.
+- **Health circuit breaker**: 5 consecutive errors -> Down. Cooldown -> single-flight `Probing` probe. AuthFailure never auto-recovers.
 - **Streaming**: SSE parser emits StreamEvent. Retry-safe only before first event (mid-stream propagates).
 - **Prompt caching**: `cache_system`, `cache_tools`, `cache_turns` flags inject `cache_control: ephemeral`.
 - **OAuth auth**: `Bearer` + `anthropic-beta: oauth-2025-04-20`. API key auth: `x-api-key` header.
