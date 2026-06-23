@@ -307,6 +307,35 @@ fn route_model_disabled_returns_sonnet() {
 }
 
 #[test]
+fn route_model_disabled_uses_configured_thresholds() {
+    // WHY(#5834): when routing is disabled, the complexity diagnostic must
+    // still reflect operator-configured thresholds, not compile-time defaults.
+    let mut inp = input("analyze this code and investigate the failing tests");
+    inp.message_count = 5;
+
+    let config = ComplexityConfig {
+        enabled: false,
+        low_threshold: 50,
+        high_threshold: 85,
+        ..Default::default()
+    };
+
+    let decision = route_model(&inp, &config);
+    assert_eq!(decision.model, names::sonnet());
+    assert!(
+        decision.complexity.tier != ModelTier::Opus || decision.complexity.score >= 85,
+        "disabled-path tier must be consistent with configured high_threshold: {:?} score={}",
+        decision.complexity.tier,
+        decision.complexity.score
+    );
+    assert!(
+        decision.complexity.score >= 50,
+        "same query should score above custom low_threshold: {}",
+        decision.complexity.score
+    );
+}
+
+#[test]
 fn route_model_simple_query_routes_haiku() {
     let config = ComplexityConfig {
         enabled: true,
