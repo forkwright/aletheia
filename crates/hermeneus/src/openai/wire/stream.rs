@@ -3,9 +3,9 @@
 //! Accumulates `data: {chunk}` SSE lines (terminated by `[DONE]`) into a
 //! [`CompletionResponse`] while emitting [`StreamEvent`]s for live UI.
 
-use std::collections::BTreeMap;
 use reqwest::Response;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
