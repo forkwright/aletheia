@@ -716,7 +716,6 @@ diff --git a/Cargo.toml b/Cargo.toml
         };
 
         let lesson = extract_lessons(PR_DIFF, &config);
-
         for edge in &lesson.causal_edges {
             assert!(
                 edge.cause_index < lesson.facts.len(),
