@@ -194,12 +194,8 @@ pub(super) async fn run_recall_stage(
     emitter: &EventEmitter,
     surprise_calc: Option<mneme::surprise::SurpriseCalculator>,
 ) -> error::Result<()> {
-    // WHY (#3404, #3413): resolve the active provider's deployment target
-    // so the sovereignty filter in `finalize_results` can drop facts whose
-    // sensitivity exceeds what the provider is allowed to receive. When no
-    // provider is registered for the configured model, default to `Cloud`
-    // (`Public`-only recall) rather than leaking `Internal` / `Confidential`
-    // facts.
+    // WHY(#3404, #3413): resolve deployment target so the sovereignty filter drops facts the provider
+    // cannot receive; unregistered models default to Cloud (Public-only) rather than leaking Internal data.
     let deployment_target = providers
         .find_provider(&config.generation.model)
         .map_or(hermeneus::provider::DeploymentTarget::Cloud, |p| {
@@ -212,11 +208,8 @@ pub(super) async fn run_recall_stage(
         status = tracing::field::Empty
     );
     let start = Instant::now();
-    // WHY (#3380): BM25-only fallback applies to both:
-    //   - "mock-embedding"     (hash-based, would yield meaningless vector recall)
-    //   - "degraded-embedding" (real provider failed to load at startup — the
-    //                           server runs in degraded mode rather than crashing)
-    // Treat both the same way at the pipeline level: skip vector recall, keep BM25.
+    // WHY(#3380): both "mock-embedding" (hash-based) and "degraded-embedding" (startup failure) produce
+    // meaningless vector results; skip to BM25-only at the pipeline level for both cases.
     let bm25_only = embedding_provider.is_some_and(|ep| {
         let name = ep.model_name();
         name == "mock-embedding" || name == mneme::embedding::DegradedEmbeddingProvider::MODEL_NAME
@@ -786,10 +779,8 @@ pub(super) async fn run_execute_stage(
         execute_fut.await
     };
 
-    // WHY: transient LLM errors (rate limit, 5xx, timeout) must not surface as hard errors.
-    // The nous should degrade gracefully — returning cached distillation context or an honest
-    // "unavailable" message — so the user is never left with a raw error response. Non-transient
-    // errors (auth failure, config, panic) propagate normally because they require operator action.
+    // WHY: transient LLM errors (rate limit, 5xx, timeout) must degrade gracefully to cached context or an
+    // unavailable message; non-transient errors (auth, config, panic) propagate for operator action.
     let result = match execute_result {
         Ok(turn_result) => turn_result,
         Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
