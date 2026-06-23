@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::memory::{EntityListStore, FlagSeverity};
+use crate::state::toasts::{ToastSeverity, ToastStore};
 
 const OVERLAY_STYLE: &str = "\
     position: fixed; \
@@ -283,14 +284,30 @@ pub(crate) fn MergeDialog(
                                     match client.post(&url).json(&body).send().await {
                                         Ok(resp) if resp.status().is_success() => {
                                             tracing::info!("merged entities: {primary} <- {secondary_id}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Info, "Entities merged");
+                                            }
                                             on_merged.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "merge failed");
+                                            let status = resp.status();
+                                            let detail = resp.text().await.unwrap_or_default();
+                                            tracing::warn!(status = %status, "merge failed");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                let message = if detail.is_empty() {
+                                                    format!("Merge failed: {status}")
+                                                } else {
+                                                    format!("Merge failed: {status} — {detail}")
+                                                };
+                                                ts.write().push(ToastSeverity::Error, message);
+                                            }
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
                                             tracing::warn!("merge error: {e}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Error, format!("Merge error: {e}"));
+                                            }
                                             is_submitting.set(false);
                                         }
                                     }
@@ -408,14 +425,30 @@ pub(crate) fn FlagDialog(
                                     match client.post(&url).json(&body).send().await {
                                         Ok(resp) if resp.status().is_success() => {
                                             tracing::info!("flagged entity {id}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Info, "Entity flagged for review");
+                                            }
                                             on_flagged.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "flag failed");
+                                            let status = resp.status();
+                                            let detail = resp.text().await.unwrap_or_default();
+                                            tracing::warn!(status = %status, "flag failed");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                let message = if detail.is_empty() {
+                                                    format!("Flag failed: {status}")
+                                                } else {
+                                                    format!("Flag failed: {status} — {detail}")
+                                                };
+                                                ts.write().push(ToastSeverity::Error, message);
+                                            }
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
                                             tracing::warn!("flag error: {e}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Error, format!("Flag error: {e}"));
+                                            }
                                             is_submitting.set(false);
                                         }
                                     }
@@ -496,14 +529,30 @@ pub(crate) fn DeleteDialog(
                                     match client.delete(&url).send().await {
                                         Ok(resp) if resp.status().is_success() => {
                                             tracing::info!("deleted entity {id}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Info, "Entity deleted");
+                                            }
                                             on_deleted.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "delete failed");
+                                            let status = resp.status();
+                                            let detail = resp.text().await.unwrap_or_default();
+                                            tracing::warn!(status = %status, "delete failed");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                let message = if detail.is_empty() {
+                                                    format!("Delete failed: {status}")
+                                                } else {
+                                                    format!("Delete failed: {status} — {detail}")
+                                                };
+                                                ts.write().push(ToastSeverity::Error, message);
+                                            }
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
                                             tracing::warn!("delete error: {e}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Error, format!("Delete error: {e}"));
+                                            }
                                             is_submitting.set(false);
                                         }
                                     }

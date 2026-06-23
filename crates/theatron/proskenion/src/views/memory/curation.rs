@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::memory::FactSensitivity;
+use crate::state::toasts::{ToastSeverity, ToastStore};
 
 const OVERLAY_STYLE: &str = "\
     position: fixed; \
@@ -176,14 +177,30 @@ pub(crate) fn ForgetFactDialog(
                                     {
                                         Ok(resp) if resp.status().is_success() => {
                                             tracing::info!(fact_id = %id, "fact forgotten");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Info, "Fact forgotten");
+                                            }
                                             on_done.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "forget failed");
+                                            let status = resp.status();
+                                            let detail = resp.text().await.unwrap_or_default();
+                                            tracing::warn!(status = %status, "forget failed");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                let message = if detail.is_empty() {
+                                                    format!("Forget failed: {status}")
+                                                } else {
+                                                    format!("Forget failed: {status} — {detail}")
+                                                };
+                                                ts.write().push(ToastSeverity::Error, message);
+                                            }
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
                                             tracing::warn!("forget error: {e}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Error, format!("Forget error: {e}"));
+                                            }
                                             is_submitting.set(false);
                                         }
                                     }
@@ -248,14 +265,30 @@ pub(crate) fn RestoreFactDialog(
                                     match client.post(&url).send().await {
                                         Ok(resp) if resp.status().is_success() => {
                                             tracing::info!(fact_id = %id, "fact restored");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Info, "Fact restored");
+                                            }
                                             on_done.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "restore failed");
+                                            let status = resp.status();
+                                            let detail = resp.text().await.unwrap_or_default();
+                                            tracing::warn!(status = %status, "restore failed");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                let message = if detail.is_empty() {
+                                                    format!("Restore failed: {status}")
+                                                } else {
+                                                    format!("Restore failed: {status} — {detail}")
+                                                };
+                                                ts.write().push(ToastSeverity::Error, message);
+                                            }
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
                                             tracing::warn!("restore error: {e}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Error, format!("Restore error: {e}"));
+                                            }
                                             is_submitting.set(false);
                                         }
                                     }
@@ -352,14 +385,30 @@ pub(crate) fn AdjustConfidenceDialog(
                                     {
                                         Ok(resp) if resp.status().is_success() => {
                                             tracing::info!(fact_id = %id, confidence = conf, "confidence updated");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Info, "Confidence updated");
+                                            }
                                             on_done.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "confidence update failed");
+                                            let status = resp.status();
+                                            let detail = resp.text().await.unwrap_or_default();
+                                            tracing::warn!(status = %status, "confidence update failed");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                let message = if detail.is_empty() {
+                                                    format!("Confidence update failed: {status}")
+                                                } else {
+                                                    format!("Confidence update failed: {status} — {detail}")
+                                                };
+                                                ts.write().push(ToastSeverity::Error, message);
+                                            }
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
                                             tracing::warn!("confidence update error: {e}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Error, format!("Confidence update error: {e}"));
+                                            }
                                             is_submitting.set(false);
                                         }
                                     }
@@ -447,14 +496,30 @@ pub(crate) fn ChangeSensitivityDialog(
                                     {
                                         Ok(resp) if resp.status().is_success() => {
                                             tracing::info!(fact_id = %id, sensitivity = sens.wire(), "sensitivity updated");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Info, "Sensitivity updated");
+                                            }
                                             on_done.call(());
                                         }
                                         Ok(resp) => {
-                                            tracing::warn!(status = %resp.status(), "sensitivity update failed");
+                                            let status = resp.status();
+                                            let detail = resp.text().await.unwrap_or_default();
+                                            tracing::warn!(status = %status, "sensitivity update failed");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                let message = if detail.is_empty() {
+                                                    format!("Sensitivity update failed: {status}")
+                                                } else {
+                                                    format!("Sensitivity update failed: {status} — {detail}")
+                                                };
+                                                ts.write().push(ToastSeverity::Error, message);
+                                            }
                                             is_submitting.set(false);
                                         }
                                         Err(e) => {
                                             tracing::warn!("sensitivity update error: {e}");
+                                            if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                                                ts.write().push(ToastSeverity::Error, format!("Sensitivity update error: {e}"));
+                                            }
                                             is_submitting.set(false);
                                         }
                                     }
