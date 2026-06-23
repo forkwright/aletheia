@@ -1623,11 +1623,12 @@ mod tests {
             parse_optional_scope(Some(&DataValue::Str("bogus-scope".into()))).is_err(),
             "present-but-undecodable scope must error, not widen to global"
         );
+        let scope = parse_optional_scope(Some(&DataValue::Str(
+            crate::knowledge::MemoryScope::Project.as_str().into(),
+        )))
+        .expect("valid scope round-trips");
         assert_eq!(
-            parse_optional_scope(Some(&DataValue::Str(
-                crate::knowledge::MemoryScope::Project.as_str().into()
-            )))
-            .expect("valid scope ok"),
+            scope,
             Some(crate::knowledge::MemoryScope::Project),
             "decoded scope must round-trip to Project"
         );
