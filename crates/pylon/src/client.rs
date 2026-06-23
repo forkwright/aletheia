@@ -325,14 +325,9 @@ impl GatewayClient {
             let encoded = keryx::url::encode_path_segment(id);
             url = format!("{url}?nous_id={encoded}");
         }
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .context(RequestSnafu {
-                operation: "list sessions",
-            })?;
+        let resp = self.client.get(url).send().await.context(RequestSnafu {
+            operation: "list sessions",
+        })?;
         let resp = Self::check_status(resp, "list sessions").await?;
         resp.json().await.context(DecodeSnafu)
     }
@@ -384,7 +379,11 @@ impl GatewayClient {
     }
 }
 
-fn parse_error_body(text: &str, status: StatusCode, operation: &str) -> (String, String, Option<String>) {
+fn parse_error_body(
+    text: &str,
+    status: StatusCode,
+    operation: &str,
+) -> (String, String, Option<String>) {
     if let Ok(envelope) = serde_json::from_str::<PylonErrorEnvelope>(text) {
         (
             envelope.error.code,
@@ -438,7 +437,8 @@ mod tests {
 
     #[test]
     fn parse_error_body_prefers_json_envelope() {
-        let text = r#"{"error":{"code":"session_not_found","message":"missing","request_id":"req-1"}}"#;
+        let text =
+            r#"{"error":{"code":"session_not_found","message":"missing","request_id":"req-1"}}"#;
         let (code, message, request_id) = parse_error_body(text, StatusCode::NOT_FOUND, "test");
         assert_eq!(code, "session_not_found");
         assert_eq!(message, "missing");
@@ -447,7 +447,8 @@ mod tests {
 
     #[test]
     fn parse_error_body_falls_back_to_status_text() {
-        let (code, message, request_id) = parse_error_body("plain text", StatusCode::BAD_GATEWAY, "test-op");
+        let (code, message, request_id) =
+            parse_error_body("plain text", StatusCode::BAD_GATEWAY, "test-op");
         assert_eq!(code, "bad_gateway");
         assert!(message.contains("test-op"));
         assert!(message.contains("plain text"));

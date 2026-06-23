@@ -4,10 +4,10 @@
 
 /// Per-turn approval-decision sender registry (#3958, ADR-005).
 pub mod approval_registry;
-/// Service discovery file writer (Tailscale IP + file-based announcement).
-pub mod discovery;
 /// Typed HTTP client for first-party gateway consumers.
 pub mod client;
+/// Service discovery file writer (Tailscale IP + file-based announcement).
+pub mod discovery;
 /// API error types with Axum HTTP status code mapping.
 pub(crate) mod error;
 /// In-process broadcast bus for domain events.
