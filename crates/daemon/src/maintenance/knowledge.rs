@@ -4,8 +4,9 @@
 //! where concrete types (`KnowledgeStore`) are available. All methods are
 //! blocking: the runner wraps calls in `spawn_blocking`.
 
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 
 /// Discrete outcome for a knowledge maintenance task.
 ///
@@ -13,6 +14,7 @@ use std::time::Duration;
 /// the runner: complete success, completed with non-fatal errors (degraded),
 /// or an unrecoverable failure.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum MaintenanceOutcome {
     /// No errors were reported; the task completed cleanly.
     #[default]
@@ -102,6 +104,7 @@ pub trait KnowledgeMaintenanceExecutor: Send + Sync {
 
 /// Policy for derived-rule materialization (#4662).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DerivedMaterializationPolicy {
     /// Eagerly refresh derived facts as part of the scheduled daemon task.
     /// This is the production default: derived results are materialized in

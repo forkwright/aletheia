@@ -29,6 +29,16 @@ pub struct ApprovalDecision {
     pub choice: ApprovalChoice,
 }
 
+impl ApprovalDecision {
+    /// Construct a decision for the given tool call ID and choice.
+    pub fn new(tool_id: impl Into<String>, choice: ApprovalChoice) -> Self {
+        Self {
+            tool_id: tool_id.into(),
+            choice,
+        }
+    }
+}
+
 /// Operator choice for a tool approval request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]

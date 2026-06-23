@@ -398,8 +398,6 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use super::*;
-
     use std::collections::BTreeMap;
 
     use mneme::engine::DataValue;
@@ -408,6 +406,8 @@ mod tests {
         EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
         FactTemporal, Visibility, far_future,
     };
+
+    use super::*;
 
     fn make_fact(
         id: &str,

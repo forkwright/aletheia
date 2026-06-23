@@ -76,12 +76,7 @@ pub fn streamable_http_router_with_config(
                 .is_ok_and(|cfg| cfg.gateway.auth.allow_unauthenticated_network_mcp);
             assert!(
                 allow_override,
-                concat!(
-                    "FATAL: MCP server configured with auth_mode=\"none\" on non-loopback bind. ",
-                    "This exposes the full MCP surface without authentication. ",
-                    "Set gateway.auth.allowUnauthenticatedNetworkMcp = true to explicitly ",
-                    "allow this deployment mode.",
-                )
+                "FATAL: MCP server configured with auth_mode=\"none\" on non-loopback bind — exposes full MCP surface without authentication; set gateway.auth.allowUnauthenticatedNetworkMcp = true to allow this deployment mode"
             );
             tracing::error!(
                 bind = %bind,
@@ -133,17 +128,5 @@ pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // NOTE: Full integration coverage requires a running DiaporeiaState (session store,
-    // nous manager, etc.) and is provided at the integration level.
-
-    #[test]
-    fn streamable_http_router_signature_is_correct() {
-        // NOTE: compile-time verification of the function signature.
-        let _: fn(std::sync::Arc<crate::state::DiaporeiaState>) -> axum::Router =
-            streamable_http_router;
-    }
-}
+// Compile-time check: the function signature matches the router mounting contract.
+const _: fn(std::sync::Arc<crate::state::DiaporeiaState>) -> axum::Router = streamable_http_router;

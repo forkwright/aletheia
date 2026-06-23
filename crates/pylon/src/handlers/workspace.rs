@@ -78,21 +78,20 @@ pub async fn list_files(
     let dir = resolve_workspace_directory(&state.workspace_root, query.path.as_deref())?;
     let mut entries = Vec::new();
 
-    let read_dir = std::fs::read_dir(&dir).map_err(|e| {
+    let mut read_dir = tokio::fs::read_dir(&dir).await.map_err(|e| {
         InternalSnafu {
             message: format!("failed to read workspace directory {}: {e}", dir.display()),
         }
         .build()
     })?;
 
-    for entry in read_dir {
-        let entry = entry.map_err(|e| {
-            InternalSnafu {
-                message: format!("failed to read workspace entry in {}: {e}", dir.display()),
-            }
-            .build()
-        })?;
-        let file_type = entry.file_type().map_err(|e| {
+    while let Some(entry) = read_dir.next_entry().await.map_err(|e| {
+        InternalSnafu {
+            message: format!("failed to read workspace entry in {}: {e}", dir.display()),
+        }
+        .build()
+    })? {
+        let file_type = entry.file_type().await.map_err(|e| {
             InternalSnafu {
                 message: format!(
                     "failed to inspect workspace entry type {}: {e}",
@@ -103,7 +102,7 @@ pub async fn list_files(
         })?;
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = relative_workspace_path(&state.workspace_root, &entry.path())?;
-        let metadata = entry.metadata().map_err(|e| {
+        let metadata = entry.metadata().await.map_err(|e| {
             InternalSnafu {
                 message: format!(
                     "failed to read workspace entry metadata {}: {e}",
