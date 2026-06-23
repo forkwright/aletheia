@@ -728,10 +728,28 @@ fn candidate_generation_grows_sub_quadratically() {
     };
 
     let small: Vec<EntityInfo> = (0..100)
-        .map(|i| entity(&format!("s{i}"), &spread(i), "concept", vec![], 1, "2026-01-01"))
+        .map(|i| {
+            entity(
+                &format!("s{i}"),
+                &spread(i),
+                "concept",
+                vec![],
+                1,
+                "2026-01-01",
+            )
+        })
         .collect();
     let large: Vec<EntityInfo> = (0..200)
-        .map(|i| entity(&format!("l{i}"), &spread(i + 10_000), "concept", vec![], 1, "2026-01-02"))
+        .map(|i| {
+            entity(
+                &format!("l{i}"),
+                &spread(i + 10_000),
+                "concept",
+                vec![],
+                1,
+                "2026-01-02",
+            )
+        })
         .collect();
 
     let small_candidates = generate_candidates(&small, &no_embed, &DedupTuning::DEFAULT);

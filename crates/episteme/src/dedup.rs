@@ -538,8 +538,7 @@ pub(crate) fn generate_candidates(
                 continue;
             }
 
-            let merge_score =
-                compute_merge_score(name_sim, embed_sim, true, alias_overlap, tuning);
+            let merge_score = compute_merge_score(name_sim, embed_sim, true, alias_overlap, tuning);
 
             candidates.push(EntityMergeCandidate {
                 entity_a: a.id.clone(),
