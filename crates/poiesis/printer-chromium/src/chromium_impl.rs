@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use chromiumoxide::{Browser, BrowserConfig};
 use futures::StreamExt as _;
-use tracing::{debug, error, warn, Instrument as _};
+use tracing::{Instrument as _, debug, error, warn};
 
 use crate::{PrintOptions, PrinterError};
 
