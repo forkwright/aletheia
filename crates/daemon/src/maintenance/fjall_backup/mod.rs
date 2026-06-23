@@ -62,9 +62,9 @@ pub struct FjallBackupReport {
 }
 
 impl FjallBackupReport {
-    /// Returns `true` if no backup was created (source was absent or disabled).
-    pub fn is_noop(&self) -> bool {
-        self.backup_path.is_none()
+    /// Returns `true` if a backup directory was created (i.e., the run was not skipped).
+    pub fn succeeded(&self) -> bool {
+        self.backup_path.is_some()
     }
 }
 
@@ -82,6 +82,15 @@ pub struct BackupEntry {
 }
 
 impl BackupEntry {
+    fn new(name: String, path: PathBuf, created: SystemTime, size_bytes: u64) -> Self {
+        Self {
+            name,
+            path,
+            created,
+            size_bytes,
+        }
+    }
+
     /// Returns the number of seconds elapsed since this backup was created.
     pub fn age_secs(&self, now: SystemTime) -> u64 {
         now.duration_since(self.created).map_or(0, |d| d.as_secs())
