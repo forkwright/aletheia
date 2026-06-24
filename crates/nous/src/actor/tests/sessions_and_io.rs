@@ -46,25 +46,26 @@ async fn reap_background_tasks_records_background_panic() {
         "panic in background task should increment background_panic_count"
     );
     assert_eq!(
-        actor.runtime.background_failure_total_count, 1,
+        actor.runtime.background_failure.total_count, 1,
         "panic in background task should increment background_failure_total_count"
     );
     assert_eq!(
-        actor.runtime.background_failure_timestamps.len(),
+        actor.runtime.background_failure.timestamps.len(),
         1,
         "panic in background task should record a failure timestamp"
     );
     assert_eq!(
-        actor.runtime.background_failure_latest_kind.as_deref(),
+        actor.runtime.background_failure.latest_kind.as_deref(),
         Some("panic"),
         "latest background failure kind should be panic"
     );
     assert!(
         actor
             .runtime
-            .background_failure_latest_message
+            .background_failure
+            .latest_message
             .as_deref()
-            .is_some_and(|m| m.contains("panicked")),
+            .is_some_and(|m: &str| m.contains("panicked")),
         "panics captured by JoinSet should carry a panic message"
     );
     assert_eq!(
@@ -100,20 +101,21 @@ async fn reap_background_tasks_records_cancelled_task_as_error() {
         "cancelled task should not increment background_panic_count"
     );
     assert_eq!(
-        actor.runtime.background_failure_total_count, 1,
+        actor.runtime.background_failure.total_count, 1,
         "cancelled task should increment background_failure_total_count"
     );
     assert_eq!(
-        actor.runtime.background_failure_latest_kind.as_deref(),
+        actor.runtime.background_failure.latest_kind.as_deref(),
         Some("error"),
         "latest background failure kind should be error for cancelled task"
     );
     assert!(
         actor
             .runtime
-            .background_failure_latest_message
+            .background_failure
+            .latest_message
             .as_deref()
-            .is_some_and(|m| m.contains("cancelled")),
+            .is_some_and(|m: &str| m.contains("cancelled")),
         "cancelled task should carry a cancellation message"
     );
 
