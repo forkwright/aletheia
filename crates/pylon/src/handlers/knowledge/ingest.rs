@@ -87,27 +87,21 @@ pub async fn ingest(
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let store = std::sync::Arc::clone(store);
-        let event_bus = std::sync::Arc::clone(&state.event_bus);
-        let result = tokio::task::spawn_blocking(move || {
+        let (result, fact_events) = tokio::task::spawn_blocking(move || {
             let mut inserted = 0usize;
             let mut skipped = 0usize;
             let mut errors = Vec::new();
+            let mut fact_events: Vec<(String, String, String)> = Vec::new();
 
             for (index, fact) in facts.iter().enumerate() {
                 match store.insert_fact(fact) {
                     Ok(()) => {
                         inserted += 1;
-                        event_bus
-                            .publish(crate::event_bus::DomainEvent::new(
-                                event_bus.next_id(),
-                                "fact.created",
-                                serde_json::json!({
-                                    "fact_id": fact.id.as_str(),
-                                    "nous_id": fact.nous_id.as_str(),
-                                    "content_preview": truncate(&fact.content, 200),
-                                }),
-                            ))
-                            .await;
+                        fact_events.push((
+                            fact.id.as_str().to_owned(),
+                            fact.nous_id.as_str().to_owned(),
+                            truncate(&fact.content, 200),
+                        ));
                     }
                     Err(e) => {
                         errors.push(IngestFactError {
@@ -120,17 +114,35 @@ pub async fn ingest(
                 }
             }
 
-            IngestResponse {
-                inserted,
-                skipped,
-                errors,
-            }
+            (
+                IngestResponse {
+                    inserted,
+                    skipped,
+                    errors,
+                },
+                fact_events,
+            )
         })
         .await
         .map_err(|e| ApiError::Internal {
             message: format!("ingest write task failed: {e}"),
             location: snafu::location!(),
         })?;
+
+        for (fact_id, nous_id, content_preview) in fact_events {
+            state
+                .event_bus
+                .publish(crate::event_bus::DomainEvent::new(
+                    state.event_bus.next_id(),
+                    "fact.created",
+                    serde_json::json!({
+                        "fact_id": fact_id,
+                        "nous_id": nous_id,
+                        "content_preview": content_preview,
+                    }),
+                ))
+                .await;
+        }
 
         tracing::info!(
             inserted = result.inserted,

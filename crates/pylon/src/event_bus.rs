@@ -19,12 +19,13 @@ use tokio::sync::broadcast;
 
 #[path = "event_bus_dto.rs"]
 mod event_bus_dto;
-pub use event_bus_dto::{DISCOVERABLE_TOPICS, DomainEvent};
+pub use event_bus_dto::DomainEvent;
+pub(crate) use event_bus_dto::DISCOVERABLE_TOPICS;
 
 impl DomainEvent {
     /// Construct a new domain event with the current timestamp and id.
     #[must_use]
-    pub fn new(id: u64, topic: impl Into<String>, payload: serde_json::Value) -> Self {
+    pub(crate) fn new(id: u64, topic: impl Into<String>, payload: serde_json::Value) -> Self {
         Self {
             id,
             topic: topic.into(),

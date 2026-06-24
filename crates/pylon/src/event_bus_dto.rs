@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// WHY: Discovery and subscription tests share a single source of truth so the
 /// advertised topic list cannot drift from the topics actually emitted by pylon
 /// handlers.
-pub const DISCOVERABLE_TOPICS: &[&str] = &["fact.created", "turn.complete", "nous.lifecycle"];
+pub(crate) const DISCOVERABLE_TOPICS: &[&str] = &["fact.created", "turn.complete", "nous.lifecycle"];
 
 /// A domain event with a stable topic name, monotonic id, JSON payload, and
 /// emission timestamp.
