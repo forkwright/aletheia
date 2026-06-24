@@ -489,6 +489,7 @@ mod tests {
         // HTTP server and use reqwest's per-client DNS override to point
         // example.com at it; if web_fetch used a freshly built client, the
         // override would be ignored and the request would hit the real example.com.
+        install_crypto_provider();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("test listener should bind");
