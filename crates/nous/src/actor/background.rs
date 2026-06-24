@@ -803,6 +803,9 @@ async fn run_skill_extraction(
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
     use mneme::skills::SkillExtractor;
+    // source_session_id is only consumed inside the knowledge-store branch below.
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = source_session_id;
 
     let candidates = tracker.candidates_for(nous_id);
     let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {

@@ -31,7 +31,7 @@ use tracing::instrument;
 pub use error::PandocError;
 
 const PANDOC_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
-const PANDOC_RENDER_TIMEOUT: Duration = Duration::from_secs(120);
+const PANDOC_RENDER_TIMEOUT: Duration = Duration::from_mins(2);
 const APX_CITE_LUA: &str = include_str!("../../../filters/apx-cite.lua");
 const APX_THEME_LUA: &str = include_str!("../../../filters/apx-theme.lua");
 const APX_FIGURE_LUA: &str = include_str!("../../../filters/apx-figure.lua");
