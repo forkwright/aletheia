@@ -13,10 +13,29 @@ use snafu::ResultExt as _;
 use crate::budget::Budget;
 use crate::cost_ledger::CostLedger;
 use crate::error::PreflightSnafu;
+use crate::orchestrator::OrchestratorConfig;
 use crate::pipeline::PipelineStage;
 use crate::pipeline::context::PipelineContext;
 use crate::pipeline::error::{PipelineError, StageSnafu};
 use crate::session::options::EngineConfig;
+
+fn build_engine_config(
+    cfg: &OrchestratorConfig,
+    after_action_log_dir: Option<std::path::PathBuf>,
+    max_turns: Option<u32>,
+) -> EngineConfig {
+    let mut config = EngineConfig::new(crate::engine::AgentOptions::new())
+        .idle_timeout_opt(cfg.session_idle_timeout)
+        .routing(cfg.routing.clone())
+        .after_action_log_dir(after_action_log_dir);
+    for dir in &cfg.additional_dirs {
+        config = config.add_dir(dir.clone());
+    }
+    if let Some(t) = max_turns {
+        config = config.max_turns(t);
+    }
+    config
+}
 
 /// Preparation stage: validate, build DAG, compute frontier, initialise shared state.
 pub(crate) struct PreparationStage;
@@ -112,17 +131,11 @@ impl PipelineStage for PreparationStage {
         ctx.cost_ledger = Some(Arc::new(CostLedger::new()));
 
         ctx.resume_policy = crate::resume::ResumePolicy::default();
-        let mut engine_config = EngineConfig::new(crate::engine::AgentOptions::new())
-            .idle_timeout_opt(cfg.session_idle_timeout)
-            .routing(cfg.routing.clone())
-            .after_action_log_dir(ctx.after_action_log_dir.clone());
-        for dir in &cfg.additional_dirs {
-            engine_config = engine_config.add_dir(dir.clone());
-        }
-        if let Some(max_turns) = ctx.spec.max_turns {
-            engine_config = engine_config.max_turns(max_turns);
-        }
-        ctx.engine_config = Some(engine_config);
+        ctx.engine_config = Some(build_engine_config(
+            cfg,
+            ctx.after_action_log_dir.clone(),
+            ctx.spec.max_turns,
+        ));
 
         ctx.max_concurrent = usize::try_from(
             ctx.spec
@@ -153,6 +166,10 @@ impl PipelineStage for PreparationStage {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length collections"
+)]
 mod tests {
     use std::sync::Arc;
 

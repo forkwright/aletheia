@@ -119,19 +119,17 @@ async fn prune_old_after_action_files(
         return Ok(());
     }
 
-    let cutoff = {
-        // INVARIANT: window_days is an operator-configured retention bound;
-        // multiplying by 24h stays well within signed duration range.
-        #[expect(
-            clippy::expect_used,
-            reason = "bounded subtraction from now is infallible for realistic day counts"
-        )]
-        let span =
-            jiff::SignedDuration::from_hours(i64::try_from(window_days).unwrap_or(i64::MAX) * 24);
-        Timestamp::now()
-            .checked_sub(span)
-            .expect("timestamp subtraction within realistic day range")
-    };
+    // INVARIANT: window_days is an operator-configured retention bound;
+    // multiplying by 24h stays well within signed duration range.
+    let span =
+        jiff::SignedDuration::from_hours(i64::try_from(window_days).unwrap_or(i64::MAX) * 24);
+    #[expect(
+        clippy::expect_used,
+        reason = "bounded subtraction from now is infallible for realistic day counts"
+    )]
+    let cutoff = Timestamp::now()
+        .checked_sub(span)
+        .expect("timestamp subtraction within realistic day range");
 
     let mut entries = tokio::fs::read_dir(log_dir)
         .await
@@ -164,7 +162,7 @@ async fn prune_old_after_action_files(
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        if !name.ends_with(".jsonl") {
+        if path.extension().is_none_or(|ext| ext != "jsonl") {
             continue;
         }
         let Some(file_date) = parse_after_action_date(name) else {

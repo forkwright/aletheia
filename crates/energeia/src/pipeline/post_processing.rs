@@ -169,7 +169,7 @@ mod tests {
         while let Some(e) = rd.next_entry().await.expect("next entry") {
             entries.push(e);
         }
-        entries.sort_by_key(|e| e.file_name());
+        entries.sort_by_key(tokio::fs::DirEntry::file_name);
         entries
     }
 
@@ -487,7 +487,7 @@ mod tests {
         for entry in &entries {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name == old_file.file_name().unwrap().to_string_lossy() {
+            if name == old_file.file_name().expect("old_file has a file name").to_string_lossy() {
                 found_old = true;
             } else if name.ends_with(".jsonl") {
                 found_new = true;

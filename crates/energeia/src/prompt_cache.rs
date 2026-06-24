@@ -280,6 +280,7 @@ fn build_dynamic_suffix(project: &str, scope: Option<&str>, prompt_body: &str) -
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::io::Write as _;
 
