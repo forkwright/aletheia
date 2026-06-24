@@ -238,7 +238,6 @@ toolGroups = ["read", "plan", "verify"]
 # child agents.
 # toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
 maxOutputTokens = 16384
-timeoutSeconds = 300
 # thinkingEnabled = false
 # thinkingBudget = 10000
 # maxToolIterations = 50
