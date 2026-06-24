@@ -19,8 +19,8 @@ use tokio::sync::broadcast;
 
 #[path = "event_bus_dto.rs"]
 mod event_bus_dto;
-pub use event_bus_dto::DomainEvent;
 pub(crate) use event_bus_dto::DISCOVERABLE_TOPICS;
+pub use event_bus_dto::DomainEvent;
 
 impl DomainEvent {
     /// Construct a new domain event with the current timestamp and id.
