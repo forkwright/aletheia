@@ -8,7 +8,6 @@
 
 use std::collections::HashMap;
 use std::io::Write as _;
-use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -320,9 +319,20 @@ pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), Settin
     let parent = path.parent().ok_or(SettingsConfigError::NoConfigDir)?;
     std::fs::create_dir_all(parent).context(CreateDirSnafu)?;
     let contents = toml::to_string_pretty(config).context(TomlSerializeSnafu)?;
-    let perms = std::fs::Permissions::from_mode(0o600);
+
+    // WHY: Restrict settings.toml to owner-only on Unix. Windows uses the
+    // default ACLs inside the user's config directory.
+    #[cfg(unix)]
+    let mut tmp = {
+        use std::os::unix::fs::PermissionsExt as _;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        tempfile::Builder::new()
+            .permissions(perms)
+            .tempfile_in(parent)
+            .context(WriteFileSnafu)?
+    };
+    #[cfg(not(unix))]
     let mut tmp = tempfile::Builder::new()
-        .permissions(perms)
         .tempfile_in(parent)
         .context(WriteFileSnafu)?;
     tmp.write_all(contents.as_bytes()).context(WriteFileSnafu)?;
