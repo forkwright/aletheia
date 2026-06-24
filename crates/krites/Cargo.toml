@@ -8,11 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[package.metadata.kanon]
-maturity = "alpha"
-since = "2026-06-23"
-exit-criteria = "public API is stable"
-
 [features]
 default = ["graph-algo", "async", "hot-reload"]
 graph-algo = []
@@ -21,9 +16,6 @@ hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
 test-core = ["storage-fjall"]
 test-full = ["test-core"]
-
-[lints]
-workspace = true
 
 [dependencies]
 koina = { path = "../koina" }
@@ -108,3 +100,11 @@ tracing-subscriber = { workspace = true }
 # in normal test runs.
 [target.'cfg(loom)'.dev-dependencies]
 loom = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "public API is stable"
