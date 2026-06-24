@@ -233,9 +233,9 @@ impl HexColor {
     pub fn body(&self) -> &str {
         // INVARIANT: constructors guarantee a leading `#`; a missing `#` is a
         // programming bug that must surface loudly rather than emit invalid OOXML.
-        self.0.strip_prefix('#').unwrap_or_else(|| {
-            panic!("HexColor invariant: inner string must begin with '#'")
-        })
+        self.0
+            .strip_prefix('#')
+            .unwrap_or_else(|| panic!("HexColor invariant: inner string must begin with '#'"))
     }
 }
 
