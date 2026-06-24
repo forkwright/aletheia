@@ -184,7 +184,10 @@ pub(crate) fn ForgetFactDialog(
                                         }
                                         Ok(resp) => {
                                             let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_default();
+                                            let detail = resp.text().await.unwrap_or_else(|e| {
+                                                tracing::warn!("failed to read forget error body: {e}");
+                                                String::new()
+                                            });
                                             tracing::warn!(status = %status, "forget failed");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 let message = if detail.is_empty() {
@@ -272,7 +275,10 @@ pub(crate) fn RestoreFactDialog(
                                         }
                                         Ok(resp) => {
                                             let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_default();
+                                            let detail = resp.text().await.unwrap_or_else(|e| {
+                                                tracing::warn!("failed to read restore error body: {e}");
+                                                String::new()
+                                            });
                                             tracing::warn!(status = %status, "restore failed");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 let message = if detail.is_empty() {
@@ -392,7 +398,10 @@ pub(crate) fn AdjustConfidenceDialog(
                                         }
                                         Ok(resp) => {
                                             let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_default();
+                                            let detail = resp.text().await.unwrap_or_else(|e| {
+                                                tracing::warn!("failed to read confidence error body: {e}");
+                                                String::new()
+                                            });
                                             tracing::warn!(status = %status, "confidence update failed");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 let message = if detail.is_empty() {
@@ -503,7 +512,10 @@ pub(crate) fn ChangeSensitivityDialog(
                                         }
                                         Ok(resp) => {
                                             let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_default();
+                                            let detail = resp.text().await.unwrap_or_else(|e| {
+                                                tracing::warn!("failed to read sensitivity error body: {e}");
+                                                String::new()
+                                            });
                                             tracing::warn!(status = %status, "sensitivity update failed");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 let message = if detail.is_empty() {

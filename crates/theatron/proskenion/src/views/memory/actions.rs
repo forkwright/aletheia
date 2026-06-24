@@ -291,7 +291,10 @@ pub(crate) fn MergeDialog(
                                         }
                                         Ok(resp) => {
                                             let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_default();
+                                            let detail = resp.text().await.unwrap_or_else(|e| {
+                                                tracing::warn!("failed to read merge error body: {e}");
+                                                String::new()
+                                            });
                                             tracing::warn!(status = %status, "merge failed");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 let message = if detail.is_empty() {
@@ -432,7 +435,10 @@ pub(crate) fn FlagDialog(
                                         }
                                         Ok(resp) => {
                                             let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_default();
+                                            let detail = resp.text().await.unwrap_or_else(|e| {
+                                                tracing::warn!("failed to read flag error body: {e}");
+                                                String::new()
+                                            });
                                             tracing::warn!(status = %status, "flag failed");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 let message = if detail.is_empty() {
@@ -536,7 +542,10 @@ pub(crate) fn DeleteDialog(
                                         }
                                         Ok(resp) => {
                                             let status = resp.status();
-                                            let detail = resp.text().await.unwrap_or_default();
+                                            let detail = resp.text().await.unwrap_or_else(|e| {
+                                                tracing::warn!("failed to read delete error body: {e}");
+                                                String::new()
+                                            });
                                             tracing::warn!(status = %status, "delete failed");
                                             if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
                                                 let message = if detail.is_empty() {
