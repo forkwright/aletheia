@@ -165,11 +165,15 @@ pub fn is_turn_completed(
     turn_id: &Ulid,
 ) -> error::Result<bool> {
     Ok(latest_turn_attempt_record(store, session_id, turn_id)?
-        .map_or(false, |r| r.status == TurnAttemptStatus::Completed))
+        .is_some_and(|r| r.status == TurnAttemptStatus::Completed))
 }
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on collections with previously verified length"
+)]
 mod tests {
     use super::*;
 
