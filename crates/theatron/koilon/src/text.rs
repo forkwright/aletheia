@@ -23,8 +23,8 @@ pub(crate) fn truncate_chars_ellipsis(text: &str, max_chars: usize) -> String {
 
 /// Left-pad or truncate `s` so it occupies exactly `width` display columns.
 pub(crate) fn pad_to(s: String, width: usize) -> String {
-    if s.len() >= width {
-        s.get(..width).unwrap_or(&s).to_string()
+    if s.chars().count() >= width {
+        s.chars().take(width).collect::<String>()
     } else {
         format!("{s:<width$}")
     }
