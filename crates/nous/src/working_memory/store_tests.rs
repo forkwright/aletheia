@@ -142,3 +142,21 @@ fn overwrite_checkpoint_same_turn_updates_content() {
         "same-turn overwrite should update content"
     );
 }
+
+#[test]
+fn write_checkpoint_prunes_old_entries() {
+    let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
+    for i in 1..=25 {
+        store
+            .write_checkpoint("session-1", i, &format!("checkpoint-{i}"))
+            .expect("write checkpoint");
+    }
+
+    let recent = store.read_recent("session-1", 100).expect("read recent");
+    assert!(
+        recent.len() <= 20,
+        "prune should keep at most 20 checkpoints, got {}",
+        recent.len()
+    );
+    assert_eq!(recent.first().map(|r| r.turn_number), Some(25));
+}
