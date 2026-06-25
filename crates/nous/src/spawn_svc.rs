@@ -336,6 +336,7 @@ impl SpawnService for SpawnServiceImpl {
                     tool_config,
                     audit_log,
                     empirical_router,
+                    router.clone(),
                 );
 
                 info!(session_key = %session_key, "ephemeral actor started");

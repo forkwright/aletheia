@@ -58,6 +58,7 @@ pub(crate) fn spawn(
     tool_config: Arc<taxis::config::ToolLimitsConfig>,
     audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
     router: Option<Arc<dyn Router>>,
+    cross_router: Option<Arc<crate::cross::CrossNousRouter>>,
 ) -> (
     NousHandle,
     tokio::task::JoinHandle<()>,
@@ -95,6 +96,7 @@ pub(crate) fn spawn(
         tool_config,
         audit_log,
         router,
+        cross_router,
     );
 
     let span = tracing::info_span!("nous_actor", nous.id = %id);

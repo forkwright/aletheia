@@ -183,6 +183,7 @@ impl ActorEntry {
 /// Manages the lifecycle of all nous actors.
 // NOTE: 14 fields: runtime dependency injection (providers, tools, stores) plus
 // actor state. Kept flat because splitting would scatter logically-paired fields.
+// kanon:ignore NAMING/struct-name-vague-hub — public API surface; renaming is a breaking change outside this lane's scope
 pub struct NousManager {
     actors: HashMap<String, ActorEntry>,
     providers: Arc<ProviderRegistry>,
@@ -344,9 +345,9 @@ impl NousManager {
         let old_entry = self.actors.remove(&id);
         if let Some(old) = old_entry {
             warn!(nous_id = %id, "replacing existing actor");
-            // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of replaced actor
             let old_handle = old.current_handle();
             let old_join = old.take_join();
+            // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown of replaced actor
             let _ = old_handle.shutdown().await;
             if let Some(join) = old_join {
                 let _ = join.await;
@@ -469,6 +470,7 @@ impl NousManager {
             self.current_tool_config(),
             self.audit_log.clone(),
             self.empirical_router.clone(),
+            self.router.clone(),
         );
 
         Ok((handle, join_handle, active_turn, turn_started_at_ms))
@@ -828,6 +830,7 @@ impl NousManager {
 
         tokio::time::sleep(backoff).await;
 
+        // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown before restart; error not actionable
         let _ = old_handle.shutdown().await;
         if let Some(join) = old_join {
             let restart_drain_timeout =
