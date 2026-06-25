@@ -237,12 +237,14 @@ fn health_reason_wire(health: &hermeneus::health::ProviderHealth) -> Option<Stri
     }
 }
 
+// WHY: emit class only ("env"), not the variable name — leaking the exact env
+// var name narrows an attacker's search space for credential exfiltration.
 fn credential_source_class(config: &taxis::config::LlmProviderConfig) -> String {
     config
         .api_key_env
         .as_ref()
         .filter(|s| !s.is_empty())
-        .map_or_else(|| "none".to_owned(), |env| format!("env:{env}"))
+        .map_or_else(|| "none".to_owned(), |_| "env".to_owned())
 }
 
 fn redact_base_url(url: Option<&str>) -> String {
@@ -256,7 +258,18 @@ fn redact_base_url(url: Option<&str>) -> String {
     match url.parse::<axum::http::Uri>() {
         Ok(uri) => {
             let mut parts = axum::http::uri::Parts::from(uri);
-            // WHY: strip credentials, query, and fragment from the exposed URL.
+            // WHY: strip userinfo (user:pass@), query, and fragment from the
+            // exposed URL. Authority userinfo leaks credentials verbatim; query
+            // params may carry tokens; fragment is client-side only.
+            if let Some(authority) = &parts.authority {
+                let auth_str = authority.as_str();
+                // Split on '@' to isolate host:port from any userinfo prefix.
+                let host_part = auth_str.split_once('@').map_or(auth_str, |(_, h)| h);
+                match host_part.parse::<axum::http::uri::Authority>() {
+                    Ok(clean_authority) => parts.authority = Some(clean_authority),
+                    Err(_) => return "redacted".to_owned(),
+                }
+            }
             parts.path_and_query = parts.path_and_query.map(|pq| {
                 let parsed = pq.path().parse();
                 parsed.unwrap_or(pq)
@@ -311,6 +324,18 @@ mod tests {
     }
 
     #[test]
+    fn redact_base_url_strips_userinfo() {
+        assert_eq!(
+            redact_base_url(Some("https://user:pass@api.example.com/v1")),
+            "https://api.example.com/v1"
+        );
+        assert_eq!(
+            redact_base_url(Some("https://user:pass@api.example.com/v1?token=abc")),
+            "https://api.example.com/v1"
+        );
+    }
+
+    #[test]
     fn redact_base_url_returns_default_for_none_or_empty() {
         assert_eq!(redact_base_url(None), "default");
         assert_eq!(redact_base_url(Some("")), "default");
@@ -342,7 +367,7 @@ mod tests {
             deployment_target: taxis::config::DeploymentTarget::Cloud,
             models: Vec::new(),
         };
-        assert_eq!(credential_source_class(&with_env), "env:OPENAI_API_KEY");
+        assert_eq!(credential_source_class(&with_env), "env");
 
         let without_env = taxis::config::LlmProviderConfig {
             api_key_env: None,
