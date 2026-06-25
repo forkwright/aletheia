@@ -44,6 +44,14 @@ pub struct StatusDashboard {
     pub cron: Option<CronStatus>,
 }
 
+impl StatusDashboard {
+    /// Returns `true` if there are no active (running) dispatches.
+    #[must_use]
+    pub fn is_idle(&self) -> bool {
+        self.active_dispatches == 0
+    }
+}
+
 /// Cron fire crash-recovery status.
 #[cfg(feature = "storage-fjall")]
 #[derive(Debug, Clone)]
@@ -55,6 +63,15 @@ pub struct CronStatus {
     pub task_fires: Vec<CronTaskFireStatus>,
 }
 
+#[cfg(feature = "storage-fjall")]
+impl CronStatus {
+    /// Returns `true` if there are no stale cron fires.
+    #[must_use]
+    pub fn is_healthy(&self) -> bool {
+        self.stale_fire_count == 0
+    }
+}
+
 /// Last persisted fire state for one cron task.
 #[cfg(feature = "storage-fjall")]
 #[derive(Debug, Clone)]
@@ -64,6 +81,15 @@ pub struct CronTaskFireStatus {
     pub task_name: String,
     /// Last persisted fire record, if this task has ever acquired a fire lock.
     pub last_fire_record: Option<CronFireRecord>,
+}
+
+#[cfg(feature = "storage-fjall")]
+impl CronTaskFireStatus {
+    /// Returns `true` if no fire has ever been recorded for this task.
+    #[must_use]
+    pub fn is_unseen(&self) -> bool {
+        self.last_fire_record.is_none()
+    }
 }
 
 /// Summary of a single dispatch run for the recent history list.
@@ -87,6 +113,14 @@ pub struct RecentOutcome {
     pub total_cost_usd: f64,
 }
 
+impl RecentOutcome {
+    /// Returns `true` if the dispatch has a recorded finish time.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.finished_at.is_some()
+    }
+}
+
 /// Per-project status summary.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -103,6 +137,14 @@ pub struct ProjectSummary {
     pub success_rate: f64,
 }
 
+impl ProjectSummary {
+    /// Returns `true` if there are currently active dispatches for this project.
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        self.active_dispatches > 0
+    }
+}
+
 /// How many recent dispatches to include in [`StatusDashboard::recent_outcomes`].
 #[cfg(feature = "storage-fjall")]
 const RECENT_LIMIT: usize = 50;
@@ -116,7 +158,7 @@ const RECENT_LIMIT: usize = 50;
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
-pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard> {
+pub(crate) fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard> {
     compute_status_dashboard_inner(store, None)
 }
 
@@ -126,7 +168,7 @@ pub fn compute_status_dashboard(store: &EnergeiaStore) -> Result<StatusDashboard
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
-pub fn compute_status_dashboard_with_cron(
+pub(crate) fn compute_status_dashboard_with_cron(
     store: &EnergeiaStore,
     cron_lock_store: &CronLockStore,
     cron_task_names: &[String],

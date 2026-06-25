@@ -37,6 +37,14 @@ pub struct CostReport {
     pub daily_velocity: Vec<DailyVelocity>,
 }
 
+impl CostReport {
+    /// Returns `true` if no dispatches were recorded in the reporting window.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.total_dispatches == 0
+    }
+}
+
 /// Cost summary for a single project.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -51,6 +59,24 @@ pub struct ProjectCost {
     pub sessions: u64,
     /// Fraction of completed dispatches (0.0–1.0).
     pub success_rate: f64,
+}
+
+impl ProjectCost {
+    /// Average cost per session. Returns `0.0` when `sessions` is zero.
+    #[must_use]
+    pub fn avg_cost_per_session(&self) -> f64 {
+        if self.sessions == 0 {
+            return 0.0;
+        }
+        #[expect(
+            clippy::cast_precision_loss,
+            clippy::as_conversions,
+            reason = "u64→f64: sessions bounded by SCAN_LIMIT_SESSIONS (100_000), well below f64 mantissa 2^53"
+        )]
+        {
+            self.cost_usd / self.sessions as f64
+        }
+    }
 }
 
 /// Dispatch velocity and cost for a single calendar day.
@@ -69,6 +95,14 @@ pub struct DailyVelocity {
     pub success_rate: f64,
 }
 
+impl DailyVelocity {
+    /// Returns `true` if no dispatches occurred on this day.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.dispatches == 0
+    }
+}
+
 #[cfg(feature = "storage-fjall")]
 /// Compute a cost and velocity report for the given number of past days.
 ///
@@ -78,7 +112,7 @@ pub struct DailyVelocity {
 /// # Errors
 ///
 /// Returns `Error::Store` if any underlying store read fails.
-pub fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<CostReport> {
+pub(crate) fn compute_cost_report(store: &EnergeiaStore, window_days: u32) -> Result<CostReport> {
     let now = jiff::Timestamp::now();
 
     let cutoff_ms: Option<i64> = if window_days > 0 {

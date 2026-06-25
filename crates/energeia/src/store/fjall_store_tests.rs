@@ -441,6 +441,7 @@ fn debug_format() {
     assert!(debug.contains("energeia"));
 }
 
+// kanon:ignore TESTING/tautological-test — structural compile-time guarantee; the const closure is never called at runtime intentionally
 #[test]
 fn store_is_send_sync() {
     const _: fn() = || {

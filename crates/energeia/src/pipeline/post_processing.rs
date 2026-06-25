@@ -74,7 +74,7 @@ impl PipelineStage for PostProcessingStage {
             // rather than showing zero sessions for a completed dispatch.
             for outcome in &ctx.outcomes {
                 match store.create_session(store_id, outcome.prompt_number) {
-                    Ok(session_store_id) => {
+                    Ok(_session_store_id) => {
                         let update = crate::store::records::SessionUpdate {
                             status: Some(outcome.status),
                             session_id: outcome.session_id.clone(),

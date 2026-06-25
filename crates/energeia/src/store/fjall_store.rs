@@ -49,6 +49,7 @@ fn serialize_msgpack<T: serde::Serialize>(value: &T, context: &str) -> Result<Ve
 }
 
 /// Runtime policy threshold for stale `Running` dispatch reconciliation.
+// kanon:ignore RUST/pub-visibility — called from the aletheia binary (tool_registry.rs)
 #[must_use]
 pub fn stale_running_dispatch_threshold() -> jiff::SignedDuration {
     jiff::SignedDuration::from_hours(STALE_RUNNING_DISPATCH_THRESHOLD_HOURS)
@@ -59,6 +60,7 @@ pub fn stale_running_dispatch_threshold() -> jiff::SignedDuration {
 /// All dispatch, session, lesson, observation, and CI validation records are
 /// stored in a dedicated `"energeia"` partition with byte-prefixed keys for
 /// efficient prefix scans.
+// kanon:ignore RUST/pub-visibility — consumed across crate boundaries (aletheia binary, metrics service)
 pub struct EnergeiaStore {
     keyspace: Arc<fjall::Keyspace>,
     db: fjall::Database,
