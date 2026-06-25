@@ -111,12 +111,10 @@ impl ProjectWorkspace {
             path: &phase_blockers,
         })?;
 
-        let filename = format!("{}.md", blocker.plan_id);
+        let filename = format!("{}.json", blocker.plan_id);
         let path = phase_blockers.join(&filename);
-        let content = format!(
-            "# Blocker: `{}`\n\nPlan: `{}`\nDetected: {}\n\n{}\n",
-            blocker.plan_id, blocker.plan_id, blocker.detected_at, blocker.description
-        );
+        let content = serde_json::to_string_pretty(blocker)
+            .context(error::WorkspaceSerializeSnafu)?;
         koina::fs::write_restricted(&path, content.as_bytes())
             .context(error::WorkspaceIoSnafu { path: &path })?;
         Ok(())
@@ -145,18 +143,13 @@ impl ProjectWorkspace {
                 path: &phase_blockers,
             })?;
             let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "md") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 let content = std::fs::read_to_string(&path)
                     .context(error::WorkspaceIoSnafu { path: &path })?;
-                let plan_id_str = path.file_stem().unwrap_or_default().to_string_lossy();
+                let blocker: Blocker =
+                    serde_json::from_str(&content).context(error::WorkspaceDeserializeSnafu)?;
 
-                blockers.push(Blocker {
-                    description: content,
-                    plan_id: plan_id_str
-                        .parse::<koina::ulid::Ulid>()
-                        .unwrap_or_else(|_| koina::ulid::Ulid::new()),
-                    detected_at: jiff::Timestamp::now(),
-                });
+                blockers.push(blocker);
             }
         }
 
@@ -225,7 +218,7 @@ mod tests {
         ws.write_blocker("phase-1", &blocker).unwrap();
         let blockers = ws.read_blockers("phase-1").unwrap();
         assert_eq!(blockers.len(), 1);
-        assert!(blockers[0].description.contains("blocked on API design"));
+        assert_eq!(blockers[0].description, "blocked on API design");
     }
 
     #[test]
