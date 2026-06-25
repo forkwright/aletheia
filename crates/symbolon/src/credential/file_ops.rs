@@ -264,7 +264,7 @@ impl CredentialFile {
 
 /// Maximum age for a `.json.tmp` file before it is treated as an orphan and
 /// removed during load.
-const ORPHAN_TEMP_AGE_THRESHOLD: Duration = Duration::from_secs(60);
+const ORPHAN_TEMP_AGE_THRESHOLD: Duration = Duration::from_mins(1);
 
 /// Remove an orphaned credential temp file, but only under an exclusive lock and
 /// only when the file is older than [`ORPHAN_TEMP_AGE_THRESHOLD`].

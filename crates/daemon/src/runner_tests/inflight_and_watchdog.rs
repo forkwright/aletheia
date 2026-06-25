@@ -203,7 +203,7 @@ async fn watchdog_enabled_restarts_hung_inflight_task() {
         id: "watchdog-task".to_owned(),
         name: "Watchdog task".to_owned(),
         nous_id: "test-nous".to_owned(),
-        schedule: Schedule::Interval(Duration::from_secs(60)),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
         action: TaskAction::Command("sleep 60".to_owned()),
         enabled: true,
         ..TaskDef::default()
@@ -220,7 +220,7 @@ async fn watchdog_enabled_restarts_hung_inflight_task() {
             handle,
             cancel: task_cancel.clone(),
             started_at: Instant::now(),
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_mins(1),
             warned: false,
         },
     );

@@ -78,21 +78,20 @@ pub async fn list_files(
     let dir = resolve_workspace_directory(&state.workspace_root, query.path.as_deref())?;
     let mut entries = Vec::new();
 
-    let read_dir = std::fs::read_dir(&dir).map_err(|e| {
+    let mut read_dir = tokio::fs::read_dir(&dir).await.map_err(|e| {
         InternalSnafu {
             message: format!("failed to read workspace directory {}: {e}", dir.display()),
         }
         .build()
     })?;
 
-    for entry in read_dir {
-        let entry = entry.map_err(|e| {
-            InternalSnafu {
-                message: format!("failed to read workspace entry in {}: {e}", dir.display()),
-            }
-            .build()
-        })?;
-        let file_type = entry.file_type().map_err(|e| {
+    while let Some(entry) = read_dir.next_entry().await.map_err(|e| {
+        InternalSnafu {
+            message: format!("failed to read workspace entry in {}: {e}", dir.display()),
+        }
+        .build()
+    })? {
+        let file_type = entry.file_type().await.map_err(|e| {
             InternalSnafu {
                 message: format!(
                     "failed to inspect workspace entry type {}: {e}",
@@ -103,7 +102,7 @@ pub async fn list_files(
         })?;
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = relative_workspace_path(&state.workspace_root, &entry.path())?;
-        let metadata = entry.metadata().map_err(|e| {
+        let metadata = entry.metadata().await.map_err(|e| {
             InternalSnafu {
                 message: format!(
                     "failed to read workspace entry metadata {}: {e}",
@@ -125,7 +124,7 @@ pub async fn list_files(
         });
     }
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|a| a.name.to_lowercase());
     Ok(Json(entries))
 }
 
@@ -188,10 +187,6 @@ pub async fn git_status(
 }
 
 /// GET /api/v1/workspace/files/content
-#[expect(
-    clippy::disallowed_methods,
-    reason = "workspace content endpoints intentionally use synchronous filesystem reads for bounded local file access"
-)]
 #[utoipa::path(
     get,
     path = "/api/v1/workspace/files/content",
@@ -242,7 +237,7 @@ pub async fn file_content(
         .build());
     }
 
-    let bytes = std::fs::read(&path).map_err(|e| {
+    let bytes = tokio::fs::read(&path).await.map_err(|e| {
         InternalSnafu {
             message: format!("failed to read workspace file {}: {e}", path.display()),
         }
@@ -729,8 +724,7 @@ fn file_mtime_ms(metadata: &std::fs::Metadata) -> Result<i64, ApiError> {
     })?;
     let millis = modified
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or(0);
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
     Ok(millis)
 }
 
