@@ -18,6 +18,7 @@
 //! | `distillations` | `{session_id}:{auto_id_padded_20}`                     | JSON distillation record |
 //! | `notes`         | `{session_id}:{auto_id_padded_20}`                     | JSON `AgentNote`         |
 //! | `notes`         | `gid:{global_note_id_padded_20}`                       | `{session_id}:{auto_id}` |
+//! | `notes`         | `note_gid_idx:{session_id}:{global_note_id_padded_20}` | `""` (reverse index)     |
 //! | `blackboard`    | `{key}`                                                | JSON `BlackboardRow`     |
 //! | `counters`      | `{counter_name}`                                       | big-endian `u64`         |
 //!
@@ -261,6 +262,13 @@ impl SessionStore {
         // matches the `UPDATE` substring inside that identifier (case-insensitive).
         let ts = updated_at;
         format!("idx:nous:{nous_id}:upd:{ts}:{session_id}")
+    }
+
+    fn note_gid_index_key(session_id: &str, global_id: u64) -> String {
+        // WHY: per-session reverse index lets `delete_session` collect a session's
+        // global note ids with a prefix scan instead of scanning the entire `gid:`
+        // key space (issue #5698).
+        format!("note_gid_idx:{session_id}:{}", pad_u64(global_id))
     }
 
     fn write_session(&self, session: &Session) -> Result<()> {
@@ -634,7 +642,7 @@ impl SessionStore {
         Ok(sessions)
     }
 
-    /// Update session status.
+    /// Sets the status field and refreshes the session's `updated_at` timestamp.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         let _guard = self
@@ -762,18 +770,29 @@ impl SessionStore {
                     .map_err(|e| storage_error(format!("fjall delete_session notes scan: {e}")))
             })
             .collect::<Result<_>>()?;
-        let id_prefix = child_prefix;
-        let gid_keys: Vec<Vec<u8>> = tx
-            .range(&notes_part, "gid:".."gid;\x00")
-            .map(|g| {
-                g.into_inner()
-                    .map(|(k, v)| (k.to_vec(), v.starts_with(id_prefix.as_bytes())))
-                    .map_err(|e| storage_error(format!("fjall delete_session gid-index scan: {e}")))
-            })
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .filter_map(|(k, is_match)| if is_match { Some(k) } else { None })
-            .collect();
+
+        // WHY: use the per-session `note_gid_idx:` reverse index so deletion is
+        // O(notes in session) rather than O(total notes across all sessions)
+        // (issue #5698).
+        let gid_idx_prefix = format!("note_gid_idx:{id}:");
+        let gid_idx_upper = format!("note_gid_idx:{id};\x00");
+        let mut gid_keys: Vec<Vec<u8>> = Vec::new();
+        let mut gid_idx_keys: Vec<Vec<u8>> = Vec::new();
+        for guard in tx.range(&notes_part, gid_idx_prefix.as_str()..gid_idx_upper.as_str()) {
+            let (idx_key, _v) = guard.into_inner().map_err(|e| {
+                storage_error(format!("fjall delete_session note_gid_idx scan: {e}"))
+            })?;
+            let idx_str = String::from_utf8_lossy(&idx_key);
+            let global_id = idx_str
+                .rsplit(':')
+                .next()
+                .and_then(|s| s.parse::<u64>().ok())
+                .ok_or_else(|| {
+                    storage_error("corrupt note_gid_idx key: missing global_id".to_owned())
+                })?;
+            gid_idx_keys.push(idx_key.to_vec());
+            gid_keys.push(format!("gid:{}", pad_u64(global_id)).into_bytes());
+        }
 
         for key in &msg_keys {
             tx.remove(&messages_part, key.as_slice());
@@ -787,10 +806,7 @@ impl SessionStore {
         for key in &dist_keys {
             tx.remove(&distillations_part, key.as_slice());
         }
-        for key in &note_keys {
-            tx.remove(&notes_part, key.as_slice());
-        }
-        for key in &gid_keys {
+        for key in note_keys.iter().chain(&gid_keys).chain(&gid_idx_keys) {
             tx.remove(&notes_part, key.as_slice());
         }
 
@@ -1597,10 +1613,12 @@ impl SessionStore {
         let local_key = format!("{session_id}:{}", pad_u64(note_id));
         let gid_key = format!("gid:{}", pad_u64(global_id));
         let gid_val = format!("{session_id}:{}", pad_u64(note_id));
+        let gid_idx_key = Self::note_gid_index_key(session_id, global_id);
 
         let mut tx = self.db.write_tx();
         tx.insert(&notes_part, local_key.as_str(), note_data.as_slice());
         tx.insert(&notes_part, gid_key.as_str(), gid_val.as_bytes());
+        tx.insert(&notes_part, gid_idx_key.as_str(), b"");
         tx.insert(&counters_part, "note_local_id", encode_u64(note_id));
         tx.insert(&counters_part, "note_global_id", encode_u64(global_id));
         tx.commit().map_err(|e| {
@@ -1665,9 +1683,17 @@ impl SessionStore {
             .build()
         })?;
 
+        // WHY: the local key is `{session_id}:{note_id}`; the session id is
+        // needed to remove the matching `note_gid_idx:` reverse index entry.
+        let session_id = local_key.rsplit(':').nth(1).ok_or_else(|| {
+            storage_error("corrupt note local key: missing session_id".to_owned())
+        })?;
+        let gid_idx_key = Self::note_gid_index_key(session_id, note_id.cast_unsigned());
+
         let mut tx = self.db.write_tx();
         tx.remove(&notes_part, local_key.as_str());
         tx.remove(&notes_part, gid_key.as_str());
+        tx.remove(&notes_part, gid_idx_key.as_str());
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall commit failed (note removal): {e}"),

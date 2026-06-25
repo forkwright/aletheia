@@ -14,7 +14,9 @@
 )]
 
 use graphe::store::SessionStore;
-use graphe::types::{Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType};
+use graphe::types::{Role, SessionStatus, SessionType};
+#[cfg(feature = "portability")]
+use graphe::types::{Session, SessionMetrics, SessionOrigin};
 use koina::ulid::Ulid;
 use tempfile::TempDir;
 
@@ -339,6 +341,7 @@ fn create_session_classifies_session_type() {
     }
 }
 
+#[cfg(feature = "portability")]
 #[test]
 fn import_session_preserves_session_type() {
     // WHY: exported/restored sessions must keep their original lifecycle
