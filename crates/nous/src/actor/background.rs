@@ -82,9 +82,9 @@ impl NousActor {
     /// Updates the total/recent counters and latest message/kind exposed in
     /// `NousStatus` and `ActorHealth`. Does NOT change the pipeline lifecycle.
     pub(super) fn record_background_failure(&mut self, kind: &str, message: Option<String>) {
-        self.runtime.background_failure_total_count += 1;
+        self.runtime.background_failure.total_count += 1;
         let now = std::time::Instant::now();
-        self.runtime.background_failure_timestamps.push(now);
+        self.runtime.background_failure.timestamps.push(now);
 
         // WHY(#5147): keep only failures inside the configured degraded window so
         // `background_health_degraded` reflects recent flapping, not ancient history.
@@ -93,11 +93,12 @@ impl NousActor {
             .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
         self.runtime
-            .background_failure_timestamps
+            .background_failure
+            .timestamps
             .retain(|t| *t > cutoff);
 
-        self.runtime.background_failure_latest_kind = Some(kind.to_owned());
-        self.runtime.background_failure_latest_message = message;
+        self.runtime.background_failure.latest_kind = Some(kind.to_owned());
+        self.runtime.background_failure.latest_message = message;
     }
 
     pub(super) fn maybe_spawn_extraction(
@@ -238,7 +239,12 @@ impl NousActor {
             }
             TrackResult::Promoted(candidate_id) => {
                 info!(candidate_id = %candidate_id, "skill analysis: candidate promoted, spawning extraction");
-                self.spawn_skill_extraction(&candidate_id, &records, source_session_id);
+                self.spawn_skill_extraction(
+                    &candidate_id,
+                    &records,
+                    #[cfg(feature = "knowledge-store")]
+                    source_session_id,
+                );
             }
             _ => {
                 // WHY: TrackResult is #[non_exhaustive]; future variants are silently ignored here.
@@ -251,7 +257,7 @@ impl NousActor {
         &mut self,
         candidate_id: &str,
         tool_calls: &[mneme::skills::ToolCallRecord],
-        source_session_id: &str,
+        #[cfg(feature = "knowledge-store")] source_session_id: &str,
     ) {
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
@@ -263,6 +269,7 @@ impl NousActor {
         let nous_id = self.id.clone();
         let candidate_id = candidate_id.to_owned();
         let tool_calls = tool_calls.to_vec();
+        #[cfg(feature = "knowledge-store")]
         let source_session_id = source_session_id.to_owned();
         let tracker = Arc::clone(&self.services.candidate_tracker);
         #[cfg(feature = "knowledge-store")]
@@ -287,6 +294,7 @@ impl NousActor {
                         &nous_id,
                         &candidate_id,
                         &tool_calls,
+                        #[cfg(feature = "knowledge-store")]
                         &source_session_id,
                         &tracker,
                         #[cfg(feature = "knowledge-store")]
@@ -777,9 +785,12 @@ async fn run_extraction(
     clippy::too_many_lines,
     reason = "three-phase skill extraction pipeline: extract, persist, lifecycle; splitting would obscure the sequential flow"
 )]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "background skill extraction runner needs provider state, ids, evidence, tracker, and optional store"
+#[cfg_attr(
+    feature = "knowledge-store",
+    expect(
+        clippy::too_many_arguments,
+        reason = "background skill extraction runner needs provider state, ids, evidence, tracker, and optional store"
+    )
 )]
 /// Run skill extraction as a background task. Logs results, never panics.
 async fn run_skill_extraction(
@@ -788,11 +799,14 @@ async fn run_skill_extraction(
     nous_id: &str,
     candidate_id: &str,
     tool_calls: &[mneme::skills::ToolCallRecord],
-    source_session_id: &str,
+    #[cfg(feature = "knowledge-store")] source_session_id: &str,
     tracker: &mneme::skills::CandidateTracker,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<&Arc<KnowledgeStore>>,
 ) {
     use mneme::skills::SkillExtractor;
+    // source_session_id is only consumed inside the knowledge-store branch below.
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = source_session_id;
 
     let candidates = tracker.candidates_for(nous_id);
     let Some(candidate) = candidates.iter().find(|c| c.id == candidate_id) else {
@@ -1095,10 +1109,10 @@ mod tests {
         let candidate_id = tracker
             .candidates_for("review-nous")
             .pop()
-            .expect("candidate tracked")
+            .expect("candidate tracked") // kanon:ignore RUST/expect — test assertion
             .id;
 
-        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store"); // kanon:ignore RUST/expect — test assertion
 
         run_skill_extraction(
             "test-model",
@@ -1114,12 +1128,12 @@ mod tests {
 
         let pending_facts = store
             .find_pending_skills("review-nous")
-            .expect("pending skills query");
+            .expect("pending skills query"); // kanon:ignore RUST/expect — test assertion
         assert_eq!(pending_facts.len(), 1, "one pending skill persisted");
-        let pending_fact = pending_facts.first().expect("one pending skill persisted");
+        let pending_fact = pending_facts.first().expect("one pending skill persisted"); // kanon:ignore RUST/expect — test assertion
 
         let pending = mneme::skills::PendingSkill::from_json(&pending_fact.content)
-            .expect("pending skill deserializes");
+            .expect("pending skill deserializes"); // kanon:ignore RUST/expect — test assertion
 
         // Source session is derived (from the candidate evidence on the live
         // path), never None.
@@ -1139,7 +1153,7 @@ mod tests {
             .source_evidence
             .observations
             .first()
-            .expect("observation evidence present");
+            .expect("observation evidence present"); // kanon:ignore RUST/expect — test assertion
         assert!(
             !observation.sequence_hash.is_empty(),
             "observation carries a sequence hash"
@@ -1153,7 +1167,7 @@ mod tests {
             .and_then(|tc| tc.redacted_input.as_ref())
             .and_then(|value| value.get("api_key"))
             .and_then(serde_json::Value::as_str)
-            .expect("redacted api_key present");
+            .expect("redacted api_key present"); // kanon:ignore RUST/expect — test assertion
         assert_eq!(redacted, "[REDACTED]", "secret tool param is redacted");
         assert!(
             !pending_fact.content.contains(secret),
