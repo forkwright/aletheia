@@ -349,6 +349,16 @@ fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
     Ok(())
 }
 
+/// Serialize a value to TOML, mapping serialization failures to a taxis error.
+fn serialize_toml<T: serde::Serialize>(value: &T) -> Result<String> {
+    toml::to_string(value).map_err(|e| {
+        SerializeTomlSnafu {
+            reason: e.to_string(),
+        }
+        .build()
+    })
+}
+
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
 ///
 /// Returns an error if encrypted values are found but the decryption key is
@@ -362,7 +372,7 @@ fn decrypt_toml_content(content: &str) -> Result<String> {
 
     decrypt_toml_value(&mut value)?;
 
-    Ok(toml::to_string(&value).unwrap_or_else(|_| content.to_owned()))
+    serialize_toml(&value)
 }
 
 /// Read a standalone TOML file, apply env-var interpolation and decrypt
@@ -816,6 +826,37 @@ archiveBeforeDelete = true
         assert_eq!(
             config.gateway.port, 18789,
             "reserved env vars must not break default config load"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    fn decrypt_toml_content_returns_original_when_toml_parse_fails() {
+        let content = "this is not valid toml ::";
+        let result = decrypt_toml_content(content).unwrap();
+        assert_eq!(result, content, "unparseable content should pass through");
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    fn decrypt_toml_content_roundtrips_valid_toml() {
+        let content = "[section]\nkey = 'value'\n";
+        let result = decrypt_toml_content(content).unwrap();
+        assert!(
+            result.contains("section") && result.contains("key"),
+            "valid TOML should be preserved, got: {result}"
+        );
+    }
+
+    #[test]
+    fn serialize_toml_propagates_non_serializable_value() {
+        let mut map = std::collections::HashMap::new();
+        map.insert(1i32, "value");
+
+        let result = serialize_toml(&map);
+        assert!(
+            result.is_err(),
+            "non-serializable values (integer table keys) must produce an error"
         );
     }
 }
