@@ -295,7 +295,10 @@ pub async fn update_enabled(
     // WHY(#4582): Stage the mutation on a clone, persist it, and only swap the
     // live config after the write succeeds. A failed disk write therefore leaves
     // runtime state unchanged.
-    let mut persisted = { let config = state.config.read().await; config.clone() };
+    let mut persisted = {
+        let config = state.config.read().await;
+        config.clone()
+    };
     let agent = ensure_agent_definition(&mut persisted, &runtime)?;
     agent.enabled = body.enabled;
     taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
@@ -400,7 +403,10 @@ pub async fn update_tool(
     // WHY(#4582): Stage the mutation on a clone, persist it, and only swap the
     // live config after the write succeeds. A failed disk write therefore leaves
     // runtime state unchanged.
-    let mut persisted = { let config = state.config.read().await; config.clone() };
+    let mut persisted = {
+        let config = state.config.read().await;
+        config.clone()
+    };
     let agent = ensure_agent_definition(&mut persisted, &runtime)?;
     let mut allowlist = agent
         .tool_allowlist

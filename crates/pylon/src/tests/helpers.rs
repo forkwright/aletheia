@@ -103,10 +103,10 @@ pub(super) async fn test_state_with_auth_mode(
     test_state_with_provider_private_and_auth_mode(true, false, auth_mode, |_| {}).await
 }
 
-/// Test helper: a no-op tool executor used to register a dummy tool in tests.
-struct DummyTool;
+/// Test helper: a no-op tool executor for registering a stub tool in tests.
+struct StubTool;
 
-impl ToolExecutor for DummyTool {
+impl ToolExecutor for StubTool {
     fn execute<'a>(
         &'a self,
         _input: &'a ToolInput,
@@ -118,18 +118,18 @@ impl ToolExecutor for DummyTool {
     }
 }
 
-/// Register a single dummy tool so allowlist mutation handlers can be exercised.
-pub(super) fn register_dummy_tool(registry: &mut ToolRegistry) {
+/// Register a single stub tool so allowlist mutation handlers can be exercised.
+pub(super) fn register_stub_tool(registry: &mut ToolRegistry) {
     let def = ToolDef {
-        name: koina::id::ToolName::new("dummy_tool").expect("valid dummy tool name"),
-        description: "A dummy tool for testing allowlist mutations.".to_owned(),
+        name: koina::id::ToolName::new("stub_tool").expect("valid stub tool name"),
+        description: "A stub tool for testing allowlist mutations.".to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: indexmap::IndexMap::from([(
                 "query".to_owned(),
                 PropertyDef {
                     property_type: PropertyType::String,
-                    description: "Ignored dummy input.".to_owned(),
+                    description: "Ignored stub input.".to_owned(),
                     enum_values: None,
                     default: None,
                 },
@@ -143,12 +143,12 @@ pub(super) fn register_dummy_tool(registry: &mut ToolRegistry) {
         tags: vec![],
     };
     registry
-        .register(def, Box::new(DummyTool))
-        .expect("dummy tool registers");
+        .register(def, Box::new(StubTool))
+        .expect("stub tool registers");
 }
 
-pub(super) async fn test_state_with_dummy_tool() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(true, false, "token", register_dummy_tool).await
+pub(super) async fn test_state_with_stub_tool() -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_provider_private_and_auth_mode(true, false, "token", register_stub_tool).await
 }
 
 #[expect(
