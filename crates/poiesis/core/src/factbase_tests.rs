@@ -352,3 +352,116 @@ fn derived_formula_unknown_fact_rejects_even_when_inputs_valid() {
         .expect_err("formula ref outside inputs must reject");
     assert!(matches!(err, FactbaseError::UnknownFact { id, .. } if id == "b"));
 }
+
+#[test]
+fn derived_money_add_overflow_rejects_bad_derived() {
+    let mut fb = Factbase::new();
+    fb.add_fact(manual_fact(
+        "a",
+        Scalar::Money {
+            value: Money::from_micros(i64::MAX),
+        },
+        Unit::Usd,
+    ));
+    fb.add_fact(manual_fact(
+        "b",
+        Scalar::Money {
+            value: Money::from_micros(1),
+        },
+        Unit::Usd,
+    ));
+    fb.add_fact(Fact {
+        id: FactId::new("total").unwrap(),
+        value: Scalar::Money {
+            value: Money::from_micros(0),
+        },
+        unit: Unit::Usd,
+        source: Source::Derived {
+            formula: Expr::Add {
+                a: FactId::new("a").unwrap(),
+                b: FactId::new("b").unwrap(),
+            },
+            inputs: vec![FactId::new("a").unwrap(), FactId::new("b").unwrap()],
+        },
+        captured: ts(),
+    });
+    let err = fb
+        .resolve(&DataSourceRegistry::new())
+        .expect_err("money add overflow must reject");
+    assert!(matches!(err, FactbaseError::BadDerived { .. }));
+}
+
+#[test]
+fn derived_money_sub_overflow_rejects_bad_derived() {
+    let mut fb = Factbase::new();
+    fb.add_fact(manual_fact(
+        "a",
+        Scalar::Money {
+            value: Money::from_micros(i64::MIN),
+        },
+        Unit::Usd,
+    ));
+    fb.add_fact(manual_fact(
+        "b",
+        Scalar::Money {
+            value: Money::from_micros(1),
+        },
+        Unit::Usd,
+    ));
+    fb.add_fact(Fact {
+        id: FactId::new("diff").unwrap(),
+        value: Scalar::Money {
+            value: Money::from_micros(0),
+        },
+        unit: Unit::Usd,
+        source: Source::Derived {
+            formula: Expr::Sub {
+                a: FactId::new("a").unwrap(),
+                b: FactId::new("b").unwrap(),
+            },
+            inputs: vec![FactId::new("a").unwrap(), FactId::new("b").unwrap()],
+        },
+        captured: ts(),
+    });
+    let err = fb
+        .resolve(&DataSourceRegistry::new())
+        .expect_err("money sub overflow must reject");
+    assert!(matches!(err, FactbaseError::BadDerived { .. }));
+}
+
+#[test]
+fn derived_money_sum_overflow_rejects_bad_derived() {
+    let mut fb = Factbase::new();
+    fb.add_fact(manual_fact(
+        "a",
+        Scalar::Money {
+            value: Money::from_micros(i64::MAX),
+        },
+        Unit::Usd,
+    ));
+    fb.add_fact(manual_fact(
+        "b",
+        Scalar::Money {
+            value: Money::from_micros(1),
+        },
+        Unit::Usd,
+    ));
+    fb.add_fact(Fact {
+        id: FactId::new("total").unwrap(),
+        value: Scalar::Money {
+            value: Money::from_micros(0),
+        },
+        unit: Unit::Usd,
+        source: Source::Derived {
+            formula: Expr::Sum {
+                terms: vec![FactId::new("a").unwrap(), FactId::new("b").unwrap()],
+            },
+            inputs: vec![FactId::new("a").unwrap(), FactId::new("b").unwrap()],
+        },
+        captured: ts(),
+    });
+    let err = fb
+        .resolve(&DataSourceRegistry::new())
+        .expect_err("money sum overflow must reject");
+    assert!(matches!(err, FactbaseError::BadDerived { .. }));
+}

@@ -592,12 +592,28 @@ fn binary_op(
             Ok(Scalar::Count { value: summed })
         }
         (Scalar::Money { value: lv }, Scalar::Money { value: rv }) => match op_name {
-            "+" => Ok(Scalar::Money {
-                value: Money::from_micros(lv.micros() + rv.micros()),
-            }),
-            "-" => Ok(Scalar::Money {
-                value: Money::from_micros(lv.micros() - rv.micros()),
-            }),
+            "+" => {
+                let summed = lv
+                    .micros()
+                    .checked_add(rv.micros())
+                    .ok_or_else(|| FactbaseError::BadDerived {
+                        detail: format!("integer overflow in money {lhs_id} + {rhs_id}"),
+                    })?;
+                Ok(Scalar::Money {
+                    value: Money::from_micros(summed),
+                })
+            }
+            "-" => {
+                let diff = lv
+                    .micros()
+                    .checked_sub(rv.micros())
+                    .ok_or_else(|| FactbaseError::BadDerived {
+                        detail: format!("integer overflow in money {lhs_id} - {rhs_id}"),
+                    })?;
+                Ok(Scalar::Money {
+                    value: Money::from_micros(diff),
+                })
+            }
             _ => BadDerivedSnafu {
                 detail: format!("operator {op_name} not defined on money pair {lhs_id}, {rhs_id}"),
             }
@@ -629,9 +645,17 @@ fn add_scalars(lhs: &Scalar, rhs: &Scalar) -> Result<Scalar, FactbaseError> {
                 })?;
             Ok(Scalar::Count { value: summed })
         }
-        (Scalar::Money { value: lv }, Scalar::Money { value: rv }) => Ok(Scalar::Money {
-            value: Money::from_micros(lv.micros() + rv.micros()),
-        }),
+        (Scalar::Money { value: lv }, Scalar::Money { value: rv }) => {
+            let summed = lv
+                .micros()
+                .checked_add(rv.micros())
+                .ok_or_else(|| FactbaseError::BadDerived {
+                    detail: "integer overflow in money sum".to_owned(),
+                })?;
+            Ok(Scalar::Money {
+                value: Money::from_micros(summed),
+            })
+        }
         (Scalar::Ratio { value: lv }, Scalar::Ratio { value: rv }) => Scalar::new_ratio(lv + rv)
             .map_err(|e| FactbaseError::BadDerived {
                 detail: e.to_string(),
