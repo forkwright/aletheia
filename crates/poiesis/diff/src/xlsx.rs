@@ -101,7 +101,7 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
 
     let sheet_names = parse_sheet_names(&workbook_xml);
     for sheet_name in &sheet_names {
-        workbook_data.insert(sheet_name.to_string(), IndexMap::new());
+        workbook_data.insert(sheet_name.clone(), IndexMap::new());
     }
 
     for (sheet_idx, sheet_name) in sheet_names.iter().enumerate() {

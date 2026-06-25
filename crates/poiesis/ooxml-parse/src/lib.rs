@@ -85,21 +85,21 @@ mod tests {
 
     #[test]
     fn extract_shared_strings_returns_text_content() {
-        let xml = r#"<sst><si><t>Hello</t></si><si><t>World</t></si></sst>"#;
+        let xml = r"<sst><si><t>Hello</t></si><si><t>World</t></si></sst>";
         let result = extract_shared_strings(xml);
         assert_eq!(result, vec!["Hello", "World"]);
     }
 
     #[test]
     fn extract_shared_strings_concatenates_multiple_t_elements() {
-        let xml = r#"<sst><si><t>foo</t><t>bar</t></si></sst>"#;
+        let xml = r"<sst><si><t>foo</t><t>bar</t></si></sst>";
         let result = extract_shared_strings(xml);
         assert_eq!(result, vec!["foobar"]);
     }
 
     #[test]
     fn extract_text_from_slide_joins_a_t_elements() {
-        let xml = r#"<p:sp><a:t>Hello</a:t><a:t>world</a:t></p:sp>"#;
+        let xml = r"<p:sp><a:t>Hello</a:t><a:t>world</a:t></p:sp>";
         let result = extract_text_from_slide(xml);
         assert_eq!(result, "Hello world");
     }
