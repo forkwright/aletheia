@@ -136,7 +136,7 @@ impl SessionListStore {
             }
             SessionSort::MessageCount => {
                 self.sessions
-                    .sort_by(|a, b| b.message_count.cmp(&a.message_count));
+                    .sort_by_key(|b| std::cmp::Reverse(b.message_count));
             }
         }
     }

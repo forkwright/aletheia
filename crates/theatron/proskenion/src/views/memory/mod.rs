@@ -8,6 +8,7 @@ pub(crate) mod fact_filters;
 pub(crate) mod fact_list;
 pub(crate) mod health_strip;
 pub(crate) mod list;
+mod responses;
 pub(crate) mod search;
 
 use dioxus::prelude::*;
@@ -256,7 +257,7 @@ pub(crate) fn Memory() -> Element {
             );
 
             if !search.is_empty() {
-                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(&search);
                 url.push_str(&format!("&filter={encoded}"));
             }
 
@@ -264,8 +265,7 @@ pub(crate) fn Memory() -> Element {
             // operator multi-selects, send the first as a server hint and the
             // store still narrows the rest client-side via the visible() set.
             if let Some(ft) = type_filter.first() {
-                let encoded: String =
-                    form_urlencoded::byte_serialize(ft.wire().as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(ft.wire());
                 url.push_str(&format!("&fact_type={encoded}"));
             }
             if let Some(tier) = tier_filter.first() {
@@ -281,7 +281,7 @@ pub(crate) fn Memory() -> Element {
                             return;
                         }
                     };
-                    let (facts, total) = parse_facts_response(&text);
+                    let (facts, total) = responses::parse_facts_response(&text);
                     // WHY: apply any additional client-side type/tier narrowing
                     // beyond the single server hint so multi-select reads true.
                     let filtered: Vec<Fact> = facts
@@ -327,7 +327,7 @@ pub(crate) fn Memory() -> Element {
             }
 
             if !search.is_empty() {
-                let encoded: String = form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(&search);
                 url.push_str(&format!("&q={encoded}"));
             }
 
@@ -346,8 +346,7 @@ pub(crate) fn Memory() -> Element {
             }
 
             for et in &type_filter {
-                let encoded: String =
-                    form_urlencoded::byte_serialize(et.label().as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(et.label());
                 url.push_str(&format!("&entity_type={encoded}"));
             }
 
@@ -356,7 +355,7 @@ pub(crate) fn Memory() -> Element {
             }
 
             for agent in &agent_filter {
-                let encoded: String = form_urlencoded::byte_serialize(agent.as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(agent);
                 url.push_str(&format!("&agent={encoded}"));
             }
 
@@ -370,16 +369,17 @@ pub(crate) fn Memory() -> Element {
                         }
                     };
 
-                    let entities: Vec<Entity> = if let Ok(list) =
-                        serde_json::from_str::<Vec<Entity>>(&text)
-                    {
-                        list
-                    } else if let Ok(wrapper) = serde_json::from_str::<EntitiesResponse>(&text) {
-                        wrapper.entities
-                    } else {
-                        tracing::warn!("failed to parse entities response");
-                        return;
-                    };
+                    let entities: Vec<Entity> =
+                        if let Ok(list) = serde_json::from_str::<Vec<Entity>>(&text) {
+                            list
+                        } else if let Ok(wrapper) =
+                            serde_json::from_str::<responses::EntitiesResponse>(&text)
+                        {
+                            wrapper.entities
+                        } else {
+                            tracing::warn!("failed to parse entities response");
+                            return;
+                        };
 
                     let has_more = entities.len() >= EntityListStore::PAGE_SIZE;
 
@@ -424,7 +424,7 @@ pub(crate) fn Memory() -> Element {
         spawn(async move {
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = form_urlencoded::byte_serialize(id.as_bytes()).collect();
+            let encoded: String = keryx::url::encode_path_segment(&id);
 
             let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
             let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");
@@ -437,13 +437,19 @@ pub(crate) fn Memory() -> Element {
             let (entity_res, rels_res, mems_res) = tokio::join!(entity_fut, rels_fut, mems_fut);
 
             let entity: Option<Entity> = match entity_res {
-                Ok(resp) if resp.status().is_success() => resp.json::<Entity>().await.ok(),
+                Ok(resp) if resp.status().is_success() => match resp.json::<Entity>().await {
+                    Ok(e) => Some(e),
+                    Err(e) => {
+                        tracing::warn!("failed to parse entity: {e}");
+                        None
+                    }
+                },
                 _ => None,
             };
 
             let relationships: Vec<Relationship> = match rels_res {
                 Ok(resp) if resp.status().is_success() => match resp.text().await {
-                    Ok(text) => parse_relationships_response(&text),
+                    Ok(text) => responses::parse_relationships_response(&text),
                     Err(e) => {
                         tracing::warn!("failed to read relationships response: {e}");
                         Vec::new()
@@ -454,7 +460,7 @@ pub(crate) fn Memory() -> Element {
 
             let memories: Vec<EntityMemory> = match mems_res {
                 Ok(resp) if resp.status().is_success() => match resp.text().await {
-                    Ok(text) => parse_entity_memories_response(&text),
+                    Ok(text) => responses::parse_entity_memories_response(&text),
                     Err(e) => {
                         tracing::warn!("failed to read entity memories response: {e}");
                         Vec::new()
@@ -716,98 +722,5 @@ pub(crate) fn Memory() -> Element {
                 }
             }
         }
-    }
-}
-
-/// Response wrapper for the facts endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct FactsResponse {
-    #[serde(default)]
-    facts: Vec<Fact>,
-    #[serde(default)]
-    total: usize,
-}
-
-/// Parse the `{facts, total}` envelope, falling back to a bare array.
-fn parse_facts_response(text: &str) -> (Vec<Fact>, usize) {
-    match serde_json::from_str::<FactsResponse>(text) {
-        Ok(resp) => {
-            let total = if resp.total == 0 {
-                resp.facts.len()
-            } else {
-                resp.total
-            };
-            (resp.facts, total)
-        }
-        Err(wrapped_err) => match serde_json::from_str::<Vec<Fact>>(text) {
-            Ok(list) => {
-                let total = list.len();
-                (list, total)
-            }
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse facts response"
-                );
-                (Vec::new(), 0)
-            }
-        },
-    }
-}
-
-/// Response wrapper for entity list endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct EntitiesResponse {
-    entities: Vec<Entity>,
-}
-
-/// Response wrapper for the entity relationships endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct RelationshipsResponse {
-    #[serde(default)]
-    relationships: Vec<Relationship>,
-}
-
-/// Response wrapper for the entity memories endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct EntityMemoriesResponse {
-    #[serde(default)]
-    memories: Vec<EntityMemory>,
-}
-
-/// Parse the `{relationships: [...]}` envelope, falling back to a bare array.
-fn parse_relationships_response(text: &str) -> Vec<Relationship> {
-    match serde_json::from_str::<RelationshipsResponse>(text) {
-        Ok(wrapper) => wrapper.relationships,
-        Err(wrapped_err) => match serde_json::from_str::<Vec<Relationship>>(text) {
-            Ok(list) => list,
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse relationships response"
-                );
-                Vec::new()
-            }
-        },
-    }
-}
-
-/// Parse the `{memories: [...]}` envelope, falling back to a bare array.
-fn parse_entity_memories_response(text: &str) -> Vec<EntityMemory> {
-    match serde_json::from_str::<EntityMemoriesResponse>(text) {
-        Ok(wrapper) => wrapper.memories,
-        Err(wrapped_err) => match serde_json::from_str::<Vec<EntityMemory>>(text) {
-            Ok(list) => list,
-            Err(array_err) => {
-                tracing::warn!(
-                    wrapped_error = %wrapped_err,
-                    array_error = %array_err,
-                    "failed to parse entity memories response"
-                );
-                Vec::new()
-            }
-        },
     }
 }

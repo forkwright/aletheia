@@ -327,10 +327,7 @@ Output ONLY the JSON array, no other text."#
 
 /// Build the user message containing the facts to consolidate.
 #[must_use]
-#[cfg_attr(
-    all(not(feature = "mneme-engine"), not(test)),
-    expect(dead_code, reason = "used by the mneme-engine consolidation engine")
-)]
+#[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn consolidation_user_message(facts: &[SourceFact]) -> String {
     use std::fmt::Write as _;
     let mut msg = format!("Input facts ({} total):\n\n", facts.len());
