@@ -213,7 +213,8 @@ pub(super) fn embedding_to_params(
 
 /// Compute Jaccard overlap between two tool lists.
 ///
-/// Returns 1.0 for identical sets, 0.0 for disjoint.
+/// Returns 1.0 for identical non-empty sets and 0.0 for disjoint sets or when
+/// both lists are empty.
 #[cfg(feature = "mneme-engine")]
 #[expect(
     clippy::as_conversions,
@@ -221,15 +222,17 @@ pub(super) fn embedding_to_params(
     reason = "tool set sizes are small; precision loss is impossible in practice"
 )]
 pub(super) fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
+    // WHY: Two skills with no tools share no overlap; a 1.0 score would make
+    // the dedup heuristic treat any pair of no-tool skills as duplicates.
     if a.is_empty() && b.is_empty() {
-        return 1.0;
+        return 0.0;
     }
     let set_a: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
     let set_b: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
     let intersection = set_a.intersection(&set_b).count();
     let union = set_a.union(&set_b).count();
     if union == 0 {
-        return 1.0;
+        return 0.0;
     }
     intersection as f64 / union as f64 // SAFETY: set counts fit f64
 }
@@ -1178,12 +1181,12 @@ mod tests {
     }
 
     #[test]
-    fn tool_overlap_both_empty_returns_one() {
+    fn tool_overlap_both_empty_returns_zero() {
         let a: Vec<String> = Vec::new();
         let b: Vec<String> = Vec::new();
         assert!(
-            (compute_tool_overlap(&a, &b) - 1.0).abs() < f64::EPSILON,
-            "both-empty tool sets should yield overlap 1.0"
+            compute_tool_overlap(&a, &b).abs() < f64::EPSILON,
+            "both-empty tool sets should yield overlap 0.0"
         );
     }
 
@@ -1602,7 +1605,11 @@ mod tests {
             crate::knowledge::Visibility::Shared.as_str().into(),
         )))
         .expect("valid visibility decodes");
-        assert_eq!(ok, crate::knowledge::Visibility::Shared);
+        assert_eq!(
+            ok,
+            crate::knowledge::Visibility::Shared,
+            "decoded visibility must round-trip to Shared"
+        );
     }
 
     #[test]
@@ -1616,12 +1623,14 @@ mod tests {
             parse_optional_scope(Some(&DataValue::Str("bogus-scope".into()))).is_err(),
             "present-but-undecodable scope must error, not widen to global"
         );
+        let scope = parse_optional_scope(Some(&DataValue::Str(
+            crate::knowledge::MemoryScope::Project.as_str().into(),
+        )))
+        .expect("valid scope round-trips");
         assert_eq!(
-            parse_optional_scope(Some(&DataValue::Str(
-                crate::knowledge::MemoryScope::Project.as_str().into()
-            )))
-            .expect("valid scope ok"),
-            Some(crate::knowledge::MemoryScope::Project)
+            scope,
+            Some(crate::knowledge::MemoryScope::Project),
+            "decoded scope must round-trip to Project"
         );
     }
 
@@ -1629,7 +1638,8 @@ mod tests {
     fn parse_optional_project_id_nulls_ok_but_garbage_errors() {
         assert_eq!(
             parse_optional_project_id(Some(&DataValue::Null)).expect("null project ok"),
-            None
+            None,
+            "SQL null project id must decode to None"
         );
         assert!(
             parse_optional_project_id(Some(&DataValue::Str("not-a-hash".into()))).is_err(),
@@ -1641,7 +1651,8 @@ mod tests {
         assert_eq!(
             parse_optional_project_id(Some(&DataValue::Str(project.as_str().into())))
                 .expect("valid project ok"),
-            Some(project)
+            Some(project),
+            "decoded project id must round-trip to the original value"
         );
     }
 
