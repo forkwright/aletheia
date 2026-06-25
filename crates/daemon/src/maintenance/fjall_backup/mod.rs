@@ -62,9 +62,9 @@ pub struct FjallBackupReport {
 }
 
 impl FjallBackupReport {
-    /// Returns `true` if no backup was created (source was absent or disabled).
-    pub fn is_noop(&self) -> bool {
-        self.backup_path.is_none()
+    /// Returns `true` if a backup directory was created (i.e., the run was not skipped).
+    pub fn succeeded(&self) -> bool {
+        self.backup_path.is_some()
     }
 }
 
@@ -150,6 +150,7 @@ struct FjallBackupManifest {
 }
 
 /// Manages fjall knowledge store backups.
+// kanon:ignore RUST/pub-visibility — consumed by aletheia binary crate (backup subcommand)
 pub struct FjallBackup {
     config: FjallBackupConfig,
 }

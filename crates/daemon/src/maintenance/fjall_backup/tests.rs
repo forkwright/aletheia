@@ -116,7 +116,7 @@ fn nonexistent_source_returns_empty_report() {
 
     let manager = FjallBackup::new(config);
     let report = manager.create_backup().expect("should not error");
-    assert!(report.is_noop());
+    assert!(!report.succeeded());
     assert_eq!(report.files_copied, 0);
 }
 
