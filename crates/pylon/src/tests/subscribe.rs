@@ -290,3 +290,51 @@ async fn subscribe_reports_gap_for_too_old_last_event_id() {
         "expected gap metadata, got: {text}"
     );
 }
+
+#[tokio::test]
+async fn subscribe_scoped_gap_withholds_missed_id_range() {
+    // SECURITY(#5341, #4994, #4617): a scoped token that reconnects past the
+    // journal must learn it missed events (the typed `stream_gap` control event)
+    // but must NOT receive the raw `first_missed_id`/`last_missed_id` range —
+    // that range spans cross-agent events whose existence and volume the scoped
+    // token may never observe. The gap object is emitted empty (`{}`).
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    // WHY: capacity 256; publish 258 scoped events so id 1 is evicted and a
+    // reconnect at last_event_id=1 is unrecoverable. Each carries the scope's
+    // nous_id so the scoped token is permitted to subscribe at all.
+    for i in 0..258 {
+        state
+            .event_bus
+            .publish(DomainEvent::new(
+                state.event_bus.next_id(),
+                "fact.created",
+                serde_json::json!({"fact_id": format!("f-{i}"), "nous_id": "syn"}),
+            ))
+            .await;
+    }
+
+    let req = authed_get_scoped_as(
+        "/api/v1/events/subscribe?topics=fact.created&last_event_id=1",
+        symbolon::types::Role::Operator,
+        "syn",
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let bytes = collect_sse_chunks(resp.into_body(), Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: stream_gap"),
+        "scoped reconnect must still signal the gap, got: {text}"
+    );
+    assert!(
+        !text.contains("first_missed_id"),
+        "scoped gap must NOT leak the missed-id range, got: {text}"
+    );
+    assert!(
+        !text.contains("last_missed_id"),
+        "scoped gap must NOT leak the missed-id range, got: {text}"
+    );
+}

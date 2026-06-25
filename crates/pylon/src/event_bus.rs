@@ -158,6 +158,10 @@ impl EventBus {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on Vecs with asserted length"
+)]
 mod tests {
     use super::*;
 

@@ -89,13 +89,23 @@ fn domain_event_to_sse(
     clippy::unnecessary_wraps,
     reason = "return type must match stream item type Result<Event, Infallible>"
 )]
-fn gap_event(first_missed: u64, last_missed: u64) -> Result<Event, Infallible> {
-    let data = serde_json::json!({
-        "first_missed_id": first_missed,
-        "last_missed_id": last_missed,
-    });
-    let data = serde_json::to_string(&data)
-        .unwrap_or_else(|_| r#"{"first_missed_id":0,"last_missed_id":0}"#.to_owned());
+fn gap_event(first_missed: u64, last_missed: u64, scoped: bool) -> Result<Event, Infallible> {
+    // SECURITY(#5341, #4994, #4617): The missed-id range spans every event that
+    // fell out of the journal, including cross-agent events a scoped token must
+    // never observe. Leaking the raw `(first, last)` range to a scoped token
+    // discloses the existence and volume of other agents' activity. Scoped
+    // tokens therefore receive an empty gap object `{}` — the loss is still
+    // signalled, but the cross-agent id range is withheld. Only unscoped
+    // Operator/Admin tokens (which already see all events) receive the range.
+    let data = if scoped {
+        serde_json::json!({})
+    } else {
+        serde_json::json!({
+            "first_missed_id": first_missed,
+            "last_missed_id": last_missed,
+        })
+    };
+    let data = serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_owned());
     Ok(Event::default().event(STREAM_GAP_EVENT).data(data))
 }
 
@@ -194,7 +204,9 @@ pub async fn subscribe(
 
     let gap_stream = if has_gap {
         Some(stream::iter(std::iter::once(gap_event(
-            gap_first, gap_last,
+            gap_first,
+            gap_last,
+            scoped_nous_id.is_some(),
         ))))
     } else {
         None

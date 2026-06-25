@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use hermeneus::provider::LlmProvider;
-use koina::metrics::MetricsRegistry;
 
 use super::*;
 use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
