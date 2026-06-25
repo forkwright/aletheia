@@ -34,6 +34,18 @@ pub(crate) struct WorkspaceLayout {
     pub artifacts_dir: PathBuf,
 }
 
+impl WorkspaceLayout {
+    pub(crate) fn new(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            project_file: root.join("PROJECT.json"),
+            phases_dir: root.join("phases"),
+            blockers_dir: root.join(".dianoia").join("blockers"),
+            artifacts_dir: root.join("artifacts"),
+        }
+    }
+}
+
 impl ProjectWorkspace {
     /// Create a new workspace at the given path.
     ///
@@ -163,13 +175,7 @@ impl ProjectWorkspace {
     }
 
     fn build_layout(root: &Path) -> WorkspaceLayout {
-        WorkspaceLayout {
-            root: root.to_path_buf(),
-            project_file: root.join("PROJECT.json"),
-            phases_dir: root.join("phases"),
-            blockers_dir: root.join(".dianoia").join("blockers"),
-            artifacts_dir: root.join("artifacts"),
-        }
+        WorkspaceLayout::new(root)
     }
 }
 
