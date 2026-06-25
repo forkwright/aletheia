@@ -23,6 +23,11 @@ pub struct ChangeRecord {
     pub lines_removed: u32,
     /// Function/context names from hunk headers, if available.
     pub contexts: Vec<String>,
+    /// Lines added across all hunks, including `+`-prefixed content.
+    ///
+    /// WHY: hunk-level facts such as the test-modified heuristic must inspect
+    /// actual added lines, not hunk-header context strings.
+    pub additions: Vec<String>,
 }
 
 /// Classification of a file-level change.
@@ -149,6 +154,12 @@ fn classify_file(file: &DiffFile) -> ChangeRecord {
         .map(|h| h.context.clone())
         .collect();
 
+    let additions: Vec<String> = file
+        .hunks
+        .iter()
+        .flat_map(|h| h.additions.iter().cloned())
+        .collect();
+
     let path = file.effective_path();
     let summary = match change_type {
         ChangeType::Added => format!("new file: {path}"),
@@ -166,6 +177,7 @@ fn classify_file(file: &DiffFile) -> ChangeRecord {
         lines_added,
         lines_removed,
         contexts,
+        additions,
     }
 }
 
@@ -258,7 +270,9 @@ fn extract_hunk_facts(
 ) -> Vec<super::types::ExtractedFact> {
     let mut facts = Vec::new();
 
-    let all_additions: Vec<&str> = change.contexts.iter().map(String::as_str).collect();
+    // WHY: test-context detection must look at the actual `+` lines in the
+    // diff, not the hunk-header function name (e.g. `fn test_cleanup`).
+    let all_additions: Vec<&str> = change.additions.iter().map(String::as_str).collect();
 
     if is_bug_fix_pattern(change) {
         facts.push(super::types::ExtractedFact {
@@ -573,6 +587,16 @@ pub struct LessonPersistResult {
     pub causal_edges_inserted: usize,
 }
 
+impl LessonPersistResult {
+    /// Total number of records written across all categories.
+    pub fn total(&self) -> usize {
+        self.entities_inserted
+            + self.relationships_inserted
+            + self.facts_inserted
+            + self.causal_edges_inserted
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test assertions")]
 mod tests {
@@ -692,7 +716,6 @@ diff --git a/Cargo.toml b/Cargo.toml
         };
 
         let lesson = extract_lessons(PR_DIFF, &config);
-
         for edge in &lesson.causal_edges {
             assert!(
                 edge.cause_index < lesson.facts.len(),
@@ -717,5 +740,61 @@ diff --git a/Cargo.toml b/Cargo.toml
         );
         assert_eq!(extract_module_name("Cargo.toml"), "Cargo.toml");
         assert_eq!(extract_module_name("a/b/c/d.rs"), "c/d.rs");
+    }
+
+    // WHY: #5861 — hunk-header function names must not drive the test-modified
+    // heuristic; only actual `+`-prefixed additions should.
+    #[test]
+    fn context_ignores_hunk_header_function_named_test_without_added_lines() {
+        let diff = r"diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,7 +10,7 @@ pub fn test_cleanup() {
+-    old_line
++    new_line
+ }
+";
+        let config = LessonConfig {
+            pr_title: "Fix cleanup".to_owned(),
+            pr_number: Some(1),
+            nous_id: "test".to_owned(),
+            source: "pr-merge:1".to_owned(),
+        };
+        let lesson = extract_lessons(diff, &config);
+        assert!(
+            !lesson
+                .facts
+                .iter()
+                .any(|f| f.predicate == "had tests modified"),
+            "a function named `test_*` with no test additions should not tag tests as modified"
+        );
+    }
+
+    #[test]
+    fn context_detects_test_additions_inside_non_test_named_function() {
+        let diff = r"diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -10,6 +10,9 @@ pub fn run() {
++    #[test]
++    fn it_works() {
++        assert!(true);
++    }
+ }
+";
+        let config = LessonConfig {
+            pr_title: "Add tests".to_owned(),
+            pr_number: Some(2),
+            nous_id: "test".to_owned(),
+            source: "pr-merge:2".to_owned(),
+        };
+        let lesson = extract_lessons(diff, &config);
+        assert!(
+            lesson
+                .facts
+                .iter()
+                .any(|f| f.predicate == "had tests modified"),
+            "`#[test]` additions inside a non-test-named function should tag tests as modified"
+        );
     }
 }
