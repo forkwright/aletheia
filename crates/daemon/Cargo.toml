@@ -56,3 +56,8 @@ tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true
+
+[package.metadata.kanon]
+maturity = "beta"
+since = "2025-06-01"
+exit-criteria = "prosoche audit framework stabilized; all maintenance tasks production-grade"

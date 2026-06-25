@@ -1,4 +1,5 @@
 // kanon:ignore RUST/file-too-long — cohesive prosoche audit framework: trait + impls + report structs belong together
+// kanon:ignore ARCHITECTURE/trait-impl-colocation — ProsocheCheck and its five implementations form a self-contained audit unit; the trait contract, state types, and implementations co-locate by design and do not belong split across consumer crates
 //! Prosoche self-audit framework: structured attention-quality checks.
 //!
 //! Five check types (consistency, staleness, goal alignment, session quality,
@@ -267,6 +268,17 @@ pub struct FactSnapshot {
     pub days_since_touched: Option<f64>,
 }
 
+impl FactSnapshot {
+    /// Create a fact snapshot with all required fields.
+    pub fn new(fact_id: String, content: String, days_since_touched: Option<f64>) -> Self {
+        Self {
+            fact_id,
+            content,
+            days_since_touched,
+        }
+    }
+}
+
 /// A minimal session snapshot for audit checks.
 #[derive(Debug, Clone)]
 pub struct SessionSnapshot {
@@ -284,6 +296,25 @@ pub struct SessionSnapshot {
     /// Used for goal-alignment keyword matching. Only hashes of this value are
     /// persisted in durable reports.
     pub turn_text: String,
+}
+
+impl SessionSnapshot {
+    /// Create a session snapshot with all required fields.
+    pub fn new(
+        session_id: String,
+        turn_count: u32,
+        error_count: u32,
+        completed: bool,
+        turn_text: String,
+    ) -> Self {
+        Self {
+            session_id,
+            turn_count,
+            error_count,
+            completed,
+            turn_text,
+        }
+    }
 }
 
 /// Behavioral counters for one recent session.
@@ -304,6 +335,16 @@ pub struct BehaviorPatternSnapshot {
     pub avoidance_markers: u32,
     /// High-confidence assertions or tool-selection claims.
     pub confidence_claims: u32,
+}
+
+impl BehaviorPatternSnapshot {
+    /// Create a behavior pattern snapshot for the given session, with all counters at zero.
+    pub fn new(session_id: String) -> Self {
+        Self {
+            session_id,
+            ..Default::default()
+        }
+    }
 }
 
 /// A single prosoche self-audit check.
@@ -403,6 +444,7 @@ impl ConsistencyCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation — all five ProsocheCheck implementations co-locate with the trait by design; see file-level rationale
 impl ProsocheCheck for ConsistencyCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -641,6 +683,7 @@ impl StalenessCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation — all five ProsocheCheck implementations co-locate with the trait by design; see file-level rationale
 impl ProsocheCheck for StalenessCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -811,6 +854,7 @@ impl GoalAlignmentCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation — all five ProsocheCheck implementations co-locate with the trait by design; see file-level rationale
 impl ProsocheCheck for GoalAlignmentCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -962,6 +1006,7 @@ impl SessionQualityCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation — all five ProsocheCheck implementations co-locate with the trait by design; see file-level rationale
 impl ProsocheCheck for SessionQualityCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -1268,6 +1313,7 @@ fn session_support(sample: &BehaviorSample, query_hash: &str) -> FindingSupport 
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation — all five ProsocheCheck implementations co-locate with the trait by design; see file-level rationale
 impl ProsocheCheck for InstinctPatternsCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(

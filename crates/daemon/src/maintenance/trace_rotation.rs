@@ -55,6 +55,13 @@ pub struct RotationReport {
     pub bytes_freed: u64,
 }
 
+impl RotationReport {
+    /// Total number of files affected by this rotation run (rotated + pruned).
+    pub fn total_files_affected(&self) -> u32 {
+        self.files_rotated + self.files_pruned
+    }
+}
+
 /// Rotates old trace files to an archive directory with optional gzip compression.
 pub struct TraceRotator {
     config: TraceRotationConfig,
