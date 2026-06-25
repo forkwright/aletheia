@@ -1502,7 +1502,10 @@ mod tests {
         degrade_provider(&registry, "alpha");
         let check = provider_reachability_check(&registry, &HashSet::new());
         assert_eq!(check.status, "warn");
-        assert!(check.message.is_some(), "message should describe degraded provider");
+        assert!(
+            check.message.is_some(),
+            "message should describe degraded provider"
+        );
         let message = check.message.as_deref().unwrap_or_default();
         assert!(message.contains("alpha") && message.contains("degraded"));
     }
@@ -1513,7 +1516,10 @@ mod tests {
         down_provider(&registry, "alpha");
         let check = provider_reachability_check(&registry, &HashSet::new());
         assert_eq!(check.status, "fail");
-        assert!(check.message.is_some(), "message should describe down provider");
+        assert!(
+            check.message.is_some(),
+            "message should describe down provider"
+        );
         let message = check.message.as_deref().unwrap_or_default();
         assert!(message.contains("alpha") && message.contains("down"));
     }
