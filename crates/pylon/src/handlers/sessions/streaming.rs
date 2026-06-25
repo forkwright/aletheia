@@ -22,6 +22,7 @@ use nous::stream::TurnStreamEvent;
 use mneme::types::SessionStatus;
 
 use symbolon::types::Role;
+use taxis::config::AletheiaConfig;
 
 use crate::error::{
     ApiError, BadRequestSnafu, ConflictSnafu, FieldError, InternalSnafu, NousNotFoundSnafu,
@@ -30,7 +31,7 @@ use crate::error::{
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
-use crate::state::SessionsState;
+use crate::state::{EventBusState, SessionsState};
 use crate::stream::{SseEvent, TurnOutcome, TurnStreamEvent as PylonTurnStreamEvent, UsageData};
 use crate::turn_buffer::{REPLAY_GAP_REASON_BUFFER_CAPACITY, RecordOutcome, TurnBufferHandle};
 
@@ -42,6 +43,20 @@ const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
 const HEX_DECIMAL_DIGITS: u8 = 10;
 const ASCII_DIGIT_ZERO: u8 = b'0';
 const ASCII_LOWER_A: u8 = b'a';
+
+/// Build an SSE [`KeepAlive`] using the configured gateway heartbeat interval.
+///
+/// WHY(#5156): All SSE streams share one keepalive cadence so the gateway,
+/// clients, and reverse proxies agree on the transport contract.
+async fn gateway_keepalive(
+    config: &tokio::sync::RwLock<AletheiaConfig>,
+    text: &'static str,
+) -> KeepAlive {
+    let secs = config.read().await.gateway.sse_heartbeat_interval_secs;
+    KeepAlive::new()
+        .interval(Duration::from_secs(secs))
+        .text(text)
+}
 
 fn turn_complete_event_payload(
     session_id: &str,
@@ -377,11 +392,9 @@ pub async fn send_message(
                         _idem_guard: None,
                     },
                 };
-                return Ok(Sse::new(stream).keep_alive(
-                    KeepAlive::new()
-                        .interval(Duration::from_secs(15))
-                        .text("ping"),
-                ));
+                return Ok(
+                    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await)
+                );
             }
             LookupResult::Conflict => {
                 return Err(ConflictSnafu {
@@ -587,11 +600,7 @@ pub async fn send_message(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    ))
+    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await))
 }
 
 /// POST /api/v1/sessions/stream: stream a conversation turn (turn stream protocol).
@@ -959,11 +968,7 @@ pub async fn stream_turn(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(30))
-            .text("heartbeat"),
-    ))
+    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "heartbeat").await))
 }
 
 /// GET /api/v1/events: global SSE keep-alive channel.
@@ -982,23 +987,25 @@ pub async fn stream_turn(
     security(("bearer_auth" = []))
 )]
 pub async fn events(
+    State(state): State<EventBusState>,
     _claims: Claims,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     // WHY: emit periodic comment-only events so the connection stays alive and
     // proxies do not close it. Domain events flow through the EventBus stream
     // on /api/v1/events/subscribe, not this channel.
-    // WHY: keepalive interval (15s) must be well below the client read timeout
-    // (45s in skene) to prevent false disconnects. The IntervalStream and
-    // axum KeepAlive are belt-and-suspenders: either alone would work but
-    // both together ensure at least one event arrives per client timeout window.
-    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(15)))
+    let heartbeat_secs = state
+        .config
+        .read()
+        .await
+        .gateway
+        .sse_heartbeat_interval_secs;
+    // WHY(#5156): Derive the interval from gateway config so the server
+    // keepalive cadence stays in sync with the client read timeout and any
+    // reverse-proxy idle timeouts.
+    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(heartbeat_secs)))
         .map(|_| Ok::<Event, Infallible>(Event::default().comment("keepalive")));
 
-    Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    )
+    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await)
 }
 
 /// Convert a `(seq, SseEvent)` pair into an Axum SSE [`Event`] with `id:` field.
@@ -1432,7 +1439,7 @@ pub async fn reconnect_turn(
 
     // WHY(#5678): Bound the task lifetime to the turn buffer TTL (5 min) so a
     // reconnect to an orphaned Running buffer cannot block indefinitely.
-    let max_live = Duration::from_secs(5 * 60);
+    let max_live = Duration::from_mins(5);
 
     let reconnect_task = tokio::spawn(async move {
         let mut last_seq = last_event_id;
@@ -1508,11 +1515,7 @@ pub async fn reconnect_turn(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    ))
+    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await))
 }
 
 #[cfg(test)]

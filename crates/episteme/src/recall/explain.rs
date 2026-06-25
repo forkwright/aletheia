@@ -10,6 +10,7 @@ use super::{FactorScores, RecallEngine, RecallWeights, ScoredResult};
 
 /// Decision applied to a candidate during the explain path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CandidateDecision {
     /// Included in the returned result set.
     Selected,
@@ -36,6 +37,14 @@ pub struct ExplainedCandidate {
     pub fact_type: String,
 }
 
+impl ExplainedCandidate {
+    /// Whether this candidate was included in the returned result set.
+    #[must_use]
+    pub fn is_selected(&self) -> bool {
+        self.decision == CandidateDecision::Selected
+    }
+}
+
 /// Full explanation of a recall scoring pass over a set of facts.
 #[derive(Debug, Clone)]
 pub struct RecallExplanation {
@@ -45,6 +54,24 @@ pub struct RecallExplanation {
     pub total_weight: f64,
     /// Every candidate seen, including those that were filtered or dropped.
     pub candidates: Vec<ExplainedCandidate>,
+}
+
+impl RecallExplanation {
+    /// Build a recall explanation, computing `total_weight` from the provided weights.
+    pub fn new(weights: RecallWeights, candidates: Vec<ExplainedCandidate>) -> Self {
+        let total_weight = weights.total();
+        Self {
+            weights,
+            total_weight,
+            candidates,
+        }
+    }
+
+    /// Number of candidates that were included in the result set.
+    #[must_use]
+    pub fn selected_count(&self) -> usize {
+        self.candidates.iter().filter(|c| c.is_selected()).count()
+    }
 }
 
 /// Score and explain a fact stream for a free-text query.
@@ -203,9 +230,7 @@ fn term_match_score(content: &str, terms: &[&str]) -> f64 {
 }
 
 fn usize_to_f64(value: usize) -> f64 {
-    u32::try_from(value)
-        .map(f64::from)
-        .unwrap_or(f64::from(u32::MAX))
+    u32::try_from(value).map_or(f64::from(u32::MAX), f64::from)
 }
 
 fn i64_to_f64_saturating(value: i64) -> f64 {
@@ -312,7 +337,7 @@ mod tests {
         }
     }
 
-    fn test_weights() -> RecallWeights {
+    fn multi_factor_weights() -> RecallWeights {
         RecallWeights {
             vector_similarity: 0.1,
             decay: 0.3,
@@ -353,7 +378,7 @@ mod tests {
             ),
         ];
 
-        let engine = RecallEngine::with_weights(test_weights());
+        let engine = RecallEngine::with_weights(multi_factor_weights());
         let explanation = explain_recall(&engine, &facts, "rust project", Some("alice"), now, 10);
 
         let selected: Vec<&str> = explanation
@@ -372,7 +397,7 @@ mod tests {
         forgotten.lifecycle.is_forgotten = true;
         let no_match = make_fact("nomatch", "python package", EpistemicTier::Inferred, now, 0);
 
-        let engine = RecallEngine::with_weights(test_weights());
+        let engine = RecallEngine::with_weights(multi_factor_weights());
         let explanation = explain_recall(
             &engine,
             &[forgotten, no_match],
@@ -416,7 +441,7 @@ mod tests {
             make_fact("c", "rust project", EpistemicTier::Reflected, now, 3),
         ];
 
-        let engine = RecallEngine::with_weights(test_weights());
+        let engine = RecallEngine::with_weights(multi_factor_weights());
         let explanation = explain_recall(&engine, &facts, "rust project", Some("alice"), now, 1);
 
         let selected: Vec<&str> = explanation

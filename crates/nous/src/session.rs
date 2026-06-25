@@ -142,6 +142,28 @@ impl SessionState {
         self.turn
     }
 
+    /// Revert the most recent [`next_turn`](Self::next_turn) call.
+    ///
+    /// WHY: when a turn is cancelled before the pipeline task runs to
+    /// completion, the actor's in-memory counter must be rolled back so the
+    /// next successful turn does not leave a visible gap in turn numbering.
+    /// The `turn_id` is intentionally not restored to a previous ULID;
+    /// `next_turn()` always generates a fresh dedup key, so the cancelled ID
+    /// is never reused.
+    ///
+    /// # Panics
+    ///
+    /// Debug builds panic when `turn == 0`, which indicates a caller bug
+    /// because `revert_turn` is only valid immediately after `next_turn`.
+    pub fn revert_turn(&mut self) -> u64 {
+        // WHY: revert_turn is only valid immediately after next_turn();
+        // underflow means the caller's cancellation logic is out of sync with
+        // turn advancement.
+        debug_assert!(self.turn > 0, "revert_turn called before next_turn");
+        self.turn = self.turn.saturating_sub(1);
+        self.turn
+    }
+
     /// Check if context is nearing capacity.
     #[must_use]
     pub fn needs_distillation(&self, threshold_ratio: f64, context_window: u32) -> bool {
@@ -238,6 +260,19 @@ mod tests {
         assert_eq!(state.next_turn(), 1);
         assert_eq!(state.next_turn(), 2);
         assert_eq!(state.next_turn(), 3);
+    }
+
+    #[test]
+    fn revert_turn_rolls_back_increment() {
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
+        let initial_turn_id = state.turn_id;
+        assert_eq!(state.next_turn(), 1);
+        assert_eq!(state.revert_turn(), 0);
+        assert_eq!(state.turn, 0);
+        // WHY: next_turn() always mints a fresh turn_id, so the cancelled
+        // turn's id is discarded; we only assert the counter is restored.
+        assert_ne!(state.turn_id, initial_turn_id);
+        assert_eq!(state.next_turn(), 1);
     }
 
     #[test]

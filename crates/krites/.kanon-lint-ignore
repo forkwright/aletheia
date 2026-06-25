@@ -119,7 +119,6 @@ RUST/as-cast:src/parse/sys/parse.rs
 RUST/as-cast:src/query/magic.rs
 RUST/as-cast:src/runtime/db.rs
 RUST/as-cast:src/runtime/exec.rs
-RUST/as-cast:src/runtime/hnsw/mmap_storage.rs
 RUST/as-cast:src/runtime/hnsw/put.rs
 RUST/as-cast:src/runtime/hnsw/remove.rs
 RUST/as-cast:src/runtime/hnsw/search.rs
@@ -181,8 +180,6 @@ RUST/indexing-slicing:src/query/sort.rs
 RUST/indexing-slicing:src/query/stored/mutation.rs
 RUST/indexing-slicing:src/query/stored/validation.rs
 RUST/indexing-slicing:src/runtime/exec.rs
-RUST/indexing-slicing:src/runtime/hnsw/atomic_save.rs
-RUST/indexing-slicing:src/runtime/hnsw/mmap_storage.rs
 RUST/indexing-slicing:src/runtime/hnsw/put.rs
 RUST/indexing-slicing:src/runtime/hnsw/remove.rs
 RUST/indexing-slicing:src/runtime/hnsw/search.rs
@@ -275,17 +272,15 @@ RUST/file-too-long:src/fts/tokenizer/stop_word_filter/stopwords.rs
 RUST/bare-assert:src/fts/tokenizer/ngram_tokenizer.rs
 
 # WHY: vendored CozoDB engine — memcmp.rs, search.rs, visited_pool.rs,
-# atomic_save.rs, transact.rs, hot_reload.rs: silent-discard patterns are
-# intentional. In memcmp: Write::write_all on Vec<u8> is infallible by contract.
-# In search.rs: CompactString::write_str is infallible. In visited_pool.rs:
-# ArrayQueue::push discard is expected when pool is full (set is just dropped).
-# In atomic_save.rs: remove_file calls in error cleanup paths — already handling
-# a primary error; cleanup errors are secondary. In transact.rs + hot_reload.rs:
-# channel send results are intentionally ignored (receiver may have dropped).
+# transact.rs, hot_reload.rs: silent-discard patterns are intentional. In
+# memcmp: Write::write_all on Vec<u8> is infallible by contract. In search.rs:
+# CompactString::write_str is infallible. In visited_pool.rs: ArrayQueue::push
+# discard is expected when pool is full (set is just dropped). In transact.rs +
+# hot_reload.rs: channel send results are intentionally ignored (receiver may
+# have dropped).
 RUST/no-silent-result-swallow:src/data/memcmp.rs
 RUST/no-silent-result-swallow:src/hot_reload.rs
 RUST/no-silent-result-swallow:src/query/ra/search.rs
-RUST/no-silent-result-swallow:src/runtime/hnsw/atomic_save.rs
 RUST/no-silent-result-swallow:src/runtime/hnsw/visited_pool.rs
 RUST/no-silent-result-swallow:src/runtime/transact.rs
 

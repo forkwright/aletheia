@@ -143,7 +143,7 @@ async fn execute_command_success_captures_stdout() {
     let result = execute_command(
         "echo hello",
         CancellationToken::new(),
-        Duration::from_secs(60),
+        Duration::from_mins(1),
     )
     .await
     .expect("should succeed");
@@ -157,7 +157,7 @@ async fn execute_command_success_captures_stdout() {
 
 #[tokio::test]
 async fn execute_command_failure_returns_error() {
-    let err = execute_command("exit 7", CancellationToken::new(), Duration::from_secs(60))
+    let err = execute_command("exit 7", CancellationToken::new(), Duration::from_mins(1))
         .await
         .expect_err("non-zero exit should fail");
     let msg = err.to_string();
@@ -175,7 +175,7 @@ async fn execute_command_failure_uses_stderr_in_reason() {
     let err = execute_command(
         "echo 'something failed' >&2; exit 1",
         CancellationToken::new(),
-        Duration::from_secs(60),
+        Duration::from_mins(1),
     )
     .await
     .expect_err("should fail");
@@ -194,7 +194,7 @@ async fn execute_command_respects_cancellation_token() {
     let start = std::time::Instant::now();
 
     let handle = tokio::spawn(async move {
-        execute_command("sleep 30", cancel_for_task, Duration::from_secs(60)).await
+        execute_command("sleep 30", cancel_for_task, Duration::from_mins(1)).await
     });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
