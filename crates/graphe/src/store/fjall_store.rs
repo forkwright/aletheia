@@ -31,6 +31,7 @@
     reason = "usize↔i64 for seq counters: values never exceed i64::MAX in practice"
 )]
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -124,6 +125,7 @@ const PARTITIONS: &[&str] = &[
 /// Open with [`SessionStore::open`] for persistent storage or
 /// [`SessionStore::open_in_memory`] for ephemeral storage (test-only; uses a
 /// `TempDir` that is cleaned up on drop).
+// kanon:ignore RUST/pub-visibility — re-exported by mneme (pub use graphe::store::SessionStore)
 pub struct SessionStore {
     db: Arc<SingleWriterTxDatabase>,
     path: PathBuf,
@@ -166,10 +168,14 @@ impl SessionStore {
             }
             .build()
         })?;
+        // WHY: mirrors the production layout where the caller passes
+        // `<data_dir>/sessions` to `open()`. Storing `<tmp_dir>/sessions` here
+        // ensures `self.path.parent()` resolves to an isolated per-test
+        // directory rather than the shared /tmp root.
         let path = fdb
             ._temp_dir
             .as_ref()
-            .map_or_else(std::env::temp_dir, |dir| dir.path().to_path_buf());
+            .map_or_else(std::env::temp_dir, |dir| dir.path().join("sessions"));
         Ok(Self::from_fjall_db(fdb, path))
     }
 
@@ -642,7 +648,7 @@ impl SessionStore {
         Ok(sessions)
     }
 
-    /// Sets the status field and refreshes the session's `updated_at` timestamp.
+    /// Overwrite the session status field and refresh its `updated_at` timestamp.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         let _guard = self
@@ -1926,6 +1932,102 @@ impl SessionStore {
         }
 
         Ok(primary_message_count)
+    }
+
+    /// Prune session archive files older than `ttl_days` from the instance's
+    /// `archive/sessions/` directory.
+    ///
+    /// Only `.json` files are considered. Files whose metadata cannot be read,
+    /// or whose removal fails, are logged and skipped so that one bad archive
+    /// does not abort the whole retention pass.
+    ///
+    /// Returns the number of files removed.
+    ///
+    /// # Errors
+    /// Returns an error if the archive directory cannot be read.
+    #[instrument(skip(self))]
+    pub fn prune_session_archives(&self, ttl_days: u32) -> Result<u64> {
+        use jiff::{Timestamp, ToSpan as _};
+
+        // WHY: the store path is `<data_dir>/sessions`; archives live next to
+        // the store under `<data_dir>/archive/sessions`.
+        let archive_dir = self.session_archive_dir()?;
+        if !archive_dir.exists() {
+            return Ok(0);
+        }
+
+        // WHY: Span::days is a calendar unit that requires a timezone for
+        // Timestamp arithmetic — checked_sub returns None and silently falls
+        // back to UNIX_EPOCH. Hours are a fixed-duration time unit and work
+        // directly against Timestamp without a timezone context.
+        let cutoff = Timestamp::now()
+            .checked_sub((i64::from(ttl_days) * 24).hours())
+            .unwrap_or(Timestamp::UNIX_EPOCH);
+
+        let mut removed: u64 = 0;
+        let entries = fs::read_dir(&archive_dir).context(error::IoSnafu {
+            path: archive_dir.clone(),
+        })?;
+
+        for entry in entries {
+            let entry = entry.context(error::IoSnafu {
+                path: archive_dir.clone(),
+            })?;
+            let path = entry.path();
+            let is_json = path.extension() == Some(std::ffi::OsStr::new("json"));
+            if !is_json {
+                continue;
+            }
+
+            let metadata = match entry.metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "skipping archive file with unreadable metadata");
+                    continue;
+                }
+            };
+            let modified = match metadata.modified() {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "skipping archive file with unreadable mtime");
+                    continue;
+                }
+            };
+            let millis = match modified.duration_since(std::time::UNIX_EPOCH) {
+                Ok(d) => d.as_millis(),
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "skipping archive file with mtime before Unix epoch");
+                    continue;
+                }
+            };
+            let file_ts = jiff::Timestamp::from_millisecond(i64::try_from(millis).unwrap_or(0))
+                .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
+            if file_ts < cutoff {
+                if let Err(e) = fs::remove_file(&path) {
+                    warn!(path = %path.display(), error = %e, "failed to remove stale session archive");
+                    continue;
+                }
+                info!(path = %path.display(), ttl_days, "pruned stale session archive");
+                removed = removed.saturating_add(1);
+            }
+        }
+
+        Ok(removed)
+    }
+
+    /// Return the directory used for session JSON archives.
+    ///
+    /// WHY: callers outside graphe (e.g. `aletheia::session_retention`) compute
+    /// the same path as the store's parent directory plus `archive/sessions`.
+    /// Keeping the derivation here ensures both sides agree on the location.
+    fn session_archive_dir(&self) -> Result<PathBuf> {
+        let data_dir = self.path.parent().ok_or_else(|| {
+            storage_error(format!(
+                "session store path has no parent: {}",
+                self.path.display()
+            ))
+        })?;
+        Ok(data_dir.join("archive").join("sessions"))
     }
 
     /// Delete a blackboard entry. Only the original author can delete.

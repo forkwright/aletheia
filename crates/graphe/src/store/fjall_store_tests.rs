@@ -702,6 +702,9 @@ fn corrupted_blackboard_json_propagates_from_list() {
 #[path = "fjall_store_tests_notes.rs"]
 mod notes_and_cleanup;
 
+#[path = "fjall_store_tests_prune.rs"]
+mod prune_tests;
+
 // ── Portability raw entry points (issue #4163) ─────────────────────────────
 
 #[cfg(feature = "portability")]
