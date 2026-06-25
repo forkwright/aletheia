@@ -114,6 +114,7 @@ fn set_value_at_path(value: &mut Value, path: &str, replacement: Value) {
 
 /// A single changed field between two config versions.
 #[derive(Debug, Clone)]
+// kanon:ignore TOPOLOGY/shallow-struct — plain data carrier for diff output; callers pattern-match fields directly
 pub struct ConfigChange {
     /// Dotted path to the changed field (e.g. `agents.defaults.thinkingBudget`).
     pub path: String,
@@ -233,6 +234,7 @@ pub enum ReloadError {
 }
 
 /// Outcome of a successful reload preparation.
+// kanon:ignore TOPOLOGY/shallow-struct — plain output carrier; callers destructure fields directly after prepare_reload
 pub struct ReloadOutcome {
     /// The validated new config ready to be swapped in.
     pub new_config: AletheiaConfig,
@@ -375,16 +377,16 @@ mod tests {
     #[test]
     fn agent_defaults_hot_reloadable() {
         assert!(
-            !requires_restart("agents.defaults.timeoutSeconds"),
-            "timeout should be hot-reloadable"
-        );
-        assert!(
             !requires_restart("agents.defaults.maxToolIterations"),
             "tool iterations should be hot-reloadable"
         );
         assert!(
             !requires_restart("agents.defaults.thinkingBudget"),
             "thinking budget should be hot-reloadable"
+        );
+        assert!(
+            !requires_restart("agents.defaults.modelDefaults.contextTokens"),
+            "context tokens should be hot-reloadable"
         );
     }
 

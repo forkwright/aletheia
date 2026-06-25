@@ -14,6 +14,7 @@ use crate::workspace_schema::validate_agent_workspaces;
 /// Validation error with collected messages.
 #[derive(Debug, Snafu)]
 #[snafu(display("config validation failed:\n  - {}", errors.join("\n  - ")))]
+// kanon:ignore TOPOLOGY/shallow-struct — snafu derive provides display and Error impl; pub fields are the error surface
 pub struct ValidationError {
     /// Collected validation error messages.
     pub errors: Vec<String>,
@@ -193,7 +194,6 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         check_positive_u32(defaults, "contextTokens", errors);
         check_positive_u32(defaults, "maxOutputTokens", errors);
         check_positive_u32(defaults, "bootstrapMaxTokens", errors);
-        check_positive_u32(defaults, "timeoutSeconds", errors);
         check_positive_u32(defaults, "thinkingBudget", errors);
 
         // WHY: Cap token budgets at a sane maximum to prevent misconfiguration.
@@ -926,6 +926,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                 // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                 if has_endpoint
                     && let Some(endpoint) = entry.get("endpoint").and_then(Value::as_str)
+                    // kanon:ignore SECURITY/insecure-transport — string literal for scheme validation, not an actual endpoint
                     && !(endpoint.starts_with("http://") || endpoint.starts_with("https://"))
                 {
                     errors.push(format!(
