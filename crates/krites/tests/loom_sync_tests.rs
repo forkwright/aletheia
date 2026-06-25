@@ -11,10 +11,10 @@
 //!
 //! # What these test
 //!
-//! The runtime stress tests in `runtime/hnsw/mmap_storage.rs` and
-//! `storage/fjall_backend.rs` exercise concurrent reads and writes against the
-//! `unsafe impl Sync` boundaries at runtime. They catch practical races but
-//! do not exhaustively explore all possible thread interleavings.
+//! The runtime stress test in `storage/fjall_backend.rs` exercises concurrent
+//! reads and writes against the `unsafe impl Sync` boundary at runtime. It
+//! catches practical races but does not exhaustively explore all possible thread
+//! interleavings.
 //!
 //! Loom does. For each test here, loom runs every possible interleaving of
 //! memory operations across the modeled threads and fails if any interleaving
@@ -24,72 +24,21 @@
 //!
 //! # What's modeled
 //!
-//! Loom cannot model mmap or fjall directly — those are OS/FFI boundaries that
-//! are opaque to its scheduler. Instead, we model the **access pattern**
-//! invariants that our safety arguments rely on:
+//! Loom cannot model fjall directly — it is an OS/FFI boundary that is opaque
+//! to its scheduler. Instead, we model the **access pattern** invariants that
+//! our safety arguments rely on:
 //!
-//! 1. `StorageInner` safety hinges on: (a) pointer mutation gated by `&mut self`,
-//!    (b) reads gated by `&self`, (c) Rust's aliasing rules preventing read/write
-//!    overlap. We model this by proxying the mmap pointer with an
-//!    `loom::sync::atomic::AtomicUsize` and verifying no reader ever observes a
-//!    torn pointer transition.
-//!
-//! 2. `FjallReadTx`/`FjallWriteTx` safety hinges on: (a) the write tx being held
-//!    behind a mutex in the outer db handle, (b) reads through `&self` on either
-//!    wrapper being race-free. We model this by proxying the tx state with an
-//!    `AtomicBool` "write in progress" flag and asserting reads never observe
-//!    the flag during a write.
+//! `FjallReadTx`/`FjallWriteTx` safety hinges on: (a) the write tx being held
+//! behind a mutex in the outer db handle, (b) reads through `&self` on either
+//! wrapper being race-free. We model this by proxying the tx state with an
+//! `AtomicBool` "write in progress" flag and asserting reads never observe the
+//! flag during a write.
 
 #![cfg(loom)]
 
 use loom::sync::Arc;
 use loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use loom::thread;
-
-/// Model for `StorageInner` mmap pointer transitions.
-///
-/// The real code path: `push` calls `write_at` on the File, then `remap` which
-/// does `munmap` + `mmap`. The pointer is replaced atomically from the reader's
-/// perspective because `remap` runs behind `&mut self`, which excludes any
-/// concurrent `&self` read.
-///
-/// This model represents the pointer as an `AtomicUsize` and verifies that a
-/// reader either sees the old pointer or the new pointer — never a torn value.
-#[test]
-fn mmap_storage_reader_sees_consistent_pointer() {
-    loom::model(|| {
-        // Proxy for the mmap pointer address. In the real code this is a
-        // `*mut u8` inside `StorageInner::Mmap { ptr, len }`.
-        let ptr = Arc::new(AtomicUsize::new(0x1000));
-
-        let writer = {
-            let ptr = Arc::clone(&ptr);
-            thread::spawn(move || {
-                // Simulates remap: the writer replaces the pointer under
-                // &mut self, so from the reader's perspective this is one
-                // atomic transition.
-                ptr.store(0x2000, Ordering::Release);
-            })
-        };
-
-        let reader = {
-            let ptr = Arc::clone(&ptr);
-            thread::spawn(move || {
-                // Simulates get(): the reader loads the pointer under &self.
-                let observed = ptr.load(Ordering::Acquire);
-                // The pointer must always be one of the two known values,
-                // never a torn read.
-                assert!(
-                    observed == 0x1000 || observed == 0x2000,
-                    "reader observed torn pointer: {observed:#x}"
-                );
-            })
-        };
-
-        writer.join().expect("writer panicked");
-        reader.join().expect("reader panicked");
-    });
-}
 
 /// Model for `FjallWriteTx` serialization invariant.
 ///
