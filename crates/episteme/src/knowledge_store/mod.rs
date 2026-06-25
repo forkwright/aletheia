@@ -485,7 +485,7 @@ pub struct SerendipityDiscoveryReport {
     pub items_modified: u64,
     /// Number of candidate discoveries evaluated.
     pub discovery_count: u64,
-    /// ID of the fact chosen by the serendipity engine for context injection.
+    /// ID of the fact selected for serendipity injection, if any.
     pub selected_fact_id: Option<String>,
     /// Human-readable reason why the selected discovery was interesting.
     pub selected_connection_reason: Option<String>,
@@ -1323,6 +1323,29 @@ impl KnowledgeStore {
         self.run_read(script, params).map(QueryResult::from)
     }
 
+    /// Map a Krites engine error to an episteme knowledge error.
+    ///
+    /// WHY: `krites::Error::QueryKilled` is the typed signal for query
+    /// cancellation (poison) and `:timeout` expiry. Match it by variant rather
+    /// than by display text so wording changes cannot silently turn a timeout
+    /// into a generic engine failure.
+    fn map_engine_err(
+        err: crate::engine::Error,
+        timeout: Option<std::time::Duration>,
+    ) -> crate::error::Error {
+        use crate::engine::Error as EngineError;
+        match err {
+            EngineError::QueryKilled { .. } => crate::error::QueryTimeoutSnafu {
+                secs: timeout.map_or(0.0, |d| d.as_secs_f64()),
+            }
+            .build(),
+            other => crate::error::EngineQuerySnafu {
+                message: other.to_string(),
+            }
+            .build(),
+        }
+    }
+
     /// Run a custom Datalog query with an optional timeout.
     ///
     /// If the query exceeds the timeout, returns `Error::QueryTimeout`.
@@ -1352,16 +1375,7 @@ impl KnowledgeStore {
         self.db
             .run(&script_with_timeout, params, ScriptMutability::Immutable)
             .map(QueryResult::from)
-            .map_err(|e| match e {
-                crate::engine::Error::QueryKilled { .. } => crate::error::QueryTimeoutSnafu {
-                    secs: timeout.map_or(0.0, |d| d.as_secs_f64()),
-                }
-                .build(),
-                _ => crate::error::EngineQuerySnafu {
-                    message: e.to_string(),
-                }
-                .build(),
-            })
+            .map_err(|e| Self::map_engine_err(e, timeout))
     }
 
     /// Raw mutable query escape hatch: runs script with `ScriptMutability::Mutable`.

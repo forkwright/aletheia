@@ -46,6 +46,46 @@ reach[a, c] := reach[a, b], edge[b, c]
 }
 
 #[test]
+fn query_killed_maps_to_typed_timeout() {
+    // WHY: Construct the typed Krites error directly so the test is independent
+    // of the `:timeout` poison mechanism and proves the mapping contract.
+    let engine_err = crate::engine::error::QueryKilledSnafu.build();
+    let err =
+        KnowledgeStore::map_engine_err(engine_err, Some(std::time::Duration::from_millis(50)));
+
+    assert!(
+        matches!(err, crate::error::Error::QueryTimeout { secs, .. } if (secs - 0.05).abs() < f64::EPSILON),
+        "QueryKilled should map to QueryTimeout with the configured duration"
+    );
+}
+
+#[test]
+fn query_killed_without_timeout_maps_to_zero_secs() {
+    let engine_err = crate::engine::error::QueryKilledSnafu.build();
+    let err = KnowledgeStore::map_engine_err(engine_err, None);
+
+    assert!(
+        matches!(err, crate::error::Error::QueryTimeout { secs, .. } if secs == 0.0),
+        "QueryKilled without a timeout should report 0.0s"
+    );
+}
+
+#[test]
+fn non_killed_engine_error_preserves_diagnostics() {
+    let message = "deliberate engine failure".to_owned();
+    let engine_err = crate::engine::error::EngineSnafu {
+        message: message.clone(),
+    }
+    .build();
+    let err = KnowledgeStore::map_engine_err(engine_err, Some(std::time::Duration::from_secs(1)));
+
+    assert!(
+        matches!(err, crate::error::Error::EngineQuery { message: m, .. } if m == message),
+        "non-QueryKilled engine errors should stay EngineQuery and keep their message"
+    );
+}
+
+#[test]
 fn query_without_timeout_succeeds() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig {
         dim: 4,
