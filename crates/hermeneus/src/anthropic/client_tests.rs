@@ -3,6 +3,7 @@
     clippy::indexing_slicing,
     reason = "test: HashMap string-key indexing; key presence is the assertion under test"
 )]
+use std::borrow::Cow;
 use std::time::Duration;
 
 use wiremock::matchers::{method, path};
@@ -118,7 +119,18 @@ fn from_config_custom_models_claim_routing() {
     };
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     assert_eq!(provider.name(), "kimi-coding");
-    assert_eq!(provider.supported_models(), ["kimi-for-coding"]);
+    // WHY (#5259): config-owned model IDs are no longer exposed through
+    // `supported_models()` as `&[&str]` (that would require leaking). They are
+    // still reachable via `supported_model_list()` and routing uses
+    // `match_specificity()`.
+    assert_eq!(
+        provider
+            .supported_model_list()
+            .iter()
+            .map(std::convert::AsRef::as_ref)
+            .collect::<Vec<_>>(),
+        ["kimi-for-coding"]
+    );
     assert!(provider.supports_model("kimi-for-coding"));
     assert_eq!(
         provider.match_specificity("kimi-for-coding"),
@@ -658,4 +670,57 @@ fn backoff_delay_exponential_growth() {
         d3 <= Duration::from_millis(BACKOFF_MAX_MS + BACKOFF_MAX_MS / 4),
         "delay should be capped near BACKOFF_MAX_MS"
     );
+}
+
+#[test]
+fn custom_models_exposed_without_leaking() {
+    // WHY (#5259): config-owned model IDs must not be intentionally leaked.
+    // `supported_models()` returns `&[]` for custom lists; the diagnostic
+    // `supported_model_list()` returns owned `Cow` values freed on drop.
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("test-key")),
+        models: vec!["custom-model".to_owned()],
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    assert!(provider.supported_models().is_empty());
+    let list = provider.supported_model_list();
+    assert!(
+        list.iter().any(|m| m.as_ref() == "custom-model"),
+        "config model must be enumerable"
+    );
+}
+
+#[test]
+fn default_models_are_borrowed_cows() {
+    // WHY (#5259): first-party/static model lists should be borrowed, not
+    // leaked copies of static data.
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("test-key")),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    assert!(!provider.supported_models().is_empty());
+    let list = provider.supported_model_list();
+    assert!(!list.is_empty());
+    assert!(
+        list.iter().all(|m| matches!(m, Cow::Borrowed(_))),
+        "default Anthropic catalog must be borrowed, not owned/leaked"
+    );
+}
+
+#[test]
+fn repeated_construction_does_not_leak_model_storage() {
+    // WHY (#5259): long-running harnesses may construct providers many times.
+    // Each construction must be able to free its model list.
+    for i in 0..100 {
+        let config = ProviderConfig {
+            api_key: Some(SecretString::from("test-key")),
+            models: vec![format!("custom-model-{i}")],
+            ..ProviderConfig::default()
+        };
+        let provider = AnthropicProvider::from_config(&config).expect("valid config");
+        assert!(provider.supports_model(&format!("custom-model-{i}")));
+        // provider drops here, freeing the owned model list.
+    }
 }
