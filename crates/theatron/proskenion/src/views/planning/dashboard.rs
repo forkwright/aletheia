@@ -3,7 +3,9 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
-use crate::state::planning::{PlanningCapabilities, Project, ProjectStore, status_badge_style, status_label};
+use crate::state::planning::{
+    PlanningCapabilities, Project, ProjectStore, status_badge_style, status_label,
+};
 
 #[derive(Debug, Clone)]
 #[expect(dead_code, reason = "project-list route is pending B23 backend work")]

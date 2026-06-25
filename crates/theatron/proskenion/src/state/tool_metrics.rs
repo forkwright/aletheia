@@ -141,14 +141,14 @@ impl DateRange {
 /// Tools sorted by failure count (most failures first), for the results view.
 pub(crate) fn tools_by_failure(tools: &[ToolStat]) -> Vec<&ToolStat> {
     let mut sorted: Vec<&ToolStat> = tools.iter().collect();
-    sorted.sort_by(|a, b| b.failed.cmp(&a.failed));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.failed));
     sorted
 }
 
 /// Tools sorted by median duration (slowest first), for the duration view.
 pub(crate) fn tools_by_duration(tools: &[ToolStat]) -> Vec<&ToolStat> {
     let mut sorted: Vec<&ToolStat> = tools.iter().collect();
-    sorted.sort_by(|a, b| b.p50_ms.cmp(&a.p50_ms));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.p50_ms));
     sorted
 }
 

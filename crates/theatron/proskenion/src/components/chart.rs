@@ -680,7 +680,7 @@ pub(crate) fn StackedBarChart(
 
     let mut sorted = entries.clone();
     if sort_by_failure {
-        sorted.sort_by(|a, b| b.failure.cmp(&a.failure));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.failure));
     }
 
     let max_total = sorted

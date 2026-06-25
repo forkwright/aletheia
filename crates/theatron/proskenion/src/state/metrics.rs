@@ -164,11 +164,7 @@ impl AgentTokenRow {
     }
 
     pub(crate) fn avg_per_session(&self) -> u64 {
-        if self.session_count == 0 {
-            0
-        } else {
-            self.total() / self.session_count
-        }
+        self.total().checked_div(self.session_count).unwrap_or(0)
     }
 
     #[expect(

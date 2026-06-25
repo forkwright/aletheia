@@ -189,11 +189,7 @@ fn render_summary_cards(stat: Option<&ToolStat>) -> Element {
         return rsx! { div { style: "color: var(--text-muted); font-size: var(--text-xs);", "No stats for this tool." } };
     };
 
-    let rate = if stat.total > 0 {
-        (stat.succeeded * 100) / stat.total
-    } else {
-        0
-    };
+    let rate = (stat.succeeded * 100).checked_div(stat.total).unwrap_or(0);
     let rate_color = if rate > 90 {
         "var(--status-success)"
     } else if rate > 70 {

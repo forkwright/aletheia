@@ -794,7 +794,7 @@ mod tests {
         );
         assert_eq!(
             credential_rotate_url(base, "open ai"),
-            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open+ai"
+            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open%20ai"
         );
     }
 }

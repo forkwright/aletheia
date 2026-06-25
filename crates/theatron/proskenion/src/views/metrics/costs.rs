@@ -300,14 +300,16 @@ fn loaded_costs_view(
                 style: "{SECTION_STYLE}",
                 div { style: "{SECTION_TITLE_STYLE}", "Monthly Budget" }
                 { budget_panel(
-                    data.month_cost,
-                    budget_limit,
-                    budget_pct,
-                    &bar_color,
-                    budget_input.read().clone(),
+                    BudgetPanel {
+                        month_cost: data.month_cost,
+                        budget_limit,
+                        budget_pct,
+                        bar_color,
+                        input_value: budget_input.read().clone(),
+                        telemetry_unavailable: data.source == MetricSource::Unavailable,
+                    },
                     move |v: String| budget_input.set(v),
                     move |limit: f64| budget.set(BudgetConfig { monthly_limit_usd: limit }),
-                    data.source == MetricSource::Unavailable,
                 ) }
             }
 
@@ -322,17 +324,28 @@ fn loaded_costs_view(
     }
 }
 
-fn budget_panel(
+struct BudgetPanel {
     month_cost: f64,
     budget_limit: f64,
     budget_pct: f64,
-    bar_color: &str,
+    bar_color: String,
     input_value: String,
+    telemetry_unavailable: bool,
+}
+
+fn budget_panel(
+    panel: BudgetPanel,
     mut on_input: impl FnMut(String) + 'static,
     mut on_set: impl FnMut(f64) + 'static,
-    telemetry_unavailable: bool,
 ) -> Element {
-    let bar_color = bar_color.to_string();
+    let BudgetPanel {
+        month_cost,
+        budget_limit,
+        budget_pct,
+        bar_color,
+        input_value,
+        telemetry_unavailable,
+    } = panel;
     let input_for_set = input_value.clone();
     let spent_label = if telemetry_unavailable {
         "Spend data unavailable".to_string()

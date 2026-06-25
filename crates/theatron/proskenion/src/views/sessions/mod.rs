@@ -181,19 +181,20 @@ pub(crate) fn Sessions() -> Element {
                             }
                         };
 
-                        let (sessions, has_more, new_cursor) =
-                            if let Ok(envelope) = serde_json::from_str::<PaginatedSessionsResponse>(&text) {
-                                // WHY: has_more without a cursor cannot be continued.
-                                let more = envelope.has_more && envelope.next_cursor.is_some();
-                                (envelope.items, more, envelope.next_cursor)
-                            } else if let Ok(list) = serde_json::from_str::<Vec<Session>>(&text) {
-                                // NOTE: a bare array carries no cursor, so no
-                                // further pages can be requested.
-                                (list, false, None)
-                            } else {
-                                tracing::warn!("failed to parse sessions response");
-                                return;
-                            };
+                        let (sessions, has_more, new_cursor) = if let Ok(envelope) =
+                            serde_json::from_str::<PaginatedSessionsResponse>(&text)
+                        {
+                            // WHY: has_more without a cursor cannot be continued.
+                            let more = envelope.has_more && envelope.next_cursor.is_some();
+                            (envelope.items, more, envelope.next_cursor)
+                        } else if let Ok(list) = serde_json::from_str::<Vec<Session>>(&text) {
+                            // NOTE: a bare array carries no cursor, so no
+                            // further pages can be requested.
+                            (list, false, None)
+                        } else {
+                            tracing::warn!("failed to parse sessions response");
+                            return;
+                        };
 
                         next_cursor.set(new_cursor);
 

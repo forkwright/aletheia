@@ -188,7 +188,7 @@ pub(super) fn assemble_meta_data(
             },
         )
         .collect();
-    type_slices.sort_by(|a, b| b.count.cmp(&a.count));
+    type_slices.sort_by_key(|b| std::cmp::Reverse(b.count));
 
     let current_entity_rate = new_per_period.last().map_or(0.0, |p| p.value);
 
