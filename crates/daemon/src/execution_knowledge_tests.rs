@@ -1,8 +1,10 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use std::sync::Arc;
+#[cfg(feature = "knowledge-store")]
 use std::time::Duration;
 
+#[cfg(feature = "knowledge-store")]
 use tokio_util::sync::CancellationToken;
 
 use crate::maintenance::MaintenanceReport;
