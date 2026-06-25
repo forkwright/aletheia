@@ -14,13 +14,9 @@
 //! - [`search`]: KNN search entry point
 //! - [`adaptive`]: Exact vs. approximate search strategy selection
 //! - [`visited_pool`]: Lock-free visited-set pool for search traversal
-//! - [`atomic_save`]: Crash-safe persistence (write-fsync-rename)
-//! - [`mmap_storage`]: Memory-mapped dense vector storage
 
 pub(crate) mod adaptive;
-pub(crate) mod atomic_save;
 mod graph;
-pub(crate) mod mmap_storage;
 mod put;
 mod remove;
 mod search;
@@ -41,6 +37,3 @@ pub(crate) use types::HnswIndexManifest;
 pub(super) fn idx_to_i64(idx: usize) -> i64 {
     i64::try_from(idx).unwrap_or(i64::MAX)
 }
-
-#[cfg(test)]
-mod tests;

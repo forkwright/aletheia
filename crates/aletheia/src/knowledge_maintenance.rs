@@ -228,8 +228,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         let should_recompute = self
             .store
             .load_graph_context()
-            .map(|ctx| ctx.is_stale(graph_staleness_threshold))
-            .unwrap_or(true); // WHY: fail-open — if we can't load context, recompute
+            .map_or(true, |ctx| ctx.is_stale(graph_staleness_threshold)); // WHY: fail-open — if we can't load context, recompute
 
         if !should_recompute {
             let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
@@ -399,8 +398,6 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use super::*;
-
     use std::collections::BTreeMap;
 
     use mneme::engine::DataValue;
@@ -409,6 +406,8 @@ mod tests {
         EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
         FactTemporal, Visibility, far_future,
     };
+
+    use super::*;
 
     fn make_fact(
         id: &str,

@@ -32,7 +32,7 @@ const SAFE_ENV_VARS: &[&str] = &[
     "TZ",
 ];
 
-const DEFAULT_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_SUBPROCESS_TIMEOUT: Duration = Duration::from_mins(1);
 
 #[cfg(test)]
 pub(crate) static SUBPROCESS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
