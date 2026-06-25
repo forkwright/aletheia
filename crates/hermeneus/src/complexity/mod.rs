@@ -459,7 +459,11 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
     }
 
     if !config.enabled {
-        let complexity = score_complexity(input);
+        // WHY: disabled routing still reports complexity diagnostics. The
+        // diagnostic tier must reflect the operator's configured thresholds so
+        // "what tier would this have routed to" telemetry is useful for
+        // threshold tuning (#5834).
+        let complexity = score_complexity_for_config(input, config);
         return RoutingDecision {
             model: config.sonnet_model.clone(),
             complexity,
