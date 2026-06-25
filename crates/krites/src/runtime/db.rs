@@ -134,6 +134,15 @@ pub enum ScriptMutability {
     Immutable,
 }
 
+/// Callback registration state: counter and registry, grouped to keep `Db`
+/// within the 12-field struct limit.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Default)]
+pub(crate) struct DbCallbacks {
+    pub(crate) callback_count: Arc<AtomicU32>,
+    pub(crate) event_callbacks: Arc<ShardedLock<EventCallbackRegistry>>,
+}
+
 /// The krites engine database object.
 #[derive(Clone)]
 pub struct Db<S> {
@@ -150,9 +159,7 @@ pub struct Db<S> {
     pub(crate) tokenizers: Arc<TokenizerCache>,
     pub(crate) fts_cache: Arc<RwLock<FtsCache>>,
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) callback_count: Arc<AtomicU32>,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) event_callbacks: Arc<ShardedLock<EventCallbackRegistry>>,
+    pub(crate) callbacks: DbCallbacks,
     pub(crate) relation_locks: Arc<ShardedLock<BTreeMap<CompactString, Arc<RwLock<()>>>>>,
     #[cfg(feature = "hot-reload")]
     pub(crate) rule_store: Option<Arc<arc_swap::ArcSwap<crate::hot_reload::RuleSet>>>,
@@ -382,9 +389,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             tokenizers: Arc::new(Default::default()),
             fts_cache: Arc::new(RwLock::new(FtsCache::default())),
             #[cfg(not(target_arch = "wasm32"))]
-            callback_count: Default::default(),
-            #[cfg(not(target_arch = "wasm32"))]
-            event_callbacks: Default::default(),
+            callbacks: Default::default(),
             relation_locks: Default::default(),
             #[cfg(feature = "hot-reload")]
             rule_store: None,
@@ -481,10 +486,11 @@ impl<'s, S: Storage<'s>> Db<S> {
         };
 
         let mut guard = self
+            .callbacks
             .event_callbacks
             .write()
             .unwrap_or_else(|e| e.into_inner());
-        let new_id = self.callback_count.fetch_add(1, Ordering::SeqCst);
+        let new_id = self.callbacks.callback_count.fetch_add(1, Ordering::SeqCst);
         guard
             .1
             .entry(CompactString::from(relation))
@@ -499,6 +505,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn unregister_callback(&self, id: u32) -> bool {
         let mut guard = self
+            .callbacks
             .event_callbacks
             .write()
             .unwrap_or_else(|e| e.into_inner());
