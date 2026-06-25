@@ -231,8 +231,11 @@ impl HexColor {
     /// `<a:srgbClr val="..."/>` and rejects the `#` prefix.
     #[must_use]
     pub fn body(&self) -> &str {
-        // WHY: constructor invariant guarantees a leading `#`.
-        self.0.strip_prefix('#').unwrap_or(&self.0)
+        // INVARIANT: constructors guarantee a leading `#`; a missing `#` is a
+        // programming bug that must surface loudly rather than emit invalid OOXML.
+        self.0
+            .strip_prefix('#')
+            .unwrap_or_else(|| panic!("HexColor invariant: inner string must begin with '#'"))
     }
 }
 
