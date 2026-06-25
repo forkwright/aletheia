@@ -404,6 +404,48 @@ fn validate_section_for_put(section: &str, body: &Value) -> Result<(), ApiError>
     Ok(())
 }
 
+/// Validate the fully merged config using the same section validators that
+/// reload and startup use.
+///
+/// WHY(#4583): A partial PUT can make the merged config semantically invalid
+/// even when the submitted section passes structural validation on its own.
+/// Running the full validator before persisting keeps the API and disk states
+/// consistent with what a reload would accept.
+fn validate_full_config(config: &taxis::config::AletheiaConfig) -> Result<(), ApiError> {
+    let value = serde_json::to_value(config).map_err(|e| ApiError::Internal {
+        message: format!("failed to serialize config for validation: {e}"),
+        location: snafu::location!(),
+    })?;
+    let Value::Object(sections) = value else {
+        return Err(ApiError::Internal {
+            message: "config did not serialize to a JSON object".to_owned(),
+            location: snafu::location!(),
+        });
+    };
+
+    let mut all_errors = Vec::new();
+    for (section, val) in sections {
+        if let Err(err) = taxis::validate::validate_section(&section, &val) {
+            for msg in err.errors {
+                all_errors.push(FieldError {
+                    field: section.clone(),
+                    code: "invalid".to_owned(),
+                    message: msg,
+                });
+            }
+        }
+    }
+
+    if all_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(ApiError::ValidationFailed {
+            errors: all_errors,
+            location: snafu::location!(),
+        })
+    }
+}
+
 /// PUT /api/v1/config/{section}: update and persist a config section.
 ///
 /// # Cancel safety
@@ -481,6 +523,10 @@ pub async fn update_section(
                 location: snafu::location!(),
             }
         })?;
+
+    // WHY(#4583): Run the same semantic validation used by reload against the
+    // fully merged candidate before any write or live swap can occur.
+    validate_full_config(&new_config)?;
 
     let diff = taxis::reload::diff_configs(&config, &new_config);
     let restart_required: Vec<String> = diff
