@@ -314,10 +314,9 @@ fn canonical_tiebreak_oldest() {
 #[test]
 fn canonical_fact_count_tiebreak() {
     // WHY (#5855): when relationship counts tie, the fact-richer entity must
-    // survive as canonical even if it has fewer relationships overall than a
-    // relationship-richer competitor. Here `b` has fewer relationships (1 vs 2)
-    // but many more facts (50 vs 1), so it should be canonical.
-    let a = entity_with_facts("e1", "Alice Test", "person", vec![], 2, 1, "2026-01-02");
+    // survive as canonical. Both entities have equal relationship counts (1),
+    // so the fact-count tiebreaker applies: `b` (50 facts) beats `a` (1 fact).
+    let a = entity_with_facts("e1", "Alice Test", "person", vec![], 1, 1, "2026-01-02");
     let b = entity_with_facts("e2", "alice test", "person", vec![], 1, 50, "2026-01-01");
     let (canonical, merged) = pick_canonical(&a, &b);
     assert_eq!(
