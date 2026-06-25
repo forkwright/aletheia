@@ -979,9 +979,18 @@ done
             register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some_and(|e| e.available));
-        assert_eq!(result.first().map(|e| e.name.as_str()), Some("mcp_fake_echo"));
-        assert_eq!(result.first().and_then(|e| e.server_name.as_deref()), Some("fake"));
-        assert_eq!(result.first().and_then(|e| e.remote_name.as_deref()), Some("echo"));
+        assert_eq!(
+            result.first().map(|e| e.name.as_str()),
+            Some("mcp_fake_echo")
+        );
+        assert_eq!(
+            result.first().and_then(|e| e.server_name.as_deref()),
+            Some("fake")
+        );
+        assert_eq!(
+            result.first().and_then(|e| e.remote_name.as_deref()),
+            Some("echo")
+        );
 
         let tool_name = ToolName::new("mcp_fake_echo").expect("tool name");
         let def = registry.get_def(&tool_name).expect("tool def");
