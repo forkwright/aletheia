@@ -544,7 +544,9 @@ fn evaluate_expr(
                 }
                 .fail();
             }
-            Ok(Scalar::Ratio { value: lf / rf })
+            Scalar::new_ratio(lf / rf).map_err(|e| FactbaseError::BadDerived {
+                detail: e.to_string(),
+            })
         }
         Expr::Sum { terms } => {
             let mut iter = terms.iter();
@@ -601,9 +603,11 @@ fn binary_op(
             }
             .fail(),
         },
-        (Scalar::Ratio { value: lv }, Scalar::Ratio { value: rv }) => Ok(Scalar::Ratio {
-            value: f_op(*lv, *rv),
-        }),
+        (Scalar::Ratio { value: lv }, Scalar::Ratio { value: rv }) => {
+            Scalar::new_ratio(f_op(*lv, *rv)).map_err(|e| FactbaseError::BadDerived {
+                detail: e.to_string(),
+            })
+        }
         _ => DerivedTypeMismatchSnafu {
             detail: format!(
                 "{op_name} requires same-typed operands; got {} and {}",
@@ -628,9 +632,10 @@ fn add_scalars(lhs: &Scalar, rhs: &Scalar) -> Result<Scalar, FactbaseError> {
         (Scalar::Money { value: lv }, Scalar::Money { value: rv }) => Ok(Scalar::Money {
             value: Money::from_micros(lv.micros() + rv.micros()),
         }),
-        (Scalar::Ratio { value: lv }, Scalar::Ratio { value: rv }) => {
-            Ok(Scalar::Ratio { value: lv + rv })
-        }
+        (Scalar::Ratio { value: lv }, Scalar::Ratio { value: rv }) => Scalar::new_ratio(lv + rv)
+            .map_err(|e| FactbaseError::BadDerived {
+                detail: e.to_string(),
+            }),
         _ => DerivedTypeMismatchSnafu {
             detail: format!(
                 "sum requires same-typed operands; got {} and {}",
