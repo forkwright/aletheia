@@ -368,7 +368,7 @@ async fn check_memory() -> Vec<AttentionItem> {
     // WHY: `/proc/self/status` is a small virtual file, but reading it still
     // performs blocking syscalls on the executor; offload to the blocking pool.
     match tokio::task::spawn_blocking(read_process_rss_kb).await {
-        Ok(resident_kb) => {
+        Ok(Ok(resident_kb)) => {
             let rss_mb = resident_kb / 1024;
             // WHY: RSS in MB is bounded by host RAM; clamp to u32::MAX (4TB)
             // then f64::from(u32) is lossless, avoiding u64→f64 precision loss.
