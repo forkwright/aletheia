@@ -62,6 +62,7 @@ const FORBIDDEN_REQUEST_HEADERS: &[&str] = &[
     "x-forwarded-for",
     "x-forwarded-host",
     "x-forwarded-proto",
+    "x-forwarded-port",
     "x-real-ip",
     "forwarded",
     "via",
@@ -563,6 +564,7 @@ mod tests {
             "X-Forwarded-For",
             "X-Forwarded-Host",
             "X-Forwarded-Proto",
+            "X-Forwarded-Port",
             "X-Real-IP",
             "Forwarded",
             "Via",
@@ -576,7 +578,8 @@ mod tests {
         ];
         for header in blocked {
             let args = serde_json::json!({ "headers": { header: "injected" } });
-            let err = extract_headers(&args).expect_err("forwarding/hop-by-hop header must be rejected");
+            let err =
+                extract_headers(&args).expect_err("forwarding/hop-by-hop header must be rejected");
             assert!(
                 err.contains("not permitted"),
                 "header {header} must be rejected, got: {err}"
