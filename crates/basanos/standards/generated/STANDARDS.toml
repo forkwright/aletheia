@@ -1,0 +1,1812 @@
+# Generated from crates/basanos/src/registry/. Do not edit manually.
+
+[[rules]]
+id = "API/direct-process-exit"
+standards_doc = "API.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "API/direct-process-exit"
+
+[[rules]]
+id = "API/error-no-request-id"
+standards_doc = "API.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "API/error-no-request-id"
+
+[[rules]]
+id = "API/internal-inconsistency"
+standards_doc = "API.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "API/internal-inconsistency"
+
+[[rules]]
+id = "API/mixed-casing"
+standards_doc = "API.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "API/mixed-casing"
+
+[[rules]]
+id = "ARCH/cross-repo-path-dep"
+standards_doc = "ARCHITECTURE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/cross-repo-path-dep"
+
+[[rules]]
+id = "ARCH/shared-infra-unregistered-cross-repo-dep"
+standards_doc = "ARCHITECTURE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/shared-infra-unregistered-cross-repo-dep"
+
+[[rules]]
+id = "ARCH/substrate-coherence-floor"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-coherence-floor"
+
+[[rules]]
+id = "ARCH/substrate-dead-dep"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-dead-dep"
+
+[[rules]]
+id = "ARCH/substrate-dual-mechanism"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-dual-mechanism"
+
+[[rules]]
+id = "ARCH/substrate-feature-conflict"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-feature-conflict"
+
+[[rules]]
+id = "ARCH/substrate-floating-ref"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-floating-ref"
+
+[[rules]]
+id = "ARCH/substrate-mirror-drift"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-mirror-drift"
+
+[[rules]]
+id = "ARCH/substrate-pin-behind"
+standards_doc = "SUBSTRATE.md"
+severity = "info"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-pin-behind"
+
+[[rules]]
+id = "ARCH/substrate-pin-drift"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-pin-drift"
+
+[[rules]]
+id = "ARCH/substrate-unregistered"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-unregistered"
+
+[[rules]]
+id = "ARCH/substrate-visibility-buildable"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCH/substrate-visibility-buildable"
+
+[[rules]]
+id = "ARCHITECTURE/crate-index-conformance"
+standards_doc = "ARCHITECTURE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCHITECTURE/crate-index-conformance"
+
+[[rules]]
+id = "ARCHITECTURE/crate-shape-mismatch"
+standards_doc = "ARCHITECTURE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "ARCHITECTURE/crate-shape-mismatch"
+
+[[rules]]
+id = "ARCHITECTURE/no-architecture-doc"
+standards_doc = "ARCHITECTURE.md"
+severity = "info"
+scope = "universal"
+kind = "universal"
+enforcer = "ARCHITECTURE/no-architecture-doc"
+
+[[rules]]
+id = "ARCHITECTURE/no-deny-missing-docs"
+standards_doc = "ARCHITECTURE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "ARCHITECTURE/no-deny-missing-docs"
+
+[[rules]]
+id = "ARCHITECTURE/no-glossary"
+standards_doc = "ARCHITECTURE.md"
+severity = "info"
+scope = "universal"
+kind = "universal"
+enforcer = "ARCHITECTURE/no-glossary"
+
+[[rules]]
+id = "ARCHITECTURE/thick-binary"
+standards_doc = "ARCHITECTURE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "ARCHITECTURE/thick-binary"
+
+[[rules]]
+id = "ARCHITECTURE/trait-impl-colocation"
+standards_doc = "ARCHITECTURE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "ARCHITECTURE/trait-impl-colocation"
+
+[[rules]]
+id = "BEHAVIOR/audit-not-fix"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:agent-output"
+kind = "project"
+enforcer = "BEHAVIOR/audit-not-fix"
+
+[[rules]]
+id = "BEHAVIOR/check-before-absent"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:agent-output"
+kind = "project"
+enforcer = "BEHAVIOR/check-before-absent"
+
+[[rules]]
+id = "BEHAVIOR/no-cost-language"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:agent-output"
+kind = "project"
+enforcer = "BEHAVIOR/no-cost-language"
+
+[[rules]]
+id = "BEHAVIOR/no-premature-success"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:agent-output"
+kind = "project"
+enforcer = "BEHAVIOR/no-premature-success"
+
+[[rules]]
+id = "BEHAVIOR/no-unsolicited-next-steps"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:agent-output"
+kind = "project"
+enforcer = "BEHAVIOR/no-unsolicited-next-steps"
+
+[[rules]]
+id = "BEHAVIOR/no-workaround-before-rootcause"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:agent-output"
+kind = "project"
+enforcer = "BEHAVIOR/no-workaround-before-rootcause"
+
+[[rules]]
+id = "BEHAVIOR/verify-scope"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:agent-output"
+kind = "project"
+enforcer = "BEHAVIOR/verify-scope"
+
+[[rules]]
+id = "CHANGE/deletion-without-why"
+standards_doc = "CHANGE.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "CHANGE/refactor-and-behavior-mixed"
+standards_doc = "CHANGE.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "CI/kanon-ci-concurrency-caps"
+standards_doc = "CI.md"
+severity = "error"
+scope = "language:toml"
+kind = "project"
+enforcer = "CI/kanon-ci-concurrency-caps"
+
+[[rules]]
+id = "CI/kanon-ci-lint-stage-required"
+standards_doc = "CI.md"
+severity = "error"
+scope = "language:toml"
+kind = "project"
+enforcer = "CI/kanon-ci-lint-stage-required"
+
+[[rules]]
+id = "CI/no-ci-workflows"
+standards_doc = "CI.md"
+severity = "warning"
+scope = "language:yaml"
+kind = "project"
+enforcer = "CI/no-ci-workflows"
+
+[[rules]]
+id = "CI/no-clippy-check"
+standards_doc = "CI.md"
+severity = "warning"
+scope = "language:yaml"
+kind = "project"
+enforcer = "CI/no-clippy-check"
+
+[[rules]]
+id = "CI/no-deny-check"
+standards_doc = "CI.md"
+severity = "warning"
+scope = "language:yaml"
+kind = "project"
+enforcer = "CI/no-deny-check"
+
+[[rules]]
+id = "CI/no-format-check"
+standards_doc = "CI.md"
+severity = "warning"
+scope = "language:yaml"
+kind = "project"
+enforcer = "CI/no-format-check"
+
+[[rules]]
+id = "CI/no-op-command"
+standards_doc = "CI.md"
+severity = "error"
+scope = "project:ci"
+kind = "project"
+enforcer = "CI/no-op-command"
+
+[[rules]]
+id = "CI/no-test-step"
+standards_doc = "CI.md"
+severity = "warning"
+scope = "language:yaml"
+kind = "project"
+enforcer = "CI/no-test-step"
+
+[[rules]]
+id = "COHERENCE/dimensional-coherence"
+standards_doc = "COHERENCE.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "COHERENCE/single-source-of-truth"
+standards_doc = "COHERENCE.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "COMMENTS/deflection-without-tracking"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "COMMENTS/deflection-without-tracking"
+
+[[rules]]
+id = "COMMENTS/journal-shaped"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "COMMENTS/journal-shaped"
+
+[[rules]]
+id = "CONTEXT/conflicting-rules-without-resolution"
+standards_doc = "CONTEXT-PREAMBLE.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "CONTEXT/conflicting-rules-without-resolution"
+
+[[rules]]
+id = "CONTEXT/preamble-required"
+standards_doc = "CONTEXT-PREAMBLE.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "CONTEXT/preamble-required"
+
+[[rules]]
+id = "CPP/prefer-smart-pointers"
+standards_doc = "CPP.md"
+severity = "warning"
+scope = "language:cpp"
+kind = "language"
+
+[[rules]]
+id = "CRATE/shape-declaration-required"
+standards_doc = "CRATE-SHAPE.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+
+[[rules]]
+id = "CSHARP/nullable-enabled"
+standards_doc = "CSHARP.md"
+severity = "warning"
+scope = "language:csharp"
+kind = "language"
+
+[[rules]]
+id = "DATALOG/raw-mutation"
+standards_doc = "DATALOG.md"
+severity = "warning"
+scope = "language:datalog"
+kind = "language"
+enforcer = "DATALOG/raw-mutation"
+
+[[rules]]
+id = "DEPLOYMENT/single-merge-gate"
+standards_doc = "DEPLOYMENT.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "DERIVATION/byte-stable-derived-artifacts"
+standards_doc = "DERIVATION.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "DERIVATION/committed-derived-artifacts"
+standards_doc = "DERIVATION.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "DERIVATION/content-derived-provenance"
+standards_doc = "DERIVATION.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "DERIVATION/regenerate-and-compare-freshness"
+standards_doc = "DERIVATION.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "DESIGN/token-value-not-hardcoded"
+standards_doc = "DESIGN-TOKENS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "DISPATCH/acceptance-verifier"
+standards_doc = "ORCHESTRATION.md"
+severity = "error"
+scope = "project:dispatch-prompts"
+kind = "project"
+enforcer = "DISPATCH/acceptance-verifier"
+
+[[rules]]
+id = "DISPATCH/blast-zone-declared"
+standards_doc = "ORCHESTRATION.md"
+severity = "error"
+scope = "project:dispatch-prompts"
+kind = "project"
+enforcer = "DISPATCH/blast-zone-declared"
+
+[[rules]]
+id = "DISPATCH/no-time-estimates"
+standards_doc = "ORCHESTRATION.md"
+severity = "error"
+scope = "project:dispatch-prompts"
+kind = "project"
+enforcer = "DISPATCH/no-time-estimates"
+
+[[rules]]
+id = "DOCS/stale-local-link"
+standards_doc = "DOC-MANIFEST.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "DOCS/stale-local-link"
+
+[[rules]]
+id = "ENVIRONMENT/fail-fast-on-invalid-config"
+standards_doc = "ENVIRONMENT.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "FJALL/nested-keyspace"
+standards_doc = "STORAGE.md"
+severity = "error"
+scope = "language:rust"
+kind = "universal"
+enforcer = "FJALL/nested-keyspace"
+
+[[rules]]
+id = "FJALL/prefix-collect-truncate"
+standards_doc = "STORAGE.md"
+severity = "error"
+scope = "language:rust"
+kind = "universal"
+enforcer = "FJALL/prefix-collect-truncate"
+
+[[rules]]
+id = "FLEET/tier-compliance-required"
+standards_doc = "FLEET-REPO-SETUP.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "GNOMON/essential-nature-required"
+standards_doc = "GNOMON.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "HANDOFF/structured-over-prose"
+standards_doc = "ORCHESTRATION.md"
+severity = "warning"
+scope = "project:orchestration-artifacts"
+kind = "project"
+enforcer = "HANDOFF/structured-over-prose"
+
+[[rules]]
+id = "KOTLIN/structured-concurrency"
+standards_doc = "KOTLIN.md"
+severity = "warning"
+scope = "language:kotlin"
+kind = "language"
+
+[[rules]]
+id = "MANIFEST/archeion-single-git-backend"
+standards_doc = "ARCHITECTURE.md"
+severity = "error"
+scope = "language:toml"
+kind = "universal"
+enforcer = "MANIFEST/archeion-single-git-backend"
+
+[[rules]]
+id = "MANIFEST/description-honesty"
+standards_doc = "MANIFEST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "MANIFEST/description-honesty"
+
+[[rules]]
+id = "MANIFEST/license-spdx-match"
+standards_doc = "STANDARDS.md"
+severity = "error"
+scope = "language:toml"
+kind = "universal"
+enforcer = "MANIFEST/license-spdx-match"
+
+[[rules]]
+id = "MANIFEST/lockfile-no-localhost-git"
+standards_doc = "MANIFEST.md"
+severity = "error"
+scope = "language:lock"
+kind = "universal"
+enforcer = "MANIFEST/lockfile-no-localhost-git"
+
+[[rules]]
+id = "MANIFEST/maturity-description-mismatch"
+standards_doc = "MANIFEST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "MANIFEST/maturity-description-mismatch"
+
+[[rules]]
+id = "MANIFEST/missing-maturity-metadata"
+standards_doc = "MANIFEST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "MANIFEST/missing-maturity-metadata"
+
+[[rules]]
+id = "MANIFEST/no-deny-toml"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "MANIFEST/no-deny-toml"
+
+[[rules]]
+id = "MANIFEST/no-license"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "MANIFEST/no-license"
+
+[[rules]]
+id = "MANIFEST/no-msrv"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "MANIFEST/no-msrv"
+
+[[rules]]
+id = "MANIFEST/no-rustfmt"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "MANIFEST/no-rustfmt"
+
+[[rules]]
+id = "MANIFEST/no-workspace-package"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "MANIFEST/no-workspace-package"
+
+[[rules]]
+id = "MANIFEST/package-workspace-inheritance"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "MANIFEST/package-workspace-inheritance"
+
+[[rules]]
+id = "META/frontmatter-required"
+standards_doc = "META-ARTIFACT.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "NAMING/no-fleet-collision"
+standards_doc = "NAMING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "NAMING/no-fleet-collision"
+
+[[rules]]
+id = "NAMING/no-owner-prefix"
+standards_doc = "NAMING.md"
+severity = "warning"
+scope = "language:toml"
+kind = "universal"
+enforcer = "NAMING/no-owner-prefix"
+
+[[rules]]
+id = "NAMING/reveals-intent"
+standards_doc = "NAMING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "NAMING/reveals-intent"
+
+[[rules]]
+id = "NAMING/struct-name-vague-hub"
+standards_doc = "NAMING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "NAMING/struct-name-vague-hub"
+
+[[rules]]
+id = "NGINX/upstream-timeout-required"
+standards_doc = "NGINX.md"
+severity = "warning"
+scope = "project:ops"
+kind = "project"
+
+[[rules]]
+id = "NIX/flake-lock-committed"
+standards_doc = "NIX.md"
+severity = "warning"
+scope = "language:nix"
+kind = "language"
+
+[[rules]]
+id = "OPERATIONS/runbook-required"
+standards_doc = "OPERATIONS.md"
+severity = "warning"
+scope = "universal"
+kind = "project"
+
+[[rules]]
+id = "ORCHESTRATION/bare-forge-ref"
+standards_doc = "ORCHESTRATION.md"
+severity = "warning"
+scope = "project:planning-docs"
+kind = "project"
+enforcer = "ORCHESTRATION/bare-forge-ref"
+
+[[rules]]
+id = "ORCHESTRATION/dispatch-anti-pattern"
+standards_doc = "ORCHESTRATION.md"
+severity = "error"
+scope = "project:dispatch-diffs"
+kind = "project"
+enforcer = "ORCHESTRATION/dispatch-anti-pattern"
+
+[[rules]]
+id = "ORCHESTRATION/issues-go-to-forge"
+standards_doc = "ORCHESTRATION.md"
+severity = "warning"
+scope = "project:dispatch-prompts"
+kind = "project"
+enforcer = "ORCHESTRATION/issues-go-to-forge"
+
+[[rules]]
+id = "PARAMETERS/safe-default-required"
+standards_doc = "PARAMETERS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "PERFORMANCE/clone-in-loop"
+standards_doc = "PERFORMANCE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "PERFORMANCE/clone-in-loop"
+
+[[rules]]
+id = "PERFORMANCE/collect-then-iter"
+standards_doc = "PERFORMANCE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "PERFORMANCE/collect-then-iter"
+
+[[rules]]
+id = "PHILOSOPHY/fail-fast-fail-loud"
+standards_doc = "PHILOSOPHY.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "PHILOSOPHY/parse-dont-validate"
+standards_doc = "PHILOSOPHY.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "PLAN/preamble-required"
+standards_doc = "ORCHESTRATION.md"
+severity = "warning"
+scope = "project:plan-files"
+kind = "project"
+enforcer = "PLAN/preamble-required"
+
+[[rules]]
+id = "PLANNING/derive-live-facts"
+standards_doc = "PLANNING.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "PLANNING/falsification-criterion"
+standards_doc = "PLANNING.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "PODMAN/rootless-required"
+standards_doc = "PODMAN.md"
+severity = "error"
+scope = "project:ops"
+kind = "project"
+
+[[rules]]
+id = "PROMPTING/provider-shape-required"
+standards_doc = "PROMPTING.md"
+severity = "warning"
+scope = "project:kanon"
+kind = "project"
+
+[[rules]]
+id = "PROMPTING/why-on-every-rule"
+standards_doc = "PROMPTING.md"
+severity = "warning"
+scope = "universal"
+kind = "project"
+
+[[rules]]
+id = "PROTOBUF/reserve-removed-fields"
+standards_doc = "PROTOBUF.md"
+severity = "error"
+scope = "language:protobuf"
+kind = "language"
+
+[[rules]]
+id = "PYTHON/type-annotations-required"
+standards_doc = "PYTHON.md"
+severity = "warning"
+scope = "language:python"
+kind = "language"
+
+[[rules]]
+id = "QA/audit-produces-structured-issues"
+standards_doc = "QA.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "QA/verify-dont-trust"
+standards_doc = "QA.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "RELEASES/semver-required"
+standards_doc = "RELEASES.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "REPO/required-files"
+standards_doc = "REPO-SETUP.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "RESTIC/verify-after-backup"
+standards_doc = "RESTIC.md"
+severity = "warning"
+scope = "project:ops"
+kind = "project"
+
+[[rules]]
+id = "RUST/allow-not-expect"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/allow-not-expect"
+
+[[rules]]
+id = "RUST/anyhow-in-lib"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/anyhow-in-lib"
+
+[[rules]]
+id = "RUST/as-cast"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/as-cast"
+
+[[rules]]
+id = "RUST/bare-assert"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/bare-assert"
+
+[[rules]]
+id = "RUST/barrel-reexport"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/barrel-reexport"
+
+[[rules]]
+id = "RUST/blanket-allow-limit"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/blanket-allow-limit"
+
+[[rules]]
+id = "RUST/blocking-in-async"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/blocking-in-async"
+
+[[rules]]
+id = "RUST/box-dyn-error"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/box-dyn-error"
+
+[[rules]]
+id = "RUST/commented-code"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/commented-code"
+
+[[rules]]
+id = "RUST/config-deny-unknown-fields"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/config-deny-unknown-fields"
+
+[[rules]]
+id = "RUST/crate-level-denied-allow"
+standards_doc = "RUST.md"
+severity = "error"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/crate-level-denied-allow"
+
+[[rules]]
+id = "RUST/dbg-macro"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/dbg-macro"
+
+[[rules]]
+id = "RUST/doc-promised-observability"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/doc-promised-observability"
+
+[[rules]]
+id = "RUST/empty-match-arm"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/empty-match-arm"
+
+[[rules]]
+id = "RUST/error-enum-design"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/error-enum-design"
+
+[[rules]]
+id = "RUST/expect"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/expect"
+
+[[rules]]
+id = "RUST/feature-gate-check"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/feature-gate-check"
+
+[[rules]]
+id = "RUST/file-too-long"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/file-too-long"
+
+[[rules]]
+id = "RUST/filefilter-custom-arc-not-box"
+standards_doc = "RUST.md"
+severity = "error"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/filefilter-custom-arc-not-box"
+
+[[rules]]
+id = "RUST/format-single-var"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/format-single-var"
+
+[[rules]]
+id = "RUST/hardcoded-model"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/hardcoded-model"
+
+[[rules]]
+id = "RUST/import-order"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/import-order"
+
+[[rules]]
+id = "RUST/indexing-slicing"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/indexing-slicing"
+
+[[rules]]
+id = "RUST/must-use-result-builder"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/must-use-result-builder"
+
+[[rules]]
+id = "RUST/no-direct-process-command"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/no-direct-process-command"
+
+[[rules]]
+id = "RUST/no-tautological-clippy-suppress"
+standards_doc = "RUST.md"
+severity = "error"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/no-tautological-clippy-suppress"
+
+[[rules]]
+id = "RUST/non-exhaustive-enum"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/non-exhaustive-enum"
+
+[[rules]]
+id = "RUST/option-bool-pair"
+standards_doc = "TOPOLOGY.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "RUST/option-bool-pair"
+
+[[rules]]
+id = "RUST/plain-string-secret"
+standards_doc = "SECURITY.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "RUST/plain-string-secret"
+
+[[rules]]
+id = "RUST/prefer-expect-over-allow"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/prefer-expect-over-allow"
+
+[[rules]]
+id = "RUST/primitive-for-domain-id"
+standards_doc = "TOPOLOGY.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "RUST/primitive-for-domain-id"
+
+[[rules]]
+id = "RUST/println-in-lib"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/println-in-lib"
+
+[[rules]]
+id = "RUST/pub-visibility"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/pub-visibility"
+
+[[rules]]
+id = "RUST/rc-in-async"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/rc-in-async"
+
+[[rules]]
+id = "RUST/return-unit"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/return-unit"
+
+[[rules]]
+id = "RUST/select-cancel-safety"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/select-cancel-safety"
+
+[[rules]]
+id = "RUST/silent-error-ok"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/silent-error-ok"
+
+[[rules]]
+id = "RUST/silent-wildcard-success"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/silent-wildcard-success"
+
+[[rules]]
+id = "RUST/spawn-no-instrument"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/spawn-no-instrument"
+
+[[rules]]
+id = "RUST/std-mutex-in-async"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/std-mutex-in-async"
+
+[[rules]]
+id = "RUST/string-slice"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/string-slice"
+
+[[rules]]
+id = "RUST/struct-too-many-fields"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/struct-too-many-fields"
+
+[[rules]]
+id = "RUST/test-missing-use-super"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/test-missing-use-super"
+
+[[rules]]
+id = "RUST/todo-no-issue"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/todo-no-issue"
+
+[[rules]]
+id = "RUST/unwrap"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "language:rust"
+kind = "language"
+enforcer = "RUST/unwrap"
+
+[[rules]]
+id = "SECURITY/config-write-no-perms"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "language:rust"
+kind = "universal"
+enforcer = "SECURITY/config-write-no-perms"
+
+[[rules]]
+id = "SECURITY/credential-perms"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+enforcer = "SECURITY/credential-perms"
+
+[[rules]]
+id = "SECURITY/destructive-git-force-push-main"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "language:shell"
+kind = "universal"
+enforcer = "SECURITY/destructive-git-force-push-main"
+
+[[rules]]
+id = "SECURITY/hardcoded-api-key"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+enforcer = "SECURITY/hardcoded-api-key"
+
+[[rules]]
+id = "SECURITY/hardcoded-aws-access-key"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+enforcer = "SECURITY/hardcoded-aws-access-key"
+
+[[rules]]
+id = "SECURITY/hardcoded-loopback-url"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "language:rust"
+kind = "universal"
+enforcer = "SECURITY/hardcoded-loopback-url"
+
+[[rules]]
+id = "SECURITY/hardcoded-oauth-token"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+enforcer = "SECURITY/hardcoded-oauth-token"
+
+[[rules]]
+id = "SECURITY/hardcoded-tmp"
+standards_doc = "SECURITY.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+enforcer = "SECURITY/hardcoded-tmp"
+
+[[rules]]
+id = "SHELL/set-euo-pipefail"
+standards_doc = "SHELL.md"
+severity = "warning"
+scope = "language:shell"
+kind = "language"
+
+[[rules]]
+id = "SQL/autoincrement-instead-of-identity"
+standards_doc = "SQL.md"
+severity = "warning"
+scope = "language:sql"
+kind = "language"
+enforcer = "SQL/autoincrement-instead-of-identity"
+
+[[rules]]
+id = "SQL/keyword-case"
+standards_doc = "SQL.md"
+severity = "warning"
+scope = "language:sql"
+kind = "language"
+enforcer = "SQL/keyword-case"
+
+[[rules]]
+id = "SQL/missing-strict"
+standards_doc = "SQL.md"
+severity = "warning"
+scope = "language:sql"
+kind = "language"
+enforcer = "SQL/missing-strict"
+
+[[rules]]
+id = "SQL/no-if-not-exists"
+standards_doc = "SQL.md"
+severity = "warning"
+scope = "language:sql"
+kind = "language"
+enforcer = "SQL/no-if-not-exists"
+
+[[rules]]
+id = "SQL/select-star"
+standards_doc = "SQL.md"
+severity = "warning"
+scope = "language:sql"
+kind = "language"
+enforcer = "SQL/select-star"
+
+[[rules]]
+id = "STANDARDS/aggregate-status-without-detail"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "STANDARDS/aggregate-status-without-detail"
+
+[[rules]]
+id = "STANDARDS/ai-indicator"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "STANDARDS/ai-indicator"
+
+[[rules]]
+id = "STANDARDS/comment-metadata"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "STANDARDS/comment-metadata"
+
+[[rules]]
+id = "STANDARDS/consecutive-blank-lines"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "STANDARDS/consecutive-blank-lines"
+
+[[rules]]
+id = "STANDARDS/declarative-extended-description"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "STANDARDS/declarative-extended-description"
+
+[[rules]]
+id = "STANDARDS/deprecated-term"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "STANDARDS/deprecated-term"
+
+[[rules]]
+id = "STANDARDS/duplicated-prose"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "STANDARDS/duplicated-prose"
+
+[[rules]]
+id = "STANDARDS/removal-no-issue"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "STANDARDS/removal-no-issue"
+
+[[rules]]
+id = "STANDARDS/tautological-doc"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "STANDARDS/tautological-doc"
+
+[[rules]]
+id = "STANDARDS/trailing-blank-lines"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "STANDARDS/trailing-blank-lines"
+
+[[rules]]
+id = "STORAGE-TIERS/tier-selection-documented"
+standards_doc = "STORAGE-TIERS.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "STORAGE/no-migration-checksum"
+standards_doc = "STORAGE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "STORAGE/no-migration-checksum"
+
+[[rules]]
+id = "STORAGE/no-query-timeout"
+standards_doc = "STORAGE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "STORAGE/no-query-timeout"
+
+[[rules]]
+id = "STORAGE/sql-string-concat"
+standards_doc = "STORAGE.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "STORAGE/sql-string-concat"
+
+[[rules]]
+id = "SUBSTRATE/registration-required"
+standards_doc = "SUBSTRATE.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "SUPPLY-CHAIN/build-attestation-required"
+standards_doc = "SUPPLY-CHAIN.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "SYSCTL/numeric-prefix"
+standards_doc = "SYSCTL.md"
+severity = "warning"
+scope = "project:linux-sysctl"
+kind = "language"
+enforcer = "SYSCTL/numeric-prefix"
+
+[[rules]]
+id = "SYSTEMD/restart-policy-required"
+standards_doc = "SYSTEMD.md"
+severity = "warning"
+scope = "project:ops"
+kind = "project"
+
+[[rules]]
+id = "TESTING/fragile-manifest-dir-path-math"
+standards_doc = "TESTING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/fragile-manifest-dir-path-math"
+
+[[rules]]
+id = "TESTING/ignore-no-issue"
+standards_doc = "TESTING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/ignore-no-issue"
+
+[[rules]]
+id = "TESTING/no-benchmarks"
+standards_doc = "TESTING.md"
+severity = "info"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/no-benchmarks"
+
+[[rules]]
+id = "TESTING/no-fuzz"
+standards_doc = "TESTING.md"
+severity = "info"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/no-fuzz"
+
+[[rules]]
+id = "TESTING/no-nextest-config"
+standards_doc = "TESTING.md"
+severity = "info"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/no-nextest-config"
+
+[[rules]]
+id = "TESTING/no-tests"
+standards_doc = "TESTING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/no-tests"
+
+[[rules]]
+id = "TESTING/skip-missing-fixture"
+standards_doc = "TESTING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/skip-missing-fixture"
+
+[[rules]]
+id = "TESTING/sleep-in-test"
+standards_doc = "TESTING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/sleep-in-test"
+
+[[rules]]
+id = "TESTING/tautological-test"
+standards_doc = "TESTING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/tautological-test"
+
+[[rules]]
+id = "TESTING/test-naming"
+standards_doc = "TESTING.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/test-naming"
+
+[[rules]]
+id = "TESTING/workspace-relative-fixture-path"
+standards_doc = "TESTING.md"
+severity = "info"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TESTING/workspace-relative-fixture-path"
+
+[[rules]]
+id = "TOML/cargo-section-order"
+standards_doc = "TOML.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "TOML/cargo-section-order"
+
+[[rules]]
+id = "TOML/deep-inline-nesting"
+standards_doc = "TOML.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "TOML/deep-inline-nesting"
+
+[[rules]]
+id = "TOML/missing-trailing-comma"
+standards_doc = "TOML.md"
+severity = "warning"
+scope = "language:toml"
+kind = "language"
+enforcer = "TOML/missing-trailing-comma"
+
+[[rules]]
+id = "TOPOLOGY/shallow-module"
+standards_doc = "TOPOLOGY.md"
+severity = "warning"
+scope = "language:rust"
+kind = "universal"
+enforcer = "TOPOLOGY/shallow-module"
+
+[[rules]]
+id = "TYPESCRIPT/strict-mode-required"
+standards_doc = "TYPESCRIPT.md"
+severity = "warning"
+scope = "language:typescript"
+kind = "language"
+
+[[rules]]
+id = "UDEV/attr-match-required"
+standards_doc = "UDEV.md"
+severity = "warning"
+scope = "project:ops"
+kind = "project"
+
+[[rules]]
+id = "VERIFICATION/claim-requires-fixture"
+standards_doc = "VERIFICATION.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "VERIFICATION/self-grade-prohibited"
+standards_doc = "VERIFICATION.md"
+severity = "error"
+scope = "universal"
+kind = "universal"
+
+[[rules]]
+id = "VOCAB/hub-word-drift"
+standards_doc = "NAMING.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "VOCAB/hub-word-drift"
+
+[[rules]]
+id = "WORKFLOW/cargo-without-target-dir-in-worktree"
+standards_doc = "RUST.md"
+severity = "warning"
+scope = "project:dispatch-worktree"
+kind = "language"
+enforcer = "WORKFLOW/cargo-without-target-dir-in-worktree"
+
+[[rules]]
+id = "WORKFLOW/conventional-commits"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "project:git-history"
+kind = "universal"
+enforcer = "WORKFLOW/conventional-commits"
+
+[[rules]]
+id = "WORKFLOW/derived-section-stale"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "project:workflow"
+kind = "universal"
+enforcer = "WORKFLOW/derived-section-stale"
+
+[[rules]]
+id = "WORKFLOW/dispatch-prompt-missing-writing-wrap"
+standards_doc = "WRITING.v2.0.md"
+severity = "warning"
+scope = "project:dispatch-prompt"
+kind = "universal"
+enforcer = "WORKFLOW/dispatch-prompt-missing-writing-wrap"
+
+[[rules]]
+id = "WORKFLOW/lessons-append-only"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "language:toml"
+kind = "project"
+enforcer = "WORKFLOW/lessons-append-only"
+
+[[rules]]
+id = "WORKFLOW/llm-corpus-required"
+standards_doc = "AGENT-DOCS.md"
+severity = "warning"
+scope = "project:repository"
+kind = "universal"
+enforcer = "WORKFLOW/llm-corpus-required"
+
+[[rules]]
+id = "WORKFLOW/llm-schema-valid"
+standards_doc = "AGENT-DOCS.md"
+severity = "error"
+scope = "language:toml"
+kind = "universal"
+enforcer = "WORKFLOW/llm-schema-valid"
+
+[[rules]]
+id = "WORKFLOW/no-ai-attribution"
+standards_doc = "STANDARDS.md"
+severity = "error"
+scope = "project:git-history"
+kind = "universal"
+enforcer = "WORKFLOW/no-ai-attribution"
+
+[[rules]]
+id = "WORKFLOW/no-hack-xxx-temp"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "project:workflow"
+kind = "universal"
+enforcer = "WORKFLOW/no-hack-xxx-temp"
+
+[[rules]]
+id = "WORKFLOW/pr-number-subject-stamp"
+standards_doc = "STANDARDS.md"
+severity = "warning"
+scope = "project:git-history"
+kind = "universal"
+enforcer = "WORKFLOW/pr-number-subject-stamp"
+
+[[rules]]
+id = "WORKFLOW/prompt-missing-blast-radius"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:dispatch-prompt"
+kind = "project"
+enforcer = "WORKFLOW/prompt-missing-blast-radius"
+
+[[rules]]
+id = "WORKFLOW/prompt-missing-criteria"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:dispatch-prompt"
+kind = "project"
+enforcer = "WORKFLOW/prompt-missing-criteria"
+
+[[rules]]
+id = "WORKFLOW/prompt-missing-directive"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:dispatch-prompt"
+kind = "project"
+enforcer = "WORKFLOW/prompt-missing-directive"
+
+[[rules]]
+id = "WORKFLOW/prompt-wrong-naming"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:dispatch-prompt"
+kind = "project"
+enforcer = "WORKFLOW/prompt-wrong-naming"
+
+[[rules]]
+id = "WORKTREE/agent-log-committed"
+standards_doc = "WORKFLOW.md"
+severity = "error"
+scope = "project:repository"
+kind = "project"
+enforcer = "WORKTREE/agent-log-committed"
+
+[[rules]]
+id = "WORKTREE/canonical-clean"
+standards_doc = "WORKFLOW.md"
+severity = "warning"
+scope = "project:repository"
+kind = "project"
+enforcer = "WORKTREE/canonical-clean"
+
+[[rules]]
+id = "WORKTREE/cargo-target-dir-committed"
+standards_doc = "WORKFLOW.md"
+severity = "error"
+scope = "project:repository"
+kind = "project"
+enforcer = "WORKTREE/cargo-target-dir-committed"
+
+[[rules]]
+id = "WRITING/derivable-count"
+standards_doc = "WRITING.md"
+severity = "info"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "WRITING/derivable-count"
+
+[[rules]]
+id = "WRITING/double-space-after-period"
+standards_doc = "WRITING.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "WRITING/double-space-after-period"
+
+[[rules]]
+id = "WRITING/em-dash"
+standards_doc = "WRITING.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "WRITING/em-dash"
+
+[[rules]]
+id = "WRITING/markdown-hard-break-form"
+standards_doc = "WRITING.v2.0.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "WRITING/markdown-hard-break-form"
+
+[[rules]]
+id = "WRITING/purpose-in-technical-doc"
+standards_doc = "WRITING.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "WRITING/purpose-in-technical-doc"
+
+[[rules]]
+id = "WRITING/reference-must-compress"
+standards_doc = "WRITING.md"
+severity = "warning"
+scope = "universal"
+kind = "universal"
+enforcer = "WRITING/reference-must-compress"
+
+[[rules]]
+id = "WRITING/stale-date"
+standards_doc = "WRITING.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "WRITING/stale-date"
+
+[[rules]]
+id = "WRITING/uniform-paragraph-length"
+standards_doc = "WRITING.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "WRITING/uniform-paragraph-length"
+
+[[rules]]
+id = "WRITING/uniform-sentence-length"
+standards_doc = "WRITING.md"
+severity = "warning"
+scope = "language:markdown"
+kind = "universal"
+enforcer = "WRITING/uniform-sentence-length"
+
+[[rules]]
+id = "YAML/no-bare-boolean-strings"
+standards_doc = "YAML.md"
+severity = "warning"
+scope = "language:yaml"
+kind = "language"
+

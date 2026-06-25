@@ -909,7 +909,10 @@ no_endpoint = { type = "mcp" }
     }
 
     #[cfg(feature = "mcp")]
-    #[allow(clippy::disallowed_methods)]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "INVARIANT: test-only fixture writes a throw-away shell script via raw std::fs; the project wrappers add tracing and structured errors that are inappropriate for ephemeral test setup"
+    )]
     fn fake_mcp_server_script() -> (tempfile::TempDir, std::path::PathBuf) {
         let dir = tempfile::tempdir().expect("tempdir");
         let script = dir.path().join("fake-mcp.sh");
@@ -950,7 +953,7 @@ done
     }
 
     #[cfg(feature = "mcp")]
-    fn test_ctx() -> ToolContext {
+    fn default_tool_context() -> ToolContext {
         use std::collections::HashSet;
         use std::sync::{Arc, RwLock};
 
@@ -1003,7 +1006,7 @@ done
             arguments: serde_json::json!({"message": "hello"}),
         };
         let output = registry
-            .execute(&input, &test_ctx())
+            .execute(&input, &default_tool_context())
             .await
             .expect("execute");
         assert!(!output.is_error);
@@ -1034,7 +1037,7 @@ done
         let err = registry
             .execute_checked(
                 &input,
-                &test_ctx(),
+                &default_tool_context(),
                 "reader",
                 &organon::types::ToolGroupPolicy::groups(vec![ToolGroupId::Read]),
             )
