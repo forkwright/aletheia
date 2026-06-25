@@ -74,6 +74,40 @@ fn test_providers() -> Arc<ProviderRegistry> {
     Arc::new(providers)
 }
 
+/// Mock provider that never completes, so cancellation can race without
+/// the pipeline finishing first.
+struct PendingProvider;
+
+impl LlmProvider for PendingProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(std::future::pending())
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
+    fn name(&self) -> &str {
+        "pending-mock"
+    }
+}
+
+fn pending_providers() -> Arc<ProviderRegistry> {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(PendingProvider));
+    Arc::new(providers)
+}
+
 fn mock_tool_response(
     tool_name: &str,
     tool_id: &str,
@@ -559,8 +593,18 @@ fn make_test_actor(
     mpsc::Sender<NousMessage>,
     tempfile::TempDir, // kept alive: drops would delete tempdir
 ) {
+    make_test_actor_with_providers(test_providers(), pipeline_config)
+}
+
+fn make_test_actor_with_providers(
+    providers: Arc<ProviderRegistry>,
+    pipeline_config: PipelineConfig,
+) -> (
+    NousActor,
+    mpsc::Sender<NousMessage>,
+    tempfile::TempDir, // kept alive: drops would delete tempdir
+) {
     let (dir, oikos) = test_oikos();
-    let providers = test_providers();
     let tools = Arc::new(ToolRegistry::new());
     let config = test_config();
     let (tx, rx) = mpsc::channel(DEFAULT_INBOX_CAPACITY);

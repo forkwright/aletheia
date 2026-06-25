@@ -483,6 +483,13 @@ impl SessionStoreTranscriptSource {
                 "session store busy during auto-dream transcript scan: {e}"
             ))
         })?;
+        Self::list_sessions_since(&store, since)
+    }
+
+    fn list_sessions_since(
+        store: &SessionStore,
+        since: jiff::Timestamp,
+    ) -> std::result::Result<Vec<mneme::types::Session>, std::io::Error> {
         let sessions = store
             .list_sessions(None)
             .map_err(|e| std::io::Error::other(e.to_string()))?
@@ -511,12 +518,12 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
         &self,
         since: jiff::Timestamp,
     ) -> std::result::Result<Vec<melete::dream::SessionTranscript>, std::io::Error> {
-        let sessions = self.sessions_since(since)?;
         let store = self.store.try_lock().map_err(|e| {
             std::io::Error::other(format!(
                 "session store busy during auto-dream transcript load: {e}"
             ))
         })?;
+        let sessions = Self::list_sessions_since(&store, since)?;
         sessions
             .into_iter()
             .map(|session| {
@@ -1056,8 +1063,9 @@ mod tests {
 
     use hermeneus::provider::ProviderRegistry;
     use hermeneus::test_utils::MockProvider;
+    use melete::dream::TranscriptSource;
 
-    use super::run_skill_extraction;
+    use super::{SessionStoreTranscriptSource, run_skill_extraction};
 
     /// Drive real candidate/turn data through `run_skill_extraction` and assert
     /// the persisted pending skill carries derived source-session, redacted
@@ -1176,5 +1184,75 @@ mod tests {
             pending.extraction_audit.is_some(),
             "extraction audit refs retained"
         );
+    }
+
+    /// Regression test for #5750.
+    ///
+    /// WHY: `load_transcripts_since` previously listed sessions under one lock
+    /// acquisition and then loaded history under a second, allowing a concurrent
+    /// finalize to delete the session in between and produce an empty transcript
+    /// from a stale session list. After the fix, a single guard covers both
+    /// operations, so any session that appears in the result must still have
+    /// non-empty history.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn load_transcripts_since_is_atomic_against_concurrent_finalize() {
+        let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store"); // kanon:ignore RUST/expect - test asserts setup invariant
+        let session_id = "550e8400-e29b-41d4-a716-446655440001";
+        let nous_id = "nous-test-5750";
+        let session_key = "test-key-5750";
+
+        store
+            .create_session(session_id, nous_id, session_key, None, None)
+            .expect("create session"); // kanon:ignore RUST/expect - test asserts setup invariant
+        store
+            .append_message(session_id, mneme::types::Role::User, "hello", None, None, 1)
+            .expect("append message"); // kanon:ignore RUST/expect - test asserts setup invariant
+
+        let store = Arc::new(tokio::sync::Mutex::new(store));
+        let source = SessionStoreTranscriptSource::new(Arc::clone(&store));
+
+        let since = jiff::Timestamp::from_second(1_600_000_000).expect("valid epoch"); // kanon:ignore RUST/expect - test asserts fixed timestamp
+
+        let finalizer_store = Arc::clone(&store);
+        // kanon:ignore RUST/spawn-no-instrument - test task has no production tracing requirement
+        let finalizer = tokio::spawn(async move {
+            for i in 0..300 {
+                if let Ok(guard) = finalizer_store.try_lock() {
+                    guard.delete_session(session_id).expect("delete session"); // kanon:ignore RUST/expect - test asserts mutation invariant
+                    if i % 2 == 1 {
+                        guard
+                            .create_session(session_id, nous_id, session_key, None, None)
+                            .expect("create session"); // kanon:ignore RUST/expect - test asserts setup invariant
+                        guard
+                            .append_message(
+                                session_id,
+                                mneme::types::Role::User,
+                                "hello",
+                                None,
+                                None,
+                                1,
+                            )
+                            .expect("append message"); // kanon:ignore RUST/expect - test asserts setup invariant
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+        });
+
+        for _ in 0..300 {
+            if let Ok(transcripts) = source.load_transcripts_since(since) {
+                for transcript in transcripts {
+                    if transcript.session_id == session_id {
+                        assert!(
+                            !transcript.messages.is_empty(),
+                            "stale-list interleaving: session listed but history empty"
+                        );
+                    }
+                }
+            }
+            tokio::task::yield_now().await;
+        }
+
+        finalizer.await.expect("finalizer task completes"); // kanon:ignore RUST/expect - test asserts task completion
     }
 }
