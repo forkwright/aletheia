@@ -58,7 +58,22 @@ pub(crate) fn check_structure(effective_lines: &[(usize, &str)]) -> Vec<Finding>
                 run_start = line_num;
             }
             consecutive += 1;
-        } else if !trimmed.starts_with('#') && !trimmed.starts_with('|') {
+        } else if trimmed.starts_with('#') {
+            // WHY: section headings break structural continuity and must end a run.
+            if consecutive >= TRANSITION_DENSITY_THRESHOLD {
+                findings.push(Finding {
+                    line_start: run_start,
+                    line_end: line_num.saturating_sub(1),
+                    message: format!(
+                        "{consecutive} consecutive paragraphs begin with transition words — structural tell"
+                    ),
+                    kind: FindingKind::StructuralPattern,
+                    fix: None,
+                });
+            }
+            consecutive = 0;
+            run_start = 0;
+        } else if !trimmed.starts_with('|') {
             // Non-heading, non-table prose that doesn't start with a transition word resets the run.
             if consecutive >= TRANSITION_DENSITY_THRESHOLD {
                 findings.push(Finding {
@@ -205,6 +220,21 @@ mod tests {
         assert!(
             !findings.is_empty(),
             "three consecutive transition paragraphs must be flagged"
+        );
+    }
+
+    #[test]
+    fn transition_density_resets_at_section_heading() {
+        let lines: Vec<(usize, &str)> = vec![
+            (1, "Furthermore, the analysis shows three cases."),
+            (2, "## New Section"),
+            (3, "Additionally, we see two more."),
+            (4, "Moreover, results confirm the pattern."),
+        ];
+        let findings = check_structure(&lines);
+        assert!(
+            findings.is_empty(),
+            "transition paragraphs separated by a section heading must not accumulate into one run"
         );
     }
 
