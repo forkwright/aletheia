@@ -139,6 +139,7 @@ pub struct RelationshipsResponse {
 
 /// Direction of a relationship relative to the current entity.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum RelationshipDirection {
     /// The relationship points away from the viewed entity.
     Outgoing,
@@ -193,6 +194,7 @@ pub struct MergeRequest {
 /// Entity flagging severity.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum FlagSeverity {
     /// Low-priority review.
     Low,
@@ -324,6 +326,7 @@ pub struct FactorScoreBreakdown {
 /// Candidate decision reported by the explain endpoint.
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ExplainDecision {
     /// Included in the returned result set.
     Selected,

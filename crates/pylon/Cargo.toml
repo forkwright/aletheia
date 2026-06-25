@@ -8,9 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[lints]
-workspace = true
-
 [features]
 default = []
 tls = ["dep:axum-server"]
@@ -54,6 +51,7 @@ tracing = { workspace = true }
 prometheus-client = { workspace = true }
 
 # Types
+indexmap = { workspace = true, features = ["std"] }
 
 # Hashing for ETag computation
 sha2 = { workspace = true }
@@ -87,3 +85,11 @@ skene = { path = "../theatron/skene" }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.kanon]
+maturity = "production"
+since = "2024-01-01"
+exit-criteria = "decommission with the aletheia HTTP gateway"

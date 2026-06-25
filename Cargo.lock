@@ -7646,6 +7646,7 @@ dependencies = [
  "dianoia",
  "hermeneus",
  "http-body-util",
+ "indexmap 2.14.0",
  "jiff",
  "koina",
  "mime_guess",
