@@ -55,8 +55,12 @@ pub struct NousSummary {
     pub name: String,
     /// Whether the agent is enabled in the operator surface.
     pub enabled: bool,
-    /// LLM model assigned to this agent.
+    /// Primary LLM model assigned to this agent.
     pub model: String,
+    /// Fallback models tried after primary-model failures.
+    pub fallback_models: Vec<String>,
+    /// Per-model provider readiness for the agent's model chain.
+    pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Lifecycle status (e.g. `"active"`).
     pub status: String,
     /// Tool toggle summaries for the agent.
@@ -68,8 +72,16 @@ pub struct NousSummary {
 pub struct NousStatus {
     /// Agent identifier.
     pub id: String,
-    /// LLM model assigned to this agent.
+    /// Primary LLM model assigned to this agent.
     pub model: String,
+    /// Fallback models tried after primary-model failures.
+    pub fallback_models: Vec<String>,
+    /// Number of primary-model attempts before moving to the fallback chain.
+    pub retries_before_fallback: u32,
+    /// Whether complexity-based model routing is enabled.
+    pub complexity_routing_enabled: bool,
+    /// Per-model provider readiness for the agent's model chain.
+    pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Maximum context window in tokens.
     pub context_window: u32,
     /// Maximum output tokens per turn.

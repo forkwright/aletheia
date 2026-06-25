@@ -166,3 +166,45 @@ fn backoff_delay_exponential_growth() {
         "delay should be capped near BACKOFF_MAX_MS"
     );
 }
+
+#[test]
+fn config_models_exposed_without_leaking() {
+    // WHY (#5259): dynamic OpenAI-compatible model lists are config-owned.
+    // `supported_models()` must not leak them as `&[&str]`; the diagnostic
+    // `supported_model_list()` returns owned `Cow` values that are freed
+    // when the provider drops.
+    let config = OpenAiProviderConfig {
+        name: "cloud".to_owned(),
+        base_url: "https://api.openai.com/v1".to_owned(),
+        models: vec!["gpt-4o".to_owned()],
+        ..Default::default()
+    };
+    let provider = OpenAiProvider::new(config).unwrap();
+    assert!(provider.supported_models().is_empty());
+    let list = provider.supported_model_list();
+    assert_eq!(list.len(), 1);
+    assert_eq!(
+        list.first().map(std::convert::AsRef::as_ref),
+        Some("gpt-4o")
+    );
+    assert!(provider.supports_model("gpt-4o"));
+    assert_eq!(provider.match_specificity("gpt-4o"), Some(MatchKind::Exact));
+}
+
+#[test]
+fn repeated_construction_does_not_leak_model_storage() {
+    // WHY (#5259): long-running harnesses may construct providers many
+    // times (config reloads, tests, multi-instance startup). Each
+    // construction must be able to free its model list.
+    for i in 0..100 {
+        let config = OpenAiProviderConfig {
+            name: format!("cloud-{i}"),
+            base_url: "https://api.openai.com/v1".to_owned(),
+            models: vec![format!("gpt-model-{i}")],
+            ..Default::default()
+        };
+        let provider = OpenAiProvider::new(config).unwrap();
+        assert!(provider.supports_model(&format!("gpt-model-{i}")));
+        // provider drops here, freeing the owned model list.
+    }
+}
