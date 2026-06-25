@@ -24,7 +24,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 // WHY: 120 seconds covers large ingest batches and replay exports without
 // letting a hung request run forever.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+const REQUEST_TIMEOUT: Duration = Duration::from_mins(2);
 
 // WHY: first-party clients identify themselves with the same header value the
 // gateway CSRF layer expects, so mutating routes work even when CSRF is on.
