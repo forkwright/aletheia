@@ -192,9 +192,9 @@ impl ProsocheCheck {
             items.extend(check_disk_space(data_dir).await);
         }
 
-        items.extend(check_db_sizes(&self.db_paths));
+        items.extend(check_db_sizes(&self.db_paths).await);
 
-        items.extend(check_memory());
+        items.extend(check_memory().await);
 
         #[cfg(feature = "knowledge-store")]
         if let Some(ref store) = self.knowledge_store {
@@ -313,46 +313,61 @@ fn parse_df_percent(output: &str) -> std::io::Result<f64> {
 }
 
 /// Check database file sizes. WARN if any file > 1 GB.
-fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
+async fn check_db_sizes(paths: &[PathBuf]) -> Vec<AttentionItem> {
     const ONE_GB: u64 = 1024 * 1024 * 1024;
-    let mut items = Vec::new();
+    // WHY: `std::fs::metadata` blocks the executor; offload the loop to the
+    // blocking pool so periodic health checks cannot stall actor turns.
+    let paths = paths.to_owned();
+    match tokio::task::spawn_blocking(move || {
+        let mut items = Vec::new();
 
-    for path in paths {
-        match std::fs::metadata(path) {
-            Ok(meta) => {
-                // WHY: compute GB in integer milli-GB (bytes / (GB/1024)) so the
-                // usize→f64 conversion is from u32 (lossless up to ~4 petabyte file
-                // sizes in milli-GB), avoiding a u64-as-f64 precision-loss cast.
-                let milli_gb = meta.len() / (ONE_GB / 1024);
-                let milli_gb_u32 = u32::try_from(milli_gb).unwrap_or(u32::MAX);
-                let size_gb = f64::from(milli_gb_u32) / 1024.0_f64;
-                // NOTE: single threshold — any file over 1 GB is High urgency.
-                items.extend(check_threshold(size_gb, 1.0, f64::INFINITY, |gb| {
-                    format!("Database file large: {} is {gb:.1} GB", path.display())
-                }));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // NOTE: File doesn't exist: not an error for health checks.
-            }
-            Err(e) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    error = %e,
-                    "failed to check database file size"
-                );
+        for path in &paths {
+            match std::fs::metadata(path) {
+                Ok(meta) => {
+                    // WHY: compute GB in integer milli-GB (bytes / (GB/1024)) so the
+                    // usize→f64 conversion is from u32 (lossless up to ~4 petabyte file
+                    // sizes in milli-GB), avoiding a u64-as-f64 precision-loss cast.
+                    let milli_gb = meta.len() / (ONE_GB / 1024);
+                    let milli_gb_u32 = u32::try_from(milli_gb).unwrap_or(u32::MAX);
+                    let size_gb = f64::from(milli_gb_u32) / 1024.0_f64;
+                    // NOTE: single threshold — any file over 1 GB is High urgency.
+                    items.extend(check_threshold(size_gb, 1.0, f64::INFINITY, |gb| {
+                        format!("Database file large: {} is {gb:.1} GB", path.display())
+                    }));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // NOTE: File doesn't exist: not an error for health checks.
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "failed to check database file size"
+                    );
+                }
             }
         }
-    }
 
-    items
+        items
+    })
+    .await
+    {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to check database file sizes");
+            Vec::new()
+        }
+    }
 }
 
 /// Check process memory (RSS) via `/proc/self/status` on Linux.
 ///
 /// Returns an attention item if RSS exceeds reasonable thresholds.
 #[cfg(target_os = "linux")]
-fn check_memory() -> Vec<AttentionItem> {
-    match read_process_rss_kb() {
+async fn check_memory() -> Vec<AttentionItem> {
+    // WHY: `/proc/self/status` is a small virtual file, but reading it still
+    // performs blocking syscalls on the executor; offload to the blocking pool.
+    match tokio::task::spawn_blocking(read_process_rss_kb).await {
         Ok(resident_kb) => {
             let rss_mb = resident_kb / 1024;
             // WHY: RSS in MB is bounded by host RAM; clamp to u32::MAX (4TB)
@@ -366,8 +381,12 @@ fn check_memory() -> Vec<AttentionItem> {
             .into_iter()
             .collect()
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             tracing::debug!(error = %e, "failed to read process RSS — skipping memory check");
+            Vec::new()
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "blocking task panicked while reading process RSS");
             Vec::new()
         }
     }
@@ -375,7 +394,7 @@ fn check_memory() -> Vec<AttentionItem> {
 
 /// Non-Linux stub: `/proc/self/status` is not available on this platform.
 #[cfg(not(target_os = "linux"))]
-fn check_memory() -> Vec<AttentionItem> {
+async fn check_memory() -> Vec<AttentionItem> {
     tracing::trace!("process RSS check not supported on this platform");
     Vec::new()
 }

@@ -289,6 +289,10 @@ async fn execute_action_dispatches_builtin_variant() {
 async fn routing_store_refresh_builtin_refreshes_attached_store() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let path = tmp.path().join("2026-04-17.jsonl");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture setup runs outside the async runtime"
+    )]
     let mut file = std::fs::File::create(path).expect("jsonl file");
     writeln!(
         file,

@@ -124,32 +124,32 @@ fn parse_vmrss_missing_returns_error() {
     assert!(parse_vmrss(content).is_err());
 }
 
-#[test]
-fn check_memory_runs_without_panic() {
-    let items = check_memory();
+#[tokio::test]
+async fn check_memory_runs_without_panic() {
+    let items = check_memory().await;
     assert!(
         items.len() <= 1,
         "test process should not exceed memory thresholds"
     );
 }
 
-#[test]
-fn check_db_sizes_empty_paths() {
-    let items = check_db_sizes(&[]);
+#[tokio::test]
+async fn check_db_sizes_empty_paths() {
+    let items = check_db_sizes(&[]).await;
     assert!(items.is_empty());
 }
 
-#[test]
-fn check_db_sizes_nonexistent_file() {
-    let items = check_db_sizes(&[PathBuf::from("/tmp/nonexistent-db-file-for-test.db")]);
+#[tokio::test]
+async fn check_db_sizes_nonexistent_file() {
+    let items = check_db_sizes(&[PathBuf::from("/tmp/nonexistent-db-file-for-test.db")]).await;
     assert!(
         items.is_empty(),
         "nonexistent file should not produce items"
     );
 }
 
-#[test]
-fn check_db_sizes_small_file() {
+#[tokio::test]
+async fn check_db_sizes_small_file() {
     let dir = tempfile::tempdir().expect("create tempdir");
     let db_path = dir.path().join("test.db");
     #[expect(
@@ -158,7 +158,7 @@ fn check_db_sizes_small_file() {
     )]
     std::fs::write(&db_path, b"small content").expect("write test file");
 
-    let items = check_db_sizes(&[db_path]);
+    let items = check_db_sizes(&[db_path]).await;
     assert!(items.is_empty(), "small file should not trigger warning");
 }
 

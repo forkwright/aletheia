@@ -148,6 +148,10 @@ impl TraceRotator {
             // WHY: Rename-and-reopen: create a new empty file at the original path so active
             // writers complete their current write to the renamed file (old inode) and
             // immediately get the new file on the next open by name.
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+            )]
             if let Err(e) = std::fs::File::create(&entry.path) {
                 tracing::warn!(
                     path = %entry.path.display(),
