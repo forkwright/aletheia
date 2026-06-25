@@ -39,6 +39,11 @@ pub enum ReloadEvent {
         /// Human-readable error message.
         source: String,
     },
+    /// The background watcher task terminated unexpectedly.
+    TaskDied {
+        /// Human-readable reason (panic message or abort signal).
+        source: String,
+    },
 }
 
 /// Metadata for a single loaded rule source.
@@ -130,12 +135,23 @@ impl From<HotReloadError> for crate::error::Error {
 /// the in-memory [`RuleSet`] atomically.
 #[expect(
     dead_code,
-    reason = "fields retained for drop semantics — watcher and sender must outlive the task"
+    reason = "fields retained for drop semantics, inspection, and test access"
 )]
 pub(crate) struct HotReloader {
     rule_dir: PathBuf,
     reload_tx: mpsc::Sender<ReloadEvent>,
     _watcher: notify::RecommendedWatcher,
+    /// Handle for the background supervisor task.
+    ///
+    // WHY: dropped JoinHandles swallow panics silently. Storing the handle
+    // keeps the task reachable for observation and ensures its Drop impl runs
+    // when the HotReloader is dropped, aborting the supervisor.
+    task_handle: tokio::task::JoinHandle<()>,
+    /// Abort handle for the inner reload task.
+    ///
+    // WHY: allows callers (and tests) to terminate the reload loop and
+    // observe the resulting TaskDied event through the supervisor.
+    reload_abort: tokio::task::AbortHandle,
 }
 
 impl HotReloader {
@@ -177,6 +193,7 @@ impl HotReloader {
         // WHY: capacity 1 is enough for debounced coalescing; duplicate tokens
         // are noise and can be dropped without losing a reload signal.
         let (notify_tx, mut notify_rx) = mpsc::channel::<()>(1);
+        let supervisor_reload_tx = reload_tx.clone();
 
         let watcher = {
             let notify_tx = notify_tx.clone();
@@ -208,7 +225,7 @@ impl HotReloader {
         let fixed_rules_clone = Arc::clone(fixed_rules);
         let reload_tx_clone = reload_tx.clone();
 
-        tokio::spawn(async move {
+        let reload_task = tokio::spawn(async move {
             let debounce = Duration::from_millis(500);
 
             while notify_rx.recv().await.is_some() {
@@ -233,16 +250,38 @@ impl HotReloader {
                 }
             }
         });
+        let reload_abort = reload_task.abort_handle();
+
+        // WHY: supervisor observes the reload task so panics are surfaced
+        // through the ReloadEvent channel instead of vanishing silently.
+        let task_handle = tokio::spawn(async move {
+            if let Err(e) = reload_task.await {
+                error!(error = %e, "krites hot-reload task died");
+                let msg = e.to_string();
+                let _ = supervisor_reload_tx
+                    .send(ReloadEvent::TaskDied { source: msg })
+                    .await;
+            }
+        });
 
         Ok((
             Self {
                 rule_dir,
                 reload_tx,
                 _watcher: watcher,
+                task_handle,
+                reload_abort,
             },
             reload_rx,
             rule_store,
         ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn abort_for_test(&self) {
+        // Abort the inner reload task so the supervisor observes the JoinError
+        // and emits a TaskDied event.
+        self.reload_abort.abort();
     }
 
     /// Load and validate all `*.mnm` files in `rule_dir`.
@@ -365,6 +404,7 @@ mod tests {
         match event {
             ReloadEvent::Reloaded { count } => assert_eq!(count, 1),
             ReloadEvent::ParseError { source } => panic!("unexpected parse error: {source}"),
+            ReloadEvent::TaskDied { source } => panic!("unexpected task death: {source}"),
         }
 
         assert!(store.load().rules_text.contains("rule_b"));
@@ -389,6 +429,7 @@ mod tests {
         match event {
             ReloadEvent::Reloaded { .. } => panic!("expected parse error"),
             ReloadEvent::ParseError { .. } => {}
+            ReloadEvent::TaskDied { source } => panic!("unexpected task death: {source}"),
         }
 
         assert!(store.load().rules_text.contains("good_rule"));
@@ -418,6 +459,7 @@ mod tests {
         match event {
             ReloadEvent::Reloaded { count } => assert_eq!(count, 1),
             ReloadEvent::ParseError { source } => panic!("unexpected parse error: {source}"),
+            ReloadEvent::TaskDied { source } => panic!("unexpected task death: {source}"),
         }
 
         // Because of debounce, the final value should reflect the last write.
@@ -427,6 +469,39 @@ mod tests {
         assert!(
             second.is_err() || second.unwrap().is_none(),
             "expected no second event after debounce"
+        );
+    }
+
+    #[tokio::test]
+    async fn aborting_reloader_stops_background_task_and_does_not_respawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let rule_dir = dir.path();
+
+        std::fs::write(rule_dir.join("test.mnm"), "rule[x] := x = 0\n").unwrap();
+
+        let db = fresh_mem_db();
+        let fixed_rules = Arc::clone(&db.fixed_rules);
+        let (reloader, mut rx, _store) = HotReloader::start(rule_dir, &fixed_rules).unwrap();
+
+        let _ = timeout(Duration::from_millis(100), rx.recv()).await;
+
+        // WHY: abort simulates task death; the stored handle makes this
+        // observable and guarantees cleanup instead of leaking the task.
+        reloader.abort_for_test();
+
+        // Drain the TaskDied event that the supervisor emits on abort.
+        let event = timeout(Duration::from_millis(200), rx.recv()).await;
+        assert!(
+            matches!(event, Ok(Some(ReloadEvent::TaskDied { .. }))),
+            "expected TaskDied after abort, got {event:?}"
+        );
+
+        // After task death, further file changes must not produce reloads.
+        std::fs::write(rule_dir.join("test.mnm"), "rule[x] := x = 999\n").unwrap();
+        let late = timeout(Duration::from_millis(300), rx.recv()).await;
+        assert!(
+            late.is_err() || late.unwrap().is_none(),
+            "expected no reload events after the reloader task was aborted"
         );
     }
 }

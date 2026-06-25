@@ -39,19 +39,28 @@ fn test_and() {
     let m_and_aggr = aggr.meet_op.expect("test assertion");
     let mut v = DataValue::from(true);
 
-    m_and_aggr
-        .update(&mut v, &DataValue::from(true))
-        .expect("test assertion");
+    assert!(
+        !m_and_aggr
+            .update(&mut v, &DataValue::from(true))
+            .expect("test assertion"),
+        "meet:and update true & true reports no change"
+    );
     assert_eq!(v, DataValue::from(true));
 
-    m_and_aggr
-        .update(&mut v, &DataValue::from(false))
-        .expect("test assertion");
+    assert!(
+        m_and_aggr
+            .update(&mut v, &DataValue::from(false))
+            .expect("test assertion"),
+        "meet:and update true & false reports changed"
+    );
     assert_eq!(v, DataValue::from(false));
 
-    m_and_aggr
-        .update(&mut v, &DataValue::from(true))
-        .expect("test assertion");
+    assert!(
+        !m_and_aggr
+            .update(&mut v, &DataValue::from(true))
+            .expect("test assertion"),
+        "meet:and update false & true reports no change"
+    );
     assert_eq!(v, DataValue::from(false));
 }
 
@@ -88,14 +97,20 @@ fn test_or() {
     let m_or_aggr = aggr.meet_op.expect("test assertion");
     let mut v = DataValue::from(false);
 
-    m_or_aggr
-        .update(&mut v, &DataValue::from(false))
-        .expect("test assertion");
+    assert!(
+        !m_or_aggr
+            .update(&mut v, &DataValue::from(false))
+            .expect("test assertion"),
+        "meet:or update false | false reports no change"
+    );
     assert_eq!(v, DataValue::from(false));
 
-    m_or_aggr
-        .update(&mut v, &DataValue::from(true))
-        .expect("test assertion");
+    assert!(
+        m_or_aggr
+            .update(&mut v, &DataValue::from(true))
+            .expect("test assertion"),
+        "meet:or update false | true reports changed"
+    );
     assert_eq!(v, DataValue::from(true));
 
     m_or_aggr

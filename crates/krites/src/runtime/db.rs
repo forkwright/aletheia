@@ -528,33 +528,16 @@ impl<'s, S: Storage<'s>> Db<S> {
         &'s self,
         rels: T,
     ) -> Vec<Arc<RwLock<()>>> {
-        let mut collected = vec![];
-        let mut pending = vec![];
-        {
-            let locks = self
-                .relation_locks
-                .read()
-                .unwrap_or_else(|e| e.into_inner());
-            for rel in rels {
-                match locks.get(rel) {
-                    None => {
-                        pending.push(rel);
-                    }
-                    Some(lock) => collected.push(lock.clone()),
-                }
-            }
-        }
-        if !pending.is_empty() {
-            let mut locks = self
-                .relation_locks
-                .write()
-                .unwrap_or_else(|e| e.into_inner());
-            for rel in pending {
-                let lock = locks.entry(rel.clone()).or_default().clone();
-                collected.push(lock);
-            }
-        }
-        collected
+        // WHY: hold a single write lock for the entire classify-and-insert
+        // operation. A read-then-write upgrade gap is a TOCTOU window where
+        // concurrent callers could race on first creation and a future cleanup
+        // path could re-insert a stale lock for a dropped relation.
+        let mut locks = self
+            .relation_locks
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        rels.map(|rel| locks.entry(rel.clone()).or_default().clone())
+            .collect()
     }
 
     pub(crate) fn compact_relation(&'s self) -> Result<()> {

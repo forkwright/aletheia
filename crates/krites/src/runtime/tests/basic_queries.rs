@@ -4,6 +4,11 @@
     clippy::indexing_slicing,
     reason = "test assertions: index into known-shape NamedRows results"
 )]
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::thread;
+
+use compact_str::CompactString;
 use serde_json::json;
 use tracing::debug;
 
@@ -320,5 +325,76 @@ fn returning_relations() {
     assert!(
         res.is_err(),
         "accessing temp relation _xxz outside its script should fail"
+    );
+}
+
+#[test]
+fn relation_locks_are_consistent_across_concurrent_first_access_and_cleaned_on_remove() {
+    let db = DbInstance::default();
+    db.run_default(":create lock_test {id: Int => value: String}")
+        .expect("creating relation should succeed");
+
+    let rel_name = CompactString::from("lock_test");
+    let mut handles = vec![];
+    for _ in 0..8 {
+        let db_clone = db.clone();
+        let name = rel_name.clone();
+        handles.push(thread::spawn(move || {
+            let locks = db_clone.obtain_relation_locks(std::iter::once(&name));
+            assert_eq!(
+                locks.len(),
+                1,
+                "obtain_relation_locks returns one lock per name"
+            );
+            locks.into_iter().next().expect("lock present")
+        }));
+    }
+
+    let locks: Vec<_> = handles
+        .into_iter()
+        .map(|h| h.join().expect("thread should not panic"))
+        .collect();
+    let first = Arc::as_ptr(&locks[0]);
+    assert!(
+        locks.iter().all(|l| Arc::as_ptr(l) == first),
+        "concurrent first-time callers must obtain the same Arc<RwLock>"
+    );
+
+    db.run_default("::remove lock_test")
+        .expect("removing relation should succeed");
+
+    let locks = db
+        .relation_locks
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert!(
+        !locks.contains_key(&rel_name),
+        "relation_locks entry must be removed when the relation is dropped"
+    );
+}
+
+#[test]
+fn multi_transaction_reports_worker_termination_as_typed_error() {
+    use crossbeam::channel::bounded;
+
+    use crate::{MultiTransaction, MultiTransactionError, TransactionPayload};
+
+    let (app_tx, _app_rx) = bounded::<TransactionPayload>(1);
+    let (db_tx, db_rx) = bounded::<crate::error::InternalResult<crate::NamedRows>>(1);
+    // Simulate a worker that terminated before sending a result: the result
+    // Sender is dropped, so the application's recv returns RecvError.
+    drop(db_tx);
+
+    let tx = MultiTransaction::new_for_test(app_tx, db_rx);
+    let err = tx
+        .transact(TransactionPayload::Query((
+            "?[] := 1".to_string(),
+            BTreeMap::new(),
+        )))
+        .expect_err("transact should fail when worker is dead");
+
+    assert!(
+        matches!(err, MultiTransactionError::WorkerPanicked),
+        "expected WorkerPanicked error, got {err:?}"
     );
 }

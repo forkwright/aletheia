@@ -17,6 +17,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crossbeam::channel::{Receiver, Sender, bounded};
+use snafu::Snafu;
 
 pub mod counterfactual;
 pub mod error;
@@ -334,16 +335,90 @@ impl Db {
     }
 }
 
+/// Errors that can occur while driving a [`MultiTransaction`].
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+#[non_exhaustive]
+pub enum MultiTransactionError {
+    /// The background worker thread panicked or terminated unexpectedly.
+    #[snafu(display("multi-transaction worker panicked or terminated unexpectedly"))]
+    WorkerPanicked,
+    /// The command could not be sent because the worker no longer accepts commands.
+    #[snafu(display("multi-transaction command channel closed"))]
+    SendFailed,
+    /// The query inside the transaction failed.
+    #[snafu(display("query failed: {source}"))]
+    Query {
+        /// Underlying engine error.
+        source: Box<Error>,
+    },
+}
+
 /// A multi-transaction handle.
-#[expect(
-    private_interfaces,
-    reason = "InternalResult is pub(crate) — MultiTransaction is consumed within the crate"
-)]
 pub struct MultiTransaction {
-    /// Commands can be sent into the transaction through this channel
-    pub sender: Sender<TransactionPayload>,
-    /// Results can be retrieved from the transaction from this channel
-    pub receiver: Receiver<crate::error::InternalResult<NamedRows>>,
+    // INVARIANT: send→recv→send→recv; never pipeline. Both channels have
+    // capacity 1, so pipelining a second send before receiving the result
+    // blocks the caller indefinitely.
+    /// Commands can be sent into the transaction through this channel.
+    sender: Sender<TransactionPayload>,
+    /// Results can be retrieved from the transaction from this channel.
+    receiver: Receiver<crate::error::InternalResult<NamedRows>>,
+}
+
+impl MultiTransaction {
+    /// Send one payload and wait for the worker's response.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed [`MultiTransactionError`] if the worker terminated,
+    /// the channel closed, or the inner query failed.
+    pub fn transact(
+        &self,
+        payload: TransactionPayload,
+    ) -> std::result::Result<NamedRows, MultiTransactionError> {
+        self.sender
+            .send(payload)
+            .map_err(|_err| MultiTransactionError::SendFailed)?;
+        match self.receiver.recv() {
+            Ok(Ok(rows)) => Ok(rows),
+            Ok(Err(e)) => Err(MultiTransactionError::Query {
+                source: Box::new(convert_internal(e)),
+            }),
+            // WHY: a RecvError means the worker dropped its Sender. In the
+            // current rayon-spawn design that happens when the worker panics
+            // or completes; both are unexpected after a command is sent.
+            Err(_) => Err(MultiTransactionError::WorkerPanicked),
+        }
+    }
+
+    /// Commit the multi-statement transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`MultiTransactionError`] if the worker is unreachable or the
+    /// commit itself failed.
+    pub fn commit(self) -> std::result::Result<(), MultiTransactionError> {
+        self.transact(TransactionPayload::Commit).map(|_| ())
+    }
+
+    /// Abort the multi-statement transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`MultiTransactionError`] if the worker is unreachable.
+    pub fn abort(self) -> std::result::Result<(), MultiTransactionError> {
+        self.transact(TransactionPayload::Abort).map(|_| ())
+    }
+}
+
+#[cfg(test)]
+impl MultiTransaction {
+    pub(crate) fn new_for_test(
+        sender: Sender<TransactionPayload>,
+        receiver: Receiver<crate::error::InternalResult<NamedRows>>,
+    ) -> Self {
+        Self { sender, receiver }
+    }
 }
 
 /// A poison token used to cancel an in-progress operation.

@@ -99,6 +99,58 @@ fn fts_index_lifecycle() {
     .expect("dropping FTS index should succeed");
 }
 
+/// Multi-term NEAR must chain left-to-right: each term must be proximate to
+/// the immediately preceding term, not just to the first term.
+#[test]
+fn fts_near_chains_left_to_right_across_three_terms() {
+    let db = Db::open_mem().expect("opening in-memory database should succeed");
+
+    db.run(
+        ":create documents {id: String => content: String}",
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("creating documents relation should succeed");
+
+    db.run(
+        r#"?[id, content] <- [["match", "fox quick brown"],
+                            ["false_positive", "fox quick filler filler fox brown"]]
+          :put documents {id => content}"#,
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("inserting documents should succeed");
+
+    db.run(
+        "::fts create documents:fts_idx {\n\
+         extractor: content,\n\
+         tokenizer: Simple,\n\
+         filters: [Lowercase]\n\
+         }",
+        BTreeMap::new(),
+        ScriptMutability::Mutable,
+    )
+    .expect("creating FTS index should succeed");
+
+    let result = db
+        .run_read_only(
+            "?[id] := ~documents:fts_idx{id, content | query: \"NEAR/2(fox quick brown)\", k: 10}",
+            BTreeMap::new(),
+        )
+        .expect("NEAR query should succeed");
+
+    let ids: Vec<_> = result
+        .rows
+        .iter()
+        .filter_map(|row| row.first().and_then(|v| v.get_str()).map(str::to_owned))
+        .collect();
+    assert_eq!(
+        ids,
+        vec!["match"],
+        "three-term NEAR must require proximity between adjacent terms, not just to the first term"
+    );
+}
+
 /// Test exporting and importing relations.
 #[test]
 fn export_import_relations() {

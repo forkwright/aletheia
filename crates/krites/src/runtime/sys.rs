@@ -116,6 +116,15 @@ impl<'s, S: Storage<'s>> Db<S> {
                 for (lower, upper) in bounds {
                     tx.store_tx.del_range_from_persisted(&lower, &upper)?;
                 }
+                // WHY: drop the per-relation write-lock entry so a future
+                // relation with the same name does not inherit a stale lock.
+                let mut locks = self
+                    .relation_locks
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner());
+                for rs in rel_names {
+                    locks.remove(&rs.name);
+                }
                 Ok(ok_rows())
             }
             SysOp::DescribeRelation(rel_name, description) => {
