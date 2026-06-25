@@ -4,47 +4,15 @@
 // Separating this from execution means the metric/store-update/telemetry code
 // has a single home and execution can stay focused on session management.
 
-use std::collections::HashMap;
 use std::time::Instant;
 
-use aletheia_routing::types::TaskCategory;
 use jiff::Timestamp;
-use serde::Serialize;
-use sha2::{Digest, Sha256};
-use snafu::{IntoError as _, ResultExt as _};
-use tokio::io::AsyncWriteExt;
 
 use crate::pipeline::PipelineStage;
+use crate::pipeline::after_action::append_after_action_record;
 use crate::pipeline::context::PipelineContext;
-use crate::pipeline::error::{PipelineError, StageSnafu};
-use crate::types::{DispatchResult, QaVerdict};
-
-/// One line of after-action telemetry per dispatch.
-#[derive(Debug, Serialize)]
-struct AfterActionRecord {
-    dispatch_id: String,
-    ts_start: String,
-    ts_end: String,
-    duration_ms: u64,
-    session_outcomes: Vec<AfterActionSessionOutcome>,
-    cost_total_cents: u64,
-    turns_total: u32,
-    stage_latencies_ms: HashMap<String, u64>,
-    qa_verdict: String,
-    prompt_hash: String,
-}
-
-/// Per-session subset emitted in the after-action record.
-#[derive(Debug, Serialize)]
-struct AfterActionSessionOutcome {
-    session_id: Option<String>,
-    status: String,
-    turns: u32,
-    cost_cents: u64,
-    pr_url: Option<String>,
-    model: Option<String>,
-    category: Option<String>,
-}
+use crate::pipeline::error::PipelineError;
+use crate::types::DispatchResult;
 
 /// Post-processing stage: record metrics, assemble result, finish store record,
 /// append after-action JSONL.
@@ -171,171 +139,6 @@ impl PipelineStage for PostProcessingStage {
     }
 }
 
-/// Build and append the after-action JSONL record.
-///
-/// No-op when `ctx.after_action_log_dir` is `None`.
-async fn append_after_action_record(ctx: &PipelineContext) -> Result<(), PipelineError> {
-    let Some(ref log_dir) = ctx.after_action_log_dir else {
-        return Ok(());
-    };
-
-    let record = build_after_action_record(ctx)?;
-    let line = serde_json::to_string(&record)
-        .map_err(|e| {
-            crate::error::SerializationSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })
-        .context(StageSnafu {
-            stage: "post_processing",
-        })?;
-
-    tokio::fs::create_dir_all(log_dir)
-        .await
-        .map_err(|e| {
-            crate::error::IoSnafu {
-                path: log_dir.clone(),
-            }
-            .into_error(e)
-        })
-        .context(StageSnafu {
-            stage: "post_processing",
-        })?;
-
-    let date = Timestamp::now().strftime("%Y-%m-%d").to_string();
-    let path = log_dir.join(format!("{date}.jsonl"));
-
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .await
-        .map_err(|e| crate::error::IoSnafu { path: path.clone() }.into_error(e))
-        .context(StageSnafu {
-            stage: "post_processing",
-        })?;
-
-    file.write_all(line.as_bytes())
-        .await
-        .map_err(|e| crate::error::IoSnafu { path: path.clone() }.into_error(e))
-        .context(StageSnafu {
-            stage: "post_processing",
-        })?;
-
-    file.write_all(b"\n")
-        .await
-        .map_err(|e| crate::error::IoSnafu { path: path.clone() }.into_error(e))
-        .context(StageSnafu {
-            stage: "post_processing",
-        })?;
-
-    Ok(())
-}
-
-/// Build the [`AfterActionRecord`] from the current pipeline context.
-fn build_after_action_record(ctx: &PipelineContext) -> Result<AfterActionRecord, PipelineError> {
-    let session_outcomes = ctx
-        .outcomes
-        .iter()
-        .map(|o| AfterActionSessionOutcome {
-            session_id: o.session_id.clone(),
-            status: o.status.to_string(),
-            turns: o.num_turns,
-            cost_cents: usd_to_cents(o.cost_usd),
-            pr_url: o.pr_url.clone(),
-            model: o.model.clone(),
-            category: ctx
-                .prompt_map
-                .get(&o.prompt_number)
-                .map(|prompt| TaskCategory::from_prompt(&prompt.body).to_string()),
-        })
-        .collect();
-
-    let cost_total_cents = ctx.outcomes.iter().map(|o| usd_to_cents(o.cost_usd)).sum();
-    let turns_total = ctx.outcomes.iter().map(|o| o.num_turns).sum();
-
-    let stage_latencies_ms = ctx
-        .stage_latencies
-        .iter()
-        .map(|(k, v)| {
-            (
-                k.to_string(),
-                u64::try_from(v.as_millis()).unwrap_or(u64::MAX),
-            )
-        })
-        .collect();
-
-    let prompt_hash = compute_prompt_hash(&ctx.prompts).context(StageSnafu {
-        stage: "post_processing",
-    })?;
-
-    Ok(AfterActionRecord {
-        dispatch_id: ctx.dispatch_id.clone(),
-        ts_start: ctx.start_ts.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
-        ts_end: Timestamp::now().strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
-        duration_ms: u64::try_from(ctx.start.elapsed().as_millis()).unwrap_or(u64::MAX),
-        session_outcomes,
-        cost_total_cents,
-        turns_total,
-        stage_latencies_ms,
-        qa_verdict: aggregate_qa_verdict(&ctx.qa_verdicts).to_string(),
-        prompt_hash,
-    })
-}
-
-/// Convert a USD float to whole cents.
-#[expect(
-    clippy::as_conversions,
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    reason = "f64 to u64: no TryFrom impl; value is clamped to [0, u64::MAX] after round()"
-)]
-fn usd_to_cents(usd: f64) -> u64 {
-    let cents = (usd * 100.0).round();
-    let max_as_f64 = u64::MAX as f64; // SAFETY: u64::MAX → f64 is the f64 nearest below u64::MAX; saturation threshold
-    if cents.is_nan() || cents < 0.0 {
-        0
-    } else if cents >= max_as_f64 {
-        u64::MAX
-    } else {
-        cents as u64 // SAFETY: cents in [0.0, u64::MAX as f64) after guards above
-    }
-}
-
-/// Aggregate QA verdicts: Fail > Partial > Pass.
-fn aggregate_qa_verdict(verdicts: &[QaVerdict]) -> QaVerdict {
-    if verdicts.contains(&QaVerdict::Fail) {
-        QaVerdict::Fail
-    } else if verdicts.contains(&QaVerdict::Partial) {
-        QaVerdict::Partial
-    } else {
-        QaVerdict::Pass
-    }
-}
-
-/// SHA-256 hash of the serialized prompt set, prefixed with `sha256:`.
-fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> crate::error::Result<String> {
-    let bytes = serde_json::to_vec(prompts).map_err(|e| {
-        crate::error::SerializationSnafu {
-            message: format!("serialize prompts for prompt hash: {e}"),
-        }
-        .build()
-    })?;
-    let hash = Sha256::digest(&bytes);
-    let hex = hash
-        .iter()
-        .fold(String::with_capacity(hash.len() * 2), |mut acc, b| {
-            use std::fmt::Write;
-            // intentional: write to String cannot fail
-            // kanon:ignore RUST/no-silent-result-swallow — write! to an in-memory String is infallible by std::fmt::Write invariant
-            let _ = write!(acc, "{b:02x}");
-            acc
-        });
-    Ok(format!("sha256:{hex}"))
-}
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
@@ -344,6 +147,8 @@ fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> crate::error::R
 )]
 mod tests {
     use std::sync::Arc;
+
+    use jiff::Timestamp;
 
     use crate::engine::{SessionEvent, SessionResult};
     use crate::http::mock::{MockEngine, MockOutcome};
@@ -357,6 +162,16 @@ mod tests {
     use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict, SessionStatus};
 
     use super::PostProcessingStage;
+
+    async fn read_dir_sorted(path: &std::path::Path) -> Vec<tokio::fs::DirEntry> {
+        let mut rd = tokio::fs::read_dir(path).await.expect("read dir");
+        let mut entries = Vec::new();
+        while let Some(e) = rd.next_entry().await.expect("next entry") {
+            entries.push(e);
+        }
+        entries.sort_by_key(tokio::fs::DirEntry::file_name);
+        entries
+    }
 
     struct AlwaysPassQa;
 
@@ -506,11 +321,11 @@ mod tests {
             .await
             .expect("post_processing must succeed");
 
-        let entries: Vec<_> = std::fs::read_dir(tmp.path()).expect("read dir").collect();
+        let entries = read_dir_sorted(tmp.path()).await;
         assert_eq!(entries.len(), 1, "exactly one JSONL file should exist");
 
-        let path = entries[0].as_ref().expect("valid entry").path();
-        let content = std::fs::read_to_string(&path).expect("read file");
+        let path = entries[0].path();
+        let content = tokio::fs::read_to_string(&path).await.expect("read file");
         let lines: Vec<_> = content.lines().collect();
         assert_eq!(lines.len(), 1, "exactly one line should be written");
 
@@ -609,11 +424,11 @@ mod tests {
                 .expect("post_processing must succeed");
         }
 
-        let entries: Vec<_> = std::fs::read_dir(tmp.path()).expect("read dir").collect();
+        let entries = read_dir_sorted(tmp.path()).await;
         assert_eq!(entries.len(), 1, "same-day dispatches share one file");
 
-        let path = entries[0].as_ref().expect("valid entry").path();
-        let content = std::fs::read_to_string(&path).expect("read file");
+        let path = entries[0].path();
+        let content = tokio::fs::read_to_string(&path).await.expect("read file");
         let lines: Vec<_> = content.lines().collect();
         assert_eq!(lines.len(), 2, "two dispatches should append as two lines");
     }
@@ -635,9 +450,17 @@ mod tests {
             prompt_components: None,
         }];
 
-        // Seed an old file to simulate a prior day's log.
-        let old_file = tmp.path().join("2026-04-16.jsonl");
-        std::fs::write(&old_file, "{\"old\":true}\n").expect("write old file");
+        // Seed a file from yesterday to simulate a prior day's log. It is
+        // inside the default 7-day window and should survive pruning.
+        let yesterday = Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(24))
+            .expect("yesterday is a valid timestamp")
+            .strftime("%Y-%m-%d")
+            .to_string();
+        let old_file = tmp.path().join(format!("{yesterday}.jsonl"));
+        tokio::fs::write(&old_file, "{\"old\":true}\n")
+            .await
+            .expect("write old file");
 
         let mut ctx =
             make_context_with_prompts(vec![success_mock_outcome("s1", 0.50, 10)], prompts);
@@ -656,15 +479,20 @@ mod tests {
             .await
             .expect("post_processing must succeed");
 
-        let entries: Vec<_> = std::fs::read_dir(tmp.path()).expect("read dir").collect();
+        let entries = read_dir_sorted(tmp.path()).await;
         assert_eq!(entries.len(), 2, "old file and new file should both exist");
 
         let mut found_old = false;
         let mut found_new = false;
-        for entry in entries {
-            let name = entry.expect("valid entry").file_name();
+        for entry in &entries {
+            let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name == "2026-04-16.jsonl" {
+            if name
+                == old_file
+                    .file_name()
+                    .expect("old_file has a file name")
+                    .to_string_lossy()
+            {
                 found_old = true;
             } else if name.ends_with(".jsonl") {
                 found_new = true;
@@ -672,6 +500,77 @@ mod tests {
         }
         assert!(found_old, "old file should be preserved");
         assert!(found_new, "new file for current date should be created");
+    }
+
+    #[tokio::test]
+    async fn prunes_files_outside_routing_window() {
+        // WHY: Issue 5669. Day-files older than the configured window must be
+        // deleted so the after-actions directory does not grow without bound.
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+
+            prompt_components: None,
+        }];
+
+        let old_date = Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(10 * 24))
+            .expect("ten days ago is a valid timestamp")
+            .strftime("%Y-%m-%d")
+            .to_string();
+        let recent_date = Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_hours(2 * 24))
+            .expect("two days ago is a valid timestamp")
+            .strftime("%Y-%m-%d")
+            .to_string();
+
+        let old_file = tmp.path().join(format!("{old_date}.jsonl"));
+        let recent_file = tmp.path().join(format!("{recent_date}.jsonl"));
+        tokio::fs::write(&old_file, "{\"old\":true}\n")
+            .await
+            .expect("write old file");
+        tokio::fs::write(&recent_file, "{\"recent\":true}\n")
+            .await
+            .expect("write recent file");
+
+        let mut ctx =
+            make_context_with_prompts(vec![success_mock_outcome("s1", 0.50, 10)], prompts);
+        ctx.after_action_log_dir = Some(tmp.path().to_path_buf());
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        ExecutionStage
+            .run(&mut ctx)
+            .await
+            .expect("execution must succeed");
+        PostProcessingStage
+            .run(&mut ctx)
+            .await
+            .expect("post_processing must succeed");
+
+        let entries = read_dir_sorted(tmp.path()).await;
+        assert!(
+            !entries
+                .iter()
+                .any(|e| { e.file_name().to_string_lossy().starts_with(&old_date) }),
+            "old file outside the 7-day window should be pruned"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| { e.file_name().to_string_lossy().starts_with(&recent_date) }),
+            "recent file inside the window should be preserved"
+        );
     }
 
     #[tokio::test]

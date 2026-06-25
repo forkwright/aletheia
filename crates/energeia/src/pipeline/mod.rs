@@ -22,6 +22,9 @@ pub(crate) mod preparation;
 /// Stage 0: deterministic pre-dispatch validation gates.
 pub(crate) mod validation;
 
+/// After-action JSONL record building and file management.
+pub(crate) mod after_action;
+
 // Re-export stage implementations for use by the orchestrator.
 pub(crate) use execution::ExecutionStage;
 pub(crate) use health_check::HealthCheckStage;

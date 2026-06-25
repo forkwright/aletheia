@@ -120,6 +120,18 @@ pub fn load_prompt(path: &Path) -> Result<PromptSpec> {
     parse_prompt_str(&raw, path)
 }
 
+/// Async variant of [`load_prompt`].
+///
+/// WHY: `load_prompt` is called from async contexts such as cron execution.
+/// Reading the file with `tokio::fs` avoids blocking a Tokio worker thread.
+pub async fn load_prompt_async(path: &Path) -> Result<PromptSpec> {
+    let raw = tokio::fs::read_to_string(path).await.context(IoSnafu {
+        path: path.to_owned(),
+    })?;
+
+    parse_prompt_str(&raw, path)
+}
+
 /// Parse a prompt from an in-memory string.
 ///
 /// Splits on `---` delimiters, deserializes the YAML frontmatter, and returns
@@ -206,6 +218,32 @@ pub fn load_queue(dir: &Path) -> Result<Vec<PromptSpec>> {
             continue;
         }
         specs.push(load_prompt(&path)?);
+    }
+
+    specs.sort_by_key(|s| s.number);
+    Ok(specs)
+}
+
+/// Async variant of [`load_queue`].
+///
+/// WHY: `load_queue` is called from async contexts such as cron execution.
+/// Enumerating and reading files with `tokio::fs` avoids blocking a Tokio
+/// worker thread.
+pub async fn load_queue_async(dir: &Path) -> Result<Vec<PromptSpec>> {
+    let mut entries = tokio::fs::read_dir(dir).await.context(IoSnafu {
+        path: dir.to_owned(),
+    })?;
+
+    let mut specs: Vec<PromptSpec> = Vec::new();
+
+    while let Some(entry) = entries.next_entry().await.context(IoSnafu {
+        path: dir.to_owned(),
+    })? {
+        let path: PathBuf = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        specs.push(load_prompt_async(&path).await?);
     }
 
     specs.sort_by_key(|s| s.number);
@@ -520,6 +558,45 @@ body
         let dir = TempDir::new().unwrap();
         let specs = load_queue(dir.path()).unwrap();
         assert!(specs.is_empty());
+    }
+
+    // ── async loader tests ──
+
+    #[tokio::test]
+    async fn load_prompt_async_reads_minimal_prompt() {
+        let dir = TempDir::new().unwrap();
+        let path = make_prompt_file(&dir, "001-task.md", MINIMAL_PROMPT);
+
+        let spec = load_prompt_async(&path).await.unwrap();
+        assert_eq!(spec.number, 1);
+        assert_eq!(spec.description, "Test task");
+        assert!(spec.body.contains("Task body here"));
+    }
+
+    #[tokio::test]
+    async fn load_queue_async_returns_sorted_by_number() {
+        let dir = TempDir::new().unwrap();
+        make_prompt_file(&dir, "003-c.md", "---\nnumber: 3\n---\n\nbody\n");
+        make_prompt_file(&dir, "001-a.md", "---\nnumber: 1\n---\n\nbody\n");
+        make_prompt_file(&dir, "002-b.md", "---\nnumber: 2\n---\n\nbody\n");
+
+        let specs = load_queue_async(dir.path()).await.unwrap();
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].number, 1);
+        assert_eq!(specs[1].number, 2);
+        assert_eq!(specs[2].number, 3);
+    }
+
+    #[tokio::test]
+    async fn load_queue_async_skips_non_markdown_files() {
+        let dir = TempDir::new().unwrap();
+        make_prompt_file(&dir, "001-a.md", "---\nnumber: 1\n---\n\nbody\n");
+        make_prompt_file(&dir, "notes.txt", "not a prompt");
+        make_prompt_file(&dir, "README", "also not a prompt");
+
+        let specs = load_queue_async(dir.path()).await.unwrap();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].number, 1);
     }
 
     // ── build_dag tests ──
