@@ -4073,9 +4073,9 @@ dependencies = [
  "bathron",
  "dioxus",
  "dirs",
- "form_urlencoded",
  "futures-util",
  "gramma",
+ "keryx",
  "koina",
  "notify-rust",
  "pulldown-cmark",
@@ -4086,7 +4086,6 @@ dependencies = [
  "skene",
  "skeue",
  "snafu",
- "syntect",
  "tempfile",
  "themelion",
  "tokio",
@@ -4996,6 +4995,7 @@ name = "skene"
 version = "0.31.1"
 dependencies = [
  "bytes",
+ "form_urlencoded",
  "futures-core",
  "futures-util",
  "keryx",

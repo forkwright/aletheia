@@ -148,14 +148,12 @@ pub(crate) fn Sessions() -> Element {
                 );
 
                 if let Some(cursor) = &cursor {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(cursor.as_bytes()).collect();
+                    let encoded: String = keryx::url::encode_path_segment(cursor);
                     url.push_str(&format!("&after={encoded}"));
                 }
 
                 if !search.is_empty() {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(search.as_bytes()).collect();
+                    let encoded: String = keryx::url::encode_path_segment(&search);
                     url.push_str(&format!("&search={encoded}"));
                 }
 
@@ -167,8 +165,7 @@ pub(crate) fn Sessions() -> Element {
                 }
 
                 for agent in &agent_filter {
-                    let encoded: String =
-                        form_urlencoded::byte_serialize(agent.as_bytes()).collect();
+                    let encoded: String = keryx::url::encode_path_segment(agent);
                     url.push_str(&format!("&nous_id={encoded}"));
                 }
 
@@ -184,19 +181,20 @@ pub(crate) fn Sessions() -> Element {
                             }
                         };
 
-                        let (sessions, has_more, new_cursor) =
-                            if let Ok(envelope) = serde_json::from_str::<PaginatedSessionsResponse>(&text) {
-                                // WHY: has_more without a cursor cannot be continued.
-                                let more = envelope.has_more && envelope.next_cursor.is_some();
-                                (envelope.items, more, envelope.next_cursor)
-                            } else if let Ok(list) = serde_json::from_str::<Vec<Session>>(&text) {
-                                // NOTE: a bare array carries no cursor, so no
-                                // further pages can be requested.
-                                (list, false, None)
-                            } else {
-                                tracing::warn!("failed to parse sessions response");
-                                return;
-                            };
+                        let (sessions, has_more, new_cursor) = if let Ok(envelope) =
+                            serde_json::from_str::<PaginatedSessionsResponse>(&text)
+                        {
+                            // WHY: has_more without a cursor cannot be continued.
+                            let more = envelope.has_more && envelope.next_cursor.is_some();
+                            (envelope.items, more, envelope.next_cursor)
+                        } else if let Ok(list) = serde_json::from_str::<Vec<Session>>(&text) {
+                            // NOTE: a bare array carries no cursor, so no
+                            // further pages can be requested.
+                            (list, false, None)
+                        } else {
+                            tracing::warn!("failed to parse sessions response");
+                            return;
+                        };
 
                         next_cursor.set(new_cursor);
 
@@ -232,8 +230,7 @@ pub(crate) fn Sessions() -> Element {
             spawn(async move {
                 let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
-                let encoded: String =
-                    form_urlencoded::byte_serialize(session_id.as_ref().as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(session_id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/history");
 
                 let mut detail = SessionDetailStore {
@@ -343,8 +340,7 @@ pub(crate) fn Sessions() -> Element {
             spawn(async move {
                 let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
-                let encoded: String =
-                    form_urlencoded::byte_serialize(id.as_ref().as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/archive");
 
                 match client.post(&url).send().await {
@@ -379,8 +375,7 @@ pub(crate) fn Sessions() -> Element {
             spawn(async move {
                 let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
-                let encoded: String =
-                    form_urlencoded::byte_serialize(id.as_ref().as_bytes()).collect();
+                let encoded: String = keryx::url::encode_path_segment(id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/unarchive");
 
                 match client.post(&url).send().await {
