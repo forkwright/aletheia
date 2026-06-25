@@ -6,36 +6,29 @@ use skene::api::types::Session;
 use skene::id::SessionId;
 
 /// Sort field for session list ordering.
+///
+/// WHY: Only options that are backed by data in the Pylon session DTO are
+/// exposed. Token usage and creation date are omitted until the API surfaces
+/// authoritative fields (#4908).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum SessionSort {
     /// Most recently active first.
     #[default]
     LastActivity,
-    /// Highest token usage first.
-    TokenUsage,
     /// Most messages first.
     MessageCount,
-    /// Newest created first.
-    CreatedDate,
 }
 
 impl SessionSort {
     /// All available sort options in display order.
-    pub(crate) const ALL: &[Self] = &[
-        Self::LastActivity,
-        Self::TokenUsage,
-        Self::MessageCount,
-        Self::CreatedDate,
-    ];
+    pub(crate) const ALL: &[Self] = &[Self::LastActivity, Self::MessageCount];
 
     /// Human-readable label.
     #[must_use]
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::LastActivity => "Last Activity",
-            Self::TokenUsage => "Token Usage",
             Self::MessageCount => "Messages",
-            Self::CreatedDate => "Created",
         }
     }
 }
@@ -141,20 +134,9 @@ impl SessionListStore {
                         .cmp(a.updated_at.as_deref().unwrap_or(""))
                 });
             }
-            SessionSort::TokenUsage => {
-                // NOTE: token usage not available in Session struct from API;
-                // fall back to message count as a proxy until API supports it.
-                self.sessions
-                    .sort_by(|a, b| b.message_count.cmp(&a.message_count));
-            }
             SessionSort::MessageCount => {
                 self.sessions
                     .sort_by(|a, b| b.message_count.cmp(&a.message_count));
-            }
-            SessionSort::CreatedDate => {
-                // WHY: Session struct lacks created_at; use id (ULID-based, lexicographic = chronological).
-                self.sessions
-                    .sort_by(|a, b| b.id.as_ref().cmp(a.id.as_ref()));
             }
         }
     }
