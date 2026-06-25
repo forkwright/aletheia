@@ -410,7 +410,10 @@ fn evaluate_accepts_empty_relevant_ids() {
         metrics.recall_at_k.abs() < f64::EPSILON,
         "empty relevant_ids cannot produce a hit"
     );
-    assert!(metrics.mrr.abs() < f64::EPSILON, "empty relevant_ids yield zero MRR");
+    assert!(
+        metrics.mrr.abs() < f64::EPSILON,
+        "empty relevant_ids yield zero MRR"
+    );
 }
 
 #[test]
