@@ -1,9 +1,14 @@
 //! Provider health state machine.
 //!
-//! Tracks availability per provider through Up / Degraded / Down states.
-//! Transitions happen on success, transient errors (server 5xx, rate limits),
-//! and fatal errors (auth failure). Cooldown timers allow automatic recovery
-//! from transient failures; auth failures require manual intervention.
+//! Tracks availability per provider through Up / Degraded / Down / Probing
+//! states. Transitions happen on success, transient errors (server 5xx, rate
+//! limits), and fatal errors (auth failure). Cooldown timers allow automatic
+//! recovery from transient failures; auth failures require manual intervention.
+//!
+//! The `Probing` state is the single-flight recovery gate: after a `Down`
+//! provider's cooldown elapses, exactly one caller is allowed through to test
+//! the provider. Concurrent callers fail fast until the probe succeeds or the
+//! provider goes `Down` again.
 
 // WHY: std::sync::Mutex is correct here -- lock is held only during brief state reads/writes, never across .await
 use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
@@ -30,6 +35,16 @@ pub enum ProviderHealth {
         /// When the provider entered the Down state.
         since: Timestamp,
         /// What caused the transition to Down.
+        reason: DownReason,
+    },
+    /// Single probe in flight to test whether a `Down` provider has recovered.
+    ///
+    /// Only the caller that transitioned `Down -> Probing` may send a request;
+    /// all other callers fail fast until the probe resolves to `Up` or `Down`.
+    Probing {
+        /// When the probe started.
+        since: Timestamp,
+        /// Original reason the provider went `Down`.
         reason: DownReason,
     },
 }
@@ -115,15 +130,17 @@ impl ProviderHealthTracker {
 
     /// Check if the provider can accept a request.
     ///
-    /// Returns `Ok(())` if Up or Degraded. Returns `Err(health)` if Down,
-    /// unless the cooldown has elapsed (auto-transitions to Degraded).
-    /// `Down(AuthFailure)` never auto-recovers.
+    /// Returns `Ok(())` if `Up` or `Degraded`. Returns `Err(health)` if `Down`,
+    /// unless the cooldown has elapsed — in which case the caller is elected as
+    /// the single probe (`Down -> Probing`). While a probe is in flight, all
+    /// other callers fail fast. `Down(AuthFailure)` never auto-recovers.
     #[must_use = "caller must handle provider unavailability"]
     pub fn check_available(&self) -> Result<(), ProviderHealth> {
         // kanon:ignore RUST/pub-visibility
         let mut inner = self.lock_inner();
         match &inner.health {
             ProviderHealth::Up | ProviderHealth::Degraded { .. } => Ok(()),
+            ProviderHealth::Probing { .. } => Err(inner.health.clone()),
             ProviderHealth::Down { since, reason } => {
                 if matches!(reason, DownReason::AuthFailure) {
                     return Err(inner.health.clone());
@@ -140,9 +157,12 @@ impl ProviderHealthTracker {
                 let elapsed = Timestamp::now().duration_since(*since);
 
                 if elapsed >= cooldown {
-                    inner.health = ProviderHealth::Degraded {
-                        consecutive_errors: 0,
-                        last_error_at: *since,
+                    // WHY: Elect exactly one caller as the recovery probe.
+                    // Subsequent callers see `Probing` and fail fast until the
+                    // probe records success or error.
+                    inner.health = ProviderHealth::Probing {
+                        since: Timestamp::now(),
+                        reason: reason.clone(),
                     };
                     Ok(())
                 } else {
@@ -158,7 +178,7 @@ impl ProviderHealthTracker {
         let mut inner = self.lock_inner();
         inner.total_requests += 1;
         match inner.health {
-            ProviderHealth::Degraded { .. } => {
+            ProviderHealth::Degraded { .. } | ProviderHealth::Probing { .. } => {
                 inner.health = ProviderHealth::Up;
             }
             // NOTE: already healthy, no state transition needed
@@ -205,10 +225,17 @@ impl ProviderHealthTracker {
                 let now = Timestamp::now();
                 match &inner.health {
                     ProviderHealth::Up => {
-                        inner.health = ProviderHealth::Degraded {
-                            consecutive_errors: 1,
-                            last_error_at: now,
-                        };
+                        if 1 >= self.config.consecutive_failure_threshold {
+                            inner.health = ProviderHealth::Down {
+                                since: now,
+                                reason: DownReason::ConsecutiveFailures,
+                            };
+                        } else {
+                            inner.health = ProviderHealth::Degraded {
+                                consecutive_errors: 1,
+                                last_error_at: now,
+                            };
+                        }
                     }
                     ProviderHealth::Degraded {
                         consecutive_errors, ..
@@ -229,10 +256,27 @@ impl ProviderHealthTracker {
                     ProviderHealth::Down { .. } => {
                         // NOTE: Already down, no further transition.
                     }
+                    ProviderHealth::Probing { .. } => {
+                        // WHY: Probe failed with an availability error. Reopen
+                        // the circuit with a fresh timestamp so the next probe
+                        // waits the full cooldown.
+                        inner.health = ProviderHealth::Down {
+                            since: Timestamp::now(),
+                            reason: DownReason::ConsecutiveFailures,
+                        };
+                    }
                 }
             }
             _ => {
                 // NOTE: non-availability errors (parse, unsupported model) do not affect health
+                // unless a probe is in flight: an unresolved probe must not stay
+                // stuck in `Probing`.
+                if matches!(inner.health, ProviderHealth::Probing { .. }) {
+                    inner.health = ProviderHealth::Down {
+                        since: Timestamp::now(),
+                        reason: DownReason::ConsecutiveFailures,
+                    };
+                }
             }
         }
     }
@@ -253,6 +297,7 @@ mod tests {
         })
     }
 
+    use std::sync::Arc;
     use std::time::Duration;
 
     use snafu::IntoError;
@@ -327,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn down_to_degraded_after_cooldown() {
+    fn down_to_probing_after_cooldown() {
         let t = tracker(2, 1); // 1ms cooldown
         t.record_error(&api_request_error());
         t.record_error(&api_request_error());
@@ -335,7 +380,75 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
         assert!(t.check_available().is_ok());
-        assert!(matches!(t.health(), ProviderHealth::Degraded { .. }));
+        assert!(matches!(t.health(), ProviderHealth::Probing { .. }));
+    }
+
+    #[test]
+    fn probing_blocks_concurrent_requests() {
+        let t = tracker(1, 1); // 1ms cooldown, threshold 1
+        t.record_error(&api_request_error());
+        t.record_error(&api_request_error());
+        assert!(matches!(t.health(), ProviderHealth::Down { .. }));
+
+        std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
+        let tracker = Arc::new(t);
+        let mut handles = Vec::new();
+        for _ in 0..10 {
+            let tracker = Arc::clone(&tracker);
+            handles.push(std::thread::spawn(move || tracker.check_available()));
+        }
+
+        let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let ok_count = results.iter().filter(|r| r.is_ok()).count();
+        let err_count = results.iter().filter(|r| r.is_err()).count();
+
+        assert_eq!(ok_count, 1, "exactly one concurrent caller may probe");
+        assert_eq!(err_count, 9, "remaining concurrent callers must fail fast");
+        assert!(
+            matches!(tracker.health(), ProviderHealth::Probing { .. }),
+            "tracker must remain in Probing after electing the probe"
+        );
+    }
+
+    #[test]
+    fn probing_to_up_on_success() {
+        let t = tracker(1, 1); // 1ms cooldown
+        t.record_error(&api_request_error());
+        t.record_error(&api_request_error());
+        std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
+        assert!(t.check_available().is_ok());
+        t.record_success();
+        assert_eq!(t.health(), ProviderHealth::Up);
+    }
+
+    #[test]
+    fn probing_to_down_on_availability_error() {
+        let t = tracker(1, 1); // 1ms cooldown
+        t.record_error(&api_request_error());
+        t.record_error(&api_request_error());
+        std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
+        assert!(t.check_available().is_ok());
+        t.record_error(&server_error());
+        assert!(
+            matches!(t.health(), ProviderHealth::Down { .. }),
+            "failed probe must reopen the circuit"
+        );
+    }
+
+    #[test]
+    fn probing_to_down_on_non_availability_error() {
+        // WHY: A probe must resolve. Non-availability errors (e.g. parse) must
+        // not leave the tracker stuck in `Probing`.
+        let t = tracker(1, 1); // 1ms cooldown
+        t.record_error(&api_request_error());
+        t.record_error(&api_request_error());
+        std::thread::sleep(Duration::from_millis(5)); // kanon:ignore TESTING/sleep-in-test
+        assert!(t.check_available().is_ok());
+        t.record_error(&parse_error());
+        assert!(
+            matches!(t.health(), ProviderHealth::Down { .. }),
+            "unresolved probe must reopen the circuit even for non-availability errors"
+        );
     }
 
     #[test]
@@ -470,7 +583,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time Send+Sync bound check; compilation itself is the assertion
     fn tracker_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ProviderHealthTracker>();

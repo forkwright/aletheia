@@ -143,3 +143,6 @@ RUST/expect:crates/episteme/src/knowledge_store/marshal.rs
 
 # WHY: graph_intelligence.rs is 1007 lines — a coherent unit (PageRank+Louvain graph scoring + cache + recall augmentation pipeline). Splitting it would carve out the scoring sub-pipeline into its own module, tracked as follow-up but out of scope for the lint-to-zero campaign.
 RUST/file-too-long:crates/episteme/src/graph_intelligence.rs
+
+# WHY: ModelPricing uses camelCase for JSON wire format while PromptCacheMode/DeploymentTarget use lowercase/snake_case for TOML config; each convention matches its serialization context.
+API/mixed-casing:crates/hermeneus/src/provider.rs
