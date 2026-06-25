@@ -557,8 +557,8 @@ async fn cancelled_turn_reverts_turn_counter() {
     assert_eq!(
         session.turn, 0,
         "turn counter should not advance when turn is cancelled"
-
-
+    );
+}
 #[test]
 fn evict_oldest_session_also_removes_drift_detector() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
@@ -566,7 +566,9 @@ fn evict_oldest_session_also_removes_drift_detector() {
 
     let mut oldest_state =
         SessionState::new("ses-0".to_owned(), oldest_key.clone(), &test_config());
-    oldest_state.last_accessed = Instant::now() - Duration::from_secs(3600);
+    oldest_state.last_accessed = Instant::now()
+        .checked_sub(Duration::from_secs(3600))
+        .expect("3600s is well within Instant range");
     actor.sessions.insert(oldest_key.clone(), oldest_state);
     actor
         .drift_detectors

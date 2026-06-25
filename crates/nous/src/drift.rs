@@ -207,6 +207,10 @@ impl DriftDetector {
     /// `higher_is_worse`: when `true` (e.g. error rates), a positive
     /// deviation triggers drift. When `false` (e.g. response length), a
     /// negative deviation (drop) triggers drift.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "iterator is consumed by Clone-based multi-pass algorithm; &I would not implement Iterator"
+    )]
     fn check_metric<I>(
         &self,
         values: I,
@@ -348,6 +352,10 @@ fn mean_and_stddev(values: &[f64]) -> (f64, f64) {
     clippy::cast_precision_loss,
     clippy::as_conversions,
     reason = "usize→f64: drift window sizes are bounded by config (tens of samples), far below f64 mantissa precision"
+)]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "iterator is consumed by Clone-based multi-pass algorithm; &I would not implement Iterator"
 )]
 fn mean_and_stddev_iter<I>(values: I) -> (f64, f64)
 where

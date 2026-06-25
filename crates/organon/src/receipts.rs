@@ -461,6 +461,10 @@ mod tests {
         ));
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "test assertions on collection with previously verified capacity"
+    )]
     #[test]
     fn ledger_capacity_evicts_oldest_tokens() {
         let signer = make_signer();
