@@ -1,8 +1,11 @@
-//! Outcome signal definitions: how metric names map to computable values.
+//! Outcome signal definitions: how metric names map to descriptions.
 //!
 //! Each [`OutcomeSignal`] defines a named metric that the self-tuning loop can
-//! observe. The `compute` function accepts a slice of raw metric samples and
-//! produces a single summary value (or `None` if insufficient data).
+//! observe. The registry here maps signal names to human-readable descriptions.
+//!
+//! NOTE: the `compute` field is currently vestigial. Live evaluation in
+//! `TuningProposer` uses `evidence::validate_evidence` to compare before/after
+//! halves rather than calling per-signal compute functions.
 
 use crate::tuning::MetricSample;
 
@@ -15,7 +18,27 @@ pub struct OutcomeSignal {
     /// Computation function: takes raw samples, returns a summary value.
     ///
     /// Returns `None` when there are insufficient samples for a meaningful result.
+    ///
+    /// NOTE: this field is currently vestigial; live evaluation in `TuningProposer`
+    /// uses `evidence::validate_evidence` to compare before/after halves instead of
+    /// calling the per-signal compute function.
     pub compute: fn(&[MetricSample]) -> Option<f64>,
+}
+
+impl OutcomeSignal {
+    /// Register an outcome signal.
+    #[must_use]
+    pub const fn new(
+        name: &'static str,
+        description: &'static str,
+        compute: fn(&[MetricSample]) -> Option<f64>,
+    ) -> Self {
+        Self {
+            name,
+            description,
+            compute,
+        }
+    }
 }
 
 /// Return all registered outcome signals.
@@ -31,24 +54,24 @@ pub fn signal_by_name(name: &str) -> Option<&'static OutcomeSignal> {
 }
 
 static SIGNALS: [OutcomeSignal; 3] = [
-    OutcomeSignal {
-        name: "turn_quality_post_distillation",
-        description: "Compare mean turn quality scores before vs. after distillation events. \
-                       Higher values indicate better quality retention through distillation.",
-        compute: compute_turn_quality_post_distillation,
-    },
-    OutcomeSignal {
-        name: "admission_recall_accuracy",
-        description: "Measure precision of the recall admission filter. \
-                       Higher values indicate fewer irrelevant facts recalled.",
-        compute: compute_admission_recall_accuracy,
-    },
-    OutcomeSignal {
-        name: "competence_trajectory",
-        description: "Slope of the competence score over a rolling window. \
-                       Positive slope indicates improving agent performance.",
-        compute: compute_competence_trajectory,
-    },
+    OutcomeSignal::new(
+        "turn_quality_post_distillation",
+        "Mean turn quality of observed samples. \
+         Higher values indicate better average turn quality.",
+        compute_turn_quality_post_distillation,
+    ),
+    OutcomeSignal::new(
+        "admission_recall_accuracy",
+        "Measure precision of the recall admission filter. \
+         Higher values indicate fewer irrelevant facts recalled.",
+        compute_admission_recall_accuracy,
+    ),
+    OutcomeSignal::new(
+        "competence_trajectory",
+        "Slope of the competence score over a rolling window. \
+         Positive slope indicates improving agent performance.",
+        compute_competence_trajectory,
+    ),
 ];
 
 /// Mean of all sample values, representing average turn quality around
