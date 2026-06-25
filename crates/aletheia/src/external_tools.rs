@@ -77,6 +77,10 @@ pub(crate) struct ToolManifestEntry {
     pub available: bool,
     /// Description sent to the LLM.
     pub description: String,
+    /// Server that serves this tool, when it originated from an external MCP server.
+    pub server_name: Option<String>,
+    /// Remote tool name on the external MCP server, when applicable.
+    pub remote_name: Option<String>,
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -140,6 +144,8 @@ async fn register_single_tool(
             kind: entry.kind,
             available,
             description,
+            server_name: None,
+            remote_name: None,
         }];
     }
 
@@ -157,6 +163,8 @@ async fn register_single_tool(
             kind: entry.kind,
             available: false,
             description,
+            server_name: None,
+            remote_name: None,
         }];
     };
 
@@ -169,6 +177,8 @@ async fn register_single_tool(
                 kind: entry.kind,
                 available: false,
                 description,
+                server_name: None,
+                remote_name: None,
             }];
         }
     };
@@ -201,6 +211,8 @@ async fn register_single_tool(
                 kind: entry.kind,
                 available: true,
                 description,
+                server_name: None,
+                remote_name: None,
             }]
         }
         Err(e) => {
@@ -210,6 +222,8 @@ async fn register_single_tool(
                 kind: entry.kind,
                 available: false,
                 description,
+                server_name: None,
+                remote_name: None,
             }]
         }
     }
@@ -235,6 +249,8 @@ async fn register_mcp_server(
                 kind: ExternalToolKind::Mcp,
                 available: false,
                 description,
+                server_name: Some(server_name.to_owned()),
+                remote_name: None,
             }];
         }
     };
@@ -261,6 +277,8 @@ async fn register_mcp_server(
             kind: ExternalToolKind::Mcp,
             available: false,
             description,
+            server_name: Some(server_name.to_owned()),
+            remote_name: None,
         }];
     }
 
@@ -274,10 +292,12 @@ async fn register_mcp_server(
                 "invalid MCP tool name after normalization"
             );
             entries.push(ToolManifestEntry {
-                name: remote_name,
+                name: remote_name.clone(),
                 kind: ExternalToolKind::Mcp,
                 available: false,
                 description: description.clone(),
+                server_name: Some(server_name.to_owned()),
+                remote_name: Some(remote_name),
             });
             continue;
         };
@@ -318,6 +338,8 @@ async fn register_mcp_server(
                     kind: ExternalToolKind::Mcp,
                     available: true,
                     description: tool_description,
+                    server_name: Some(server_name.to_owned()),
+                    remote_name: Some(remote_name.clone()),
                 });
             }
             Err(e) => {
@@ -332,6 +354,8 @@ async fn register_mcp_server(
                     kind: ExternalToolKind::Mcp,
                     available: false,
                     description: tool_description,
+                    server_name: Some(server_name.to_owned()),
+                    remote_name: Some(remote_name.clone()),
                 });
             }
         }
@@ -379,6 +403,8 @@ fn register_mcp_server(
         kind: ExternalToolKind::Mcp,
         available: false,
         description,
+        server_name: Some(server_name.to_owned()),
+        remote_name: None,
     }]
 }
 
@@ -388,17 +414,25 @@ fn allocate_mcp_tool_name(
     remote_name: &str,
     registry: &ToolRegistry,
 ) -> Option<ToolName> {
-    let normalized_remote = normalize_tool_name(remote_name);
-    if let Ok(candidate) = ToolName::new(normalized_remote.clone())
-        && registry.get_def(&candidate).is_none()
-    {
-        return Some(candidate);
+    // WHY: always namespace external MCP tools with their server origin so the
+    // public tool name is stable and collision-resistant regardless of
+    // registration order or other tools in the registry (#4632).
+    let base = normalize_tool_name(&format!("mcp_{server_name}_{remote_name}"));
+    let mut candidate = base.clone();
+    let mut attempt = 1;
+    loop {
+        if let Ok(name) = ToolName::new(candidate.clone())
+            && registry.get_def(&name).is_none()
+        {
+            return Some(name);
+        }
+        attempt += 1;
+        if attempt > 100 {
+            // Defensive bound: give up before generating unreasonably long names.
+            return None;
+        }
+        candidate = normalize_tool_name(&format!("{base}_{attempt}"));
     }
-
-    let prefixed = normalize_tool_name(&format!("mcp_{server_name}_{remote_name}"));
-    ToolName::new(prefixed)
-        .ok()
-        .filter(|candidate| registry.get_def(candidate).is_none())
 }
 
 #[cfg(feature = "mcp")]
@@ -820,12 +854,16 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
                     kind: ExternalToolKind::Builtin,
                     available: true,
                     description: "shell".to_owned(),
+                    server_name: None,
+                    remote_name: None,
                 },
                 ToolManifestEntry {
                     name: "missing".to_owned(),
                     kind: ExternalToolKind::Mcp,
                     available: false,
                     description: "missing".to_owned(),
+                    server_name: Some("missing-server".to_owned()),
+                    remote_name: Some("missing".to_owned()),
                 },
             ],
             optional: vec![ToolManifestEntry {
@@ -833,6 +871,8 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
                 kind: ExternalToolKind::Mcp,
                 available: true,
                 description: "scholar".to_owned(),
+                server_name: Some("scholar-server".to_owned()),
+                remote_name: Some("scholar".to_owned()),
             }],
         };
         assert_eq!(manifest.available_count(), 2);
@@ -939,9 +979,11 @@ done
             register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some_and(|e| e.available));
-        assert_eq!(result.first().map(|e| e.name.as_str()), Some("echo"));
+        assert_eq!(result.first().map(|e| e.name.as_str()), Some("mcp_fake_echo"));
+        assert_eq!(result.first().and_then(|e| e.server_name.as_deref()), Some("fake"));
+        assert_eq!(result.first().and_then(|e| e.remote_name.as_deref()), Some("echo"));
 
-        let tool_name = ToolName::new("echo").expect("tool name");
+        let tool_name = ToolName::new("mcp_fake_echo").expect("tool name");
         let def = registry.get_def(&tool_name).expect("tool def");
         assert_eq!(def.groups, vec![ToolGroupId::Mcp]);
         assert!(def.tags.contains(&ToolTag::Fetch));
@@ -976,7 +1018,7 @@ done
         assert!(result.iter().any(|entry| entry.available));
 
         let input = ToolInput {
-            name: ToolName::new("echo").expect("tool name"),
+            name: ToolName::new("mcp_fake_echo").expect("tool name"),
             tool_use_id: "call-1".to_owned(),
             arguments: serde_json::json!({"message": "hello"}),
         };
