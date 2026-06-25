@@ -328,7 +328,7 @@ Output ONLY the JSON array, no other text."#
 /// Build the user message containing the facts to consolidate.
 #[must_use]
 #[cfg_attr(
-    not(feature = "mneme-engine"),
+    all(not(feature = "mneme-engine"), not(test)),
     expect(dead_code, reason = "used by the mneme-engine consolidation engine")
 )]
 pub(crate) fn consolidation_user_message(facts: &[SourceFact]) -> String {
