@@ -595,13 +595,11 @@ where
         }
     }
 
-    if !got_result {
-        if result_text.is_empty() {
-            return Err(error::ApiRequestSnafu {
-                message: "CC subprocess produced no result event and no text output".to_owned(),
-            }
-            .build());
+    if !got_result && result_text.is_empty() {
+        return Err(error::ApiRequestSnafu {
+            message: "CC subprocess produced no result event and no text output".to_owned(),
         }
+        .build());
     }
 
     Ok(CcOutput {
