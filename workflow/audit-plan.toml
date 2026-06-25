@@ -1,0 +1,347 @@
+# Derived via `kanon derive --apply --only audit-pipeline-plan`;
+# edit `crates/skopos/src/pipeline.rs` to change role→lens mappings,
+# or re-derive after adding or removing workspace crates.
+# Units are ordered by suggested execution sequence (seq ascending).
+
+[[unit]]
+name = "agora"
+role = "cli"
+src_prefix = "crates/agora/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "aletheia"
+role = "cli"
+src_prefix = "crates/aletheia/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "aletheia-classify"
+role = "cli"
+src_prefix = "crates/aletheia-classify/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "aletheia-lexica"
+role = "cli"
+src_prefix = "crates/aletheia-lexica/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "aletheia-memory-mcp"
+role = "cli"
+src_prefix = "crates/aletheia-memory-mcp/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "aletheia-routing"
+role = "cli"
+src_prefix = "crates/aletheia-routing/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "aletheia-sessions-migrate"
+role = "cli"
+src_prefix = "crates/aletheia-sessions-migrate/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "dianoia"
+role = "cli"
+src_prefix = "crates/dianoia/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "diaporeia"
+role = "cli"
+src_prefix = "crates/diaporeia/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "dokimion"
+role = "cli"
+src_prefix = "crates/eval/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "eidos"
+role = "cli"
+src_prefix = "crates/eidos/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "energeia"
+role = "cli"
+src_prefix = "crates/energeia/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "episteme"
+role = "cli"
+src_prefix = "crates/episteme/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "gnosis"
+role = "cli"
+src_prefix = "crates/gnosis/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "graphe"
+role = "cli"
+src_prefix = "crates/graphe/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "hermeneus"
+role = "cli"
+src_prefix = "crates/hermeneus/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "integration-tests"
+role = "cli"
+src_prefix = "crates/integration-tests/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "koilon"
+role = "cli"
+src_prefix = "crates/theatron/koilon/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "koina"
+role = "cli"
+src_prefix = "crates/koina/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "krites"
+role = "cli"
+src_prefix = "crates/krites/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "melete"
+role = "cli"
+src_prefix = "crates/melete/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "mneme"
+role = "cli"
+src_prefix = "crates/mneme/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "nous"
+role = "cli"
+src_prefix = "crates/nous/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "oikonomos"
+role = "cli"
+src_prefix = "crates/daemon/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "organon"
+role = "cli"
+src_prefix = "crates/organon/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-charts"
+role = "cli"
+src_prefix = "crates/poiesis/charts/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-core"
+role = "cli"
+src_prefix = "crates/poiesis/core/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-deck"
+role = "cli"
+src_prefix = "crates/poiesis/deck/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-deck-layout"
+role = "cli"
+src_prefix = "crates/poiesis/deck-layout/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-diff"
+role = "cli"
+src_prefix = "crates/poiesis/diff/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-doc"
+role = "cli"
+src_prefix = "crates/poiesis/doc/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-inspect"
+role = "cli"
+src_prefix = "crates/poiesis/inspect/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-intake"
+role = "cli"
+src_prefix = "crates/poiesis/intake/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-lint"
+role = "cli"
+src_prefix = "crates/poiesis/lint/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-ooxml-parse"
+role = "cli"
+src_prefix = "crates/poiesis/ooxml-parse/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-printer-chromium"
+role = "cli"
+src_prefix = "crates/poiesis/printer-chromium/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-scaffold"
+role = "cli"
+src_prefix = "crates/poiesis/scaffold/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-sheet"
+role = "cli"
+src_prefix = "crates/poiesis/sheet/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-slides"
+role = "cli"
+src_prefix = "crates/poiesis/slides/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-text"
+role = "cli"
+src_prefix = "crates/poiesis/text/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-theme"
+role = "cli"
+src_prefix = "crates/poiesis/theme/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-typst"
+role = "cli"
+src_prefix = "crates/poiesis/typst/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "poiesis-verify"
+role = "cli"
+src_prefix = "crates/poiesis/verify/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "pylon"
+role = "cli"
+src_prefix = "crates/pylon/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "skene"
+role = "cli"
+src_prefix = "crates/theatron/skene/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "symbolon"
+role = "cli"
+src_prefix = "crates/symbolon/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "taxis"
+role = "cli"
+src_prefix = "crates/taxis/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "theatron"
+role = "cli"
+src_prefix = "crates/theatron/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
+
+[[unit]]
+name = "thesauros"
+role = "cli"
+src_prefix = "crates/thesauros/src"
+lenses = ["correctness", "doc-substance"]
+seq = 8
