@@ -16,6 +16,7 @@ use crate::data::tuple::TupleT;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::fts::TokenizerCache;
+use crate::fts::indexing::FtsCache;
 use crate::runtime::callback::CallbackCollector;
 use crate::runtime::error::StorageVersionSnafu;
 use crate::runtime::relation::RelationId;
@@ -34,6 +35,11 @@ pub struct SessionTx<'a> {
     pub(crate) relation_store_id: Arc<AtomicU64>,
     pub(crate) temp_store_id: AtomicU32,
     pub(crate) tokenizers: Arc<TokenizerCache>,
+    /// Cached FTS corpus statistics (`total_n` and `avgdl`).
+    ///
+    /// WHY: `avgdl` requires a full index scan; sharing the cache across
+    /// queries and invalidating on index writes removes per-query O(D) cost.
+    pub(crate) fts_cache: Arc<RwLock<FtsCache>>,
 }
 
 pub const CURRENT_STORAGE_VERSION: [u8; 1] = [0x00];
@@ -164,7 +170,7 @@ use std::sync::atomic::Ordering;
 use compact_str::CompactString;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
-use parking_lot::ArcRwLockReadGuard;
+use parking_lot::{ArcRwLockReadGuard, RwLock};
 
 use crate::data::functions::current_validity;
 use crate::data::relation::ColumnDef;
@@ -191,6 +197,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             relation_store_id: self.relation_store_id.clone(),
             temp_store_id: Default::default(),
             tokenizers: self.tokenizers.clone(),
+            fts_cache: self.fts_cache.clone(),
         };
         Ok(ret)
     }
@@ -201,6 +208,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             relation_store_id: self.relation_store_id.clone(),
             temp_store_id: Default::default(),
             tokenizers: self.tokenizers.clone(),
+            fts_cache: self.fts_cache.clone(),
         };
         Ok(ret)
     }

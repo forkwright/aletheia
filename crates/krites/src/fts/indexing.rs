@@ -521,23 +521,26 @@ impl SessionTx<'_> {
         filter_code: &Option<(Vec<Bytecode>, SourceSpan)>,
         tokenizer: &TextAnalyzer,
         stack: &mut Vec<DataValue>,
-        cache: &mut FtsCache,
     ) -> Result<Vec<Tuple>> {
         let ast = parse_fts_query(q)?.tokenize(tokenizer);
         if ast.is_empty() {
             return Ok(vec![]);
         }
-        let n = if config.score_kind == FtsScoreKind::TfIdf
-            || config.score_kind == FtsScoreKind::Bm25
-        {
-            cache.get_n_for_relation(&config.base_handle, self)?
-        } else {
-            0
-        };
-        let avgdl = if config.score_kind == FtsScoreKind::Bm25 {
-            cache.get_avg_dl_for_relation(&config.idx_handle, self)?
-        } else {
-            0.0
+        let (n, avgdl) = {
+            let mut cache = self.fts_cache.write();
+            let n = if config.score_kind == FtsScoreKind::TfIdf
+                || config.score_kind == FtsScoreKind::Bm25
+            {
+                cache.get_n_for_relation(&config.base_handle, self)?
+            } else {
+                0
+            };
+            let avgdl = if config.score_kind == FtsScoreKind::Bm25 {
+                cache.get_avg_dl_for_relation(&config.idx_handle, self)?
+            } else {
+                0.0
+            };
+            (n, avgdl)
         };
         let mut result: Vec<_> = self
             .fts_search_impl(&ast, config, n, avgdl)?
@@ -644,6 +647,12 @@ impl SessionTx<'_> {
             let val_bytes = idx_handle.encode_val_only_for_store(&val, SourceSpan::default())?;
             self.store_tx.put(&key_bytes, &val_bytes)?;
         }
+        // WHY: FTS cache values are stable only until the index mutates.
+        {
+            let mut cache = self.fts_cache.write();
+            cache.total_n_cache.remove(&rel_handle.name);
+            cache.avg_dl_cache.remove(&idx_handle.name);
+        }
         Ok(())
     }
     /// Remove a document from the full-text search index.
@@ -692,6 +701,12 @@ impl SessionTx<'_> {
             key[0] = DataValue::Str(text);
             let key_bytes = idx_handle.encode_key_for_store(&key, SourceSpan::default())?;
             self.store_tx.del(&key_bytes)?;
+        }
+        // WHY: FTS cache values are stable only until the index mutates.
+        {
+            let mut cache = self.fts_cache.write();
+            cache.total_n_cache.remove(&rel_handle.name);
+            cache.avg_dl_cache.remove(&idx_handle.name);
         }
         Ok(())
     }
