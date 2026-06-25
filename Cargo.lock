@@ -7069,6 +7069,7 @@ name = "poiesis-diff"
 version = "0.31.1"
 dependencies = [
  "indexmap 2.14.0",
+ "poiesis-ooxml-parse",
  "poiesis-sheet",
  "serde_json",
  "snafu",
@@ -7106,6 +7107,7 @@ dependencies = [
  "pdf-extract",
  "poiesis-core",
  "poiesis-doc",
+ "poiesis-ooxml-parse",
  "poiesis-sheet",
  "serde_json",
  "snafu",
@@ -7133,6 +7135,10 @@ dependencies = [
  "serde_json",
  "snafu",
 ]
+
+[[package]]
+name = "poiesis-ooxml-parse"
+version = "0.31.1"
 
 [[package]]
 name = "poiesis-printer-chromium"
