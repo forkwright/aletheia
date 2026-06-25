@@ -110,8 +110,6 @@ pub(crate) struct CcOutput {
     pub duration_ms: Option<u64>,
     /// CC session ID (if reported).
     pub session_id: Option<String>,
-    /// All streaming text deltas collected in order.
-    pub stream_deltas: Vec<String>,
 }
 
 /// Spawn CC and run a completion, collecting all output.
@@ -303,7 +301,7 @@ where
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines();
 
-    let mut stream_deltas = Vec::new();
+    let mut line_count: usize = 0;
     let mut total_bytes: usize = 0;
     let mut result_text = String::new();
     let mut is_error = false;
@@ -335,7 +333,7 @@ where
                         }
                         .build());
                     }
-                    if stream_deltas.len() >= MAX_OUTPUT_LINES {
+                    if line_count >= MAX_OUTPUT_LINES {
                         return Err(error::ApiRequestSnafu {
                             message: format!(
                                 "CC subprocess output exceeds {MAX_OUTPUT_LINES} line limit"
@@ -343,7 +341,8 @@ where
                         }
                         .build());
                     }
-                    stream_deltas.push(message.text);
+                    line_count = line_count.saturating_add(1);
+                    result_text.push_str(&message.text);
                 }
             }
             CcEvent::Result {
@@ -377,19 +376,18 @@ where
     }
 
     if !got_result {
-        // CC exited without a result event -- synthesize from collected deltas.
-        if stream_deltas.is_empty() {
+        // CC exited without a result event -- the fallback result was built
+        // incrementally from assistant deltas.
+        if result_text.is_empty() {
             return Err(error::ApiRequestSnafu {
                 message: "CC subprocess produced no result event and no text output".to_owned(),
             }
             .build());
         }
-        result_text = stream_deltas.join("");
     }
 
     debug!(
         result_len = result_text.len(),
-        deltas = stream_deltas.len(),
         cost = ?cost_usd,
         duration_ms = ?duration_ms,
         "CC subprocess completed"
@@ -402,7 +400,6 @@ where
         cost_usd,
         duration_ms,
         session_id,
-        stream_deltas,
     })
 }
 
@@ -527,7 +524,7 @@ where
     let reader = BufReader::new(stdout);
     let mut lines = reader.lines();
 
-    let mut stream_deltas = Vec::new();
+    let mut line_count: usize = 0;
     let mut total_bytes: usize = 0;
     let mut result_text = String::new();
     let mut is_error = false;
@@ -559,7 +556,7 @@ where
                         }
                         .build());
                     }
-                    if stream_deltas.len() >= MAX_OUTPUT_LINES {
+                    if line_count >= MAX_OUTPUT_LINES {
                         return Err(error::ApiRequestSnafu {
                             message: format!(
                                 "CC subprocess output exceeds {MAX_OUTPUT_LINES} line limit"
@@ -567,8 +564,9 @@ where
                         }
                         .build());
                     }
+                    line_count = line_count.saturating_add(1);
                     on_delta(&message.text);
-                    stream_deltas.push(message.text);
+                    result_text.push_str(&message.text);
                 }
             }
             CcEvent::Result {
@@ -597,14 +595,11 @@ where
         }
     }
 
-    if !got_result {
-        if stream_deltas.is_empty() {
-            return Err(error::ApiRequestSnafu {
-                message: "CC subprocess produced no result event and no text output".to_owned(),
-            }
-            .build());
+    if !got_result && result_text.is_empty() {
+        return Err(error::ApiRequestSnafu {
+            message: "CC subprocess produced no result event and no text output".to_owned(),
         }
-        result_text = stream_deltas.join("");
+        .build());
     }
 
     Ok(CcOutput {
@@ -614,10 +609,13 @@ where
         cost_usd,
         duration_ms,
         session_id,
-        stream_deltas,
     })
 }
 
 #[cfg(test)]
 #[path = "process_tests.rs"]
 mod process_tests;
+
+#[cfg(test)]
+#[path = "process_run_tests.rs"]
+mod process_run_tests;
