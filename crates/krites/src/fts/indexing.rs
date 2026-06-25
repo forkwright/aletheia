@@ -414,7 +414,11 @@ impl SessionTx<'_> {
                             .collect_vec(),
                     );
                 }
-                for lit_nxt in literals {
+                // WHY: chained NEAR must check each term against the immediately
+                // preceding matched term, not against the first term. Advance the
+                // literal iterator so the first term is not compared with itself,
+                // and retain the current term's position for the next iteration.
+                for lit_nxt in l_it {
                     let el_res = self.fts_search_literal(lit_nxt, &config.idx_handle)?;
                     coll = el_res
                         .into_iter()
@@ -425,11 +429,7 @@ impl SessionTx<'_> {
                                 for p in prev_pos {
                                     for pi in &x.position_info {
                                         let cur = pi.position;
-                                        if cur > p {
-                                            if cur - p <= *distance {
-                                                inner_coll.insert(p);
-                                            }
-                                        } else if p - cur <= *distance {
+                                        if p.abs_diff(cur) <= *distance {
                                             inner_coll.insert(cur);
                                         }
                                     }
