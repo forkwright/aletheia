@@ -54,25 +54,22 @@ pub(crate) fn output_with_timeout(
         .wait_timeout(timeout)
         .map_err(|source| CommandOutputError::Wait { source })?;
 
-    match status {
-        Some(status) => {
-            let stdout = read_temp_output(&mut stdout)?;
-            let stderr = read_temp_output(&mut stderr)?;
-            Ok(Output {
-                status,
-                stdout,
-                stderr,
-            })
-        }
-        None => {
-            let kill_error = child.kill().err().map(|err| err.to_string());
-            let wait_error = child.wait().err().map(|err| err.to_string());
-            Err(CommandOutputError::Timeout {
-                timeout,
-                kill_error,
-                wait_error,
-            })
-        }
+    if let Some(status) = status {
+        let stdout = read_temp_output(&mut stdout)?;
+        let stderr = read_temp_output(&mut stderr)?;
+        Ok(Output {
+            status,
+            stdout,
+            stderr,
+        })
+    } else {
+        let kill_error = child.kill().err().map(|err| err.to_string());
+        let wait_error = child.wait().err().map(|err| err.to_string());
+        Err(CommandOutputError::Timeout {
+            timeout,
+            kill_error,
+            wait_error,
+        })
     }
 }
 
