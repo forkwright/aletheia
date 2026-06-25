@@ -487,7 +487,12 @@ mod tests {
         for entry in &entries {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name == old_file.file_name().expect("old_file has a file name").to_string_lossy() {
+            if name
+                == old_file
+                    .file_name()
+                    .expect("old_file has a file name")
+                    .to_string_lossy()
+            {
                 found_old = true;
             } else if name.ends_with(".jsonl") {
                 found_new = true;
