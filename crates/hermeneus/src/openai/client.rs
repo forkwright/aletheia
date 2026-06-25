@@ -620,6 +620,13 @@ fn record_nonstream_success(
         cost_usd,
         true,
     );
+    // WHY (#4658): OpenAI reports prompt-cache read tokens in usage details;
+    // record them so cost/efficiency dashboards are not always zero.
+    crate::metrics::record_cache_tokens(
+        provider_name,
+        response.usage.cache_read_tokens,
+        response.usage.cache_write_tokens,
+    );
     crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
 }
 
@@ -678,6 +685,13 @@ fn record_stream_success(
         response.usage.output_tokens,
         cost_usd,
         true,
+    );
+    // WHY (#4658): Streaming completions also carry cache read tokens in the
+    // final usage chunk; mirror the non-streaming metric hook.
+    crate::metrics::record_cache_tokens(
+        provider_name,
+        response.usage.cache_read_tokens,
+        response.usage.cache_write_tokens,
     );
     crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
 }
