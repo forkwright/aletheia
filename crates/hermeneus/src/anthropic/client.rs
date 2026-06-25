@@ -687,15 +687,20 @@ impl AnthropicProvider {
 
     /// Compute the CC attribution string for system prompt injection.
     ///
-    /// Returns `None` when CC mimicry is inactive (API key mode or disabled).
-    /// The attribution is computed from the first user message text and the
-    /// CC version, matching CC's `getAttributionHeader()` in `constants/system.ts`.
+    /// Returns `None` when CC mimicry is inactive (API key mode or disabled),
+    /// or when the runtime credential is not OAuth. Per-request gating is
+    /// required to handle mid-session credential rotation correctly.
     ///
-    /// // WHY: Attribution headers are part of Anthropic's request fingerprinting
-    /// // for OAuth-based API access. Missing or incorrect attribution causes
-    /// // subtle rate-limiting or model availability issues.
+    /// // WHY: Attribution is part of Anthropic's OAuth-specific request
+    /// // fingerprinting. Sending it for API-key requests produces a misleading
+    /// // telemetry fingerprint (request body claims CC-OAuth while HTTP headers
+    /// // use x-api-key). Gate here mirrors `maybe_prepend_oauth_identity`.
     fn compute_attribution(&self, request: &CompletionRequest) -> Option<String> {
         let profile = self.cc_profile.as_ref()?;
+        let cred = self.credential_provider.get_credential()?;
+        if cred.source != CredentialSource::OAuth {
+            return None;
+        }
         // Extract first user message text for fingerprint computation.
         let first_msg_text = request
             .messages
