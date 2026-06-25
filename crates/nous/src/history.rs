@@ -10,6 +10,7 @@ use tracing::debug;
 use mneme::store::SessionStore;
 use mneme::types::Role;
 
+use crate::config::TurnHistoryPolicy;
 use crate::error;
 use crate::pipeline::PipelineMessage;
 
@@ -35,6 +36,7 @@ impl Default for HistoryConfig {
 }
 
 /// Result of the history stage.
+// kanon:ignore TOPOLOGY/shallow-struct — result bag passed across pipeline stage boundary; no in-file behavior by design
 #[derive(Debug, Clone)]
 pub struct HistoryResult {
     /// Number of messages loaded from store.
@@ -46,6 +48,12 @@ pub struct HistoryResult {
     /// than the count cap report `false` here; inspect `tokens_consumed`
     /// relative to the budget for token-budget observability.
     pub truncated: bool,
+    /// The effective history policy that produced this result.
+    ///
+    /// WHY: run records and diagnostics need to explain why messages were
+    /// included or dropped. The policy is cloned here so it survives even
+    /// if the upstream config is mutated later.
+    pub policy: TurnHistoryPolicy,
 }
 
 /// Load conversation history and append the current user message.
@@ -87,6 +95,7 @@ pub(crate) fn load_history(
                 messages_loaded: 0,
                 tokens_consumed: 0,
                 truncated: false,
+                policy: TurnHistoryPolicy::default(),
             },
         ));
     }
@@ -120,7 +129,7 @@ pub(crate) fn load_history(
         match msg.role {
             Role::System => continue,
             Role::ToolResult if !config.include_tool_messages => continue,
-            _ => {}
+            _ => {} // kanon:ignore RUST/empty-match-arm — all other roles proceed to message inclusion below
         }
 
         let role = match msg.role {
@@ -168,6 +177,7 @@ pub(crate) fn load_history(
         messages_loaded: loaded_count,
         tokens_consumed,
         truncated,
+        policy: TurnHistoryPolicy::default(),
     };
     debug!(
         messages_loaded = result.messages_loaded,
@@ -422,5 +432,42 @@ mod tests {
         assert_eq!(result.messages_loaded, 0);
         assert_eq!(result.tokens_consumed, 0);
         assert!(!result.truncated);
+    }
+
+    /// Verifies that a non-default turn-history policy deterministically changes
+    /// the loaded context: a low message cap drops older messages and disabling
+    /// tool-result messages filters them out.
+    #[test]
+    fn history_policy_controls_loaded_context() {
+        let store = setup_store();
+        for i in 0..5 {
+            append(&store, Role::User, &format!("user {i}"), 10);
+            append(&store, Role::Assistant, &format!("assistant {i}"), 10);
+        }
+        append(&store, Role::ToolResult, "tool output", 10);
+
+        let policy = TurnHistoryPolicy {
+            max_messages: 2,
+            reserve_for_current: 100,
+            include_tool_messages: false,
+        };
+        let config = HistoryConfig {
+            max_messages: policy.max_messages,
+            reserve_for_current: policy.reserve_for_current,
+            include_tool_messages: policy.include_tool_messages,
+        };
+
+        let (messages, result) =
+            load_history(&store, "ses-1", 10_000, &config, "current").expect("load");
+
+        assert_eq!(
+            result.messages_loaded, 2,
+            "policy max_messages should cap load"
+        );
+        assert!(result.truncated, "count cap should set truncated flag");
+        assert!(
+            !messages.iter().any(|m| m.content == "tool output"),
+            "policy disabled tool-result messages"
+        );
     }
 }

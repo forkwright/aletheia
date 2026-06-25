@@ -406,7 +406,8 @@ async fn run_knowledge_task(
                 report.duration_ms
             );
         }
-        oikonomos::maintenance::MaintenanceOutcome::Failure => {
+        // Covers Failure and any future #[non_exhaustive] variants.
+        _ => {
             whatever!(
                 "{}: failed — {} processed, {} modified in {}ms",
                 definition.id(),

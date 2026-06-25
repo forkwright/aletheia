@@ -349,4 +349,27 @@ mod tests {
             "token auth must advertise bearer_auth"
         );
     }
+
+    #[test]
+    fn bulk_import_openapi_description_matches_configured_limit() {
+        let spec = openapi_value_for_auth_mode("token");
+        let default_limit = taxis::config::ApiLimitsConfig::default().max_import_batch_size;
+        let description = spec
+            .get("paths")
+            .and_then(|paths| paths.get("/api/v1/knowledge/facts/import"))
+            .and_then(|path| path.get("post"))
+            .and_then(|op| op.get("requestBody"))
+            .and_then(|body| body.get("description"))
+            .and_then(|d| d.as_str())
+            .expect("bulk import requestBody description must be present");
+
+        assert!(
+            description.contains("max_import_batch_size"),
+            "OpenAPI description must name the config key that controls the limit"
+        );
+        assert!(
+            description.contains(&default_limit.to_string()),
+            "OpenAPI description must mention the current default limit ({default_limit})"
+        );
+    }
 }

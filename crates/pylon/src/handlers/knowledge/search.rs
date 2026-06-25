@@ -187,8 +187,9 @@ pub async fn explain(
             score: candidate.result.score,
             decision: match candidate.decision {
                 mneme::recall::explain::CandidateDecision::Selected => ExplainDecision::Selected,
-                mneme::recall::explain::CandidateDecision::Dropped => ExplainDecision::Dropped,
                 mneme::recall::explain::CandidateDecision::Filtered => ExplainDecision::Filtered,
+                // Covers Dropped and any future #[non_exhaustive] variants.
+                _ => ExplainDecision::Dropped,
             },
             reasons: candidate.reasons,
             factors: FactorScoreBreakdown {
