@@ -567,7 +567,7 @@ fn evict_oldest_session_also_removes_drift_detector() {
     let mut oldest_state =
         SessionState::new("ses-0".to_owned(), oldest_key.clone(), &test_config());
     oldest_state.last_accessed = Instant::now()
-        .checked_sub(Duration::from_secs(3600))
+        .checked_sub(Duration::from_hours(1))
         .expect("3600s is well within Instant range");
     actor.sessions.insert(oldest_key.clone(), oldest_state);
     actor
