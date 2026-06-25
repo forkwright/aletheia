@@ -485,7 +485,7 @@ pub struct SerendipityDiscoveryReport {
     pub items_modified: u64,
     /// Number of candidate discoveries evaluated.
     pub discovery_count: u64,
-    /// Fact ID selected for follow-up injection, if any.
+    /// ID of the fact chosen by the serendipity engine for context injection.
     pub selected_fact_id: Option<String>,
     /// Human-readable reason why the selected discovery was interesting.
     pub selected_connection_reason: Option<String>,
@@ -1328,8 +1328,8 @@ impl KnowledgeStore {
     /// If the query exceeds the timeout, returns `Error::QueryTimeout`.
     /// The `:timeout` directive is injected into the script: callers should not include it.
     ///
-    /// Note: timeout detection relies on the engine cancellation error containing
-    /// "killed before completion". This is a known fragile dependency.
+    /// Timeout detection maps the engine's typed [`QueryKilled`](crate::engine::Error::QueryKilled)
+    /// error to [`Error::QueryTimeout`](crate::error::Error::QueryTimeout).
     ///
     /// Returns a [`QueryResult`] rather than raw `NamedRows` to keep engine internals
     /// encapsulated.
@@ -1352,16 +1352,15 @@ impl KnowledgeStore {
         self.db
             .run(&script_with_timeout, params, ScriptMutability::Immutable)
             .map(QueryResult::from)
-            .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("killed before completion") {
-                    crate::error::QueryTimeoutSnafu {
-                        secs: timeout.map_or(0.0, |d| d.as_secs_f64()),
-                    }
-                    .build()
-                } else {
-                    crate::error::EngineQuerySnafu { message: msg }.build()
+            .map_err(|e| match e {
+                crate::engine::Error::QueryKilled { .. } => crate::error::QueryTimeoutSnafu {
+                    secs: timeout.map_or(0.0, |d| d.as_secs_f64()),
                 }
+                .build(),
+                _ => crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build(),
             })
     }
 
