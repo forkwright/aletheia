@@ -5,7 +5,7 @@
 //! Taxis (τάξις): "arrangement, ordering." Resolves configuration and files
 //! through the oikos three-tier hierarchy: nous/{id}/ → shared/ → theke/.
 //!
-//! Depends only on `aletheia-koina`.
+//! Depends on `aletheia-koina` and `aletheia-eidos`.
 
 /// Three-tier file discovery and resolution through the oikos hierarchy.
 pub mod cascade;

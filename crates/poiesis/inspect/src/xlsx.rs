@@ -36,11 +36,10 @@ fn extract_shared_strings(xml_data: &str) -> Vec<String> {
 fn extract_text_from_worksheet(xml_data: &str, shared_strings: &[String]) -> String {
     let mut text_content = String::new();
 
-    let mut in_row = false;
-    for chunk in xml_data.split("<row") {
-        if !chunk.is_empty() {
-            in_row = true;
-        }
+    // WHY: split("<row") yields the XML preamble as its first element; skipping it
+    // ensures every iterated chunk corresponds to exactly one row and prevents a
+    // spurious leading newline.
+    for chunk in xml_data.split("<row").skip(1) {
         for cell_chunk in chunk.split("<c") {
             let is_shared = cell_chunk.contains("t=\"s\"");
             for value_chunk in cell_chunk.split("<v>") {
@@ -59,10 +58,7 @@ fn extract_text_from_worksheet(xml_data: &str, shared_strings: &[String]) -> Str
                 }
             }
         }
-        if in_row {
-            text_content.push('\n');
-            in_row = false;
-        }
+        text_content.push('\n');
     }
 
     text_content

@@ -9,9 +9,9 @@ use organon::receipts::{ReceiptLedger, ReceiptSigner};
 use organon::types::ToolGroupId;
 use tracing::{info, instrument};
 
-use crate::config::NousConfig;
+use mneme::types::parse_session_or_agent_id;
 
-use mneme::types::validate_session_or_agent_id;
+use crate::config::NousConfig;
 
 /// Active session state held in memory.
 #[derive(Debug, Clone)]
@@ -112,8 +112,8 @@ impl SessionState {
         session_key: String,
         config: &NousConfig,
     ) -> Result<Self, mneme::types::ReservedIdPrefixError> {
-        validate_session_or_agent_id(&id)?;
-        validate_session_or_agent_id(&session_key)?;
+        parse_session_or_agent_id(&id)?;
+        parse_session_or_agent_id(&session_key)?;
         Ok(Self::new(id, session_key, config))
     }
 
@@ -139,6 +139,28 @@ impl SessionState {
         // over idle ones. Without this, eviction is effectively creation-time ordering
         // because Instant::now() is only set in new(). (#3253)
         self.last_accessed = Instant::now();
+        self.turn
+    }
+
+    /// Revert the most recent [`next_turn`](Self::next_turn) call.
+    ///
+    /// WHY: when a turn is cancelled before the pipeline task runs to
+    /// completion, the actor's in-memory counter must be rolled back so the
+    /// next successful turn does not leave a visible gap in turn numbering.
+    /// The `turn_id` is intentionally not restored to a previous ULID;
+    /// `next_turn()` always generates a fresh dedup key, so the cancelled ID
+    /// is never reused.
+    ///
+    /// # Panics
+    ///
+    /// Debug builds panic when `turn == 0`, which indicates a caller bug
+    /// because `revert_turn` is only valid immediately after `next_turn`.
+    pub fn revert_turn(&mut self) -> u64 {
+        // WHY: revert_turn is only valid immediately after next_turn();
+        // underflow means the caller's cancellation logic is out of sync with
+        // turn advancement.
+        debug_assert!(self.turn > 0, "revert_turn called before next_turn");
+        self.turn = self.turn.saturating_sub(1);
         self.turn
     }
 
@@ -238,6 +260,19 @@ mod tests {
         assert_eq!(state.next_turn(), 1);
         assert_eq!(state.next_turn(), 2);
         assert_eq!(state.next_turn(), 3);
+    }
+
+    #[test]
+    fn revert_turn_rolls_back_increment() {
+        let mut state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
+        let initial_turn_id = state.turn_id;
+        assert_eq!(state.next_turn(), 1);
+        assert_eq!(state.revert_turn(), 0);
+        assert_eq!(state.turn, 0);
+        // WHY: next_turn() always mints a fresh turn_id, so the cancelled
+        // turn's id is discarded; we only assert the counter is restored.
+        assert_ne!(state.turn_id, initial_turn_id);
+        assert_eq!(state.next_turn(), 1);
     }
 
     #[test]

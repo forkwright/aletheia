@@ -1,12 +1,11 @@
 //! Credential file format and atomic I/O with encryption.
 
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
-
-use std::time::{Duration, SystemTime};
 
 use crate::encrypt::{
     ENCRYPTED_SENTINEL, commit_key_file, decrypt, encrypt, load_key, load_or_generate_key,
@@ -252,15 +251,6 @@ impl CredentialFile {
 
     /// Whether the token needs refresh (expired or within threshold).
     #[must_use]
-    // WHY: exercised only under `#[cfg(test)]`; non-test builds must still
-    // see this as intentionally-unused public-API surface.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "refresh logic inlined in refresh_loop; kept as public API"
-        )
-    )]
     pub(crate) fn needs_refresh(&self) -> bool {
         match self.seconds_remaining() {
             // WHY: REFRESH_THRESHOLD_SECS is a small constant that fits in i64
@@ -274,7 +264,7 @@ impl CredentialFile {
 
 /// Maximum age for a `.json.tmp` file before it is treated as an orphan and
 /// removed during load.
-const ORPHAN_TEMP_AGE_THRESHOLD: Duration = Duration::from_secs(60);
+const ORPHAN_TEMP_AGE_THRESHOLD: Duration = Duration::from_mins(1);
 
 /// Remove an orphaned credential temp file, but only under an exclusive lock and
 /// only when the file is older than [`ORPHAN_TEMP_AGE_THRESHOLD`].

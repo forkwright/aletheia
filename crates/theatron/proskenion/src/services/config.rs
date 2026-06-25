@@ -279,12 +279,25 @@ fn save_notification_prefs_in(
     }
 
     {
-        use std::os::unix::fs::OpenOptionsExt;
+        // WHY: On Unix create the file with 0o600 mode atomically. On Windows
+        // the equivalent `OpenOptionsExt::mode` does not exist; the file lives
+        // in the user's config directory where default ACLs are user-private.
+        #[cfg(unix)]
+        let mut file = {
+            use std::os::unix::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(path)
+                .context(WriteFileSnafu { path })?
+        };
+        #[cfg(not(unix))]
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
-            .mode(0o600)
             .open(path)
             .context(WriteFileSnafu { path })?;
         file.write_all(content.as_bytes())
@@ -436,6 +449,7 @@ server_url = "http://custom:9000"
     }
 
     #[test]
+    #[cfg(unix)]
     fn save_and_load_via_explicit_tempdir() {
         // WHY: save() and load() use a hardcoded path, but we can verify
         // the round-trip behaviour by mirroring their logic on a tempdir

@@ -31,7 +31,7 @@ impl ToolResultType {
     #[must_use]
     pub fn classify(tool_name: &str) -> Self {
         let lower = tool_name.to_lowercase();
-        // WHY: classification mirrors CC's COMPACTABLE_TOOLS whitelist.
+        // WHY: classification mirrors Claude Code's COMPACTABLE_TOOLS allowlist.
         // NOTE: web check before search because "web_search" should match WebResult, not SearchResult.
         if lower.contains("read")
             || lower.contains("edit")
@@ -73,6 +73,21 @@ pub struct ToolResultAge {
     pub tool_type: ToolResultType,
     /// Original token count before any compaction.
     pub original_tokens: u64,
+}
+
+impl ToolResultAge {
+    /// Construct aging metadata for a newly-created tool result.
+    pub fn new(
+        created_at: jiff::Timestamp,
+        tool_type: ToolResultType,
+        original_tokens: u64,
+    ) -> Self {
+        Self {
+            created_at,
+            tool_type,
+            original_tokens,
+        }
+    }
 }
 
 /// A message in the conversation.
@@ -613,6 +628,12 @@ pub enum StopReason {
     StopSequence,
     /// Provider safety/content filter stopped generation.
     ContentFiltered,
+    /// Provider returned a stop reason this adapter does not yet model.
+    ///
+    /// WHY: Collapsing unknown values into [`EndTurn`](Self::EndTurn) makes
+    /// provider drift and safety signals look like ordinary success. Preserving
+    /// them lets downstream callers decide how to report degraded completions.
+    Unknown,
 }
 
 impl StopReason {
@@ -626,6 +647,7 @@ impl StopReason {
             Self::MaxTokens => "max_tokens",
             Self::StopSequence => "stop_sequence",
             Self::ContentFiltered => "content_filtered",
+            Self::Unknown => "unknown",
         }
     }
 }

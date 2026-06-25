@@ -231,10 +231,13 @@ impl StreamAccumulator {
                 // NOTE: Cache token deltas are reported in message_delta, not message_start.
                 self.cache_write_tokens += usage.cache_creation_input_tokens;
                 self.cache_read_tokens += usage.cache_read_input_tokens;
+                // WHY: Anthropic stop_reason strings we do not recognize are
+                // provider drift, not a clean end_turn. Preserve the signal as
+                // Unknown so downstream callers can surface degraded output.
                 let stop_reason = delta
                     .stop_reason
                     .parse::<StopReason>()
-                    .unwrap_or(StopReason::EndTurn);
+                    .unwrap_or(StopReason::Unknown);
                 self.stop_reason = Some(stop_reason);
                 on_event(StreamEvent::MessageStop {
                     stop_reason,

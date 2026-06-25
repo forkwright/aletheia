@@ -135,6 +135,20 @@ pub struct ComplexityInput<'a> {
     pub model_override: Option<&'a str>,
 }
 
+impl<'a> ComplexityInput<'a> {
+    /// Create a top-level input with no tools, no prior messages, and no overrides.
+    pub fn new(message_text: &'a str) -> Self {
+        Self {
+            message_text,
+            tool_count: 0,
+            message_count: 0,
+            depth: 0,
+            tier_override: None,
+            model_override: None,
+        }
+    }
+}
+
 /// Configuration for complexity-based routing thresholds and model mappings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -181,6 +195,17 @@ pub struct ComplexityScore {
     pub reason: String,
 }
 
+impl ComplexityScore {
+    /// Construct a score from its components.
+    pub fn new(score: u32, tier: ModelTier, reason: String) -> Self {
+        Self {
+            score,
+            tier,
+            reason,
+        }
+    }
+}
+
 /// Final routing decision with model selection.
 #[derive(Debug, Clone)]
 pub struct RoutingDecision {
@@ -215,6 +240,17 @@ pub struct RoutingOutcome {
     pub success: bool,
     /// Whether the model self-escalated (indicated it needed more capability).
     pub self_escalated: bool,
+}
+
+impl RoutingOutcome {
+    /// Construct an outcome from a routing decision and its result flags.
+    pub fn new(decision: RoutingDecision, success: bool, self_escalated: bool) -> Self {
+        Self {
+            decision,
+            success,
+            self_escalated,
+        }
+    }
 }
 
 /// Score the complexity of a query across multiple dimensions.
@@ -492,12 +528,16 @@ fn score_complexity_for_config(
     config: &ComplexityConfig,
 ) -> ComplexityScore {
     let mut complexity = score_complexity(input);
-    complexity.tier = tier_from_score(
-        complexity.score,
-        config.no_llm_threshold,
-        config.low_threshold,
-        config.high_threshold,
-    );
+    // WHY: agent-level tier overrides are sticky and must dominate operator
+    // thresholds. Re-applying thresholds would silently demote the override.
+    if input.tier_override.is_none() {
+        complexity.tier = tier_from_score(
+            complexity.score,
+            config.no_llm_threshold,
+            config.low_threshold,
+            config.high_threshold,
+        );
+    }
     complexity
 }
 

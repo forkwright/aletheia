@@ -15,10 +15,7 @@ use koina::system::{Environment, RealSystem};
 
 use super::file_ops::CredentialFile;
 use super::providers::FileCredentialProvider;
-use super::{
-    OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, REFRESH_CHECK_INTERVAL_SECS, REFRESH_THRESHOLD_SECS,
-    unix_epoch_ms,
-};
+use super::{OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, REFRESH_CHECK_INTERVAL_SECS, unix_epoch_ms};
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
 /// OAuth error response from the token endpoint.
@@ -92,6 +89,13 @@ pub(super) struct RefreshState {
     pub refresh_token: SecretString,
     pub expires_at_ms: u64,
     pub subscription_type: Option<String>,
+}
+
+impl RefreshState {
+    /// Returns `true` if the in-memory access token is non-empty and can be used.
+    pub(super) fn has_token(&self) -> bool {
+        !self.current_token.expose_secret().is_empty()
+    }
 }
 
 /// Wraps a credential file with background OAuth token refresh.
@@ -201,7 +205,7 @@ impl CredentialProvider for RefreshingCredentialProvider {
     fn get_credential(&self) -> Option<Credential> {
         if let Ok(guard) = self.state.read()
             && let Some(ref s) = *guard
-            && !s.current_token.expose_secret().is_empty()
+            && s.has_token()
         {
             return Some(Credential {
                 secret: s.current_token.clone(),
@@ -358,12 +362,18 @@ fn plan_refresh(
 ) -> Option<(String, Option<String>, u64)> {
     let guard = state.read().ok()?;
     let s = guard.as_ref()?;
-    let now_ms = unix_epoch_ms();
-    let expires_i64 = i64::try_from(s.expires_at_ms).unwrap_or(i64::MAX);
-    let now_i64 = i64::try_from(now_ms).unwrap_or(i64::MAX);
-    let remaining_secs = (expires_i64 - now_i64) / 1000;
-    let threshold = i64::try_from(REFRESH_THRESHOLD_SECS).unwrap_or(i64::MAX);
-    if remaining_secs >= threshold {
+
+    // WHY: delegate the threshold decision to `CredentialFile::needs_refresh` so
+    // the live refresh loop and the unit tests share exactly one copy of the
+    // expiry-vs-threshold comparison.
+    let probe = CredentialFile {
+        token: s.current_token.clone(),
+        refresh_token: Some(s.refresh_token.clone()),
+        expires_at: Some(s.expires_at_ms),
+        scopes: None,
+        subscription_type: s.subscription_type.clone(),
+    };
+    if !probe.needs_refresh() {
         return None;
     }
     Some((

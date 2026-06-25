@@ -300,7 +300,11 @@ impl DpoExtractor {
     /// continuations and pass automatically.
     fn validate_semantic_match(original_prompt: &str, chosen_prompt: &str) -> bool {
         let chosen_trimmed = chosen_prompt.trim();
-        if chosen_trimmed.len() <= CONTINUATION_MAX_CHARS {
+        // WHY: CONTINUATION_MAX_CHARS is a *character* budget for short
+        // continuations like "ok" or "thanks". Using `str::len()` would
+        // count bytes, so multi-byte characters (emoji, CJK) would either
+        // fail the bypass incorrectly or pass with far fewer visual chars.
+        if chosen_trimmed.chars().count() <= CONTINUATION_MAX_CHARS {
             return true;
         }
 
@@ -615,6 +619,25 @@ mod tests {
         assert!(DpoExtractor::validate_semantic_match(
             "What is the capital of France?",
             "thanks"
+        ));
+    }
+
+    #[test]
+    fn semantic_match_continuation_uses_char_count_not_bytes() {
+        // WHY: 5 emoji are 5 Unicode scalars but 20 bytes. A byte-count
+        // check would treat them as exactly the threshold and bypass
+        // validation; a char-count check correctly treats them as short
+        // (5 chars) and permits the continuation.
+        assert!(DpoExtractor::validate_semantic_match(
+            "What is the capital of France?",
+            "👍👍👍👍👍"
+        ));
+
+        // 21 ASCII characters exceed the character threshold and have no
+        // semantic overlap with the prompt, so validation must fail.
+        assert!(!DpoExtractor::validate_semantic_match(
+            "What is the capital of France?",
+            "abcdefghijklmnopqrstu"
         ));
     }
 

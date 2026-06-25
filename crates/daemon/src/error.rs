@@ -11,6 +11,7 @@ use snafu::Snafu;
     reason = "snafu error variant fields (source, location, context) are self-documenting via display format"
 )]
 // kanon:ignore RUST/non-exhaustive-enum — #[non_exhaustive] is present on line 8; #[expect] attribute between it and pub enum triggers false positive
+// kanon:ignore RUST/pub-visibility — Error is this crate's public API, consumed by the aletheia binary crate
 pub enum Error {
     /// Invalid cron expression.
     #[snafu(display("invalid cron expression '{expression}': {reason}"))]
@@ -35,6 +36,23 @@ pub enum Error {
     CommandFailed {
         command: String,
         source: std::io::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Shell command was cancelled before completion.
+    #[snafu(display("command cancelled: {command}"))]
+    CommandCancelled {
+        command: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Shell command exceeded its per-task timeout.
+    #[snafu(display("command timed out after {timeout_secs}s: {command}"))]
+    CommandTimedOut {
+        command: String,
+        timeout_secs: u64,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -99,4 +117,5 @@ pub enum Error {
 }
 
 /// Convenience alias for `Result` with daemon's [`Error`] type.
+// kanon:ignore RUST/pub-visibility — Result is this crate's public API, consumed by the aletheia binary crate
 pub type Result<T> = std::result::Result<T, Error>;

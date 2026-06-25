@@ -38,6 +38,8 @@ fn sse_event_type_message_complete() {
         usage: crate::stream::UsageData {
             input_tokens: 10,
             output_tokens: 5,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
         },
         request_id: None,
     };
@@ -71,6 +73,8 @@ fn sse_event_message_complete_serialization() {
         usage: crate::stream::UsageData {
             input_tokens: 100,
             output_tokens: 50,
+            cache_read_tokens: 10,
+            cache_write_tokens: 5,
         },
         request_id: Some("req-789".to_owned()),
     };
@@ -286,6 +290,8 @@ fn message_complete_is_terminal_after_error_event() {
         usage: crate::stream::UsageData {
             input_tokens: 0,
             output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
         },
         request_id: Some("req-123".to_owned()),
     };
@@ -298,4 +304,23 @@ fn message_complete_is_terminal_after_error_event() {
     assert_eq!(error_json["type"], "error");
     assert_eq!(complete_json["type"], "message_complete");
     assert_eq!(complete_json["stop_reason"], "error");
+}
+
+#[test]
+fn sse_event_message_complete_includes_cache_tokens() {
+    let event = crate::stream::SseEvent::MessageComplete {
+        stop_reason: "end_turn".to_owned(),
+        usage: crate::stream::UsageData {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 1000,
+            cache_write_tokens: 200,
+        },
+        request_id: None,
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["usage"]["input_tokens"], 100);
+    assert_eq!(json["usage"]["output_tokens"], 50);
+    assert_eq!(json["usage"]["cache_read_tokens"], 1000);
+    assert_eq!(json["usage"]["cache_write_tokens"], 200);
 }
