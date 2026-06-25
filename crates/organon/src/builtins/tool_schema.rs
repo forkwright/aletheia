@@ -260,8 +260,8 @@ mod tests {
     use crate::testing::install_crypto_provider;
     use crate::types::{
         InputSchema, PropertyDef, PropertyType, Reversibility, ServerToolConfig, ToolCategory,
-        ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput, ToolResult, ToolServices,
-        ToolTag,
+        ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolHttpClients, ToolInput, ToolResult,
+        ToolServices, ToolTag,
     };
 
     fn mock_ctx() -> ToolContext {
@@ -281,7 +281,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),

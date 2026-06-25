@@ -348,7 +348,7 @@ mod tests {
     use koina::id::{NousId, SessionId, ToolName};
 
     use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
+    use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolServices};
 
     use super::*;
 
@@ -369,7 +369,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),

@@ -76,6 +76,7 @@ impl RoleContract {
                 out.push_str("### Tool Group Policy\n\n");
                 out.push_str("- deny\n\n");
             }
+            _ => { /* no markdown representation for this policy variant */ }
         }
 
         if !self.constraints.is_empty() {
@@ -379,13 +380,6 @@ fn runner_contract() -> RoleContract {
 mod tests {
     use super::*;
 
-    fn groups(policy: &ToolGroupPolicy) -> &[ToolGroupId] {
-        match policy {
-            ToolGroupPolicy::Groups(groups) => groups,
-            ToolGroupPolicy::AllowAll { .. } | ToolGroupPolicy::DenyAll => &[],
-        }
-    }
-
     #[test]
     fn default_registry_has_all_roles() {
         let registry = ContractRegistry::defaults();
@@ -608,7 +602,7 @@ constraints = ["Custom constraint"]
         let registry = ContractRegistry::defaults();
         for (name, contract) in registry.all() {
             assert!(
-                !groups(&contract.tool_groups).is_empty(),
+                !contract.tool_groups.allowed_groups().is_empty(),
                 "contract for {name} should have non-empty tool_groups"
             );
         }
@@ -618,7 +612,7 @@ constraints = ["Custom constraint"]
     fn coder_has_edit_and_command_groups() {
         let registry = ContractRegistry::defaults();
         let coder = registry.get("coder").unwrap();
-        let groups = groups(&coder.tool_groups);
+        let groups = coder.tool_groups.allowed_groups();
         assert!(groups.contains(&ToolGroupId::Read));
         assert!(groups.contains(&ToolGroupId::Edit));
         assert!(groups.contains(&ToolGroupId::Command));
@@ -629,7 +623,7 @@ constraints = ["Custom constraint"]
     fn explorer_is_read_only_plus_plan() {
         let registry = ContractRegistry::defaults();
         let explorer = registry.get("explorer").unwrap();
-        let groups = groups(&explorer.tool_groups);
+        let groups = explorer.tool_groups.allowed_groups();
         assert!(groups.contains(&ToolGroupId::Read));
         assert!(groups.contains(&ToolGroupId::Plan));
         assert!(!groups.contains(&ToolGroupId::Edit));
@@ -691,7 +685,7 @@ tool_groups = ["read", "edit"]
 "#;
         let registry = ContractRegistry::from_toml(toml).unwrap();
         let coder = registry.get("coder").unwrap();
-        let groups = groups(&coder.tool_groups);
+        let groups = coder.tool_groups.allowed_groups();
         assert_eq!(groups.len(), 2);
         assert!(groups.contains(&ToolGroupId::Read));
         assert!(groups.contains(&ToolGroupId::Edit));

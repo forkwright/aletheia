@@ -51,6 +51,16 @@ pub(crate) struct ServerToolCatalogEntry {
     pub sensitive: bool,
 }
 
+impl ServerToolCatalogEntry {
+    pub(crate) fn new(name: ToolName, description: impl Into<String>, sensitive: bool) -> Self {
+        Self {
+            name,
+            description: description.into(),
+            sensitive,
+        }
+    }
+}
+
 impl ServerToolConfig {
     /// Generate catalog entries for server tools available via `enable_tool`.
     #[must_use]
@@ -66,19 +76,18 @@ impl ServerToolConfig {
     pub(crate) fn catalog_entries_with_metadata(&self) -> Vec<ServerToolCatalogEntry> {
         let mut entries = Vec::new();
         if self.web_search {
-            entries.push(ServerToolCatalogEntry {
-                name: ToolName::from_static("web_search"), // kanon:ignore RUST/expect
-                description: "Search the web using Anthropic's server-side web search".to_owned(),
-                sensitive: false,
-            });
+            entries.push(ServerToolCatalogEntry::new(
+                ToolName::from_static("web_search"), // kanon:ignore RUST/expect
+                "Search the web using Anthropic's server-side web search",
+                false,
+            ));
         }
         if self.code_execution {
-            entries.push(ServerToolCatalogEntry {
-                name: ToolName::from_static("code_execution"), // kanon:ignore RUST/expect
-                description: "Execute Python code in a sandboxed server-side environment"
-                    .to_owned(),
-                sensitive: true,
-            });
+            entries.push(ServerToolCatalogEntry::new(
+                ToolName::from_static("code_execution"), // kanon:ignore RUST/expect
+                "Execute Python code in a sandboxed server-side environment",
+                true,
+            ));
         }
         entries
     }
@@ -118,6 +127,40 @@ impl ServerToolConfig {
     }
 }
 
+/// Paired HTTP clients supplied to tool executors.
+///
+/// `general` is a standard client for outbound requests.
+/// `ssrf_safe` has auto-redirect disabled so tools that perform their own
+/// SSRF-safe redirect validation (`web_fetch`, `http_request`) can revalidate
+/// each hop before following it.
+///
+/// WHY: reqwest does not expose a way to reconfigure an existing client's
+/// redirect policy, so the runtime supplies a pre-built SSRF-safe client
+/// alongside the general-purpose client. Both should be constructed from the
+/// same operator HTTP configuration (proxy, TLS CA, connection pool) so
+/// uniform policy enforcement is possible.
+pub struct ToolHttpClients {
+    /// General-purpose HTTP client with default redirect policy.
+    pub general: reqwest::Client,
+    /// HTTP client with auto-redirect disabled for SSRF-safe redirect validation.
+    pub ssrf_safe: reqwest::Client,
+}
+
+impl ToolHttpClients {
+    /// Build a `ToolHttpClients` suitable for unit tests.
+    #[cfg(test)]
+    pub(crate) fn for_tests() -> Self {
+        Self {
+            general: reqwest::Client::new(),
+            ssrf_safe: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
+        }
+    }
+}
+
 /// Service locator for tool executors needing access to runtime services.
 #[expect(
     missing_docs,
@@ -132,7 +175,8 @@ pub struct ToolServices {
     pub planning: Option<Arc<dyn PlanningService>>,
     pub knowledge: Option<Arc<dyn KnowledgeSearchService>>,
     pub working_checkpoint_store: Option<Arc<dyn crate::types::WorkingCheckpointStore>>,
-    pub http_client: reqwest::Client,
+    /// Paired HTTP clients: general-purpose and SSRF-safe (redirect-disabled).
+    pub http_clients: ToolHttpClients,
     /// In-memory vault for session-scoped secrets (AWS SSO keys, API tokens, etc.).
     ///
     /// Referenced via `{{secret:<name>}}` or `$SECRET(<name>)` placeholders in
@@ -159,6 +203,7 @@ impl std::fmt::Debug for ToolServices {
                 "working_checkpoint_store",
                 &self.working_checkpoint_store.is_some(),
             )
+            .field("http_clients", &"ToolHttpClients { .. }")
             .field("secret_vault_len", &self.secret_vault.len())
             .field("lazy_tool_catalog_len", &self.lazy_tool_catalog.len())
             .field("server_tool_config", &self.server_tool_config)

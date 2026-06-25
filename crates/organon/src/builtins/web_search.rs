@@ -68,7 +68,7 @@ struct BraveResult {
 fn require_http_client(ctx: &ToolContext) -> std::result::Result<reqwest::Client, ToolResult> {
     ctx.services
         .as_deref()
-        .map(|s| s.http_client.clone())
+        .map(|s| s.http_clients.general.clone())
         .ok_or_else(|| ToolResult::error("tool services not configured"))
 }
 
@@ -220,7 +220,7 @@ mod tests {
 
     use koina::id::{NousId, SessionId};
 
-    use crate::types::{ServerToolConfig, ToolContext, ToolServices};
+    use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolServices};
 
     use super::*;
 
@@ -253,7 +253,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),

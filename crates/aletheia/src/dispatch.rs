@@ -225,28 +225,33 @@ async fn execute_command(
     };
 
     #[cfg(feature = "recall")]
-    let skills: Vec<String> = nous_manager
-        .get_config(nous_id)
-        .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()))
-        .and_then(|knowledge_store| knowledge_store.find_skills_for_nous(nous_id, 50).ok())
-        .map(|facts| {
-            facts
-                .iter()
-                .map(|fact| {
-                    serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
-                        .map_or_else(|_| fact.id.to_string(), |skill| skill.name)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let skills: Vec<String> = {
+        let store = nous_manager
+            .get_config(nous_id)
+            .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()));
+        match store {
+            Some(knowledge_store) => match knowledge_store.find_skills_for_nous(nous_id, 50) {
+                Ok(facts) => facts
+                    .iter()
+                    .map(|fact| {
+                        serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
+                            .map_or_else(|_| fact.id.to_string(), |skill| skill.name)
+                    })
+                    .collect(),
+                Err(e) => {
+                    warn!(error = %e, "failed to load skills for nous");
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        }
+    };
     #[cfg(not(feature = "recall"))]
     let skills: Vec<String> = Vec::new();
 
-    let blackboard_entries: Vec<String> = nous_manager
-        .blackboard_store()
-        .and_then(|blackboard_store| blackboard_store.list().ok())
-        .map(|entries| {
-            entries
+    let blackboard_entries: Vec<String> = match nous_manager.blackboard_store() {
+        Some(blackboard_store) => match blackboard_store.list() {
+            Ok(entries) => entries
                 .iter()
                 .map(|entry| {
                     format!(
@@ -254,9 +259,14 @@ async fn execute_command(
                         entry.key, entry.value, entry.author_nous_id
                     )
                 })
-                .collect()
-        })
-        .unwrap_or_default();
+                .collect(),
+            Err(e) => {
+                warn!(error = %e, "failed to list blackboard entries");
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    };
 
     let ctx = CommandContext {
         current_nous_id: nous_id.to_owned(),
@@ -310,14 +320,14 @@ mod tests {
     use hermeneus::test_utils::MockProvider;
     use mneme::store::SessionStore;
     use nous::adapters::SessionBlackboardAdapter;
+    use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
     use nous::manager::NousManager;
     use organon::registry::ToolRegistry;
-    use organon::types::{BlackboardStore, ToolServices};
+    use organon::types::{BlackboardStore, ToolHttpClients, ToolServices};
     use taxis::oikos::Oikos;
     use tokio::sync::Mutex;
 
     use super::*;
-    use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
 
     #[expect(
         clippy::disallowed_methods,
@@ -353,7 +363,14 @@ mod tests {
             planning: None,
             knowledge: None,
             working_checkpoint_store: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients {
+                general: reqwest::Client::new(),
+                ssrf_safe: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
+            },
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: Vec::new(),
             server_tool_config: organon::types::ServerToolConfig::default(),

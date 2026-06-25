@@ -337,7 +337,8 @@ mod tests {
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        CrossNousService, MessageService, ServerToolConfig, ToolContext, ToolInput, ToolServices,
+        CrossNousService, MessageService, ServerToolConfig, ToolContext, ToolHttpClients,
+        ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {
@@ -548,7 +549,7 @@ mod tests {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
@@ -582,7 +583,7 @@ mod tests {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
@@ -632,7 +633,7 @@ mod tests {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
@@ -679,7 +680,7 @@ mod tests {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
@@ -715,7 +716,7 @@ mod tests {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
@@ -750,7 +751,7 @@ mod tests {
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),

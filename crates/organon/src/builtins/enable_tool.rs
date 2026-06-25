@@ -215,8 +215,8 @@ mod tests {
     use crate::surface::SurfaceInputs;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        ApprovalRequirement, ServerToolConfig, ToolContext, ToolGroupPolicy, ToolInput,
-        ToolServices,
+        ApprovalRequirement, ServerToolConfig, ToolContext, ToolGroupPolicy, ToolHttpClients,
+        ToolInput, ToolServices,
     };
 
     use super::*;
@@ -238,7 +238,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: catalog,
                 server_tool_config: ServerToolConfig::default(),
@@ -358,7 +358,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: config,

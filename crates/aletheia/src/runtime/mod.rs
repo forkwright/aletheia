@@ -25,7 +25,7 @@ use nous::cross::CrossNousRouter;
 use nous::manager::NousManager;
 use oikonomos::runner::TaskRunner;
 use organon::registry::ToolRegistry;
-use organon::types::ToolServices;
+use organon::types::{ToolHttpClients, ToolServices};
 use pylon::state::AppState;
 use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
@@ -603,7 +603,14 @@ impl RuntimeBuilder {
             spawn,
             planning,
             knowledge: knowledge_search,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients {
+                general: reqwest::Client::new(),
+                ssrf_safe: reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
+            },
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
             server_tool_config: organon::types::ServerToolConfig::default(),

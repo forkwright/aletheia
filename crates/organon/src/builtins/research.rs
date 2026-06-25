@@ -8,7 +8,6 @@ use std::future::Future;
 use std::pin::Pin;
 
 use indexmap::IndexMap;
-use reqwest::redirect;
 
 use koina::http::{
     HostResolver, TokioHostResolver, validate_url_not_internal,
@@ -119,7 +118,7 @@ impl ToolExecutor for WebFetchExecutor {
         ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
-            let _services = match require_services(ctx) {
+            let services = match require_services(ctx) {
                 Ok(s) => s,
                 Err(r) => return Ok(r),
             };
@@ -138,20 +137,16 @@ impl ToolExecutor for WebFetchExecutor {
                 return Ok(ToolResult::error(msg));
             }
 
-            let ssrf_safe_client = match reqwest::Client::builder()
-                .redirect(redirect::Policy::none())
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
+            let response = match get_with_safe_redirects(
+                &services.http_clients.ssrf_safe,
+                url,
+                &TokioHostResolver,
+            )
+            .await
             {
-                Ok(c) => c,
-                Err(e) => return Ok(ToolResult::error(format!("client build failed: {e}"))),
+                Ok(r) => r,
+                Err(e) => return Ok(ToolResult::error(e)),
             };
-
-            let response =
-                match get_with_safe_redirects(&ssrf_safe_client, url, &TokioHostResolver).await {
-                    Ok(r) => r,
-                    Err(e) => return Ok(ToolResult::error(e)),
-                };
 
             if !response.status().is_success() {
                 return Ok(ToolResult::error(format!("HTTP {}", response.status())));
@@ -362,8 +357,10 @@ mod tests {
     use koina::http::ResolveHostFuture;
     use koina::id::{NousId, SessionId, ToolName};
 
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
     use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolInput, ToolServices};
+    use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolServices};
 
     use super::*;
 
@@ -406,7 +403,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_client: reqwest::Client::new(),
+                http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),
@@ -483,6 +480,106 @@ mod tests {
             result.content.text_summary().contains("http"),
             "expected result.content.text_summary().contains(\"http\") to be true"
         );
+    }
+
+    #[tokio::test]
+    async fn web_fetch_uses_configured_ssrf_http_client() {
+        // WHY: verify that web_fetch routes through ToolServices.ssrf_http_client
+        // rather than constructing its own reqwest::Client. We start a local
+        // HTTP server and use reqwest's per-client DNS override to point
+        // example.com at it; if web_fetch used a freshly built client, the
+        // override would be ignored and the request would hit the real example.com.
+        install_crypto_provider();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test listener should bind");
+        let local_addr = listener.local_addr().expect("local addr");
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept");
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 1024];
+            loop {
+                let n = stream.read(&mut chunk).await.expect("read");
+                if n == 0 {
+                    break;
+                }
+                buf.extend_from_slice(chunk.get(..n).expect("n is bounded by chunk.len()"));
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let request = String::from_utf8_lossy(&buf);
+            assert!(
+                request.contains("GET / HTTP/1.1"),
+                "expected GET request, got: {request}"
+            );
+            let body = "hello from configured client";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.expect("write");
+        });
+
+        let ssrf_http_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(5))
+            .resolve("example.com", local_addr)
+            .build()
+            .expect("test client should build");
+        let ctx = mock_ctx_with_ssrf_client(ssrf_http_client);
+        let executor = WebFetchExecutor;
+        let input = ToolInput {
+            name: ToolName::from_static("web_fetch"),
+            tool_use_id: "toolu_2".to_owned(),
+            arguments: serde_json::json!({"url": "http://example.com"}),
+        };
+
+        let result = executor.execute(&input, &ctx).await.expect("execute");
+        assert!(
+            !result.is_error,
+            "expected successful fetch, got: {result:?}"
+        );
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("hello from configured client"),
+            "expected response from local server, got: {result:?}"
+        );
+
+        server.await.expect("server task");
+    }
+
+    fn mock_ctx_with_ssrf_client(ssrf_http_client: reqwest::Client) -> ToolContext {
+        install_crypto_provider();
+        ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            turn_number: 0,
+            workspace: std::path::PathBuf::from("/tmp/test"),
+            allowed_roots: vec![std::path::PathBuf::from("/tmp")],
+            services: Some(Arc::new(ToolServices {
+                working_checkpoint_store: None,
+                cross_nous: None,
+                messenger: None,
+                note_store: None,
+                blackboard_store: None,
+                spawn: None,
+                planning: None,
+                knowledge: None,
+                http_clients: ToolHttpClients {
+                    general: reqwest::Client::new(),
+                    ssrf_safe: ssrf_http_client,
+                },
+                secret_vault: hermeneus::secret::SecretVault::new(),
+                lazy_tool_catalog: vec![],
+                server_tool_config: ServerToolConfig::default(),
+            })),
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+        }
     }
 
     #[tokio::test]

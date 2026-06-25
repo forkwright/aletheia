@@ -13,7 +13,7 @@ use koina::id::{NousId, SessionId, ToolName};
 use crate::registry::ToolRegistry;
 use crate::types::{
     BlackboardEntry, BlackboardStore, NoteEntry, NoteStore, ServerToolConfig, ToolContext,
-    ToolInput, ToolServices,
+    ToolHttpClients, ToolInput, ToolServices,
 };
 
 use crate::error::StoreError;
@@ -176,7 +176,7 @@ fn ctx_with_services(
             spawn: None,
             planning: None,
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),

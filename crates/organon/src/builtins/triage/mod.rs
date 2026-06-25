@@ -112,7 +112,7 @@ impl ToolExecutor for IssueScanExecutor {
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(30);
 
             let issues = match fetch_issues(
-                &services.http_client,
+                &services.http_clients.general,
                 repo,
                 label_filter,
                 milestone_filter,
@@ -154,7 +154,7 @@ impl ToolExecutor for IssueTriageExecutor {
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(30);
 
             let issues = match fetch_issues(
-                &services.http_client,
+                &services.http_clients.general,
                 repo,
                 label_filter,
                 milestone_filter,

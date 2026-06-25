@@ -10,7 +10,8 @@ use koina::id::{NousId, SessionId};
 use crate::error::PlanningAdapterError;
 use crate::testing::install_crypto_provider;
 use crate::types::{
-    PlanningPlanInput, PlanningService, ServerToolConfig, ToolContext, ToolServices,
+    PlanningPlanInput, PlanningService, ServerToolConfig, ToolContext, ToolHttpClients,
+    ToolServices,
 };
 
 pub(super) fn test_ctx() -> ToolContext {
@@ -43,7 +44,7 @@ pub(super) fn test_ctx_with_planning(planning: Arc<dyn PlanningService>) -> Tool
             spawn: None,
             planning: Some(planning),
             knowledge: None,
-            http_client: reqwest::Client::new(),
+            http_clients: ToolHttpClients::for_tests(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: vec![],
             server_tool_config: ServerToolConfig::default(),
