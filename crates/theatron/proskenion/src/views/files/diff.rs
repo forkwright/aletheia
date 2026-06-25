@@ -86,7 +86,7 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
         spawn(async move {
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = keryx::url::encode_path_segment(p);
+            let encoded: String = keryx::url::encode_path_segment(&p);
             let url = format!("{base}/api/v1/workspace/diff?path={encoded}");
 
             match client.get(&url).send().await {

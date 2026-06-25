@@ -257,7 +257,7 @@ pub(crate) fn Memory() -> Element {
             );
 
             if !search.is_empty() {
-                let encoded: String = keryx::url::encode_path_segment(search);
+                let encoded: String = keryx::url::encode_path_segment(&search);
                 url.push_str(&format!("&filter={encoded}"));
             }
 
@@ -327,7 +327,7 @@ pub(crate) fn Memory() -> Element {
             }
 
             if !search.is_empty() {
-                let encoded: String = keryx::url::encode_path_segment(search);
+                let encoded: String = keryx::url::encode_path_segment(&search);
                 url.push_str(&format!("&q={encoded}"));
             }
 
@@ -424,7 +424,7 @@ pub(crate) fn Memory() -> Element {
         spawn(async move {
             let client = authenticated_client(&cfg);
             let base = cfg.server_url.trim_end_matches('/');
-            let encoded: String = keryx::url::encode_path_segment(id);
+            let encoded: String = keryx::url::encode_path_segment(&id);
 
             let entity_url = format!("{base}/api/v1/knowledge/entities/{encoded}");
             let rels_url = format!("{base}/api/v1/knowledge/entities/{encoded}/relationships");

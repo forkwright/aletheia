@@ -294,7 +294,7 @@ fn toggle_directory(
     spawn(async move {
         let client = authenticated_client(&cfg);
         let base = cfg.server_url.trim_end_matches('/');
-        let encoded: String = keryx::url::encode_path_segment(path_owned);
+        let encoded: String = keryx::url::encode_path_segment(&path_owned);
         let url = format!("{base}/api/v1/workspace/files?path={encoded}");
 
         if let Ok(resp) = client.get(&url).send().await

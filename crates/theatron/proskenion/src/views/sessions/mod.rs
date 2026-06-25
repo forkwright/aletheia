@@ -153,7 +153,7 @@ pub(crate) fn Sessions() -> Element {
                 }
 
                 if !search.is_empty() {
-                    let encoded: String = keryx::url::encode_path_segment(search);
+                    let encoded: String = keryx::url::encode_path_segment(&search);
                     url.push_str(&format!("&search={encoded}"));
                 }
 

@@ -417,7 +417,7 @@ pub(crate) fn FlagDialog(
                                     let client = authenticated_client(&cfg);
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
-                                        keryx::url::encode_path_segment(id);
+                                        keryx::url::encode_path_segment(&id);
                                     let url = format!("{base}/api/v1/knowledge/entities/{encoded}/flag");
 
                                     let body = serde_json::json!({
@@ -529,7 +529,7 @@ pub(crate) fn DeleteDialog(
                                     let client = authenticated_client(&cfg);
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
-                                        keryx::url::encode_path_segment(id);
+                                        keryx::url::encode_path_segment(&id);
                                     let url = format!("{base}/api/v1/knowledge/entities/{encoded}");
 
                                     match client.delete(&url).send().await {
