@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use koina::system::{Environment, RealSystem};
 use snafu::ResultExt;
@@ -36,6 +36,11 @@ pub(crate) struct ExecutionContext<'a> {
     pub(crate) knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
     pub(crate) daemon_behavior: &'a taxis::config::DaemonBehaviorConfig,
     pub(crate) cancel: CancellationToken,
+    /// Maximum duration a single command may run before being killed.
+    ///
+    /// WHY: each action arm needs an inner timeout independent of the outer
+    /// 2× in-flight watchdog so hung commands are terminated promptly.
+    pub(crate) timeout: Duration,
 }
 
 /// Execute a task action. Receives owned `Arc`s for executor references
@@ -67,6 +72,9 @@ pub(crate) async fn execute_action(
             knowledge_store: None,
             daemon_behavior,
             cancel: CancellationToken::new(),
+            // WHY: tests use the same default per-task timeout as production
+            // task definitions so behavior is representative.
+            timeout: Duration::from_mins(5),
         },
     )
     .await
@@ -80,7 +88,7 @@ pub(crate) async fn execute_action_with_cancel(
     ctx: ExecutionContext<'_>,
 ) -> Result<ExecutionResult> {
     match action {
-        TaskAction::Command(cmd) => execute_command(cmd).await,
+        TaskAction::Command(cmd) => execute_command(cmd, ctx.cancel.clone(), ctx.timeout).await,
         TaskAction::SelfPrompt(prompt) => {
             crate::self_prompt::execute_self_prompt_with_cancel(
                 ctx.nous_id,
@@ -94,18 +102,36 @@ pub(crate) async fn execute_action_with_cancel(
     }
 }
 
-async fn execute_command(cmd: &str) -> Result<ExecutionResult> {
-    // NOTE: tokio::process::Child kills the child on Drop, providing the same
-    // orphan-prevention guarantee as ProcessGuard. The .output() method spawns,
-    // waits, and collects in one step -- if the future is cancelled, the child
-    // is killed automatically by tokio's drop semantics.
-    let output = tokio::process::Command::new("sh")
-        .args(["-c", cmd])
-        .output()
-        .await
-        .context(error::CommandFailedSnafu {
-            command: cmd.to_owned(),
-        })?;
+async fn execute_command(
+    cmd: &str,
+    cancel: CancellationToken,
+    timeout: Duration,
+) -> Result<ExecutionResult> {
+    // WHY: race the child process against both the configured per-task timeout
+    // and a graceful cancellation request. Dropping the `output()` future drops
+    // the `tokio::process::Command`, which kills the child process automatically.
+    let output = tokio::select! {
+        biased;
+        output = tokio::process::Command::new("sh").args(["-c", cmd]).output() => output,
+        () = cancel.cancelled() => {
+            return error::CommandCancelledSnafu {
+                command: cmd.to_owned(),
+            }
+            .fail();
+        }
+        // kanon:ignore TESTING/sleep-in-test — production timeout arm in tokio::select!, not a test sleep
+        () = tokio::time::sleep(timeout) => {
+            return error::CommandTimedOutSnafu {
+                command: cmd.to_owned(),
+                timeout_secs: timeout.as_secs(),
+            }
+            .fail();
+        }
+    };
+
+    let output = output.context(error::CommandFailedSnafu {
+        command: cmd.to_owned(),
+    })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -201,6 +227,7 @@ pub(crate) async fn execute_builtin(
             knowledge_store: None,
             daemon_behavior: &daemon_behavior,
             cancel: CancellationToken::new(),
+            timeout: Duration::from_mins(5),
         },
     )
     .await
@@ -476,15 +503,9 @@ pub(crate) async fn execute_builtin_with_behavior(
         BuiltinTask::LessonExtraction => {
             execute_lesson_extraction(nous_id, knowledge_executor).await
         }
-        BuiltinTask::SelfPrompt => {
-            // NOTE: SelfPrompt is dispatched inline by the runner after
-            // extracting a follow-up from prosoche output. This arm handles
-            // the case where it's registered as a standalone task (should not
-            // happen in normal operation).
-            Ok(ExecutionResult::failed(Some(
-                "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
-            )))
-        }
+        BuiltinTask::SelfPrompt => Ok(ExecutionResult::failed(Some(
+            "self-prompt must be dispatched via runner follow-up extraction".to_owned(),
+        ))),
         BuiltinTask::ProposeRules => {
             let data_dir = maintenance.map_or_else(
                 || {
@@ -1086,3 +1107,7 @@ fn persist_facts<'a>(
 #[cfg(test)]
 #[path = "execution_tests.rs"]
 mod execution_tests;
+
+#[cfg(test)]
+#[path = "execution_knowledge_tests.rs"]
+mod execution_knowledge_tests;

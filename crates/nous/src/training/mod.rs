@@ -34,6 +34,7 @@
 //! This keeps the training corpus clean of failure modes and non-content
 //! turns that would teach the model to reproduce degenerate outputs.
 
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -115,6 +116,17 @@ pub enum TrainingCaptureError {
     ReadManifest {
         path: PathBuf,
         source: std::io::Error,
+    },
+
+    /// Manifest on disk is corrupt or unreadable as JSON.
+    ///
+    /// WHY: a corrupt manifest is a data-loss signal. Silent reset would
+    /// hide orphan shards and under-count durable records, so we surface
+    /// the failure and let the operator repair or remove the file.
+    #[snafu(display("training manifest at {} is corrupt: {source}", path.display()))]
+    CorruptManifest {
+        path: PathBuf,
+        source: serde_json::Error,
     },
 }
 
@@ -473,45 +485,27 @@ impl TrainingCapture {
         fs::create_dir_all(&dir).context(CreateDirSnafu { path: &dir })?;
 
         let manifest_path = dir.join("training-manifest.json");
-        let legacy_path = dir.join("conversations.jsonl");
 
         let mut manifest = if manifest_path.exists() {
             let content = fs::read_to_string(&manifest_path).context(ReadManifestSnafu {
                 path: &manifest_path,
             })?;
-            serde_json::from_str(&content).unwrap_or_else(|_| TrainingManifest::new())
+            serde_json::from_str(&content).map_err(|source| {
+                TrainingCaptureError::CorruptManifest {
+                    path: manifest_path.clone(),
+                    source,
+                }
+            })?
         } else {
             TrainingManifest::new()
         };
 
-        if legacy_path.exists()
-            && !manifest
-                .shards
-                .iter()
-                .any(|s| s.file_name == "conversations.jsonl")
-        {
-            let meta =
-                fs::metadata(&legacy_path).context(ReadMetadataSnafu { path: &legacy_path })?;
-            // kanon:ignore RUST/no-result-unwrap-or-default — legacy file read failure yields empty string; zero lines is safe fallback
-            let line_count = fs::read_to_string(&legacy_path)
-                .unwrap_or_default()
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-                .count();
-            #[expect(clippy::as_conversions, reason = "usize→u64: line count fits in u64")]
-            let record_count = line_count as u64; // kanon:ignore RUST/as-cast
-
-            manifest.shards.push(ShardEntry {
-                file_name: "conversations.jsonl".to_owned(),
-                record_count,
-                size_bytes: meta.len(),
-            });
-            manifest.total_records += record_count;
-            // WHY: legacy records may be schema v0 or v1
-            if record_count > 0 {
-                manifest.schema_version_min = 0;
-            }
-        }
+        // WHY: trust the filesystem, not the manifest. A crash between JSONL
+        // append and manifest persist can leave durable rows that the manifest
+        // under-counts or omits. Re-scanning every shard rebuilds the counts,
+        // discovers orphan rotated files, and collects the turn-id index used
+        // for idempotent capture.
+        let captured_turn_ids = Self::reconcile_manifest(&dir, &mut manifest)?;
 
         let current_shard = Self::resolve_current_shard(&dir, &manifest, config.max_shard_bytes)?;
 
@@ -530,7 +524,12 @@ impl TrainingCapture {
 
         manifest.persist(&manifest_path)?;
 
-        debug!(path = %dir.display(), shards = manifest.shards.len(), "training capture initialized");
+        debug!(
+            path = %dir.display(),
+            shards = manifest.shards.len(),
+            captured_turn_ids = captured_turn_ids.len(),
+            "training capture initialized"
+        );
 
         let classifier = if config.author_classifier_enabled {
             Some(Arc::new(aletheia_classify::Classifier::new()))
@@ -548,6 +547,126 @@ impl TrainingCapture {
             classifier,
             classifier_threshold: config.author_classifier_threshold,
         })
+    }
+
+    /// Reconcile manifest state against every shard file on disk.
+    ///
+    /// Scans `conversations.jsonl` and `training-*.jsonl` files in the
+    /// training directory, recomputes per-shard record counts and sizes, and
+    /// rebuilds the aggregate totals and schema-version range from the actual
+    /// JSONL rows. Missing manifest entries for discovered files are appended
+    /// in deterministic filename order; entries for files that no longer exist
+    /// are dropped.
+    ///
+    /// Returns the set of durable `turn_id` values found in the corpus, used
+    /// by [`TrainingCapture::maybe_capture`] to skip already-captured turns.
+    fn reconcile_manifest(dir: &Path, manifest: &mut TrainingManifest) -> Result<HashSet<String>> {
+        let mut actual: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+        let mut captured_turn_ids = HashSet::new();
+        let mut total_records = 0u64;
+        let mut schema_min = manifest.schema_version_min;
+        let mut schema_max = manifest.schema_version_max;
+        let mut saw_record = false;
+
+        let entries = fs::read_dir(dir).context(ReadMetadataSnafu { path: dir })?;
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name != "conversations.jsonl" && !name.starts_with("training-") {
+                continue;
+            }
+            if !std::path::Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("jsonl"))
+            {
+                continue;
+            }
+
+            let path = dir.join(&name);
+            let meta = fs::metadata(&path).context(ReadMetadataSnafu { path: &path })?;
+
+            // WHY: empty or unreadable shard files are counted as zero-record
+            // shards. A non-empty line that fails JSON parsing still represents
+            // a durable byte on disk and is counted as a record, but its schema
+            // version is treated as unknown (0) for safety.
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(path = %path.display(), error = %e, "shard unreadable; counting as zero records");
+                    String::new()
+                }
+            };
+            let mut record_count = 0u64;
+            for line in content.lines() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                record_count += 1;
+
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+                    let version_u32 = value
+                        .get("schema_version")
+                        .and_then(serde_json::Value::as_u64)
+                        .and_then(|n| u32::try_from(n).ok())
+                        .unwrap_or(0);
+                    if saw_record {
+                        schema_min = schema_min.min(version_u32);
+                        schema_max = schema_max.max(version_u32);
+                    } else {
+                        schema_min = version_u32;
+                        schema_max = version_u32;
+                        saw_record = true;
+                    }
+                    if let Some(serde_json::Value::String(turn_id)) = value.get("turn_id") {
+                        captured_turn_ids.insert(turn_id.clone());
+                    }
+                } else {
+                    // Unparseable durable row forces the schema range to include
+                    // the unknown-version bucket.
+                    if saw_record {
+                        schema_min = 0;
+                    } else {
+                        schema_min = 0;
+                        schema_max = 0;
+                        saw_record = true;
+                    }
+                }
+            }
+
+            actual.insert(name, (record_count, meta.len()));
+            total_records += record_count;
+        }
+
+        // Preserve the manifest order for files that still exist, then append
+        // any orphan shards in deterministic filename order.
+        let mut new_shards = Vec::new();
+        for shard in &manifest.shards {
+            if let Some(&(count, size)) = actual.get(&shard.file_name) {
+                new_shards.push(ShardEntry {
+                    file_name: shard.file_name.clone(),
+                    record_count: count,
+                    size_bytes: size,
+                });
+            }
+        }
+        for (name, &(count, size)) in &actual {
+            if !new_shards.iter().any(|s| &s.file_name == name) {
+                new_shards.push(ShardEntry {
+                    file_name: name.clone(),
+                    record_count: count,
+                    size_bytes: size,
+                });
+            }
+        }
+
+        manifest.shards = new_shards;
+        manifest.total_records = total_records;
+        if saw_record {
+            manifest.schema_version_min = schema_min;
+            manifest.schema_version_max = schema_max;
+        }
+
+        Ok(captured_turn_ids)
     }
 
     /// Resolve which shard file to write to. Returns the last shard if it's
@@ -887,6 +1006,10 @@ pub use pii::redact as redact_pii;
 #[cfg(test)]
 #[path = "../training_tests.rs"]
 mod training_tests;
+
+#[cfg(test)]
+#[path = "../training_reconciliation_tests.rs"]
+mod training_reconciliation_tests;
 
 #[cfg(test)]
 mod pii_filter_disabled_regression {

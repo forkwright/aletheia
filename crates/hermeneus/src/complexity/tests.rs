@@ -191,6 +191,21 @@ fn agent_override_bypasses_scoring() {
 }
 
 #[test]
+fn tier_override_preserved_when_threshold_would_demote() {
+    let mut inp = input("simple question");
+    inp.tier_override = Some(ModelTier::Sonnet);
+    let config = ComplexityConfig {
+        enabled: true,
+        low_threshold: 55,
+        ..Default::default()
+    };
+
+    let decision = route_model(&inp, &config);
+    assert_eq!(decision.complexity.tier, ModelTier::Sonnet);
+    assert_eq!(decision.model, names::sonnet());
+}
+
+#[test]
 fn cross_agent_always_opus() {
     let mut inp = input("hello");
     inp.depth = 1;

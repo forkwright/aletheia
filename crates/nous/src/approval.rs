@@ -17,7 +17,7 @@ use tracing::warn;
 /// 120s matches the desktop daily-driver UX: long enough to read the
 /// overlay, short enough that a dropped client connection denies the
 /// irreversible action rather than letting it hang the pipeline.
-pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_secs(120);
+pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// A user's decision on a single tool approval request.
 #[derive(Debug, Clone)]
@@ -27,6 +27,16 @@ pub struct ApprovalDecision {
     pub tool_id: String,
     /// Approve or deny.
     pub choice: ApprovalChoice,
+}
+
+impl ApprovalDecision {
+    /// Construct a decision for the given tool call ID and choice.
+    pub fn new(tool_id: impl Into<String>, choice: ApprovalChoice) -> Self {
+        Self {
+            tool_id: tool_id.into(),
+            choice,
+        }
+    }
 }
 
 /// Operator choice for a tool approval request.

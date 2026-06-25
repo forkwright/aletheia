@@ -33,7 +33,7 @@ const LIST_TOOLS_TIMEOUT: Duration = Duration::from_secs(10);
 ///
 /// WHY(#5757): an unresponsive peer stalls an entire agent turn without this guard.
 /// Generous default to accommodate long-running tools; should be sourced from config.
-const CALL_TOOL_TIMEOUT: Duration = Duration::from_secs(60);
+const CALL_TOOL_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Stdio child-process MCP server configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]

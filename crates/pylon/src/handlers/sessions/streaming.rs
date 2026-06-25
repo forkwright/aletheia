@@ -22,6 +22,7 @@ use nous::stream::TurnStreamEvent;
 use mneme::types::SessionStatus;
 
 use symbolon::types::Role;
+use taxis::config::AletheiaConfig;
 
 use crate::error::{
     ApiError, BadRequestSnafu, ConflictSnafu, FieldError, InternalSnafu, NousNotFoundSnafu,
@@ -30,7 +31,7 @@ use crate::error::{
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
-use crate::state::SessionsState;
+use crate::state::{EventBusState, SessionsState};
 use crate::stream::{SseEvent, TurnOutcome, TurnStreamEvent as PylonTurnStreamEvent, UsageData};
 use crate::turn_buffer::{REPLAY_GAP_REASON_BUFFER_CAPACITY, RecordOutcome, TurnBufferHandle};
 
@@ -42,6 +43,20 @@ const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
 const HEX_DECIMAL_DIGITS: u8 = 10;
 const ASCII_DIGIT_ZERO: u8 = b'0';
 const ASCII_LOWER_A: u8 = b'a';
+
+/// Build an SSE [`KeepAlive`] using the configured gateway heartbeat interval.
+///
+/// WHY(#5156): All SSE streams share one keepalive cadence so the gateway,
+/// clients, and reverse proxies agree on the transport contract.
+async fn gateway_keepalive(
+    config: &tokio::sync::RwLock<AletheiaConfig>,
+    text: &'static str,
+) -> KeepAlive {
+    let secs = config.read().await.gateway.sse_heartbeat_interval_secs;
+    KeepAlive::new()
+        .interval(Duration::from_secs(secs))
+        .text(text)
+}
 
 fn turn_complete_event_payload(
     session_id: &str,
@@ -55,6 +70,8 @@ fn turn_complete_event_payload(
         "turn_id": turn_id,
         "input_tokens": result.usage.input_tokens,
         "output_tokens": result.usage.output_tokens,
+        "cache_read_tokens": result.usage.cache_read_tokens,
+        "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
     })
 }
@@ -333,6 +350,16 @@ pub async fn send_message(
                     reason = "serde_json::Value Index returns Null for absent keys, never panics"
                 )]
                 let output_tokens = cached["output_tokens"].as_u64().unwrap_or(0);
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
+                let cache_read_tokens = cached["cache_read_tokens"].as_u64().unwrap_or(0);
+                #[expect(
+                    clippy::indexing_slicing,
+                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
+                )]
+                let cache_write_tokens = cached["cache_write_tokens"].as_u64().unwrap_or(0);
 
                 // WHY(#3276): Use (seq, event) pair for type-compatibility with
                 // the normal streaming path. Idempotency replays use seq=0 since
@@ -346,6 +373,8 @@ pub async fn send_message(
                             usage: UsageData {
                                 input_tokens,
                                 output_tokens,
+                                cache_read_tokens,
+                                cache_write_tokens,
                             },
                             request_id: Some(request_id.0.clone()),
                         },
@@ -363,11 +392,9 @@ pub async fn send_message(
                         _idem_guard: None,
                     },
                 };
-                return Ok(Sse::new(stream).keep_alive(
-                    KeepAlive::new()
-                        .interval(Duration::from_secs(15))
-                        .text("ping"),
-                ));
+                return Ok(
+                    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await)
+                );
             }
             LookupResult::Conflict => {
                 return Err(ConflictSnafu {
@@ -493,6 +520,8 @@ pub async fn send_message(
                             "stop_reason": result.stop_reason,
                             "input_tokens": result.usage.input_tokens,
                             "output_tokens": result.usage.output_tokens,
+                            "cache_read_tokens": result.usage.cache_read_tokens,
+                            "cache_write_tokens": result.usage.cache_write_tokens,
                         })
                         .to_string();
                         idem_cache.complete(
@@ -543,6 +572,8 @@ pub async fn send_message(
                         usage: UsageData {
                             input_tokens: 0,
                             output_tokens: 0,
+                            cache_read_tokens: 0,
+                            cache_write_tokens: 0,
                         },
                         request_id: Some(request_id_str.clone()),
                     };
@@ -569,11 +600,7 @@ pub async fn send_message(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    ))
+    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await))
 }
 
 /// POST /api/v1/sessions/stream: stream a conversation turn (turn stream protocol).
@@ -941,11 +968,7 @@ pub async fn stream_turn(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(30))
-            .text("heartbeat"),
-    ))
+    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "heartbeat").await))
 }
 
 /// GET /api/v1/events: global SSE keep-alive channel.
@@ -964,23 +987,25 @@ pub async fn stream_turn(
     security(("bearer_auth" = []))
 )]
 pub async fn events(
+    State(state): State<EventBusState>,
     _claims: Claims,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     // WHY: emit periodic comment-only events so the connection stays alive and
     // proxies do not close it. Domain events flow through the EventBus stream
     // on /api/v1/events/subscribe, not this channel.
-    // WHY: keepalive interval (15s) must be well below the client read timeout
-    // (45s in skene) to prevent false disconnects. The IntervalStream and
-    // axum KeepAlive are belt-and-suspenders: either alone would work but
-    // both together ensure at least one event arrives per client timeout window.
-    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(15)))
+    let heartbeat_secs = state
+        .config
+        .read()
+        .await
+        .gateway
+        .sse_heartbeat_interval_secs;
+    // WHY(#5156): Derive the interval from gateway config so the server
+    // keepalive cadence stays in sync with the client read timeout and any
+    // reverse-proxy idle timeouts.
+    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(heartbeat_secs)))
         .map(|_| Ok::<Event, Infallible>(Event::default().comment("keepalive")));
 
-    Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    )
+    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await)
 }
 
 /// Convert a `(seq, SseEvent)` pair into an Axum SSE [`Event`] with `id:` field.
@@ -1288,6 +1313,8 @@ async fn emit_turn_result_events_buffered(
         usage: UsageData {
             input_tokens: result.usage.input_tokens,
             output_tokens: result.usage.output_tokens,
+            cache_read_tokens: result.usage.cache_read_tokens,
+            cache_write_tokens: result.usage.cache_write_tokens,
         },
         request_id: request_id.map(ToOwned::to_owned),
     };
@@ -1412,12 +1439,9 @@ pub async fn reconnect_turn(
 
     // WHY(#5678): Bound the task lifetime to the turn buffer TTL (5 min) so a
     // reconnect to an orphaned Running buffer cannot block indefinitely.
-    let max_live = Duration::from_secs(5 * 60);
+    let max_live = Duration::from_mins(5);
 
     let reconnect_task = tokio::spawn(async move {
-        let deadline = tokio::time::sleep(max_live);
-        tokio::pin!(deadline);
-
         let mut last_seq = last_event_id;
         let initial = handle.snapshot_after(last_seq).await;
         let live = initial.state == crate::turn_buffer::TurnState::Running;
@@ -1441,40 +1465,42 @@ pub async fn reconnect_turn(
 
         // Replay and stream: snapshot_after is race-free (WHY: see #5453).
         let mut snapshot = initial;
-        loop {
-            for event in snapshot.events {
-                let sse_event = Event::default()
-                    .event(event.event_type)
-                    .data(event.data)
-                    .id(event.seq.to_string());
-                last_seq = event.seq;
-                if tx.send(Ok(sse_event)).await.is_err() {
-                    return;
+        // SAFETY: cancel-safe. timeout wraps a future and is cancel-safe.
+        let timed_out = tokio::time::timeout(max_live, async move {
+            loop {
+                for event in snapshot.events {
+                    let sse_event = Event::default()
+                        .event(event.event_type)
+                        .data(event.data)
+                        .id(event.seq.to_string());
+                    last_seq = event.seq;
+                    if tx.send(Ok(sse_event)).await.is_err() {
+                        return;
+                    }
                 }
-            }
 
-            if snapshot.state != crate::turn_buffer::TurnState::Running {
-                break;
-            }
-
-            tokio::select! {
-                biased;
-                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                () = shutdown_token.cancelled() => {
-                    tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                if snapshot.state != crate::turn_buffer::TurnState::Running {
                     break;
                 }
-                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                () = task_cancel.cancelled() => break,
-                // SAFETY: cancel-safe. tokio::time::sleep is cancel-safe.
-                () = &mut deadline => {
-                    tracing::warn!("reconnect_turn exceeded max live time; closing stream");
-                    break;
+
+                tokio::select! {
+                    biased;
+                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                    () = shutdown_token.cancelled() => {
+                        tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                        break;
+                    }
+                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                    () = task_cancel.cancelled() => break,
+                    // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
+                    () = snapshot.notified => {}
                 }
-                // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
-                () = snapshot.notified => {}
+                snapshot = handle.snapshot_after(last_seq).await;
             }
-            snapshot = handle.snapshot_after(last_seq).await;
+        })
+        .await;
+        if timed_out.is_err() {
+            tracing::warn!("reconnect_turn exceeded max live time; closing stream");
         }
     });
 
@@ -1489,11 +1515,7 @@ pub async fn reconnect_turn(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    ))
+    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await))
 }
 
 #[cfg(test)]

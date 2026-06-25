@@ -356,6 +356,7 @@ mod tests {
         record_tool_failure("n1", "read");
         record_stream_event_dropped("n1", "full");
         record_training_capture_rejected("n1", "non_authored");
+        record_dpo_pair("n1");
         record_health_poller_restart();
 
         let out = encode(&r);
@@ -369,6 +370,7 @@ mod tests {
             "aletheia_tool_failures_total",
             "aletheia_stream_events_dropped_total",
             "aletheia_training_capture_rejected_total",
+            "aletheia_dpo_pairs_captured_total",
             "aletheia_nous_health_poller_restarts_total",
         ] {
             assert!(out.contains(metric), "missing `{metric}` in: {out}");
@@ -399,6 +401,28 @@ mod tests {
         assert!(
             out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-b\"} 3"),
             "got: {out}"
+        );
+    }
+
+    #[test]
+    fn turn_completed_event_counts_turn_exactly_once() {
+        // WHY(#5400): the pipeline TurnCompleted event must be the single owner
+        // of the turn counter. Audit hooks must not also call record_turn.
+        let r = fresh_registry();
+        let emitter = pipeline_event_emitter();
+        emitter.emit(&crate::pipeline::events::TurnCompleted {
+            nous_id: "agent-e".to_owned(),
+            model: "test-model".to_owned(),
+            duration_ms: 100,
+            input_tokens: 10,
+            output_tokens: 10,
+            tool_calls: 0,
+            stages_completed: 6,
+        });
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-e\"} 1"),
+            "TurnCompleted should increment the counter exactly once, got: {out}"
         );
     }
 

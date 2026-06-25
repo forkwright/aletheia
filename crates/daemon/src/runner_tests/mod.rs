@@ -6,13 +6,11 @@
 )]
 
 //! In-tree tests for `crate::runner`.
-//!
-//! Split from the monolithic `runner_tests.rs` (1258 lines) to satisfy
-//! `RUST/file-too-long`.
 
 use super::*;
 
 mod cron_and_output;
+mod inflight_and_watchdog;
 mod lifecycle_and_builders;
 mod self_prompt_and_errors;
 

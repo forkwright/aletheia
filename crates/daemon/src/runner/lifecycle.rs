@@ -11,6 +11,12 @@ use crate::schedule::Schedule;
 use super::systemd::{sd_notify_watchdog, sd_watchdog_interval};
 use super::{InFlightTask, TaskRunner};
 
+// WHY: maximum time the shutdown drain waits for cooperating tasks to observe
+// their cancellation token and self-terminate before force-aborting. Tasks
+// that finish within this window do so cleanly (flushing state, recording
+// results). Tasks that exceed the window are force-aborted to bound teardown.
+const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
+
 impl TaskRunner {
     /// Run the event loop. Checks for due tasks every second, executes them.
     /// Returns when the shutdown token is cancelled.
@@ -21,8 +27,8 @@ impl TaskRunner {
     /// `interval.tick()` is cancel-safe (a dropped tick simply delays the next
     /// poll), and `CancellationToken::cancelled()` is cancel-safe. If this
     /// future is dropped between iterations, in-flight tasks continue running
-    /// on the Tokio executor; their `JoinHandle`s are held in `self.in_flight`
-    /// and will be abandoned (not awaited) on DROP.
+    /// on the Tokio executor; the normal shutdown path below aborts and awaits
+    /// them so that teardown does not outlive the work they are performing.
     #[tracing::instrument(skip_all)]
     pub async fn run(&mut self) {
         tracing::info!(nous_id = %self.nous_id, tasks = self.tasks.len(), "daemon started");
@@ -68,27 +74,77 @@ impl TaskRunner {
             }
         }
 
-        // WHY: abort all in-flight tasks on shutdown to prevent leaked work
-        // after the runner exits. Without this, spawned tasks continue running
-        // on the Tokio executor with no observer to collect their results.
+        // WHY: cancel all in-flight tasks and drain them with a bounded grace
+        // window before the runner returns. Cooperating tasks observe their
+        // cancellation token and self-terminate cleanly within the window,
+        // preserving their cleanup bodies (flush state, record results). Tasks
+        // that do not cooperate within the grace window are force-aborted to
+        // bound teardown time. Aborting immediately (before the grace window)
+        // would prevent cooperating tasks from running their cleanup body,
+        // violating the graceful-drain contract encoded in the shutdown path.
         let in_flight_count = self.in_flight.len();
         let drained: Vec<_> = self.in_flight.drain().collect();
-        for (task_id, in_flight) in drained {
+
+        // Step 1: signal cancellation to all in-flight tasks simultaneously
+        // so they all begin winding down before we start awaiting any of them.
+        for (task_id, in_flight) in &drained {
             tracing::debug!(
                 task_id = %task_id,
-                cancelled = true,
                 "cancelling in-flight task on shutdown"
             );
             in_flight.cancel.cancel();
-            in_flight.handle.abort();
-            self.unregister_watchdog_process(&task_id);
+            self.unregister_watchdog_process(task_id);
         }
         if in_flight_count > 0 {
             tracing::info!(
                 nous_id = %self.nous_id,
                 cancelled = in_flight_count,
-                "in-flight tasks cancelled on shutdown"
+                "in-flight tasks cancelled on shutdown; awaiting graceful drain"
             );
+        }
+
+        // Step 2: await each handle within the remaining grace window.
+        // Force-abort any that do not finish in time, then await those too.
+        //
+        // NOTE: all cancellation tokens were fired above before this loop so
+        // all tasks are already winding down concurrently; sequential polling
+        // here does not serialize their execution.
+        let grace_deadline = Instant::now() + SHUTDOWN_GRACE_PERIOD;
+        for (task_id, in_flight) in drained {
+            let mut handle = in_flight.handle;
+            let remaining = grace_deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                // NOTE: abort() is forcible — it preempts the task at its next
+                // await point. We reach this path only when grace has already
+                // been exhausted by prior tasks.
+                tracing::warn!(
+                    task_id = %task_id,
+                    "grace period exhausted; force-aborting in-flight task"
+                );
+                handle.abort();
+                let _ = handle.await;
+                continue;
+            }
+            tokio::select! {
+                biased;
+                _ = &mut handle => {
+                    tracing::debug!(
+                        task_id = %task_id,
+                        "in-flight task completed gracefully on shutdown"
+                    );
+                }
+                () = tokio::time::sleep(remaining) => {
+                    // NOTE: abort() is forcible — it preempts the task at its
+                    // next await point. We reach this path only when the task
+                    // has not cooperated within SHUTDOWN_GRACE_PERIOD.
+                    tracing::warn!(
+                        task_id = %task_id,
+                        "grace period exceeded; force-aborting in-flight task"
+                    );
+                    handle.abort();
+                    let _ = handle.await;
+                }
+            }
         }
     }
 
@@ -191,6 +247,7 @@ impl TaskRunner {
                             knowledge_store,
                             daemon_behavior: &daemon_behavior,
                             cancel: task_cancel_child,
+                            timeout,
                         },
                     )
                     .await

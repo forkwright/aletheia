@@ -403,10 +403,12 @@ fn parse_u32_env_override(var_name: &str, raw_value: Option<String>, default: u3
 }
 
 fn resolve_consecutive_mistake_limit(raw: Option<&str>) -> u32 {
-    const VAR: &str = "KOINA_CONSECUTIVE_MISTAKE_LIMIT";
     const DEFAULT: u32 = koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT;
-
-    parse_u32_env_override(VAR, raw.map(str::to_owned), DEFAULT)
+    parse_u32_env_override(
+        CONSECUTIVE_MISTAKE_LIMIT_ENV,
+        raw.map(str::to_owned),
+        DEFAULT,
+    )
 }
 
 fn default_consecutive_mistake_limit() -> u32 {
@@ -459,6 +461,33 @@ impl NousConfig {
     }
 }
 
+/// Turn-history loading policy.
+///
+/// Determines how many recent messages are loaded into the turn context,
+/// how many tokens are reserved for the current user message, and whether
+/// tool-result messages are included.
+// kanon:ignore RUST/no-debug-derive-on-public-types — contains only operator-owned policy knobs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TurnHistoryPolicy {
+    /// Maximum number of history messages to load.
+    pub max_messages: usize,
+    /// Reserve tokens for the user's current message.
+    pub reserve_for_current: i64,
+    /// Whether to include tool-result messages.
+    pub include_tool_messages: bool,
+}
+
+impl Default for TurnHistoryPolicy {
+    fn default() -> Self {
+        Self {
+            max_messages: 50,
+            reserve_for_current: 4000,
+            include_tool_messages: true,
+        }
+    }
+}
+
 /// Pipeline configuration: controls stage behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -480,6 +509,9 @@ pub struct PipelineConfig {
     /// Whether the reflection stage runs after finalize.
     #[serde(default)]
     pub reflection_enabled: bool,
+    /// Turn-history loading policy.
+    #[serde(default)]
+    pub history: TurnHistoryPolicy,
 }
 
 impl Default for PipelineConfig {
@@ -491,6 +523,7 @@ impl Default for PipelineConfig {
             stage_budget: StageBudget::default(),
             training: crate::training::TrainingConfig::default(),
             reflection_enabled: false,
+            history: TurnHistoryPolicy::default(),
         }
     }
 }
@@ -540,7 +573,6 @@ impl Default for StageBudget {
 const fn default_reflection_secs() -> u32 {
     30
 }
-
 #[cfg(test)]
 #[expect(
     clippy::expect_used,
@@ -603,6 +635,9 @@ mod tests {
             !config.reflection_enabled,
             "reflection should be disabled by default"
         );
+        assert_eq!(config.history.max_messages, 50);
+        assert_eq!(config.history.reserve_for_current, 4000);
+        assert!(config.history.include_tool_messages);
     }
 
     #[test]

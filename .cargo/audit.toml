@@ -20,4 +20,6 @@ ignore = [
     "RUSTSEC-2026-0097",
     # async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7
     "RUSTSEC-2025-0052",
+    # memmap2 unsound (unchecked pointer offset) — transitive via candle-core/grep-searcher, pinned ^0.9, no upgrade; offset path not exercised. review-by: 2026-12-01
+    "RUSTSEC-2026-0186",
 ]

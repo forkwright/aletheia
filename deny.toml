@@ -60,15 +60,6 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
-# WHY: "pure Rust, no C++" — rustls replaces openssl across the workspace.
-# WHY: pandoc must stay an external subprocess so we keep the GPL-clean
-# boundary and never link a pandoc Rust binding into the binary.
-deny = [
-    { crate = "openssl-sys", wrappers = [] },
-    { crate = "pandoc", reason = "Aletheia shells out to pandoc as a subprocess; do not link the pandoc crate into the binary." },
-    { crate = "pandoc_ast", reason = "Pandoc AST bindings must stay outside the build; Aletheia uses pandoc as an external subprocess only." },
-]
-
 # Skip entries for duplicates caused by upstream constraints we cannot resolve.
 # Each entry exempts the named version from the multiple-versions check.
 # The newer/canonical version is not listed here and is kept as-is.
@@ -170,6 +161,21 @@ skip = [
     { name = "thiserror-impl", version = "=1.0.69" },
 ]
 
+# WHY: "pure Rust, no C++" — rustls replaces openssl across the workspace.
+# WHY: pandoc must stay an external subprocess so we keep the GPL-clean
+# boundary and never link a pandoc Rust binding into the binary.
+[[bans.deny]]
+crate = "openssl-sys"
+wrappers = []
+
+[[bans.deny]]
+crate = "pandoc"
+reason = "Aletheia shells out to pandoc as a subprocess; do not link the pandoc crate into the binary."
+
+[[bans.deny]]
+crate = "pandoc_ast"
+reason = "Pandoc AST bindings must stay outside the build; Aletheia uses pandoc as an external subprocess only."
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
@@ -177,3 +183,7 @@ unknown-git = "deny"
 # tagged releases). These are first-party crates in the fleet mono-repo constellation;
 # git sources are expected until crates.io publication is decided.
 allow-org.github = ["forkwright"]
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0186"
+reason = "memmap2 unsound (unchecked pointer offset); reached transitively via candle-core (safetensors mmap weight load) + grep-searcher, both pin memmap2 ^0.9 with no compatible upgrade; the unsound offset path is not exercised by these consumers. review-by: 2026-12-01"

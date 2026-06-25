@@ -1,8 +1,6 @@
 //! Parse OpenAI Chat Completions SSE streams into hermeneus stream events.
 //!
-//! OpenAI streams `data: {chunk}` lines terminated by `data: [DONE]`. Each
-//! chunk carries incremental `delta` fields that mirror the non-streaming
-//! `message` shape. This module accumulates them into a
+//! Accumulates `data: {chunk}` SSE lines (terminated by `[DONE]`) into a
 //! [`CompletionResponse`] while emitting [`StreamEvent`]s for live UI.
 
 use std::collections::BTreeMap;
@@ -18,20 +16,17 @@ use super::response::{ResponsesResponse, TokenDetails, parse_arguments};
 
 /// Format an error and its full source chain into a single message string.
 ///
-/// WHY(#4887): reqwest's Display only shows the outer error message (e.g.
-/// "error decoding response body") but hides the underlying cause ("connection
-/// reset by peer"). `is_retryable()` scans the message for keywords like
-/// "reset" and "connection", so including the chain makes network-drop errors
-/// retryable before content starts.
+/// WHY(#4887): reqwest's Display hides the underlying cause ("connection reset
+/// by peer"). `is_retryable()` scans for "reset"/"connection", so including
+/// the chain makes network-drop errors retryable before content starts.
 fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
-    use std::fmt::Write;
-    let mut msg = format!("{prefix}: {err}");
+    let mut parts = vec![format!("{prefix}: {err}")];
     let mut source = err.source();
     while let Some(s) = source {
-        let _ = write!(msg, ": {s}");
+        parts.push(s.to_string());
         source = s.source();
     }
-    msg
+    parts.join(": ")
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,14 +92,11 @@ pub(crate) struct OpenAiStreamAccumulator {
     id: String,
     model: String,
     text_buf: String,
-    /// Pending tool calls indexed by their `index` field — OpenAI streams
-    /// tool calls in interleaved deltas, each tagged by a stable position.
+    /// Pending tool calls keyed by OpenAI's `index` — deltas arrive interleaved.
     tool_calls: BTreeMap<u32, PendingToolCall>,
     stop_reason: StopReason,
     usage: Usage,
-    /// Tracks whether a text block has been announced via
-    /// `ContentBlockStart` — used to suppress duplicate start events across
-    /// chunks.
+    /// Whether a `ContentBlockStart` has been emitted; suppresses duplicate starts.
     text_block_open: bool,
 }
 
@@ -141,8 +133,7 @@ impl OpenAiStreamAccumulator {
             && self.model.is_empty()
         {
             self.model = model;
-            // Emit a MessageStart so the accumulator contract matches the
-            // Anthropic provider — downstream code expects one per stream.
+            // Match the Anthropic accumulator contract: one MessageStart per stream.
             on_event(StreamEvent::MessageStart { usage: self.usage });
         }
 
@@ -268,7 +259,9 @@ fn map_finish_reason(reason: &str) -> StopReason {
         "length" => StopReason::MaxTokens,
         "tool_calls" | "function_call" => StopReason::ToolUse,
         "content_filter" => StopReason::ContentFiltered,
-        _ => StopReason::EndTurn,
+        // WHY: Collapsing unknown finish reasons into end_turn hides provider
+        // drift and safety signals. Preserve them as Unknown.
+        _ => StopReason::Unknown,
     }
 }
 

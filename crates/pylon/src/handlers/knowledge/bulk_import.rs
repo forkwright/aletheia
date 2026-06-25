@@ -55,9 +55,9 @@ fn parse_import_body(bytes: &[u8]) -> Result<Vec<mneme::knowledge::Fact>, ApiErr
 
 /// POST /api/v1/knowledge/facts/import
 ///
-/// Bulk-import facts into the knowledge store. Accepts up to 1000 facts per
-/// request. Each fact is validated independently; valid facts are inserted
-/// even if others fail.
+/// Bulk-import facts into the knowledge store. The per-request limit is
+/// controlled by `api_limits.max_import_batch_size` (default 1000). Each fact
+/// is validated independently; valid facts are inserted even if others fail.
 ///
 /// Supports two body formats:
 /// - **JSON**: `{"facts": [{...}, {...}]}`
@@ -67,7 +67,7 @@ fn parse_import_body(bytes: &[u8]) -> Result<Vec<mneme::knowledge::Fact>, ApiErr
     path = "/api/v1/knowledge/facts/import",
     request_body(
         content = serde_json::Value,
-        description = "JSON object with a `facts` array, or JSONL (one fact per line). Max 1000.",
+        description = "JSON object with a `facts` array, or JSONL (one fact per line). The limit is `api_limits.max_import_batch_size`; the default is 1000.",
         content_type = "application/json"
     ),
     responses(

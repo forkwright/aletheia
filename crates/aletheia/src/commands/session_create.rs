@@ -7,7 +7,7 @@ use clap::Args;
 use snafu::prelude::*;
 
 use mneme::store::SessionStore;
-use mneme::types::validate_session_or_agent_id;
+use mneme::types::parse_session_or_agent_id;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
 
@@ -106,7 +106,7 @@ fn validate_identifier(value: &str, field: &str) -> Result<()> {
     if value.len() > MAX_IDENTIFIER_BYTES {
         snafu::whatever!("{field} exceeds maximum length of {MAX_IDENTIFIER_BYTES} bytes");
     }
-    validate_session_or_agent_id(value)
+    parse_session_or_agent_id(value)
         .with_whatever_context(|_| format!("{field} uses a reserved internal prefix"))?;
     Ok(())
 }
