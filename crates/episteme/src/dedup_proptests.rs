@@ -18,6 +18,7 @@ fn make_entity(id: &str, name: &str, etype: &str) -> EntityInfo {
         entity_type: etype.to_owned(),
         aliases: vec![],
         relationship_count: 1,
+        fact_count: 0,
         created_at: ts_epoch(),
         name_embedding: None,
     }
