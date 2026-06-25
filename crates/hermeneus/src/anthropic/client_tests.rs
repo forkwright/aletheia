@@ -724,3 +724,114 @@ fn repeated_construction_does_not_leak_model_storage() {
         // provider drops here, freeing the owned model list.
     }
 }
+
+/// #5886: `compute_attribution` must return `None` for non-OAuth credentials.
+///
+/// Before the fix, `cc_profile` was set at construction time whenever the
+/// endpoint was first-party + `cc_mimicry` enabled, and `compute_attribution`
+/// gated only on `cc_profile` presence — not on the runtime credential source.
+/// This caused the CC attribution block to be injected into API-key requests,
+/// sending a misleading telemetry fingerprint.
+#[test]
+fn compute_attribution_returns_none_for_environment_credential() {
+    use std::sync::Arc;
+
+    use koina::credential::{Credential, CredentialProvider, CredentialSource};
+    use koina::secret::SecretString;
+
+    struct EnvKeyProvider;
+
+    impl CredentialProvider for EnvKeyProvider {
+        fn get_credential(&self) -> Option<Credential> {
+            Some(Credential {
+                secret: SecretString::from("sk-env-test-key"),
+                source: CredentialSource::Environment,
+            })
+        }
+
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
+        fn name(&self) -> &str {
+            "env-key"
+        }
+    }
+
+    // Construct with first-party URL + cc_mimicry enabled (the pre-fix bug path).
+    // with_credential_provider will set cc_profile = Some(...) because
+    // is_first_party=true and cc_mimicry defaults to true.
+    let config = ProviderConfig {
+        base_url: Some("https://api.anthropic.com".to_owned()),
+        cc_mimicry: Some(true),
+        max_retries: Some(0),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::with_credential_provider(Arc::new(EnvKeyProvider), &config)
+        .expect("valid config");
+
+    // cc_profile must be Some (construction-time logic is unchanged).
+    assert!(
+        provider.cc_profile.is_some(),
+        "cc_profile should be set for first-party + cc_mimicry=true"
+    );
+
+    // The regression: compute_attribution must return None despite cc_profile
+    // being Some, because the runtime credential source is Environment.
+    let result = provider.compute_attribution(&test_request());
+    assert!(
+        result.is_none(),
+        "compute_attribution must return None for CredentialSource::Environment, got: {result:?}"
+    );
+}
+
+/// #5886 complement: `compute_attribution` returns `Some` for OAuth credentials.
+///
+/// Ensures the fix does not regress the happy path — OAuth requests still
+/// get the CC attribution block.
+#[test]
+fn compute_attribution_returns_some_for_oauth_credential() {
+    use std::sync::Arc;
+
+    use koina::credential::{Credential, CredentialProvider, CredentialSource};
+    use koina::secret::SecretString;
+
+    struct OAuthProvider;
+
+    impl CredentialProvider for OAuthProvider {
+        fn get_credential(&self) -> Option<Credential> {
+            Some(Credential {
+                secret: SecretString::from("oauth-access-token"),
+                source: CredentialSource::OAuth,
+            })
+        }
+
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
+        fn name(&self) -> &str {
+            "oauth"
+        }
+    }
+
+    let config = ProviderConfig {
+        base_url: Some("https://api.anthropic.com".to_owned()),
+        cc_mimicry: Some(true),
+        max_retries: Some(0),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::with_credential_provider(Arc::new(OAuthProvider), &config)
+        .expect("valid config");
+
+    assert!(
+        provider.cc_profile.is_some(),
+        "cc_profile should be set for first-party OAuth + cc_mimicry=true"
+    );
+
+    let result = provider.compute_attribution(&test_request());
+    assert!(
+        result.is_some(),
+        "compute_attribution must return Some for CredentialSource::OAuth"
+    );
+}
