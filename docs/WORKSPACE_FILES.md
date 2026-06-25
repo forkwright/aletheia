@@ -83,7 +83,7 @@ The bootstrap system enforces a configurable token budget (default: 40,000 token
 5. All remaining lower-priority files are dropped.
 6. Dropped files are logged as warnings and recorded in `BootstrapResult.sections_dropped`.
 
-The bootstrap budget is one piece of the total context window (`context_tokens`, default 200,000). Large workspace files directly reduce the token space available for conversation history. Keep workspace files concise.
+The bootstrap budget is one piece of the total context window (`contextTokens`, default 200,000). Large workspace files directly reduce the token space available for conversation history. Keep workspace files concise.
 
 ---
 
@@ -130,7 +130,7 @@ Files organized by **subject**, not by agent. This prevents:
 
 ### Scaffold drift note
 
-`aletheia add-nous` currently creates `nous/{id}/workspace/drafts/` and
+`aletheia add-nous` creates `nous/{id}/workspace/drafts/` and
 `nous/{id}/workspace/scripts/` even though the file-location rule above says
 working files belong in `theke/`. Those directories are created by the scaffold
 but are not part of the runtime bootstrap. If you use them, treat them as a

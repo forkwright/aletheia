@@ -63,19 +63,18 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 |-------|------|---------|-------------|
 | `model.primary` | string | `"claude-sonnet-4-6"` | Primary model ID |
 | `model.fallbacks` | string[] | `[]` | Fallback model IDs, tried in order |
-| `context_tokens` | u32 | `200000` | Context window budget (tokens) |
-| `max_output_tokens` | u32 | `16384` | Max tokens per response |
-| `bootstrap_max_tokens` | u32 | `40000` | Max tokens for bootstrap context injection |
-| `timeout_seconds` | u32 | `300` | LLM call timeout |
-| `thinking_enabled` | bool | `false` | Enable extended thinking |
-| `thinking_budget` | u32 | `10000` | Max tokens for extended thinking |
-| `max_tool_iterations` | u32 | `200` | Safety limit on consecutive tool use per turn |
-| `allowed_roots` | string[] | `[]` | Filesystem paths the agent may access |
+| `contextTokens` | u32 | `200000` | Context window budget (tokens) |
+| `maxOutputTokens` | u32 | `16384` | Max tokens per response |
+| `bootstrapMaxTokens` | u32 | `40000` | Max tokens for bootstrap context injection |
+| `timeoutSeconds` | u32 | `300` | LLM call timeout |
+| `thinkingEnabled` | bool | `false` | Enable extended thinking |
+| `thinkingBudget` | u32 | `10000` | Max tokens for extended thinking |
+| `maxToolIterations` | u32 | `200` | Safety limit on consecutive tool use per turn |
+| `allowedRoots` | string[] | `[]` | Filesystem paths the agent may access |
 | `toolGroups` | `"all"`, `"deny"`, or string[] | `"deny"` | Tool-group policy. Missing or empty values deny all groups. |
-| `tool_timeouts` | object | see `agents.defaults.tool_timeouts` section | Per-tool execution timeout overrides |
-| `working_state_ttl_secs` | u64 | `604800` | Working-state expiry window (7 days) |
-| `working_state_max_task_stack` | usize | `10` | Maximum working-state task stack depth before oldest entries are evicted |
-| `tool_datalog_default_timeout_secs` | f64 | `5.0` | Default Datalog memory tool timeout |
+| `workingStateTtlSecs` | u64 | `604800` | Working-state expiry window (7 days) |
+| `workingStateMaxTaskStack` | usize | `10` | Maximum working-state task stack depth before oldest entries are evicted |
+| `toolDatalogDefaultTimeoutSecs` | f64 | `5.0` | Default Datalog memory tool timeout |
 
 #### agents.defaults.caching
 
@@ -83,13 +82,6 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether prompt caching is active |
 | `strategy` | string | `"auto"` | Caching strategy: `"auto"` (cache system prompt and large context blocks) or `"disabled"` |
-
-#### agents.defaults.tool_timeouts
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `default_ms` | u64 | `120000` | Default timeout for all tools (ms) |
-| `overrides` | map<string, u64> | `{}` | Per-tool timeout overrides keyed by tool name |
 
 ### agents.list[]
 
@@ -102,8 +94,8 @@ Each entry defines a nous (agent). Fields not specified inherit from `agents.def
 | `default` | bool | no | `false` | Default agent for unrouted messages |
 | `workspace` | string | yes | -- | Path to agent workspace directory |
 | `model` | object | no | inherits | Per-agent model override `{ primary, fallbacks }` |
-| `thinking_enabled` | bool | no | inherits | Per-agent thinking override |
-| `allowed_roots` | string[] | no | `[]` | Additional filesystem roots (merged with defaults) |
+| `thinkingEnabled` | bool | no | inherits | Per-agent thinking override |
+| `allowedRoots` | string[] | no | `[]` | Additional filesystem roots (merged with defaults) |
 | `domains` | string[] | no | `[]` | Knowledge domains (e.g. `"code"`, `"research"`) |
 
 ```toml
@@ -111,15 +103,9 @@ Each entry defines a nous (agent). Fields not specified inherit from `agents.def
 primary = "claude-sonnet-4-6"
 
 [agents.defaults]
-context_tokens = 200000
-thinking_enabled = false
+contextTokens = 200000
+thinkingEnabled = false
 toolGroups = ["read", "edit", "command", "mcp", "spawn_subtask", "plan", "verify"]
-
-[agents.defaults.tool_timeouts]
-default_ms = 120000
-
-[agents.defaults.tool_timeouts.overrides]
-exec = 300000
 
 [[agents.list]]
 id = "main"
@@ -130,7 +116,7 @@ workspace = "/srv/aletheia/instance/nous/main"
 id = "research"
 name = "Scholar"
 workspace = "/srv/aletheia/instance/nous/research"
-thinking_enabled = true
+thinkingEnabled = true
 domains = ["research", "analysis"]
 
 [agents.list.model]
@@ -448,7 +434,7 @@ models = ["llama3.1-70b"]
 | Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); registered via the credential chain, declarative entries are accepted but skipped by the registry to avoid duplicates. |
 | Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); registered via the credential chain, declarative entries are accepted but do not change startup behavior. |
 
-The `aletheia add-nous` scaffolding command currently validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
+The `aletheia add-nous` scaffolding command validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
 
 ---
 
@@ -534,7 +520,7 @@ Daemon watchdog, prosoche anomaly detection, and runner output summarization.
 ## tool_limits
 
 Deployment-wide organon tool size and timeout limits. Agent-specific overrides
-still belong under `agents.defaults.tool_timeouts`.
+are not supported; use `toolLimits` to configure deployment-wide defaults.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -580,7 +566,7 @@ Background maintenance tasks. Some run automatically when the server is running;
 
 Drift detection compares the live instance root against the sibling
 `instance.example` template. If the template directory is unavailable, the task
-reports degraded/failed rather than clean.
+reports degraded or failed.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -636,7 +622,7 @@ shows them as `planned`/`unavailable` (`crates/aletheia/src/commands/maintenance
 Implemented knowledge-maintenance tasks also return `unavailable` when the
 knowledge store cannot be opened (for example, when the `recall` feature is
 disabled or the knowledge database directory does not exist). `aletheia maintenance run all`
-skips unavailable knowledge tasks rather than aborting the whole batch.
+skips unavailable knowledge tasks; the remaining batch continues.
 
 ### maintenance.knowledge_maintenance_serendipity
 
@@ -818,7 +804,7 @@ packs = [
 
 ## sandbox
 
-Filesystem sandbox applied to tool execution. When enabled, tools are restricted to the paths explicitly listed in `agents.*.allowed_roots` plus any extra paths declared here.
+Filesystem sandbox applied to tool execution. When enabled, tools are restricted to the paths explicitly listed in `agents.defaults.allowedRoots` and per-agent `allowedRoots` plus any extra paths declared here.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -833,7 +819,7 @@ Filesystem sandbox applied to tool execution. When enabled, tools are restricted
 
 Defaults are defined in `crates/taxis/src/config/maintenance.rs` and mirrored by the execution policy in `crates/organon/src/sandbox/config.rs`; `gateway.auth.none_role` is defined in `crates/taxis/src/config/gateway.rs`.
 
-Combined default posture: a fresh config binds the gateway to localhost and uses bearer-token auth, but rate limiting is disabled, sandbox violations are logged rather than blocked, exec child processes keep outbound network egress, and switching `gateway.auth.mode` to `"none"` without changing `gateway.auth.none_role` grants anonymous callers the `admin` role. For production-like deployments, set the restrictive values explicitly.
+Combined default posture: a fresh config binds the gateway to localhost and uses bearer-token auth, but rate limiting is disabled, sandbox violations are logged, not blocked; exec child processes keep outbound network egress; and switching `gateway.auth.mode` to `"none"` without changing `gateway.auth.none_role` grants anonymous callers the `admin` role. For production deployments, set the restrictive values explicitly.
 
 ```toml
 [sandbox]

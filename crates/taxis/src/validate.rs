@@ -19,7 +19,14 @@ pub struct ValidationError {
     pub errors: Vec<String>,
     #[snafu(implicit)]
     /// Source location captured by snafu.
-    pub location: snafu::Location,
+    pub(crate) location: snafu::Location,
+}
+
+impl ValidationError {
+    /// Returns the collected validation error messages.
+    pub fn errors(&self) -> &[String] {
+        &self.errors
+    }
 }
 
 /// Validate an entire [`AletheiaConfig`] by checking each section.
@@ -895,6 +902,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                 };
                 if endpoint.is_empty() {
                     errors.push(format!("tools.{group}.{name}.endpoint must not be empty"));
+                // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                 } else if !(endpoint.starts_with("http://") || endpoint.starts_with("https://")) {
                     errors.push(format!(
                         "tools.{group}.{name}.endpoint must use http:// or https://"
@@ -915,6 +923,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                         "tools.{group}.{name}: mcp tools require either endpoint or command"
                     ));
                 }
+                // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                 if has_endpoint
                     && let Some(endpoint) = entry.get("endpoint").and_then(Value::as_str)
                     && !(endpoint.starts_with("http://") || endpoint.starts_with("https://"))
@@ -924,7 +933,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                     ));
                 }
             }
-            _ => {}
+            _ => {} // other tool types carry no additional endpoint constraints
         }
     }
 }

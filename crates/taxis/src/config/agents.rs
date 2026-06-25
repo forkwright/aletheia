@@ -24,6 +24,7 @@ pub struct AgentsConfig {
 
 /// Tool-group policy configured for a nous agent.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum AgentToolGroupPolicy {
     /// All tool groups are permitted.
     AllowAll,
@@ -147,6 +148,7 @@ impl Default for RecallWeights {
     clippy::struct_excessive_bools,
     reason = "recall controls are independent operator knobs (enabled, iterative, inject_metadata, late_inject_anchor); not a state machine"
 )]
+// kanon:ignore RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon)
 pub struct RecallSettings {
     /// Whether semantic recall is enabled for this agent.
     pub enabled: bool,
@@ -240,6 +242,7 @@ impl Default for RecallSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentModelDefaults {
     /// Primary model and fallback chain.
     pub model: ModelSpec,
@@ -283,6 +286,7 @@ impl Default for AgentModelDefaults {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 pub struct AgentDefaults {
     /// Model and generation settings.
     #[serde(flatten)]
@@ -370,6 +374,7 @@ impl Default for CachingConfig {
 /// Definition of a single nous agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct NousDefinition {
     /// Unique agent identifier (matches the `nous/{id}/` directory name).
     pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: id maps to the agent's directory name in TOML, not a runtime domain identifier
@@ -456,12 +461,14 @@ fn default_agent_enabled() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[serde(deny_unknown_fields)]
 #[expect(
     clippy::struct_excessive_bools,
     reason = "hook toggles are a genuine set of independent feature flags, not a state machine"
 )]
 #[rustfmt::skip]
-pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields
+// kanon:ignore RUST/pub-visibility — consumed by sibling crates (nous, pylon, daemon, dianoia)
+pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields — many independent deployment knobs; splitting would fragment config locality
     // --- Safety ---
     /// Consecutive identical tool-call sequences before loop detection fires. Default: 3.
     pub safety_loop_detection_threshold: u32,
