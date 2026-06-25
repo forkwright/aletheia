@@ -16,8 +16,9 @@ use crate::insights::anomaly::detect_anomalies;
 use crate::state::InsightsState;
 use crate::types::insights::{
     AgentCostRow, AgentPerformance, AgentPerformanceListResponse, AgentTokenRow,
-    CostMetricsResponse, CostSeriesPoint, JournalEvent, JournalQuery, MetricsQuery, ModelTokenRow,
-    QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse, TokenSeriesPoint,
+    CostMetricsResponse, CostSeriesPoint, JournalQuery, JournalResponse, MetricsQuery,
+    ModelTokenRow, QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse,
+    TokenSeriesPoint, UnavailableMetric,
 };
 
 /// Convert `i64` to `f64` losslessly for values that fit in `i32`.
@@ -177,9 +178,16 @@ pub async fn get_agent_perf_one(
 )]
 pub async fn get_quality_metrics(
     State(state): State<InsightsState>,
-    _claims: Claims,
+    claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<QualityMetricsResponse>, ApiError> {
+    // SECURITY(#4618): Quality aggregate view requires unscoped Operator.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access aggregate quality metrics",
+        ));
+    }
     validate_metrics_query(&query)?;
 
     let state_clone = state.clone();
@@ -222,7 +230,13 @@ pub async fn get_quality_metrics(
     .unwrap_or_else(|_| (Vec::new(), Vec::new()));
 
     let series = compute_quality_series(&sessions, &messages);
-    Ok(Json(QualityMetricsResponse { series }))
+    Ok(Json(QualityMetricsResponse {
+        series,
+        data_unavailable: vec![UnavailableMetric {
+            metric: "thinking_time_ratio".to_owned(),
+            reason: "no backing data source for thinking time in pylon".to_owned(),
+        }],
+    }))
 }
 
 /// Granularity values accepted by the metrics endpoints.
@@ -333,15 +347,22 @@ pub async fn get_cost_metrics(
     path = "/api/v1/journal",
     params(JournalQuery),
     responses(
-        (status = 200, description = "Journal events", body = Vec<JournalEvent>),
+        (status = 200, description = "Journal events", body = JournalResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
 pub async fn get_journal(
-    _claims: Claims,
+    claims: Claims,
     Query(query): Query<JournalQuery>,
-) -> Json<Vec<JournalEvent>> {
+) -> Result<Json<JournalResponse>, ApiError> {
+    // SECURITY(#4618): System journal requires unscoped Operator.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access the system journal",
+        ));
+    }
     warn!(
         source = ?query.source,
         level = ?query.level,
@@ -349,7 +370,13 @@ pub async fn get_journal(
         limit = query.limit,
         "journal endpoint called but no persistent event journal is available in pylon"
     );
-    Json(Vec::new())
+    Ok(Json(JournalResponse {
+        events: Vec::new(),
+        data_unavailable: vec![UnavailableMetric {
+            metric: "journal".to_owned(),
+            reason: "no persistent event journal is available in pylon".to_owned(),
+        }],
+    }))
 }
 
 // ── Computation helpers ──
@@ -424,6 +451,21 @@ fn compute_agent_performance(
         if msgs > 0.0 { toks / msgs } else { 0.0 }
     });
 
+    let data_unavailable = vec![
+        UnavailableMetric {
+            metric: "tool_calls_per_session".to_owned(),
+            reason: "no backing data source for tool call counts in pylon".to_owned(),
+        },
+        UnavailableMetric {
+            metric: "tool_success_rate".to_owned(),
+            reason: "no backing data source for tool success rate in pylon".to_owned(),
+        },
+        UnavailableMetric {
+            metric: "errors_per_session".to_owned(),
+            reason: "no backing data source for error counts in pylon".to_owned(),
+        },
+    ];
+
     AgentPerformance {
         agent_id: agent_id.to_owned(),
         agent_name: agent_name
@@ -439,6 +481,7 @@ fn compute_agent_performance(
         sessions_per_day,
         errors_per_session: 0.0,
         tokens_per_response_series,
+        data_unavailable,
     }
 }
 
@@ -804,6 +847,10 @@ fn costs_from_tokens(tokens: &TokenMetricsResponse) -> CostMetricsResponse {
         prev_today_cost: 0.0,
         prev_week_cost: 0.0,
         prev_month_cost: 0.0,
+        data_unavailable: vec![UnavailableMetric {
+            metric: "cost".to_owned(),
+            reason: "no provider/model pricing source available in pylon; cost attribution requires ResolvedModelContext (#4798)".to_owned(),
+        }],
     }
 }
 
@@ -999,7 +1046,7 @@ mod tests {
         assert!(validate_metrics_query(&query(None, Some("2026-02-30"), None)).is_err());
     }
 
-    fn test_session(id: &str, created_at: &str) -> Session {
+    fn session(id: &str, created_at: &str) -> Session {
         Session {
             id: id.to_owned(),
             nous_id: "alice".to_owned(),
@@ -1058,19 +1105,19 @@ mod tests {
     fn token_metrics_use_durable_usage_and_real_period_windows() {
         let rows = vec![
             SessionUsage {
-                session: test_session("today", "2026-06-12"),
+                session: session("today", "2026-06-12"),
                 usage_records: vec![usage("today", 10, 5)],
             },
             SessionUsage {
-                session: test_session("yesterday", "2026-06-11"),
+                session: session("yesterday", "2026-06-11"),
                 usage_records: vec![usage("yesterday", 20, 10)],
             },
             SessionUsage {
-                session: test_session("prev-week", "2026-06-05"),
+                session: session("prev-week", "2026-06-05"),
                 usage_records: vec![usage("prev-week", 30, 15)],
             },
             SessionUsage {
-                session: test_session("prev-month", "2026-05-20"),
+                session: session("prev-month", "2026-05-20"),
                 usage_records: vec![usage("prev-month", 40, 20)],
             },
         ];
@@ -1095,5 +1142,75 @@ mod tests {
         assert_eq!(response.prev_week_input, 30);
         assert_eq!(response.month_input, 60);
         assert_eq!(response.prev_month_input, 40);
+    }
+
+    #[test]
+    fn agent_performance_marks_tool_metrics_unavailable() {
+        let perf = compute_agent_performance("alice", Some("Alice"), &[]);
+        let unavailable: Vec<&str> = perf
+            .data_unavailable
+            .iter()
+            .map(|u| u.metric.as_str())
+            .collect();
+        assert!(unavailable.contains(&"tool_calls_per_session"));
+        assert!(unavailable.contains(&"tool_success_rate"));
+        assert!(unavailable.contains(&"errors_per_session"));
+    }
+
+    #[test]
+    fn quality_response_marks_thinking_time_unavailable() {
+        let response = QualityMetricsResponse {
+            series: compute_quality_series(&[], &[]),
+            data_unavailable: vec![UnavailableMetric {
+                metric: "thinking_time_ratio".to_owned(),
+                reason: "no backing data source for thinking time in pylon".to_owned(),
+            }],
+        };
+        assert!(
+            response
+                .data_unavailable
+                .iter()
+                .any(|u| u.metric == "thinking_time_ratio")
+        );
+    }
+
+    #[test]
+    fn journal_response_marks_journal_unavailable() {
+        let response = JournalResponse {
+            events: Vec::new(),
+            data_unavailable: vec![UnavailableMetric {
+                metric: "journal".to_owned(),
+                reason: "no persistent event journal is available in pylon".to_owned(),
+            }],
+        };
+        assert!(
+            response
+                .data_unavailable
+                .iter()
+                .any(|u| u.metric == "journal")
+        );
+    }
+
+    #[test]
+    fn cost_response_marks_cost_unavailable() {
+        let tokens = TokenMetricsResponse {
+            series: Vec::new(),
+            agents: Vec::new(),
+            models: Vec::new(),
+            today_input: 0,
+            today_output: 0,
+            week_input: 0,
+            week_output: 0,
+            month_input: 0,
+            month_output: 0,
+            prev_today_input: 0,
+            prev_today_output: 0,
+            prev_week_input: 0,
+            prev_week_output: 0,
+            prev_month_input: 0,
+            prev_month_output: 0,
+        };
+        let response = costs_from_tokens(&tokens);
+        assert!(response.data_unavailable.iter().any(|u| u.metric == "cost"));
     }
 }

@@ -64,8 +64,9 @@ async fn get_journal_returns_empty_when_no_store() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let events = body.as_array().expect("journal array");
+    let events = body["events"].as_array().expect("events array");
     assert!(events.is_empty());
+    assert!(body["data_unavailable"].as_array().is_some());
 }
 
 #[tokio::test]
@@ -80,6 +81,7 @@ async fn get_journal_with_query_params_returns_empty() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let events = body.as_array().expect("journal array");
+    let events = body["events"].as_array().expect("events array");
     assert!(events.is_empty());
+    assert!(body["data_unavailable"].as_array().is_some());
 }

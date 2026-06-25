@@ -182,6 +182,7 @@ use crate::state::AppState;
         crate::types::insights::AgentPerformance,
         crate::types::insights::AgentPerformanceListResponse,
         crate::types::insights::AnomalyAlert,
+        crate::types::insights::UnavailableMetric,
         crate::types::insights::QualityMetricsResponse,
         crate::types::insights::QualitySeries,
         crate::types::insights::TimeSeriesPoint,
@@ -193,6 +194,7 @@ use crate::state::AppState;
         crate::types::insights::CostSeriesPoint,
         crate::types::insights::AgentCostRow,
         crate::types::insights::JournalEvent,
+        crate::types::insights::JournalResponse,
     )),
     modifiers(&VersionFromCrate),
 )]
