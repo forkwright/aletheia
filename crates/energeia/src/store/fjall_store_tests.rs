@@ -61,7 +61,8 @@ fn finish_dispatch_aggregates_sessions() {
 
     store
         .update_session(
-            &sess1,
+            &dispatch_id,
+            1,
             SessionUpdate {
                 status: Some(SessionStatus::Success),
                 cost_usd: Some(1.50),
@@ -72,7 +73,8 @@ fn finish_dispatch_aggregates_sessions() {
         .unwrap();
     store
         .update_session(
-            &sess2,
+            &dispatch_id,
+            2,
             SessionUpdate {
                 status: Some(SessionStatus::Success),
                 cost_usd: Some(2.25),
@@ -141,11 +143,12 @@ fn update_session_partial() {
     let (_dir, store) = setup_test_store();
     let spec = sample_dispatch_spec();
     let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
-    let session_id = store.create_session(&dispatch_id, 1).unwrap();
+    store.create_session(&dispatch_id, 1).unwrap();
 
     store
         .update_session(
-            &session_id,
+            &dispatch_id,
+            1,
             SessionUpdate {
                 status: Some(SessionStatus::Success),
                 cost_usd: Some(0.42),
@@ -169,9 +172,49 @@ fn update_session_partial() {
 #[test]
 fn update_nonexistent_session_returns_not_found() {
     let (_dir, store) = setup_test_store();
-    let id = SessionId::new("01NONEXISTENT");
-    let result = store.update_session(&id, SessionUpdate::default());
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+    let result = store.update_session(&dispatch_id, 999, SessionUpdate::default());
     assert!(result.is_err());
+}
+
+/// Updating by `(dispatch_id, prompt_number)` performs a single point read
+/// instead of scanning the whole session keyspace.
+#[test]
+fn update_session_uses_direct_key_lookup() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let d1 = store.create_dispatch("acme", &spec).unwrap();
+    let d2 = store.create_dispatch("acme", &spec).unwrap();
+
+    // Seed many sessions across two dispatches.
+    for prompt in 1..=10 {
+        store.create_session(&d1, prompt).unwrap();
+        store.create_session(&d2, prompt).unwrap();
+    }
+
+    store
+        .update_session(
+            &d2,
+            7,
+            SessionUpdate {
+                status: Some(SessionStatus::Success),
+                cost_usd: Some(0.99),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let d1_sessions = store.list_sessions_for_dispatch(&d1).unwrap();
+    let d2_sessions = store.list_sessions_for_dispatch(&d2).unwrap();
+
+    assert!(d1_sessions.iter().all(|s| s.status == SessionStatus::Skipped));
+    let updated = d2_sessions
+        .iter()
+        .find(|s| s.prompt_number == 7)
+        .expect("prompt 7 in d2");
+    assert_eq!(updated.status, SessionStatus::Success);
+    assert!((updated.cost_usd - 0.99).abs() < 0.001);
 }
 
 // ── Lesson tests ──

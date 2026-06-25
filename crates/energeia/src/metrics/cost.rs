@@ -351,11 +351,12 @@ mod tests {
         let (_dir, store) = setup();
         let d1 = store.create_dispatch("acme", &spec()).unwrap();
         let d2 = store.create_dispatch("acme", &spec()).unwrap();
-        let s1 = store.create_session(&d1, 1).unwrap();
-        let s2 = store.create_session(&d2, 1).unwrap();
+        let _s1 = store.create_session(&d1, 1).unwrap();
+        let _s2 = store.create_session(&d2, 1).unwrap();
         store
             .update_session(
-                &s1,
+                &d1,
+                1,
                 SessionUpdate {
                     cost_usd: Some(1.0),
                     status: Some(SessionStatus::Success),
@@ -365,7 +366,8 @@ mod tests {
             .unwrap();
         store
             .update_session(
-                &s2,
+                &d2,
+                1,
                 SessionUpdate {
                     cost_usd: Some(2.0),
                     status: Some(SessionStatus::Success),
@@ -417,11 +419,12 @@ mod tests {
                 },
             )
             .unwrap();
-        let s1 = store.create_session(&d1, 1).unwrap();
-        let s2 = store.create_session(&d2, 1).unwrap();
+        let _s1 = store.create_session(&d1, 1).unwrap();
+        let _s2 = store.create_session(&d2, 1).unwrap();
         store
             .update_session(
-                &s1,
+                &d1,
+                1,
                 SessionUpdate {
                     cost_usd: Some(0.5),
                     ..Default::default()
@@ -430,7 +433,8 @@ mod tests {
             .unwrap();
         store
             .update_session(
-                &s2,
+                &d2,
+                1,
                 SessionUpdate {
                     cost_usd: Some(5.0),
                     ..Default::default()
@@ -453,11 +457,12 @@ mod tests {
     fn avg_cost_per_dispatch_and_session() {
         let (_dir, store) = setup();
         let d = store.create_dispatch("acme", &spec()).unwrap();
-        let s1 = store.create_session(&d, 1).unwrap();
-        let s2 = store.create_session(&d, 2).unwrap();
+        let _s1 = store.create_session(&d, 1).unwrap();
+        let _s2 = store.create_session(&d, 2).unwrap();
         store
             .update_session(
-                &s1,
+                &d,
+                1,
                 SessionUpdate {
                     cost_usd: Some(1.0),
                     ..Default::default()
@@ -466,7 +471,8 @@ mod tests {
             .unwrap();
         store
             .update_session(
-                &s2,
+                &d,
+                2,
                 SessionUpdate {
                     cost_usd: Some(3.0),
                     ..Default::default()
