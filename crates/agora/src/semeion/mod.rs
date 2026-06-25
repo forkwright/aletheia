@@ -328,6 +328,9 @@ impl ChannelProvider for SignalProvider {
                     if matches!(e, error::Error::Http { .. }) {
                         let mut s = state_mutex.lock().await;
                         s.enqueue(send_params);
+                        return SendResult::err(format!(
+                            "connection dropped, message buffered for retry: {e}"
+                        ));
                     }
                     SendResult::err(e.to_string())
                 }
