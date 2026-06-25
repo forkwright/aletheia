@@ -1,0 +1,3 @@
+# angelos
+
+Kanon MCP server.
