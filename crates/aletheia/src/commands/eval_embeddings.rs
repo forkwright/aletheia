@@ -85,7 +85,29 @@ struct EvalEmbeddingsReport<'a> {
 struct EvalInputReport {
     reference: String,
     records: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provenance: Option<BuiltinCorpusMetadata>,
 }
+
+/// Metadata for the built-in synthetic smoke corpus.
+///
+/// WHY: Synthetic corpora must be self-describing so operators and reports can
+/// distinguish fixture data from production datasets and verify it contains no
+/// real personal/private information.
+#[derive(Debug, serde::Serialize)]
+struct BuiltinCorpusMetadata {
+    dataset_id: &'static str,
+    schema_version: u32,
+    provenance: &'static str,
+    fixture_safety: &'static str,
+}
+
+const BUILTIN_CORPUS_META: BuiltinCorpusMetadata = BuiltinCorpusMetadata {
+    dataset_id: "aletheia:eval-embeddings:builtin-smoke-corpus",
+    schema_version: 1,
+    provenance: "Built into the aletheia eval-embeddings command for smoke testing; generated from obviously synthetic identities and example domains only.",
+    fixture_safety: "Contains no real people, networks, or medical information. Names are conventional test identities (alice, bob, ...) and domains use example.local.",
+};
 
 #[derive(Debug, serde::Serialize)]
 struct EvalProviderReport<'a> {
@@ -121,8 +143,9 @@ fn load_corpus(path: &std::path::Path) -> Result<Vec<(String, String)>> {
 
 /// Built-in synthetic corpus used when no corpus file is provided.
 ///
-/// Covers the same domains as the seed eval dataset so smoke-test runs
-/// work out of the box without an instance.
+/// WHY: Smoke-test fixtures must be obviously synthetic. They should not
+/// contain real network addresses, medical details, or private-looking facts
+/// unless the test is explicitly exercising redaction/privacy behavior.
 fn builtin_corpus() -> Vec<(String, String)> {
     vec![
         (
@@ -131,7 +154,7 @@ fn builtin_corpus() -> Vec<(String, String)> {
         ),
         (
             "fact-002".into(),
-            "the acme.corp deployment runs on kubernetes version 1.28".into(),
+            "the example.corp staging deployment runs on imaginary orchestrator version 0.0.0".into(),
         ),
         (
             "fact-003".into(),
@@ -143,11 +166,11 @@ fn builtin_corpus() -> Vec<(String, String)> {
         ),
         (
             "fact-005".into(),
-            "the 192.168.1.100 server hosts the primary database replica".into(),
+            "the primary database replica runs on host db-00.example.local".into(),
         ),
         (
             "fact-006".into(),
-            "the project deadline is set for the end of the fiscal quarter".into(),
+            "the project milestone is scheduled for the next planning cycle".into(),
         ),
         (
             "fact-007".into(),
@@ -163,11 +186,11 @@ fn builtin_corpus() -> Vec<(String, String)> {
         ),
         (
             "fact-010".into(),
-            "the backup job runs daily at 03:00 and retains seven snapshots".into(),
+            "the backup task runs daily at a configurable hour and retains a fixed number of snapshots".into(),
         ),
         (
             "fact-011".into(),
-            "frank is allergic to peanuts and carries an epinephrine injector".into(),
+            "frank dislikes the fictional snack 'quzzle' used only in fixture data".into(),
         ),
         (
             "fact-012".into(),
@@ -183,7 +206,7 @@ fn builtin_corpus() -> Vec<(String, String)> {
         ),
         (
             "fact-015".into(),
-            "the staging environment mirrors production except for TLS certificates".into(),
+            "the staging environment mirrors production except for test certificates".into(),
         ),
     ]
 }
@@ -262,9 +285,15 @@ fn build_report<'a>(
     dataset_records: usize,
     corpus_records: usize,
 ) -> EvalEmbeddingsReport<'a> {
-    let corpus_reference = args.corpus.as_ref().map_or_else(
-        || "builtin:synthetic".to_owned(),
-        |path| path.display().to_string(),
+    let (corpus_reference, corpus_provenance) = args.corpus.as_ref().map_or_else(
+        || {
+            let reference = format!(
+                "builtin:{}@v{}",
+                BUILTIN_CORPUS_META.dataset_id, BUILTIN_CORPUS_META.schema_version
+            );
+            (reference, Some(BUILTIN_CORPUS_META))
+        },
+        |path| (path.display().to_string(), None),
     );
 
     EvalEmbeddingsReport {
@@ -272,10 +301,12 @@ fn build_report<'a>(
         dataset: EvalInputReport {
             reference: args.dataset.display().to_string(),
             records: dataset_records,
+            provenance: None,
         },
         corpus: EvalInputReport {
             reference: corpus_reference,
             records: corpus_records,
+            provenance: corpus_provenance,
         },
         providers: EvalProviderReport {
             baseline: args.baseline_provider.as_str(),
