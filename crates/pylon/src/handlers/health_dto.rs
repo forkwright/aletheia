@@ -43,4 +43,10 @@ pub struct HealthCheck {
     pub status: &'static str,
     /// Diagnostic message when status is not `"pass"`.
     pub message: Option<String>,
+    /// Structured per-subsystem details that are safe to expose to the
+    /// control plane. For `provider_reachability` this contains the per-provider
+    /// status list; other checks may leave it empty.
+    #[schema(value_type = Object, nullable = true)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
 }

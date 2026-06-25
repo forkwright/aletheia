@@ -1,5 +1,6 @@
 //! Health check endpoint.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use axum::Json;
@@ -8,6 +9,8 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use koina::system::{Environment, RealSystem};
 use symbolon::types::Role;
+
+use hermeneus::health::{DownReason, ProviderHealth};
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
@@ -129,6 +132,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             name: "overall",
             status: "fail",
             message: Some("health check timed out".to_owned()),
+            details: None,
         }]
     });
 
@@ -177,6 +181,7 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
             message: Some(format!(
                 "unsafe gateway posture: auth.mode = \"none\" with non-loopback bind '{bind}'"
             )),
+            details: None,
         };
     }
     if auth_mode == "none" {
@@ -187,12 +192,14 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
                 "auth.mode = \"none\" is limited to loopback but remains unauthenticated"
                     .to_owned(),
             ),
+            details: None,
         };
     }
     HealthCheck {
         name: "gateway_security",
         status: "pass",
         message: None,
+        details: None,
     }
 }
 
@@ -226,6 +233,7 @@ async fn timed_check(
                 "{name} check timed out after {}s",
                 CHECK_TIMEOUT.as_secs()
             )),
+            details: None,
         },
     }
 }
@@ -241,6 +249,7 @@ async fn check_session_store(state: &HealthState) -> HealthCheck {
         } else {
             Some("session store unavailable".to_owned())
         },
+        details: None,
     }
 }
 
@@ -255,6 +264,7 @@ fn check_provider_availability(state: &HealthState) -> HealthCheck {
         } else {
             Some("no LLM providers registered".to_owned())
         },
+        details: None,
     }
 }
 
@@ -293,6 +303,7 @@ fn check_nous_health_poller(
         name: "nous_health_poller",
         status,
         message,
+        details: None,
     }
 }
 
@@ -315,6 +326,7 @@ async fn check_nous_actors(state: &HealthState) -> HealthCheck {
                     .collect();
                 Some(format!("actors not responding: {}", dead.join(", ")))
             },
+            details: None,
         };
     }
 
@@ -328,6 +340,7 @@ async fn check_nous_actors(state: &HealthState) -> HealthCheck {
             name: "nous_actors",
             status: "pass",
             message: None,
+            details: None,
         }
     } else {
         let summaries: Vec<String> = degraded
@@ -354,53 +367,190 @@ async fn check_nous_actors(state: &HealthState) -> HealthCheck {
                 "background health degraded: {}",
                 summaries.join("; ")
             )),
+            details: None,
         }
     }
 }
 
+/// Environment variable that lists provider names which are allowed to be
+/// degraded or down without lowering the overall service health status.
+///
+/// WHY: pylon does not own the provider config schema, so the optional flag
+/// is supplied as a comma-separated operator override at deployment time.
+/// Required providers are the default; only names listed here are exempt.
+const OPTIONAL_PROVIDERS_ENV: &str = "ALETHEIA_OPTIONAL_PROVIDERS";
+
+/// Parse the optional-provider override from the environment.
+///
+/// Comma-separated names are trimmed and empty entries are ignored so that
+/// `",,"` does not create an empty-name entry.
+fn optional_providers_from_env() -> HashSet<String> {
+    std::env::var(OPTIONAL_PROVIDERS_ENV)
+        .map(|raw| parse_optional_providers(&raw))
+        .unwrap_or_default()
+}
+
+/// Parse a comma-separated optional-provider override.
+///
+/// WHY: Split from the env reader so unit tests can exercise parsing without
+/// mutating global process state.
+fn parse_optional_providers(raw: &str) -> HashSet<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(String::from)
+        .collect()
+}
+
 /// Check LLM provider connectivity by querying the provider registry health.
 fn check_provider_reachability(state: &HealthState) -> HealthCheck {
-    let providers = state.provider_registry.providers();
+    provider_reachability_check(&state.provider_registry, &optional_providers_from_env())
+}
+
+/// Core implementation of provider reachability, parameterized for testing.
+///
+/// Returns a per-provider status list in `details` and fails/warns whenever any
+/// *required* configured provider is down or degraded. Optional providers are
+/// still reported but do not affect the aggregate status.
+fn provider_reachability_check(
+    registry: &hermeneus::provider::ProviderRegistry,
+    optional_names: &HashSet<String>,
+) -> HealthCheck {
+    let providers = registry.providers();
     if providers.is_empty() {
         return HealthCheck {
             name: "provider_reachability",
             status: "warn",
             message: Some("no providers to check".to_owned()),
+            details: None,
         };
     }
 
-    let any_healthy = providers.iter().any(|p| {
-        state.provider_registry.provider_health(p.name())
-            == Some(hermeneus::health::ProviderHealth::Up)
-    });
+    let provider_details: Vec<serde_json::Value> = providers
+        .iter()
+        .map(|provider| {
+            let name = provider.name();
+            let health = registry.provider_health(name).unwrap_or(ProviderHealth::Up);
+            provider_health_detail(name, &health)
+        })
+        .collect();
 
-    if any_healthy {
-        HealthCheck {
-            name: "provider_reachability",
-            status: "pass",
-            message: None,
-        }
+    let required_detail = |detail: &&serde_json::Value| {
+        detail["name"]
+            .as_str()
+            .is_some_and(|name| !optional_names.contains(name))
+    };
+
+    let any_required_down = provider_details
+        .iter()
+        .filter(required_detail)
+        .any(|detail| detail["status"] == "down");
+
+    let any_required_degraded = provider_details
+        .iter()
+        .filter(required_detail)
+        .any(|detail| detail["status"] == "degraded");
+
+    let status = if any_required_down {
+        "fail"
+    } else if any_required_degraded {
+        "warn"
     } else {
-        let any_degraded = providers.iter().any(|p| {
-            matches!(
-                state.provider_registry.provider_health(p.name()),
-                Some(hermeneus::health::ProviderHealth::Degraded { .. })
-            )
-        });
+        "pass"
+    };
 
-        if any_degraded {
-            HealthCheck {
-                name: "provider_reachability",
-                status: "warn",
-                message: Some("one or more providers are degraded".to_owned()),
+    let message = provider_reachability_message(status, &provider_details, optional_names);
+
+    HealthCheck {
+        name: "provider_reachability",
+        status,
+        message,
+        details: Some(serde_json::json!({ "providers": provider_details })),
+    }
+}
+
+/// Build a human-readable summary that mirrors the structured `details` payload.
+///
+/// WHY: Keep the top-level `message` short and credential-free; full per-provider
+/// state lives in `details` for the control-plane UI.
+fn provider_reachability_message(
+    status: &str,
+    details: &[serde_json::Value],
+    optional_names: &HashSet<String>,
+) -> Option<String> {
+    if status == "pass" {
+        return None;
+    }
+
+    let affected: Vec<String> = details
+        .iter()
+        .filter(|detail| {
+            detail["name"]
+                .as_str()
+                .is_some_and(|name| !optional_names.contains(name))
+        })
+        .filter_map(|detail| {
+            let name = detail["name"].as_str()?;
+            let health_status = detail["status"].as_str()?;
+            if health_status == "up" {
+                return None;
             }
-        } else {
-            HealthCheck {
-                name: "provider_reachability",
-                status: "fail",
-                message: Some("all providers are down or unreachable".to_owned()),
-            }
+            detail["reason"]
+                .as_str()
+                .map(|reason| format!("{name} is {health_status} ({reason})"))
+        })
+        .collect();
+
+    if affected.is_empty() {
+        return None;
+    }
+
+    Some(format!("required providers: {}", affected.join("; ")))
+}
+
+/// Convert a provider health state into a credential-free detail object.
+///
+/// Only the provider name, health status, and reason are exposed. No URLs,
+/// API keys, or model identifiers are included.
+fn provider_health_detail(name: &str, health: &ProviderHealth) -> serde_json::Value {
+    match health {
+        ProviderHealth::Up => serde_json::json!({
+            "name": name,
+            "status": "up",
+            "checks": {
+                "consecutive_errors": 0,
+            },
+        }),
+        ProviderHealth::Degraded {
+            consecutive_errors, ..
+        } => serde_json::json!({
+            "name": name,
+            "status": "degraded",
+            // WHY: "recent_errors" is a stable reason label for UI routing.
+            "reason": format!("recent_errors ({consecutive_errors} consecutive)"),
+        }),
+        ProviderHealth::Down { reason, .. } => serde_json::json!({
+            "name": name,
+            "status": "down",
+            "reason": down_reason_label(reason),
+        }),
+        _ => serde_json::json!({
+            "name": name,
+            "status": "unknown",
+        }),
+    }
+}
+
+/// Stable string label for a [`DownReason`] that does not expose secrets.
+fn down_reason_label(reason: &DownReason) -> String {
+    match reason {
+        DownReason::ConsecutiveFailures => "consecutive_failures".to_owned(),
+        DownReason::RateLimited { retry_after_ms } => {
+            format!("rate_limited(retry_after_ms={retry_after_ms})")
         }
+        DownReason::AuthFailure => "auth_failure".to_owned(),
+        DownReason::Timeout => "timeout".to_owned(),
+        _ => "unknown".to_owned(),
     }
 }
 
@@ -421,6 +571,7 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
             name: "embedding_provider",
             status: "warn",
             message: Some("no embedding provider configured".to_owned()),
+            details: None,
         };
     };
 
@@ -435,6 +586,7 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
                  recall unavailable until load completes)"
                     .to_owned(),
             ),
+            details: None,
         }
     } else if mneme::embedding::is_degraded_provider(provider.as_ref()) {
         HealthCheck {
@@ -445,12 +597,14 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
                  recall falls back to BM25)"
                     .to_owned(),
             ),
+            details: None,
         }
     } else {
         HealthCheck {
             name: "embedding_provider",
             status: "pass",
             message: None,
+            details: None,
         }
     }
 }
@@ -490,6 +644,7 @@ fn check_prosoche_heartbeat_path(
         name: "prosoche_heartbeat_path",
         status: "pass",
         message: Some(message),
+        details: None,
     }
 }
 
@@ -511,6 +666,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
                     name: "config_readable",
                     status: "fail",
                     message: Some(format!("config path validation failed: {e}")),
+                    details: None,
                 };
             }
         }
@@ -525,6 +681,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
                     name: "config_readable",
                     status: "warn",
                     message: Some(format!("config path validation failed: {e}")),
+                    details: None,
                 };
             }
         }
@@ -539,6 +696,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
                     name: "config_readable",
                     status: "pass",
                     message: None,
+                    details: None,
                 }
             } else {
                 HealthCheck {
@@ -548,6 +706,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
                         "config path exists but is not a file: {}",
                         config_path.display()
                     )),
+                    details: None,
                 }
             }
         }
@@ -560,6 +719,7 @@ async fn check_config_readable(state: &HealthState) -> HealthCheck {
                     "cannot read config file at {}: {e}",
                     config_path.display()
                 )),
+                details: None,
             }
         }
     }
@@ -611,12 +771,14 @@ fn check_credential_validity(
                     name: "credential_validity",
                     status: "warn",
                     message: Some("credential file token has expired".to_owned()),
+                    details: None,
                 };
             } else if remaining_secs < warning_i64 {
                 return HealthCheck {
                     name: "credential_validity",
                     status: "warn",
                     message: Some("credential file token expires soon".to_owned()),
+                    details: None,
                 };
             }
         }
@@ -624,6 +786,7 @@ fn check_credential_validity(
             name: "credential_validity",
             status: "pass",
             message: None,
+            details: None,
         };
     }
 
@@ -636,12 +799,14 @@ fn check_credential_validity(
             message: Some(
                 "Claude Code credentials available (CC provider handles auth)".to_owned(),
             ),
+            details: None,
         }
     } else {
         HealthCheck {
             name: "credential_validity",
             status: "warn",
             message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no Claude Code credentials)".to_owned()),
+            details: None,
         }
     }
 }
@@ -662,6 +827,7 @@ fn check_env_oauth_token(
             name: "credential_validity",
             status: "warn",
             message: Some("ANTHROPIC_API_KEY is set but empty".to_owned()),
+            details: None,
         };
     }
 
@@ -675,6 +841,7 @@ fn check_env_oauth_token(
                     name: "credential_validity",
                     status: "warn",
                     message: Some("OAuth token has expired".to_owned()),
+                    details: None,
                 };
             }
             if remaining_secs <= expiry_warning_threshold {
@@ -682,6 +849,7 @@ fn check_env_oauth_token(
                     name: "credential_validity",
                     status: "warn",
                     message: Some("OAuth token expires soon".to_owned()),
+                    details: None,
                 };
             }
         }
@@ -691,6 +859,7 @@ fn check_env_oauth_token(
         name: "credential_validity",
         status: "pass",
         message: None,
+        details: None,
     }
 }
 
@@ -709,6 +878,7 @@ fn provider_credential_scope_check(state: &HealthState) -> Option<HealthCheck> {
             message: Some(
                 "no providers registered; credential validity cannot be checked".to_owned(),
             ),
+            details: None,
         });
     }
 
@@ -726,6 +896,7 @@ fn provider_credential_scope_check(state: &HealthState) -> Option<HealthCheck> {
             "registered providers do not use pylon-managed Anthropic credentials: {}",
             provider_names.join(", ")
         )),
+        details: None,
     })
 }
 
@@ -744,6 +915,7 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
             name: "storage_writable",
             status: "fail",
             message: Some(format!("cannot create data directory: {e}")),
+            details: None,
         };
     }
 
@@ -754,6 +926,7 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
             name: "storage_writable",
             status: "fail",
             message: Some(format!("data directory path validation failed: {e}")),
+            details: None,
         };
     }
 
@@ -766,6 +939,7 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
             name: "storage_writable",
             status: "fail",
             message: Some(format!("test file path validation failed: {e}")),
+            details: None,
         };
     }
 
@@ -776,12 +950,14 @@ async fn check_storage_writable(state: &HealthState) -> HealthCheck {
                 name: "storage_writable",
                 status: "pass",
                 message: None,
+                details: None,
             }
         }
         Err(e) => HealthCheck {
             name: "storage_writable",
             status: "fail",
             message: Some(format!("data directory is not writable: {e}")),
+            details: None,
         },
     }
 }
@@ -843,6 +1019,8 @@ fn base64url_decode(s: &str) -> Result<Vec<u8>, ()> {
     reason = "test: vec/JSON indices valid after len assertions"
 )]
 mod tests {
+    use hermeneus::provider::ProviderRegistry;
+
     use super::*;
 
     #[test]
@@ -913,6 +1091,7 @@ mod tests {
             name: "session_store",
             status: "pass",
             message: None,
+            details: None,
         };
         let json = serde_json::to_value(&check).unwrap();
         assert_eq!(json["name"], "session_store");
@@ -927,6 +1106,7 @@ mod tests {
             name: "providers",
             status: "fail",
             message: Some("no LLM providers registered".to_owned()),
+            details: None,
         };
         let json = serde_json::to_value(&check).unwrap();
         assert_eq!(json["status"], "fail");
@@ -1015,11 +1195,13 @@ mod tests {
                 name: "a",
                 status: "pass",
                 message: None,
+                details: None,
             },
             HealthCheck {
                 name: "b",
                 status: "fail",
                 message: Some("down".to_owned()),
+                details: None,
             },
         ];
         let status = if checks.iter().any(|c| c.status == "fail") {
@@ -1039,11 +1221,13 @@ mod tests {
                 name: "a",
                 status: "pass",
                 message: None,
+                details: None,
             },
             HealthCheck {
                 name: "b",
                 status: "warn",
                 message: Some("no providers".to_owned()),
+                details: None,
             },
         ];
         let status = if checks.iter().any(|c| c.status == "fail") {
@@ -1063,11 +1247,13 @@ mod tests {
                 name: "session_store",
                 status: "pass",
                 message: None,
+                details: None,
             },
             HealthCheck {
                 name: "providers",
                 status: "pass",
                 message: None,
+                details: None,
             },
         ];
         let status = if checks.iter().any(|c| c.status == "fail") {
@@ -1087,11 +1273,13 @@ mod tests {
                 name: "a",
                 status: "pass",
                 message: None,
+                details: None,
             },
             HealthCheck {
                 name: "b",
                 status: "timeout",
                 message: Some("check timed out after 5s".to_owned()),
+                details: None,
             },
         ];
         // WHY: "timeout" is treated as "fail" for aggregate status because
@@ -1109,14 +1297,15 @@ mod tests {
         assert_eq!(status, "unhealthy");
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn timed_check_returns_timeout_on_slow_future() {
         let check = timed_check("slow_check", async {
-            tokio::time::sleep(Duration::from_mins(1)).await;
+            tokio::time::sleep(Duration::from_mins(1)).await; // kanon:ignore TESTING/sleep-in-test -- start_paused = true drives virtual time, not wall clock
             HealthCheck {
                 name: "slow_check",
                 status: "pass",
                 message: None,
+                details: None,
             }
         })
         .await;
@@ -1132,6 +1321,7 @@ mod tests {
                 name: "fast_check",
                 status: "pass",
                 message: None,
+                details: None,
             }
         })
         .await;
@@ -1251,5 +1441,137 @@ mod tests {
         // treated as a plain API key.
         let check = check_env_oauth_token("not-a-jwt-and-not-oauth", 1_000_000, 60, 300);
         assert_eq!(check.status, "pass");
+    }
+
+    fn api_request_error() -> hermeneus::error::Error {
+        hermeneus::error::ApiRequestSnafu {
+            message: "synthetic failure".to_owned(),
+        }
+        .build()
+    }
+
+    fn make_registry_with_named_providers(names: &[&'static str]) -> ProviderRegistry {
+        let mut registry = ProviderRegistry::new();
+        for name in names {
+            registry.register(Box::new(
+                hermeneus::test_utils::MockProvider::new("ok").named(name),
+            ));
+        }
+        registry
+    }
+
+    fn degrade_provider(registry: &ProviderRegistry, name: &str) {
+        registry.record_error(name, &api_request_error());
+    }
+
+    fn down_provider(registry: &ProviderRegistry, name: &str) {
+        // WHY: Default health config requires 5 consecutive availability errors
+        // before transitioning Up -> Down.
+        for _ in 0..5 {
+            registry.record_error(name, &api_request_error());
+        }
+    }
+
+    fn provider_detail_names(check: &HealthCheck) -> Vec<String> {
+        check
+            .details
+            .as_ref()
+            .and_then(|details| details["providers"].as_array())
+            .map(|array| {
+                array
+                    .iter()
+                    .filter_map(|entry| entry["name"].as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn provider_reachability_passes_when_all_providers_up() {
+        let registry = make_registry_with_named_providers(&["alpha", "beta"]);
+        let check = provider_reachability_check(&registry, &HashSet::new());
+        assert_eq!(check.name, "provider_reachability");
+        assert_eq!(check.status, "pass");
+        assert!(check.message.is_none());
+        assert_eq!(provider_detail_names(&check), vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn provider_reachability_warns_when_one_required_provider_degraded() {
+        let registry = make_registry_with_named_providers(&["alpha", "beta"]);
+        degrade_provider(&registry, "alpha");
+        let check = provider_reachability_check(&registry, &HashSet::new());
+        assert_eq!(check.status, "warn");
+        assert!(
+            check.message.is_some(),
+            "message should describe degraded provider"
+        );
+        let message = check.message.as_deref().unwrap_or_default();
+        assert!(message.contains("alpha") && message.contains("degraded"));
+    }
+
+    #[test]
+    fn provider_reachability_fails_when_one_required_provider_down() {
+        let registry = make_registry_with_named_providers(&["alpha", "beta"]);
+        down_provider(&registry, "alpha");
+        let check = provider_reachability_check(&registry, &HashSet::new());
+        assert_eq!(check.status, "fail");
+        assert!(
+            check.message.is_some(),
+            "message should describe down provider"
+        );
+        let message = check.message.as_deref().unwrap_or_default();
+        assert!(message.contains("alpha") && message.contains("down"));
+    }
+
+    #[test]
+    fn provider_reachability_fails_when_one_down_even_another_is_up() {
+        let registry = make_registry_with_named_providers(&["alpha", "beta"]);
+        down_provider(&registry, "alpha");
+        let check = provider_reachability_check(&registry, &HashSet::new());
+        assert_eq!(check.status, "fail");
+    }
+
+    #[test]
+    fn provider_reachability_warns_when_all_required_providers_degraded() {
+        let registry = make_registry_with_named_providers(&["alpha", "beta"]);
+        degrade_provider(&registry, "alpha");
+        degrade_provider(&registry, "beta");
+        let check = provider_reachability_check(&registry, &HashSet::new());
+        assert_eq!(check.status, "warn");
+    }
+
+    #[test]
+    fn provider_reachability_fails_when_all_required_providers_down() {
+        let registry = make_registry_with_named_providers(&["alpha", "beta"]);
+        down_provider(&registry, "alpha");
+        down_provider(&registry, "beta");
+        let check = provider_reachability_check(&registry, &HashSet::new());
+        assert_eq!(check.status, "fail");
+    }
+
+    #[test]
+    fn provider_reachability_passes_when_only_optional_provider_is_down() {
+        let registry = make_registry_with_named_providers(&["alpha", "beta"]);
+        down_provider(&registry, "beta");
+        let optional = HashSet::from(["beta".to_owned()]);
+        let check = provider_reachability_check(&registry, &optional);
+        assert_eq!(check.status, "pass");
+        assert!(check.message.is_none());
+        assert!(check.details.is_some(), "details should list all providers");
+        let details = check.details.unwrap_or_default();
+        let providers = details["providers"].as_array().unwrap();
+        let beta = providers.iter().find(|entry| entry["name"] == "beta");
+        assert!(beta.is_some(), "beta should be present");
+        assert_eq!(beta.unwrap()["status"], "down");
+    }
+
+    #[test]
+    fn provider_reachability_optional_list_parses_comma_separated_names() {
+        let names = parse_optional_providers(" alpha , beta,  gamma ");
+        assert!(names.contains("alpha"));
+        assert!(names.contains("beta"));
+        assert!(names.contains("gamma"));
+        assert!(!names.contains(""));
     }
 }
