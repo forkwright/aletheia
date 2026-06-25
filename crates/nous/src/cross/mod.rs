@@ -817,7 +817,7 @@ mod tests {
         router.register("target", tx).await;
 
         let msg = CrossNousMessage::new("sender", "target", "question")
-            .with_reply(Duration::from_secs(60));
+            .with_reply(Duration::from_mins(1));
 
         let spawned_router = router.clone();
         let handle = tokio::spawn(async move { spawned_router.ask(msg).await });
@@ -836,7 +836,7 @@ mod tests {
     async fn pending_reply_cleaned_up_on_cancellation() {
         let (router, mut rx) = setup_router().await;
         let msg = CrossNousMessage::new("sender", "target", "question")
-            .with_reply(Duration::from_secs(60));
+            .with_reply(Duration::from_mins(1));
 
         let spawned_router = router.clone();
         let handle = tokio::spawn(async move { spawned_router.ask(msg).await });
@@ -874,7 +874,7 @@ mod tests {
     async fn ask_cleanup_guard_removes_state_when_cancelled_while_waiting_for_reply() {
         let (router, mut rx) = setup_router().await;
         let msg = CrossNousMessage::new("sender", "target", "question")
-            .with_reply(Duration::from_secs(60));
+            .with_reply(Duration::from_mins(1));
 
         let ask_handle = tokio::spawn({
             let r = router.clone();
@@ -901,7 +901,7 @@ mod tests {
     async fn ask_cleanup_guard_removes_state_when_cancelled_before_delivery() {
         let (router, mut rx) = setup_router().await;
         let msg = CrossNousMessage::new("sender", "target", "question")
-            .with_reply(Duration::from_secs(60));
+            .with_reply(Duration::from_mins(1));
 
         let ask_handle = tokio::spawn({
             let r = router.clone();

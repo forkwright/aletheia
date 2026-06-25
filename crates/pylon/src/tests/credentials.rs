@@ -73,6 +73,22 @@ async fn credentials_validate_redacts_secret_material() {
 }
 
 #[tokio::test]
+async fn credentials_usage_counters_are_unavailable_not_zero() {
+    let (app, _dir) = app().await;
+
+    let list = app
+        .oneshot(authed_get("/api/v1/system/credentials"))
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let body = body_string(list).await;
+    assert!(body.contains(r#""usage_counters_available":false"#));
+    // WHY: placeholder counters must not be serialized as factual zeros (#4922).
+    assert!(!body.contains("\"requests_today\""));
+    assert!(!body.contains("\"tokens_today\""));
+}
+
+#[tokio::test]
 async fn credentials_add_list_remove_roundtrip() {
     let (app, _dir) = app().await;
     let raw_secret = "sk-test-roundtrip-secret-9999";

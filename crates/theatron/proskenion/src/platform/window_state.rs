@@ -110,10 +110,21 @@ fn save_sync(state: &WindowState) -> Result<(), WindowStateError> {
 
     let content = toml::to_string_pretty(state).context(SerializeSnafu)?;
 
-    use std::os::unix::fs::PermissionsExt as _;
-    let perms = std::fs::Permissions::from_mode(0o600);
+    // WHY: Unix builds restrict the temp file to owner-only before the atomic
+    // persist so the final window-state file inherits 0o600 permissions. On
+    // Windows `Permissions::from_mode` does not exist; the file is created in
+    // the user's `%APPDATA%` directory where default ACLs are user-private.
+    #[cfg(unix)]
+    let mut tmp = {
+        use std::os::unix::fs::PermissionsExt as _;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        tempfile::Builder::new()
+            .permissions(perms)
+            .tempfile_in(parent)
+            .context(WriteFileSnafu { path: parent })?
+    };
+    #[cfg(not(unix))]
     let mut tmp = tempfile::Builder::new()
-        .permissions(perms)
         .tempfile_in(parent)
         .context(WriteFileSnafu { path: parent })?;
     tmp.write_all(content.as_bytes())

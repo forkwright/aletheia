@@ -674,7 +674,7 @@ async fn shutdown_awaits_inflight_tasks_before_returning() {
             started_at: Instant::now()
                 .checked_sub(Duration::from_secs(1))
                 .expect("test start instant should fit before now"),
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_mins(1),
             warned: false,
         },
     );

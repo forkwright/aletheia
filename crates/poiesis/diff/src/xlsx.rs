@@ -204,5 +204,21 @@ pub(crate) fn diff_workbooks_impl(a: &[u8], b: &[u8]) -> Result<Vec<CellDiff>> {
         }
     }
 
+    // NOTE: emit insertions for sheets that exist only in workbook_b; the
+    // loop above never visits them because it iterates over workbook_a keys.
+    for (sheet_name, cells_b) in &workbook_b {
+        if !workbook_a.contains_key(sheet_name) {
+            for ((row, col), value_b) in cells_b {
+                diffs.push(CellDiff {
+                    sheet: sheet_name.clone(),
+                    row: *row,
+                    col: *col,
+                    before: None,
+                    after: Some(value_b.clone()),
+                });
+            }
+        }
+    }
+
     Ok(diffs)
 }
