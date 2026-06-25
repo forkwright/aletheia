@@ -19,8 +19,23 @@ use tracing::instrument;
 pub struct PdfSummary {
     /// Number of pages in the PDF.
     pub pages: usize,
+    /// Whether `pages` was produced by a successful lopdf parse.
+    ///
+    /// When `false`, `pages` is set to `1` because lopdf could not count
+    /// the pages and no other value is safe to report.
+    pub page_count_reliable: bool,
     /// Extracted text snippets from each page.
     pub text_snippets: Vec<String>,
+}
+
+impl PdfSummary {
+    pub(crate) fn new(pages: usize, page_count_reliable: bool, text_snippets: Vec<String>) -> Self {
+        Self {
+            pages,
+            page_count_reliable,
+            text_snippets,
+        }
+    }
 }
 
 /// Summary of extracted text and metadata from an XLSX workbook.
@@ -81,26 +96,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_inspect_pdf_handles_invalid_input() {
+    fn inspect_pdf_rejects_invalid_bytes() {
         let malformed = b"not a pdf";
         let result = inspect_pdf(malformed);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_inspect_xlsx_handles_invalid_input() {
+    fn inspect_xlsx_rejects_invalid_bytes() {
         let invalid = b"not xlsx";
         let result = inspect_xlsx(invalid);
-        // Should error on invalid ZIP
-        let _ = result;
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_inspect_pptx_handles_invalid_input() {
+    fn inspect_pptx_rejects_invalid_bytes() {
         let invalid = b"not pptx";
         let result = inspect_pptx(invalid);
-        // Should error on invalid ZIP
-        let _ = result;
+        assert!(result.is_err());
     }
 
     #[test]
@@ -180,6 +193,45 @@ mod tests {
             summary.pages >= 2,
             "expected at least 2 pages for a 60-paragraph doc, got {}",
             summary.pages
+        );
+        assert!(
+            summary.page_count_reliable,
+            "page count from a renderable PDF must be marked reliable"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pdf_page_count_reliable_on_valid_pdf() {
+        use poiesis_core::{Block, Document, Metadata, RichText, Span};
+
+        let doc = Document {
+            metadata: Metadata {
+                title: "Single-page".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Paragraph(RichText {
+                spans: vec![Span::Plain("Hello, PDF.".to_owned())],
+            })],
+        };
+
+        let bytes = match poiesis_doc::render_pdf_from_doc(&doc) {
+            Ok(b) => b,
+            Err(e) => {
+                // Gracefully skip if Typst is unavailable in this environment
+                eprintln!("PDF render skipped: {e}");
+                return;
+            }
+        };
+        let summary = inspect_pdf(&bytes).expect("inspect must succeed");
+        assert_eq!(
+            summary.pages, 1,
+            "single-paragraph doc should report one page"
+        );
+        assert!(
+            summary.page_count_reliable,
+            "page count from a valid PDF must be marked reliable"
         );
     }
 }

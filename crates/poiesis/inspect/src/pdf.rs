@@ -18,12 +18,13 @@ pub(crate) fn inspect_pdf_impl(bytes: &[u8]) -> Result<PdfSummary> {
         .map(std::string::ToString::to_string)
         .collect();
 
-    let pages = lopdf::Document::load_mem(bytes)
-        .map_or(1, |doc| doc.get_pages().len())
-        .max(1);
+    let (pages, page_count_reliable) = match lopdf::Document::load_mem(bytes) {
+        Ok(doc) => (doc.get_pages().len().max(1), true),
+        Err(e) => {
+            tracing::warn!(error = %e, "lopdf page-count failed; reporting 1");
+            (1, false)
+        }
+    };
 
-    Ok(PdfSummary {
-        pages,
-        text_snippets,
-    })
+    Ok(PdfSummary::new(pages, page_count_reliable, text_snippets))
 }
