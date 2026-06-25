@@ -89,9 +89,17 @@ fn encode_u64(v: u64) -> [u8; 8] {
     v.to_be_bytes()
 }
 
-/// ISO 8601 timestamp string for "now".
+/// ISO 8601 UTC timestamp string for "now".
+///
+/// WHY: Fjall-backed stores use a single canonical timestamp format so that
+/// lexicographic string comparisons match chronological order. The output is
+/// always UTC (`Z` suffix) regardless of the host timezone, because the shared
+/// `koina::fjall::now_iso` helper formatted `jiff::Zoned::now()` with a literal
+/// `Z` suffix and therefore mislabelled local wall time as UTC (#4742).
 fn now_iso() -> String {
-    koina::fjall::now_iso()
+    jiff::Timestamp::now()
+        .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string()
 }
 
 // ── Distillation record (fjall-internal, not a public type) ────────────────
