@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use chromiumoxide::{Browser, BrowserConfig};
 use futures::StreamExt as _;
-use tracing::{debug, error, warn};
+use tracing::{Instrument as _, debug, error, warn};
 
 use crate::{PrintOptions, PrinterError};
 
@@ -42,7 +42,10 @@ pub(crate) async fn print_to_pdf_inner(
         source: Box::from(e),
     })?;
 
-    let handler_task = tokio::spawn(async move { while let Some(_ev) = handler.next().await {} });
+    let handler_task = tokio::spawn(
+        async move { while let Some(_ev) = handler.next().await {} }
+            .instrument(tracing::Span::current()),
+    );
 
     let render_result = render_with_browser(&mut browser, html, opts, started).await;
     let cleanup_result = cleanup_browser(&mut browser, Duration::from_secs(5)).await;
@@ -50,7 +53,10 @@ pub(crate) async fn print_to_pdf_inner(
 
     match (render_result, cleanup_result) {
         (Ok(pdf_bytes), Ok(())) => Ok(pdf_bytes),
-        (Ok(_pdf_bytes), Err(cleanup_error)) => Err(cleanup_error),
+        (Ok(pdf_bytes), Err(cleanup_error)) => {
+            warn!(error = %cleanup_error, "Chromium cleanup failed; returning successful PDF");
+            Ok(pdf_bytes)
+        }
         (Err(render_error), Ok(())) => Err(render_error),
         (Err(render_error), Err(cleanup_error)) => {
             error!(error = %cleanup_error, "Chromium cleanup failed after render error");

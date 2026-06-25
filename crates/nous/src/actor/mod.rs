@@ -32,6 +32,7 @@ use crate::session::SessionState;
 mod background;
 mod spawn;
 mod turn;
+mod turn_quality;
 
 pub(crate) use spawn::{spawn, validate_workspace};
 
@@ -105,6 +106,21 @@ pub(crate) struct ActorStores {
     skill_loader: Option<crate::skills::SkillLoader>,
 }
 
+/// Counters and recent-window state for background task failures.
+///
+/// Grouped to keep `ActorRuntime` under the struct field limit while keeping
+/// all failure-tracking state co-located.
+pub(crate) struct BackgroundFailureState {
+    /// Total background task failures (panics and non-panic join errors) since start.
+    pub(crate) total_count: u32,
+    /// Timestamps of recent background task failures within the degraded window.
+    pub(crate) timestamps: Vec<Instant>,
+    /// Message from the most recent background task failure.
+    pub(crate) latest_message: Option<String>,
+    /// Kind label of the most recent background task failure (`panic`, `error`, ...).
+    pub(crate) latest_kind: Option<String>,
+}
+
 /// Runtime state: background tasks, panic tracking, timing.
 pub(crate) struct ActorRuntime {
     /// Background tasks (extraction, distillation, skill analysis).
@@ -131,14 +147,8 @@ pub(crate) struct ActorRuntime {
     background_panic_count: u32,
     /// Timestamps of recent background task panics (for logging/monitoring only).
     background_panic_timestamps: Vec<Instant>,
-    /// Total background task failures (panics and non-panic join errors) since start.
-    background_failure_total_count: u32,
-    /// Timestamps of recent background task failures within the degraded window.
-    background_failure_timestamps: Vec<Instant>,
-    /// Message from the most recent background task failure.
-    background_failure_latest_message: Option<String>,
-    /// Kind label of the most recent background task failure (`panic`, `error`, ...).
-    background_failure_latest_kind: Option<String>,
+    /// Aggregated background task failure counters and recent-window state.
+    background_failure: BackgroundFailureState,
     /// When the actor started running.
     started_at: Instant,
     /// Timestamp of the most recent pipeline panic, used for auto-recovery from degraded mode.
@@ -271,10 +281,12 @@ impl NousActor {
                 pipeline_panic_timestamps: Vec::new(),
                 background_panic_count: 0,
                 background_panic_timestamps: Vec::new(),
-                background_failure_total_count: 0,
-                background_failure_timestamps: Vec::new(),
-                background_failure_latest_message: None,
-                background_failure_latest_kind: None,
+                background_failure: BackgroundFailureState {
+                    total_count: 0,
+                    timestamps: Vec::new(),
+                    latest_message: None,
+                    latest_kind: None,
+                },
                 started_at: Instant::now(),
                 last_panic_at: None,
                 consecutive_timeouts: 0,
@@ -509,7 +521,8 @@ impl NousActor {
         let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
         let recent_background_failures = self
             .runtime
-            .background_failure_timestamps
+            .background_failure
+            .timestamps
             .iter()
             .filter(|t| t.elapsed() <= degraded_window)
             .count();
@@ -522,14 +535,15 @@ impl NousActor {
             active_session: self.active_session.clone(),
             panic_count: self.runtime.pipeline_panic_count,
             uptime: self.runtime.started_at.elapsed(),
-            background_failure_total_count: self.runtime.background_failure_total_count,
+            background_failure_total_count: self.runtime.background_failure.total_count,
             background_failure_recent_count: u32::try_from(recent_background_failures)
                 .unwrap_or(u32::MAX),
             background_failure_latest_message: self
                 .runtime
-                .background_failure_latest_message
+                .background_failure
+                .latest_message
                 .clone(),
-            background_failure_latest_kind: self.runtime.background_failure_latest_kind.clone(),
+            background_failure_latest_kind: self.runtime.background_failure.latest_kind.clone(),
             background_health_degraded,
         };
         // kanon:ignore RUST/no-silent-result-swallow — oneshot receiver may have dropped; no recovery possible

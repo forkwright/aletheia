@@ -147,11 +147,6 @@ impl Renderer for PptxRenderer {
 
         slides.push(current_slide);
 
-        // WHY: a valid PPTX needs at least one slide.
-        if slides.is_empty() {
-            slides.push(SlideContent::new(&doc.metadata.title));
-        }
-
         create_pptx_with_content(&doc.metadata.title, &slides)
     }
 }
