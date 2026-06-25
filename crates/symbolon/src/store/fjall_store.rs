@@ -30,7 +30,7 @@ use std::sync::{Arc, Mutex};
 use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
 use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument};
 
 use crate::error::{self, Result};
 use crate::types::{ApiKeyRecord, Role, User};
@@ -91,11 +91,10 @@ fn now_iso() -> String {
     koina::fjall::now_iso()
 }
 
-fn decode_role(role_str: &str) -> Role {
-    role_str.parse().unwrap_or_else(|_| {
-        warn!(role = %role_str, "unknown role in fjall store, defaulting to Readonly");
-        Role::Readonly
-    })
+fn decode_role(role_str: &str) -> Result<Role> {
+    role_str
+        .parse()
+        .map_err(|e: String| storage_err(format!("unknown role in fjall store: {e}")))
 }
 
 fn storage_err(message: impl Into<String>) -> crate::error::Error {
@@ -279,7 +278,7 @@ impl AuthStore {
             // wire-side SecretString is exposed here only at the
             // persistence boundary.
             password_hash: record.password_hash.expose_secret().to_owned(),
-            role: decode_role(&record.role),
+            role: decode_role(&record.role)?,
             created_at: record.created_at,
             updated_at: record.updated_at,
         }))
@@ -365,7 +364,7 @@ impl AuthStore {
         let primary_key = format!("key:{id}");
         match self.get_json::<ApiKeyEntry>(&api_keys, &primary_key)? {
             None => Ok(None),
-            Some(entry) => Ok(Some(api_key_entry_to_record(entry))),
+            Some(entry) => Ok(Some(api_key_entry_to_record(entry)?)),
         }
     }
 
@@ -415,7 +414,7 @@ impl AuthStore {
                 .map_err(|e| storage_err(format!("fjall scan api_keys: {e}")))?;
             let entry: ApiKeyEntry = serde_json::from_slice(&value)
                 .map_err(|e| storage_err(format!("api key json decode: {e}")))?;
-            records.push(api_key_entry_to_record(entry));
+            records.push(api_key_entry_to_record(entry)?);
         }
 
         // WHY: descending created_at order matches the legacy SQLite
@@ -494,21 +493,21 @@ impl AuthStore {
     }
 }
 
-fn api_key_entry_to_record(entry: ApiKeyEntry) -> ApiKeyRecord {
-    ApiKeyRecord {
+fn api_key_entry_to_record(entry: ApiKeyEntry) -> Result<ApiKeyRecord> {
+    Ok(ApiKeyRecord {
         id: entry.id,
         prefix: entry.prefix,
         // WHY: `ApiKeyRecord.key_hash` is the public domain type; the
         // wire-side SecretString is unwrapped here at the persistence
         // boundary.
         key_hash: entry.key_hash.expose_secret().to_owned(),
-        role: decode_role(&entry.role),
+        role: decode_role(&entry.role)?,
         nous_id: entry.nous_id,
         created_at: entry.created_at,
         expires_at: entry.expires_at,
         last_used_at: entry.last_used_at,
         revoked_at: entry.revoked_at,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -772,5 +771,115 @@ mod tests {
         assert_eq!(found.expires_at, record.expires_at);
         assert_eq!(found.last_used_at, record.last_used_at);
         assert_eq!(found.revoked_at, record.revoked_at);
+    }
+
+    /// Corrupted role string on a user record must surface as `Err`, not
+    /// `Ok(User { role: Readonly })`.
+    ///
+    /// WHY: Regression for the silent-downgrade bug (issue #5879). Before the
+    /// fix, `decode_role` returned `Role::Readonly` on unknown input, making a
+    /// corrupted Operator record indistinguishable from a legitimate Readonly
+    /// user. The fix propagates `Err` so the corruption is visible at the API
+    /// boundary.
+    #[test]
+    fn corrupted_user_role_returns_err() {
+        use fjall::Readable;
+
+        let store = memory_store();
+
+        // Write a well-formed user record first, then overwrite the role byte
+        // directly in fjall to simulate on-disk corruption.
+        store
+            .create_user("u1", "bob", "$argon2id$hash", Role::Operator)
+            .unwrap();
+
+        // Mutate the stored role to an unrecognised string.
+        {
+            let users = store.partition("users").unwrap();
+            let key = "user:bob";
+            let snap = store.db.read_tx();
+            let raw = snap.get(&users, key.as_bytes()).unwrap().unwrap();
+            let mut rec: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+            *rec.get_mut("role").unwrap() = serde_json::Value::String("CORRUPTED_ROLE".to_owned());
+            let new_bytes = serde_json::to_vec(&rec).unwrap();
+            let _guard = store
+                .write_lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut tx = store.db.write_tx();
+            tx.insert(&users, key.as_bytes(), &new_bytes);
+            tx.commit().unwrap();
+        }
+
+        let result = store.find_user_by_username("bob");
+        assert!(
+            result.is_err(),
+            "corrupted role must propagate Err, not silently downgrade to Readonly"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("CORRUPTED_ROLE"),
+            "error message must include the bad role string; got: {err_msg}"
+        );
+    }
+
+    /// Corrupted role string on an API key record must surface as `Err`, not
+    /// `Ok(ApiKeyRecord { role: Readonly })`.
+    ///
+    /// WHY: Regression for the silent-downgrade bug (issue #5879). Covers the
+    /// `api_key_entry_to_record` call path in `find_api_key_by_hash` and
+    /// `list_api_keys`.
+    #[test]
+    fn corrupted_api_key_role_returns_err() {
+        use fjall::Readable;
+
+        let store = memory_store();
+
+        let record = ApiKeyRecord {
+            id: "k1".to_owned(),
+            prefix: "syn".to_owned(),
+            key_hash: "abc123".to_owned(),
+            role: Role::Agent,
+            nous_id: None,
+            created_at: String::new(),
+            expires_at: None,
+            last_used_at: None,
+            revoked_at: None,
+        };
+        store.store_api_key(&record).unwrap();
+
+        // Overwrite the role byte in the primary key with garbage.
+        {
+            let api_keys = store.partition("api_keys").unwrap();
+            let primary_key = "key:k1";
+            let snap = store.db.read_tx();
+            let raw = snap
+                .get(&api_keys, primary_key.as_bytes())
+                .unwrap()
+                .unwrap();
+            let mut entry: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+            *entry.get_mut("role").unwrap() =
+                serde_json::Value::String("CORRUPTED_ROLE".to_owned());
+            let new_bytes = serde_json::to_vec(&entry).unwrap();
+            let _guard = store
+                .write_lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut tx = store.db.write_tx();
+            tx.insert(&api_keys, primary_key.as_bytes(), &new_bytes);
+            tx.commit().unwrap();
+        }
+
+        let by_hash = store.find_api_key_by_hash("abc123");
+        assert!(
+            by_hash.is_err(),
+            "find_api_key_by_hash must return Err on corrupted role"
+        );
+
+        let list = store.list_api_keys();
+        assert!(
+            list.is_err(),
+            "list_api_keys must return Err on corrupted role"
+        );
     }
 }
