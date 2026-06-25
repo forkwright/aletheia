@@ -208,7 +208,11 @@ fn update_session_uses_direct_key_lookup() {
     let d1_sessions = store.list_sessions_for_dispatch(&d1).unwrap();
     let d2_sessions = store.list_sessions_for_dispatch(&d2).unwrap();
 
-    assert!(d1_sessions.iter().all(|s| s.status == SessionStatus::Skipped));
+    assert!(
+        d1_sessions
+            .iter()
+            .all(|s| s.status == SessionStatus::Skipped)
+    );
     let updated = d2_sessions
         .iter()
         .find(|s| s.prompt_number == 7)
