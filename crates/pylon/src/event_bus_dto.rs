@@ -7,12 +7,21 @@ use serde::{Deserialize, Serialize};
 /// WHY: Discovery and subscription tests share a single source of truth so the
 /// advertised topic list cannot drift from the topics actually emitted by pylon
 /// handlers.
-pub const DISCOVERABLE_TOPICS: &[&str] = &["fact.created", "turn.complete", "nous.lifecycle"];
+pub(crate) const DISCOVERABLE_TOPICS: &[&str] =
+    &["fact.created", "turn.complete", "nous.lifecycle"];
 
-/// A domain event with a stable topic name and JSON payload.
+/// A domain event with a stable topic name, monotonic id, JSON payload, and
+/// emission timestamp.
+///
+/// WHY(#4910): The `id` field is a durable sequence number within a pylon
+/// process. It enables `Last-Event-ID` reconnect replay and lets clients detect
+/// unrecoverable gaps when the requested id has fallen out of the in-memory
+/// journal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct DomainEvent {
+    /// Monotonic durable event id (1-based).
+    pub id: u64,
     /// Event topic (e.g. `fact.created`, `turn.complete`).
     pub topic: String,
     /// Structured event payload.

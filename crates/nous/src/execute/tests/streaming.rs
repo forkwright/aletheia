@@ -42,6 +42,56 @@ impl LlmProvider for StreamingMockProvider {
     }
 }
 
+/// Provider that emits a configurable number of text deltas in `complete_streaming`.
+struct DeltaEmitter {
+    deltas: usize,
+    response: CompletionResponse,
+}
+
+impl DeltaEmitter {
+    fn new(deltas: usize, response: CompletionResponse) -> Self {
+        Self { deltas, response }
+    }
+}
+
+impl LlmProvider for DeltaEmitter {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let response = self.response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+        on_event: &'a mut (dyn FnMut(hermeneus::anthropic::StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        for i in 0..self.deltas {
+            on_event(hermeneus::anthropic::StreamEvent::TextDelta {
+                text: format!("delta-{i}"),
+            });
+        }
+        let response = self.response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &'static str {
+        "delta-emitter"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+}
+
 #[tokio::test]
 async fn streaming_falls_back_to_non_streaming_for_mock() {
     let mut providers = ProviderRegistry::new();
@@ -372,5 +422,53 @@ async fn streaming_client_disconnect_reports_stop_reason() {
     assert!(
         result.tool_calls.is_empty(),
         "disconnected stream should not dispatch tools"
+    );
+}
+
+#[tokio::test]
+async fn streaming_dropped_llm_deltas_record_metric() {
+    // WHY(#4893): A saturated stream channel must not silently lose user-visible
+    // LLM deltas. This test forces the channel to capacity 1 and emits multiple
+    // text deltas, asserting that the drop counter increments with the
+    // `text_delta` event type label.
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(DeltaEmitter::new(5, make_text_response("done"))));
+
+    let tools = ToolRegistry::new();
+    let (tx, _rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(1);
+
+    let registry = koina::metrics::MetricsRegistry::new();
+    registry.with_registry(crate::metrics::register);
+
+    execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    let mut buf = String::new();
+    registry
+        .encode(&mut buf)
+        .expect("encoding into String is infallible");
+
+    assert!(
+        buf.contains("aletheia_stream_events_dropped_total"),
+        "expected stream drop metric, got: {buf}"
+    );
+    assert!(
+        buf.contains("event_type=\"text_delta\""),
+        "expected text_delta event type label, got: {buf}"
+    );
+    assert!(
+        buf.contains("reason=\"buffer_full\""),
+        "expected buffer_full reason label, got: {buf}"
     );
 }

@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — nous handler covers agent CRUD, tool management, and recovery; tracked for split in #4201
 //! Nous (agent) information endpoints.
 
 use axum::Json;
@@ -587,14 +588,18 @@ pub async fn create(
 
     result?;
 
-    state.event_bus.publish(crate::event_bus::DomainEvent::new(
-        "nous.lifecycle",
-        serde_json::json!({
-            "nous_id": id_for_response,
-            "event": "created",
-            "restart_required": true,
-        }),
-    ));
+    state
+        .event_bus
+        .publish(crate::event_bus::DomainEvent::new(
+            state.event_bus.next_id(),
+            "nous.lifecycle",
+            serde_json::json!({
+                "nous_id": id_for_response,
+                "event": "created",
+                "restart_required": true,
+            }),
+        ))
+        .await;
 
     Ok((
         StatusCode::CREATED,

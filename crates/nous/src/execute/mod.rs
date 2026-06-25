@@ -16,6 +16,7 @@ use snafu::ResultExt;
 use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
+use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use hermeneus::fallback::FallbackConfig;
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{
@@ -437,6 +438,40 @@ async fn execute_with_dispatch(
     })
 }
 
+/// Record a failed `try_send` of an LLM streaming delta.
+///
+/// WHY(#4893): Dropped text/thinking deltas must be visible in the same metric
+/// family as dropped tool lifecycle events. The event type label distinguishes
+/// text, thinking, and other delta shapes so operators can pinpoint saturation.
+fn record_llm_stream_send_error(
+    nous_id: &str,
+    event: &LlmStreamEvent,
+    err: &tokio::sync::mpsc::error::TrySendError<TurnStreamEvent>,
+) {
+    let event_type = match event {
+        LlmStreamEvent::TextDelta { .. } => "text_delta",
+        LlmStreamEvent::ThinkingDelta { .. } => "thinking_delta",
+        LlmStreamEvent::InputJsonDelta { .. } => "input_json_delta",
+        _ => "llm_delta",
+    };
+    match err {
+        tokio::sync::mpsc::error::TrySendError::Full(_) => {
+            warn!(
+                nous_id,
+                event_type, "streaming LLM delta dropped: channel buffer full"
+            );
+            crate::metrics::record_stream_event_dropped(nous_id, event_type, "buffer_full");
+        }
+        tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+            debug!(
+                nous_id,
+                event_type, "streaming LLM delta dropped: receiver disconnected"
+            );
+            crate::metrics::record_stream_event_dropped(nous_id, event_type, "disconnected");
+        }
+    }
+}
+
 /// Streaming execute stage: same as [`execute`] but emits real-time events.
 ///
 /// Uses `complete_streaming()` when the provider supports it, falling back to
@@ -577,9 +612,12 @@ pub async fn execute_streaming(
         };
 
         let tx = stream_tx.clone();
+        let nous_id = tool_ctx.nous_id.clone();
         let response = match streaming_provider
             .complete_streaming(&request, &mut |event| {
-                let _ = tx.try_send(TurnStreamEvent::LlmDelta(event));
+                if let Err(e) = tx.try_send(TurnStreamEvent::LlmDelta(event.clone())) {
+                    record_llm_stream_send_error(nous_id.as_ref(), &event, &e);
+                }
             })
             .await
         {

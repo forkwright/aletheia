@@ -87,47 +87,28 @@ pub async fn ingest(
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let store = std::sync::Arc::clone(store);
-        let event_bus = std::sync::Arc::clone(&state.event_bus);
-        let result = tokio::task::spawn_blocking(move || {
-            let mut inserted = 0usize;
-            let mut skipped = 0usize;
-            let mut errors = Vec::new();
+        let (result, fact_events) =
+            tokio::task::spawn_blocking(move || insert_facts(&store, &facts))
+                .await
+                .map_err(|e| ApiError::Internal {
+                    message: format!("ingest write task failed: {e}"),
+                    location: snafu::location!(),
+                })?;
 
-            for (index, fact) in facts.iter().enumerate() {
-                match store.insert_fact(fact) {
-                    Ok(()) => {
-                        inserted += 1;
-                        event_bus.publish(crate::event_bus::DomainEvent::new(
-                            "fact.created",
-                            serde_json::json!({
-                                "fact_id": fact.id.as_str(),
-                                "nous_id": fact.nous_id.as_str(),
-                                "content_preview": truncate(&fact.content, 200),
-                            }),
-                        ));
-                    }
-                    Err(e) => {
-                        errors.push(IngestFactError {
-                            index,
-                            id: Some(fact.id.as_str().to_owned()),
-                            message: e.to_string(),
-                        });
-                        skipped += 1;
-                    }
-                }
-            }
-
-            IngestResponse {
-                inserted,
-                skipped,
-                errors,
-            }
-        })
-        .await
-        .map_err(|e| ApiError::Internal {
-            message: format!("ingest write task failed: {e}"),
-            location: snafu::location!(),
-        })?;
+        for (fact_id, nous_id, content_preview) in fact_events {
+            state
+                .event_bus
+                .publish(crate::event_bus::DomainEvent::new(
+                    state.event_bus.next_id(),
+                    "fact.created",
+                    serde_json::json!({
+                        "fact_id": fact_id,
+                        "nous_id": nous_id,
+                        "content_preview": content_preview,
+                    }),
+                ))
+                .await;
+        }
 
         tracing::info!(
             inserted = result.inserted,
@@ -144,6 +125,54 @@ pub async fn ingest(
         message: "knowledge store not available".to_owned(),
         location: snafu::location!(),
     })
+}
+
+/// Insert `facts` into `store`, returning the response summary plus the
+/// `(fact_id, nous_id, content_preview)` tuples to publish as `fact.created`
+/// events after the blocking write completes.
+///
+/// WHY: event publication is async; it must happen on the runtime, not inside
+/// the `spawn_blocking` task. This helper keeps the blocking write self-contained
+/// and the async [`ingest`] handler under the line limit.
+#[cfg(feature = "knowledge-store")]
+fn insert_facts(
+    store: &mneme::knowledge_store::KnowledgeStore,
+    facts: &[mneme::knowledge::Fact],
+) -> (IngestResponse, Vec<(String, String, String)>) {
+    let mut inserted = 0usize;
+    let mut skipped = 0usize;
+    let mut errors = Vec::new();
+    let mut fact_events: Vec<(String, String, String)> = Vec::new();
+
+    for (index, fact) in facts.iter().enumerate() {
+        match store.insert_fact(fact) {
+            Ok(()) => {
+                inserted += 1;
+                fact_events.push((
+                    fact.id.as_str().to_owned(),
+                    fact.nous_id.as_str().to_owned(),
+                    truncate(&fact.content, 200),
+                ));
+            }
+            Err(e) => {
+                errors.push(IngestFactError {
+                    index,
+                    id: Some(fact.id.as_str().to_owned()),
+                    message: e.to_string(),
+                });
+                skipped += 1;
+            }
+        }
+    }
+
+    (
+        IngestResponse {
+            inserted,
+            skipped,
+            errors,
+        },
+        fact_events,
+    )
 }
 
 fn parse_ingest_format(format: &str) -> Result<mneme::ingest::IngestFormat, ApiError> {

@@ -50,6 +50,13 @@ struct NousReasonLabels {
     reason: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct StreamEventDroppedLabels {
+    nous_id: String,
+    event_type: String,
+    reason: String,
+}
+
 // ── Metric families ──
 
 static PIPELINE_TURNS_TOTAL: LazyLock<Family<NousLabels, Counter>> = LazyLock::new(Family::default);
@@ -75,7 +82,7 @@ static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<Family<NousTaskTypeLabels, Count
 static TOOL_FAILURES_TOTAL: LazyLock<Family<NousToolLabels, Counter>> =
     LazyLock::new(Family::default);
 
-static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> =
+static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<StreamEventDroppedLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
@@ -236,13 +243,15 @@ pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
 
 /// Record a dropped streaming event.
 ///
-/// WHY: Silently dropped streaming events are invisible contract violations.
-/// This counter surfaces the drop rate for alerting.
-pub(crate) fn record_stream_event_dropped(nous_id: &str, reason: &str) {
-    tracing::debug!(nous_id, reason, "streaming event dropped");
+/// WHY(#4893): Silently dropped streaming events are invisible contract
+/// violations. This counter surfaces the drop rate per event type so operators
+/// can detect LLM delta loss as readily as tool lifecycle drops.
+pub(crate) fn record_stream_event_dropped(nous_id: &str, event_type: &str, reason: &str) {
+    tracing::debug!(nous_id, event_type, reason, "streaming event dropped");
     STREAM_EVENTS_DROPPED_TOTAL
-        .get_or_create(&NousReasonLabels {
+        .get_or_create(&StreamEventDroppedLabels {
             nous_id: nous_id.to_owned(),
+            event_type: event_type.to_owned(),
             reason: reason.to_owned(),
         })
         .inc();
@@ -354,7 +363,7 @@ mod tests {
         record_cache_usage("n1", 5, 5);
         record_background_failure("n1", "extract");
         record_tool_failure("n1", "read");
-        record_stream_event_dropped("n1", "full");
+        record_stream_event_dropped("n1", "text_delta", "full");
         record_training_capture_rejected("n1", "non_authored");
         record_dpo_pair("n1");
         record_health_poller_restart();
