@@ -94,6 +94,10 @@ pub mod path_validation {
 #[cfg(feature = "mneme-engine")]
 pub use krites as engine;
 
+/// Benchmark isolation and evidence primitives for eval harnesses.
+#[cfg(feature = "mneme-engine")]
+pub mod benchmark;
+
 // ── Session persistence (graphe) ───────────────────────────────────────────
 
 /// Mneme-specific error types and result alias.
