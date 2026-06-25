@@ -132,6 +132,21 @@ pub mod types {
     };
 }
 
+/// Idempotent turn-finalization primitives.
+///
+/// WHY: `nous::finalize` uses `usage_exists_for_turn` as the dedup guard, but
+/// messages are appended before usage is recorded. The types here let
+/// downstream detect and recover partially finalized turns (#4691).
+pub mod finalize;
+
+/// Working-memory checkpoint storage contract.
+///
+/// WHY: the working-checkpoint hook is enabled by default but the runtime
+/// passes no store, leaving the hook/tool as no-ops. This module defines the
+/// storage surface so a downstream runtime can wire a durable backend
+/// through the memory boundary (#4688).
+pub mod checkpoint;
+
 // ── Training data types (eidos) ───────────────────────────────────────
 //
 // NOTE: training capture *logic* (the JSONL writer, quality gate, and
@@ -354,7 +369,8 @@ mod facade_surface_tests {
         Visibility, default_stability_hours, far_future, format_timestamp, parse_timestamp,
     };
 
-    #[test] // kanon:ignore TESTING/tautological-test — compile-time export check: if types can't be named, compilation fails
+    // kanon:ignore TESTING/tautological-test WHY: this is a compile-time surface existence check; the test "passes" when the import block above compiles successfully
+    #[test]
     fn curated_knowledge_surface_is_exported() {
         // Naming each curated type pins it to the facade contract without
         // constructing values; the function items pin the curated helpers.
