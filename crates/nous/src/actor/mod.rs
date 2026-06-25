@@ -458,9 +458,22 @@ impl NousActor {
                     }
                 } => {
                     if let Some(envelope) = envelope {
-                        let from = envelope.message.from.clone();
-                        if let Err(e) = self.handle_cross_message(envelope).await {
-                            warn!(nous_id = %self.id, from = %from, error = %e, "cross-nous message processing failed");
+                        // WHY: the degraded gate must be symmetric across all turn paths.
+                        // Cross-nous messages use the same pipeline as operator turns, so
+                        // a degraded actor must drop them rather than accumulate more panic
+                        // pressure while it is already failing.
+                        if self.channel.status == NousLifecycle::Degraded {
+                            warn!(
+                                nous_id = %self.id,
+                                from = %envelope.message.from,
+                                panic_count = self.runtime.pipeline_panic_count,
+                                "cross-nous message dropped: actor is degraded"
+                            );
+                        } else {
+                            let from = envelope.message.from.clone();
+                            if let Err(e) = self.handle_cross_message(envelope).await {
+                                warn!(nous_id = %self.id, from = %from, error = %e, "cross-nous message processing failed");
+                            }
                         }
                     }
                 }
