@@ -49,8 +49,9 @@ impl TurnHook for AuditLoggingHook {
                 "audit: turn completed"
             );
 
-            // WHY: record turn metrics through the existing metrics system
-            crate::metrics::record_turn(context.nous_id);
+            // WHY: turn counting is owned by the pipeline's TurnCompleted event.
+            // The audit hook must not increment the counter; doing so double-counts
+            // when audit logging is enabled (the default).
 
             HookResult::Continue
         })

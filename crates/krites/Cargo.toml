@@ -8,9 +8,6 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
-[lints]
-workspace = true
-
 [features]
 default = ["graph-algo", "async", "hot-reload"]
 graph-algo = []
@@ -59,16 +56,24 @@ lru = { version = "0.17", default-features = false }
 rustix = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }
-parking_lot = { version = "0.12", default-features = false, features = ["arc_lock"] }
-
-# Storage backends
-# WHY: krites has a manual Sync boundary around fjall 3.1.4 transaction wrappers.
-# Re-check storage/fjall_backend.rs before changing this version.
-fjall = { version = "=3.1.4", default-features = false, features = ["lz4"], optional = true }
 
 # Hot-reload
 notify = { workspace = true, optional = true }
 arc-swap = { version = "1", optional = true }
+
+[dependencies.parking_lot]
+version = "0.12"
+default-features = false
+features = ["arc_lock"]
+
+# Storage backends
+# WHY: krites has a manual Sync boundary around fjall 3.1.4 transaction wrappers.
+# Re-check storage/fjall_backend.rs before changing this version.
+[dependencies.fjall]
+version = "=3.1.4"
+default-features = false
+features = ["lz4"]
+optional = true
 
 [dependencies.ndarray]
 version = "0.17"
@@ -90,8 +95,16 @@ proptest = { workspace = true }
 tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# WHY: loom model-checks the manual `unsafe impl Sync` sites in
-# runtime/hnsw/mmap_storage.rs and storage/fjall_backend.rs (#2864, #3066).
-# Only active under `#[cfg(loom)]`, not built in normal test runs.
+# WHY: loom model-checks the manual `unsafe impl Sync` site in
+# storage/fjall_backend.rs (#3066). Only active under `#[cfg(loom)]`, not built
+# in normal test runs.
 [target.'cfg(loom)'.dev-dependencies]
 loom = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "public API is stable"
