@@ -10,6 +10,7 @@ use snafu::Snafu;
 /// Errors raised when constructing a typed identifier (`ComponentId`,
 /// `ThemeId`, `FactId`, `ClaimId`, `SheetName`, `DataSourceId`).
 #[derive(Debug, Clone, PartialEq, Eq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum IdError {
     /// The input string was empty.
@@ -49,6 +50,7 @@ pub enum IdError {
 /// Errors raised when parsing a typed value (`Scalar`, `Unit`, `AspectRatio`,
 /// `Tolerance`).
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum ScalarError {
     /// Unknown unit name.
@@ -79,6 +81,7 @@ pub enum ScalarError {
 
 /// Errors raised when validating or resolving a `Factbase`.
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum FactbaseError {
     /// A `FactId` referenced from a `Claim` or `Derived`/`Reference` source
@@ -126,6 +129,7 @@ pub enum FactbaseError {
 /// Errors raised by the component registry: discovery, schema parse, slot
 /// validation.
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum RegistryError {
     /// A pack directory was missing a required artifact.
@@ -179,6 +183,7 @@ pub enum RegistryError {
 
 /// Errors raised when parsing or validating a [`crate::envelope::DeliverableSpec`].
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum SpecError {
     /// A required `Meta` field was missing.
@@ -205,10 +210,29 @@ pub enum SpecError {
         /// The body kind expected.
         expected: &'static str,
     },
+    /// A [`crate::bodies::Sheet`] violates a structural invariant: either
+    /// `column_types.len()` does not equal `headers.len()`, or a row does not
+    /// contain exactly `headers.len()` cells.
+    #[snafu(display(
+        "sheet {sheet:?} shape mismatch: expected {expected} columns, got {got} at {location}",
+        location = row.map_or_else(|| "column_types".to_string(), |r| format!("row {r}"))
+    ))]
+    SheetShapeMismatch {
+        /// The sheet display name that failed validation.
+        sheet: String,
+        /// `None` for a `column_types` length mismatch; `Some(index)` for the
+        /// offending row.
+        row: Option<usize>,
+        /// The expected column count (`headers.len()`).
+        expected: usize,
+        /// The actual column count that was found.
+        got: usize,
+    },
 }
 
 /// Umbrella error covering every parse-don't-validate boundary in this crate.
 #[derive(Debug, Clone, PartialEq, Snafu)]
+#[non_exhaustive]
 pub enum PoiesisError {
     /// Identifier construction failed.
     #[snafu(display("{source}"))]

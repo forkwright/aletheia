@@ -18,12 +18,45 @@ use crate::error::{MissingMetaFieldSnafu, SpecError, UnknownThemeSnafu};
 use crate::factbase::Factbase;
 use crate::ids::{ComponentId, ThemeId};
 
+/// Raw deserialization shape for [`Meta`] — serde deserialises into this first;
+/// [`TryFrom`] then enforces the required-title invariant.
+#[derive(Deserialize)]
+struct MetaRaw {
+    title: String,
+    #[serde(default)]
+    author: Option<String>,
+    #[serde(default)]
+    created: Option<Timestamp>,
+    #[serde(default)]
+    subject: Option<String>,
+    #[serde(default)]
+    keywords: Vec<String>,
+}
+
+impl TryFrom<MetaRaw> for Meta {
+    type Error = SpecError;
+
+    fn try_from(raw: MetaRaw) -> Result<Self, Self::Error> {
+        if raw.title.is_empty() {
+            return MissingMetaFieldSnafu { field: "title" }.fail();
+        }
+        Ok(Self {
+            title: raw.title,
+            author: raw.author,
+            created: raw.created,
+            subject: raw.subject,
+            keywords: raw.keywords,
+        })
+    }
+}
+
 /// Typed metadata required by every deliverable.
 ///
 /// Required fields are enforced at parse time: a [`Meta`] without `title`
 /// cannot be constructed. Optional fields are typed as `Option<…>` so the
 /// `None` case is explicit at the call site.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "MetaRaw")]
 pub struct Meta {
     /// Deliverable title; required.
     pub title: String,
@@ -165,12 +198,25 @@ impl DeliverableSpec {
             .build()
             .into());
         }
-        if let Body::Deck(deck) = &self.body {
-            for slide in &deck.slides {
-                // validate_fields enforces both schema correctness and
-                // component-id resolution; we discard the merged payload
-                // here, render-side callers re-merge before rendering.
-                let _ = components.validate_fields(&slide.component, &slide.fields)?;
+        match &self.body {
+            Body::Deck(deck) => {
+                for slide in &deck.slides {
+                    // validate_fields enforces both schema correctness and
+                    // component-id resolution; we discard the merged payload
+                    // here, render-side callers re-merge before rendering.
+                    let _ = components.validate_fields(&slide.component, &slide.fields)?;
+                }
+            }
+            Body::Workbook(wb) => {
+                for sheet in &wb.sheets {
+                    // WHY: sheet shape invariants are enforced at the envelope
+                    // boundary so renderers can assume every row is complete.
+                    sheet.validate()?;
+                }
+            }
+            Body::Document(_) => {
+                // Document bodies are validated by the pre-envelope Document
+                // path; no envelope-level checks apply yet.
             }
         }
         Ok(())
@@ -203,13 +249,14 @@ impl DeliverableSpec {
 #[cfg(test)]
 #[expect(clippy::expect_used, clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
-    use crate::bodies::{Slide, Workbook};
-    use crate::factbase::{Fact, Source};
-    use crate::ids::{ComponentId, FactId, ThemeId};
-    use crate::scalar::{AspectRatio, Scalar, Unit};
     use jiff::Timestamp;
     use serde_json::json;
+
+    use super::*;
+    use crate::bodies::{Sheet, Slide, Workbook, WorkbookCell};
+    use crate::factbase::{Fact, Source};
+    use crate::ids::{ComponentId, FactId, SheetName, ThemeId};
+    use crate::scalar::{AspectRatio, Scalar, ScalarKind, Unit};
 
     fn ts() -> Timestamp {
         Timestamp::UNIX_EPOCH
@@ -240,6 +287,22 @@ mod tests {
         assert!(m.validate().is_err());
     }
 
+    fn sheet_fixture(name: &str, headers: Vec<String>, column_types: Vec<ScalarKind>) -> Sheet {
+        let row = (0..headers.len())
+            .map(|_| WorkbookCell::Lit {
+                value: Scalar::Text {
+                    value: "ok".to_owned(),
+                },
+            })
+            .collect();
+        Sheet {
+            name: SheetName::new(name).unwrap(),
+            headers,
+            rows: vec![row],
+            column_types,
+        }
+    }
+
     #[test]
     fn deliverable_workbook_validates_with_empty_factbase() {
         let spec = DeliverableSpec {
@@ -251,6 +314,105 @@ mod tests {
         spec.validate(&ComponentRegistry::new(), &[])
             .expect("workbook with no facts validates");
         assert_eq!(spec.body_kind(), BodyKind::Workbook);
+    }
+
+    #[test]
+    fn deliverable_workbook_rejects_column_types_width_mismatch() {
+        let sheet = sheet_fixture(
+            "q1",
+            vec!["A".to_owned(), "B".to_owned()],
+            vec![ScalarKind::Text],
+        );
+        let spec = DeliverableSpec {
+            meta: Meta::new("Q1 receipts").unwrap(),
+            theme: ThemeId::new("summus").unwrap(),
+            facts: empty_factbase(),
+            body: Body::Workbook(Workbook {
+                sheets: vec![sheet],
+            }),
+        };
+        let err = spec
+            .validate(&ComponentRegistry::new(), &[])
+            .expect_err("column_types width mismatch must reject");
+        match err {
+            crate::error::PoiesisError::Spec {
+                source:
+                    SpecError::SheetShapeMismatch {
+                        sheet,
+                        row,
+                        expected,
+                        got,
+                    },
+            } => {
+                assert_eq!(sheet, "q1");
+                assert_eq!(row, None);
+                assert_eq!(expected, 2);
+                assert_eq!(got, 1);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deliverable_workbook_rejects_row_width_mismatch() {
+        let mut sheet = sheet_fixture(
+            "q1",
+            vec!["A".to_owned(), "B".to_owned()],
+            vec![ScalarKind::Text, ScalarKind::Text],
+        );
+        // Override the auto-populated row so it is too short.
+        sheet.rows = vec![vec![WorkbookCell::Lit {
+            value: Scalar::Text {
+                value: "only-one".to_owned(),
+            },
+        }]];
+        let spec = DeliverableSpec {
+            meta: Meta::new("Q1 receipts").unwrap(),
+            theme: ThemeId::new("summus").unwrap(),
+            facts: empty_factbase(),
+            body: Body::Workbook(Workbook {
+                sheets: vec![sheet],
+            }),
+        };
+        let err = spec
+            .validate(&ComponentRegistry::new(), &[])
+            .expect_err("row width mismatch must reject");
+        match err {
+            crate::error::PoiesisError::Spec {
+                source:
+                    SpecError::SheetShapeMismatch {
+                        sheet,
+                        row,
+                        expected,
+                        got,
+                    },
+            } => {
+                assert_eq!(sheet, "q1");
+                assert_eq!(row, Some(0));
+                assert_eq!(expected, 2);
+                assert_eq!(got, 1);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn deliverable_workbook_validates_well_formed_sheet() {
+        let sheet = sheet_fixture(
+            "q1",
+            vec!["A".to_owned(), "B".to_owned()],
+            vec![ScalarKind::Text, ScalarKind::Count],
+        );
+        let spec = DeliverableSpec {
+            meta: Meta::new("Q1 receipts").unwrap(),
+            theme: ThemeId::new("summus").unwrap(),
+            facts: empty_factbase(),
+            body: Body::Workbook(Workbook {
+                sheets: vec![sheet],
+            }),
+        };
+        spec.validate(&ComponentRegistry::new(), &[])
+            .expect("well-formed sheet validates");
     }
 
     #[test]

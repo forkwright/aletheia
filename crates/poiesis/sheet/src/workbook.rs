@@ -24,6 +24,7 @@ type Result<T> = std::result::Result<T, crate::error::WorkbookError>;
 /// `theme` drives header formatting via [`crate::format::header_format`] and
 /// cell number formats via [`crate::format::cell_format`].
 pub fn render_workbook(
+    // kanon:ignore RUST/pub-visibility — public crate API re-exported from lib.rs; no sibling consumer yet
     wb: &Workbook,
     facts: &BTreeMap<FactId, ResolvedFact>,
     theme: &ResolvedTheme,
@@ -129,6 +130,7 @@ fn resolve_cell(
                 id: fact.as_str().to_owned(),
             }),
         },
+        &_ => Err(crate::error::WorkbookError::UnsupportedCellKind),
     }
 }
 
@@ -163,7 +165,8 @@ fn write_scalar(
         }
         Scalar::Money { value } => {
             let micros = value.micros();
-            ws.write_with_format(row, col, micros as f64 / 1_000_000.0, fmt)?;
+            let dollars = micros as f64 / 1_000_000.0; // kanon:ignore RUST/as-cast — i64→f64 via TryFrom is unavailable in std; precision loss is acceptable for xlsx display
+            ws.write_with_format(row, col, dollars, fmt)?;
         }
         Scalar::Ratio { value } => {
             ws.write_with_format(row, col, *value, fmt)?;

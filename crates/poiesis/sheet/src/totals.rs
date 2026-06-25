@@ -13,7 +13,7 @@ use poiesis_core::scalar::{Money, Scalar, ScalarKind};
 /// (`Count`, `Money`, `Ratio`) are summed across all data rows; `Text` and
 /// `Date` columns always return `None`. Columns with no resolvable numeric
 /// values also return `None`.
-pub fn compute_totals(
+pub(crate) fn compute_totals(
     sheet: &Sheet,
     facts: &BTreeMap<FactId, ResolvedFact>,
 ) -> Vec<Option<Scalar>> {
@@ -54,6 +54,7 @@ fn resolve_scalar(cell: &WorkbookCell, facts: &BTreeMap<FactId, ResolvedFact>) -
     match cell {
         WorkbookCell::Lit { value } => Some(value.clone()),
         WorkbookCell::Cite { fact } => facts.get(fact).map(|r| r.value.clone()),
+        &_ => None,
     }
 }
 

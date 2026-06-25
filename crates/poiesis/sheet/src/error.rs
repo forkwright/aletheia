@@ -47,6 +47,11 @@ pub enum WorkbookError {
         /// Human-readable error description.
         message: String,
     },
+    /// A [`WorkbookCell`](poiesis_core::bodies::WorkbookCell) variant is not
+    /// supported by this renderer (forward-compatibility guard for
+    /// `#[non_exhaustive]` additions).
+    #[snafu(display("unsupported cell kind"))]
+    UnsupportedCellKind,
 }
 
 #[cfg(feature = "workbook")]
