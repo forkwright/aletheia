@@ -5,7 +5,6 @@
 //! changes, and administrative ops (compact, explain, kill).
 
 use std::iter;
-use std::sync::atomic::Ordering;
 
 use compact_str::CompactString;
 use itertools::Itertools;
@@ -126,7 +125,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             SysOp::CreateIndex(rel_name, idx_name, cols) => {
                 if read_only {
                     ReadOnlyViolationSnafu {
-                        operation: "create index",
+                        operation: "CREATE INDEX",
                     }
                     .fail()?;
                 }
@@ -233,7 +232,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                         vec![vec![DataValue::from("NOT_FOUND")]],
                     ),
                     Some(handle) => {
-                        handle.poison.0.store(true, Ordering::Relaxed);
+                        handle.poison.set_killed();
                         NamedRows::new(
                             vec![STATUS_STR.to_string()],
                             vec![vec![DataValue::from("KILLING")]],
