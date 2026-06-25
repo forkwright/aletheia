@@ -35,7 +35,8 @@ pub use crate::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::runtime::callback::CallbackOp;
 pub use crate::runtime::db::{
-    DEFAULT_MAX_EVALUATION_EPOCHS, DbConfig, NamedRows, ScriptMutability, TransactionPayload,
+    DEFAULT_MAX_EVALUATION_EPOCHS, DbConfig, NamedRows, PersistMode, ScriptMutability,
+    TransactionPayload,
 };
 #[cfg(feature = "storage-fjall")]
 pub use crate::storage::fjall_backend::FjallStorage;
@@ -115,7 +116,10 @@ impl DbInner {
         match self {
             DbInner::Mem(db) => db.config = config,
             #[cfg(feature = "storage-fjall")]
-            DbInner::Fjall(db) => db.config = config,
+            DbInner::Fjall(db) => {
+                db.config = config;
+                db.db.persist_mode = config.persist_mode;
+            }
         }
     }
 

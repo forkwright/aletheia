@@ -42,18 +42,41 @@ use crate::storage::temp::TempStorage;
 /// Default maximum semi-naive evaluation epochs for one stratum.
 pub const DEFAULT_MAX_EVALUATION_EPOCHS: u32 = 10_000;
 
+/// Durability level for fjall-backed storage.
+///
+/// WHY: Memory workloads accumulate many small fact writes per turn. Using
+/// `Buffer` for routine writes avoids an fsync per transaction; callers that
+/// need durability must opt into `SyncAll` or call an explicit checkpoint.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PersistMode {
+    /// fsync the WAL after every write transaction (highest durability).
+    SyncAll,
+    /// fsync only file data, not metadata.
+    SyncData,
+    /// Rely on the OS page cache; no fsync on commit (fastest, bounded loss
+    /// on crash).
+    #[default]
+    Buffer,
+}
+
 /// Runtime limits for a database instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DbConfig {
     /// Maximum semi-naive evaluation epochs per stratum.
     pub max_evaluation_epochs: u32,
+    /// Durability level for fjall-backed storage.
+    ///
+    /// NOTE: This field is ignored by the in-memory backend.
+    pub persist_mode: PersistMode,
 }
 
 impl Default for DbConfig {
     fn default() -> Self {
         Self {
             max_evaluation_epochs: DEFAULT_MAX_EVALUATION_EPOCHS,
+            persist_mode: PersistMode::default(),
         }
     }
 }
@@ -64,7 +87,15 @@ impl DbConfig {
     pub fn new(max_evaluation_epochs: u32) -> Self {
         Self {
             max_evaluation_epochs,
+            persist_mode: PersistMode::default(),
         }
+    }
+
+    /// Set the fjall persist mode.
+    #[must_use]
+    pub fn with_persist_mode(mut self, persist_mode: PersistMode) -> Self {
+        self.persist_mode = persist_mode;
+        self
     }
 }
 

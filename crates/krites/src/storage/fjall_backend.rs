@@ -8,12 +8,23 @@ use crate::DbCore;
 use crate::data::tuple::{Tuple, check_key_for_validity};
 use crate::data::value::ValidityTs;
 use crate::error::InternalResult;
+use crate::runtime::db::PersistMode as KritesPersistMode;
 use crate::runtime::relation::{decode_tuple_from_kv, extend_tuple_from_v};
 use crate::storage::error::{
     CorruptedDataSnafu, IoSnafu, StorageResult, TransactionFailedSnafu, WriteInReadTransactionSnafu,
 };
 use crate::storage::{Storage, StoreTx};
 type Result<T> = StorageResult<T>;
+
+impl From<KritesPersistMode> for fjall::PersistMode {
+    fn from(mode: KritesPersistMode) -> Self {
+        match mode {
+            KritesPersistMode::SyncAll => Self::SyncAll,
+            KritesPersistMode::SyncData => Self::SyncData,
+            KritesPersistMode::Buffer => Self::Buffer,
+        }
+    }
+}
 
 /// Opens or creates a fjall-backed database at the given path.
 ///
@@ -68,6 +79,7 @@ pub fn new_krites_fjall(
     let storage = FjallStorage {
         db: Arc::new(db),
         keyspace: Arc::new(keyspace),
+        persist_mode: KritesPersistMode::default(),
     };
     let ret = DbCore::new(storage)?;
     ret.initialize()?;
@@ -78,10 +90,16 @@ pub fn new_krites_fjall(
 ///
 /// No delta buffer needed: fjall `SingleWriterWriteTx` provides
 /// read-your-own-writes natively within the transaction.
+///
+/// WHY: The default persist mode is `Buffer` so routine fact accumulation does
+/// not fsync on every commit. Callers that need durability can set
+/// `PersistMode::SyncAll` through `DbConfig`, and the test suite relies on
+/// fjall's drop-time `SyncAll` flush for persistence across restarts.
 #[derive(Clone)]
 pub struct FjallStorage {
     db: Arc<fjall::SingleWriterTxDatabase>,
     keyspace: Arc<fjall::SingleWriterTxKeyspace>,
+    pub(crate) persist_mode: KritesPersistMode,
 }
 
 impl<'s> Storage<'s> for FjallStorage {
@@ -98,6 +116,7 @@ impl<'s> Storage<'s> for FjallStorage {
                 tx: Some(tx),
                 keyspace: &self.keyspace,
                 db: Arc::clone(&self.db),
+                persist_mode: self.persist_mode,
             })))
         } else {
             let snapshot = self.db.read_tx();
@@ -134,7 +153,7 @@ impl<'s> Storage<'s> for FjallStorage {
             }
             .build()
         })?;
-        self.db.persist(fjall::PersistMode::SyncAll).map_err(|e| {
+        self.db.persist(self.persist_mode.into()).map_err(|e| {
             TransactionFailedSnafu {
                 backend: "fjall",
                 message: format!("batch persist: {e}"),
@@ -160,6 +179,7 @@ pub struct FjallWriteTx<'s> {
     tx: Option<fjall::SingleWriterWriteTx<'s>>,
     keyspace: &'s fjall::SingleWriterTxKeyspace,
     db: Arc<fjall::SingleWriterTxDatabase>,
+    persist_mode: KritesPersistMode,
 }
 
 // SAFETY: `FjallReadTx` and `FjallWriteTx` borrow fjall internals that are not
@@ -349,7 +369,7 @@ impl<'s> StoreTx<'s> for FjallTx<'s> {
                         }
                         .build()
                     })?;
-                    w.db.persist(fjall::PersistMode::SyncAll).map_err(|e| {
+                    w.db.persist(w.persist_mode.into()).map_err(|e| {
                         TransactionFailedSnafu {
                             backend: "fjall",
                             message: format!("persist: {e}"),
@@ -542,6 +562,20 @@ mod tests {
     use crate::data::value::{DataValue, Validity};
     use crate::error::InternalResult;
     use crate::runtime::db::ScriptMutability;
+
+    #[test]
+    fn default_persist_mode_is_buffer() -> InternalResult<()> {
+        let temp_dir = TempDir::new().unwrap_or_else(|_| {
+            unreachable!("INVARIANT: temp dir creation should not fail in tests")
+        });
+        let db = new_krites_fjall(temp_dir.path())?;
+        assert_eq!(
+            db.db.persist_mode,
+            crate::runtime::db::PersistMode::Buffer,
+            "default fjall persist mode should defer fsyncs"
+        );
+        Ok(())
+    }
 
     fn setup_test_db() -> InternalResult<(TempDir, DbCore<FjallStorage>)> {
         let temp_dir = TempDir::new().unwrap_or_else(|_| {
@@ -974,6 +1008,7 @@ mod tests {
             tx: None,
             keyspace,
             db: Arc::clone(&db.db.db),
+            persist_mode: KritesPersistMode::default(),
         };
         let result = write_tx.tx_ref();
         assert!(
