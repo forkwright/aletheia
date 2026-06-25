@@ -11,7 +11,7 @@ use crate::state::tool_metrics::{TimeSeriesBucket, ToolStat};
 /// aggregated "Other" entry covering all remaining tools.
 fn top_tools(tools: &[ToolStat], limit: usize) -> (Vec<&ToolStat>, Option<ToolStat>) {
     let mut sorted: Vec<&ToolStat> = tools.iter().collect();
-    sorted.sort_by(|a, b| b.total.cmp(&a.total));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.total));
 
     if sorted.len() <= limit {
         return (sorted, None);

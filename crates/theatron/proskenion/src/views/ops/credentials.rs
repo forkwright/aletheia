@@ -24,7 +24,7 @@ fn credential_validate_url(base: &str, id: &str) -> String {
 }
 
 fn credential_rotate_url(base: &str, provider: &str) -> String {
-    let encoded = form_urlencoded::byte_serialize(provider.as_bytes()).collect::<String>();
+    let encoded = keryx::url::encode_path_segment(provider);
     format!("{}/rotate?provider={encoded}", credentials_url(base))
 }
 
@@ -175,9 +175,7 @@ const BTN_STD: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_DANGER: &str = "\
@@ -188,9 +186,7 @@ const BTN_DANGER: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_CONFIRM: &str = "\
@@ -201,9 +197,7 @@ const BTN_CONFIRM: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_CANCEL: &str = "\
@@ -214,9 +208,7 @@ const BTN_CANCEL: &str = "\
     padding: var(--space-1) var(--space-3); \
     font-size: var(--text-xs); \
     cursor: pointer;\
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
+    transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
 ";
 
 const BTN_DISABLED: &str = "\
@@ -802,7 +794,7 @@ mod tests {
         );
         assert_eq!(
             credential_rotate_url(base, "open ai"),
-            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open+ai"
+            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open%20ai"
         );
     }
 }

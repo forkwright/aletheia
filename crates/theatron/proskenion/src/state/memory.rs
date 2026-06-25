@@ -432,7 +432,7 @@ impl EntityListStore {
             }
             EntitySort::MemoryCount => {
                 self.entities
-                    .sort_by(|a, b| b.memory_count.cmp(&a.memory_count));
+                    .sort_by_key(|b| std::cmp::Reverse(b.memory_count));
             }
             EntitySort::LastUpdated => {
                 self.entities.sort_by(|a, b| {
@@ -443,8 +443,7 @@ impl EntityListStore {
                 });
             }
             EntitySort::Alphabetical => {
-                self.entities
-                    .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                self.entities.sort_by_key(|a| a.name.to_lowercase());
             }
         }
     }
