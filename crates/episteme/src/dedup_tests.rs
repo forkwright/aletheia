@@ -45,6 +45,7 @@ fn entity_with_facts(
 /// non-NULL `name_embedding` column. Used by reachability tests to
 /// assert that `MergeDecision::AutoMerge` is actually reached when
 /// real cosine similarity is in scope.
+#[allow(dead_code)]
 fn entity_with_embedding(
     id: &str,
     name: &str,

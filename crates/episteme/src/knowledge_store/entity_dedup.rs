@@ -426,7 +426,7 @@ impl KnowledgeStore {
             }
             .build()
         })?;
-        let val = row.get(0).ok_or_else(|| {
+        let val = row.first().ok_or_else(|| {
             crate::error::EngineQuerySnafu {
                 message: format!("embedding row for {entity_id} is empty"),
             }
