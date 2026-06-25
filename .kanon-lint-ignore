@@ -60,7 +60,6 @@ RUST/no-unconditional-panic-in-prod:crates/hermeneus/src/anthropic/wire/tests_ex
 
 # WHY(#3987): archived krites engine code is baseline debt tracked for the planned krites overhaul
 RUST/no-unconditional-panic-in-prod:crates/krites/src/query/ra/mod.rs
-RUST/silent-error-ok:crates/krites/src/runtime/hnsw/mmap_storage.rs
 RUST/unreachable-in-match:crates/krites/src/data/functions/bits.rs
 RUST/unreachable-in-match:crates/krites/src/data/json.rs
 RUST/unreachable-in-match:crates/krites/src/data/memcmp.rs

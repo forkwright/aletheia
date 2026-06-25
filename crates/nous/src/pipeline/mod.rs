@@ -31,6 +31,7 @@ use crate::stream::TurnStreamEvent;
 use crate::working_state::WorkingState;
 
 /// Input to the pipeline: an inbound message.
+// kanon:ignore TOPOLOGY/shallow-struct — input bag passed into the pipeline entry point; no in-file behavior by design
 #[derive(Debug, Clone)]
 pub struct PipelineInput {
     /// The user's message content.
@@ -640,6 +641,7 @@ impl ReflectionResult {
 }
 
 /// Turn result: the output of processing one turn.
+// kanon:ignore TOPOLOGY/shallow-struct — output bag returned from the pipeline; no in-file behavior by design
 #[derive(Debug, Clone)]
 pub struct TurnResult {
     /// Assistant's response content.
@@ -1038,7 +1040,7 @@ pub(crate) async fn run_pipeline(
             "history",
             &mut time_budget,
             emitter,
-            run_history_stage(config, &mut ctx, &input, session_store, emitter),
+            run_history_stage(config, pipeline_config, &mut ctx, &input, session_store, emitter),
         )
         .await?;
         stages_completed += 1;
