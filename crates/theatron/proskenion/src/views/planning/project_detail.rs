@@ -12,7 +12,7 @@ use crate::views::planning::roadmap::RoadmapView;
 use crate::views::planning::verification::VerificationView;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ActiveTab {
+pub(crate) enum ActiveTab {
     Requirements,
     Roadmap,
     Checkpoints,
@@ -314,24 +314,61 @@ mod tests {
 
     #[test]
     fn all_tabs_have_distinct_capability_flags() {
-        let mut caps = PlanningCapabilities::default();
-        caps.requirements = true;
-        assert!(caps.supports_tab(ActiveTab::Requirements));
-        caps.requirements = false;
-        caps.roadmap = true;
-        assert!(caps.supports_tab(ActiveTab::Roadmap));
-        caps.roadmap = false;
-        caps.checkpoints = true;
-        assert!(caps.supports_tab(ActiveTab::Checkpoints));
-        caps.checkpoints = false;
-        caps.verification = true;
-        assert!(caps.supports_tab(ActiveTab::Verification));
-        caps.verification = false;
-        caps.discussion = true;
-        assert!(caps.supports_tab(ActiveTab::Discussion));
-        caps.discussion = false;
-        caps.execution = true;
-        assert!(caps.supports_tab(ActiveTab::Execution));
+        // Each tab is gated solely by its own capability flag: enabling exactly
+        // one flag must enable exactly that tab and no other.
+        let cases = [
+            (
+                ActiveTab::Requirements,
+                PlanningCapabilities {
+                    requirements: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                ActiveTab::Roadmap,
+                PlanningCapabilities {
+                    roadmap: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                ActiveTab::Checkpoints,
+                PlanningCapabilities {
+                    checkpoints: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                ActiveTab::Verification,
+                PlanningCapabilities {
+                    verification: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                ActiveTab::Discussion,
+                PlanningCapabilities {
+                    discussion: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                ActiveTab::Execution,
+                PlanningCapabilities {
+                    execution: true,
+                    ..Default::default()
+                },
+            ),
+        ];
+        for (tab, caps) in cases {
+            assert!(caps.supports_tab(tab), "{tab:?} should be supported");
+            for (other_tab, _) in cases.iter().filter(|(t, _)| *t != tab) {
+                assert!(
+                    !caps.supports_tab(*other_tab),
+                    "{other_tab:?} must not be supported when only {tab:?} is enabled"
+                );
+            }
+        }
     }
 
     #[test]
