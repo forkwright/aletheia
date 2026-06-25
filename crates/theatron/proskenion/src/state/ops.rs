@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — state module with co-located tests; splitting would fragment invariants from their assertions
 //! Ops dashboard state: agent status cards, service health, and toggle controls.
 
 use std::collections::HashMap;
@@ -592,7 +593,7 @@ mod tests {
         let response = skene::api::types::HealthResponse {
             status: "degraded".to_string(),
             version: "0.13.1".to_string(),
-            git_sha: "abc123".to_string(),
+            git_sha: "abc123".into(),
             uptime_seconds: 300,
             checks: vec![skene::api::types::HealthCheck {
                 name: "providers".to_string(),

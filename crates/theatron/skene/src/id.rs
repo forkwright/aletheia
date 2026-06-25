@@ -30,6 +30,11 @@ koina::newtype_id!(
 #[serde(transparent)]
 pub struct PlanId(String);
 
+/// Git commit SHA.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct GitSha(String);
+
 macro_rules! impl_id {
     ($ty:ident) => {
         impl fmt::Display for $ty {
@@ -85,6 +90,7 @@ macro_rules! impl_id {
 
 impl_id!(TurnId);
 impl_id!(PlanId);
+impl_id!(GitSha);
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]

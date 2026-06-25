@@ -15,6 +15,7 @@ test-full = []
 koina = { path = "../../koina" }
 keryx = { workspace = true }
 bytes = { workspace = true }
+form_urlencoded = "1"
 futures-core = "0.3"
 futures-util = "0.3"
 reqwest = { workspace = true, features = ["stream", "cookies"] }
@@ -32,3 +33,8 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+[package.metadata.kanon]
+maturity = "alpha"
+since = "2026-06-23"
+exit-criteria = "public API stabilized with full newtype coverage for all domain identifiers"

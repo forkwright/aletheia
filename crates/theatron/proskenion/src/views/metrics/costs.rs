@@ -3,9 +3,11 @@
 use dioxus::prelude::*;
 
 use crate::api::client::authenticated_client;
+use crate::components::badge::status_badge_style;
 use crate::components::chart::{TimeSeriesChart, TimeSeriesColumn};
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
+use crate::state::meta::MetricSource;
 use crate::state::metrics::{
     BudgetConfig, CostMetricsResponse, DateRange, Granularity, budget_bar_color,
     budget_progress_pct, compute_delta_f64, day_of_month_today, days_in_current_month, format_cost,
@@ -76,6 +78,23 @@ const CONTROL_BTN_INACTIVE: &str = "\
 ";
 
 const MAX_CHART_COLS: usize = 120;
+
+const TELEMETRY_BANNER_STYLE: &str = "\
+    display: flex; \
+    align-items: center; \
+    gap: var(--space-3); \
+    padding: var(--space-3) var(--space-4); \
+    background: var(--status-warning-bg); \
+    border: 1px solid var(--status-warning); \
+    border-radius: var(--radius-md); \
+    font-family: var(--font-mono); \
+";
+
+const TELEMETRY_NOTE_STYLE: &str = "\
+    font-size: var(--text-xs); \
+    color: var(--status-warning); \
+    font-family: var(--font-mono); \
+";
 
 /// Cost tab: summary cards, trend chart, budget panel, agent comparison.
 #[component]
@@ -192,6 +211,12 @@ fn loaded_costs_view(
     mut budget: Signal<BudgetConfig>,
     mut budget_input: Signal<String>,
 ) -> Element {
+    // WHY: classify telemetry before mutating the response so the banner keys off
+    // an honest source label rather than the filtered row set.
+    if data.is_placeholder() {
+        data.source = MetricSource::Unavailable;
+    }
+
     // WHY: the comparison must reflect only agents that actually spent in
     // the current or previous period — zero rows are noise, not data.
     data.agents
@@ -229,32 +254,45 @@ fn loaded_costs_view(
     let budget_pct = budget_progress_pct(data.month_cost, budget_limit);
     let bar_color = budget_bar_color(budget_pct).to_string();
 
+    let unavailable_badge_style =
+        status_badge_style("var(--status-warning-bg)", "var(--status-warning)");
+
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4);",
 
-            div {
-                style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
-                { cost_card("Today", &format_cost(today_d.value), today_d.delta_pct, today_d.is_up) }
-                { cost_card("This Week", &format_cost(week_d.value), week_d.delta_pct, week_d.is_up) }
-                { cost_card("This Month", &format_cost(month_d.value), month_d.delta_pct, month_d.is_up) }
-
+            if data.source == MetricSource::Unavailable {
                 div {
-                    style: "{CARD_STYLE}",
-                    div { style: "{CARD_LABEL_STYLE}", "Projected Month-End" }
-                    div { style: "{CARD_VALUE_STYLE}", "{format_cost(projected)}" }
-                    div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-1); font-family: var(--font-mono);", "linear projection" }
+                    style: "{TELEMETRY_BANNER_STYLE}",
+                    span { style: "{unavailable_badge_style}", "Telemetry Unavailable" }
+                    span { style: "font-size: var(--text-sm); color: var(--text-secondary);", "Cost data is not yet reported by the server. Values shown are placeholders, not actual spend." }
                 }
             }
 
-            div {
-                style: "{SECTION_STYLE}",
-                div { style: "{SECTION_TITLE_STYLE}", "Cost Over Time" }
-                TimeSeriesChart {
-                    columns,
-                    height_px: 160,
-                    primary_label: "Cost (USD)".to_string(),
-                    secondary_label: "".to_string(),
+            if data.source == MetricSource::Computed {
+                div {
+                    style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
+                    { cost_card("Today", &format_cost(today_d.value), today_d.delta_pct, today_d.is_up) }
+                    { cost_card("This Week", &format_cost(week_d.value), week_d.delta_pct, week_d.is_up) }
+                    { cost_card("This Month", &format_cost(month_d.value), month_d.delta_pct, month_d.is_up) }
+
+                    div {
+                        style: "{CARD_STYLE}",
+                        div { style: "{CARD_LABEL_STYLE}", "Projected Month-End" }
+                        div { style: "{CARD_VALUE_STYLE}", "{format_cost(projected)}" }
+                        div { style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: var(--space-1); font-family: var(--font-mono);", "linear projection" }
+                    }
+                }
+
+                div {
+                    style: "{SECTION_STYLE}",
+                    div { style: "{SECTION_TITLE_STYLE}", "Cost Over Time" }
+                    TimeSeriesChart {
+                        columns,
+                        height_px: 160,
+                        primary_label: "Cost (USD)".to_string(),
+                        secondary_label: "".to_string(),
+                    }
                 }
             }
 
@@ -269,6 +307,7 @@ fn loaded_costs_view(
                     budget_input.read().clone(),
                     move |v: String| budget_input.set(v),
                     move |limit: f64| budget.set(BudgetConfig { monthly_limit_usd: limit }),
+                    data.source == MetricSource::Unavailable,
                 ) }
             }
 
@@ -291,17 +330,26 @@ fn budget_panel(
     input_value: String,
     mut on_input: impl FnMut(String) + 'static,
     mut on_set: impl FnMut(f64) + 'static,
+    telemetry_unavailable: bool,
 ) -> Element {
     let bar_color = bar_color.to_string();
     let input_for_set = input_value.clone();
+    let spent_label = if telemetry_unavailable {
+        "Spend data unavailable".to_string()
+    } else {
+        format!("{} spent", format_cost(month_cost))
+    };
 
     if budget_limit > 0.0 {
         rsx! {
             div {
                 style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                if telemetry_unavailable {
+                    div { style: "{TELEMETRY_NOTE_STYLE}", "Cost telemetry is not reported by the server; budget limit is configured locally." }
+                }
                 div {
                     style: "display: flex; justify-content: space-between; font-size: var(--text-xs); font-family: var(--font-mono);",
-                    span { style: "color: var(--text-secondary);", "{format_cost(month_cost)} spent" }
+                    span { style: "color: var(--text-secondary);", "{spent_label}" }
                     span { style: "color: var(--text-muted);", "of {format_cost(budget_limit)}" }
                 }
                 div {
@@ -333,22 +381,28 @@ fn budget_panel(
     } else {
         rsx! {
             div {
-                style: "display: flex; align-items: center; gap: var(--space-2);",
-                span { style: "font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono);", "No budget set." }
-                input {
-                    style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
-                    placeholder: "Monthly limit $",
-                    value: "{input_value}",
-                    oninput: move |e| on_input(e.value()),
+                style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                if telemetry_unavailable {
+                    div { style: "{TELEMETRY_NOTE_STYLE}", "Cost telemetry is not reported by the server; budget limit is configured locally." }
                 }
-                button {
-                    style: "padding: var(--space-1) 10px; font-size: var(--text-xs); background: var(--border); color: var(--text-primary); border: 1px solid var(--input-border); border-radius: var(--radius-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); font-family: var(--font-mono);",
-                    onclick: move |_| {
-                        if let Ok(v) = input_for_set.trim().parse::<f64>() {
-                            on_set(v);
-                        }
-                    },
-                    "Set"
+                div {
+                    style: "display: flex; align-items: center; gap: var(--space-2);",
+                    span { style: "font-size: var(--text-xs); color: var(--text-muted); font-family: var(--font-mono);", "No budget set." }
+                    input {
+                        style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
+                        placeholder: "Monthly limit $",
+                        value: "{input_value}",
+                        oninput: move |e| on_input(e.value()),
+                    }
+                    button {
+                        style: "padding: var(--space-1) 10px; font-size: var(--text-xs); background: var(--border); color: var(--text-primary); border: 1px solid var(--input-border); border-radius: var(--radius-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); font-family: var(--font-mono);",
+                        onclick: move |_| {
+                            if let Ok(v) = input_for_set.trim().parse::<f64>() {
+                                on_set(v);
+                            }
+                        },
+                        "Set"
+                    }
                 }
             }
         }
