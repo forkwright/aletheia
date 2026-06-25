@@ -495,11 +495,18 @@ pub(crate) fn encode_path_segment(value: &str) -> String {
     encoded
 }
 
+#[expect(
+    unreachable_patterns,
+    reason = "nibble input is always 0..=15; wildcard guards against future misuse"
+)]
 fn hex_digit(nibble: u8) -> char {
     match nibble {
         0..=9 => char::from(b'0' + nibble),
         10..=15 => char::from(b'A' + (nibble - 10)),
-        _ => '?',
+        // WHY: nibbles are produced only by `byte >> 4` and `byte & 0x0f`,
+        // which always yield values in `0..=15`. If this arm is ever reached,
+        // a programming error has corrupted the URL encoding path.
+        _ => unreachable!("nibble is always 0..=15"),
     }
 }
 
