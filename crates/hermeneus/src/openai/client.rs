@@ -22,7 +22,7 @@ use crate::anthropic::StreamEvent;
 use crate::anthropic::pricing::estimate_cost;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{DeploymentTarget, LlmProvider, ModelPricing, leak_models};
+use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ModelPricing};
 use crate::retry::backoff_delay;
 use crate::types::{CompletionRequest, CompletionResponse};
 
@@ -174,9 +174,6 @@ fn is_loopback_url(url: &str) -> bool {
 pub struct OpenAiProvider {
     client: Client,
     config: OpenAiProviderConfig,
-    /// Owned `&'static str` slice of model IDs for [`LlmProvider::supported_models`].
-    /// Leaked once at construction — the provider lives for the server lifetime.
-    model_refs: &'static [&'static str],
     health: Arc<ProviderHealthTracker>,
     /// Merged pricing table (config-supplied; empty = unpriced local model).
     pricing: HashMap<String, ModelPricing>,
@@ -214,7 +211,6 @@ impl OpenAiProvider {
         }
 
         let client = build_http_client()?;
-        let model_refs = leak_models(&config.models);
 
         info!(
             provider = %config.name,
@@ -229,7 +225,6 @@ impl OpenAiProvider {
         Ok(Self {
             client,
             config,
-            model_refs,
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             pricing,
         })
@@ -708,7 +703,27 @@ impl LlmProvider for OpenAiProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        self.model_refs
+        // WHY (#5259): dynamic OpenAI-compatible model lists are config-owned;
+        // returning them as `&[&str]` would require leaking. Expose them through
+        // [`Self::supported_model_list`] and use [`Self::match_specificity`] for
+        // routing instead.
+        &[]
+    }
+
+    fn supported_model_list(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        crate::provider::owned_model_list(&self.config.models)
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        self.config.models.iter().any(|m| m == model)
+    }
+
+    fn match_specificity(&self, model: &str) -> Option<MatchKind> {
+        if self.supports_model(model) {
+            Some(MatchKind::Exact)
+        } else {
+            None
+        }
     }
 
     fn name(&self) -> &str {

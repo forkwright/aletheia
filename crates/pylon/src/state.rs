@@ -250,6 +250,8 @@ pub struct NousState {
     pub nous_manager: Arc<NousManager>,
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Registry of available LLM providers.
+    pub provider_registry: Arc<ProviderRegistry>,
     /// Runtime configuration used for persisted nous toggle intent.
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Broadcast channel for config change notifications.
@@ -265,6 +267,7 @@ impl FromRef<Arc<AppState>> for NousState {
         Self {
             nous_manager: Arc::clone(&state.nous_manager),
             tool_registry: Arc::clone(&state.tool_registry),
+            provider_registry: Arc::clone(&state.provider_registry),
             config: Arc::clone(&state.config),
             config_tx: state.config_tx.clone(),
             oikos: Arc::clone(&state.oikos),
@@ -395,6 +398,24 @@ impl FromRef<Arc<AppState>> for InsightsState {
     }
 }
 
+/// State slice for provider inventory and route-decision handlers.
+#[derive(Clone)]
+pub struct ProvidersState {
+    /// Registry of available LLM providers.
+    pub provider_registry: Arc<ProviderRegistry>,
+    /// Runtime configuration used to expose configured provider metadata.
+    pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
+}
+
+impl FromRef<Arc<AppState>> for ProvidersState {
+    fn from_ref(state: &Arc<AppState>) -> Self {
+        Self {
+            provider_registry: Arc::clone(&state.provider_registry),
+            config: Arc::clone(&state.config),
+        }
+    }
+}
+
 /// State slice for the domain-event subscription handler.
 #[derive(Clone)]
 pub struct EventBusState {
@@ -427,6 +448,7 @@ mod tests {
         assert::<KnowledgeState>();
         assert::<PlanningState>();
         assert::<InsightsState>();
+        assert::<ProvidersState>();
         assert::<EventBusState>();
     };
 }

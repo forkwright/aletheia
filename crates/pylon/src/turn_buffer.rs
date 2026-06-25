@@ -12,7 +12,8 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use tokio::time::Instant;
 
 use tokio::sync::futures::OwnedNotified;
 use tokio::sync::{Mutex, Notify};
@@ -38,6 +39,16 @@ pub(crate) struct BufferedEvent {
     pub event_type: String,
     /// Serialized JSON payload.
     pub data: String,
+}
+
+impl BufferedEvent {
+    fn new(seq: u64, event_type: String, data: String) -> Self {
+        Self {
+            seq,
+            event_type,
+            data,
+        }
+    }
 }
 
 /// Result of recording an event into the replay buffer.
@@ -106,11 +117,7 @@ impl TurnBuffer {
 
         if self.events.len() < self.max_events_per_turn {
             self.next_seq += 1;
-            self.events.push(BufferedEvent {
-                seq,
-                event_type,
-                data,
-            });
+            self.events.push(BufferedEvent::new(seq, event_type, data));
             self.notify.notify_waiters();
             return RecordOutcome::Recorded { seq };
         }
@@ -120,17 +127,17 @@ impl TurnBuffer {
             .last()
             .map_or(0, |event| event.seq.saturating_sub(1));
         let retained_limit = self.max_events_per_turn;
-        let gap = BufferedEvent {
+        let gap = BufferedEvent::new(
             seq,
-            event_type: REPLAY_GAP_EVENT_TYPE.to_owned(),
-            data: serde_json::json!({
+            REPLAY_GAP_EVENT_TYPE.to_owned(),
+            serde_json::json!({
                 "type": REPLAY_GAP_EVENT_TYPE,
                 "reason": REPLAY_GAP_REASON_BUFFER_CAPACITY,
                 "dropped_after_seq": dropped_after_seq,
                 "retained_limit": retained_limit,
             })
             .to_string(),
-        };
+        );
         if !self.events.is_empty() {
             self.events.pop();
         }
@@ -172,6 +179,20 @@ pub(crate) struct TurnBufferSnapshot {
     pub events: Vec<BufferedEvent>,
     pub state: TurnState,
     pub notified: Pin<Box<OwnedNotified>>,
+}
+
+impl TurnBufferSnapshot {
+    fn new(
+        events: Vec<BufferedEvent>,
+        state: TurnState,
+        notified: Pin<Box<OwnedNotified>>,
+    ) -> Self {
+        Self {
+            events,
+            state,
+            notified,
+        }
+    }
 }
 
 /// Key for looking up a turn buffer.
@@ -246,33 +267,51 @@ impl TurnBufferRegistry {
     }
 
     /// Remove expired completed/failed turn buffers.
+    ///
+    /// INVARIANT: the outer `buffers` lock is never held across an inner
+    /// `Mutex::lock().await`. We snapshot the candidate entries under a brief
+    /// outer critical section, release the outer lock, inspect each buffer, and
+    /// only re-acquire the outer lock to remove confirmed-expired keys. This
+    /// prevents concurrent `get_or_create`/`get` callers from stalling for the
+    /// entire reaper sweep and eliminates the latent async deadlock surface from
+    /// inconsistent outer→inner vs. inner-only lock ordering.
     pub async fn reap_expired(&self) {
-        let mut map = self.buffers.lock().await;
-        let before = map.len();
         let ttl = self.completed_ttl;
 
+        // WHY: clone the candidate set while holding the outer lock so the
+        // subsequent per-buffer lock awaits cannot block registry-wide lookups.
+        let candidates: Vec<(TurnKey, Arc<Mutex<TurnBuffer>>)> = {
+            let map = self.buffers.lock().await;
+            map.iter()
+                .map(|(key, buffer)| (key.clone(), Arc::clone(buffer)))
+                .collect()
+        };
+
         let mut to_remove = Vec::new();
-        for (key, buffer) in map.iter() {
+        for (key, buffer) in candidates {
             let buf = buffer.lock().await;
             if let Some(finished_at) = buf.finished_at
                 && finished_at.elapsed() > ttl
             {
-                to_remove.push(key.clone());
+                to_remove.push(key);
             }
         }
 
+        if to_remove.is_empty() {
+            return;
+        }
+
+        let mut map = self.buffers.lock().await;
+        let before = map.len();
         for key in &to_remove {
             map.remove(key);
         }
-
         let removed = to_remove.len();
-        if removed > 0 {
-            debug!(
-                removed,
-                remaining = before - removed,
-                "reaped expired turn buffers"
-            );
-        }
+        debug!(
+            removed,
+            remaining = before - removed,
+            "reaped expired turn buffers"
+        );
     }
 }
 
@@ -320,11 +359,7 @@ impl TurnBufferHandle {
         let buf = self.inner.lock().await;
         let mut notified = Box::pin(Arc::clone(&buf.notify).notified_owned());
         notified.as_mut().enable();
-        TurnBufferSnapshot {
-            events: buf.events_after(after_seq),
-            state: buf.state.clone(),
-            notified,
-        }
+        TurnBufferSnapshot::new(buf.events_after(after_seq), buf.state.clone(), notified)
     }
 }
 
@@ -450,7 +485,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reap_does_not_hold_outer_lock_across_inner_await() {
+        // WHY: if reap_expired kept the outer registry lock while awaiting each
+        // inner buffer lock, holding one inner lock would stall every concurrent
+        // get_or_create/get call. This test demonstrates the outer lock is
+        // released before the inner lock is acquired.
+        let registry = Arc::new(TurnBufferRegistry::new());
+
+        let buf = registry.get_or_create("ses-1", "slow-turn").await;
+        let inner_guard = buf.lock().await;
+
+        let registry_for_reap = Arc::clone(&registry);
+        let reap_task = tokio::spawn(async move {
+            registry_for_reap.reap_expired().await;
+        });
+
+        // Give the reaper a chance to reach the blocked inner lock await.
+        tokio::task::yield_now().await;
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            registry.get_or_create("ses-1", "other-turn"),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "get_or_create must not be blocked while reaper awaits an inner lock"
+        );
+
+        drop(inner_guard);
+        assert!(reap_task.await.is_ok(), "reaper task panicked");
+    }
+
+    #[tokio::test]
     async fn reap_removes_expired_buffers() {
+        tokio::time::pause();
         let registry =
             TurnBufferRegistry::with_limits(Duration::from_secs(0), DEFAULT_MAX_EVENTS_PER_TURN);
 
@@ -458,8 +527,7 @@ mod tests {
         let handle = TurnBufferHandle::new(buf);
         handle.mark_completed().await;
 
-        // Small delay so elapsed > 0
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        tokio::time::advance(Duration::from_millis(1)).await;
 
         registry.reap_expired().await;
         assert!(registry.get("ses-1", "turn-1").await.is_none());

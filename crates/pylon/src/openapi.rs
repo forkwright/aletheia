@@ -102,6 +102,8 @@ use crate::state::AppState;
         crate::handlers::insights::get_journal,
         crate::handlers::planning::get_verification,
         crate::handlers::planning::refresh_verification,
+        crate::handlers::providers::list,
+        crate::handlers::providers::route,
     ),
     components(schemas(
         crate::handlers::health::HealthResponse,
@@ -195,6 +197,10 @@ use crate::state::AppState;
         crate::types::insights::AgentCostRow,
         crate::types::insights::JournalEvent,
         crate::types::insights::JournalResponse,
+        crate::handlers::providers::ProviderListResponse,
+        crate::handlers::providers::ProviderInfo,
+        crate::handlers::providers::ProviderRouteResponse,
+        crate::handlers::providers::ModelProviderReadiness,
     )),
     modifiers(&VersionFromCrate),
 )]

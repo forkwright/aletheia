@@ -18,7 +18,6 @@ use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{
     DeploymentTarget, LlmProvider, MatchKind, ModelPricing, PromptCacheMode, ProviderConfig,
-    leak_models,
 };
 use crate::types::{CompletionRequest, CompletionResponse};
 
@@ -57,14 +56,23 @@ struct ApiEndpoint {
     api_version: String,
 }
 
-/// Model routing claims for this provider instance.
-struct ModelCatalog {
+/// Identity and routing metadata for an [`AnthropicProvider`] instance.
+struct InstanceMeta {
+    /// Instance name for logs, health tracking, and registry diagnostics.
+    /// `"anthropic"` for the first-party endpoint; operator-declared
+    /// compatible endpoints carry their config name (e.g. `"kimi-coding"`).
+    name: String,
     /// Model IDs this instance claims for registry routing. The first-party
     /// catalog by default; an operator-declared compatible endpoint claims
     /// exactly its configured model list instead.
-    refs: &'static [&'static str],
-    /// Whether `refs` came from operator configuration.
-    has_operator_refs: bool,
+    /// WHY (#5259): stored as owned `String`s so config-owned IDs are never
+    /// intentionally leaked for the lifetime of the process.
+    models: Vec<String>,
+    /// Whether `models` came from operator configuration.
+    has_operator_model_refs: bool,
+    /// Where this instance's traffic terminates, for the recall
+    /// sensitivity filter (#3404, #3413).
+    deployment_target: DeploymentTarget,
 }
 
 /// Anthropic Messages API provider.
@@ -84,15 +92,9 @@ pub struct AnthropicProvider {
     /// markers are scrubbed before the wire request is built so operator
     /// content never enters Anthropic's prompt cache.
     prompt_cache_mode: PromptCacheMode,
-    /// Instance name for logs, health tracking, and registry diagnostics.
-    /// `"anthropic"` for the first-party endpoint; operator-declared
-    /// compatible endpoints carry their config name (e.g. `"kimi-coding"`).
-    instance_name: String,
-    /// Model routing claims for this instance.
-    catalog: ModelCatalog,
-    /// Where this instance's traffic terminates, for the recall
-    /// sensitivity filter (#3404, #3413).
-    deployment_target: DeploymentTarget,
+
+    /// Instance identity and routing metadata.
+    meta: InstanceMeta,
 }
 
 /// Static credential provider for backward-compatible `from_config()`.
@@ -128,11 +130,14 @@ fn instance_name(config: &ProviderConfig) -> String {
 
 /// Resolve the routing model claims from config: the operator-declared list
 /// for compatible endpoints, or the first-party catalog when unset.
-fn model_refs(config: &ProviderConfig) -> &'static [&'static str] {
+fn models_from_config(config: &ProviderConfig) -> Vec<String> {
     if config.models.is_empty() {
         koina::models::provider_models(koina::models::ModelProvider::Anthropic)
+            .iter()
+            .map(|&s| s.to_owned())
+            .collect()
     } else {
-        leak_models(&config.models)
+        config.models.clone()
     }
 }
 
@@ -142,10 +147,10 @@ const NON_STREAMING_TIMEOUT: Duration = Duration::from_mins(2);
 /// HTTP headers sent on every outbound Anthropic request to opt out of
 /// using operator traffic for model training (#3406).
 ///
-/// Anthropic's canonical training-opt-out header name is undocumented, so
-/// we send both `anthropic-disable-training` and `anthropic-training-opt-out`
-/// as a belt-and-suspenders measure: both are harmless no-ops if unrecognized,
-/// and at least one will match the accepted form.
+/// Anthropic has not publicly documented a canonical per-request training
+/// opt-out header. Both names are sent defensively: one or both will take
+/// effect if Anthropic's API honours either, and unknown headers are
+/// harmless no-ops otherwise.
 const ANTHROPIC_TRAINING_OPTOUT_HEADERS: &[&str] =
     &["anthropic-disable-training", "anthropic-training-opt-out"];
 
@@ -235,12 +240,12 @@ impl AnthropicProvider {
                 super::error::SSE_DEFAULT_RETRY_MS,
             ),
             prompt_cache_mode: config.prompt_cache_mode,
-            instance_name: instance_name(config),
-            catalog: ModelCatalog {
-                refs: model_refs(config),
-                has_operator_refs: !config.models.is_empty(),
+            meta: InstanceMeta {
+                name: instance_name(config),
+                models: models_from_config(config),
+                has_operator_model_refs: !config.models.is_empty(),
+                deployment_target: config.deployment_target,
             },
-            deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.endpoint.base_url.starts_with("https://")
@@ -301,12 +306,12 @@ impl AnthropicProvider {
                 super::error::SSE_DEFAULT_RETRY_MS,
             ),
             prompt_cache_mode: config.prompt_cache_mode,
-            instance_name: instance_name(config),
-            catalog: ModelCatalog {
-                refs: model_refs(config),
-                has_operator_refs: !config.models.is_empty(),
+            meta: InstanceMeta {
+                name: instance_name(config),
+                models: models_from_config(config),
+                has_operator_model_refs: !config.models.is_empty(),
+                deployment_target: config.deployment_target,
             },
-            deployment_target: config.deployment_target,
         };
         // TODO(#2178): add allow_insecure config field
         if !provider.endpoint.base_url.starts_with("https://")
@@ -360,7 +365,7 @@ impl AnthropicProvider {
         mut on_event: impl FnMut(StreamEvent) + Send,
     ) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
-            llm.provider = %self.instance_name,
+            llm.provider = %self.meta.name,
             llm.model = %request.model,
             llm.duration_ms = tracing::field::Empty,
             llm.tokens_in = tracing::field::Empty,
@@ -516,14 +521,14 @@ impl AnthropicProvider {
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
-                        &self.instance_name,
+                        &self.meta.name,
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
                         cost,
                         true,
                     );
                     crate::metrics::record_cache_tokens(
-                        &self.instance_name,
+                        &self.meta.name,
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
@@ -607,7 +612,7 @@ impl AnthropicProvider {
         };
         tracing::Span::current().record("llm.status", terminal_status);
 
-        crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
+        crate::metrics::record_completion(&self.meta.name, 0, 0, 0.0, false);
         crate::metrics::record_latency(
             &request.model,
             terminal_status,
@@ -837,7 +842,7 @@ impl AnthropicProvider {
 
     async fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
-            llm.provider = %self.instance_name,
+            llm.provider = %self.meta.name,
             llm.model = %request.model,
             llm.duration_ms = tracing::field::Empty,
             llm.tokens_in = tracing::field::Empty,
@@ -964,14 +969,14 @@ impl AnthropicProvider {
                         "LLM call complete"
                     );
                     crate::metrics::record_completion(
-                        &self.instance_name,
+                        &self.meta.name,
                         resp.usage.input_tokens,
                         resp.usage.output_tokens,
                         cost,
                         true,
                     );
                     crate::metrics::record_cache_tokens(
-                        &self.instance_name,
+                        &self.meta.name,
                         resp.usage.cache_read_tokens,
                         resp.usage.cache_write_tokens,
                     );
@@ -1035,7 +1040,7 @@ impl AnthropicProvider {
         };
         tracing::Span::current().record("llm.status", terminal_status);
 
-        crate::metrics::record_completion(&self.instance_name, 0, 0, 0.0, false);
+        crate::metrics::record_completion(&self.meta.name, 0, 0, 0.0, false);
         crate::metrics::record_latency(
             &request.model,
             terminal_status,
@@ -1060,7 +1065,23 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        self.catalog.refs
+        // WHY (#5259): only the first-party static catalog can be returned as
+        // `&[&str]` without leaking. Custom config-owned models are exposed
+        // through [`Self::supported_model_list`] and used by
+        // [`Self::match_specificity`] for routing.
+        if self.meta.has_operator_model_refs {
+            &[]
+        } else {
+            koina::models::provider_models(koina::models::ModelProvider::Anthropic)
+        }
+    }
+
+    fn supported_model_list(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        self.meta
+            .models
+            .iter()
+            .map(|s| std::borrow::Cow::Borrowed(s.as_str()))
+            .collect()
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -1068,7 +1089,7 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        if self.catalog.has_operator_refs && self.catalog.refs.contains(&model) {
+        if self.meta.has_operator_model_refs && self.meta.models.iter().any(|m| m == model) {
             Some(MatchKind::Exact)
         } else if model.starts_with("claude-") {
             Some(MatchKind::CatchAll)
@@ -1078,11 +1099,11 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn name(&self) -> &str {
-        &self.instance_name
+        &self.meta.name
     }
 
     fn deployment_target(&self) -> DeploymentTarget {
-        self.deployment_target
+        self.meta.deployment_target
     }
 
     fn supports_streaming(&self) -> bool {
