@@ -16,7 +16,7 @@ pub mod error;
 pub use error::PrinterError;
 
 /// Default deadline for an HTML-to-PDF print operation.
-pub const DEFAULT_PRINT_TIMEOUT: Duration = Duration::from_secs(60);
+pub const DEFAULT_PRINT_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// PDF print options controlling paper size and margins.
 #[derive(Debug, Clone)]

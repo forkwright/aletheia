@@ -312,6 +312,7 @@ fn project_recall_scope(pipeline_config: &PipelineConfig) -> mneme::recall::Proj
 /// History stage: load conversation history within token budget.
 pub(super) async fn run_history_stage(
     config: &NousConfig,
+    pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     input: &PipelineInput,
     session_store: Option<&Mutex<SessionStore>>,
@@ -329,10 +330,18 @@ pub(super) async fn run_history_stage(
     // so tokens not consumed by bootstrap or recall are not wasted.
     ctx.history_budget += ctx.remaining_tokens.max(0);
 
-    let history_config = HistoryConfig::default();
+    // WHY: the turn-history policy lives on PipelineConfig so operators,
+    // diagnostics, and UI can inspect and tune load behavior without
+    // reaching into local constants in `history.rs`.
+    let history_policy = pipeline_config.history.clone();
+    let history_config = HistoryConfig {
+        max_messages: history_policy.max_messages,
+        reserve_for_current: history_policy.reserve_for_current,
+        include_tool_messages: history_policy.include_tool_messages,
+    };
     if let Some(store_mutex) = session_store {
         let store = store_mutex.lock().instrument(span.clone()).await;
-        let (messages, hist_result) = history::load_history(
+        let (messages, mut hist_result) = history::load_history(
             &store,
             &input.session.id,
             ctx.history_budget,
@@ -346,6 +355,9 @@ pub(super) async fn run_history_stage(
                 error_type: "load_failed".to_owned(),
             });
         })?;
+        // WHY: surface the effective policy in the run record so reviewers can
+        // explain inclusion/exclusion decisions without re-reading config.
+        hist_result.policy = history_policy;
         ctx.messages = messages;
         ctx.history_budget -= hist_result.tokens_consumed;
         ctx.history_result = Some(hist_result);
@@ -781,6 +793,7 @@ pub(super) async fn run_execute_stage(
     let result = match execute_result {
         Ok(turn_result) => turn_result,
         Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
+            // kanon:ignore RUST/commented-code — WHY explanatory text, not commented-out code
             // WHY: a None distillation summary means the session has never been
             // distilled — for a hard timeout we fail instead of serving a generic
             // unavailable message, while other transient errors still degrade.

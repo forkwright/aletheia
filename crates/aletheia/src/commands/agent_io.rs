@@ -402,8 +402,7 @@ fn export_knowledge(
         );
         store
             .run_script_read_only(HAS_NON_FACT_EMBEDDINGS, params)
-            .map(|r| r.row_count() > 0)
-            .unwrap_or(false)
+            .is_ok_and(|r| r.row_count() > 0)
     };
 
     Ok((

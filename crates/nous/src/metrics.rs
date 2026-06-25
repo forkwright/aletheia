@@ -405,6 +405,28 @@ mod tests {
     }
 
     #[test]
+    fn turn_completed_event_counts_turn_exactly_once() {
+        // WHY(#5400): the pipeline TurnCompleted event must be the single owner
+        // of the turn counter. Audit hooks must not also call record_turn.
+        let r = fresh_registry();
+        let emitter = pipeline_event_emitter();
+        emitter.emit(&crate::pipeline::events::TurnCompleted {
+            nous_id: "agent-e".to_owned(),
+            model: "test-model".to_owned(),
+            duration_ms: 100,
+            input_tokens: 10,
+            output_tokens: 10,
+            tool_calls: 0,
+            stages_completed: 6,
+        });
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-e\"} 1"),
+            "TurnCompleted should increment the counter exactly once, got: {out}"
+        );
+    }
+
+    #[test]
     fn record_error_increments_counter() {
         let r = fresh_registry();
         record_error("agent-c", "execute", "test_error");
