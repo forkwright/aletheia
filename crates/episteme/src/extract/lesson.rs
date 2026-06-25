@@ -746,14 +746,14 @@ diff --git a/Cargo.toml b/Cargo.toml
     // heuristic; only actual `+`-prefixed additions should.
     #[test]
     fn context_ignores_hunk_header_function_named_test_without_added_lines() {
-        let diff = r#"diff --git a/src/lib.rs b/src/lib.rs
+        let diff = r"diff --git a/src/lib.rs b/src/lib.rs
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -10,7 +10,7 @@ pub fn test_cleanup() {
 -    old_line
 +    new_line
  }
-"#;
+";
         let config = LessonConfig {
             pr_title: "Fix cleanup".to_owned(),
             pr_number: Some(1),
@@ -772,7 +772,7 @@ diff --git a/Cargo.toml b/Cargo.toml
 
     #[test]
     fn context_detects_test_additions_inside_non_test_named_function() {
-        let diff = r#"diff --git a/src/lib.rs b/src/lib.rs
+        let diff = r"diff --git a/src/lib.rs b/src/lib.rs
 --- a/src/lib.rs
 +++ b/src/lib.rs
 @@ -10,6 +10,9 @@ pub fn run() {
@@ -781,7 +781,7 @@ diff --git a/Cargo.toml b/Cargo.toml
 +        assert!(true);
 +    }
  }
-"#;
+";
         let config = LessonConfig {
             pr_title: "Add tests".to_owned(),
             pr_number: Some(2),
