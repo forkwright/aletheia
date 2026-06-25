@@ -113,8 +113,8 @@ impl ProjectWorkspace {
 
         let filename = format!("{}.json", blocker.plan_id);
         let path = phase_blockers.join(&filename);
-        let content = serde_json::to_string_pretty(blocker)
-            .context(error::WorkspaceSerializeSnafu)?;
+        let content =
+            serde_json::to_string_pretty(blocker).context(error::WorkspaceSerializeSnafu)?;
         koina::fs::write_restricted(&path, content.as_bytes())
             .context(error::WorkspaceIoSnafu { path: &path })?;
         Ok(())
