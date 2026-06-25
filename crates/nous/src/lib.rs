@@ -81,6 +81,8 @@ pub mod tasks;
 pub mod training;
 /// Self-tuning feedback loop: evidence-based parameter change proposals.
 pub mod tuning;
+/// Durable turn-attempt lifecycle records and finalize idempotency.
+pub(crate) mod turn_record;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
 pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.

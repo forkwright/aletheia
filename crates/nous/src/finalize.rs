@@ -5,6 +5,11 @@
 //! 2. Persists tool call/result messages
 //! 3. Persists the assistant's response
 //! 4. Records token usage
+//!
+//! WHY: graphe commits each append in its own fjall transaction, so finalize
+//! records a durable turn-attempt note keyed by the canonical turn id. A
+//! `Completed` note short-circuits retries, making finalization idempotent
+//! across messages and usage records.
 
 use koina::ulid::Ulid;
 use snafu::ResultExt;
@@ -16,6 +21,7 @@ use mneme::types::{Role, UsageRecord};
 use crate::error;
 use crate::pipeline::TurnResult;
 use crate::session::SessionState;
+use crate::turn_record::{TurnAttemptRecord, TurnAttemptStatus};
 
 /// Content marker prefix for assistant turns that ended for an explicitly
 /// partial reason. Stored inline because `graphe::Message` has no metadata
@@ -61,11 +67,26 @@ impl Default for FinalizeConfig {
 
 /// Result of the finalize stage.
 #[derive(Debug, Clone)]
-pub struct FinalizeResult {
-    /// Number of messages persisted.
-    pub messages_persisted: usize,
-    /// Whether usage was recorded.
-    pub usage_recorded: bool,
+pub(crate) struct FinalizeResult {
+    messages_persisted: usize,
+    usage_recorded: bool,
+}
+
+impl FinalizeResult {
+    fn new(messages_persisted: usize, usage_recorded: bool) -> Self {
+        Self {
+            messages_persisted,
+            usage_recorded,
+        }
+    }
+
+    pub(crate) fn messages_persisted(&self) -> usize {
+        self.messages_persisted
+    }
+
+    pub(crate) fn usage_recorded(&self) -> bool {
+        self.usage_recorded
+    }
 }
 
 /// Returns true for stop reasons that represent a partial terminal outcome
@@ -120,38 +141,48 @@ pub(crate) fn finalize(
     result: &TurnResult,
     config: &FinalizeConfig,
 ) -> error::Result<FinalizeResult> {
-    // INVARIANT: dedup guard: skip if this turn was already finalized (usage record exists)
+    // INVARIANT: dedup guard: skip if this turn was already finalized.
     //
-    // WHY: turn_id (fresh ULID) is the dedup key rather than session_id: see issue #1036
+    // WHY: canonical turn_id is the primary idempotency key. The legacy
+    // usage_exists_for_turn guard remains for backward compatibility with
+    // turns finalized before the turn-attempt note protocol.
     let turn_seq = turn_seq_from_ulid(&session.turn_id);
-    if store
+    let already_finalized = store
         .usage_exists_for_turn(&session.id, turn_seq)
         .context(error::StoreSnafu)?
-    {
+        || crate::turn_record::is_turn_completed(store, &session.id, &session.turn_id)?;
+    if already_finalized {
         warn!(
             turn = session.turn,
             turn_id = %session.turn_id,
             "finalize called twice for same turn, skipping duplicate"
         );
-        return Ok(FinalizeResult {
-            messages_persisted: 0,
-            usage_recorded: false,
-        });
+        return Ok(FinalizeResult::new(0, false));
     }
+
+    // WHY: ensure session row exists before child messages: FK constraint on messages table would otherwise fail
+    store
+        .find_or_create_session(
+            &session.id,
+            &session.nous_id,
+            &session.session_key,
+            Some(&session.model),
+            None,
+        )
+        .context(error::StoreSnafu)?;
+
+    let mut pending = TurnAttemptRecord::new(
+        &session.turn_id,
+        &session.id,
+        &session.nous_id,
+        TurnAttemptStatus::FinalizePending,
+    );
+    pending.model = Some(session.model.clone());
+    crate::turn_record::persist_turn_attempt(store, &session.nous_id, &pending)?;
 
     let mut messages_persisted = 0usize;
 
     if config.persist_messages {
-        // WHY: ensure session row exists before child messages: FK constraint on messages table would otherwise fail
-        store
-            .find_or_create_session(
-                &session.id,
-                &session.nous_id,
-                &session.session_key,
-                Some(&session.model),
-                None,
-            )
-            .context(error::StoreSnafu)?;
         #[expect(
             clippy::cast_possible_wrap,
             clippy::as_conversions,
@@ -241,11 +272,17 @@ pub(crate) fn finalize(
         usage_recorded = true;
     }
 
+    let mut completed = TurnAttemptRecord::new(
+        &session.turn_id,
+        &session.id,
+        &session.nous_id,
+        TurnAttemptStatus::Completed,
+    );
+    completed.model = Some(session.model.clone());
+    crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
+
     debug!(messages_persisted, usage_recorded, "finalize complete");
-    Ok(FinalizeResult {
-        messages_persisted,
-        usage_recorded,
-    })
+    Ok(FinalizeResult::new(messages_persisted, usage_recorded))
 }
 
 #[expect(
@@ -619,5 +656,28 @@ mod tests {
             result.is_err(),
             "divergent session ID should cause FK violation"
         );
+    }
+
+    /// Regression test for #4691: a completed turn-attempt note prevents
+    /// duplicate finalization even when the legacy usage guard is absent.
+    #[test]
+    fn finalize_note_dedup_skips_without_usage_row() {
+        let (store, session) = make_store_and_session();
+        let result = simple_result();
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("first finalize");
+        // Remove the usage row so only the completed note remains.
+        store
+            .cleanup_usage_records("ses-1", 0)
+            .expect("clear usage");
+
+        let fr2 =
+            finalize(&store, &session, "Hi again", &result, &config).expect("second finalize");
+        assert_eq!(fr2.messages_persisted, 0);
+        assert!(!fr2.usage_recorded);
+
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history.len(), 2);
     }
 }
