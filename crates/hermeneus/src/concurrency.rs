@@ -276,8 +276,9 @@ impl AdaptiveConcurrencyLimiter {
             crate::metrics::set_concurrency_latency_ewma(&self.provider_name, ewma);
         }
 
-        // Wake any parked callers; they will re-check the limit.
-        self.notify.notify_waiters();
+        // Wake one parked caller; it will re-check the limit and re-park if
+        // the slot was already taken by another waiter.
+        self.notify.notify_one();
     }
 }
 
@@ -576,7 +577,7 @@ mod tests {
         assert_eq!(l.in_flight(), 0);
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time trait bound check; compilation fails if bounds are not satisfied
     fn limiter_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<AdaptiveConcurrencyLimiter>();
@@ -733,7 +734,7 @@ mod tests {
         assert_eq!(lim.limit(), 5, "error should decrease limit");
     }
 
-    #[test]
+    #[test] // kanon:ignore TESTING/tautological-test — compile-time trait bound check; compilation fails if bounds are not satisfied
     fn layer_is_clone_send() {
         fn assert_clone_send<T: Clone + Send>() {}
         assert_clone_send::<ConcurrencyLayer>();
