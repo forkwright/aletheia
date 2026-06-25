@@ -292,18 +292,22 @@ pub async fn update_enabled(
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?
         .clone();
 
+    // WHY(#4582): Stage the mutation on a clone, persist it, and only swap the
+    // live config after the write succeeds. A failed disk write therefore leaves
+    // runtime state unchanged.
+    let mut persisted = { let config = state.config.read().await; config.clone() };
+    let agent = ensure_agent_definition(&mut persisted, &runtime)?;
+    agent.enabled = body.enabled;
+    taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
+        message: format!("failed to write config: {e}"),
+        location: snafu::location!(),
+    })?;
     {
         let mut config = state.config.write().await;
-        let agent = ensure_agent_definition(&mut config, &runtime)?;
-        agent.enabled = body.enabled;
-        let persisted = config.clone();
-        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
-            message: format!("failed to write config: {e}"),
-            location: snafu::location!(),
-        })?;
-        if let Err(e) = state.config_tx.send(persisted) {
-            tracing::warn!(error = %e, "config broadcast has no receivers");
-        }
+        *config = persisted.clone();
+    }
+    if let Err(e) = state.config_tx.send(persisted) {
+        tracing::warn!(error = %e, "config broadcast has no receivers");
     }
 
     if let Some(handle) = state.nous_manager.get(&id) {
@@ -393,37 +397,41 @@ pub async fn update_tool(
         });
     }
 
+    // WHY(#4582): Stage the mutation on a clone, persist it, and only swap the
+    // live config after the write succeeds. A failed disk write therefore leaves
+    // runtime state unchanged.
+    let mut persisted = { let config = state.config.read().await; config.clone() };
+    let agent = ensure_agent_definition(&mut persisted, &runtime)?;
+    let mut allowlist = agent
+        .tool_allowlist
+        .take()
+        .unwrap_or_else(|| tool_names.clone());
+    if body.enabled {
+        if !allowlist.iter().any(|name| name == &body.tool) {
+            allowlist.push(body.tool.clone());
+        }
+    } else {
+        allowlist.retain(|name| name != &body.tool);
+    }
+
+    allowlist.sort();
+    allowlist.dedup();
+    agent.tool_allowlist = if allowlist.len() == tool_names.len() {
+        None
+    } else {
+        Some(allowlist)
+    };
+
+    taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
+        message: format!("failed to write config: {e}"),
+        location: snafu::location!(),
+    })?;
     {
         let mut config = state.config.write().await;
-        let agent = ensure_agent_definition(&mut config, &runtime)?;
-        let mut allowlist = agent
-            .tool_allowlist
-            .take()
-            .unwrap_or_else(|| tool_names.clone());
-        if body.enabled {
-            if !allowlist.iter().any(|name| name == &body.tool) {
-                allowlist.push(body.tool.clone());
-            }
-        } else {
-            allowlist.retain(|name| name != &body.tool);
-        }
-
-        allowlist.sort();
-        allowlist.dedup();
-        agent.tool_allowlist = if allowlist.len() == tool_names.len() {
-            None
-        } else {
-            Some(allowlist)
-        };
-
-        let persisted = config.clone();
-        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
-            message: format!("failed to write config: {e}"),
-            location: snafu::location!(),
-        })?;
-        if let Err(e) = state.config_tx.send(persisted) {
-            tracing::warn!(error = %e, "config broadcast has no receivers");
-        }
+        *config = persisted.clone();
+    }
+    if let Err(e) = state.config_tx.send(persisted) {
+        tracing::warn!(error = %e, "config broadcast has no receivers");
     }
 
     let config = state.config.read().await;

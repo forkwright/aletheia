@@ -2,6 +2,7 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -332,4 +333,102 @@ async fn nous_recover_requires_auth() {
     let resp = app.oneshot(req).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn patch_nous_enabled_rolls_back_on_failed_persist() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let config_dir = state.oikos.config();
+
+    let before = {
+        let config = state.config.read().await;
+        config
+            .agents
+            .list
+            .iter()
+            .find(|a| a.id == "syn")
+            .map(|a| a.enabled)
+    };
+
+    // WHY: Make the config directory unwritable so write_config fails.
+    std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o555))
+        .expect("chmod config dir");
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn",
+        Some(serde_json::json!({ "enabled": false })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o755))
+        .expect("restore config dir permissions");
+
+    assert!(
+        resp.status().is_server_error(),
+        "failed config write must return an error, got {}",
+        resp.status()
+    );
+
+    let after = {
+        let config = state.config.read().await;
+        config
+            .agents
+            .list
+            .iter()
+            .find(|a| a.id == "syn")
+            .map(|a| a.enabled)
+    };
+    assert_eq!(
+        after, before,
+        "live config must not change when persistence fails"
+    );
+}
+
+#[tokio::test]
+async fn patch_nous_tools_rolls_back_on_failed_persist() {
+    let (state, _dir) = test_state_with_dummy_tool().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let config_dir = state.oikos.config();
+
+    let before = {
+        let config = state.config.read().await;
+        config
+            .agents
+            .list
+            .iter()
+            .find(|a| a.id == "syn")
+            .and_then(|a| a.tool_allowlist.clone())
+    };
+
+    // WHY: Make the config directory unwritable so write_config fails.
+    std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o555))
+        .expect("chmod config dir");
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn/tools",
+        Some(serde_json::json!({ "tool": "dummy_tool", "enabled": false })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o755))
+        .expect("restore config dir permissions");
+
+    assert!(
+        resp.status().is_server_error(),
+        "failed config write must return an error, got {}",
+        resp.status()
+    );
+
+    let after = {
+        let config = state.config.read().await;
+        config
+            .agents
+            .list
+            .iter()
+            .find(|a| a.id == "syn")
+            .and_then(|a| a.tool_allowlist.clone())
+    };
+    assert_eq!(
+        after, before,
+        "live tool allowlist must not change when persistence fails"
+    );
 }

@@ -15,7 +15,11 @@ use mneme::embedding::MockEmbeddingProvider;
 use mneme::store::SessionStore;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
-use organon::registry::ToolRegistry;
+use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::types::{
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult,
+};
 use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::oikos::Oikos;
@@ -80,23 +84,71 @@ pub(super) fn token_scoped_to(role: symbolon::types::Role, nous_id: &str) -> Str
 }
 
 pub(super) async fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(true, false, "token").await
+    test_state_with_provider_private_and_auth_mode(true, false, "token", |_| {}).await
 }
 
 pub(super) async fn test_state_with_provider(
     with_provider: bool,
 ) -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(with_provider, false, "token").await
+    test_state_with_provider_private_and_auth_mode(with_provider, false, "token", |_| {}).await
 }
 
 pub(super) async fn test_state_with_private_nous() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(true, true, "token").await
+    test_state_with_provider_private_and_auth_mode(true, true, "token", |_| {}).await
 }
 
 pub(super) async fn test_state_with_auth_mode(
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
+    test_state_with_provider_private_and_auth_mode(true, false, auth_mode, |_| {}).await
+}
+
+/// Test helper: a no-op tool executor used to register a dummy tool in tests.
+struct DummyTool;
+
+impl ToolExecutor for DummyTool {
+    fn execute<'a>(
+        &'a self,
+        _input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = organon::error::Result<ToolResult>> + Send + 'a>,
+    > {
+        Box::pin(async move { Ok(ToolResult::text("done")) })
+    }
+}
+
+/// Register a single dummy tool so allowlist mutation handlers can be exercised.
+pub(super) fn register_dummy_tool(registry: &mut ToolRegistry) {
+    let def = ToolDef {
+        name: koina::id::ToolName::new("dummy_tool").expect("valid dummy tool name"),
+        description: "A dummy tool for testing allowlist mutations.".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: indexmap::IndexMap::from([(
+                "query".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::String,
+                    description: "Ignored dummy input.".to_owned(),
+                    enum_values: None,
+                    default: None,
+                },
+            )]),
+            required: vec!["query".to_owned()],
+        },
+        category: ToolCategory::System,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: false,
+        groups: vec![ToolGroupId::Read],
+        tags: vec![],
+    };
+    registry
+        .register(def, Box::new(DummyTool))
+        .expect("dummy tool registers");
+}
+
+pub(super) async fn test_state_with_dummy_tool() -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_provider_private_and_auth_mode(true, false, "token", register_dummy_tool).await
 }
 
 #[expect(
@@ -107,6 +159,7 @@ async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
     include_private_nous: bool,
     auth_mode: &str,
+    mut init_tool_registry: impl FnMut(&mut ToolRegistry),
 ) -> (Arc<AppState>, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
@@ -192,7 +245,9 @@ bind = "localhost"
         ));
     }
     let provider_registry = Arc::new(provider_registry);
-    let tool_registry = Arc::new(ToolRegistry::new());
+    let mut tool_registry = ToolRegistry::new();
+    init_tool_registry(&mut tool_registry);
+    let tool_registry = Arc::new(tool_registry);
 
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
