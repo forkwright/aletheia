@@ -36,6 +36,8 @@ pub mod nous;
 pub mod ops;
 /// Planning project verification endpoints.
 pub(crate) mod planning;
+/// Provider inventory and model-route decision endpoints.
+pub mod providers;
 /// Session lifecycle, history retrieval, and SSE message streaming.
 pub mod sessions;
 /// Workspace file-browser and git diff endpoints.

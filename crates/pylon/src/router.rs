@@ -19,7 +19,7 @@ use koina::http::{API_HEALTH, API_V1};
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
     config, credentials, events, health, insights, knowledge, metrics, nous, ops, planning,
-    sessions, workspace,
+    providers, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -205,7 +205,9 @@ pub fn build_router_with(
         .route(
             "/planning/projects/{project_id}/verification/refresh",
             post(planning::refresh_verification),
-        );
+        )
+        .route("/providers", get(providers::list))
+        .route("/providers/route", get(providers::route));
 
     let mut router = Router::new()
         .nest(API_V1, v1)
