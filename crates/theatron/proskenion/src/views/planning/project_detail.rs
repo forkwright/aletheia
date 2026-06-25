@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
-use crate::state::planning::{Project, status_badge_style, status_label};
+use crate::state::planning::{PlanningCapabilities, Project, status_badge_style, status_label};
 use crate::views::planning::checkpoints::CheckpointsView;
 use crate::views::planning::discussion::DiscussionView;
 use crate::views::planning::execution::ExecutionView;
@@ -129,6 +129,7 @@ const BADGE_STYLE: &str = "\
 pub(crate) fn PlanningProject(project_id: String) -> Element {
     let project_state = use_signal(|| FetchState::NotAvailable);
     let active_tab = use_signal(|| ActiveTab::Verification);
+    let caps: Signal<PlanningCapabilities> = use_context();
 
     let tab = *active_tab.read();
     let active_tab_label = tab_label(tab);
@@ -203,12 +204,12 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
 
             div {
                 style: "{TAB_BAR_STYLE}",
-                {render_tab(ActiveTab::Requirements, active_tab)}
-                {render_tab(ActiveTab::Roadmap, active_tab)}
-                {render_tab(ActiveTab::Checkpoints, active_tab)}
-                {render_tab(ActiveTab::Verification, active_tab)}
-                {render_tab(ActiveTab::Discussion, active_tab)}
-                {render_tab(ActiveTab::Execution, active_tab)}
+                {render_tab(ActiveTab::Requirements, active_tab, caps)}
+                {render_tab(ActiveTab::Roadmap, active_tab, caps)}
+                {render_tab(ActiveTab::Checkpoints, active_tab, caps)}
+                {render_tab(ActiveTab::Verification, active_tab, caps)}
+                {render_tab(ActiveTab::Discussion, active_tab, caps)}
+                {render_tab(ActiveTab::Execution, active_tab, caps)}
             }
 
             div {
@@ -238,6 +239,20 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
     }
 }
 
+impl PlanningCapabilities {
+    /// Whether the server-side planning module backing `tab` is available.
+    pub(crate) fn supports_tab(self, tab: ActiveTab) -> bool {
+        match tab {
+            ActiveTab::Requirements => self.requirements,
+            ActiveTab::Roadmap => self.roadmap,
+            ActiveTab::Checkpoints => self.checkpoints,
+            ActiveTab::Verification => self.verification,
+            ActiveTab::Discussion => self.discussion,
+            ActiveTab::Execution => self.execution,
+        }
+    }
+}
+
 #[must_use]
 fn tab_label(tab: ActiveTab) -> &'static str {
     match tab {
@@ -250,18 +265,16 @@ fn tab_label(tab: ActiveTab) -> &'static str {
     }
 }
 
-/// Only the verification API is currently wired on pylon.
-#[must_use]
-fn is_tab_supported(tab: ActiveTab) -> bool {
-    matches!(tab, ActiveTab::Verification)
-}
-
 /// Render a tab button. Supported tabs are clickable; placeholder tabs are disabled.
-fn render_tab(tab: ActiveTab, mut active_tab: Signal<ActiveTab>) -> Element {
+fn render_tab(
+    tab: ActiveTab,
+    mut active_tab: Signal<ActiveTab>,
+    caps: Signal<PlanningCapabilities>,
+) -> Element {
     let label = tab_label(tab);
     let is_active = *active_tab.read() == tab;
 
-    if is_tab_supported(tab) {
+    if caps.read().supports_tab(tab) {
         rsx! {
             button {
                 style: if is_active { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
@@ -282,20 +295,43 @@ fn render_tab(tab: ActiveTab, mut active_tab: Signal<ActiveTab>) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{ActiveTab, is_tab_supported, tab_label};
+    use super::{ActiveTab, PlanningCapabilities, tab_label};
 
     #[test]
-    fn verification_tab_is_supported() {
-        assert!(is_tab_supported(ActiveTab::Verification));
+    fn verification_tab_is_supported_by_default_public_caps() {
+        assert!(PlanningCapabilities::default_public().supports_tab(ActiveTab::Verification));
     }
 
     #[test]
-    fn non_verification_tabs_are_disabled() {
-        assert!(!is_tab_supported(ActiveTab::Requirements));
-        assert!(!is_tab_supported(ActiveTab::Roadmap));
-        assert!(!is_tab_supported(ActiveTab::Checkpoints));
-        assert!(!is_tab_supported(ActiveTab::Discussion));
-        assert!(!is_tab_supported(ActiveTab::Execution));
+    fn non_verification_tabs_are_disabled_by_default_public_caps() {
+        let caps = PlanningCapabilities::default_public();
+        assert!(!caps.supports_tab(ActiveTab::Requirements));
+        assert!(!caps.supports_tab(ActiveTab::Roadmap));
+        assert!(!caps.supports_tab(ActiveTab::Checkpoints));
+        assert!(!caps.supports_tab(ActiveTab::Discussion));
+        assert!(!caps.supports_tab(ActiveTab::Execution));
+    }
+
+    #[test]
+    fn all_tabs_have_distinct_capability_flags() {
+        let mut caps = PlanningCapabilities::default();
+        caps.requirements = true;
+        assert!(caps.supports_tab(ActiveTab::Requirements));
+        caps.requirements = false;
+        caps.roadmap = true;
+        assert!(caps.supports_tab(ActiveTab::Roadmap));
+        caps.roadmap = false;
+        caps.checkpoints = true;
+        assert!(caps.supports_tab(ActiveTab::Checkpoints));
+        caps.checkpoints = false;
+        caps.verification = true;
+        assert!(caps.supports_tab(ActiveTab::Verification));
+        caps.verification = false;
+        caps.discussion = true;
+        assert!(caps.supports_tab(ActiveTab::Discussion));
+        caps.discussion = false;
+        caps.execution = true;
+        assert!(caps.supports_tab(ActiveTab::Execution));
     }
 
     #[test]

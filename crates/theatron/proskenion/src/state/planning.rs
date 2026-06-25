@@ -428,9 +428,45 @@ pub(crate) fn phase_border_color(status: PhaseStatus) -> &'static str {
     }
 }
 
+/// Discovered availability of planning sub-modules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct PlanningCapabilities {
+    pub(crate) projects: bool,
+    pub(crate) requirements: bool,
+    pub(crate) roadmap: bool,
+    pub(crate) checkpoints: bool,
+    pub(crate) verification: bool,
+    pub(crate) discussion: bool,
+    pub(crate) execution: bool,
+}
+
+impl PlanningCapabilities {
+    /// Conservative default for a public Aletheia desktop build: only
+    /// verification is advertised because Pylon currently mounts only the
+    /// project verification route.
+    pub(crate) fn default_public() -> Self {
+        Self {
+            verification: true,
+            ..Self::default()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_public_capabilities_enable_only_verification() {
+        let caps = PlanningCapabilities::default_public();
+        assert!(caps.verification, "verification is the only wired module");
+        assert!(!caps.projects, "project list is not wired");
+        assert!(!caps.requirements, "requirements is not wired");
+        assert!(!caps.roadmap, "roadmap is not wired");
+        assert!(!caps.checkpoints, "checkpoints is not wired");
+        assert!(!caps.discussion, "discussion is not wired");
+        assert!(!caps.execution, "execution is not wired");
+    }
 
     fn make_project(id: &str, status: ProjectStatus, completed: u32, total: u32) -> Project {
         Project {

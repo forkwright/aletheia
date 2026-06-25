@@ -17,6 +17,7 @@ use crate::state::chat::ChatSelection;
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
+use crate::state::planning::PlanningCapabilities;
 use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
 use crate::state::tool_metrics::DateRange;
 use crate::views::chat::Chat;
@@ -172,6 +173,9 @@ fn ConnectedApp() -> Element {
     use_context_provider(|| Signal::new(CommandStore::new()));
     use_context_provider(|| Signal::new(TabBar::new()));
     use_context_provider(|| Signal::new(None::<ChatSelection>));
+    // WHY: Planning surfaces are capability-driven so the public desktop build
+    // does not advertise planning modules that Pylon cannot back.
+    use_context_provider(|| Signal::new(PlanningCapabilities::default_public()));
 
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.
