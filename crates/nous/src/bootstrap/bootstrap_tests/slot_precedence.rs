@@ -206,3 +206,35 @@ async fn full_slot_precedence_order() {
         "Memory before Context"
     );
 }
+
+#[tokio::test]
+async fn required_section_not_debted_by_lower_slot_flexible() {
+    // WHY(#5829): A Flexible section with a lower slot index must not consume
+    // budget ahead of a Required section with a higher slot index.
+    let identity = "x".repeat(116); // 29 tokens at the default 4 chars/token
+    let (_dir, oikos) = setup_oikos(
+        "test",
+        &[("SOUL.md", "identity"), ("IDENTITY.md", &identity)],
+    );
+    let assembler = BootstrapAssembler::new(&oikos);
+    let mut budget = TokenBudget::new(200_000, 0.6, 16_384, 30);
+
+    let result = assembler
+        .assemble("test", &mut budget)
+        .await
+        .expect("assemble should succeed");
+
+    assert!(
+        result.sections_included.contains(&"SOUL.md".to_owned()),
+        "SOUL.md must be included"
+    );
+    assert!(
+        result.sections_dropped.contains(&"IDENTITY.md".to_owned()),
+        "Flexible IDENTITY.md should be dropped after Required SOUL.md takes priority"
+    );
+    assert_eq!(
+        budget.adjusted_history_budget(),
+        budget.history_budget(),
+        "no history debt should accrue when Required fits and Flexible is dropped"
+    );
+}

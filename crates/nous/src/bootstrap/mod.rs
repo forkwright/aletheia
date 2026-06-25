@@ -375,6 +375,27 @@ pub struct BootstrapSection {
     pub slot: BootstrapSlot,
 }
 
+impl BootstrapSection {
+    /// Construct a section with all fields specified.
+    pub fn new(
+        name: String,
+        priority: SectionPriority,
+        content: String,
+        tokens: u64,
+        truncatable: bool,
+        slot: BootstrapSlot,
+    ) -> Self {
+        Self {
+            name,
+            priority,
+            content,
+            tokens,
+            truncatable,
+            slot,
+        }
+    }
+}
+
 /// Result of bootstrap assembly.
 #[derive(Debug, Clone)]
 pub struct BootstrapResult {
@@ -392,6 +413,29 @@ pub struct BootstrapResult {
     pub total_tokens: u64,
     /// The task hint used for conditional loading.
     pub task_hint: TaskHint,
+}
+
+impl BootstrapResult {
+    /// Construct a result with all fields specified.
+    pub fn new(
+        system_prompt: String,
+        sections_included: Vec<String>,
+        sections_truncated: Vec<String>,
+        sections_dropped: Vec<String>,
+        sections_filtered: Vec<String>,
+        total_tokens: u64,
+        task_hint: TaskHint,
+    ) -> Self {
+        Self {
+            system_prompt,
+            sections_included,
+            sections_truncated,
+            sections_dropped,
+            sections_filtered,
+            total_tokens,
+            task_hint,
+        }
+    }
 }
 
 /// Workspace file specification for cascade resolution.
@@ -889,8 +933,10 @@ impl<'a> BootstrapAssembler<'a> {
         let llm_sections = self.resolve_llm_sections(recipe).await?;
         sections.extend(llm_sections);
 
-        // NOTE: stable sort preserves declaration order within same (slot, priority)
-        sections.sort_by_key(|s| (s.slot, s.priority));
+        // WHY(#5829): Allocate budget by priority so Required sections are
+        // protected even when their slot comes after Flexible sections.
+        // Final prompt assembly re-sorts by slot below.
+        sections.sort_by_key(|s| s.priority);
 
         let mut included: Vec<BootstrapSection> = Vec::new();
         let mut truncated_names: Vec<String> = Vec::new();
@@ -944,6 +990,10 @@ impl<'a> BootstrapAssembler<'a> {
                 dropped_names.push(section.name);
             }
         }
+
+        // WHY(#5829): Prompt output stays in slot order; only budget allocation
+        // uses priority as the primary axis.
+        included.sort_by_key(|s| (s.slot, s.priority));
 
         let system_prompt = included
             .iter()
@@ -1464,9 +1514,8 @@ impl<'a> BootstrapAssembler<'a> {
                     (SectionPriority::Important, true)
                 }
             }
-            LlmRecipe::InSession => (SectionPriority::Optional, true),
+            LlmRecipe::InSession | LlmRecipe::None => (SectionPriority::Optional, true),
             LlmRecipe::Refactor => (SectionPriority::Important, true),
-            LlmRecipe::None => unreachable!("None recipe is filtered before path resolution"),
         }
     }
 
