@@ -1,10 +1,8 @@
 # cargo-audit configuration.
 #
-# WHY: cargo-audit does not read deny.toml. This file mirrors the advisory
-# ignore list in deny.toml so both tools stay in sync. When adding or
-# removing an ignore here, update deny.toml's [[advisories.ignore]]
-# entries to match (and vice versa). See standards/CI.md § Vulnerability
-# scanning for policy.
+# WHY: This file is DERIVED from deny.toml [[advisories.ignore]].
+# Do not edit the ignore list here; edit deny.toml and run
+# `kanon audit derive-ignores --apply`. See standards/SUPPLY-CHAIN.md.
 
 [advisories]
 ignore = [
@@ -12,14 +10,15 @@ ignore = [
     "RUSTSEC-2024-0320",
     # bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade
     "RUSTSEC-2025-0141",
-    # paste unmaintained — transitive via tokenizers; no safe upgrade
+    # paste unmaintained, transitive via tokenizers; no safe upgrade
     "RUSTSEC-2024-0436",
-    # rustls-pemfile 2.x unmaintained — transitive via qdrant-client → tonic 0.12. Blocked on qdrant-client → tonic 0.13+
-    "RUSTSEC-2025-0134",
-    # rand 0.8 unsound only with custom logger using rand::rng() — not our usage. Transitive via qdrant-client → tonic 0.12 + spreadsheet-ods + phf
-    "RUSTSEC-2026-0097",
     # async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7
     "RUSTSEC-2025-0052",
-    # memmap2 unsound (unchecked pointer offset) — transitive via candle-core/grep-searcher, pinned ^0.9, no upgrade; offset path not exercised. review-by: 2026-12-01
+    # rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. Tracked for removal when qdrant-client/tonic migrate to the rustls-pki-types PemObject API
+    "RUSTSEC-2025-0134",
+    # rand 0.8 unsound — transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Re-syncs deny.toml with .cargo/audit.toml + osv-scanner.toml
+    "RUSTSEC-2026-0097",
+    # memmap2 unsound (unchecked pointer offset); reached transitively via candle-core (safetensors mmap weight load) + grep-searcher, both pin memmap2 ^0.9 with no compatible upgrade; the unsound offset path is not exercised by these consumers.
+    # review-by: 2026-12-01
     "RUSTSEC-2026-0186",
 ]
