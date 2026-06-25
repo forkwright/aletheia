@@ -265,8 +265,7 @@ pub(crate) fn Memory() -> Element {
             // operator multi-selects, send the first as a server hint and the
             // store still narrows the rest client-side via the visible() set.
             if let Some(ft) = type_filter.first() {
-                let encoded: String =
-                    keryx::url::encode_path_segment(ft.wire());
+                let encoded: String = keryx::url::encode_path_segment(ft.wire());
                 url.push_str(&format!("&fact_type={encoded}"));
             }
             if let Some(tier) = tier_filter.first() {
@@ -347,8 +346,7 @@ pub(crate) fn Memory() -> Element {
             }
 
             for et in &type_filter {
-                let encoded: String =
-                    keryx::url::encode_path_segment(et.label());
+                let encoded: String = keryx::url::encode_path_segment(et.label());
                 url.push_str(&format!("&entity_type={encoded}"));
             }
 
@@ -371,18 +369,17 @@ pub(crate) fn Memory() -> Element {
                         }
                     };
 
-                    let entities: Vec<Entity> = if let Ok(list) =
-                        serde_json::from_str::<Vec<Entity>>(&text)
-                    {
-                        list
-                    } else if let Ok(wrapper) =
-                        serde_json::from_str::<responses::EntitiesResponse>(&text)
-                    {
-                        wrapper.entities
-                    } else {
-                        tracing::warn!("failed to parse entities response");
-                        return;
-                    };
+                    let entities: Vec<Entity> =
+                        if let Ok(list) = serde_json::from_str::<Vec<Entity>>(&text) {
+                            list
+                        } else if let Ok(wrapper) =
+                            serde_json::from_str::<responses::EntitiesResponse>(&text)
+                        {
+                            wrapper.entities
+                        } else {
+                            tracing::warn!("failed to parse entities response");
+                            return;
+                        };
 
                     let has_more = entities.len() >= EntityListStore::PAGE_SIZE;
 
