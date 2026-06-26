@@ -221,7 +221,10 @@ impl FactStore {
     #[tracing::instrument(skip(self))]
     pub async fn get(&self, id: &str) -> Result<Option<ArchitectureFact>, FactError> {
         let path = self.fact_path(id);
-        if !path.exists() {
+        if !tokio::fs::try_exists(&path)
+            .await
+            .with_context(|_| ReadFileSnafu { path: path.clone() })?
+        {
             return Ok(None);
         }
         let bytes = tokio::fs::read(&path)
@@ -264,7 +267,12 @@ impl FactStore {
     /// cannot be parsed.
     #[tracing::instrument(skip(self))]
     pub async fn list(&self, scope: Option<FactScope>) -> Result<Vec<ArchitectureFact>, FactError> {
-        if !self.dir.exists() {
+        if !tokio::fs::try_exists(&self.dir)
+            .await
+            .with_context(|_| ReadDirSnafu {
+                dir: self.dir.clone(),
+            })?
+        {
             return Ok(vec![]);
         }
         let mut facts = self.load_all().await?;
@@ -283,7 +291,12 @@ impl FactStore {
     /// cannot be parsed.
     #[tracing::instrument(skip(self))]
     pub async fn search(&self, query: &str) -> Result<Vec<ArchitectureFact>, FactError> {
-        if !self.dir.exists() {
+        if !tokio::fs::try_exists(&self.dir)
+            .await
+            .with_context(|_| ReadDirSnafu {
+                dir: self.dir.clone(),
+            })?
+        {
             return Ok(vec![]);
         }
         let query_lower = query.to_lowercase();
@@ -641,6 +654,14 @@ mod tests {
         // Directory that does not exist — should return empty, not error.
         let store = FactStore::new("/tmp/aletheia-facts-does-not-exist-xyzzy-12345");
         let result = store.list(None).await.expect("list");
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_returns_empty_when_dir_missing() {
+        // Directory that does not exist — should return empty, not error.
+        let store = FactStore::new("/tmp/aletheia-facts-does-not-exist-xyzzy-search");
+        let result = store.search("tokio").await.expect("search");
         assert!(result.is_empty());
     }
 
