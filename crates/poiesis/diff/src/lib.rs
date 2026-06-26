@@ -237,6 +237,13 @@ mod tests {
   <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
 </Relationships>"#;
 
+        const SHEET1: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c></row>
+  </sheetData>
+</worksheet>"#;
+
         let shared_strings = format!(
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="2" uniqueCount="2">
@@ -245,21 +252,13 @@ mod tests {
 </sst>"#
         );
 
-        const SHEET1: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetData>
-    <row r="1"><c r="A1" t="s"><v>0</v></c></row>
-  </sheetData>
-</worksheet>"#;
-
-        let sheet3 = format!(
-            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        let sheet3 = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheetData>
     <row r="1"><c r="A1" t="s"><v>1</v></c></row>
   </sheetData>
 </worksheet>"#
-        );
+            .to_string();
 
         let mut cursor = std::io::Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(&mut cursor);

@@ -118,8 +118,7 @@ fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
     for (sheet_idx, (sheet_name, rid)) in sheet_entries.iter().enumerate() {
         let worksheet_path = rels
             .get(rid)
-            .map(|target| format!("xl/{target}"))
-            .unwrap_or_else(|| format!("xl/worksheets/sheet{}.xml", sheet_idx + 1));
+            .map_or_else(|| format!("xl/worksheets/sheet{}.xml", sheet_idx + 1), |target| format!("xl/{target}"));
         if let Ok(mut file) = archive.by_name(&worksheet_path) {
             let mut content = String::new();
             std::io::Read::read_to_string(&mut file, &mut content)
