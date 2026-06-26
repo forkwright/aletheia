@@ -295,7 +295,10 @@ impl FactStore {
         if let Some(idx) = guard.as_mut() {
             let id = fact.id.clone();
             if let Some(pos) = idx.iter().position(|i| i.fact.id == id) {
-                idx[pos] = IndexedFact::new(fact);
+                // INVARIANT: pos comes from position() on idx with no intervening mutation
+                if let Some(entry) = idx.get_mut(pos) {
+                    *entry = IndexedFact::new(fact);
+                }
             } else {
                 idx.push(IndexedFact::new(fact));
             }
@@ -318,7 +321,7 @@ impl FactStore {
         };
         Ok(idx
             .iter()
-            .filter(|i| scope.map_or(true, |s| i.fact.scope == s))
+            .filter(|i| scope.is_none_or(|s| i.fact.scope == s))
             .map(|i| i.fact.clone())
             .collect())
     }
