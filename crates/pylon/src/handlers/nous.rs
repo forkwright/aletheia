@@ -292,16 +292,28 @@ pub async fn update_enabled(
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?
         .clone();
 
+    // WHY: Stage the toggle on a cloned config, persist it, then swap the
+    // live config. This keeps runtime state and disk consistent if the write
+    // fails (see #4582).
+    let staged = {
+        let config = state.config.read().await;
+        let mut staged = config.clone();
+        drop(config);
+
+        let agent = ensure_agent_definition(&mut staged, &runtime)?;
+        agent.enabled = body.enabled;
+        staged
+    };
+
+    taxis::loader::write_config(&state.oikos, &staged).map_err(|e| ApiError::Internal {
+        message: format!("failed to write config: {e}"),
+        location: snafu::location!(),
+    })?;
+
     {
         let mut config = state.config.write().await;
-        let agent = ensure_agent_definition(&mut config, &runtime)?;
-        agent.enabled = body.enabled;
-        let persisted = config.clone();
-        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
-            message: format!("failed to write config: {e}"),
-            location: snafu::location!(),
-        })?;
-        if let Err(e) = state.config_tx.send(persisted) {
+        *config = staged;
+        if let Err(e) = state.config_tx.send(config.clone()) {
             tracing::warn!(error = %e, "config broadcast has no receivers");
         }
     }
@@ -393,9 +405,15 @@ pub async fn update_tool(
         });
     }
 
-    {
-        let mut config = state.config.write().await;
-        let agent = ensure_agent_definition(&mut config, &runtime)?;
+    // WHY: Stage the allowlist change on a cloned config, persist it, then
+    // swap the live config. A failed write must not alter live tool policy
+    // (see #4582).
+    let staged = {
+        let config = state.config.read().await;
+        let mut staged = config.clone();
+        drop(config);
+
+        let agent = ensure_agent_definition(&mut staged, &runtime)?;
         let mut allowlist = agent
             .tool_allowlist
             .take()
@@ -416,12 +434,18 @@ pub async fn update_tool(
             Some(allowlist)
         };
 
-        let persisted = config.clone();
-        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
-            message: format!("failed to write config: {e}"),
-            location: snafu::location!(),
-        })?;
-        if let Err(e) = state.config_tx.send(persisted) {
+        staged
+    };
+
+    taxis::loader::write_config(&state.oikos, &staged).map_err(|e| ApiError::Internal {
+        message: format!("failed to write config: {e}"),
+        location: snafu::location!(),
+    })?;
+
+    {
+        let mut config = state.config.write().await;
+        *config = staged;
+        if let Err(e) = state.config_tx.send(config.clone()) {
             tracing::warn!(error = %e, "config broadcast has no receivers");
         }
     }

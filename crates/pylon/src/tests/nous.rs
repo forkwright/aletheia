@@ -2,13 +2,87 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use koina::id::ToolName;
+use organon::error::Result;
+use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::types::{InputSchema, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolResult};
 use symbolon::types::Role;
 use tower::ServiceExt;
 
 use super::helpers::*;
+
+struct ProbeExecutor;
+
+impl ToolExecutor for ProbeExecutor {
+    fn execute<'a>(
+        &'a self,
+        _input: &'a organon::types::ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async { Ok(ToolResult::text("ok")) })
+    }
+}
+
+fn probe_tool_registry() -> ToolRegistry {
+    let tool_name = ToolName::new("probe_tool").expect("valid tool name");
+    let tool_def = ToolDef {
+        name: tool_name,
+        description: "Probe tool for pylon nous tests.".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: vec![].into_iter().collect(),
+            required: Vec::new(),
+        },
+        category: ToolCategory::Workspace,
+        reversibility: organon::types::Reversibility::FullyReversible,
+        auto_activate: false,
+        groups: vec![ToolGroupId::Read],
+        tags: vec![organon::types::ToolTag::Recon],
+    };
+
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(tool_def, Box::new(ProbeExecutor))
+        .expect("register tool");
+    registry
+}
+
+/// WHY: Unix-only helper that makes a directory read-only for the test body
+/// and reliably restores write permissions when dropped so the tempdir can
+/// be cleaned up.
+#[cfg(unix)]
+struct ReadOnlyGuard<'a> {
+    path: &'a std::path::Path,
+    orig_mode: u32,
+}
+
+#[cfg(unix)]
+impl<'a> ReadOnlyGuard<'a> {
+    fn new(path: &'a std::path::Path) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(path).unwrap();
+        let orig_mode = meta.permissions().mode();
+        let mut perms = meta.permissions();
+        perms.set_mode(orig_mode & !0o222);
+        std::fs::set_permissions(path, perms).unwrap();
+        Self { path, orig_mode }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for ReadOnlyGuard<'_> {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(self.path).unwrap().permissions();
+        perms.set_mode(self.orig_mode);
+        let _ = std::fs::set_permissions(self.path, perms);
+    }
+}
 
 #[tokio::test]
 async fn list_nous_returns_agents() {
@@ -332,4 +406,95 @@ async fn nous_recover_requires_auth() {
     let resp = app.oneshot(req).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn patch_nous_enabled_rolls_back_on_persist_failure() {
+    let (app, dir) = app().await;
+    let config_dir = dir.path().join("config");
+
+    // WHY: Simulate a failed config write by making the config directory
+    // read-only. The handler must not mutate live state before persistence
+    // succeeds (see #4582).
+    let _guard = ReadOnlyGuard::new(&config_dir);
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn",
+        Some(serde_json::json!({ "enabled": false })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    // WHY: The guard is dropped before `dir`, restoring write permissions.
+    // Verify the in-memory config was not mutated by the failed write.
+    let resp = app
+        .clone()
+        .oneshot(authed_get("/api/v1/nous"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let agents = body["nous"].as_array().expect("nous array");
+    let syn = agents
+        .iter()
+        .find(|a| a["id"] == "syn")
+        .expect("syn in list");
+    assert_eq!(syn["enabled"], true);
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn patch_nous_tools_rolls_back_on_persist_failure() {
+    let (state, dir) = test_state().await;
+    let mut state = Arc::try_unwrap(state).unwrap_or_else(|_| panic!("unique app state"));
+    state.tool_registry = Arc::new(probe_tool_registry());
+    let state = Arc::new(state);
+    let app = build_router(Arc::clone(&state), &test_security_config());
+    let config_dir = dir.path().join("config");
+
+    let baseline = app
+        .clone()
+        .oneshot(authed_get("/api/v1/nous/syn/tools"))
+        .await
+        .unwrap();
+    assert_eq!(baseline.status(), StatusCode::OK);
+    let baseline_body = body_json(baseline).await;
+    let tools = baseline_body["tools"].as_array().expect("tools array");
+    let probe = tools
+        .iter()
+        .find(|t| t["name"] == "probe_tool")
+        .expect("probe_tool present");
+    assert_eq!(probe["enabled"], true);
+
+    // WHY: Simulate a failed config write so the allowlist update must abort
+    // without mutating live config (see #4582).
+    let _guard = ReadOnlyGuard::new(&config_dir);
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn/tools",
+        Some(serde_json::json!({ "tool": "probe_tool", "enabled": false })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    // WHY: Guard drops here, restoring write permissions before `dir`.
+    // Verify the live allowlist is unchanged.
+    let after = app
+        .clone()
+        .oneshot(authed_get("/api/v1/nous/syn/tools"))
+        .await
+        .unwrap();
+    assert_eq!(after.status(), StatusCode::OK);
+    let after_body = body_json(after).await;
+    let tools = after_body["tools"].as_array().expect("tools array");
+    let probe = tools
+        .iter()
+        .find(|t| t["name"] == "probe_tool")
+        .expect("probe_tool still present");
+    assert_eq!(probe["enabled"], true);
 }
