@@ -20,6 +20,27 @@ pub const DEFAULT_OPENAI_COMPAT_MODEL: &str = "default";
 /// Default model name used by Voyage embeddings.
 pub const DEFAULT_VOYAGE_MODEL: &str = "voyage-3-lite";
 
+/// Non-secret embedding configuration provenance recorded in eval reports.
+///
+/// WHY: Reports must identify which provider, model, dimension, and endpoint
+/// produced a metric so operators can reproduce a gate result and audit
+/// same-provider model upgrades.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct ModelProvenance {
+    /// Provider type (e.g. `mock`, `candle`, `openai-compat`, `voyage`).
+    pub provider: String,
+    /// Explicit model name, if configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Base URL for OpenAI-compatible endpoints, if configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    /// Output dimension, if configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimension: Option<usize>,
+}
+
 /// Errors from embedding operations.
 #[derive(Debug, Snafu)]
 #[expect(
@@ -84,6 +105,21 @@ pub trait EmbeddingProvider: Send + Sync {
 
     /// The model name/identifier.
     fn model_name(&self) -> &str;
+
+    /// Non-secret configuration provenance for this provider.
+    ///
+    /// WHY: the default implementation derives a minimal provenance from the
+    /// model name and dimension. Concrete providers override it when they know
+    /// their full config (provider type, base URL, explicit model) so eval
+    /// reports capture complete config provenance without exposing secrets.
+    fn provenance(&self) -> ModelProvenance {
+        ModelProvenance {
+            provider: "unknown".to_owned(),
+            model: Some(self.model_name().to_owned()),
+            base_url: None,
+            dimension: Some(self.dimension()),
+        }
+    }
 }
 
 /// A mock embedding provider for testing.
@@ -97,6 +133,7 @@ pub trait EmbeddingProvider: Send + Sync {
 #[derive(Debug)]
 pub struct MockEmbeddingProvider {
     dim: usize,
+    provenance: ModelProvenance,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -105,7 +142,21 @@ impl MockEmbeddingProvider {
     #[must_use]
     #[instrument]
     pub fn new(dim: usize) -> Self {
-        Self { dim }
+        Self {
+            dim,
+            provenance: ModelProvenance {
+                provider: "mock".to_owned(),
+                model: Some(DEFAULT_MOCK_MODEL.to_owned()),
+                base_url: None,
+                dimension: Some(dim),
+            },
+        }
+    }
+
+    /// Create a mock provider with explicit provenance.
+    #[must_use]
+    pub fn with_provenance(dim: usize, provenance: ModelProvenance) -> Self {
+        Self { dim, provenance }
     }
 }
 
@@ -113,6 +164,7 @@ impl MockEmbeddingProvider {
 mod candle_provider {
     use super::{
         EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnafu, LockPoisonedSnafu,
+        ModelProvenance,
     };
     use candle_core::{DType, Device, Tensor};
     use candle_nn::VarBuilder;
@@ -133,6 +185,7 @@ mod candle_provider {
         model_name: String,
         dimension: usize,
         device: Device,
+        provenance: ModelProvenance,
     }
 
     impl std::fmt::Debug for CandelProvider {
@@ -140,6 +193,7 @@ mod candle_provider {
             f.debug_struct("CandelProvider")
                 .field("model_name", &self.model_name)
                 .field("dimension", &self.dimension)
+                .field("provenance", &self.provenance)
                 .finish_non_exhaustive()
         }
     }
@@ -240,6 +294,12 @@ mod candle_provider {
                 model_name: repo_id.to_owned(),
                 dimension,
                 device,
+                provenance: ModelProvenance {
+                    provider: "candle".to_owned(),
+                    model: Some(repo_id.to_owned()),
+                    base_url: None,
+                    dimension: Some(dimension),
+                },
             })
         }
 
@@ -386,6 +446,10 @@ mod candle_provider {
         fn model_name(&self) -> &str {
             &self.model_name
         }
+
+        fn provenance(&self) -> ModelProvenance {
+            self.provenance.clone()
+        }
     }
 
     #[cfg(test)]
@@ -455,6 +519,18 @@ impl Default for EmbeddingConfig {
 }
 
 impl EmbeddingConfig {
+    /// Return the non-secret provenance that should be recorded alongside
+    /// embedding evaluation metrics for this config.
+    #[must_use]
+    pub fn provenance(&self) -> ModelProvenance {
+        ModelProvenance {
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            base_url: self.base_url.clone(),
+            dimension: self.dimension,
+        }
+    }
+
     /// Return the model identifier the provider will report for this config.
     #[must_use]
     pub fn effective_model_name(&self) -> String {
@@ -482,6 +558,7 @@ impl EmbeddingConfig {
 #[derive(Debug)]
 pub struct DegradedEmbeddingProvider {
     dim: usize,
+    provenance: ModelProvenance,
 }
 
 impl DegradedEmbeddingProvider {
@@ -491,7 +568,15 @@ impl DegradedEmbeddingProvider {
     /// Create a degraded provider with the given (expected) dimension.
     #[must_use]
     pub fn new(dim: usize) -> Self {
-        Self { dim }
+        Self {
+            dim,
+            provenance: ModelProvenance {
+                provider: "degraded".to_owned(),
+                model: Some(Self::MODEL_NAME.to_owned()),
+                base_url: None,
+                dimension: Some(dim),
+            },
+        }
     }
 }
 
@@ -544,10 +629,13 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
             let cfg = OpenAiCompatConfig {
                 base_url,
                 api_key: config.api_key.clone(),
-                model,
+                model: model.clone(),
                 dimension: dim,
             };
-            Ok(Box::new(OpenAiEmbeddingProvider::new(&cfg)?))
+            Ok(Box::new(OpenAiEmbeddingProvider::with_provider(
+                "openai-compat",
+                &cfg,
+            )?))
         }
         #[cfg(feature = "openai-embed")]
         "voyage" => {
@@ -562,16 +650,19 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
                     .filter(|key| !key.is_empty())
                     .map(koina::secret::SecretString::from)
             });
+            let base_url = config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "https://api.voyageai.com/v1".to_owned());
             let cfg = OpenAiCompatConfig {
-                base_url: config
-                    .base_url
-                    .clone()
-                    .unwrap_or_else(|| "https://api.voyageai.com/v1".to_owned()),
+                base_url: base_url.clone(),
                 api_key,
-                model,
+                model: model.clone(),
                 dimension: dim,
             };
-            Ok(Box::new(OpenAiEmbeddingProvider::new(&cfg)?))
+            Ok(Box::new(OpenAiEmbeddingProvider::with_provider(
+                "voyage", &cfg,
+            )?))
         }
         #[cfg(not(feature = "openai-embed"))]
         "voyage" => InitFailedSnafu {

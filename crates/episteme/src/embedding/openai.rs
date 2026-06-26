@@ -15,7 +15,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use super::{EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnafu};
+use super::{
+    EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnafu, ModelProvenance,
+};
 
 /// Configuration for an `OpenAI`-compatible embedding provider.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -48,6 +50,7 @@ pub struct OpenAiEmbeddingProvider {
     api_key: Option<koina::secret::SecretString>,
     model: String,
     dimension: usize,
+    provenance: ModelProvenance,
 }
 
 impl std::fmt::Debug for OpenAiEmbeddingProvider {
@@ -57,6 +60,7 @@ impl std::fmt::Debug for OpenAiEmbeddingProvider {
             .field("model", &self.model)
             .field("dimension", &self.dimension)
             .field("authenticated", &self.api_key.is_some())
+            .field("provenance", &self.provenance)
             .finish_non_exhaustive()
     }
 }
@@ -90,6 +94,19 @@ impl OpenAiEmbeddingProvider {
     /// Returns `EmbeddingError::InitFailed` if the HTTP client cannot be built.
     #[instrument]
     pub fn new(config: &OpenAiCompatConfig) -> EmbeddingResult<Self> {
+        Self::with_provider("openai-compat", config)
+    }
+
+    /// Create a provider from the given config with an explicit provider name.
+    ///
+    /// `provider` is recorded in [`EmbeddingProvider::provenance`] and should be
+    /// `openai-compat` or `voyage` for the corresponding configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `EmbeddingError::InitFailed` if the HTTP client cannot be built.
+    #[instrument]
+    pub fn with_provider(provider: &str, config: &OpenAiCompatConfig) -> EmbeddingResult<Self> {
         // WHY: reqwest with rustls-no-provider needs an explicit crypto provider.
         // This is idempotent — subsequent calls silently fail and are ignored.
         // kanon:ignore RUST/no-silent-result-swallow — install_default() returns Err once the provider is already installed; that's the intended steady state, not an error.
@@ -106,12 +123,19 @@ impl OpenAiEmbeddingProvider {
                 .build()
             })?;
 
+        let base_url = config.base_url.trim_end_matches('/').to_owned();
         Ok(Self {
             client,
-            base_url: config.base_url.trim_end_matches('/').to_owned(),
+            base_url: base_url.clone(),
             api_key: config.api_key.clone(),
             model: config.model.clone(),
             dimension: config.dimension,
+            provenance: ModelProvenance {
+                provider: provider.to_owned(),
+                model: Some(config.model.clone()),
+                base_url: Some(base_url),
+                dimension: Some(config.dimension),
+            },
         })
     }
 
@@ -306,6 +330,10 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
     #[instrument(skip(self))]
     fn model_name(&self) -> &str {
         &self.model
+    }
+
+    fn provenance(&self) -> ModelProvenance {
+        self.provenance.clone()
     }
 }
 

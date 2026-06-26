@@ -7,6 +7,7 @@ use tracing::instrument;
 use crate::embedding::{DEFAULT_MOCK_MODEL, MockEmbeddingProvider};
 use crate::embedding::{
     DegradedEmbeddingProvider, EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult,
+    ModelProvenance,
 };
 
 // ── MockEmbeddingProvider implementation ─────────────────────────────────────
@@ -53,7 +54,14 @@ impl EmbeddingProvider for MockEmbeddingProvider {
     }
 
     fn model_name(&self) -> &str {
-        DEFAULT_MOCK_MODEL
+        self.provenance
+            .model
+            .as_deref()
+            .unwrap_or(DEFAULT_MOCK_MODEL)
+    }
+
+    fn provenance(&self) -> ModelProvenance {
+        self.provenance.clone()
     }
 }
 
@@ -75,5 +83,9 @@ impl EmbeddingProvider for DegradedEmbeddingProvider {
 
     fn model_name(&self) -> &'static str {
         DegradedEmbeddingProvider::MODEL_NAME
+    }
+
+    fn provenance(&self) -> ModelProvenance {
+        self.provenance.clone()
     }
 }

@@ -7,7 +7,9 @@
 use std::collections::HashMap;
 
 use super::*;
-use crate::embedding::{EmbeddingProvider, EmbeddingResult, MockEmbeddingProvider};
+use crate::embedding::{
+    EmbeddingProvider, EmbeddingResult, MockEmbeddingProvider, ModelProvenance,
+};
 
 const STATIC_DIM: usize = 2;
 
@@ -38,18 +40,28 @@ fn simple_dataset() -> EvalDataset {
 #[derive(Debug)]
 struct StaticEmbeddingProvider {
     model_name: &'static str,
+    provider_name: &'static str,
     vectors: HashMap<&'static str, Vec<f32>>,
     fallback: Vec<f32>,
 }
 
 impl StaticEmbeddingProvider {
     fn new(model_name: &'static str, vectors: &[(&'static str, [f32; STATIC_DIM])]) -> Self {
+        Self::with_provider(model_name, "static", vectors)
+    }
+
+    fn with_provider(
+        model_name: &'static str,
+        provider_name: &'static str,
+        vectors: &[(&'static str, [f32; STATIC_DIM])],
+    ) -> Self {
         let vectors = vectors
             .iter()
             .map(|(text, vector)| (*text, vector.to_vec()))
             .collect();
         Self {
             model_name,
+            provider_name,
             vectors,
             fallback: vec![0.0, 1.0],
         }
@@ -71,6 +83,15 @@ impl EmbeddingProvider for StaticEmbeddingProvider {
 
     fn model_name(&self) -> &str {
         self.model_name
+    }
+
+    fn provenance(&self) -> ModelProvenance {
+        ModelProvenance {
+            provider: self.provider_name.to_owned(),
+            model: Some(self.model_name.to_owned()),
+            base_url: None,
+            dimension: Some(STATIC_DIM),
+        }
     }
 }
 
@@ -293,7 +314,7 @@ fn compare_regressing_candidate_fails() {
     assert!(
         run.failure_reason
             .as_deref()
-            .is_some_and(|reason| reason.contains("below required baseline threshold")),
+            .is_some_and(|reason| reason.contains("below baseline regression threshold")),
         "regression failure should explain the threshold miss"
     );
 }
@@ -435,5 +456,293 @@ fn permissive_mode_continues_with_unknown_ids() {
     assert!(
         metrics.recall_at_k >= 0.0 && metrics.recall_at_k <= 1.0,
         "recall must remain bounded"
+    );
+}
+
+#[test]
+fn provenance_recorded_in_metrics() {
+    let provider = StaticEmbeddingProvider::with_provider(
+        "custom-model-v2",
+        "custom-provider",
+        &[("ignored text", [1.0, 0.0])],
+    );
+    let metrics = evaluate_model(&provider, &simple_dataset(), &simple_corpus(), 3)
+        .expect("evaluate_model must succeed");
+
+    assert_eq!(metrics.model_name, "custom-model-v2");
+    assert_eq!(metrics.provenance.provider, "custom-provider");
+    assert_eq!(metrics.provenance.model.as_deref(), Some("custom-model-v2"));
+    assert_eq!(metrics.provenance.dimension, Some(STATIC_DIM));
+}
+
+#[test]
+fn slice_recall_computed_per_slice() {
+    let ds = EvalDataset::from_jsonl_str(
+        r#"{"query":"q1","relevant_ids":["id-alice"],"slice":"head"}
+{"query":"q2","relevant_ids":["id-bob"],"slice":"tail"}
+{"query":"q3","relevant_ids":["id-carol"],"slice":"tail"}"#,
+    )
+    .expect("sliced dataset must parse");
+
+    // WHY: use deterministic static vectors so we can predict which queries hit.
+    let provider = StaticEmbeddingProvider::new(
+        "slice-static",
+        &[
+            ("q1", [1.0, 0.0]),
+            // q2 should miss its relevant document (id-bob) so tail recall is 1/2.
+            ("q2", [1.0, 0.0]),
+            ("q3", [1.0, 0.0]),
+            ("alice prefers tea over coffee", [1.0, 0.0]),
+            ("bob enjoys cycling on weekends", [0.0, 1.0]),
+            ("carol studies distributed systems", [1.0, 0.0]),
+        ],
+    );
+    // WHY: K=2 so bob (sim=0.0 to q2) is outside top-2; all 3 docs are in simple_corpus,
+    // so K=3 would always return every document and the tail miss would never fire.
+    let metrics = evaluate_model(&provider, &ds, &simple_corpus(), 2)
+        .expect("sliced evaluation must succeed");
+
+    assert_eq!(metrics.slice_recall_at_k.len(), 2, "two slices expected");
+    assert!(
+        metrics
+            .slice_recall_at_k
+            .get("head")
+            .is_some_and(|r| (r - 1.0).abs() < f64::EPSILON),
+        "head slice should have perfect recall"
+    );
+    assert!(
+        metrics
+            .slice_recall_at_k
+            .get("tail")
+            .is_some_and(|r| (r - 0.5).abs() < f64::EPSILON),
+        "tail slice should have 1/2 recall"
+    );
+}
+
+#[test]
+fn compare_same_provider_different_models_passes_when_metrics_equal() {
+    let baseline = StaticEmbeddingProvider::with_provider(
+        "voyage-3-lite",
+        "voyage",
+        &[
+            ("target query", [1.0, 0.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let candidate = StaticEmbeddingProvider::with_provider(
+        "voyage-3",
+        "voyage",
+        &[
+            ("target query", [1.0, 0.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let run = compare_models(
+        &baseline,
+        Some(&candidate),
+        &gate_dataset(),
+        &gate_corpus(),
+        1,
+    )
+    .expect("same-provider comparison must succeed");
+
+    assert!(run.passed, "identical metrics from same provider must pass");
+    assert_eq!(
+        run.baseline.provenance.provider, "voyage",
+        "baseline provenance must record provider"
+    );
+    assert_eq!(
+        run.candidate
+            .as_ref()
+            .expect("candidate metrics must be present")
+            .provenance
+            .provider,
+        "voyage",
+        "candidate provenance must record provider"
+    );
+    assert_ne!(
+        run.baseline.model_name,
+        run.candidate
+            .as_ref()
+            .expect("candidate metrics must be present")
+            .model_name,
+        "test must exercise a model-name change within the same provider"
+    );
+}
+
+#[test]
+fn compare_same_provider_model_upgrade_regression_fails() {
+    let baseline = StaticEmbeddingProvider::with_provider(
+        "voyage-3-lite",
+        "voyage",
+        &[
+            ("target query", [1.0, 0.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let candidate = StaticEmbeddingProvider::with_provider(
+        "voyage-3",
+        "voyage",
+        &[
+            ("target query", [0.0, 1.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let run = compare_models(
+        &baseline,
+        Some(&candidate),
+        &gate_dataset(),
+        &gate_corpus(),
+        1,
+    )
+    .expect("same-provider regression comparison must succeed");
+
+    assert!(
+        !run.passed,
+        "regressing candidate from same provider must fail"
+    );
+    assert!(
+        run.failure_reason
+            .as_deref()
+            .is_some_and(|r| r.contains("below baseline regression threshold")),
+        "failure should explain regression: {:?}",
+        run.failure_reason
+    );
+}
+
+#[test]
+fn compare_bad_baseline_fails_absolute_floor() {
+    // WHY: baseline and candidate both miss the relevant document, so there is
+    // no relative regression. An absolute Recall@K floor must still reject them.
+    let baseline = StaticEmbeddingProvider::new(
+        "bad-baseline",
+        &[
+            ("target query", [0.0, 1.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let candidate = StaticEmbeddingProvider::new(
+        "bad-candidate",
+        &[
+            ("target query", [0.0, 1.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let thresholds = EvalGateThresholds::new(0.0).min_recall_at_k(0.5);
+    let run = compare_models_with_thresholds(
+        &baseline,
+        Some(&candidate),
+        &gate_dataset(),
+        &gate_corpus(),
+        1,
+        thresholds,
+    )
+    .expect("bad-baseline comparison must succeed");
+
+    assert!(
+        !run.passed,
+        "absolute floor must reject a bad baseline/candidate pair"
+    );
+    assert!(
+        run.failure_reason
+            .as_deref()
+            .is_some_and(|r| r.contains("absolute floor")),
+        "failure should cite absolute floor: {:?}",
+        run.failure_reason
+    );
+}
+
+#[test]
+fn compare_mrr_regression_fails() {
+    // WHY: candidate preserves Recall@K but pushes the hit from rank 1 to rank
+    // 2, so MRR regresses from 1.0 to 0.5.
+    let baseline = StaticEmbeddingProvider::new(
+        "baseline-mrr",
+        &[
+            ("target query", [1.0, 0.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let candidate = StaticEmbeddingProvider::new(
+        "candidate-mrr",
+        &[
+            ("target query", [0.1, 0.9]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let thresholds = EvalGateThresholds::new(0.0).min_mrr_delta(0.0);
+    let run = compare_models_with_thresholds(
+        &baseline,
+        Some(&candidate),
+        &gate_dataset(),
+        &gate_corpus(),
+        2,
+        thresholds,
+    )
+    .expect("MRR regression comparison must succeed");
+
+    assert!(!run.passed, "MRR regression must fail the gate");
+    assert!(
+        run.failure_reason
+            .as_deref()
+            .is_some_and(|r| r.contains("MRR") && r.contains("baseline regression threshold")),
+        "failure should cite MRR regression: {:?}",
+        run.failure_reason
+    );
+}
+
+#[test]
+fn compare_slice_floor_fails() {
+    let ds = EvalDataset::from_jsonl_str(
+        r#"{"query":"target query","relevant_ids":["id-good"],"slice":"head"}
+{"query":"target query 2","relevant_ids":["id-good"],"slice":"tail"}"#,
+    )
+    .expect("sliced gate dataset must parse");
+
+    let baseline = StaticEmbeddingProvider::new(
+        "baseline-slice",
+        &[
+            ("target query", [1.0, 0.0]),
+            ("target query 2", [1.0, 0.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    // WHY: candidate misses the "tail" slice but keeps overall recall at 0.5.
+    let candidate = StaticEmbeddingProvider::new(
+        "candidate-slice",
+        &[
+            ("target query", [1.0, 0.0]),
+            ("target query 2", [0.0, 1.0]),
+            ("good document", [1.0, 0.0]),
+            ("bad document", [0.0, 1.0]),
+        ],
+    );
+    let thresholds = EvalGateThresholds::new(0.0).slice_floor("tail", 0.75);
+    let run = compare_models_with_thresholds(
+        &baseline,
+        Some(&candidate),
+        &ds,
+        &gate_corpus(),
+        1,
+        thresholds,
+    )
+    .expect("slice floor comparison must succeed");
+
+    assert!(!run.passed, "slice floor miss must fail the gate");
+    assert!(
+        run.failure_reason
+            .as_deref()
+            .is_some_and(|r| r.contains("slice") && r.contains("tail")),
+        "failure should cite the tail slice: {:?}",
+        run.failure_reason
     );
 }

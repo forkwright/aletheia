@@ -32,7 +32,9 @@
 use snafu::{ResultExt, Snafu};
 use tracing::instrument;
 
-use crate::embedding::EmbeddingProvider;
+use std::collections::HashMap;
+
+use crate::embedding::{EmbeddingProvider, ModelProvenance};
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
@@ -140,6 +142,13 @@ pub struct EvalQuery {
     /// Optional human-readable description (ignored during evaluation).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional slice label for slice-specific quality floors.
+    ///
+    /// WHY: model upgrades can regress on specific query cohorts (long-tail,
+    /// non-English, code, etc.); slice labels let gates enforce per-cohort
+    /// Recall@K floors in addition to aggregate metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slice: Option<String>,
     /// Source line number in the JSONL file (1-indexed).
     ///
     /// WHY: recorded at load time so validation errors can point operators at
@@ -289,6 +298,9 @@ impl EvalDataset {
 pub struct QueryResult {
     /// The query text.
     pub query: String,
+    /// Optional slice label carried over from the input query.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slice: Option<String>,
     /// Whether any ground-truth ID appeared in the top-K results.
     pub hit: bool,
     /// 1/rank of the first hit, or 0.0 if no hit found.
@@ -302,6 +314,16 @@ pub struct QueryResult {
 /// Minimum allowed candidate Recall@K delta relative to baseline.
 pub(crate) const DEFAULT_MIN_RECALL_AT_K_DELTA: f64 = 0.0;
 
+/// Slice-specific floor for Recall@K.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct SliceFloor {
+    /// Slice label that must match [`EvalQuery::slice`].
+    pub slice: String,
+    /// Minimum candidate Recall@K for this slice.
+    pub min_recall_at_k: f64,
+}
+
 /// Operational mode for an embedding evaluation run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -314,20 +336,86 @@ pub enum EvalRunMode {
 }
 
 /// Thresholds applied by the embedding regression gate.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct EvalGateThresholds {
     /// Required candidate Recall@K delta relative to baseline.
     pub min_recall_at_k_delta: f64,
+    /// Absolute minimum candidate Recall@K.
+    pub min_recall_at_k: f64,
+    /// Absolute minimum candidate Recall@5.
+    pub min_recall_at_5: f64,
+    /// Absolute minimum candidate Recall@10.
+    pub min_recall_at_10: f64,
+    /// Required candidate MRR delta relative to baseline.
+    pub min_mrr_delta: f64,
+    /// Absolute minimum candidate MRR.
+    pub min_mrr: f64,
+    /// Per-slice Recall@K floors.
+    pub slice_floors: Vec<SliceFloor>,
 }
 
 impl EvalGateThresholds {
     /// Build gate thresholds from an explicit Recall@K delta.
+    ///
+    /// All absolute floors default to zero (no absolute gate) and no slice
+    /// floors are configured.
     #[must_use]
-    pub const fn new(min_recall_at_k_delta: f64) -> Self {
+    pub fn new(min_recall_at_k_delta: f64) -> Self {
         Self {
             min_recall_at_k_delta,
+            min_recall_at_k: 0.0,
+            min_recall_at_5: 0.0,
+            min_recall_at_10: 0.0,
+            min_mrr_delta: 0.0,
+            min_mrr: 0.0,
+            slice_floors: Vec::new(),
         }
+    }
+
+    /// Set the absolute minimum candidate Recall@K.
+    #[must_use]
+    pub fn min_recall_at_k(mut self, value: f64) -> Self {
+        self.min_recall_at_k = value;
+        self
+    }
+
+    /// Set the absolute minimum candidate Recall@5.
+    #[must_use]
+    pub fn min_recall_at_5(mut self, value: f64) -> Self {
+        self.min_recall_at_5 = value;
+        self
+    }
+
+    /// Set the absolute minimum candidate Recall@10.
+    #[must_use]
+    pub fn min_recall_at_10(mut self, value: f64) -> Self {
+        self.min_recall_at_10 = value;
+        self
+    }
+
+    /// Set the required candidate MRR delta relative to baseline.
+    #[must_use]
+    pub fn min_mrr_delta(mut self, value: f64) -> Self {
+        self.min_mrr_delta = value;
+        self
+    }
+
+    /// Set the absolute minimum candidate MRR.
+    #[must_use]
+    pub fn min_mrr(mut self, value: f64) -> Self {
+        self.min_mrr = value;
+        self
+    }
+
+    /// Add a slice-specific Recall@K floor.
+    #[must_use]
+    pub fn slice_floor(mut self, slice: impl Into<String>, value: f64) -> Self {
+        self.slice_floors.push(SliceFloor {
+            slice: slice.into(),
+            min_recall_at_k: value,
+        });
+        self
     }
 }
 
@@ -342,6 +430,9 @@ impl Default for EvalGateThresholds {
 pub struct ModelMetrics {
     /// The embedding model name as reported by the provider.
     pub model_name: String,
+    /// Non-secret configuration provenance for the model that produced these
+    /// metrics (provider, explicit model, base URL, dimension).
+    pub provenance: ModelProvenance,
     /// K used during this evaluation run.
     pub k: usize,
     /// Recall@K: fraction of queries with at least one ground-truth hit in top K.
@@ -354,6 +445,12 @@ pub struct ModelMetrics {
     pub mrr: f64,
     /// Per-query detail.
     pub per_query: Vec<QueryResult>,
+    /// Per-slice Recall@K, keyed by [`EvalQuery::slice`].
+    ///
+    /// WHY: slice-level gates need per-cohort recall; unlabelled queries are
+    /// not represented here because they have no slice to gate on.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub slice_recall_at_k: HashMap<String, f64>,
 }
 
 /// Result of a full evaluation run, optionally including a candidate model
@@ -435,6 +532,9 @@ pub(crate) fn evaluate_model(
     let mut hit_count_5 = 0usize;
     let mut hit_count_10 = 0usize;
     let mut rr_sum = 0.0_f64;
+    // WHY: track slice-level (hits, total) so we can compute per-slice recall
+    // for slice-specific quality floors.
+    let mut slice_counts: HashMap<String, (usize, usize)> = HashMap::new();
 
     for eq in &dataset.queries {
         let outcome =
@@ -451,10 +551,18 @@ pub(crate) fn evaluate_model(
         rr_sum += outcome.reciprocal_rank;
         per_query.push(QueryResult {
             query: eq.query.clone(),
+            slice: eq.slice.clone(),
             hit: outcome.hit_k,
             reciprocal_rank: outcome.reciprocal_rank,
             top_k_ids: outcome.top_k_ids,
         });
+        if let Some(slice) = eq.slice.as_ref() {
+            let entry = slice_counts.entry(slice.clone()).or_insert((0, 0));
+            entry.1 += 1;
+            if outcome.hit_k {
+                entry.0 += 1;
+            }
+        }
     }
 
     let n = dataset.queries.len();
@@ -470,14 +578,29 @@ pub(crate) fn evaluate_model(
         hit_count_10 as f64,
     );
 
+    let slice_recall_at_k = slice_counts
+        .into_iter()
+        .map(|(slice, (hits, total))| {
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::as_conversions,
+                reason = "slice query counts are small dataset sizes that fit exactly in f64"
+            )]
+            let recall = hits as f64 / total as f64;
+            (slice, recall)
+        })
+        .collect();
+
     Ok(ModelMetrics {
         model_name: provider.model_name().to_owned(),
+        provenance: provider.provenance(),
         k: eff_k,
         recall_at_k: hits_at_k / queries_f,
         recall_at_5: hits_at_five / queries_f,
         recall_at_10: hits_at_ten / queries_f,
         mrr: rr_sum / queries_f,
         per_query,
+        slice_recall_at_k,
     })
 }
 
@@ -587,13 +710,30 @@ pub fn measure_baseline(
     corpus: &[(String, String)],
     k: usize,
 ) -> EvalResult<EvalRunResult> {
+    measure_baseline_with_thresholds(baseline, dataset, corpus, k, EvalGateThresholds::default())
+}
+
+/// Evaluate a baseline provider without enforcing a regression gate, recording
+/// the supplied thresholds in the result for audit purposes.
+///
+/// # Errors
+///
+/// Propagates errors from the crate-private `evaluate_model` helper.
+#[instrument(skip(baseline, dataset, corpus), fields(k = k))]
+pub fn measure_baseline_with_thresholds(
+    baseline: &dyn EmbeddingProvider,
+    dataset: &EvalDataset,
+    corpus: &[(String, String)],
+    k: usize,
+    gate_thresholds: EvalGateThresholds,
+) -> EvalResult<EvalRunResult> {
     let baseline_metrics = evaluate_model(baseline, dataset, corpus, k)?;
 
     Ok(EvalRunResult {
         mode: EvalRunMode::Measurement,
         baseline: baseline_metrics,
         candidate: None,
-        gate_thresholds: EvalGateThresholds::default(),
+        gate_thresholds,
         failure_reason: None,
         passed: true,
     })
@@ -615,13 +755,36 @@ pub fn compare_models(
     corpus: &[(String, String)],
     k: usize,
 ) -> EvalResult<EvalRunResult> {
+    compare_models_with_thresholds(
+        baseline,
+        candidate,
+        dataset,
+        corpus,
+        k,
+        EvalGateThresholds::default(),
+    )
+}
+
+/// Evaluate baseline and candidate providers side-by-side with explicit gate
+/// thresholds, including absolute floors, MRR gates, and slice-specific floors.
+///
+/// # Errors
+///
+/// Propagates errors from the crate-private `evaluate_model` helper.
+#[instrument(skip(baseline, candidate, dataset, corpus), fields(k = k))]
+pub fn compare_models_with_thresholds(
+    baseline: &dyn EmbeddingProvider,
+    candidate: Option<&dyn EmbeddingProvider>,
+    dataset: &EvalDataset,
+    corpus: &[(String, String)],
+    k: usize,
+    gate_thresholds: EvalGateThresholds,
+) -> EvalResult<EvalRunResult> {
     let baseline_metrics = evaluate_model(baseline, dataset, corpus, k)?;
-    let gate_thresholds = EvalGateThresholds::default();
 
     let (candidate_metrics, passed) = if let Some(cand) = candidate {
         let cm = evaluate_model(cand, dataset, corpus, k)?;
-        let required_recall = baseline_metrics.recall_at_k + gate_thresholds.min_recall_at_k_delta;
-        let ok = cm.recall_at_k >= required_recall;
+        let ok = check_gate(&cm, &baseline_metrics, &gate_thresholds).is_ok();
         (Some(cm), ok)
     } else {
         (None, false)
@@ -629,7 +792,7 @@ pub fn compare_models(
     let failure_reason = gate_failure_reason(
         candidate_metrics.as_ref(),
         &baseline_metrics,
-        gate_thresholds,
+        &gate_thresholds,
         passed,
     );
 
@@ -645,10 +808,96 @@ pub fn compare_models(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/// Gate check result: `Ok(())` when the candidate passes all configured
+/// thresholds, or `Err` with a list of human-readable failure messages.
+type GateCheck = std::result::Result<(), Vec<String>>;
+
+/// Check all configured gate thresholds for a candidate against a baseline.
+///
+/// Enforces both regression checks (candidate >= baseline + delta) and absolute
+/// minimums. A poor baseline can no longer let a poor candidate pass when
+/// absolute floors are configured.
+fn check_gate(
+    candidate: &ModelMetrics,
+    baseline: &ModelMetrics,
+    thresholds: &EvalGateThresholds,
+) -> GateCheck {
+    let mut failures = Vec::new();
+
+    let required_recall_k = baseline.recall_at_k + thresholds.min_recall_at_k_delta;
+    if candidate.recall_at_k < required_recall_k {
+        failures.push(format!(
+            "candidate Recall@{} ({:.1}%) is below baseline regression threshold ({:.1}%)",
+            candidate.k,
+            candidate.recall_at_k * 100.0,
+            required_recall_k * 100.0,
+        ));
+    }
+    if candidate.recall_at_k < thresholds.min_recall_at_k {
+        failures.push(format!(
+            "candidate Recall@{} ({:.1}%) is below absolute floor ({:.1}%)",
+            candidate.k,
+            candidate.recall_at_k * 100.0,
+            thresholds.min_recall_at_k * 100.0,
+        ));
+    }
+    if candidate.recall_at_5 < thresholds.min_recall_at_5 {
+        failures.push(format!(
+            "candidate Recall@5 ({:.1}%) is below absolute floor ({:.1}%)",
+            candidate.recall_at_5 * 100.0,
+            thresholds.min_recall_at_5 * 100.0,
+        ));
+    }
+    if candidate.recall_at_10 < thresholds.min_recall_at_10 {
+        failures.push(format!(
+            "candidate Recall@10 ({:.1}%) is below absolute floor ({:.1}%)",
+            candidate.recall_at_10 * 100.0,
+            thresholds.min_recall_at_10 * 100.0,
+        ));
+    }
+
+    let required_mrr = baseline.mrr + thresholds.min_mrr_delta;
+    if candidate.mrr < required_mrr {
+        failures.push(format!(
+            "candidate MRR ({:.3}) is below baseline regression threshold ({:.3})",
+            candidate.mrr, required_mrr,
+        ));
+    }
+    if candidate.mrr < thresholds.min_mrr {
+        failures.push(format!(
+            "candidate MRR ({:.3}) is below absolute floor ({:.3})",
+            candidate.mrr, thresholds.min_mrr,
+        ));
+    }
+
+    for floor in &thresholds.slice_floors {
+        let slice_recall = candidate
+            .slice_recall_at_k
+            .get(&floor.slice)
+            .copied()
+            .unwrap_or(0.0);
+        if slice_recall < floor.min_recall_at_k {
+            failures.push(format!(
+                "candidate Recall@{} for slice {:?} ({:.1}%) is below floor ({:.1}%)",
+                candidate.k,
+                floor.slice,
+                slice_recall * 100.0,
+                floor.min_recall_at_k * 100.0,
+            ));
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures)
+    }
+}
+
 fn gate_failure_reason(
     candidate: Option<&ModelMetrics>,
     baseline: &ModelMetrics,
-    gate_thresholds: EvalGateThresholds,
+    gate_thresholds: &EvalGateThresholds,
     passed: bool,
 ) -> Option<String> {
     if passed {
@@ -659,13 +908,10 @@ fn gate_failure_reason(
         return Some("candidate provider missing for embedding regression gate".to_owned());
     };
 
-    let required_recall = baseline.recall_at_k + gate_thresholds.min_recall_at_k_delta;
-    Some(format!(
-        "candidate Recall@{} ({:.1}%) is below required baseline threshold ({:.1}%)",
-        candidate.k,
-        candidate.recall_at_k * 100.0,
-        required_recall * 100.0,
-    ))
+    match check_gate(candidate, baseline, gate_thresholds) {
+        Ok(()) => Some("embedding regression gate failed for an unspecified reason".to_owned()),
+        Err(failures) => Some(failures.join("; ")),
+    }
 }
 
 /// Cosine similarity between two L2-normalized f32 vectors (dot product).
