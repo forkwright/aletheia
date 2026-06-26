@@ -4,6 +4,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use mneme::store::SessionStore;
 use mneme::types::{AgentNote, Message, Session, SessionStatus, UsageRecord};
@@ -12,7 +13,7 @@ use serde::Serialize;
 use taxis::config::RetentionSettings;
 use taxis::oikos::Oikos;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Bridges the daemon retention task to the fjall-backed session store.
 pub(crate) struct SessionRetentionAdapter {
@@ -107,6 +108,7 @@ impl RetentionExecutor for SessionRetentionAdapter {
     fn execute_retention(&self) -> oikonomos::error::Result<RetentionSummary> {
         let store = self.store.blocking_lock();
         let settings = self.resolve_settings(&store)?;
+        let archive_dir = archive_dir_for_store(&store)?;
 
         let blackboard_entries_cleaned = cleanup_blackboard_entries(&store)?;
         let mut counters = RetentionCounters::default();
@@ -116,8 +118,21 @@ impl RetentionExecutor for SessionRetentionAdapter {
                 .messages_cleaned
                 .saturating_add(cleanup_orphan_messages(&store, &settings)?);
             cleanup_usage_records(&store)?;
-            counters.add(&cleanup_closed_sessions(&store, &settings)?);
-            counters.add(&enforce_session_cap(&store, &settings)?);
+            counters.add(&cleanup_closed_sessions(&store, &settings, &archive_dir)?);
+            counters.add(&enforce_session_cap(&store, &settings, &archive_dir)?);
+        }
+
+        let (archive_files_pruned, archive_bytes_freed) =
+            prune_session_archive_dir(&archive_dir, settings.archive_ttl_days)?;
+        counters.bytes_freed = counters.bytes_freed.saturating_add(archive_bytes_freed);
+
+        if archive_files_pruned > 0 {
+            info!(
+                archive_files_pruned = archive_files_pruned,
+                archive_bytes_freed = archive_bytes_freed,
+                archive_ttl_days = ?settings.archive_ttl_days,
+                "session archive pruning completed"
+            );
         }
 
         Ok(RetentionSummary {
@@ -191,12 +206,12 @@ fn cleanup_usage_records(store: &SessionStore) -> oikonomos::error::Result<()> {
 fn cleanup_closed_sessions(
     store: &SessionStore,
     settings: &RetentionSettings,
+    archive_dir: &Path,
 ) -> oikonomos::error::Result<RetentionCounters> {
     let Some(ttl_days) = settings.closed_session_ttl_days else {
         return Ok(RetentionCounters::default());
     };
     let cutoff = cutoff_iso(ttl_days);
-    let archive_dir = archive_dir_for_store(store)?;
     let all_sessions = store
         .list_sessions(None)
         .map_err(|e| retention_failure(format!("list sessions failed: {e}")))?;
@@ -212,7 +227,7 @@ fn cleanup_closed_sessions(
         match session.status {
             SessionStatus::Archived | SessionStatus::Distilled => {
                 let archive_stats = if settings.archive_before_delete {
-                    Some(write_session_archive(store, &archive_dir, &session)?)
+                    Some(write_session_archive(store, archive_dir, &session)?)
                 } else {
                     None
                 };
@@ -242,12 +257,11 @@ fn cleanup_closed_sessions(
 fn enforce_session_cap(
     store: &SessionStore,
     settings: &RetentionSettings,
+    archive_dir: &Path,
 ) -> oikonomos::error::Result<RetentionCounters> {
     if settings.max_sessions_per_nous == 0 {
         return Ok(RetentionCounters::default());
     }
-
-    let archive_dir = archive_dir_for_store(store)?;
     let all_sessions = store
         .list_sessions(None)
         .map_err(|e| retention_failure(format!("list sessions failed: {e}")))?;
@@ -273,7 +287,7 @@ fn enforce_session_cap(
             match session.status {
                 SessionStatus::Archived | SessionStatus::Distilled => {
                     let archive_stats = if settings.archive_before_delete {
-                        Some(write_session_archive(store, &archive_dir, session)?)
+                        Some(write_session_archive(store, archive_dir, session)?)
                     } else {
                         None
                     };
@@ -335,6 +349,95 @@ fn archive_dir_for_store(store: &SessionStore) -> oikonomos::error::Result<PathB
         ))
     })?;
     Ok(data_dir.join("archive").join("sessions"))
+}
+
+/// Prune session JSON archives older than `archive_ttl_days`.
+///
+/// WHY: `archive_before_delete` writes one JSON file per deleted session. Without
+/// a TTL the archive directory grows without bound and can exhaust disk (#5658).
+fn prune_session_archive_dir(
+    archive_dir: &Path,
+    archive_ttl_days: Option<u32>,
+) -> oikonomos::error::Result<(u32, u64)> {
+    let Some(ttl_days) = archive_ttl_days else {
+        return Ok((0, 0));
+    };
+
+    let cutoff = SystemTime::now()
+        .checked_sub(Duration::from_secs(u64::from(ttl_days) * 86400))
+        .ok_or_else(|| retention_failure("archive TTL cutoff overflow"))?;
+
+    let mut files_pruned: u32 = 0;
+    let mut bytes_freed: u64 = 0;
+
+    let read_dir = match fs::read_dir(archive_dir) {
+        Ok(dir) => dir,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
+        Err(e) => {
+            return Err(retention_failure(format!(
+                "read archive dir {} failed: {e}",
+                archive_dir.display()
+            )));
+        }
+    };
+
+    for entry in read_dir {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                warn!(error = %e, "skipping unreadable archive directory entry");
+                continue;
+            }
+        };
+
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        if !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            continue;
+        }
+
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                warn!(path = %path.display(), error = %e, "unable to read archive file metadata");
+                continue;
+            }
+        };
+
+        let modified = match metadata.modified() {
+            Ok(time) => time,
+            Err(e) => {
+                warn!(path = %path.display(), error = %e, "unable to read archive file mtime");
+                continue;
+            }
+        };
+
+        if modified >= cutoff {
+            continue;
+        }
+
+        let file_size = metadata.len();
+
+        if let Err(e) = fs::remove_file(&path) {
+            warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to prune stale session archive"
+            );
+            continue;
+        }
+
+        files_pruned = files_pruned.saturating_add(1);
+        bytes_freed = bytes_freed.saturating_add(file_size);
+    }
+
+    Ok((files_pruned, bytes_freed))
 }
 
 fn write_session_archive(
@@ -995,6 +1098,63 @@ mod tests {
         assert_eq!(archive_json["messages"][0]["content"], "cap archive me");
         assert!(!session_exists(&locked, "cap-del")?);
         assert!(session_exists(&locked, "keep")?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn retention_prunes_session_archives_older_than_ttl() -> oikonomos::error::Result<()> {
+        let store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory()
+                .map_err(|e| retention_error(format!("store open: {e}")))?,
+        ));
+
+        let archive_dir = {
+            let locked = store.lock().await;
+            let dir = archive_dir_for_store(&locked)?;
+            fs::create_dir_all(&dir)
+                .map_err(|e| retention_error(format!("create archive dir: {e}")))?;
+            dir
+        };
+
+        let stale_path = archive_dir.join("stale.json");
+        let recent_path = archive_dir.join("recent.json");
+        write_archive_file(&stale_path, b"old")
+            .map_err(|e| retention_error(format!("write stale archive: {e}")))?;
+        write_archive_file(&recent_path, b"recent")
+            .map_err(|e| retention_error(format!("write recent archive: {e}")))?;
+
+        let stale_time = SystemTime::now()
+            .checked_sub(Duration::from_hours(120))
+            .ok_or_else(|| retention_error("stale archive time overflow"))?;
+        let file = OpenOptions::new()
+            .write(true)
+            .open(&stale_path)
+            .map_err(|e| retention_error(format!("open stale archive: {e}")))?;
+        file.set_times(std::fs::FileTimes::new().set_modified(stale_time))
+            .map_err(|e| retention_error(format!("set stale archive mtime: {e}")))?;
+
+        let settings = RetentionSettings {
+            enabled: false,
+            archive_ttl_days: Some(2),
+            ..RetentionSettings::default()
+        };
+        let adapter = SessionRetentionAdapter::new_with_settings(Arc::clone(&store), settings);
+        let summary = tokio::task::spawn_blocking(move || adapter.execute_retention())
+            .await
+            .map_err(|e| retention_error(format!("join: {e}")))??;
+
+        assert!(
+            !stale_path.exists(),
+            "archive file older than TTL should be pruned"
+        );
+        assert!(
+            recent_path.exists(),
+            "archive file newer than TTL should remain"
+        );
+        assert!(
+            summary.bytes_freed >= 3,
+            "pruned archive bytes should be counted in summary"
+        );
         Ok(())
     }
 }
