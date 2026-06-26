@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use episteme::consolidation::{ConsolidationConfig, ConsolidationProvider};
-use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use mneme::dedup::DedupTuning;
 use mneme::embedding::{EmbeddingProvider, is_degraded_provider};
@@ -813,7 +813,7 @@ mod tests {
             .expect("insert entity");
 
         let recorded_at = jiff::Timestamp::now()
-            .checked_sub(jiff::SignedDuration::from_days(10))
+            .checked_sub(jiff::SignedDuration::from_secs(10 * 24 * 60 * 60))
             .expect("timestamp arithmetic");
 
         for i in 0..12 {
