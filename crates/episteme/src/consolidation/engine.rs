@@ -770,8 +770,7 @@ impl KnowledgeStore {
     /// If `dry_run` is true, reports candidates and proposed consolidations
     /// without executing mutations.
     #[instrument(skip(self, provider))]
-    #[expect(dead_code, reason = "knowledge pipeline infrastructure")]
-    pub(crate) fn consolidate_knowledge(
+    pub fn consolidate_knowledge(
         &self,
         provider: &dyn ConsolidationProvider,
         nous_id: &str,

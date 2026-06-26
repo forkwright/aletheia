@@ -306,7 +306,8 @@ pub(crate) async fn execute_builtin_with_behavior(
         | BuiltinTask::GraphHealthCheck
         | BuiltinTask::SkillDecay
         | BuiltinTask::SerendipityDiscovery
-        | BuiltinTask::DerivedFactsMaterialize => {
+        | BuiltinTask::DerivedFactsMaterialize
+        | BuiltinTask::KnowledgeConsolidation => {
             execute_knowledge_task(builtin, nous_id, knowledge_executor).await
         }
         BuiltinTask::TraceRotation => {
@@ -783,6 +784,7 @@ async fn execute_knowledge_task(
                 executor.discover_serendipitous_facts(&nous_id_owned)
             }
             BuiltinTask::DerivedFactsMaterialize => executor.materialize_derived_facts(),
+            BuiltinTask::KnowledgeConsolidation => executor.consolidate_knowledge(&nous_id_owned),
             BuiltinTask::Prosoche
             | BuiltinTask::TraceRotation
             | BuiltinTask::DriftDetection

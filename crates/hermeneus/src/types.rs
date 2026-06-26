@@ -162,20 +162,34 @@ impl Content {
         // kanon:ignore RUST/pub-visibility
         match self {
             Self::Text(s) => s.clone(),
-            Self::Blocks(blocks) => blocks
-                .iter()
-                .filter_map(|b| match b {
-                    ContentBlock::Text { text, .. } => Some(text.as_str()),
-                    ContentBlock::Thinking { thinking, .. } => Some(thinking.as_str()),
-                    _ => None,
-                })
-                .fold(String::new(), |mut acc, s| {
-                    if !acc.is_empty() {
-                        acc.push('\n');
-                    }
-                    acc.push_str(s);
-                    acc
-                }),
+            Self::Blocks(blocks) => {
+                blocks
+                    .iter()
+                    .filter_map(ContentBlock::text)
+                    .fold(String::new(), |mut acc, s| {
+                        if !acc.is_empty() {
+                            acc.push('\n');
+                        }
+                        acc.push_str(s);
+                        acc
+                    })
+            }
+        }
+    }
+}
+
+impl ContentBlock {
+    /// Extract plain text from this block, if any.
+    ///
+    /// Returns text content for [`ContentBlock::Text`] and
+    /// [`ContentBlock::Thinking`] blocks; returns `None` for tool-use,
+    /// tool-result, and server-tool blocks.
+    #[must_use]
+    pub fn text(&self) -> Option<&str> {
+        match self {
+            Self::Text { text, .. } => Some(text.as_str()),
+            Self::Thinking { thinking, .. } => Some(thinking.as_str()),
+            _ => None,
         }
     }
 }

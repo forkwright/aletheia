@@ -6,6 +6,9 @@
 
 use std::sync::Arc;
 
+use episteme::consolidation::{ConsolidationConfig, ConsolidationProvider};
+use hermeneus::provider::ProviderRegistry;
+use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use mneme::dedup::DedupTuning;
 use mneme::embedding::{EmbeddingProvider, is_degraded_provider};
 use mneme::knowledge::FactType;
@@ -30,6 +33,11 @@ pub(crate) struct KnowledgeMaintenanceAdapter {
     /// `AgentBehaviorDefaults::knowledge_dedup_*` via
     /// [`tuning_from_behavior`] so config knobs actually take effect.
     tuning: DedupTuning,
+    /// LLM bridge for the knowledge consolidation engine (#5530).
+    ///
+    /// `None` leaves consolidation as a no-op so the maintenance task can
+    /// still be scheduled in deployments without a configured LLM provider.
+    consolidation_provider: Option<Arc<dyn ConsolidationProvider>>,
 }
 
 /// Build a [`DedupTuning`] from the resolved `AgentBehaviorDefaults` so
@@ -59,6 +67,7 @@ impl KnowledgeMaintenanceAdapter {
             store,
             embedding_provider: None,
             tuning: DedupTuning::DEFAULT,
+            consolidation_provider: None,
         }
     }
 
@@ -84,6 +93,20 @@ impl KnowledgeMaintenanceAdapter {
     /// skip this call get [`DedupTuning::DEFAULT`].
     pub(crate) fn with_tuning(mut self, tuning: DedupTuning) -> Self {
         self.tuning = tuning;
+        self
+    }
+
+    /// Attach an LLM bridge for knowledge consolidation (#5530).
+    ///
+    /// When set, [`KnowledgeMaintenanceExecutor::consolidate_knowledge`]
+    /// delegates to the engine in `crates/episteme`. When unset,
+    /// consolidation reports success without doing work, matching the
+    /// pre-wiring behaviour for installs without a provider.
+    pub(crate) fn with_consolidation_provider(
+        mut self,
+        provider: Arc<dyn ConsolidationProvider>,
+    ) -> Self {
+        self.consolidation_provider = Some(provider);
         self
     }
 }
@@ -393,6 +416,128 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             ..Default::default()
         })
     }
+
+    fn consolidate_knowledge(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
+        let Some(provider) = self.consolidation_provider.as_ref() else {
+            let detail = "Knowledge consolidation skipped: no consolidation provider configured";
+            tracing::debug!(%detail, "maintenance: consolidation skipped");
+            return Ok(MaintenanceReport {
+                detail: Some(detail.to_owned()),
+                ..Default::default()
+            });
+        };
+
+        let results = self
+            .store
+            .consolidate_knowledge(
+                provider.as_ref(),
+                nous_id,
+                &ConsolidationConfig::default(),
+                false,
+            )
+            .map_err(|e| {
+                oikonomos::error::TaskFailedSnafu {
+                    task_id: "knowledge-consolidation".to_owned(),
+                    reason: e.to_string(),
+                }
+                .build()
+            })?;
+
+        #[expect(
+            clippy::as_conversions,
+            reason = "fact counts are bounded by batch limits"
+        )]
+        let items_processed: u64 = results.iter().map(|r| r.original_count as u64).sum();
+        #[expect(
+            clippy::as_conversions,
+            reason = "fact counts are bounded by batch limits"
+        )]
+        let items_modified: u64 = results.iter().map(|r| r.consolidated_count as u64).sum();
+        let candidate_count = results.len();
+
+        let detail = format!(
+            "Knowledge consolidation: {items_processed} facts examined, {items_modified} consolidated facts produced across {candidate_count} candidates"
+        );
+        tracing::info!(%detail, "maintenance: knowledge consolidation complete");
+
+        Ok(MaintenanceReport {
+            items_processed,
+            items_modified,
+            detail: Some(detail),
+            ..Default::default()
+        })
+    }
+}
+
+/// Bridges a [`ProviderRegistry`] to the synchronous
+/// [`ConsolidationProvider`] trait used by the episteme engine.
+///
+/// WHY (#5530): `consolidate_knowledge` is synchronous because it runs on
+/// the daemon's blocking thread pool. The configured LLM provider is
+/// asynchronous, so this wrapper uses the current Tokio runtime handle to
+/// drive the completion and extracts the raw text response.
+pub(crate) struct LlmConsolidationProvider {
+    registry: Arc<ProviderRegistry>,
+    model: String,
+}
+
+impl LlmConsolidationProvider {
+    /// Create a provider that resolves the configured model from the
+    /// registry on each consolidation call.
+    pub(crate) fn new(registry: Arc<ProviderRegistry>, model: String) -> Self {
+        Self { registry, model }
+    }
+}
+
+impl ConsolidationProvider for LlmConsolidationProvider {
+    fn consolidate(
+        &self,
+        system: &str,
+        user_message: &str,
+    ) -> Result<String, episteme::consolidation::ConsolidationError> {
+        let provider = self.registry.find_provider(&self.model).ok_or_else(|| {
+            episteme::consolidation::ConsolidationError::LlmCall {
+                message: format!("no LLM provider found for model {}", self.model),
+                location: snafu::location!(),
+            }
+        })?;
+
+        let request = CompletionRequest {
+            model: self.model.clone(),
+            system: Some(system.to_owned()),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text(user_message.to_owned()),
+                cache_breakpoint: false,
+            }],
+            max_tokens: 4096,
+            temperature: Some(0.0),
+            ..CompletionRequest::default()
+        };
+
+        let runtime = tokio::runtime::Handle::try_current().map_err(|e| {
+            episteme::consolidation::ConsolidationError::LlmCall {
+                message: format!("no Tokio runtime available for consolidation LLM call: {e}"),
+                location: snafu::location!(),
+            }
+        })?;
+
+        let response = runtime.block_on(provider.complete(&request)).map_err(|e| {
+            episteme::consolidation::ConsolidationError::LlmCall {
+                message: format!("consolidation LLM call failed: {e}"),
+                location: snafu::location!(),
+            }
+        })?;
+
+        let text = response
+            .content
+            .iter()
+            .filter_map(ContentBlock::text)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(text)
+    }
 }
 
 #[cfg(test)]
@@ -434,6 +579,47 @@ mod tests {
             provenance: FactProvenance {
                 confidence: 0.9,
                 tier: EpistemicTier::Verified,
+                source_session_id: Some("seed-session".to_owned()),
+                stability_hours: 720.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count,
+                last_accessed_at,
+            },
+        }
+    }
+
+    fn make_fact_with_recorded_at(
+        id: &str,
+        nous_id: &str,
+        content: &str,
+        access_count: u32,
+        last_accessed_at: Option<jiff::Timestamp>,
+        recorded_at: jiff::Timestamp,
+    ) -> Fact {
+        Fact {
+            id: FactId::new(id).expect("valid test id"),
+            nous_id: nous_id.to_owned(),
+            fact_type: "observation".to_owned(),
+            content: content.to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: recorded_at,
+                valid_to: far_future(),
+                recorded_at,
+            },
+            provenance: FactProvenance {
+                confidence: 0.9,
+                tier: EpistemicTier::Inferred,
                 source_session_id: Some("seed-session".to_owned()),
                 stability_hours: 720.0,
             },
@@ -587,6 +773,86 @@ mod tests {
                 .as_deref()
                 .is_some_and(|detail| detail.contains("Serendipity discovery")),
             "detail should summarize the discovery pass"
+        );
+    }
+
+    /// Mock provider that returns a fixed consolidation JSON response.
+    struct MockConsolidationProvider {
+        response: String,
+    }
+
+    impl ConsolidationProvider for MockConsolidationProvider {
+        fn consolidate(
+            &self,
+            _system: &str,
+            _user_message: &str,
+        ) -> Result<String, episteme::consolidation::ConsolidationError> {
+            Ok(self.response.clone())
+        }
+    }
+
+    #[test]
+    fn consolidate_knowledge_runs_on_overflowing_entity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = KnowledgeStore::open_fjall(
+            dir.path().join("knowledge"),
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .expect("open store");
+
+        let alice = EntityId::new("alice").expect("valid entity id");
+        store
+            .insert_entity(&mneme::knowledge::Entity {
+                id: alice.clone(),
+                name: "Alice".to_owned(),
+                entity_type: "person".to_owned(),
+                aliases: Vec::new(),
+                created_at: jiff::Timestamp::now(),
+                updated_at: jiff::Timestamp::now(),
+            })
+            .expect("insert entity");
+
+        let recorded_at = jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(10 * 24 * 60 * 60))
+            .expect("timestamp arithmetic");
+
+        for i in 0..12 {
+            let fact = make_fact_with_recorded_at(
+                &format!("fact-{i}"),
+                "alice",
+                &format!("Alice observation {i}"),
+                1,
+                None,
+                recorded_at,
+            );
+            store.insert_fact(&fact).expect("insert fact");
+            link_fact_entity(&store, &fact.id, &alice);
+        }
+
+        let provider = Arc::new(MockConsolidationProvider {
+            response: r#"[{"content": "Alice has a dozen observations."}]"#.to_owned(),
+        });
+        let adapter = KnowledgeMaintenanceAdapter::new(Arc::clone(&store))
+            .with_consolidation_provider(provider);
+
+        let report = adapter
+            .consolidate_knowledge("alice")
+            .expect("consolidate knowledge");
+
+        assert!(
+            report.items_processed >= 10,
+            "should process the overflowing entity's facts"
+        );
+        assert!(
+            report.items_modified >= 1,
+            "should produce at least one consolidated fact"
+        );
+        assert!(
+            report
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("Knowledge consolidation")),
+            "detail should summarize the consolidation pass"
         );
     }
 }
