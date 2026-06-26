@@ -12,6 +12,8 @@ use koina::secret::SecretString;
 
 use crate::id::{GitSha, NousId, PlanId, SessionId, TurnId};
 
+use super::request_policy::RequestPolicy;
+
 /// A registered agent (nous) in the system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
@@ -550,6 +552,14 @@ pub struct HealthCheck {
     pub status: String,
     /// Diagnostic message when status is not `"pass"`.
     pub message: Option<String>,
+}
+
+/// Response from `GET /api/v1/system/request-policy`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestPolicyResponse {
+    /// First-party request policy clients should use for state-changing requests.
+    pub request_policy: RequestPolicy,
 }
 
 #[cfg(test)]

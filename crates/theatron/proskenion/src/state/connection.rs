@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use skene::api::RequestPolicy;
 
 /// Connection lifecycle states.
 ///
@@ -54,7 +55,6 @@ pub enum ConnectionState {
 
 impl ConnectionState {
     /// Whether the connection is up (either healthy or degraded).
-    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
     #[must_use]
     pub(crate) fn is_connected(&self) -> bool {
         matches!(self, Self::Connected | Self::ConnectedDegraded { .. })
@@ -106,6 +106,9 @@ pub struct ConnectionConfig {
     /// it to version control.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_token: Option<String>,
+    /// First-party request-header policy for state-changing API requests.
+    #[serde(default, skip_serializing_if = "RequestPolicy::is_default")]
+    pub request_policy: RequestPolicy,
     /// Whether to automatically reconnect on connection loss.
     #[serde(default = "default_auto_reconnect")]
     pub auto_reconnect: bool,
@@ -122,6 +125,7 @@ impl std::fmt::Debug for ConnectionConfig {
                 "auth_token",
                 &self.auth_token.as_ref().map(|_| "<redacted>"),
             )
+            .field("request_policy", &self.request_policy)
             .field("auto_reconnect", &self.auto_reconnect)
             .field("connect_timeout_secs", &self.connect_timeout_secs)
             .finish()
@@ -144,6 +148,7 @@ impl Default for ConnectionConfig {
         Self {
             server_url: format!("http://localhost:{port}"), // kanon:ignore SECURITY/hardcoded-loopback-url -- runtime loopback URL; port derived from skene discovery config, not hardcoded
             auth_token: None,
+            request_policy: RequestPolicy::default(),
             auto_reconnect: true,
             connect_timeout_secs: DEFAULT_CONNECT_TIMEOUT.as_secs(),
         }
@@ -287,6 +292,7 @@ mod tests {
         let port = skene::discovery::DiscoveryConfig::default().port;
         assert_eq!(cfg.server_url, format!("http://localhost:{port}"));
         assert!(cfg.auth_token.is_none());
+        assert!(cfg.request_policy.is_default());
         assert!(cfg.auto_reconnect);
         assert_eq!(cfg.connect_timeout_secs, 30);
     }
@@ -305,6 +311,7 @@ mod tests {
         let cfg = ConnectionConfig {
             server_url: "https://example.com:8080".to_string(),
             auth_token: Some("secret-token".to_string()),
+            request_policy: RequestPolicy::default(),
             auto_reconnect: false,
             connect_timeout_secs: 45,
         };
@@ -312,6 +319,7 @@ mod tests {
         let deserialized: ConnectionConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(deserialized.server_url, cfg.server_url);
         assert_eq!(deserialized.auth_token, cfg.auth_token);
+        assert_eq!(deserialized.request_policy, cfg.request_policy);
         assert_eq!(deserialized.auto_reconnect, cfg.auto_reconnect);
         assert_eq!(deserialized.connect_timeout_secs, cfg.connect_timeout_secs);
     }

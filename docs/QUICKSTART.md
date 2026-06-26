@@ -169,25 +169,32 @@ checks.
 
 ### API (curl)
 
-Create a session, then send a message:
+Create a session, then send a message. The request-policy endpoint returns the
+active CSRF header required for mutating API calls:
 
 ```bash
+REQUEST_POLICY=$(curl -s http://localhost:18789/api/v1/system/request-policy)
+CSRF_HEADER_NAME=$(printf '%s' "$REQUEST_POLICY" | jq -r '.requestPolicy.csrf.headerName')
+CSRF_HEADER_VALUE=$(printf '%s' "$REQUEST_POLICY" | jq -r '.requestPolicy.csrf.headerValue')
+
 # Create a session
 curl -s http://localhost:18789/api/v1/sessions \
   -H "Content-Type: application/json" \
-  -H "X-Requested-With: aletheia" \
-  -d '{"nous_id": "pronoea"}' | jq .  # jq is optional; omit or install it for pretty-printing
+  -H "${CSRF_HEADER_NAME}: ${CSRF_HEADER_VALUE}" \
+  -d '{"nous_id": "pronoea"}' | jq .
 
 # Send a message (replace SESSION_ID with the id from the session creation response)
 curl -N http://localhost:18789/api/v1/sessions/SESSION_ID/messages \
   -H "Content-Type: application/json" \
-  -H "X-Requested-With: aletheia" \
+  -H "${CSRF_HEADER_NAME}: ${CSRF_HEADER_VALUE}" \
   -d '{"content": "Hello, who are you?"}'
 ```
 
 The messages endpoint streams the response as Server-Sent Events (SSE).
 
-**Note:** CSRF is enabled by default. Include the documented bootstrap header `X-Requested-With: aletheia` on all state-changing requests (POST, PUT, DELETE). Read-only GET requests do not require it.
+**Note:** CSRF is enabled by default. Deployments can customize the required
+header name and value, so first-party clients should read the active value from
+`GET /api/v1/system/request-policy`. Read-only GET requests do not require it.
 
 ---
 
@@ -358,7 +365,10 @@ mode = "none"
 
 ### API requests rejected with 403 / missing CSRF header
 
-CSRF protection is enabled by default, so state-changing requests require the header `X-Requested-With: aletheia`. Add `-H "X-Requested-With: aletheia"` to your curl commands. The TUI handles this automatically.
+CSRF protection is enabled by default, so state-changing requests require the
+configured request-policy header. Authenticated clients can verify the active
+name and value with `GET /api/v1/system/request-policy`. Add the returned
+header to mutating curl commands.
 
 ### Server can't find the instance directory
 

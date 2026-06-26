@@ -462,6 +462,7 @@ server_url = "http://custom:9000"
         let config = ConnectionConfig {
             server_url: "http://test-host:9000".to_string(),
             auth_token: Some("session-token".to_string()),
+            request_policy: skene::api::RequestPolicy::default(),
             auto_reconnect: false,
             connect_timeout_secs: 60,
         };

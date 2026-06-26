@@ -7,6 +7,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::routing::post;
+use koina::secret::SecretString;
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -196,6 +197,82 @@ async fn csrf_rejects_wrong_header_value() {
 }
 
 #[tokio::test]
+async fn request_policy_exposes_custom_csrf_value_that_mutating_routes_accept() {
+    let (state, _dir) = test_state().await;
+    let csrf_header_name = "x-aletheia-csrf";
+    let csrf_header_value = "synthetic-randomized-csrf-value";
+
+    {
+        let mut config = state.config.write().await;
+        config.gateway.csrf.enabled = true;
+        config.gateway.csrf.header_name = csrf_header_name.to_owned();
+        config.gateway.csrf.header_value = SecretString::from(csrf_header_value);
+    }
+
+    let security = SecurityConfig {
+        csrf: crate::security::CsrfConfig {
+            enabled: true,
+            header_name: csrf_header_name.to_owned(),
+            header_value: SecretString::from(csrf_header_value),
+            ..crate::security::CsrfConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let policy_response = router
+        .clone()
+        .oneshot(authed_get("/api/v1/system/request-policy"))
+        .await
+        .unwrap();
+    assert_eq!(policy_response.status(), StatusCode::OK);
+    let policy = body_json(policy_response).await;
+    assert_eq!(
+        policy["requestPolicy"]["csrf"]["headerName"],
+        csrf_header_name
+    );
+    assert_eq!(
+        policy["requestPolicy"]["csrf"]["headerValue"],
+        csrf_header_value
+    );
+
+    let token = default_token();
+    let legacy_default_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-requested-with", "aletheia")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "syn",
+                "session_key": "csrf-policy-default-fails"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+    let legacy_default_response = router.clone().oneshot(legacy_default_req).await.unwrap();
+    assert_eq!(legacy_default_response.status(), StatusCode::FORBIDDEN);
+
+    let discovered_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header(csrf_header_name, csrf_header_value)
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "syn",
+                "session_key": "csrf-policy-discovered-passes"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+    let discovered_response = router.oneshot(discovered_req).await.unwrap();
+    assert_eq!(discovered_response.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
 async fn csrf_allows_delete_with_correct_header() {
     let (state, _dir) = test_state().await;
     let security = SecurityConfig {
@@ -382,6 +459,45 @@ async fn cors_explicit_origin_allows_browser_api_headers() {
     assert!(
         allowed.contains("last-event-id"),
         "last-event-id must be allowed"
+    );
+}
+
+#[tokio::test]
+async fn cors_allows_configured_csrf_header_name() {
+    let (state, _dir) = test_state().await;
+    let security = SecurityConfig {
+        cors: crate::security::CorsConfig {
+            allowed_origins: vec!["http://localhost:3000".to_owned()],
+            ..crate::security::CorsConfig::default()
+        },
+        csrf: crate::security::CsrfConfig {
+            header_name: "x-aletheia-csrf".to_owned(),
+            header_value: SecretString::from("custom-csrf-value"),
+            ..crate::security::CsrfConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    let router = build_router(state, &security);
+
+    let req = Request::builder()
+        .method("OPTIONS")
+        .uri("/api/v1/sessions")
+        .header("origin", "http://localhost:3000")
+        .header("access-control-request-method", "POST")
+        .header("access-control-request-headers", "x-aletheia-csrf")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert!(resp.status().is_success() || resp.status() == StatusCode::NO_CONTENT);
+    let allow_headers = resp
+        .headers()
+        .get("access-control-allow-headers")
+        .expect("allow-headers must be present");
+    let allowed = allow_headers.to_str().unwrap();
+    assert!(
+        allowed.contains("x-aletheia-csrf"),
+        "configured CSRF header name must be allowed"
     );
 }
 

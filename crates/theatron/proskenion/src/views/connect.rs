@@ -218,8 +218,12 @@ pub(crate) fn ConnectView(
         // WHY: Spawn a Dioxus-side task to read state updates from the channel
         // and write them to the signal on the UI thread.
         let mut state_signal = connection_state;
+        let config_signal = connection_config;
         spawn(async move {
             while let Some(new_state) = rx.recv().await {
+                if new_state.is_connected() {
+                    refresh_request_policy(config_signal).await;
+                }
                 state_signal.set(new_state);
             }
         });
@@ -309,4 +313,33 @@ pub(crate) fn ConnectView(
             }
         }
     }
+}
+
+async fn refresh_request_policy(mut connection_config: Signal<ConnectionConfig>) {
+    let current = connection_config.read().clone();
+    match fetch_request_policy(&current).await {
+        Ok(policy) if policy != current.request_policy => {
+            connection_config.write().request_policy = policy;
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to fetch request policy");
+        }
+    }
+}
+
+async fn fetch_request_policy(
+    config: &ConnectionConfig,
+) -> Result<skene::api::RequestPolicy, String> {
+    let client = skene::api::client::ApiClient::with_request_policy(
+        &config.server_url,
+        config.auth_token.clone(),
+        config.request_policy.clone(),
+    )
+    .map_err(|err| err.to_string())?;
+
+    client
+        .request_policy_metadata()
+        .await
+        .map_err(|err| err.to_string())
 }

@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use reqwest::Client;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 
 use crate::state::connection::ConnectionConfig;
 
@@ -101,13 +101,7 @@ pub(crate) fn authenticated_streaming_client(config: &ConnectionConfig) -> Clien
 }
 
 fn build_authenticated_client(config: &ConnectionConfig, timeout: Option<Duration>) -> Client {
-    let mut headers = HeaderMap::new();
-
-    if let Some(ref token) = config.auth_token
-        && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}"))
-    {
-        headers.insert(AUTHORIZATION, val);
-    }
+    let headers = request_headers(config);
 
     // WHY: fall back to default client if builder fails (e.g. no TLS provider
     // installed yet); views already handle HTTP errors gracefully.
@@ -121,6 +115,23 @@ fn build_authenticated_client(config: &ConnectionConfig, timeout: Option<Duratio
         tracing::warn!(error = %err, "failed to build authenticated HTTP client");
         Client::new()
     })
+}
+
+fn request_headers(config: &ConnectionConfig) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+
+    if let Some(ref token) = config.auth_token
+        && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}"))
+    {
+        headers.insert(AUTHORIZATION, val);
+    }
+
+    if let Err(err) = config.request_policy.insert_headers(&mut headers) {
+        tracing::warn!(error = %err, "skipping invalid request policy header");
+    }
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+    headers
 }
 
 #[cfg(test)]
@@ -140,6 +151,42 @@ mod tests {
         // has no token, so no Authorization header is added.
         let debug = format!("{client:?}");
         assert!(!debug.is_empty());
+    }
+
+    #[test]
+    fn request_headers_include_default_csrf_policy() {
+        let config = ConnectionConfig::default();
+        let headers = request_headers(&config);
+        assert_eq!(
+            headers
+                .get("x-requested-with")
+                .and_then(|value| value.to_str().ok()),
+            Some("aletheia")
+        );
+    }
+
+    #[test]
+    fn request_headers_include_custom_csrf_policy() {
+        let config = ConnectionConfig {
+            request_policy: skene::api::RequestPolicy {
+                csrf: skene::api::request_policy::CsrfRequestPolicy {
+                    enabled: true,
+                    header_name: "x-aletheia-csrf".to_string(),
+                    header_value: "custom-csrf-value".to_string(),
+                },
+            },
+            ..ConnectionConfig::default()
+        };
+
+        let headers = request_headers(&config);
+
+        assert_eq!(
+            headers
+                .get("x-aletheia-csrf")
+                .and_then(|value| value.to_str().ok()),
+            Some("custom-csrf-value")
+        );
+        assert!(headers.get("x-requested-with").is_none());
     }
 
     #[test]

@@ -26,9 +26,10 @@ pub(crate) fn render_approval(
                 let tool_id = tool_id.clone();
                 let cfg = config.read().clone();
                 spawn(async move {
-                    let client = skene::api::client::ApiClient::new(
+                    let client = skene::api::client::ApiClient::with_request_policy(
                         &cfg.server_url,
                         cfg.auth_token.clone(),
+                        cfg.request_policy.clone(),
                     );
                     if let Ok(client) = client
                         && let Err(err) = client.approve_tool(&turn_id, &tool_id).await
@@ -42,9 +43,10 @@ pub(crate) fn render_approval(
                 let tool_id = tool_id_deny.clone();
                 let cfg = config.read().clone();
                 spawn(async move {
-                    let client = skene::api::client::ApiClient::new(
+                    let client = skene::api::client::ApiClient::with_request_policy(
                         &cfg.server_url,
                         cfg.auth_token.clone(),
+                        cfg.request_policy.clone(),
                     );
                     if let Ok(client) = client
                         && let Err(err) = client.deny_tool(&turn_id, &tool_id).await

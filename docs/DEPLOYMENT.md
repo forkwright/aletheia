@@ -191,19 +191,19 @@ This displays the current token or a way to generate one. Tokens are managed by 
 ### POST/PUT/DELETE CSRF protection
 
 CSRF protection is enabled by default. All state-changing requests (POST, PUT,
-DELETE, PATCH) to `/api/v1/` must include the configured header. The default
-bootstrap value is:
-
-```
-X-Requested-With: aletheia
-```
-
-Include this header on every mutating curl call when CSRF is enabled:
+DELETE, PATCH) to `/api/v1/` must include the configured header. Fetch the
+active header contract before mutating curl calls:
 
 ```bash
+REQUEST_POLICY=$(curl -s \
+  -H "Authorization: Bearer your-token" \
+  http://127.0.0.1:18789/api/v1/system/request-policy)
+CSRF_HEADER_NAME=$(printf '%s' "$REQUEST_POLICY" | jq -r '.requestPolicy.csrf.headerName')
+CSRF_HEADER_VALUE=$(printf '%s' "$REQUEST_POLICY" | jq -r '.requestPolicy.csrf.headerValue')
+
 curl -X POST \
   -H "Authorization: Bearer your-token" \
-  -H "X-Requested-With: aletheia" \
+  -H "${CSRF_HEADER_NAME}: ${CSRF_HEADER_VALUE}" \
   -H "Content-Type: application/json" \
   -d '{"nous_id": "main", "session_key": "default"}' \
   http://127.0.0.1:18789/api/v1/sessions
@@ -218,9 +218,9 @@ enabled = false
 disableAcknowledged = true
 ```
 
-Operators who set a custom `headerValue` must provision the same value into
-their clients through local config or deployment secrets. The runtime config
-API redacts `gateway.csrf.headerValue`.
+Authenticated clients should read `GET /api/v1/system/request-policy` before
+sending mutating requests. The runtime config API still redacts
+`gateway.csrf.headerValue`.
 
 ### No authentication mode
 
@@ -400,10 +400,16 @@ Displays agent count, active sessions, uptime, and provider status.
 Create a session and send a message to verify the full request path. Replace `YOUR_TOKEN` with the token from `aletheia credential status`.
 
 ```bash
+REQUEST_POLICY=$(curl -s \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://127.0.0.1:18789/api/v1/system/request-policy)
+CSRF_HEADER_NAME=$(printf '%s' "$REQUEST_POLICY" | jq -r '.requestPolicy.csrf.headerName')
+CSRF_HEADER_VALUE=$(printf '%s' "$REQUEST_POLICY" | jq -r '.requestPolicy.csrf.headerValue')
+
 # Create a session (nous_id and session_key are both required)
 curl -s -X POST \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "X-Requested-With: aletheia" \
+  -H "${CSRF_HEADER_NAME}: ${CSRF_HEADER_VALUE}" \
   -H "Content-Type: application/json" \
   -d '{"nous_id": "main", "session_key": "smoke-test"}' \
   http://127.0.0.1:18789/api/v1/sessions | jq .id
@@ -414,7 +420,7 @@ Use the returned session ID to send a message (the response is an SSE stream):
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "X-Requested-With: aletheia" \
+  -H "${CSRF_HEADER_NAME}: ${CSRF_HEADER_VALUE}" \
   -H "Content-Type: application/json" \
   -d '{"content": "Hello"}' \
   http://127.0.0.1:18789/api/v1/sessions/SESSION_ID/messages

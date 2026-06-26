@@ -189,8 +189,14 @@ fn ConnectedApp() -> Element {
         let mut agents: Signal<AgentStore> = use_context();
         use_future(move || {
             let server_url = cfg.server_url.clone();
+            let auth_token = cfg.auth_token.clone();
+            let request_policy = cfg.request_policy.clone();
             async move {
-                let Ok(client) = skene::api::client::ApiClient::new(&server_url, None) else {
+                let Ok(client) = skene::api::client::ApiClient::with_request_policy(
+                    &server_url,
+                    auth_token,
+                    request_policy,
+                ) else {
                     return;
                 };
                 if let Ok(list) = client.agents().await {

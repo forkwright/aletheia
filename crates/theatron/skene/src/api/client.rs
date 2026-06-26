@@ -11,15 +11,28 @@ use super::error::{
     ApiError, AuthSnafu, HttpSnafu, RateLimitedSnafu, Result, ServerSnafu, parse_pylon_error_body,
     parse_retry_after_secs,
 };
+use super::request_policy::{RequestPolicy, RequestPolicyError};
 use super::types::{
     Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
-    NousTool, NousToolsResponse, PaginatedSessionsResponse, Session, SessionsResponse,
+    NousTool, NousToolsResponse, PaginatedSessionsResponse, RequestPolicyResponse, Session,
+    SessionsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const REST_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
-fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
+fn request_policy_error(err: &RequestPolicyError) -> ApiError {
+    ApiError::Server {
+        operation: "build API client",
+        status: 0,
+        message: err.to_string(),
+    }
+}
+
+fn default_headers(
+    token: Option<&str>,
+    request_policy: &RequestPolicy,
+) -> Result<header::HeaderMap> {
     let mut headers = header::HeaderMap::new();
 
     if let Some(t) = token {
@@ -28,10 +41,9 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
         headers.insert(header::AUTHORIZATION, auth_value);
     }
 
-    headers.insert(
-        "x-requested-with",
-        header::HeaderValue::from_static("aletheia"),
-    );
+    request_policy
+        .insert_headers(&mut headers)
+        .map_err(|err| request_policy_error(&err))?;
     headers.insert(
         header::CONTENT_TYPE,
         header::HeaderValue::from_static("application/json"),
@@ -46,11 +58,18 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
 
 /// Build the reqwest client used for short REST API calls.
 pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
+    build_http_client_with_policy(token, &RequestPolicy::default())
+}
+
+fn build_http_client_with_policy(
+    token: Option<&str>,
+    request_policy: &RequestPolicy,
+) -> Result<Client> {
     Client::builder()
         .cookie_store(true)
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REST_REQUEST_TIMEOUT)
-        .default_headers(default_headers(token)?)
+        .default_headers(default_headers(token, request_policy)?)
         .build()
         .context(HttpSnafu {
             operation: "build REST HTTP client",
@@ -59,11 +78,18 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
 
 /// Build the reqwest client used for long-lived SSE/streaming connections.
 pub(crate) fn build_streaming_client(token: Option<&str>) -> Result<Client> {
+    build_streaming_client_with_policy(token, &RequestPolicy::default())
+}
+
+fn build_streaming_client_with_policy(
+    token: Option<&str>,
+    request_policy: &RequestPolicy,
+) -> Result<Client> {
     // kanon:ignore RUST/missing-http-timeout — SSE connections are long-lived; a request-level timeout would terminate the stream prematurely; connect_timeout guards against connection hang
     Client::builder()
         .cookie_store(true)
         .connect_timeout(CONNECT_TIMEOUT)
-        .default_headers(default_headers(token)?)
+        .default_headers(default_headers(token, request_policy)?)
         .build()
         .context(HttpSnafu {
             operation: "build streaming HTTP client",
@@ -77,6 +103,7 @@ pub struct ApiClient {
     streaming_client: Client,
     base_url: String,
     token: Option<SecretString>,
+    request_policy: RequestPolicy,
 }
 
 impl std::fmt::Debug for ApiClient {
@@ -110,6 +137,38 @@ impl ApiClient {
             streaming_client,
             base_url: base_url.trim_end_matches('/').to_string(),
             token: token.map(SecretString::from),
+            request_policy: RequestPolicy::default(),
+        })
+    }
+
+    /// Create a new API client with an explicit first-party request policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::InvalidToken`] if `token` contains characters invalid in HTTP headers.
+    /// Returns [`ApiError::Server`] if the request policy contains invalid HTTP header data.
+    /// Returns [`ApiError::Http`] if either HTTP client cannot be constructed.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    pub fn with_request_policy(
+        base_url: &str,
+        token: Option<String>,
+        request_policy: RequestPolicy,
+    ) -> Result<Self> {
+        // kanon:ignore RUST/pub-visibility
+        let client = build_http_client_with_policy(token.as_deref(), &request_policy)?;
+        let streaming_client =
+            build_streaming_client_with_policy(token.as_deref(), &request_policy)?;
+
+        Ok(Self {
+            client,
+            streaming_client,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            token: token.map(SecretString::from),
+            request_policy,
         })
     }
 
@@ -132,6 +191,13 @@ impl ApiClient {
     pub fn token(&self) -> Option<&str> {
         // kanon:ignore RUST/pub-visibility
         self.token.as_ref().map(SecretString::expose_secret)
+    }
+
+    /// First-party request policy attached to this client.
+    #[must_use]
+    pub fn request_policy(&self) -> &RequestPolicy {
+        // kanon:ignore RUST/pub-visibility
+        &self.request_policy
     }
 
     fn url(&self, path: &str) -> String {
@@ -193,6 +259,35 @@ impl ApiClient {
                 operation: "health details response",
             })
         }
+    }
+
+    /// Fetch the request policy clients should use for state-changing requests.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn request_policy_metadata(&self) -> Result<RequestPolicy> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/system/request-policy")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load request policy",
+            })?;
+        Self::check_auth(&resp)?;
+        let resp = Self::check_status(resp, "request policy request").await?;
+        let wrapper: RequestPolicyResponse = resp.json().await.context(HttpSnafu {
+            operation: "request policy response",
+        })?;
+        Ok(wrapper.request_policy)
     }
 
     /// Fetch all registered agents.
@@ -850,6 +945,29 @@ mod tests {
         let invalid = "\n";
         assert!(build_http_client(Some(invalid)).is_err());
         assert!(build_streaming_client(Some(invalid)).is_err());
+    }
+
+    #[test]
+    fn default_headers_use_custom_request_policy() {
+        let policy = RequestPolicy {
+            csrf: super::super::request_policy::CsrfRequestPolicy {
+                enabled: true,
+                header_name: "x-aletheia-csrf".to_owned(),
+                header_value: "custom-csrf-value".to_owned(),
+            },
+        };
+
+        let Ok(headers) = default_headers(None, &policy) else {
+            panic!("custom policy is valid");
+        };
+
+        assert_eq!(
+            headers
+                .get("x-aletheia-csrf")
+                .and_then(|value| value.to_str().ok()),
+            Some("custom-csrf-value")
+        );
+        assert!(headers.get("x-requested-with").is_none());
     }
 
     #[test]

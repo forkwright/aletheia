@@ -176,10 +176,11 @@ HTTP gateway serving the API.
 | `headerName` | string | `"x-requested-with"` | Required header name |
 | `headerValue` | secret string | `"aletheia"` | Required header value; redacted from config API responses |
 
-The documented bootstrap header for first-party clients and curl is
-`X-Requested-With: aletheia`. Operators who set a custom `headerValue` must
-provision the same value into their clients through local config or deployment
-secrets; the runtime config API redacts it.
+The bootstrap defaults are `headerName = "x-requested-with"` and
+`headerValue = "aletheia"`, but first-party clients should not hardcode them.
+Authenticated clients can read the active contract from
+`GET /api/v1/system/request-policy`; the redacted runtime config API still
+hides `gateway.csrf.headerValue`.
 
 ### gateway.rate_limit
 

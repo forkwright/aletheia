@@ -38,6 +38,8 @@ pub mod ops;
 pub(crate) mod planning;
 /// Provider inventory and model-route decision endpoints.
 pub mod providers;
+/// First-party request policy metadata.
+pub mod request_policy;
 /// Session lifecycle, history retrieval, and SSE message streaming.
 pub mod sessions;
 /// Workspace file-browser and git diff endpoints.

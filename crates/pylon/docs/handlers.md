@@ -534,6 +534,31 @@ List tools available to a nous agent.
 
 ---
 
+## System Metadata
+
+System metadata endpoints require an `Operator` or `Admin` role.
+
+### `GET /api/v1/system/request-policy`
+
+Returns the request-header policy first-party clients should use for state-changing
+requests. Clients should fetch this before assuming the bootstrap default header value.
+
+**Response `200 OK`:**
+
+```json
+{
+  "requestPolicy": {
+    "csrf": {
+      "enabled": true,
+      "headerName": "x-requested-with",
+      "headerValue": "aletheia"
+    }
+  }
+}
+```
+
+---
+
 ### `POST /api/v1/nous/{id}/recover`
 
 Trigger manual recovery for a nous agent that has entered an error or stuck state. Resets

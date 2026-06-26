@@ -19,7 +19,7 @@ use koina::http::{API_HEALTH, API_V1};
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
     config, credentials, events, health, insights, knowledge, metrics, nous, ops, planning,
-    providers, sessions, workspace,
+    providers, request_policy, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -160,6 +160,10 @@ pub fn build_router_with(
             get(credentials::list_credentials).post(credentials::add_credential),
         )
         .route("/system/health", get(health::detailed))
+        .route(
+            "/system/request-policy",
+            get(request_policy::get_request_policy),
+        )
         .route(
             "/system/credentials/rotate",
             post(credentials::rotate_credentials),
@@ -370,6 +374,8 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
         // while echoing the request origin, which permits credential-bearing cross-origin
         // requests from any site. Build the layer explicitly with a wildcard `*` origin
         // so browsers never combine credentials with an unrestricted origin.
+        let allowed_headers = cors_allowed_headers(security);
+
         return CorsLayer::new()
             .allow_origin(tower_http::cors::Any)
             .allow_methods([
@@ -379,15 +385,7 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
                 Method::DELETE,
                 Method::OPTIONS,
             ])
-            .allow_headers([
-                HeaderName::from_static("content-type"),
-                HeaderName::from_static("authorization"),
-                HeaderName::from_static("x-requested-with"),
-                // WHY(#5166): Browser API clients send these headers on mutations
-                // and SSE reconnects; include them in preflight responses.
-                HeaderName::from_static("idempotency-key"),
-                HeaderName::from_static("last-event-id"),
-            ]);
+            .allow_headers(allowed_headers);
     }
 
     let origins: Vec<HeaderValue> = security
@@ -406,16 +404,28 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers([
-            HeaderName::from_static("content-type"),
-            HeaderName::from_static("authorization"),
-            HeaderName::from_static("x-requested-with"),
-            // WHY(#5166): Browser API clients send these headers on mutations
-            // and SSE reconnects; include them in preflight responses.
-            HeaderName::from_static("idempotency-key"),
-            HeaderName::from_static("last-event-id"),
-        ])
+        .allow_headers(cors_allowed_headers(security))
         .max_age(Duration::from_secs(security.cors.max_age_secs))
+}
+
+fn cors_allowed_headers(security: &SecurityConfig) -> Vec<HeaderName> {
+    let mut headers = vec![
+        HeaderName::from_static("content-type"),
+        HeaderName::from_static("authorization"),
+        HeaderName::from_static("x-requested-with"),
+        // WHY(#5166): Browser API clients send these headers on mutations
+        // and SSE reconnects; include them in preflight responses.
+        HeaderName::from_static("idempotency-key"),
+        HeaderName::from_static("last-event-id"),
+    ];
+
+    if let Ok(header) = HeaderName::from_bytes(security.csrf.header_name.as_bytes())
+        && !headers.contains(&header)
+    {
+        headers.push(header);
+    }
+
+    headers
 }
 
 /// Apply standard security response headers.
