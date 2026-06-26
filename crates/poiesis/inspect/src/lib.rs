@@ -26,14 +26,28 @@ pub struct PdfSummary {
     pub page_count_reliable: bool,
     /// Extracted text snippets from each page.
     pub text_snippets: Vec<String>,
+    /// Whether `text_snippets` was truncated to the 100-line storage cap.
+    pub truncated: bool,
+    /// Total number of non-empty lines in the extracted text.
+    ///
+    /// When `truncated` is `false`, this equals `text_snippets.len()`.
+    pub total_lines: usize,
 }
 
 impl PdfSummary {
-    pub(crate) fn new(pages: usize, page_count_reliable: bool, text_snippets: Vec<String>) -> Self {
+    pub(crate) fn new(
+        pages: usize,
+        page_count_reliable: bool,
+        text_snippets: Vec<String>,
+        truncated: bool,
+        total_lines: usize,
+    ) -> Self {
         Self {
             pages,
             page_count_reliable,
             text_snippets,
+            truncated,
+            total_lines,
         }
     }
 }
@@ -232,6 +246,87 @@ mod tests {
         assert!(
             summary.page_count_reliable,
             "page count from a valid PDF must be marked reliable"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pdf_reports_truncation_for_long_documents() {
+        use poiesis_core::{Block, Document, Metadata, RichText, Span};
+
+        let mut content = Vec::new();
+        for i in 0..150 {
+            content.push(Block::Paragraph(RichText {
+                spans: vec![Span::Plain(format!("Line {i}"))],
+            }));
+        }
+        let doc = Document {
+            metadata: Metadata {
+                title: "Long-document".to_owned(),
+                author: None,
+                created: None,
+            },
+            content,
+        };
+
+        let bytes = match poiesis_doc::render_pdf_from_doc(&doc) {
+            Ok(b) => b,
+            Err(e) => {
+                // Gracefully skip if Typst is unavailable in this environment
+                eprintln!("PDF render skipped: {e}");
+                return;
+            }
+        };
+        let summary = inspect_pdf(&bytes).expect("inspect must succeed");
+        assert!(
+            summary.truncated,
+            "document with more than 100 lines must be marked truncated"
+        );
+        assert!(
+            summary.total_lines > 100,
+            "total_lines must report the raw line count, got {}",
+            summary.total_lines
+        );
+        assert_eq!(
+            summary.text_snippets.len(),
+            100,
+            "truncated summary must contain exactly 100 snippets"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pdf_reports_no_truncation_for_short_documents() {
+        use poiesis_core::{Block, Document, Metadata, RichText, Span};
+
+        let doc = Document {
+            metadata: Metadata {
+                title: "Short-document".to_owned(),
+                author: None,
+                created: None,
+            },
+            content: vec![Block::Paragraph(RichText {
+                spans: vec![Span::Plain("One line.".to_owned())],
+            })],
+        };
+
+        let bytes = match poiesis_doc::render_pdf_from_doc(&doc) {
+            Ok(b) => b,
+            Err(e) => {
+                // Gracefully skip if Typst is unavailable in this environment
+                eprintln!("PDF render skipped: {e}");
+                return;
+            }
+        };
+        let summary = inspect_pdf(&bytes).expect("inspect must succeed");
+        assert!(
+            !summary.truncated,
+            "short document must not be marked truncated"
+        );
+        assert_eq!(
+            summary.total_lines,
+            summary.text_snippets.len(),
+            "total_lines must equal snippets when nothing was truncated"
         );
     }
 }
