@@ -322,9 +322,7 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         // MCP tool so manual and scheduled rebuilds behave identically.
         let workspace_root = std::env::var("GNOSIS_WORKSPACE_ROOT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            });
+            .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
         let graph = gnosis::CodeGraph::open_default(&workspace_root).map_err(|e| {
             oikonomos::error::TaskFailedSnafu {
@@ -334,10 +332,13 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
             .build()
         })?;
 
-        graph.rebuild().map_err(|e| oikonomos::error::TaskFailedSnafu {
-            task_id: "index-maintenance".to_owned(),
-            reason: format!("gnosis rebuild failed: {e}"),
-        }.build())?;
+        graph.rebuild().map_err(|e| {
+            oikonomos::error::TaskFailedSnafu {
+                task_id: "index-maintenance".to_owned(),
+                reason: format!("gnosis rebuild failed: {e}"),
+            }
+            .build()
+        })?;
 
         let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
         let detail = format!(
@@ -896,8 +897,8 @@ mod tests {
     #[test]
     #[ignore = "runs cargo metadata over the full workspace — takes 3-8s"]
     fn maintain_indexes_rebuilds_gnosis() {
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .expect("CARGO_MANIFEST_DIR must be set by cargo");
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set by cargo");
         let workspace_root = PathBuf::from(manifest_dir)
             .parent()
             .expect("crates/")
