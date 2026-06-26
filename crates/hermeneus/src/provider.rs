@@ -139,6 +139,13 @@ pub trait LlmProvider: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         self.complete(request)
     }
+
+    /// Signal the provider to release any background resources.
+    ///
+    /// Called during server shutdown so providers can cancel background tasks
+    /// before the runtime begins draining in-flight requests. The default
+    /// implementation is a no-op for stateless providers.
+    fn shutdown(&self) {}
 }
 
 /// Per-model pricing rates for cost estimation.
@@ -381,6 +388,17 @@ impl ProviderRegistry {
             provider,
             health: ProviderHealthTracker::new(config),
         });
+    }
+
+    /// Signal every registered provider to shut down.
+    ///
+    /// Propagates the shutdown signal to each provider so background tasks
+    /// (e.g. OAuth token refresh) are cancelled before the runtime drains
+    /// in-flight requests.
+    pub fn shutdown(&self) {
+        for entry in &self.providers {
+            entry.provider.shutdown();
+        }
     }
 
     /// Find the best provider for `model` using specificity-based selection.

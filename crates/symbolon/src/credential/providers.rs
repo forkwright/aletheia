@@ -206,6 +206,12 @@ impl CredentialChain {
 }
 
 impl CredentialProvider for CredentialChain {
+    fn shutdown(&self) {
+        for provider in &self.providers {
+            provider.shutdown();
+        }
+    }
+
     fn get_credential(&self) -> Option<Credential> {
         for provider in &self.providers {
             if let Some(cred) = provider.get_credential() {
