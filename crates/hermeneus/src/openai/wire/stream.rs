@@ -471,6 +471,8 @@ struct PendingResponsesToolCall {
     arguments: String,
     /// Whether a `ContentBlockStart` has been emitted for this tool call.
     started: bool,
+    /// Whether a `ContentBlockStop` has been emitted for this tool call.
+    stopped: bool,
     /// Content block index matching the final [`CompletionResponse::content`] array.
     block_index: u32,
 }
@@ -602,6 +604,7 @@ impl ResponsesStreamAccumulator {
                     name: name.unwrap_or_default(),
                     arguments: String::new(),
                     started: false,
+                    stopped: false,
                     block_index,
                 });
         if !pending.started {
@@ -638,6 +641,7 @@ impl ResponsesStreamAccumulator {
                     name: String::new(),
                     arguments: String::new(),
                     started: false,
+                    stopped: false,
                     block_index,
                 });
         if let Some(id) = call_id
@@ -663,6 +667,7 @@ impl ResponsesStreamAccumulator {
         on_event(StreamEvent::ContentBlockStop {
             index: pending.block_index,
         });
+        pending.stopped = true;
     }
 
     fn capture_response_metadata<F: FnMut(StreamEvent) + ?Sized>(
@@ -729,6 +734,7 @@ impl ResponsesStreamAccumulator {
         for key in &call_order {
             if let Some(pending) = tool_calls.get(key)
                 && pending.started
+                && !pending.stopped
             {
                 on_event(StreamEvent::ContentBlockStop {
                     index: pending.block_index,
@@ -1368,5 +1374,26 @@ mod tests {
         assert!(starts.contains(&1));
         assert!(stops.contains(&0));
         assert!(stops.contains(&1));
+    }
+
+    #[test]
+    fn responses_no_duplicate_content_block_stop_when_done_fires() {
+        // WHY: handle_fn_call_done emits ContentBlockStop; finish_inner must not
+        // re-emit it for the same tool call, producing exactly one stop event.
+        let (events, _resp) = process_responses_events(&[
+            r#"{"type":"response.in_progress","response":{"id":"r1","model":"gpt-5","status":"in_progress","output":[],"usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f","delta":"{\"a\":"}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f","delta":"1}"}"#,
+            r#"{"type":"response.function_call_arguments.done","call_id":"call-1","name":"f","arguments":"{\"a\":1}"}"#,
+            r#"{"type":"response.completed","response":{"id":"r1","model":"gpt-5","status":"completed","output":[{"type":"function_call","call_id":"call-1","name":"f","arguments":"{\"a\":1}"}],"usage":{"input_tokens":2,"output_tokens":5,"total_tokens":7}}}"#,
+        ]);
+        let stop_count = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }))
+            .count();
+        assert_eq!(
+            stop_count, 1,
+            "expected exactly one ContentBlockStop for index 0, got {stop_count}"
+        );
     }
 }
