@@ -101,6 +101,9 @@ pub mod verification;
 
 pub mod vocab;
 
+/// Internal similarity and helper utilities shared across episteme modules.
+pub(crate) mod utils;
+
 /// Shared test fixtures for knowledge store tests (DRY helpers).
 #[cfg(all(test, feature = "mneme-engine"))]
 pub(crate) mod test_fixtures;
