@@ -207,12 +207,21 @@ impl JwtManager {
             .build()
         })?;
 
-        let (_header_b64, payload_b64) = header_payload.split_once('.').ok_or_else(|| {
+        let (header_b64, payload_b64) = header_payload.split_once('.').ok_or_else(|| {
             error::TokenDecodeSnafu {
                 message: "missing payload segment".to_owned(),
             }
             .build()
         })?;
+        // WHY: reject tokens whose header claims a different algorithm to prevent
+        // algorithm-confusion: a token with alg=RS256 but an HMAC-valid payload
+        // would otherwise be accepted without complaint.
+        if header_b64 != HS256_HEADER_B64 {
+            return Err(error::TokenDecodeSnafu {
+                message: format!("unexpected JWT header: expected HS256, got '{header_b64}'"),
+            }
+            .build());
+        }
 
         let payload_bytes = base64url_decode(payload_b64).ok_or_else(|| {
             error::TokenDecodeSnafu {
@@ -784,5 +793,32 @@ mod tests {
         // This test guards that claim against silent drift.
         let config = JwtConfig::default();
         assert_eq!(config.clock_skew_leeway_secs, 30);
+    }
+    /// Token with a forged alg field in the header must be rejected.
+    ///
+    /// WHY: ensures `HS256_HEADER_B64` is actively enforced on the decode
+    /// path and algorithm-confusion tokens (e.g., alg=RS256 with an
+    /// HMAC-valid payload) cannot slip through.
+    #[test]
+    fn forged_alg_header_rejected() {
+        let mgr = hmac_manager();
+
+        // Craft a structurally-valid HMAC token, then replace its header
+        // segment with one encoding alg=RS256. The signature remains valid
+        // for the original header+payload pair, but the substituted header
+        // must be caught before the payload is parsed.
+        let real_token = mgr.issue_access("user-1", Role::Operator, None).unwrap();
+        let parts: Vec<&str> = real_token.splitn(3, '.').collect();
+        assert_eq!(parts.len(), 3, "JWT must have 3 segments");
+
+        // base64url({"alg":"RS256","typ":"JWT"})
+        let rs256_header = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9";
+        let forged = format!("{rs256_header}.{}.{}", parts[1], parts[2]);
+
+        let result = mgr.validate(&forged);
+        assert!(
+            result.is_err(),
+            "token with alg=RS256 header must be rejected; validate returned {result:?}"
+        );
     }
 }
