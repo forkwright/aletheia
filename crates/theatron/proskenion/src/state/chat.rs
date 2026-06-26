@@ -1,16 +1,20 @@
 //! Chat session and message state for the desktop chat view.
 
-use skene::id::NousId;
+use skene::id::{NousId, SessionId};
 
 /// Session selected by another view for the chat route to activate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ChatSelection {
     /// Agent that owns the session.
     pub agent_id: NousId,
+    /// Durable server session ID used for history fetches.
+    pub session_id: Option<SessionId>,
     /// Server session key used when streaming turns.
     pub session_key: String, // kanon:ignore RUST/plain-string-secret
     /// Human-readable title shown in the chat tab bar.
     pub title: String, // kanon:ignore RUST/plain-string-secret
+    /// Server-reported total message count, used to decide whether older pages exist.
+    pub message_count: Option<u32>,
 }
 
 impl ChatSelection {
@@ -23,8 +27,28 @@ impl ChatSelection {
     ) -> Self {
         Self {
             agent_id,
+            session_id: None,
             session_key,
             title,
+            message_count: None,
+        }
+    }
+
+    /// Create an activation request for a known durable server session.
+    #[must_use]
+    pub(crate) fn for_existing_session(
+        agent_id: NousId,
+        session_id: SessionId,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
+        title: String,
+        message_count: u32,
+    ) -> Self {
+        Self {
+            agent_id,
+            session_id: Some(session_id),
+            session_key,
+            title,
+            message_count: Some(message_count),
         }
     }
 }

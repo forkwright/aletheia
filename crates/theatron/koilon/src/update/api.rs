@@ -527,6 +527,8 @@ mod tests {
         let mut app = test_app();
         let messages = vec![
             HistoryMessage {
+                id: None,
+                seq: None,
                 role: "user".to_string(),
                 content: Some(serde_json::Value::String("hello".to_string())),
                 created_at: None,
@@ -534,6 +536,8 @@ mod tests {
                 tool_name: None,
             },
             HistoryMessage {
+                id: None,
+                seq: None,
                 role: "system".to_string(),
                 content: Some(serde_json::Value::String("system prompt".to_string())),
                 created_at: None,
@@ -541,6 +545,8 @@ mod tests {
                 tool_name: None,
             },
             HistoryMessage {
+                id: None,
+                seq: None,
                 role: "assistant".to_string(),
                 content: Some(serde_json::Value::String("response".to_string())),
                 created_at: None,

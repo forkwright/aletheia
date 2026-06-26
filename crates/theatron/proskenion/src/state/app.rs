@@ -4,7 +4,7 @@
 //! app root. Child components project into individual fields. This replaces
 //! the monolithic `App` struct from the ratatui TUI.
 
-use skene::id::NousId;
+use skene::id::{NousId, SessionId};
 
 use super::connection::{ConnectionConfig, ConnectionState};
 
@@ -71,6 +71,10 @@ pub struct TabEntry {
     pub agent_id: NousId,
     /// Server session key associated with the tab, if known.
     pub session_key: Option<String>, // kanon:ignore RUST/plain-string-secret
+    /// Durable server session ID, if this tab was opened from an existing session.
+    pub session_id: Option<SessionId>,
+    /// Server-reported total message count, if known.
+    pub message_count: Option<u32>,
     /// Display title for the tab.
     pub title: String,
     /// Whether this tab has unread messages.
@@ -106,6 +110,8 @@ impl TabBar {
             id,
             agent_id,
             session_key: None,
+            session_id: None,
+            message_count: None,
             title: title.into(),
             unread: false,
         });
@@ -125,6 +131,31 @@ impl TabBar {
             id,
             agent_id,
             session_key: Some(session_key),
+            session_id: None,
+            message_count: None,
+            title: title.into(),
+            unread: false,
+        });
+        self.tabs.len() - 1
+    }
+
+    /// Create a tab bound to a known server session and history metadata.
+    pub(crate) fn create_for_existing_session(
+        &mut self,
+        agent_id: NousId,
+        session_id: SessionId,
+        session_key: String, // kanon:ignore RUST/plain-string-secret
+        message_count: Option<u32>,
+        title: impl Into<String>,
+    ) -> usize {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.tabs.push(TabEntry {
+            id,
+            agent_id,
+            session_key: Some(session_key),
+            session_id: Some(session_id),
+            message_count,
             title: title.into(),
             unread: false,
         });
@@ -146,7 +177,6 @@ impl TabBar {
     }
 
     /// The currently active tab entry, or `None` if the tab bar is empty.
-    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
     #[must_use]
     pub(crate) fn active_tab(&self) -> Option<&TabEntry> {
         self.tabs.get(self.active)

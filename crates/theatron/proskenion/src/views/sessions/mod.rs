@@ -77,10 +77,12 @@ const MIN_LIST_WIDTH: f64 = 280.0;
 const MAX_LIST_WIDTH: f64 = 800.0;
 
 fn chat_selection_for_session(session: &Session) -> ChatSelection {
-    ChatSelection::new(
+    ChatSelection::for_existing_session(
         session.nous_id.clone(),
+        session.id.clone(),
         session.key.clone(),
         session.label().to_string(),
+        session.message_count,
     )
 }
 
@@ -593,8 +595,10 @@ mod tests {
         let selection = chat_selection_for_session(&session(Some("Incident Review")));
 
         assert_eq!(selection.agent_id, NousId::from("syn"));
+        assert_eq!(selection.session_id.as_deref(), Some("session-id"));
         assert_eq!(selection.session_key, "incident-review");
         assert_eq!(selection.title, "Incident Review");
+        assert_eq!(selection.message_count, Some(4));
     }
 
     #[test]
