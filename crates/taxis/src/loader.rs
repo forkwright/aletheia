@@ -868,15 +868,8 @@ archiveBeforeDelete = true
 
         let result = serialize_decrypted_toml(&value);
         assert!(
-            result.is_err(),
-            "non-serializable toml::Value must produce an error"
-        );
-        assert!(
-            matches!(
-                result.unwrap_err(),
-                crate::error::Error::SerializeToml { .. }
-            ),
-            "serialization failure must be reported as SerializeToml, not swallowed"
+            matches!(result, Err(crate::error::Error::SerializeToml { .. })),
+            "non-serializable toml::Value must produce Err(SerializeToml), not Ok or other error"
         );
     }
 }
