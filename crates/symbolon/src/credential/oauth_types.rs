@@ -12,7 +12,7 @@ use serde::Deserialize;
 /// OAuth 2.0 token response from the token endpoint.
 ///
 /// Fields follow RFC 6749. `refresh_token` and `expires_in` are optional
-/// because some IdPs omit them; callers are responsible for choosing sensible
+/// because some `IdPs` omit them; callers are responsible for choosing sensible
 /// defaults where their flow requires them.
 #[derive(Debug, Deserialize)]
 pub(super) struct OAuthTokenResponse {

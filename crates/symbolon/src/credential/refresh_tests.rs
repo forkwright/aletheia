@@ -23,8 +23,8 @@ use super::super::file_ops::CredentialFile;
 use super::super::providers::FileCredentialProvider;
 use super::super::{REFRESH_THRESHOLD_SECS, unix_epoch_ms};
 use super::{
-    FileMtimeTracker, RefreshState, RefreshingCredentialProvider, persist_refresh_success,
-    plan_refresh, resolve_post_refresh_state, try_reload_from_file,
+    FileMtimeTracker, RefreshState, RefreshSuccessPayload, RefreshingCredentialProvider,
+    persist_refresh_success, plan_refresh, resolve_post_refresh_state, try_reload_from_file,
 };
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
@@ -372,11 +372,13 @@ fn persist_refresh_success_writes_file_and_updates_state() {
         &path,
         &mut tracker,
         &cb,
-        SecretString::from("tok-new"),
-        SecretString::from("rt-new"),
-        expires_in,
-        Some("user:inference".to_owned()),
-        Some("max".to_owned()),
+        RefreshSuccessPayload {
+            access_token: SecretString::from("tok-new"),
+            refresh_token: SecretString::from("rt-new"),
+            expires_in,
+            scope: Some("user:inference".to_owned()),
+            subscription_type: Some("max".to_owned()),
+        },
     );
     let after_ms = unix_epoch_ms();
 
@@ -454,11 +456,13 @@ fn persist_refresh_success_records_circuit_breaker_success() {
         &path,
         &mut tracker,
         &cb,
-        SecretString::from("tok-new"),
-        SecretString::from("rt-new"),
-        3600,
-        None,
-        None,
+        RefreshSuccessPayload {
+            access_token: SecretString::from("tok-new"),
+            refresh_token: SecretString::from("rt-new"),
+            expires_in: 3600,
+            scope: None,
+            subscription_type: None,
+        },
     );
 
     // WHY: record_success on Closed state clears failure history. After the

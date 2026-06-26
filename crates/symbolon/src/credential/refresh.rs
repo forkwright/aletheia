@@ -34,6 +34,18 @@ pub(super) enum RefreshOutcome {
     TransientError,
 }
 
+/// Token data from a successful OAuth refresh.
+///
+/// WHY: bundled as a named struct so `persist_refresh_success` stays within
+/// clippy's argument-count limit while keeping all fields named.
+pub(super) struct RefreshSuccessPayload {
+    pub access_token: SecretString,
+    pub refresh_token: SecretString,
+    pub expires_in: u64,
+    pub scope: Option<String>,
+    pub subscription_type: Option<String>,
+}
+
 /// Minimum `expires_in` accepted from OAuth responses (seconds).
 const MIN_EXPIRES_IN_SECS: u64 = 60;
 
@@ -290,25 +302,22 @@ fn persist_refresh_success(
     path: &Path,
     mtime_tracker: &mut FileMtimeTracker,
     circuit_breaker: &CircuitBreaker,
-    access_token: SecretString,
-    refresh_token: SecretString,
-    expires_in: u64,
-    scope: Option<String>,
-    subscription_type: Option<String>,
+    payload: RefreshSuccessPayload,
 ) {
     circuit_breaker.record_success();
-    let expires_in = clamp_expires_in(expires_in);
+    let expires_in = clamp_expires_in(payload.expires_in);
     let new_expires_at_ms = unix_epoch_ms() + expires_in * 1000;
 
-    let scopes = scope
+    let scopes = payload
+        .scope
         .as_deref()
         .map(|s| s.split_whitespace().map(String::from).collect());
     let cred_file = CredentialFile {
-        token: access_token.clone(),
-        refresh_token: Some(refresh_token.clone()),
+        token: payload.access_token.clone(),
+        refresh_token: Some(payload.refresh_token.clone()),
         expires_at: Some(new_expires_at_ms),
         scopes,
-        subscription_type: subscription_type.clone(),
+        subscription_type: payload.subscription_type.clone(),
     };
 
     match cred_file.save(path) {
@@ -316,10 +325,10 @@ fn persist_refresh_success(
             mtime_tracker.has_changed(path);
             let final_state = resolve_post_refresh_state(
                 path,
-                access_token,
-                refresh_token,
+                payload.access_token,
+                payload.refresh_token,
                 new_expires_at_ms,
-                subscription_type,
+                payload.subscription_type,
             );
             if let Ok(mut guard) = state.write() {
                 *guard = Some(final_state);
@@ -433,11 +442,13 @@ async fn refresh_loop(
                     &path,
                     &mut mtime_tracker,
                     &circuit_breaker,
-                    access_token,
-                    refresh_token,
-                    expires_in,
-                    scope,
-                    subscription_type,
+                    RefreshSuccessPayload {
+                        access_token,
+                        refresh_token,
+                        expires_in,
+                        scope,
+                        subscription_type,
+                    },
                 );
             }
             RefreshOutcome::InvalidGrant => {

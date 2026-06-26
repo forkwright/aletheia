@@ -10,8 +10,6 @@ use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info, warn};
 
-use koina::secret::SecretString;
-
 use super::file_ops::CredentialFile;
 use super::oauth_types::{OAuthErrorResponse, OAuthTokenResponse};
 use super::pkce::url_encode;
