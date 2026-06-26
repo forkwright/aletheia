@@ -204,7 +204,8 @@ fn sse_serialization_fallback_data_matches_error_event_shape() {
     // WHY: sse_event_to_axum (and the stream_turn equivalent) fall back to
     // this literal string when serde_json::to_string fails. Verify the string
     // matches the error-event shape including a stable failure code (#4585).
-    let fallback_data = r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#;
+    let fallback_data =
+        r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#;
     let parsed: serde_json::Value =
         serde_json::from_str(fallback_data).expect("fallback data must be valid JSON");
     assert_eq!(parsed["type"], "error");

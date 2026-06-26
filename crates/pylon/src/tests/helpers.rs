@@ -311,7 +311,9 @@ pub(super) async fn app_with_auth_mode(auth_mode: &str) -> (axum::Router, tempfi
 /// error-event path end-to-end (#4585).
 pub(super) async fn test_state_with_error_provider() -> (Arc<AppState>, tempfile::TempDir) {
     let failing_provider = Box::new(
-        MockProvider::error("network timeout").models(&["failing-model"]).named("fail"),
+        MockProvider::error("network timeout")
+            .models(&["failing-model"])
+            .named("fail"),
     );
     let failing_config = NousConfig {
         id: Arc::from("failing"),
