@@ -504,7 +504,8 @@ fn hex_digit(nibble: u8) -> char {
     match nibble {
         0..=9 => char::from(b'0' + nibble),
         10..=15 => char::from(b'A' + (nibble - 10)),
-        _ => '?',
+        // WHY: call sites pass `byte >> 4` and `byte & 0x0f`, which are always 0..=15.
+        _ => unreachable!("nibble is always 0..=15"),
     }
 }
 
