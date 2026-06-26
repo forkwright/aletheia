@@ -35,6 +35,7 @@ use std::path::PathBuf;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
+use tokio::sync::Mutex;
 
 /// Errors from [`FactStore`] operations.
 #[derive(Debug, Snafu)]
@@ -174,6 +175,37 @@ impl ArchitectureFact {
 /// [`put`]: FactStore::put
 pub struct FactStore {
     dir: PathBuf,
+    /// In-memory cache of loaded facts and precomputed lowercase search keys.
+    ///
+    /// WHY: `list` and `search` are called repeatedly in a single agent turn;
+    /// populating this once per `FactStore` lifetime avoids cold file reads on
+    /// every query.  `put` keeps the cache up to date so subsequent reads do not
+    /// need to reload from disk.
+    cache: Mutex<Option<Vec<IndexedFact>>>,
+}
+
+/// In-memory indexed representation of a fact.
+///
+/// WHY: search filters by case-insensitive substring; storing lowercase copies
+/// of `id`, `scope`, and `claim` once at load/put time removes per-candidate
+/// allocations on the hot path.
+struct IndexedFact {
+    fact: ArchitectureFact,
+    id_lower: String,
+    claim_lower: String,
+    scope_lower: String,
+}
+
+impl IndexedFact {
+    /// Build an indexed fact, precomputing lowercase search keys.
+    fn new(fact: ArchitectureFact) -> Self {
+        Self {
+            id_lower: fact.id.to_lowercase(),
+            scope_lower: fact.scope.to_string().to_lowercase(),
+            claim_lower: fact.claim.to_lowercase(),
+            fact,
+        }
+    }
 }
 
 impl FactStore {
@@ -185,7 +217,10 @@ impl FactStore {
     /// [`put`]: FactStore::put
     #[must_use]
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            cache: Mutex::new(None),
+        }
     }
 
     /// Default store path: `~/aletheia/instance/facts/`.
@@ -256,6 +291,15 @@ impl FactStore {
         tokio::fs::write(&path, &json)
             .await
             .with_context(|_| WriteFileSnafu { path })?;
+        let mut guard = self.cache.lock().await;
+        if let Some(idx) = guard.as_mut() {
+            let id = fact.id.clone();
+            if let Some(pos) = idx.iter().position(|i| i.fact.id == id) {
+                idx[pos] = IndexedFact::new(fact);
+            } else {
+                idx.push(IndexedFact::new(fact));
+            }
+        }
         Ok(())
     }
 
@@ -267,19 +311,14 @@ impl FactStore {
     /// cannot be parsed.
     #[tracing::instrument(skip(self))]
     pub async fn list(&self, scope: Option<FactScope>) -> Result<Vec<ArchitectureFact>, FactError> {
-        if !tokio::fs::try_exists(&self.dir)
-            .await
-            .with_context(|_| ReadDirSnafu {
-                dir: self.dir.clone(),
-            })?
-        {
-            return Ok(vec![]);
-        }
-        let mut facts = self.load_all().await?;
-        if let Some(s) = scope {
-            facts.retain(|f| f.scope == s);
-        }
-        Ok(facts)
+        self.ensure_loaded().await?;
+        let guard = self.cache.lock().await;
+        let Some(idx) = guard.as_ref() else { return Ok(vec![]); };
+        Ok(idx
+            .iter()
+            .filter(|i| scope.map_or(true, |s| i.fact.scope == s))
+            .map(|i| i.fact.clone())
+            .collect())
     }
 
     /// Search facts by case-insensitive substring match across `id`, `scope`,
@@ -291,24 +330,54 @@ impl FactStore {
     /// cannot be parsed.
     #[tracing::instrument(skip(self))]
     pub async fn search(&self, query: &str) -> Result<Vec<ArchitectureFact>, FactError> {
-        if !tokio::fs::try_exists(&self.dir)
+        self.ensure_loaded().await?;
+        let query_lower = query.to_lowercase();
+        let guard = self.cache.lock().await;
+        let Some(idx) = guard.as_ref() else { return Ok(vec![]); };
+        Ok(idx
+            .iter()
+            .filter(|i| {
+                i.id_lower.contains(&query_lower)
+                    || i.scope_lower.contains(&query_lower)
+                    || i.claim_lower.contains(&query_lower)
+            })
+            .map(|i| i.fact.clone())
+            .collect())
+    }
+
+    /// Ensure the in-memory cache has been populated.
+    ///
+    /// WHY: This is the single place `load_all` is invoked.  After the first
+    /// successful load the result is cached, so repeated `list`/`search` calls
+    /// in one agent turn do not re-read every fact file from disk.
+    async fn ensure_loaded(&self) -> Result<(), FactError> {
+        {
+            let guard = self.cache.lock().await;
+            if guard.is_some() {
+                return Ok(());
+            }
+        }
+
+        let dir_exists = tokio::fs::try_exists(&self.dir)
             .await
             .with_context(|_| ReadDirSnafu {
                 dir: self.dir.clone(),
-            })?
-        {
-            return Ok(vec![]);
+            })?;
+        let indexed = if dir_exists {
+            self.load_all()
+                .await?
+                .into_iter()
+                .map(IndexedFact::new)
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let mut guard = self.cache.lock().await;
+        if guard.is_none() {
+            *guard = Some(indexed);
         }
-        let query_lower = query.to_lowercase();
-        let facts = self.load_all().await?;
-        Ok(facts
-            .into_iter()
-            .filter(|f| {
-                f.id.to_lowercase().contains(&query_lower)
-                    || f.scope.to_string().contains(&query_lower)
-                    || f.claim.to_lowercase().contains(&query_lower)
-            })
-            .collect())
+        Ok(())
     }
 
     /// Load all `.json` files in the store directory.
@@ -417,6 +486,19 @@ pub fn seed_facts() -> Vec<ArchitectureFact> {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+
+    /// Build a minimal fact for tests that only care about id/scope/claim.
+    fn test_fact(id: &str, scope: FactScope, claim: &str) -> ArchitectureFact {
+        ArchitectureFact {
+            id: id.to_owned(),
+            scope,
+            claim: claim.to_owned(),
+            evidence: vec![],
+            mneme_session: None,
+            updated_at: "2026-04-22T00:00:00Z".to_owned(),
+            updated_by: "PR-1".to_owned(),
+        }
+    }
 
     #[test]
     fn serde_round_trip() {
@@ -663,6 +745,87 @@ mod tests {
         let store = FactStore::new("/tmp/aletheia-facts-does-not-exist-xyzzy-search");
         let result = store.search("tokio").await.expect("search");
         assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_reuses_cache_after_source_file_removed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = FactStore::new(dir.path());
+        store
+            .put(test_fact("test.cache.one", FactScope::Concept, "Cached."))
+            .await
+            .expect("put");
+        let first = store.list(None).await.expect("list");
+        assert_eq!(first.len(), 1, "expected fact before removal");
+
+        // Remove the backing file. A second list that re-reads disk would return empty.
+        let path = dir.path().join("test.cache.one.json");
+        tokio::fs::remove_file(&path).await.expect("remove file");
+
+        let second = store.list(None).await.expect("list cached");
+        assert_eq!(second.len(), 1, "list should reuse the in-memory cache");
+        #[expect(clippy::indexing_slicing, reason = "test assertion: len checked above")]
+        let cached_id = second[0].id.clone();
+        assert_eq!(cached_id, "test.cache.one");
+    }
+
+    #[tokio::test]
+    async fn search_reuses_cache_after_source_file_removed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = FactStore::new(dir.path());
+        store
+            .put(test_fact("test.cache.search", FactScope::Boundary, "Find me."))
+            .await
+            .expect("put");
+        let first = store.search("find").await.expect("search");
+        assert_eq!(first.len(), 1);
+
+        let path = dir.path().join("test.cache.search.json");
+        tokio::fs::remove_file(&path).await.expect("remove file");
+
+        let second = store.search("FIND").await.expect("search cached");
+        assert_eq!(second.len(), 1, "search should reuse the in-memory cache");
+        #[expect(clippy::indexing_slicing, reason = "test assertion: len checked above")]
+        let cached_id = second[0].id.clone();
+        assert_eq!(cached_id, "test.cache.search");
+    }
+
+    #[tokio::test]
+    async fn put_updates_cached_list() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = FactStore::new(dir.path());
+        store
+            .put(test_fact("test.cache.a", FactScope::Concept, "A"))
+            .await
+            .expect("put");
+        let first = store.list(None).await.expect("list");
+        assert_eq!(first.len(), 1, "expected one fact after initial put");
+
+        store
+            .put(test_fact("test.cache.b", FactScope::Crate, "B"))
+            .await
+            .expect("put second");
+        let second = store.list(None).await.expect("list after second put");
+        assert_eq!(second.len(), 2, "put should keep the in-memory cache up to date");
+    }
+
+    #[tokio::test]
+    async fn search_matches_id_scope_and_claim_case_insensitively() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = FactStore::new(dir.path());
+        store
+            .put(test_fact("test.cache.id", FactScope::Crate, "Claim text."))
+            .await
+            .expect("put");
+
+        let by_id = store.search("TEST.CACHE.ID").await.expect("search id");
+        assert_eq!(by_id.len(), 1, "search should match id case-insensitively");
+
+        let by_scope = store.search("CRATE").await.expect("search scope");
+        assert_eq!(by_scope.len(), 1, "search should match scope case-insensitively");
+
+        let by_claim = store.search("CLAIM TEXT").await.expect("search claim");
+        assert_eq!(by_claim.len(), 1, "search should match claim case-insensitively");
     }
 
     #[test]
