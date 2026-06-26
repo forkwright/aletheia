@@ -183,13 +183,21 @@ impl CcProvider {
         )
         .await?;
 
-        parse::result_to_response(
+        let response = parse::result_to_response(
             &output.result_text,
             output.is_error,
             output.usage.as_ref(),
             model,
             output.session_id.as_deref(),
-        )
+        )?;
+        // WHY(#4658): CC reports cache read/write tokens; record them so
+        // prompt-cache usage is visible in provider metrics.
+        crate::metrics::record_cache_tokens(
+            self.name(),
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+        Ok(response)
     }
 
     /// Execute a streaming completion, emitting `StreamEvent`s.
@@ -221,13 +229,21 @@ impl CcProvider {
         )
         .await?;
 
-        parse::result_to_response(
+        let response = parse::result_to_response(
             &output.result_text,
             output.is_error,
             output.usage.as_ref(),
             model,
             output.session_id.as_deref(),
-        )
+        )?;
+        // WHY(#4658): Streaming CC output preserves cache tokens; emit them
+        // for metrics parity with the non-streaming path.
+        crate::metrics::record_cache_tokens(
+            self.name(),
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+        Ok(response)
     }
 }
 
@@ -477,5 +493,51 @@ mod tests {
         assert!(!CcProvider::warn_dropped_tools(0));
         assert!(CcProvider::warn_dropped_tools(1));
         assert!(!CcProvider::warn_dropped_tools(2));
+    }
+
+    #[test]
+    fn records_cache_metrics_from_response() {
+        use koina::metrics::MetricsRegistry;
+
+        use crate::metrics::register;
+        use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+
+        let response = CompletionResponse {
+            id: "cc_1".to_owned(),
+            model: "claude-sonnet-4-6".to_owned(),
+            stop_reason: StopReason::EndTurn,
+            content: vec![ContentBlock::Text {
+                text: "hi".to_owned(),
+                citations: None,
+            }],
+            usage: Usage {
+                input_tokens: 20,
+                output_tokens: 10,
+                cache_read_tokens: 5,
+                cache_write_tokens: 2,
+            },
+            cost_usd: None,
+            duration_ms: None,
+        };
+        crate::metrics::record_cache_tokens(
+            "cc",
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        assert!(
+            buf.contains("aletheia_llm_cache_tokens_total{provider=\"cc\",direction=\"read\"} 5"),
+            "missing cache read metrics: {buf}"
+        );
+        assert!(
+            buf.contains("aletheia_llm_cache_tokens_total{provider=\"cc\",direction=\"write\"} 2"),
+            "missing cache write metrics: {buf}"
+        );
     }
 }

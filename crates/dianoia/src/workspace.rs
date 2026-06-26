@@ -274,7 +274,7 @@ mod tests {
 
         let mut blockers = ws.read_blockers("phase-a").unwrap();
         assert_eq!(blockers.len(), 2);
-        blockers.sort_by_key(|b| b.plan_id);
+        blockers.sort_by_key(|b| b.detected_at);
         assert_eq!(blockers[0].description, "first blocker");
         assert_eq!(blockers[0].detected_at, first_blocker.detected_at);
         assert_eq!(blockers[1].description, "second blocker");
