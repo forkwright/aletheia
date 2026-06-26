@@ -12,8 +12,8 @@ publish = false
 snafu = { workspace = true }
 tracing = { workspace = true }
 zip = "8"
-pdf-extract = "0.10"
-lopdf = "0.38"
+pdf-extract = "0.12"
+lopdf = "0.42"
 indexmap = { workspace = true }
 poiesis-ooxml-parse = { path = "../ooxml-parse" }
 
