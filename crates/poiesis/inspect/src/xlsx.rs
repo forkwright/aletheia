@@ -3,7 +3,7 @@
 use std::io::Cursor;
 
 use indexmap::IndexMap;
-use poiesis_ooxml_parse::{extract_shared_strings, parse_sheet_names};
+use poiesis_ooxml_parse::{extract_shared_strings, parse_sheet_entries, parse_workbook_rels};
 use zip::ZipArchive;
 
 use crate::WorkbookSummary;
@@ -68,10 +68,23 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
         content
     };
 
-    let sheet_names = parse_sheet_names(&workbook_xml);
+    let rels_xml = if let Ok(mut file) = archive.by_name("xl/_rels/workbook.xml.rels") {
+        let mut content = String::new();
+        std::io::Read::read_to_string(&mut file, &mut content)
+            .map_err(|e| crate::InspectError::Io { source: e })?;
+        content
+    } else {
+        String::new()
+    };
 
-    for (idx, sheet_name) in sheet_names.into_iter().enumerate() {
-        let worksheet_path = format!("xl/worksheets/sheet{}.xml", idx + 1);
+    let rels = parse_workbook_rels(&rels_xml);
+    let sheet_entries = parse_sheet_entries(&workbook_xml);
+
+    for (idx, (sheet_name, rid)) in sheet_entries.into_iter().enumerate() {
+        let worksheet_path = rels.get(&rid).map_or_else(
+            || format!("xl/worksheets/sheet{}.xml", idx + 1),
+            |target| format!("xl/{target}"),
+        );
         if let Ok(mut file) = archive.by_name(&worksheet_path) {
             let mut content = String::new();
             std::io::Read::read_to_string(&mut file, &mut content)

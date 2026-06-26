@@ -171,6 +171,119 @@ mod tests {
         }
     }
 
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn nonsequential_xlsx_fixture() -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        const CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+</Types>"#;
+
+        const WORKBOOK: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Alpha" sheetId="1" r:id="rId1"/>
+    <sheet name="Beta" sheetId="3" r:id="rId2"/>
+  </sheets>
+</workbook>"#;
+
+        const RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>"#;
+
+        const SHARED_STRINGS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="2" uniqueCount="2">
+  <si><t>AlphaValue</t></si>
+  <si><t>BetaValue</t></si>
+</sst>"#;
+
+        const SHEET1: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c></row>
+  </sheetData>
+</worksheet>"#;
+
+        const SHEET3: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>1</v></c></row>
+  </sheetData>
+</worksheet>"#;
+
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+        zip.start_file("[Content_Types].xml", options)
+            .expect("start [Content_Types].xml");
+        zip.write_all(CONTENT_TYPES.as_bytes())
+            .expect("write [Content_Types].xml");
+
+        zip.start_file("xl/workbook.xml", options)
+            .expect("start workbook.xml");
+        zip.write_all(WORKBOOK.as_bytes())
+            .expect("write workbook.xml");
+
+        zip.start_file("xl/_rels/workbook.xml.rels", options)
+            .expect("start rels");
+        zip.write_all(RELS.as_bytes()).expect("write rels");
+
+        zip.start_file("xl/sharedStrings.xml", options)
+            .expect("start sharedStrings");
+        zip.write_all(SHARED_STRINGS.as_bytes())
+            .expect("write sharedStrings");
+
+        zip.start_file("xl/worksheets/sheet1.xml", options)
+            .expect("start sheet1");
+        zip.write_all(SHEET1.as_bytes()).expect("write sheet1");
+
+        zip.start_file("xl/worksheets/sheet3.xml", options)
+            .expect("start sheet3");
+        zip.write_all(SHEET3.as_bytes()).expect("write sheet3");
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_xlsx_resolves_nonsequential_worksheet_paths() {
+        let bytes = nonsequential_xlsx_fixture();
+        let summary = inspect_xlsx(&bytes).expect("inspect must succeed");
+
+        let names: Vec<&str> = summary.sheets.keys().map(String::as_str).collect();
+        assert_eq!(
+            names,
+            vec!["Alpha", "Beta"],
+            "sheet order must match workbook order"
+        );
+
+        let alpha = summary.sheets.get("Alpha").expect("Alpha sheet present");
+        assert!(
+            alpha.contains("AlphaValue"),
+            "Alpha text must contain its shared-string value, got: {alpha}"
+        );
+
+        let beta = summary.sheets.get("Beta").expect("Beta sheet present");
+        assert!(
+            beta.contains("BetaValue"),
+            "Beta text must contain its shared-string value, got: {beta}"
+        );
+    }
+
     #[test]
     #[expect(clippy::expect_used, reason = "test assertions")]
     fn inspect_pdf_counts_real_pages() {

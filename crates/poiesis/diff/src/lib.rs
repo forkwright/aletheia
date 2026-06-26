@@ -205,4 +205,121 @@ mod tests {
         assert!(values.contains("x"));
         assert!(values.contains("y"));
     }
+
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn nonsequential_xlsx_fixture(beta_value: &str) -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        const CONTENT_TYPES: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+</Types>"#;
+
+        const WORKBOOK: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Alpha" sheetId="1" r:id="rId1"/>
+    <sheet name="Beta" sheetId="3" r:id="rId2"/>
+  </sheets>
+</workbook>"#;
+
+        const RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>"#;
+
+        const SHEET1: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c></row>
+  </sheetData>
+</worksheet>"#;
+
+        let shared_strings = format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="2" uniqueCount="2">
+  <si><t>AlphaValue</t></si>
+  <si><t>{beta_value}</t></si>
+</sst>"#
+        );
+
+        let sheet3 = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>1</v></c></row>
+  </sheetData>
+</worksheet>"#
+            .to_string();
+
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+        zip.start_file("[Content_Types].xml", options)
+            .expect("start [Content_Types].xml");
+        zip.write_all(CONTENT_TYPES.as_bytes())
+            .expect("write [Content_Types].xml");
+
+        zip.start_file("xl/workbook.xml", options)
+            .expect("start workbook.xml");
+        zip.write_all(WORKBOOK.as_bytes())
+            .expect("write workbook.xml");
+
+        zip.start_file("xl/_rels/workbook.xml.rels", options)
+            .expect("start rels");
+        zip.write_all(RELS.as_bytes()).expect("write rels");
+
+        zip.start_file("xl/sharedStrings.xml", options)
+            .expect("start sharedStrings");
+        zip.write_all(shared_strings.as_bytes())
+            .expect("write sharedStrings");
+
+        zip.start_file("xl/worksheets/sheet1.xml", options)
+            .expect("start sheet1");
+        zip.write_all(SHEET1.as_bytes()).expect("write sheet1");
+
+        zip.start_file("xl/worksheets/sheet3.xml", options)
+            .expect("start sheet3");
+        zip.write_all(sheet3.as_bytes()).expect("write sheet3");
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_workbooks_resolves_nonsequential_worksheet_paths_without_false_diffs() {
+        let bytes = nonsequential_xlsx_fixture("BetaValue");
+        let diffs = diff_workbooks(&bytes, &bytes).expect("diff must succeed");
+        assert!(
+            diffs.is_empty(),
+            "identical non-sequential workbooks must produce zero diffs, got: {diffs:?}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_workbooks_detects_changes_on_nonsequential_sheet() {
+        let bytes_a = nonsequential_xlsx_fixture("BetaValue");
+        let bytes_b = nonsequential_xlsx_fixture("ChangedBeta");
+
+        let diffs = diff_workbooks(&bytes_a, &bytes_b).expect("diff must succeed");
+        assert_eq!(diffs.len(), 1, "expected exactly one diff");
+        let diff = diffs.first().expect("one diff");
+        assert_eq!(diff.sheet, "Beta", "diff must be on Beta sheet");
+        assert_eq!(diff.row, 0);
+        assert_eq!(diff.col, 0);
+        assert_eq!(diff.before.as_deref(), Some("BetaValue"));
+        assert_eq!(diff.after.as_deref(), Some("ChangedBeta"));
+    }
 }
