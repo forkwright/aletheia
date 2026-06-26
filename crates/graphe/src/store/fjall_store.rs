@@ -206,7 +206,7 @@ pub(crate) mod test_persist_counter {
     }
 
     pub fn count() -> usize {
-        COUNT.with(|c| c.get())
+        COUNT.with(Cell::get)
     }
 }
 
@@ -402,7 +402,6 @@ impl SessionStore {
     /// creation in the same transaction as message and usage writes, avoiding
     /// an extra `ensure_durable()` fsync on the hot path.
     fn find_or_create_session_in_tx(
-        &self,
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         sessions_part: &fjall::SingleWriterTxKeyspace,
         id: &str,
@@ -681,7 +680,7 @@ impl SessionStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
         let mut tx = self.db.write_tx();
-        let (session, mutated) = self.find_or_create_session_in_tx(
+        let (session, mutated) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             id,
@@ -976,17 +975,19 @@ impl SessionStore {
         })?;
 
         let mut tx = self.db.write_tx();
-        let seq = self.append_message_in_tx(
+        let seq = Self::append_message_in_tx(
             &mut tx,
             &messages_part,
             &sessions_part,
             &counters_part,
             &mut session,
-            role,
-            content,
-            tool_call_id,
-            tool_name,
-            token_estimate,
+            &FinalizeMessage {
+                role,
+                content,
+                tool_call_id,
+                tool_name,
+                token_estimate,
+            },
         )?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
@@ -1005,19 +1006,21 @@ impl SessionStore {
     /// WHY: reused by [`Self::append_message`] (one fsync per call) and
     /// [`Self::finalize_turn`] (one fsync for the whole turn).
     fn append_message_in_tx(
-        &self,
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         messages_part: &fjall::SingleWriterTxKeyspace,
         sessions_part: &fjall::SingleWriterTxKeyspace,
         counters_part: &fjall::SingleWriterTxKeyspace,
         session: &mut Session,
-        role: Role,
-        content: &str,
-        tool_call_id: Option<&str>,
-        tool_name: Option<&str>,
-        token_estimate: i64,
+        msg: &FinalizeMessage<'_>,
     ) -> Result<i64> {
         use fjall::Readable;
+        let &FinalizeMessage {
+            role,
+            content,
+            tool_call_id,
+            tool_name,
+            token_estimate,
+        } = msg;
 
         let session_id = session.id.as_str();
         let next_seq_key = format!("next_seq:{session_id}");
@@ -1622,7 +1625,7 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
 
         let mut tx = self.db.write_tx();
-        self.record_usage_in_tx(&mut tx, &usage_part, &sessions_part, record)?;
+        Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, record)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall record_usage: {e}"),
@@ -1638,7 +1641,6 @@ impl SessionStore {
     /// WHY: reused by [`Self::record_usage`] (one fsync per call) and
     /// [`Self::finalize_turn`] (one fsync for the whole turn).
     fn record_usage_in_tx(
-        &self,
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         usage_part: &fjall::SingleWriterTxKeyspace,
         sessions_part: &fjall::SingleWriterTxKeyspace,
@@ -1691,7 +1693,7 @@ impl SessionStore {
 
         let mut tx = self.db.write_tx();
 
-        let (mut session, _mutated) = self.find_or_create_session_in_tx(
+        let (mut session, _mutated) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             request.session_id,
@@ -1703,22 +1705,18 @@ impl SessionStore {
 
         let mut messages_persisted = 0usize;
         for spec in request.messages {
-            self.append_message_in_tx(
+            Self::append_message_in_tx(
                 &mut tx,
                 &messages_part,
                 &sessions_part,
                 &counters_part,
                 &mut session,
-                spec.role,
-                spec.content,
-                spec.tool_call_id,
-                spec.tool_name,
-                spec.token_estimate,
+                spec,
             )?;
             messages_persisted += 1;
         }
 
-        self.record_usage_in_tx(&mut tx, &usage_part, &sessions_part, request.usage)?;
+        Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, request.usage)?;
 
         tx.commit().map_err(|e| {
             error::StorageSnafu {
