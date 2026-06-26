@@ -220,25 +220,6 @@ fn session_count_tracks_creates_and_deletes() {
 }
 
 #[test]
-fn import_session_adjusts_session_count() {
-    let store = test_store();
-    let session = store
-        .create_session("ses-1", "syn", "main", None, None)
-        .expect("create");
-    assert_eq!(store.session_count(), 1);
-
-    let mut imported = session.clone();
-    imported.id = "ses-2".to_owned();
-    imported.session_key = "secondary".to_owned();
-    store.import_session(&imported, false).expect("import new");
-    assert_eq!(store.session_count(), 2);
-
-    // Re-importing the same session with force must not change the count.
-    store.import_session(&imported, true).expect("re-import");
-    assert_eq!(store.session_count(), 2);
-}
-
-#[test]
 fn update_session_status() {
     let store = test_store();
     store

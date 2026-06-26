@@ -538,8 +538,9 @@ impl SessionStore {
 
     /// Return an active session, reactivating it if necessary, inside a tx.
     ///
-    /// The returned boolean is `true` when the transaction was mutated
-    /// (reactivation), `false` when the session was already active.
+    /// Returns `(session, mutated, created)`: `mutated` is `true` when the
+    /// transaction was written (reactivation); `created` is always `false`
+    /// because this function only handles existing sessions.
     fn active_or_reactivated_session(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         sessions_part: &fjall::SingleWriterTxKeyspace,
@@ -2664,9 +2665,9 @@ impl SessionStore {
         // - `idx:nous:{nous_id}:upd:{ts}:{id}` — orphaned when `nous_id` or
         //   `updated_at` changes; both are embedded in the key prefix.
         let mut tx = self.db.write_tx();
-        if let Some(prev_bytes) = existing_self {
+        if let Some(prev_bytes) = existing_self.as_ref() {
             let prev: Session =
-                serde_json::from_slice(&prev_bytes).context(error::StoredJsonSnafu)?;
+                serde_json::from_slice(prev_bytes).context(error::StoredJsonSnafu)?;
             if prev.nous_id != session.nous_id || prev.session_key != session.session_key {
                 let stale_key_idx = Self::session_key_index_key(&prev.nous_id, &prev.session_key);
                 tx.remove(&sessions_part, stale_key_idx.as_str());
