@@ -1052,8 +1052,9 @@ pub(crate) async fn run_pipeline(
         } else {
             crate::budget::StageTimingStatus::Completed
         };
+        let context_timed_out = context_status == crate::budget::StageTimingStatus::TimedOut;
         time_budget.end_stage(context_status);
-        if context_status == crate::budget::StageTimingStatus::TimedOut {
+        if context_timed_out {
             return Err(error::PipelineTimeoutSnafu {
                 stage: "context",
                 timeout_secs: time_budget

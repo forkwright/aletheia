@@ -67,6 +67,8 @@ const STOP_REASON_TURN_TIMEOUT: &str = "turn_timeout";
 ///
 /// The public entry point does not enforce a wall-clock deadline; see
 /// [`execute_with_deadline`] for cooperative budget handling.
+// WHY(#4713): test-only wrapper — stages call execute_with_deadline directly.
+#[cfg(test)]
 pub async fn execute(
     ctx: &PipelineContext,
     session: &SessionState,
@@ -175,7 +177,7 @@ pub(crate) async fn execute_with_deadline(
         if deadline.is_some_and(|d| Instant::now() >= d) {
             warn!(iterations, "turn time budget exhausted at safe boundary");
             turn_budget_exceeded = true;
-            final_stop_reason = STOP_REASON_TURN_TIMEOUT.to_owned();
+            STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -230,30 +232,34 @@ pub(crate) async fn execute_with_deadline(
         // effects), so `tokio::time::timeout` here does not risk orphaning tool
         // results.
         let completion = {
-            let llm_fut = if let Some(fallback_config) = &fallback_config {
-                model_fallback::complete_with_registry_fallback(
-                    providers,
-                    &request,
-                    fallback_config,
-                )
-            } else {
-                let provider = resolve_provider_checked(providers, &turn_model)?;
-                provider.complete(&request)
-            };
+            // WHY(#4713): box both branches to a uniform Pin<Box<dyn Future>> so
+            // tokio::time::timeout accepts a single future type regardless of whether
+            // the fallback path (async fn → impl Future) or the direct path
+            // (provider.complete → Pin<Box<dyn Future>>) is taken.
+            let llm_fut: std::pin::Pin<Box<dyn std::future::Future<Output = _> + Send + '_>> =
+                if let Some(fallback_config) = &fallback_config {
+                    Box::pin(model_fallback::complete_with_registry_fallback(
+                        providers,
+                        &request,
+                        fallback_config,
+                    ))
+                } else {
+                    let provider = resolve_provider_checked(providers, &turn_model)?;
+                    provider.complete(&request)
+                };
             if let Some(deadline) = deadline {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
                     turn_budget_exceeded = true;
-                    final_stop_reason = STOP_REASON_TURN_TIMEOUT.to_owned();
+                    STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
                     break;
                 }
-                match tokio::time::timeout(remaining, llm_fut).await {
-                    Ok(res) => res,
-                    Err(_) => {
-                        turn_budget_exceeded = true;
-                        final_stop_reason = STOP_REASON_TURN_TIMEOUT.to_owned();
-                        break;
-                    }
+                if let Ok(res) = tokio::time::timeout(remaining, llm_fut).await {
+                    res
+                } else {
+                    turn_budget_exceeded = true;
+                    STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
+                    break;
                 }
             } else {
                 llm_fut.await
@@ -575,6 +581,8 @@ fn record_llm_stream_send_error(
 ///
 /// The public entry point does not enforce a wall-clock deadline; see
 /// [`execute_streaming_with_deadline`] for cooperative budget handling.
+// WHY(#4713): test-only wrapper — stages call execute_streaming_with_deadline directly.
+#[cfg(test)]
 #[expect(
     clippy::too_many_arguments,
     reason = "streaming execute requires provider, tools, context, stream channel, and hooks"
@@ -711,7 +719,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         if deadline.is_some_and(|d| Instant::now() >= d) {
             warn!(iterations, "turn time budget exhausted at safe boundary");
             turn_budget_exceeded = true;
-            final_stop_reason = STOP_REASON_TURN_TIMEOUT.to_owned();
+            STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -757,25 +765,27 @@ pub(crate) async fn execute_streaming_with_deadline(
         // the future completes.
         let tx = stream_tx.clone();
         let nous_id = tool_ctx.nous_id.clone();
-        let streaming_fut = streaming_provider.complete_streaming(&request, &mut |event| {
+        // WHY(#4713): extract the closure so the borrow of tx/nous_id outlives
+        // the streaming_fut (E0716 — temporary closure dropped while borrowed).
+        let mut on_event = |event: LlmStreamEvent| {
             if let Err(e) = tx.try_send(TurnStreamEvent::LlmDelta(event.clone())) {
                 record_llm_stream_send_error(nous_id.as_ref(), &event, &e);
             }
-        });
+        };
+        let streaming_fut = streaming_provider.complete_streaming(&request, &mut on_event);
         let response = if let Some(deadline) = deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 turn_budget_exceeded = true;
-                final_stop_reason = STOP_REASON_TURN_TIMEOUT.to_owned();
+                STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
                 break;
             }
-            match tokio::time::timeout(remaining, streaming_fut).await {
-                Ok(resp) => resp,
-                Err(_) => {
-                    turn_budget_exceeded = true;
-                    final_stop_reason = STOP_REASON_TURN_TIMEOUT.to_owned();
-                    break;
-                }
+            if let Ok(resp) = tokio::time::timeout(remaining, streaming_fut).await {
+                resp
+            } else {
+                turn_budget_exceeded = true;
+                STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
+                break;
             }
         } else {
             streaming_fut.await

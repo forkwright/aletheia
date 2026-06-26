@@ -1,5 +1,6 @@
 #![expect(
     clippy::expect_used,
+    clippy::indexing_slicing,
     clippy::type_complexity,
     clippy::unnecessary_literal_bound,
     reason = "test helpers and assertions may use concise panic-oriented shapes"
@@ -17,13 +18,13 @@ use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::event::EventEmitter;
-use koina::id::{NousId, SessionId};
+use koina::id::{NousId, SessionId, ToolName};
 use mneme::side_query::SideQueryRanker;
 use mneme::store::SessionStore;
 use organon::registry::{ToolExecutor, ToolRegistry};
 use organon::types::{
     InputSchema, Reversibility, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput,
-    ToolName, ToolResult,
+    ToolResult,
 };
 use tokio::sync::{Mutex as TokioMutex, mpsc};
 
@@ -85,7 +86,9 @@ fn make_side_effect_tool_def(name: &str) -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
-        reversibility: Reversibility::Irreversible,
+        // WHY(#4713): PartiallyReversible maps to Required (auto-approved without a gate);
+        // Irreversible would map to Mandatory (auto-denied) and the tool would never execute.
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
         tags: vec![],

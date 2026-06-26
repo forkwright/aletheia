@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use snafu::{IntoError, ResultExt};
+use snafu::ResultExt;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info_span, warn};
