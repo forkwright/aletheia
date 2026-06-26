@@ -146,7 +146,7 @@ impl<'de> Deserialize<'de> for ResponsesOutputItem {
             "message" => {
                 let content = value
                     .get("content")
-                    .map(|v| Vec::<ResponsesOutputContent>::deserialize(v))
+                    .map(Vec::<ResponsesOutputContent>::deserialize)
                     .transpose()
                     .map_err(D::Error::custom)?
                     .unwrap_or_default();
@@ -182,7 +182,7 @@ impl<'de> Deserialize<'de> for ResponsesOutputItem {
                     .to_owned();
                 let summary = value
                     .get("summary")
-                    .map(|v| Vec::<ReasoningSummary>::deserialize(v))
+                    .map(Vec::<ReasoningSummary>::deserialize)
                     .transpose()
                     .map_err(D::Error::custom)?
                     .unwrap_or_default();
@@ -222,7 +222,10 @@ impl<'de> Deserialize<'de> for ResponsesOutputItem {
                 let output = value.get("output").cloned().unwrap_or_default();
                 Ok(Self::ComputerCallOutput { call_id, output })
             }
-            _ => Ok(Self::Unsupported { provider_type, raw: value }),
+            _ => Ok(Self::Unsupported {
+                provider_type,
+                raw: value,
+            }),
         }
     }
 }
@@ -230,8 +233,12 @@ impl<'de> Deserialize<'de> for ResponsesOutputItem {
 /// One content part inside a Responses API `message` output item.
 #[derive(Debug)]
 pub(crate) enum ResponsesOutputContent {
-    OutputText { text: String },
-    Refusal { refusal: String },
+    OutputText {
+        text: String,
+    },
+    Refusal {
+        refusal: String,
+    },
     Unsupported {
         provider_type: String,
         raw: serde_json::Value,
@@ -266,7 +273,10 @@ impl<'de> Deserialize<'de> for ResponsesOutputContent {
                     .to_owned();
                 Ok(Self::Refusal { refusal })
             }
-            _ => Ok(Self::Unsupported { provider_type, raw: value }),
+            _ => Ok(Self::Unsupported {
+                provider_type,
+                raw: value,
+            }),
         }
     }
 }
@@ -274,6 +284,10 @@ impl<'de> Deserialize<'de> for ResponsesOutputContent {
 /// A single summary entry inside a Responses API `reasoning` item.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ReasoningSummary {
+    #[expect(
+        dead_code,
+        reason = "deserialized for completeness; reasoning summary items are filtered by type via text field"
+    )]
     #[serde(rename = "type")]
     pub kind: String,
     #[serde(default)]
@@ -372,6 +386,10 @@ impl ResponsesResponse {
     ///
     /// Returns an error string when the response contains neither output
     /// items nor an `output_text` convenience field.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "each match arm maps a distinct Responses API output item type; extracting helpers would obscure the one-to-one mapping"
+    )]
     pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {
         let Self {
             id,
@@ -404,10 +422,7 @@ impl ResponsesResponse {
                                     detail: Some(serde_json::json!({ "refusal": refusal })),
                                 });
                             }
-                            ResponsesOutputContent::Unsupported {
-                                provider_type,
-                                raw,
-                            } => {
+                            ResponsesOutputContent::Unsupported { provider_type, raw } => {
                                 content.push(ContentBlock::Unsupported {
                                     kind: "content".to_owned(),
                                     provider_type: Some(provider_type),
@@ -438,16 +453,16 @@ impl ResponsesResponse {
                         .filter_map(|part| part.text)
                         .collect::<Vec<_>>()
                         .join("\n");
-                    if !thinking.is_empty() {
-                        content.push(ContentBlock::Thinking {
-                            thinking,
-                            signature: None,
-                        });
-                    } else {
+                    if thinking.is_empty() {
                         content.push(ContentBlock::Unsupported {
                             kind: "output_item".to_owned(),
                             provider_type: Some("reasoning".to_owned()),
                             detail: Some(serde_json::json!({ "id": id })),
+                        });
+                    } else {
+                        content.push(ContentBlock::Thinking {
+                            thinking,
+                            signature: None,
                         });
                     }
                 }
@@ -478,10 +493,7 @@ impl ResponsesResponse {
                         content: output,
                     });
                 }
-                ResponsesOutputItem::Unsupported {
-                    provider_type,
-                    raw,
-                } => {
+                ResponsesOutputItem::Unsupported { provider_type, raw } => {
                     content.push(ContentBlock::Unsupported {
                         kind: "output_item".to_owned(),
                         provider_type: Some(provider_type),
@@ -596,6 +608,7 @@ fn map_finish_reason(reason: &str) -> StopReason {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
@@ -915,7 +928,10 @@ mod tests {
         let resp = parsed.into_response().unwrap();
         assert_eq!(resp.content.len(), 1);
         match &resp.content[0] {
-            ContentBlock::Thinking { thinking, signature } => {
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
                 assert_eq!(thinking, "First thought.\nSecond thought.");
                 assert!(signature.is_none());
             }
@@ -1051,7 +1067,10 @@ mod tests {
                 content,
             } => {
                 assert_eq!(tool_use_id, "cc_1");
-                assert_eq!(content.get("type").and_then(|v| v.as_str()), Some("input_text"));
+                assert_eq!(
+                    content.get("type").and_then(|v| v.as_str()),
+                    Some("input_text")
+                );
             }
             other => panic!("expected WebSearchToolResult, got {other:?}"),
         }
@@ -1082,7 +1101,12 @@ mod tests {
                 assert_eq!(provider_type.as_deref(), Some("future_unknown_item"));
                 let detail = detail.as_ref().expect("detail should be present");
                 assert_eq!(detail.get("id").and_then(|v| v.as_str()), Some("fu_1"));
-                assert_eq!(detail.get("extra_field").and_then(|v| v.as_i64()), Some(42));
+                assert_eq!(
+                    detail
+                        .get("extra_field")
+                        .and_then(serde_json::Value::as_i64),
+                    Some(42)
+                );
             }
             other => panic!("expected Unsupported, got {other:?}"),
         }
