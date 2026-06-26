@@ -24,12 +24,34 @@
 //! and cannot be masked with cached content. Use [`is_storage_failure`] to
 //! identify these explicitly for observability and alerting purposes.
 
+use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use koina::error_class::{Classifiable, ErrorAction};
+use koina::error_class::{Classifiable, ErrorAction, ErrorClass};
 
 use crate::error;
 use crate::pipeline::{InteractionSignal, TurnResult, TurnUsage};
+
+/// Provenance captured when a turn falls back to degraded mode.
+///
+/// WHY: the durable turn ledger needs enough context to reconstruct the failed
+/// provider attempt without reading logs. This struct is intentionally flat so
+/// it serializes cleanly into `TurnAttemptRecord`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DegradedProvenance {
+    /// Provider/model that was selected before the failure.
+    pub attempted_model: String,
+    /// Routed model context when complexity routing was active.
+    pub routed_model_context: Option<String>,
+    /// Error class of the original provider failure.
+    pub error_class: String,
+    /// Stable hash of the original error display string for log correlation.
+    pub error_message_hash: String,
+    /// Degradation source: `distillation_cache` or `unavailable`.
+    pub source: String,
+    /// Distillation cache reference when a cached summary was used.
+    pub distillation_id: Option<String>,
+}
 
 /// How the pipeline is operating in degraded mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,11 +61,15 @@ pub enum DegradedMode {
     DistillationCache {
         /// Human-readable status shown alongside the response.
         status_banner: String,
+        /// Provenance of the degraded fallback, including the distillation id.
+        provenance: DegradedProvenance,
     },
     /// No cache available; an honest "unavailable" message was returned.
     Unavailable {
         /// Human-readable status shown alongside the response.
         status_banner: String,
+        /// Provenance of the degraded fallback.
+        provenance: DegradedProvenance,
     },
 }
 
@@ -52,8 +78,18 @@ impl DegradedMode {
     #[must_use]
     pub fn status_banner(&self) -> &str {
         match self {
-            Self::DistillationCache { status_banner } | Self::Unavailable { status_banner } => {
+            Self::DistillationCache { status_banner, .. } | Self::Unavailable { status_banner, .. } => {
                 status_banner
+            }
+        }
+    }
+
+    /// Provenance for this degraded turn.
+    #[must_use]
+    pub fn provenance(&self) -> &DegradedProvenance {
+        match self {
+            Self::DistillationCache { provenance, .. } | Self::Unavailable { provenance, .. } => {
+                provenance
             }
         }
     }
@@ -94,6 +130,30 @@ pub fn is_storage_failure(err: &error::Error) -> bool {
     )
 }
 
+/// Stable 16-character hex hash of a byte slice.
+///
+/// WHY: short enough for durable records and timeline displays, long enough to
+/// avoid trivial collisions in a single session's degraded turns.
+fn short_hash(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let hex = format!("{digest:x}");
+    // WHY: SHA-256 hex is always 64 characters; `get` avoids a clippy
+    // `string_slice` warning while still producing a 16-character prefix.
+    hex.get(..16).map_or(hex, |s| s.to_owned())
+}
+
+fn error_class_name(class: ErrorClass) -> &'static str {
+    // WHY: `ErrorClass` is `#[non_exhaustive]` in `koina`; the wildcard arm
+    // prevents a downstream crate from failing to compile when a variant is added.
+    #[expect(clippy::wildcard_enum_match_arm, reason = "ErrorClass is non_exhaustive across crate boundary")]
+    match class {
+        ErrorClass::Transient => "transient",
+        ErrorClass::Permanent => "permanent",
+        ErrorClass::Unknown => "unknown",
+        _ => "unknown",
+    }
+}
+
 /// Attempt to build a degraded [`TurnResult`] when the LLM provider is down.
 ///
 /// # Behaviour
@@ -105,7 +165,10 @@ pub fn is_storage_failure(err: &error::Error) -> bool {
 ///    message with a [`DegradedMode::Unavailable`] indicator.
 ///
 /// Either way the original error is logged at `warn` level so it remains visible
-/// in traces without being surfaced to the caller as a hard error.
+/// in traces without being surfaced to the caller as a hard error. The returned
+/// [`TurnResult`] carries [`DegradedProvenance`] so finalization can persist the
+/// failed attempt in the turn ledger rather than treating it as a successful
+/// assistant turn.
 ///
 /// Callers should pass `recent_distillation = None` when no store is available
 /// or when the session has never been distilled.
@@ -114,6 +177,8 @@ pub fn build_degraded_response(
     session_id: &str,
     original_error: &error::Error,
     recent_distillation: Option<&str>,
+    attempted_model: &str,
+    routed_model_context: Option<&str>,
 ) -> TurnResult {
     warn!(
         nous_id,
@@ -121,6 +186,16 @@ pub fn build_degraded_response(
         error = %original_error,
         "LLM provider unavailable — entering degraded mode"
     );
+
+    let error_display = original_error.to_string();
+    let provenance = DegradedProvenance {
+        attempted_model: attempted_model.to_owned(),
+        routed_model_context: routed_model_context.map(ToOwned::to_owned),
+        error_class: error_class_name(original_error.class()).to_owned(),
+        error_message_hash: short_hash(error_display.as_bytes()),
+        source: String::new(),
+        distillation_id: None,
+    };
 
     if let Some(summary) = recent_distillation {
         let banner = "Operating in degraded mode — LLM unavailable. \
@@ -139,17 +214,34 @@ pub fn build_degraded_response(
              Your message has been noted. Full responses will resume when the provider recovers."
         );
 
+        // WHY: degraded output is synthetic, not provider-served. `llm_calls: 0`
+        // distinguishes it from a real completion in usage/cost records.
+        let synthetic_output_tokens = u64::try_from(content.len() / 4).unwrap_or(u64::MAX);
+        let distillation_id = format!(
+            "{session_id}:distillation:seq=0:{}",
+            short_hash(summary.as_bytes())
+        );
+
         TurnResult {
             content,
             tool_calls: vec![],
-            usage: TurnUsage::default(),
+            usage: TurnUsage {
+                output_tokens: synthetic_output_tokens,
+                llm_calls: 0,
+                ..TurnUsage::default()
+            },
             signals: vec![InteractionSignal::ErrorRecovery],
             stop_reason: "degraded".to_owned(),
             degraded: Some(crate::pipeline::DegradedMode::DistillationCache {
                 status_banner: banner,
+                provenance: DegradedProvenance {
+                    source: "distillation_cache".to_owned(),
+                    distillation_id: Some(distillation_id),
+                    ..provenance
+                },
             }),
             reasoning: String::new(),
-            model_used: String::new(),
+            model_used: attempted_model.to_owned(),
             tool_surface_hashes: Vec::new(),
         }
     } else {
@@ -167,17 +259,30 @@ pub fn build_degraded_response(
                        will resume when the provider recovers."
             .to_owned();
 
+        // WHY: degraded output is synthetic, not provider-served. `llm_calls: 0`
+        // distinguishes it from a real completion in usage/cost records.
+        let synthetic_output_tokens = u64::try_from(content.len() / 4).unwrap_or(u64::MAX);
+
         TurnResult {
             content,
             tool_calls: vec![],
-            usage: TurnUsage::default(),
+            usage: TurnUsage {
+                output_tokens: synthetic_output_tokens,
+                llm_calls: 0,
+                ..TurnUsage::default()
+            },
             signals: vec![InteractionSignal::ErrorRecovery],
             stop_reason: "degraded".to_owned(),
             degraded: Some(crate::pipeline::DegradedMode::Unavailable {
                 status_banner: banner,
+                provenance: DegradedProvenance {
+                    source: "unavailable".to_owned(),
+                    distillation_id: None,
+                    ..provenance
+                },
             }),
             reasoning: String::new(),
-            model_used: String::new(),
+            model_used: attempted_model.to_owned(),
             tool_surface_hashes: Vec::new(),
         }
     }
@@ -314,7 +419,7 @@ mod tests {
     #[test]
     fn degraded_with_cache_uses_distillation_cache_variant() {
         let err = llm_rate_limit_error();
-        let result = build_degraded_response("alice", "ses-1", &err, Some("User prefers brevity."));
+        let result = build_degraded_response("alice", "ses-1", &err, Some("User prefers brevity."), "test-model", None);
         assert!(
             matches!(
                 result.degraded,
@@ -332,7 +437,7 @@ mod tests {
     #[test]
     fn degraded_without_cache_uses_unavailable_variant() {
         let err = llm_rate_limit_error();
-        let result = build_degraded_response("alice", "ses-1", &err, None);
+        let result = build_degraded_response("alice", "ses-1", &err, None, "test-model", None);
         assert!(
             matches!(result.degraded, Some(DegradedMode::Unavailable { .. })),
             "expected Unavailable, got {:?}",
@@ -345,8 +450,8 @@ mod tests {
     #[test]
     fn status_banner_non_empty() {
         let err = llm_rate_limit_error();
-        let with_cache = build_degraded_response("alice", "ses-1", &err, Some("ctx"));
-        let without_cache = build_degraded_response("alice", "ses-1", &err, None);
+        let with_cache = build_degraded_response("alice", "ses-1", &err, Some("ctx"), "test-model", None);
+        let without_cache = build_degraded_response("alice", "ses-1", &err, None, "test-model", None);
 
         assert!(
             !with_cache
@@ -370,5 +475,53 @@ mod tests {
     fn degraded_mode_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<DegradedMode>();
+    }
+
+    #[test]
+    fn degraded_with_cache_includes_provenance() {
+        let err = llm_rate_limit_error();
+        let result = build_degraded_response(
+            "alice",
+            "ses-1",
+            &err,
+            Some("User prefers brevity."),
+            "test-model",
+            Some("routed-test-model"),
+        );
+        let degraded = result.degraded.expect("degraded");
+        let provenance = degraded.provenance();
+        assert_eq!(provenance.attempted_model, "test-model");
+        assert_eq!(provenance.routed_model_context.as_deref(), Some("routed-test-model"));
+        assert_eq!(provenance.error_class, "transient");
+        assert!(!provenance.error_message_hash.is_empty());
+        assert_eq!(provenance.source, "distillation_cache");
+        assert!(provenance
+            .distillation_id
+            .as_deref()
+            .expect("distillation_id")
+            .starts_with("ses-1:distillation:seq=0:"));
+
+        // WHY: a degraded turn must not look like a zero-cost success.
+        assert_eq!(result.model_used, "test-model");
+        assert_eq!(result.usage.llm_calls, 0);
+        assert!(result.usage.output_tokens > 0);
+    }
+
+    #[test]
+    fn degraded_without_cache_includes_provenance() {
+        let err = llm_rate_limit_error();
+        let result = build_degraded_response("alice", "ses-1", &err, None, "test-model", None);
+        let degraded = result.degraded.expect("degraded");
+        let provenance = degraded.provenance();
+        assert_eq!(provenance.attempted_model, "test-model");
+        assert!(provenance.routed_model_context.is_none());
+        assert_eq!(provenance.error_class, "transient");
+        assert!(!provenance.error_message_hash.is_empty());
+        assert_eq!(provenance.source, "unavailable");
+        assert!(provenance.distillation_id.is_none());
+
+        assert_eq!(result.model_used, "test-model");
+        assert_eq!(result.usage.llm_calls, 0);
+        assert!(result.usage.output_tokens > 0);
     }
 }

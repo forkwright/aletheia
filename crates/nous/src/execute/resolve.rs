@@ -32,7 +32,7 @@ pub(super) struct ResponseExtract {
 /// `config.generation.model` unchanged, preserving existing behaviour bit-for-bit.
 /// When enabled, the last user message plus available tool count feed into
 /// [`route_model`], which maps a score to a tier model.
-pub(super) fn resolve_turn_model(
+pub(crate) fn resolve_turn_model(
     ctx: &PipelineContext,
     config: &NousConfig,
     providers: &ProviderRegistry,

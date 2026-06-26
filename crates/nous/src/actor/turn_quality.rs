@@ -182,8 +182,14 @@ impl NousActor {
     /// path is never blocked by the write lock.
     #[tracing::instrument(skip(self, content, turn_result), fields(model = %turn_result.model_used))]
     pub(super) fn record_router_outcome(&self, content: &str, turn_result: &TurnResult) {
+        // WHY: degraded-mode turns never reached the provider; do not treat them
+        // as routing successes or failures. They are recorded separately in the
+        // turn ledger with full provenance.
+        if turn_result.is_degraded() {
+            return;
+        }
+
         if turn_result.model_used.is_empty() {
-            // WHY: degraded-mode turns have no model; skip.
             return;
         }
 

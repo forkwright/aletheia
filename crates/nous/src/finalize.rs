@@ -272,13 +272,33 @@ pub(crate) fn finalize(
         usage_recorded = true;
     }
 
+    let final_status = if result.degraded.is_some() {
+        TurnAttemptStatus::Degraded
+    } else {
+        TurnAttemptStatus::Completed
+    };
     let mut completed = TurnAttemptRecord::new(
         &session.turn_id,
         &session.id,
         &session.nous_id,
-        TurnAttemptStatus::Completed,
+        final_status,
     );
     completed.model = Some(session.model.clone());
+
+    // WHY: degraded turns must leave a durable provenance record instead of
+    // looking like successful assistant turns. Copy fields from the in-memory
+    // `DegradedMode` into the turn ledger.
+    if let Some(degraded) = &result.degraded {
+        let provenance = degraded.provenance();
+        completed.attempted_model = Some(provenance.attempted_model.clone());
+        completed.routed_model_context = provenance.routed_model_context.clone();
+        completed.error_class = Some(provenance.error_class.clone());
+        completed.error_hash = Some(provenance.error_message_hash.clone());
+        completed.degradation_source = Some(provenance.source.clone());
+        completed.distillation_id = provenance.distillation_id.clone();
+        completed.user_content_saved = Some(messages_persisted >= 1);
+    }
+
     crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
 
     debug!(messages_persisted, usage_recorded, "finalize complete");
@@ -296,7 +316,10 @@ mod tests {
 
     use super::*;
     use crate::config::NousConfig;
+    use crate::degraded_mode::build_degraded_response;
     use crate::pipeline::{ToolCall, TurnUsage};
+    use crate::turn_record::latest_turn_attempt_record;
+    use snafu::IntoError as _;
 
     fn make_store_and_session() -> (SessionStore, SessionState) {
         let store = SessionStore::open_in_memory().expect("in-memory store");
@@ -366,6 +389,29 @@ mod tests {
             stop_reason: stop_reason.to_owned(),
             ..simple_result()
         }
+    }
+
+    fn degraded_result_with_cache() -> TurnResult {
+        let err = crate::error::LlmSnafu.into_error(hermeneus::error::RateLimitedSnafu {
+            retry_after_ms: 5000u64,
+        }
+        .build());
+        build_degraded_response(
+            "test-nous",
+            "ses-1",
+            &err,
+            Some("cached context"),
+            "test-model",
+            Some("routed-test-model"),
+        )
+    }
+
+    fn degraded_result_without_cache() -> TurnResult {
+        let err = crate::error::LlmSnafu.into_error(hermeneus::error::RateLimitedSnafu {
+            retry_after_ms: 5000u64,
+        }
+        .build());
+        build_degraded_response("test-nous", "ses-1", &err, None, "test-model", None)
     }
 
     #[test]
@@ -679,5 +725,78 @@ mod tests {
 
         let history = store.get_history("ses-1", None).expect("history");
         assert_eq!(history.len(), 2);
+    }
+
+    /// Regression test for #4914: degraded turns with a distillation cache must
+    /// be persisted as terminal `Degraded` outcomes with full provenance.
+    #[test]
+    fn finalize_persists_degraded_with_cache_provenance() {
+        let (store, session) = make_store_and_session();
+        let result = degraded_result_with_cache();
+        let config = FinalizeConfig::default();
+
+        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        assert_eq!(fr.messages_persisted, 2);
+
+        let record = latest_turn_attempt_record(&store, &session.id, &session.turn_id)
+            .expect("read")
+            .expect("record");
+        assert_eq!(record.status, TurnAttemptStatus::Degraded);
+        assert_eq!(record.attempted_model.as_deref(), Some("test-model"));
+        assert_eq!(
+            record.routed_model_context.as_deref(),
+            Some("routed-test-model")
+        );
+        assert_eq!(record.error_class.as_deref(), Some("transient"));
+        assert!(record.error_hash.as_deref().expect("error_hash").len() >= 16);
+        assert_eq!(
+            record.degradation_source.as_deref(),
+            Some("distillation_cache")
+        );
+        assert!(record
+            .distillation_id
+            .as_deref()
+            .expect("distillation_id")
+            .starts_with("ses-1:distillation:seq=0:"));
+        assert_eq!(record.user_content_saved, Some(true));
+
+        // WHY: degraded usage must distinguish synthetic output from provider-served output.
+        let usage_records = store.get_usage_for_session(&session.id).expect("usage");
+        let usage = usage_records
+            .into_iter()
+            .find(|u| u.turn_seq == turn_seq_from_ulid(&session.turn_id))
+            .expect("usage row for turn");
+        assert!(usage.output_tokens > 0);
+    }
+
+    /// Regression test for #4914: degraded turns without a cache must be
+    /// persisted as terminal `Degraded` outcomes with provenance.
+    #[test]
+    fn finalize_persists_degraded_without_cache_provenance() {
+        let (store, session) = make_store_and_session();
+        let result = degraded_result_without_cache();
+        let config = FinalizeConfig::default();
+
+        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        assert_eq!(fr.messages_persisted, 2);
+
+        let record = latest_turn_attempt_record(&store, &session.id, &session.turn_id)
+            .expect("read")
+            .expect("record");
+        assert_eq!(record.status, TurnAttemptStatus::Degraded);
+        assert_eq!(record.attempted_model.as_deref(), Some("test-model"));
+        assert!(record.routed_model_context.is_none());
+        assert_eq!(record.error_class.as_deref(), Some("transient"));
+        assert!(record.error_hash.as_deref().expect("error_hash").len() >= 16);
+        assert_eq!(record.degradation_source.as_deref(), Some("unavailable"));
+        assert!(record.distillation_id.is_none());
+        assert_eq!(record.user_content_saved, Some(true));
+
+        let usage_records = store.get_usage_for_session(&session.id).expect("usage");
+        let usage = usage_records
+            .into_iter()
+            .find(|u| u.turn_seq == turn_seq_from_ulid(&session.turn_id))
+            .expect("usage row for turn");
+        assert!(usage.output_tokens > 0);
     }
 }

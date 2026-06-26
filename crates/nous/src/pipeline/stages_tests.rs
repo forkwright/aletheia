@@ -622,6 +622,16 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
         "degraded response should include cached distillation summary"
     );
 
+    // WHY(#4914): the degraded result must carry attempted model and provenance.
+    assert_eq!(result.model_used, "test-model");
+    assert_eq!(result.usage.llm_calls, 0);
+    assert!(result.usage.output_tokens > 0);
+    let degraded = result.degraded.expect("degraded");
+    let provenance = degraded.provenance();
+    assert_eq!(provenance.attempted_model, "test-model");
+    assert_eq!(provenance.source, "distillation_cache");
+    assert!(provenance.distillation_id.is_some());
+
     let events = captured.lock().expect("metric lock");
     assert!(
         has_metric_event(&events, "StageTimeout", "timeout"),

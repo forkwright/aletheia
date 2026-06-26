@@ -22,6 +22,7 @@ use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint
 use crate::compact::{CompactConfig, CompactReason, map_strategy, select_prompt};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
+use crate::execute::resolve::resolve_turn_model;
 use crate::history::{self, HistoryConfig};
 use crate::hooks::registry::HookRegistry;
 use crate::session::SessionState;
@@ -848,11 +849,27 @@ pub(super) async fn run_execute_stage(
             });
 
             span.record("status", "degraded");
+
+            // WHY: capture the model that was selected before the failure so the
+            // degraded result does not look like a zero-cost, no-provider turn.
+            let tool_count = config.tool_allowlist.as_ref().map_or_else(
+                || tools.definitions_for_policy(&config.tool_groups).len(),
+                Vec::len,
+            );
+            let attempted_model = resolve_turn_model(ctx, config, providers, tool_count);
+            let routed_model_context = config
+                .generation
+                .complexity
+                .enabled
+                .then(|| attempted_model.clone());
+
             crate::degraded_mode::build_degraded_response(
                 &config.id,
                 &input.session.id,
                 err,
                 recent_distillation.as_deref(),
+                &attempted_model,
+                routed_model_context.as_deref(),
             )
         }
         Err(err) => {

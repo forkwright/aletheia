@@ -70,6 +70,27 @@ pub struct TurnAttemptRecord {
     /// Provider/model context, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Provider/model that was attempted before a degraded fallback.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempted_model: Option<String>,
+    /// Routed model context when complexity routing was active.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routed_model_context: Option<String>,
+    /// Error class of the original failure for degraded outcomes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_class: Option<String>,
+    /// Stable hash of the original failure message for log correlation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_hash: Option<String>,
+    /// Degradation source identifier (e.g. `distillation_cache`, `unavailable`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degradation_source: Option<String>,
+    /// Distillation cache reference when one was used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distillation_id: Option<String>,
+    /// Whether the original user content was persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_content_saved: Option<bool>,
     /// Number of messages already persisted when status is `FinalizePending`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages_persisted: Option<usize>,
