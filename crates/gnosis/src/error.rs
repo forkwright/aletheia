@@ -49,7 +49,6 @@ pub enum GnosisError {
         dir: PathBuf,
         source: std::io::Error,
     },
-
 }
 
 /// Convenience alias.
