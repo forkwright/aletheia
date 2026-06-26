@@ -189,7 +189,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use base64::{engine::general_purpose, Engine as _};
+    use base64::{Engine as _, engine::general_purpose};
 
     use super::*;
     use crate::testing::make_test_context;
@@ -227,8 +227,14 @@ mod tests {
             other => panic!("expected text content, got {other:?}"),
         };
 
-        assert!(text.contains("DOCX Summary"), "summary header must be present");
-        assert!(text.contains("Quarterly Report"), "summary must include title paragraph");
+        assert!(
+            text.contains("DOCX Summary"),
+            "summary header must be present"
+        );
+        assert!(
+            text.contains("Quarterly Report"),
+            "summary must include title paragraph"
+        );
         assert!(
             text.contains("Revenue increased by 12%."),
             "summary must include first content paragraph"
