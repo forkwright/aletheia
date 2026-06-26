@@ -164,6 +164,12 @@ impl TestEnvBuilder {
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
         let metrics_registry = koina::metrics::MetricsRegistry::new();
         metrics_registry.with_registry(pylon::metrics::register);
+        let credential_runtime = Arc::new(
+            pylon::credential_runtime::CredentialRuntimeManager::new(
+                Arc::clone(&oikos),
+                Arc::clone(&provider_registry),
+            ),
+        );
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::new(nous_manager),
@@ -173,6 +179,7 @@ impl TestEnvBuilder {
             workspace_root,
             jwt_manager,
             auth_facade,
+            credential_runtime,
             start_time: Instant::now(),
             auth_mode: self.auth_mode.unwrap_or_else(|| "token".to_owned()),
             none_role: "admin".to_owned(),

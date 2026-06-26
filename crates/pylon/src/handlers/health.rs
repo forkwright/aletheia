@@ -101,6 +101,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
         let provider_check = check_provider_availability(state);
         let credential_check =
             check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
+        let credential_runtime_check = check_credential_runtime(state).await;
         let embedding_check = check_embedding_provider(state);
         let gateway_security_check = check_gateway_security(state).await;
         let prosoche_check = check_prosoche_heartbeat_path(&prosoche);
@@ -122,6 +123,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             config_check,
             gateway_security_check,
             credential_check,
+            credential_runtime_check,
             storage_check,
             embedding_check,
             nous_poller_check,
@@ -905,6 +907,35 @@ fn provider_credential_scope_check(state: &HealthState) -> Option<HealthCheck> {
 fn provider_uses_anthropic_credentials(name: &str) -> bool {
     let normalized = name.to_ascii_lowercase();
     normalized.contains("anthropic") || normalized.contains("claude")
+}
+
+/// Report runtime credential-management state: supported providers and the
+/// effect of the most recent mutation (#4872).
+async fn check_credential_runtime(state: &HealthState) -> HealthCheck {
+    let supported = state.credential_runtime.supported_providers();
+    let last_effect = state.credential_runtime.last_effect().await;
+
+    let details = serde_json::json!({
+        "supported_providers": supported,
+        "last_effect": last_effect,
+    });
+
+    let message = if let Some(ref effect) = last_effect {
+        Some(format!(
+            "last mutation for '{}' returned '{}'",
+            effect.provider,
+            effect.effect.as_str()
+        ))
+    } else {
+        Some(format!("supported providers: {}", supported.join(", ")))
+    };
+
+    HealthCheck {
+        name: "credential_runtime".to_owned(),
+        status: "pass".to_owned(),
+        message,
+        details: Some(details),
+    }
 }
 
 /// Check if the data directory is writable.
