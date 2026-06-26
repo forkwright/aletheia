@@ -152,7 +152,8 @@ async fn self_prompt_panic_surfaces_as_join_error() {
             _nous_id: &str,
             _session_key: &str,
             _prompt: &str,
-        ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
+        ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>>
+        {
             Box::pin(async move { panic!("injected self-prompt panic") })
         }
     }
@@ -163,8 +164,7 @@ async fn self_prompt_panic_surfaces_as_join_error() {
         enabled: true,
         max_per_hour: 3,
     };
-    let mut runner =
-        TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+    let mut runner = TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
 
     let result = ExecutionResult {
         outcome: TaskOutcome::Success,
@@ -177,10 +177,7 @@ async fn self_prompt_panic_surfaces_as_join_error() {
     // is the only place it is observable. Draining it must yield a panic.
     let join_result = runner.self_prompt_tasks.join_next().await;
     let err = join_result.unwrap().unwrap_err();
-    assert!(
-        err.is_panic(),
-        "expected panic JoinError, got {err:?}"
-    );
+    assert!(err.is_panic(), "expected panic JoinError, got {err:?}");
 }
 
 #[test]
