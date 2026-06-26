@@ -1427,12 +1427,11 @@ impl KnowledgeStore {
             let copy_script = format!(
                 r"?[entity_id, score, cluster_id, updated_at] :=
                     *graph_scores{{entity_id, score_type: 'louvain', score, cluster_id, updated_at}},
-                    not *graph_scores{{entity_id, score_type: '{cluster}', cluster_id: _, updated_at: _}}
+                    not *graph_scores{{entity_id, score_type: '{GRAPH_SCORE_TYPE_CLUSTER}', cluster_id: _, updated_at: _}}
                   ?[entity_id, score_type, score, cluster_id, updated_at] <-
-                    [[entity_id, '{cluster}', score, cluster_id, updated_at]]
+                    [[entity_id, '{GRAPH_SCORE_TYPE_CLUSTER}', score, cluster_id, updated_at]]
                   :put graph_scores {{ entity_id, score_type => score, cluster_id, updated_at }}
                 ",
-                cluster = GRAPH_SCORE_TYPE_CLUSTER
             );
             self.db
                 .run(&copy_script, BTreeMap::new(), ScriptMutability::Mutable)

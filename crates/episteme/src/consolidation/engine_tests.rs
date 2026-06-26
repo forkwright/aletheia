@@ -384,7 +384,10 @@ fn graph_recompute_cluster_is_discovered_by_consolidation() {
     // Thirty facts, five per entity, all older than the default age gate.
     let mut expected_fact_ids = std::collections::HashSet::new();
     for i in 0..30usize {
-        let entity_id = entity_ids[i % entity_ids.len()];
+        let entity_id = entity_ids
+            .get(i % entity_ids.len())
+            .copied()
+            .expect("valid test entity index");
         let fact_id = format!("cluster-fact-{i:02}");
         let fact = make_fact(&fact_id, "nous-test", &format!("community fact {i}"));
         store.insert_fact(&fact).expect("insert fact");
@@ -421,7 +424,7 @@ fn graph_recompute_cluster_is_discovered_by_consolidation() {
     // The discovered candidate(s) must gather the facts linked to the cluster.
     let gathered: std::collections::HashSet<&str> = candidates
         .iter()
-        .flat_map(|c| c.fact_ids.iter().map(|f| f.as_str()))
+        .flat_map(|c| c.fact_ids.iter().map(eidos::id::FactId::as_str))
         .collect();
     for expected in &expected_fact_ids {
         assert!(
