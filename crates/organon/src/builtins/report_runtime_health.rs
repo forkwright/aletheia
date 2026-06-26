@@ -49,7 +49,12 @@ struct RendererHealth {
 }
 
 impl RendererHealth {
-    fn ok(name: &'static str, required: bool, configured: bool, message: impl Into<String>) -> Self {
+    fn ok(
+        name: &'static str,
+        required: bool,
+        configured: bool,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             name,
             status: "ok",
@@ -152,10 +157,7 @@ fn check_pandoc() -> RendererHealth {
                 configured: true,
                 path: Some(path.to_string_lossy().into_owned()),
                 version: Some(version_str.clone()),
-                message: format!(
-                    "pandoc {version_str} available at {}",
-                    path.display()
-                ),
+                message: format!("pandoc {version_str} available at {}", path.display()),
             }
         }
         poiesis_doc::PandocProbe::Missing { searched } => RendererHealth::missing(
@@ -167,7 +169,11 @@ fn check_pandoc() -> RendererHealth {
                 format_paths(&searched)
             ),
         ),
-        poiesis_doc::PandocProbe::TooOld { path, found, required } => RendererHealth {
+        poiesis_doc::PandocProbe::TooOld {
+            path,
+            found,
+            required,
+        } => RendererHealth {
             name: "pandoc",
             status: "too_old",
             required: true,
@@ -206,7 +212,11 @@ fn check_latex() -> RendererHealth {
     let configured = latex_required_from_env();
 
     match poiesis_doc::LatexProbe::check() {
-        poiesis_doc::LatexProbe::Present { engine, path, version } => RendererHealth {
+        poiesis_doc::LatexProbe::Present {
+            engine,
+            path,
+            version,
+        } => RendererHealth {
             name: "latex",
             status: "ok",
             required,
@@ -284,12 +294,7 @@ fn check_chromium() -> RendererHealth {
 /// Typst is rendered in-process, so it is always available when the crate is
 /// compiled into organon.
 fn check_typst() -> RendererHealth {
-    RendererHealth::ok(
-        "typst",
-        true,
-        true,
-        "in-process Typst renderer available",
-    )
+    RendererHealth::ok("typst", true, true, "in-process Typst renderer available")
 }
 
 /// Format a list of paths for human-readable messages.
@@ -310,9 +315,7 @@ fn format_paths(paths: &[PathBuf]) -> String {
 /// - `degraded` if any configured (but not required) renderer is not ok.
 /// - `healthy` otherwise.
 fn aggregate_status(renderers: &[RendererHealth]) -> &'static str {
-    let has_required_failure = renderers
-        .iter()
-        .any(|r| r.required && r.status != "ok");
+    let has_required_failure = renderers.iter().any(|r| r.required && r.status != "ok");
     let has_configured_failure = renderers
         .iter()
         .any(|r| r.configured && !r.required && r.status != "ok");
@@ -383,7 +386,10 @@ fn report_runtime_health_def() -> ToolDef {
 
 /// Register the `report_runtime_health` doctor tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(report_runtime_health_def(), Box::new(ReportRuntimeHealthExecutor))?;
+    registry.register(
+        report_runtime_health_def(),
+        Box::new(ReportRuntimeHealthExecutor),
+    )?;
     Ok(())
 }
 

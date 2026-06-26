@@ -43,8 +43,6 @@ pub mod planning;
 /// Poiesis report tools: generate_document, lint_report, verify_report,
 /// render_typst_report, render_docx_report.
 pub mod poiesis;
-/// Report runtime dependency doctor (Pandoc, LaTeX, Chromium, Typst).
-pub mod report_runtime_health;
 /// DOCX report rendering tool (render_docx_report).
 pub mod render_docx_report;
 /// Render a JSON eval report to PDF (render_eval_report).
@@ -55,6 +53,8 @@ pub mod render_graph_audit;
 pub mod render_pptx_report;
 /// JSON-first XLSX report tool (`render_xlsx_report`).
 pub mod render_xlsx_report;
+/// Report runtime dependency doctor (Pandoc, LaTeX, Chromium, Typst).
+pub mod report_runtime_health;
 /// Web research tools (web_fetch).
 pub mod research;
 /// Scaffold report tool: generates a new report project from embedded templates.
