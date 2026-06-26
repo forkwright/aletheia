@@ -28,7 +28,9 @@ static_regex!(RE_BEARER, r"Bearer [A-Za-z0-9._-]+");
 static_regex!(RE_JWT, r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+");
 static_regex!(
     RE_SECRETS,
-    r"(?i)(password|secret|api_key|apikey)\s*[:=]\s*\S+"
+    // WHY (#6003): redact double-quoted and single-quoted values even when
+    // they contain spaces, as well as unquoted non-whitespace values.
+    r#"(?i)(password|secret|api_key|apikey)\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#
 );
 
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
@@ -119,5 +121,157 @@ mod tests {
         assert!(output.contains("sk-ant-***"));
         assert!(!output.contains("abc123"));
         assert!(!output.contains("secret123"));
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "proptest assertions")]
+mod proptests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    const ALPHANUM_HYPHEN_UNDERSCORE: &str =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+    const BASE64URL_CHARS: &str =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+    const BEARER_CHARS: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-";
+    const SECRET_VALUE_CHARS: &str =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-.~+/=";
+    const QUOTED_VALUE_CHARS: &str =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _-.~+/=";
+
+    const WRAPPERS: &[&str] = &["", " ", "\"", "'", "\n"];
+    const SECRET_KEYS: &[&str] = &["password", "secret", "api_key", "apikey"];
+    const SEPARATORS: &[&str] = &["=", ":", " = ", " : "];
+
+    fn wrapper() -> impl Strategy<Value = &'static str> {
+        (0..WRAPPERS.len() as u8).prop_map(|i| *WRAPPERS.get(usize::from(i)).unwrap())
+    }
+
+    fn secret_key() -> impl Strategy<Value = &'static str> {
+        (0..SECRET_KEYS.len() as u8).prop_map(|i| *SECRET_KEYS.get(usize::from(i)).unwrap())
+    }
+
+    fn separator() -> impl Strategy<Value = &'static str> {
+        (0..SEPARATORS.len() as u8).prop_map(|i| *SEPARATORS.get(usize::from(i)).unwrap())
+    }
+
+    fn secret_body(
+        range: impl Strategy<Value = usize>,
+        allowed: &'static str,
+    ) -> impl Strategy<Value = String> {
+        let len = allowed.len() as u8;
+        vec(
+            (0..len).prop_map(move |i| {
+                allowed
+                    .chars()
+                    .nth(usize::from(i))
+                    // WHY: `i` is drawn from `0..allowed.len()`.
+                    .unwrap()
+            }),
+            range,
+        )
+        .prop_map(|chars| chars.into_iter().collect())
+    }
+
+    proptest! {
+        #[test]
+        fn prop_redacts_anthropic_key(
+            prefix in wrapper(),
+            suffix in wrapper(),
+            body in secret_body(1..128usize, ALPHANUM_HYPHEN_UNDERSCORE),
+        ) {
+            let secret = format!("sk-ant-api03-{body}");
+            let input = format!("{prefix}{secret}{suffix}");
+            let output = redact_sensitive(&input);
+            prop_assert!(output.contains("sk-ant-***"), "placeholder missing: {}", output);
+            prop_assert!(!output.contains(&body), "secret body leaked: {}", output);
+        }
+
+        #[test]
+        fn prop_redacts_generic_sk_key(
+            prefix in wrapper(),
+            suffix in wrapper(),
+            body in secret_body(20..128usize, ALPHANUM_HYPHEN_UNDERSCORE),
+        ) {
+            let secret = format!("sk-{body}");
+            let input = format!("{prefix}{secret}{suffix}");
+            let output = redact_sensitive(&input);
+            prop_assert!(output.contains("sk-***"), "placeholder missing: {}", output);
+            prop_assert!(!output.contains(&body), "secret body leaked: {}", output);
+        }
+
+        #[test]
+        fn prop_leaves_short_sk_key_unredacted(
+            prefix in wrapper(),
+            suffix in wrapper(),
+            body in secret_body(0..19usize, ALPHANUM_HYPHEN_UNDERSCORE),
+        ) {
+            let input = format!("{prefix}sk-{body}{suffix}");
+            let output = redact_sensitive(&input);
+            prop_assert_eq!(output, input);
+        }
+
+        #[test]
+        fn prop_redacts_bearer_token(
+            prefix in wrapper(),
+            suffix in wrapper(),
+            token in secret_body(1..128usize, BEARER_CHARS),
+        ) {
+            let input = format!("{prefix}Bearer {token}{suffix}");
+            let output = redact_sensitive(&input);
+            prop_assert!(output.contains("Bearer ***"), "placeholder missing: {}", output);
+            prop_assert!(!output.contains(&token), "token leaked: {}", output);
+        }
+
+        #[test]
+        fn prop_redacts_jwt(
+            prefix in wrapper(),
+            suffix in wrapper(),
+            header in secret_body(1..64usize, BASE64URL_CHARS),
+            payload in secret_body(1..64usize, BASE64URL_CHARS),
+            signature in secret_body(1..64usize, BASE64URL_CHARS),
+        ) {
+            let token = format!("eyJ{header}.{payload}.{signature}");
+            let input = format!("{prefix}{token}{suffix}");
+            let output = redact_sensitive(&input);
+            prop_assert!(
+                output.contains("[JWT REDACTED]"),
+                "placeholder missing: {}",
+                output
+            );
+            prop_assert!(!output.contains(&header), "header leaked: {}", output);
+            prop_assert!(!output.contains(&payload), "payload leaked: {}", output);
+            prop_assert!(!output.contains(&signature), "signature leaked: {}", output);
+        }
+
+        #[test]
+        fn prop_redacts_key_value_secret(
+            prefix in wrapper(),
+            suffix in wrapper(),
+            key in secret_key(),
+            sep in separator(),
+            value in secret_body(1..64usize, SECRET_VALUE_CHARS),
+        ) {
+            let input = format!("{prefix}{key}{sep}{value}{suffix}");
+            let output = redact_sensitive(&input);
+            prop_assert!(output.contains("***"), "placeholder missing: {}", output);
+            prop_assert!(!output.contains(&value), "value leaked: {}", output);
+        }
+
+        #[test]
+        fn prop_redacts_quoted_key_value_secret_with_spaces(
+            prefix in wrapper(),
+            suffix in wrapper(),
+            key in secret_key(),
+            sep in separator(),
+            value in secret_body(1..64usize, QUOTED_VALUE_CHARS),
+        ) {
+            let input = format!("{prefix}{key}{sep}\"{value}\"{suffix}");
+            let output = redact_sensitive(&input);
+            prop_assert!(output.contains("***"), "placeholder missing: {}", output);
+            prop_assert!(!output.contains(&value), "quoted value leaked: {}", output);
+        }
     }
 }
