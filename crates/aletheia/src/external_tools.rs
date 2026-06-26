@@ -30,7 +30,7 @@ use organon::types::{
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 pub(crate) use taxis::config::{
-    ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
+    ExternalToolAuth, ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
 };
 
 // ── Tool manifest ───────────────────────────────────────────────────────────
@@ -346,7 +346,8 @@ async fn connect_mcp_server(
     entry: &ExternalToolEntry,
 ) -> diaporeia::error::Result<ExternalMcpClient> {
     if let Some(endpoint) = entry.endpoint.as_deref() {
-        return ExternalMcpClient::connect_streamable_http(endpoint).await;
+        let auth = entry.auth.as_ref().map(mcp_auth_to_diaporeia);
+        return ExternalMcpClient::connect_streamable_http_with_auth(endpoint, auth.as_ref()).await;
     }
 
     let command = entry
@@ -360,6 +361,25 @@ async fn connect_mcp_server(
         env: entry.env.clone(),
     };
     ExternalMcpClient::connect_stdio(&config).await
+}
+
+#[cfg(feature = "mcp")]
+fn mcp_auth_to_diaporeia(auth: &ExternalToolAuth) -> diaporeia::client::McpAuth {
+    match auth {
+        ExternalToolAuth::Bearer { token } => diaporeia::client::McpAuth::Bearer {
+            token: token.clone(),
+        },
+        ExternalToolAuth::Header { name, value } => diaporeia::client::McpAuth::Header {
+            name: name.clone(),
+            value: value.clone(),
+        },
+        ExternalToolAuth::EnvToken { header_name, env_var } => {
+            diaporeia::client::McpAuth::EnvToken {
+                header_name: header_name.clone(),
+                env_var: env_var.clone(),
+            }
+        }
+    }
 }
 
 #[cfg(not(feature = "mcp"))]
@@ -713,6 +733,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             description: description.map(ToOwned::to_owned),
             method: ExternalToolMethod::default(),
+            auth: None,
         }
     }
 
