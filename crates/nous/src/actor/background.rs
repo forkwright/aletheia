@@ -1201,7 +1201,7 @@ mod tests {
             .expect("append message"); // kanon:ignore RUST/expect - test asserts setup invariant
 
         let store = Arc::new(tokio::sync::Mutex::new(store));
-        let source = SessionStoreTranscriptSource::new(Arc::clone(&store));
+        let source = SessionStoreTranscriptSource::new(Arc::clone(&store), nous_id.to_owned());
 
         let since = jiff::Timestamp::from_second(1_600_000_000).expect("valid epoch"); // kanon:ignore RUST/expect - test asserts fixed timestamp
 

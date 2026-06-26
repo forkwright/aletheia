@@ -416,6 +416,13 @@ fn list_session_ids_since_returns_only_updated_sessions_for_nous() {
         .expect("list ids since midpoint");
     assert_eq!(ids.len(), 1, "only the third session is after midpoint");
     assert_eq!(ids[0], "ses-3");
+
+    let mut all_ids = store
+        .list_session_ids_since(before, "alice")
+        .expect("list ids since before");
+    all_ids.sort_unstable();
+    assert_eq!(all_ids.len(), 3, "all three sessions are after `before`");
+    assert_eq!(all_ids, ["ses-1", "ses-2", "ses-3"]);
 }
 
 #[test]
