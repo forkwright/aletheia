@@ -170,8 +170,15 @@ impl CodexProvider {
         ))
         .await?;
         let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
-
-        Ok(parse::text_to_response(&text, usage, model))
+        let response = parse::text_to_response(&text, usage, model);
+        // WHY(#4658): Codex reports cached_input_tokens as cache reads; emit
+        // them so prompt-cache activity shows in provider metrics.
+        crate::metrics::record_cache_tokens(
+            self.name(),
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+        Ok(response)
     }
 
     /// Execute a streaming completion, emitting `StreamEvent::TextDelta` for each
@@ -205,7 +212,15 @@ impl CodexProvider {
         // which seat-bridged provider they're talking to.
         on_event(StreamEvent::TextDelta { text: text.clone() });
 
-        Ok(parse::text_to_response(&text, usage, model))
+        let response = parse::text_to_response(&text, usage, model);
+        // WHY(#4658): The streaming path uses the same CLI output as the
+        // non-streaming path; record cache reads for observability parity.
+        crate::metrics::record_cache_tokens(
+            self.name(),
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+        Ok(response)
     }
 }
 
@@ -584,5 +599,56 @@ mod tests {
         assert!(!CodexProvider::warn_dropped_tools(0));
         assert!(CodexProvider::warn_dropped_tools(1));
         assert!(!CodexProvider::warn_dropped_tools(2));
+    }
+
+    #[test]
+    fn records_cache_metrics_from_response() {
+        use koina::metrics::MetricsRegistry;
+
+        use crate::metrics::register;
+        use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+
+        let response = CompletionResponse {
+            id: "codex_1".to_owned(),
+            model: "codex".to_owned(),
+            stop_reason: StopReason::EndTurn,
+            content: vec![ContentBlock::Text {
+                text: "hi".to_owned(),
+                citations: None,
+            }],
+            usage: Usage {
+                input_tokens: 20,
+                output_tokens: 10,
+                cache_read_tokens: 5,
+                cache_write_tokens: 0,
+            },
+            cost_usd: None,
+            duration_ms: None,
+        };
+        crate::metrics::record_cache_tokens(
+            "codex",
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        assert!(
+            buf.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"codex\",direction=\"read\"} 5"
+            ),
+            "missing cache read metrics: {buf}"
+        );
+        // WHY: Codex only reports cache reads; write direction must be absent.
+        assert!(
+            !buf.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"codex\",direction=\"write\"}"
+            ),
+            "codex must not emit zero cache write metrics: {buf}"
+        );
     }
 }
