@@ -300,7 +300,8 @@ async fn run_task(
         | ManualMaintenanceTask::GraphRecompute
         | ManualMaintenanceTask::SkillDecay
         | ManualMaintenanceTask::DerivedFactsMaterialize
-        | ManualMaintenanceTask::SerendipityDiscovery => {
+        | ManualMaintenanceTask::SerendipityDiscovery
+        | ManualMaintenanceTask::KnowledgeConsolidation => {
             run_knowledge_task(definition, knowledge_executor).await?;
         }
         _ => whatever!("{}: not scheduled for manual run", definition.id()),
@@ -373,6 +374,9 @@ async fn run_knowledge_task(
             }
             oikonomos::schedule::BuiltinTask::SerendipityDiscovery => {
                 executor.discover_serendipitous_facts(&nous_id)
+            }
+            oikonomos::schedule::BuiltinTask::KnowledgeConsolidation => {
+                executor.consolidate_knowledge(&nous_id)
             }
             _ => Err(oikonomos::error::TaskFailedSnafu {
                 task_id,

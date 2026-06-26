@@ -164,11 +164,7 @@ impl Content {
             Self::Text(s) => s.clone(),
             Self::Blocks(blocks) => blocks
                 .iter()
-                .filter_map(|b| match b {
-                    ContentBlock::Text { text, .. } => Some(text.as_str()),
-                    ContentBlock::Thinking { thinking, .. } => Some(thinking.as_str()),
-                    _ => None,
-                })
+                .filter_map(ContentBlock::text)
                 .fold(String::new(), |mut acc, s| {
                     if !acc.is_empty() {
                         acc.push('\n');
@@ -176,6 +172,22 @@ impl Content {
                     acc.push_str(s);
                     acc
                 }),
+        }
+    }
+}
+
+impl ContentBlock {
+    /// Extract plain text from this block, if any.
+    ///
+    /// Returns text content for [`ContentBlock::Text`] and
+    /// [`ContentBlock::Thinking`] blocks; returns `None` for tool-use,
+    /// tool-result, and server-tool blocks.
+    #[must_use]
+    pub fn text(&self) -> Option<&str> {
+        match self {
+            Self::Text { text, .. } => Some(text.as_str()),
+            Self::Thinking { thinking, .. } => Some(thinking.as_str()),
+            _ => None,
         }
     }
 }

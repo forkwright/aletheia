@@ -96,6 +96,8 @@ pub enum ManualMaintenanceTask {
     DerivedFactsMaterialize,
     /// Run serendipity discovery over recent knowledge graph entities.
     SerendipityDiscovery,
+    /// Consolidate overflowing facts into summarized knowledge.
+    KnowledgeConsolidation,
 }
 
 /// Canonical metadata for one maintenance task.
@@ -649,6 +651,22 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
             ScheduleSource::SerendipityCadence,
             true,
             RegistrationCondition::SerendipityEnabledWithKnowledge,
+        ),
+    ),
+    task(
+        "knowledge-consolidation",
+        "Knowledge consolidation",
+        MaintenanceTaskOwner::KnowledgeGraph,
+        Some(MaintenanceConfigSection::KnowledgeMaintenance),
+        "Knowledge consolidation",
+        MaintenanceTaskImplementationStatus::Implemented,
+        CRON_METRICS,
+        Some(ManualMaintenanceTask::KnowledgeConsolidation),
+        scheduled(
+            BuiltinTask::KnowledgeConsolidation,
+            ScheduleSource::FixedIntervalSecs(4 * 60 * 60),
+            true,
+            RegistrationCondition::KnowledgeMaintenanceEnabledWithExecutor,
         ),
     ),
     task(

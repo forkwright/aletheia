@@ -100,6 +100,15 @@ pub trait KnowledgeMaintenanceExecutor: Send + Sync {
         &self,
         nous_id: &str,
     ) -> crate::error::Result<MaintenanceReport>;
+
+    /// Consolidate overflowing facts into summarized, higher-quality facts.
+    ///
+    /// The default implementation returns an empty success report so callers
+    /// that do not configure a consolidation provider can still satisfy the
+    /// trait without wiring LLM infrastructure.
+    fn consolidate_knowledge(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
 }
 
 /// Policy for derived-rule materialization (#4662).

@@ -148,6 +148,9 @@ pub enum BuiltinTask {
     DerivedFactsMaterialize,
     /// Run the serendipity-discovery engine over recently active entities.
     SerendipityDiscovery,
+    /// Consolidate overflowing entity/community facts into higher-quality
+    /// summarized facts via the LLM-driven consolidation engine.
+    KnowledgeConsolidation,
 }
 
 impl Schedule {
