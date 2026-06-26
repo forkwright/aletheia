@@ -11,9 +11,14 @@ pub(crate) fn inspect_pdf_impl(bytes: &[u8]) -> Result<PdfSummary> {
             detail: format!("{e:?}"),
         })?;
 
-    let text_snippets: Vec<String> = text
+    let lines: Vec<&str> = text
         .split('\n')
         .filter(|line| !line.trim().is_empty())
+        .collect();
+    let total_lines = lines.len();
+    let truncated = total_lines > 100;
+    let text_snippets: Vec<String> = lines
+        .into_iter()
         .take(100)
         .map(std::string::ToString::to_string)
         .collect();
@@ -26,5 +31,11 @@ pub(crate) fn inspect_pdf_impl(bytes: &[u8]) -> Result<PdfSummary> {
         }
     };
 
-    Ok(PdfSummary::new(pages, page_count_reliable, text_snippets))
+    Ok(PdfSummary::new(
+        pages,
+        page_count_reliable,
+        text_snippets,
+        truncated,
+        total_lines,
+    ))
 }
