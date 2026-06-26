@@ -277,7 +277,10 @@ mod tests {
         unsafe { std::env::set_var("TZ", "Pacific/Auckland") };
         let result = std::panic::catch_unwind(|| {
             let ts = now_iso();
-            assert!(ts.ends_with('Z'), "timestamp must carry UTC indicator: {ts}");
+            assert!(
+                ts.ends_with('Z'),
+                "timestamp must carry UTC indicator: {ts}"
+            );
             let parsed = ts.parse::<jiff::Timestamp>().expect("valid ISO 8601");
             let now = jiff::Timestamp::now();
             let diff = parsed.duration_since(now);
