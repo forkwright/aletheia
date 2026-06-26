@@ -9,7 +9,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::types::{
     ApprovalRequirement, Reversibility, ServerToolConfig, ToolCallCapabilityRule, ToolCategory,
-    ToolDef, ToolGroupId, ToolGroupPolicy,
+    ToolDef, ToolGroupId, ToolGroupPolicy, ToolOrigin,
 };
 
 const SURFACE_HASH_PREFIX: &str = "ts1:";
@@ -46,6 +46,7 @@ pub struct SurfaceInputs<'a> {
 pub(crate) struct RegistrySurfaceTool<'a> {
     pub(crate) def: &'a ToolDef,
     pub(crate) call_capability: Option<&'a ToolCallCapabilityRule>,
+    pub(crate) origin: Option<&'a ToolOrigin>,
 }
 
 /// Versioned stable digest for a resolved tool surface.
@@ -180,6 +181,9 @@ pub struct SurfaceEntry {
     pub kind: SurfaceEntryKind,
     /// Effective availability.
     pub availability: SurfaceAvailability,
+    /// Origin metadata when the tool is externally provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ToolOrigin>,
 }
 
 impl SurfaceEntry {
@@ -387,6 +391,7 @@ fn resolve_registry_entry(
             .and_then(|rule| serde_json::to_value(rule).ok())
             .map(|value| stable_value_hash(&value)),
         server_definition_sha256: None,
+        origin: tool.origin.cloned(),
         kind: SurfaceEntryKind::Registry,
         availability,
     }
@@ -413,6 +418,7 @@ fn resolve_server_entries(inputs: &SurfaceInputs<'_>) -> Vec<SurfaceEntry> {
                     has_capability_rule: false,
                     capability_rule_sha256: None,
                     server_definition_sha256: None,
+                    origin: None,
                     kind: SurfaceEntryKind::Server,
                     availability,
                 },
@@ -443,6 +449,7 @@ fn resolve_server_entries(inputs: &SurfaceInputs<'_>) -> Vec<SurfaceEntry> {
                 has_capability_rule: false,
                 capability_rule_sha256: None,
                 server_definition_sha256: definition_sha256,
+                origin: None,
                 kind: SurfaceEntryKind::Server,
                 availability,
             },
@@ -539,6 +546,11 @@ fn compute_surface_hash(
                 "description_sha256": stable_str_hash(&entry.description),
                 "capability_rule_sha256": entry.capability_rule_sha256.as_deref(),
                 "server_definition_sha256": entry.server_definition_sha256.as_deref(),
+                "origin": entry.origin.as_ref().map(|o| serde_json::json!({
+                    "local_name": o.local_name,
+                    "server_name": o.server_name,
+                    "remote_name": o.remote_name,
+                })),
             })
         })
         .collect();
@@ -602,6 +614,7 @@ mod tests {
             defs.iter().map(|def| RegistrySurfaceTool {
                 def,
                 call_capability: None,
+                origin: None,
             }),
             SurfaceInputs {
                 policy,
