@@ -40,7 +40,9 @@ use crate::config::NousConfig;
 use crate::error;
 use crate::hooks::registry::HookRegistry;
 use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResultRecord};
-use crate::pipeline::{InteractionSignal, LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
+use crate::pipeline::{
+    InteractionSignal, LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage,
+};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
@@ -229,7 +231,11 @@ pub(crate) async fn execute_with_deadline(
         // results.
         let completion = {
             let llm_fut = if let Some(fallback_config) = &fallback_config {
-                model_fallback::complete_with_registry_fallback(providers, &request, fallback_config)
+                model_fallback::complete_with_registry_fallback(
+                    providers,
+                    &request,
+                    fallback_config,
+                )
             } else {
                 let provider = resolve_provider_checked(providers, &turn_model)?;
                 provider.complete(&request)
@@ -504,8 +510,9 @@ fn build_turn_budget_exceeded_result(
     model_used: String,
     tool_surface_hashes: Vec<String>,
 ) -> TurnResult {
-    let banner = "Turn time budget exhausted — returning partial results from the last safe boundary."
-        .to_owned();
+    let banner =
+        "Turn time budget exhausted — returning partial results from the last safe boundary."
+            .to_owned();
     TurnResult {
         content: final_content,
         tool_calls,

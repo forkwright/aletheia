@@ -104,7 +104,10 @@ impl ToolExecutor for CountingExecutor {
     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             self.executions.fetch_add(1, Ordering::SeqCst);
-            Ok(ToolResult::text(format!("side effect recorded: {}", input.name.as_str())))
+            Ok(ToolResult::text(format!(
+                "side effect recorded: {}",
+                input.name.as_str()
+            )))
         })
     }
 }
@@ -687,7 +690,10 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
     .expect("degraded response should succeed");
 
     assert!(
-        matches!(result.degraded, Some(DegradedMode::TurnBudgetExceeded { .. })),
+        matches!(
+            result.degraded,
+            Some(DegradedMode::TurnBudgetExceeded { .. })
+        ),
         "timeout should return TurnBudgetExceeded degraded mode, got {:?}",
         result.degraded
     );
@@ -754,7 +760,10 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
     .expect("timeout without cache should return a degraded TurnResult");
 
     assert!(
-        matches!(result.degraded, Some(DegradedMode::TurnBudgetExceeded { .. })),
+        matches!(
+            result.degraded,
+            Some(DegradedMode::TurnBudgetExceeded { .. })
+        ),
         "timeout should return TurnBudgetExceeded degraded mode, got {:?}",
         result.degraded
     );
@@ -856,7 +865,10 @@ async fn execute_timeout_streaming_with_distillation_returns_degraded_response()
     .expect("streaming timeout should degrade");
 
     assert!(
-        matches!(result.degraded, Some(DegradedMode::TurnBudgetExceeded { .. })),
+        matches!(
+            result.degraded,
+            Some(DegradedMode::TurnBudgetExceeded { .. })
+        ),
         "streaming timeout should return TurnBudgetExceeded degraded mode, got {:?}",
         result.degraded
     );
@@ -951,7 +963,10 @@ async fn execute_timeout_preserves_side_effecting_tool_results() {
     .expect("cooperative timeout should return a TurnResult");
 
     assert!(
-        matches!(result.degraded, Some(DegradedMode::TurnBudgetExceeded { .. })),
+        matches!(
+            result.degraded,
+            Some(DegradedMode::TurnBudgetExceeded { .. })
+        ),
         "expected TurnBudgetExceeded, got {:?}",
         result.degraded
     );
