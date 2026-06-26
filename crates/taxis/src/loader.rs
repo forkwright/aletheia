@@ -362,7 +362,23 @@ fn decrypt_toml_content(content: &str) -> Result<String> {
 
     decrypt_toml_value(&mut value)?;
 
-    Ok(toml::to_string(&value).unwrap_or_else(|_| content.to_owned()))
+    serialize_decrypted_toml(&value)
+}
+
+/// Serialize a decrypted TOML value tree back to a string.
+///
+/// # Errors
+///
+/// Returns an error if the value tree cannot be re-serialized to TOML,
+/// ensuring callers never receive raw ciphertext in place of decrypted
+/// plaintext.
+fn serialize_decrypted_toml(value: &toml::Value) -> Result<String> {
+    toml::to_string(value).map_err(|e| {
+        SerializeTomlSnafu {
+            reason: e.to_string(),
+        }
+        .build()
+    })
 }
 
 /// Read a standalone TOML file, apply env-var interpolation and decrypt
@@ -816,6 +832,44 @@ archiveBeforeDelete = true
         assert_eq!(
             config.gateway.port, 18789,
             "reserved env vars must not break default config load"
+        );
+    }
+
+    // ── decrypt_toml_content / serialize_decrypted_toml ───────────────────
+
+    #[test]
+    fn decrypt_toml_content_roundtrips_plain_toml() {
+        let content = "[gateway]\nport = 4242\n";
+        let result = decrypt_toml_content(content).unwrap_or_else(|e| panic!("decrypt: {e}"));
+
+        assert_eq!(
+            result, content,
+            "plain TOML without enc: values should round-trip unchanged"
+        );
+    }
+
+    #[test]
+    fn decrypt_toml_content_propagates_serialize_error() {
+        // WHY: construct an invalid datetime value that the TOML serializer
+        // cannot emit, then assert the error path returns Err instead of
+        // silently falling back to the original ciphertext.
+        let invalid_dt = toml::Value::Datetime(toml::value::Datetime {
+            date: Some(toml::value::Date {
+                year: 2021,
+                month: 13,
+                day: 1,
+            }),
+            time: None,
+            offset: None,
+        });
+        let mut table = toml::map::Map::new();
+        table.insert("bad".to_owned(), invalid_dt);
+        let value = toml::Value::Table(table);
+
+        let result = serialize_decrypted_toml(&value);
+        assert!(
+            matches!(result, Err(crate::error::Error::SerializeToml { .. })),
+            "non-serializable toml::Value must produce Err(SerializeToml), not Ok or other error"
         );
     }
 }
