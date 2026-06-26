@@ -246,7 +246,7 @@ impl ToolExecutor for GenerateDocumentExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let args = &input.arguments;
@@ -254,6 +254,7 @@ impl ToolExecutor for GenerateDocumentExecutor {
             let title = extract_opt_str(args, "title").unwrap_or("Untitled Document");
             let author = extract_opt_str(args, "author");
             let format = extract_opt_str(args, "format").unwrap_or("odt");
+            let out_path = extract_opt_str(args, "out_path");
             let content_str = match extract_str(args, "content") {
                 Ok(s) => s,
                 Err(e) => return Ok(e),
@@ -310,7 +311,10 @@ impl ToolExecutor for GenerateDocumentExecutor {
                     .map_err(|e| format!("LATEX render failed: {e}")),
                 "epub" => poiesis_doc::render_epub_from_doc(&doc)
                     .map_err(|e| format!("EPUB render failed: {e}")),
-                other => Err(format!("unsupported format: {other}")),
+                other => Err(format!(
+                    "unsupported format '{other}'; supported formats are: odt, docx, html, md, \
+                     latex, epub, pdf, xlsx"
+                )),
             })
             .await;
             let bytes = match render_result {
@@ -321,11 +325,42 @@ impl ToolExecutor for GenerateDocumentExecutor {
                 }
             };
 
-            Ok(ToolResult::text(format!(
+            // NOTE: Write to a caller-provided path in addition to returning bytes.
+            if let Some(out_path) = out_path {
+                let validated = match validate_path(out_path, ctx, &input.name) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        return Ok(ToolResult::error(format!(
+                            "invalid out_path {out_path:?}: {e}"
+                        )));
+                    }
+                };
+                if let Err(e) = tokio::fs::write(&validated, &bytes).await {
+                    return Ok(ToolResult::error(format!(
+                        "wrote 0 bytes to {}: {e}",
+                        validated.display()
+                    )));
+                }
+            }
+
+            let encoded = koina::base64::encode(&bytes);
+            let summary = format!(
                 "Generated {} document: {} bytes",
                 format.to_uppercase(),
                 bytes.len()
-            )))
+            );
+            let media_type = media_type_for_format(&format).to_owned();
+
+            Ok(ToolResult::blocks(vec![
+                ToolResultBlock::Text { text: summary },
+                ToolResultBlock::Document {
+                    source: DocumentSource {
+                        source_type: "base64".to_owned(),
+                        media_type,
+                        data: encoded,
+                    },
+                },
+            ]))
         })
     }
 }
@@ -366,6 +401,21 @@ fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block
 fn plain(s: &str) -> RichText {
     RichText {
         spans: vec![Span::Plain(s.to_owned())],
+    }
+}
+
+/// Map a `generate_document` format name to its MIME/media type.
+pub(crate) fn media_type_for_format(format: &str) -> &'static str {
+    match format {
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pdf" => "application/pdf",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "html" => "text/html",
+        "md" => "text/markdown",
+        "latex" => "application/x-latex",
+        "epub" => "application/epub+zip",
+        _ => "application/octet-stream",
     }
 }
 
@@ -425,6 +475,18 @@ fn generate_document_def() -> ToolDef {
                         default: None,
                     },
                 ),
+                (
+                    "out_path".to_owned(),
+                    PropertyDef {
+                        property_type: PropertyType::String,
+                        description:
+                            "Optional filesystem path to write the rendered document to, in addition \
+                             to returning base64 bytes."
+                                .to_owned(),
+                        enum_values: None,
+                        default: None,
+                    },
+                ),
             ]),
             required: vec!["content".to_owned()],
         },
@@ -434,6 +496,14 @@ fn generate_document_def() -> ToolDef {
         groups: vec![ToolGroupId::Edit],
         tags: vec![ToolTag::Format],
     }
+}
+
+fn generate_document_capability_rule() -> ToolCallCapabilityRule {
+    ToolCallCapabilityRule::argument_presence(
+        "out_path",
+        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+    )
 }
 
 fn render_typst_report_capability_rule() -> ToolCallCapabilityRule {
@@ -1049,7 +1119,11 @@ fn qa_gate_def() -> ToolDef {
 /// Register the poiesis report tools: `generate_document`, `lint_report`, `verify_report`,
 /// `render_typst_report`, `qa_gate`.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(generate_document_def(), Box::new(GenerateDocumentExecutor))?;
+    registry.register_with_call_capability(
+        generate_document_def(),
+        generate_document_capability_rule(),
+        Box::new(GenerateDocumentExecutor),
+    )?;
     registry.register(lint_report_def(), Box::new(LintReportExecutor))?;
     registry.register(verify_report_def(), Box::new(VerifyReportExecutor))?;
     registry.register_with_call_capability(
