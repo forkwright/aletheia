@@ -587,3 +587,102 @@ fn verification_record_fail_with_tolerance() {
         "JSON should contain tolerance"
     );
 }
+
+// ---------------------------------------------------------------------------
+// validate_memory_path_async() — non-blocking symlink I/O
+// ---------------------------------------------------------------------------
+
+#[cfg(unix)]
+#[tokio::test]
+async fn async_accepts_valid_symlink_within_scope() {
+    let tmp = tempfile::tempdir().expect("tempdir should succeed");
+    let root = tmp.path().join("memory");
+    let scope_dir = root.join("project");
+    let sub = scope_dir.join("sub");
+    std::fs::create_dir_all(&sub).expect("create sub dir");
+
+    let real_file = sub.join("real.md");
+    std::fs::write(&real_file, b"content").expect("write real file");
+    let link = scope_dir.join("alias.md");
+    std::os::unix::fs::symlink(&real_file, &link).expect("create symlink");
+
+    let result =
+        validate_memory_path_async(Path::new("alias.md"), &root, MemoryScope::Project).await;
+    assert!(
+        result.is_ok(),
+        "async symlink within scope should be accepted: {:?}",
+        result.err()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn async_rejects_symlink_escaping_root() {
+    let tmp = tempfile::tempdir().expect("tempdir should succeed");
+    let root = tmp.path().join("memory");
+    let scope_dir = root.join("project");
+    std::fs::create_dir_all(&scope_dir).expect("create scope dir");
+
+    let outside = tmp.path().join("outside");
+    std::fs::create_dir_all(&outside).expect("create outside dir");
+    std::fs::write(outside.join("secret.txt"), b"secret").expect("write secret");
+
+    let link = scope_dir.join("escape");
+    std::os::unix::fs::symlink(&outside, &link).expect("create symlink");
+
+    let err = validate_memory_path_async(Path::new("escape"), &root, MemoryScope::Project)
+        .await
+        .expect_err("symlink escaping root should be rejected");
+    assert!(
+        matches!(
+            err.layer(),
+            PathValidationLayer::SymlinkResolution | PathValidationLayer::ScopeContainment
+        ),
+        "error should be SymlinkResolution or ScopeContainment, got {:?}",
+        err.layer()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn async_rejects_dangling_symlink() {
+    let tmp = tempfile::tempdir().expect("tempdir should succeed");
+    let root = tmp.path().join("memory");
+    let scope_dir = root.join("project");
+    std::fs::create_dir_all(&scope_dir).expect("create scope dir");
+
+    let link = scope_dir.join("dangling");
+    std::os::unix::fs::symlink("/nonexistent/target", &link).expect("create symlink");
+
+    let err = validate_memory_path_async(Path::new("dangling"), &root, MemoryScope::Project)
+        .await
+        .expect_err("dangling symlink should be rejected");
+    assert_eq!(
+        err.layer(),
+        PathValidationLayer::DanglingSymlink,
+        "error should identify DanglingSymlink layer"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn async_rejects_symlink_loop() {
+    let tmp = tempfile::tempdir().expect("tempdir should succeed");
+    let root = tmp.path().join("memory");
+    let scope_dir = root.join("project");
+    std::fs::create_dir_all(&scope_dir).expect("create scope dir");
+
+    let a = scope_dir.join("a");
+    let b = scope_dir.join("b");
+    std::os::unix::fs::symlink(&b, &a).expect("create a -> b");
+    std::os::unix::fs::symlink(&a, &b).expect("create b -> a");
+
+    let err = validate_memory_path_async(Path::new("a"), &root, MemoryScope::Project)
+        .await
+        .expect_err("symlink loop should be rejected");
+    assert_eq!(
+        err.layer(),
+        PathValidationLayer::LoopDetection,
+        "error should identify LoopDetection layer"
+    );
+}

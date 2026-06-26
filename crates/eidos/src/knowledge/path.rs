@@ -440,6 +440,94 @@ pub fn validate_memory_path(
     })
 }
 
+/// Async variant of [`validate_memory_path`].
+///
+/// Performs the same defense-in-depth checks, but uses [`tokio::fs`] for the
+/// symlink hop loop so that validation does not block a Tokio worker thread.
+/// Async callers must use this function instead of the synchronous variant.
+///
+/// # Errors
+///
+/// Returns [`PathValidationError`] identifying the first layer that
+/// rejected the path, with structured context for logging and diagnostics.
+pub async fn validate_memory_path_async(
+    path: &Path,
+    root: &Path,
+    scope: MemoryScope,
+) -> std::result::Result<ValidatedPath, PathValidationError> {
+    let path_str = path.to_string_lossy();
+
+    // INVARIANT: Layer 1 rejects null bytes before any filesystem access.
+    if path_str.contains('\0') {
+        return Err(PathValidationError::NullByte {
+            path: path_str.into_owned(),
+        });
+    }
+
+    // INVARIANT: Layer 2 rejects `..` components and backslashes before normalization.
+    for component in path.components() {
+        if matches!(component, Component::ParentDir) {
+            return Err(PathValidationError::Canonicalization {
+                path: path_str.into_owned(),
+                component: "..".to_owned(),
+            });
+        }
+    }
+    if path_str.contains('\\') {
+        return Err(PathValidationError::Canonicalization {
+            path: path_str.into_owned(),
+            component: "\\".to_owned(),
+        });
+    }
+
+    // INVARIANT: Layer 3 rejects percent-encoded traversal separators.
+    let lower = path_str.to_ascii_lowercase();
+    for pattern in &["%2e", "%2f", "%5c"] {
+        if lower.contains(pattern) {
+            return Err(PathValidationError::UrlEncodedTraversal {
+                path: path_str.into_owned(),
+                decoded_fragment: (*pattern).to_owned(),
+            });
+        }
+    }
+
+    // INVARIANT: Layer 4 rejects fullwidth separators that normalize to ASCII.
+    for ch in path_str.chars() {
+        if matches!(ch, '\u{FF0E}' | '\u{FF0F}' | '\u{FF3C}') {
+            return Err(PathValidationError::UnicodeNormalization {
+                path: path_str.into_owned(),
+                offending_char: ch,
+            });
+        }
+    }
+
+    let scope_dir = root.join(scope.as_dir_name());
+    let full_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        scope_dir.join(path)
+    };
+    let normalized = normalize_path_components(&full_path);
+
+    // INVARIANT: Layer 5 keeps the normalized path within `scope_dir`.
+    if !normalized.starts_with(&scope_dir) {
+        return Err(PathValidationError::ScopeContainment {
+            path: normalized,
+            scope,
+            expected_dir: scope_dir,
+        });
+    }
+
+    // WHY: Layers 6-7 only run when the path exists; pure string layers above
+    // already validated the shape for non-existent paths.
+    validate_symlinks_async(&normalized, root, &scope_dir, scope).await?;
+
+    Ok(ValidatedPath {
+        inner: normalized,
+        scope,
+    })
+}
+
 /// Normalize path components without filesystem access.
 ///
 /// Resolves `.` (current dir) by skipping and `..` (parent dir) by
@@ -500,6 +588,46 @@ fn validate_symlinks(
     Ok(())
 }
 
+/// Async counterpart to [`validate_symlinks`].
+///
+/// Uses non-blocking [`tokio::fs`] syscalls so the hop loop does not stall
+/// the async runtime.
+async fn validate_symlinks_async(
+    path: &Path,
+    root: &Path,
+    scope_dir: &Path,
+    scope: MemoryScope,
+) -> std::result::Result<(), PathValidationError> {
+    // WHY: `symlink_metadata` reports the link itself, so `is_symlink()` stays accurate even when dangling.
+    let Ok(meta) = tokio::fs::symlink_metadata(path).await else {
+        return Ok(()); // Path doesn't exist yet; pure layers sufficient.
+    };
+
+    if !meta.file_type().is_symlink() {
+        return Ok(()); // Not a symlink; no further checks needed.
+    }
+
+    // WHY: resolve symlinks with hop counting so loops are bounded.
+    let canonical = resolve_with_hop_limit_async(path).await?;
+
+    if !canonical.starts_with(root) {
+        return Err(PathValidationError::SymlinkResolution {
+            path: path.to_path_buf(),
+            root: root.to_path_buf(),
+        });
+    }
+
+    if !canonical.starts_with(scope_dir) {
+        return Err(PathValidationError::ScopeContainment {
+            path: canonical,
+            scope,
+            expected_dir: scope_dir.to_path_buf(),
+        });
+    }
+
+    Ok(())
+}
+
 /// Resolve a symlink chain with hop counting.
 ///
 /// Returns the final resolved path, or a [`PathValidationError`] if the
@@ -529,6 +657,53 @@ fn resolve_with_hop_limit(start: &Path) -> std::result::Result<PathBuf, PathVali
         }
 
         let Ok(target) = std::fs::read_link(&current) else {
+            return Err(PathValidationError::DanglingSymlink {
+                path: start.to_path_buf(),
+            });
+        };
+
+        current = if target.is_absolute() {
+            target
+        } else {
+            // WHY: Relative symlink targets resolve from the link's parent.
+            current
+                .parent()
+                .unwrap_or_else(|| Path::new("/"))
+                .join(&target)
+        };
+    }
+}
+
+/// Async counterpart to [`resolve_with_hop_limit`].
+///
+/// Uses [`tokio::fs::symlink_metadata`] and [`tokio::fs::read_link`] so that
+/// each hop yields to the async runtime instead of blocking a worker thread.
+async fn resolve_with_hop_limit_async(
+    start: &Path,
+) -> std::result::Result<PathBuf, PathValidationError> {
+    let mut current = start.to_path_buf();
+    let mut hops: usize = 0;
+
+    loop {
+        let Ok(meta) = tokio::fs::symlink_metadata(&current).await else {
+            return Err(PathValidationError::DanglingSymlink {
+                path: start.to_path_buf(),
+            });
+        };
+
+        if !meta.file_type().is_symlink() {
+            return Ok(current);
+        }
+
+        hops += 1;
+        if hops > SYMLINK_HOP_LIMIT {
+            return Err(PathValidationError::LoopDetection {
+                path: start.to_path_buf(),
+                hops,
+            });
+        }
+
+        let Ok(target) = tokio::fs::read_link(&current).await else {
             return Err(PathValidationError::DanglingSymlink {
                 path: start.to_path_buf(),
             });
