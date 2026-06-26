@@ -306,7 +306,7 @@ mod dream {
         // WHY: must return immediately (well under a second). If it blocks
         // on the consolidation pipeline this timing assertion fails.
         let start = std::time::Instant::now();
-        engine.on_turn_complete(&source, &target, &provider);
+        engine.on_turn_complete(&source, &target, &provider).await;
         let elapsed = start.elapsed();
         assert!(
             elapsed < std::time::Duration::from_millis(500),

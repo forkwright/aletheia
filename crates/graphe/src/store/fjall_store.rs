@@ -780,6 +780,74 @@ impl SessionStore {
         Ok(sessions)
     }
 
+    /// Count sessions owned by `nous_id` with `updated_at >= since`.
+    ///
+    /// WHY: uses the `idx:nous:{nous_id}:upd:` index instead of
+    /// `list_sessions(None)`, so the auto-dream gate check does not scan or
+    /// deserialize the full session partition.
+    #[instrument(skip(self))]
+    pub fn count_sessions_since(&self, since: jiff::Timestamp, nous_id: &str) -> Result<usize> {
+        use fjall::Readable;
+
+        let sessions_part = self.partition("sessions")?;
+        let snap = self.db.read_tx();
+
+        let prefix = format!("idx:nous:{nous_id}:upd:");
+        let lower = format!("{prefix}{}", since.strftime("%Y-%m-%dT%H:%M:%S%.3fZ"));
+        let upper = {
+            let mut s = prefix.clone();
+            let last = s.pop().unwrap_or('\0');
+            s.push(char::from_u32(u32::from(last) + 1).unwrap_or('\u{FFFF}'));
+            s
+        };
+
+        let mut count = 0;
+        for guard in snap.range(&sessions_part, lower.as_str()..upper.as_str()) {
+            let _ = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall count_sessions_since range: {e}")))?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// List session IDs owned by `nous_id` with `updated_at >= since`.
+    ///
+    /// WHY: index-only scan avoids deserializing sessions that fall outside the
+    /// consolidation window.
+    #[instrument(skip(self))]
+    pub fn list_session_ids_since(
+        &self,
+        since: jiff::Timestamp,
+        nous_id: &str,
+    ) -> Result<Vec<String>> {
+        use fjall::Readable;
+
+        let sessions_part = self.partition("sessions")?;
+        let snap = self.db.read_tx();
+
+        let prefix = format!("idx:nous:{nous_id}:upd:");
+        let lower = format!("{prefix}{}", since.strftime("%Y-%m-%dT%H:%M:%S%.3fZ"));
+        let upper = {
+            let mut s = prefix.clone();
+            let last = s.pop().unwrap_or('\0');
+            s.push(char::from_u32(u32::from(last) + 1).unwrap_or('\u{FFFF}'));
+            s
+        };
+
+        let mut ids = Vec::new();
+        for guard in snap.range(&sessions_part, lower.as_str()..upper.as_str()) {
+            let (k, _v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall list_session_ids_since range: {e}")))?;
+            let key = String::from_utf8_lossy(&k);
+            if let Some(id) = key.rsplit(':').next() {
+                ids.push(id.to_owned());
+            }
+        }
+        Ok(ids)
+    }
+
     /// Overwrite the session status field and refresh its `updated_at` timestamp.
     #[instrument(skip(self))]
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {

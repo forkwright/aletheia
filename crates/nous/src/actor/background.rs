@@ -411,7 +411,7 @@ impl NousActor {
     }
 
     #[cfg(feature = "knowledge-store")]
-    pub(super) fn maybe_run_auto_dream(&self) {
+    pub(super) async fn maybe_run_auto_dream(&mut self) {
         let (Some(session_store), Some(knowledge_store)) = (
             self.stores.session_store.as_ref(),
             self.stores.knowledge_store.as_ref(),
@@ -449,59 +449,42 @@ impl NousActor {
         dream_config.distill_config.model = config.model;
         dream_config.distill_config.verbatim_tail = config.verbatim_tail;
 
-        let engine = Arc::new(melete::dream::DreamEngine::new(dream_config));
-        let source: Arc<dyn melete::dream::TranscriptSource> =
-            Arc::new(SessionStoreTranscriptSource::new(Arc::clone(session_store)));
+        // WHY: keep one engine per actor so `last_scan_at` survives across turns
+        // and the 10-minute intra-day throttle is not reset every turn (#5700).
+        let engine = self
+            .runtime
+            .auto_dream_engine
+            .get_or_insert_with(|| Arc::new(melete::dream::DreamEngine::new(dream_config)));
+        let engine = engine.clone();
+
+        let source: Arc<dyn melete::dream::TranscriptSource> = Arc::new(
+            SessionStoreTranscriptSource::new(Arc::clone(session_store), self.id.clone()),
+        );
         let target: Arc<dyn melete::dream::ConsolidationTarget> = Arc::new(
             KnowledgeStoreConsolidationTarget::new(Arc::clone(knowledge_store)),
         );
-        engine.on_turn_complete(&source, &target, &provider);
+        engine.on_turn_complete(&source, &target, &provider).await;
     }
 }
 
 #[cfg(feature = "knowledge-store")]
-// kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex in block_in_place sync bridge; held only for brief session CRUD
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
 struct SessionStoreTranscriptSource {
-    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex in block_in_place sync bridge; held only for brief session CRUD
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
     store: Arc<Mutex<SessionStore>>,
+    /// Nous ID whose sessions are eligible for consolidation.
+    ///
+    /// WHY: restricts index scans to this actor's partition of the session
+    /// store instead of scanning every session row (#5700).
+    nous_id: String,
 }
 
 #[cfg(feature = "knowledge-store")]
-// kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in sync SessionStore adapter
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
 impl SessionStoreTranscriptSource {
-    // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in sync SessionStore adapter
-    fn new(store: Arc<Mutex<SessionStore>>) -> Self {
-        Self { store }
-    }
-
-    fn sessions_since(
-        &self,
-        since: jiff::Timestamp,
-    ) -> std::result::Result<Vec<mneme::types::Session>, std::io::Error> {
-        let store = self.store.try_lock().map_err(|e| {
-            std::io::Error::other(format!(
-                "session store busy during auto-dream transcript scan: {e}"
-            ))
-        })?;
-        Self::list_sessions_since(&store, since)
-    }
-
-    fn list_sessions_since(
-        store: &SessionStore,
-        since: jiff::Timestamp,
-    ) -> std::result::Result<Vec<mneme::types::Session>, std::io::Error> {
-        let sessions = store
-            .list_sessions(None)
-            .map_err(|e| std::io::Error::other(e.to_string()))?
-            .into_iter()
-            .filter(|session| {
-                session
-                    .updated_at
-                    .parse::<jiff::Timestamp>()
-                    .is_ok_and(|updated_at| updated_at >= since)
-            })
-            .collect();
-        Ok(sessions)
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
+    fn new(store: Arc<Mutex<SessionStore>>, nous_id: String) -> Self {
+        Self { store, nous_id }
     }
 }
 
@@ -511,7 +494,14 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
         &self,
         since: jiff::Timestamp,
     ) -> std::result::Result<usize, std::io::Error> {
-        self.sessions_since(since).map(|sessions| sessions.len())
+        let store = self.store.try_lock().map_err(|e| {
+            std::io::Error::other(format!(
+                "session store busy during auto-dream transcript scan: {e}"
+            ))
+        })?;
+        store
+            .count_sessions_since(since, &self.nous_id)
+            .map_err(|e| std::io::Error::other(e.to_string()))
     }
 
     fn load_transcripts_since(
@@ -523,16 +513,18 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
                 "session store busy during auto-dream transcript load: {e}"
             ))
         })?;
-        let sessions = Self::list_sessions_since(&store, since)?;
-        sessions
+        let session_ids = store
+            .list_session_ids_since(since, &self.nous_id)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        session_ids
             .into_iter()
-            .map(|session| {
+            .map(|session_id| {
                 let history = store
-                    .get_history(&session.id, None)
+                    .get_history(&session_id, None)
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 Ok(melete::dream::SessionTranscript {
-                    session_id: session.id,
-                    nous_id: session.nous_id,
+                    session_id,
+                    nous_id: self.nous_id.clone(),
                     messages: crate::distillation::convert_to_hermeneus_messages(&history),
                 })
             })
@@ -1212,7 +1204,7 @@ mod tests {
             .expect("append message"); // kanon:ignore RUST/expect - test asserts setup invariant
 
         let store = Arc::new(tokio::sync::Mutex::new(store));
-        let source = SessionStoreTranscriptSource::new(Arc::clone(&store));
+        let source = SessionStoreTranscriptSource::new(Arc::clone(&store), nous_id.to_owned());
 
         let since = jiff::Timestamp::from_second(1_600_000_000).expect("valid epoch"); // kanon:ignore RUST/expect - test asserts fixed timestamp
 

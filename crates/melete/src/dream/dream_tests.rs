@@ -427,7 +427,7 @@ async fn on_turn_complete_spawns_background_task() {
         Arc::new(hermeneus::test_utils::MockProvider::new(summary));
 
     // NOTE: on_turn_complete is fire-and-forget; it spawns a background task.
-    engine.on_turn_complete(&source, &target, &provider);
+    engine.on_turn_complete(&source, &target, &provider).await;
 
     // NOTE: give the background task time to complete.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -452,7 +452,7 @@ async fn on_turn_complete_surfaces_panic_and_releases_lock() {
     let provider: Arc<dyn LlmProvider> =
         Arc::new(hermeneus::test_utils::MockProvider::new(summary));
 
-    engine.on_turn_complete(&source, &target, &provider);
+    engine.on_turn_complete(&source, &target, &provider).await;
 
     let join_result = engine.shutdown().await;
     assert!(
@@ -488,7 +488,7 @@ async fn shutdown_waits_for_active_consolidation_and_marks_complete() {
     let provider: Arc<dyn LlmProvider> =
         Arc::new(hermeneus::test_utils::MockProvider::new(summary));
 
-    engine.on_turn_complete(&source, &target, &provider);
+    engine.on_turn_complete(&source, &target, &provider).await;
 
     assert!(
         engine.shutdown().await.is_ok(),

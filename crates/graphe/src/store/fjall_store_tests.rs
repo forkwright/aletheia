@@ -384,6 +384,75 @@ fn list_sessions_no_duplicates_after_distillation() {
 }
 
 #[test]
+fn count_sessions_since_uses_index_not_full_scan() {
+    let store = test_store();
+    let before = jiff::Timestamp::now();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    store
+        .create_session("ses-a", "alice", "key-a", None, None)
+        .expect("create alice session");
+    store
+        .create_session("ses-b", "bob", "key-b", None, None)
+        .expect("create bob session");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let after = jiff::Timestamp::now();
+
+    assert_eq!(
+        store
+            .count_sessions_since(before, "alice")
+            .expect("count alice"),
+        1,
+        "exactly one alice session created after `before`"
+    );
+    assert_eq!(
+        store
+            .count_sessions_since(before, "bob")
+            .expect("count bob"),
+        1,
+        "exactly one bob session created after `before`"
+    );
+    assert_eq!(
+        store
+            .count_sessions_since(after, "alice")
+            .expect("count alice after"),
+        0,
+        "no alice sessions created after `after`"
+    );
+}
+
+#[test]
+fn list_session_ids_since_returns_only_updated_sessions_for_nous() {
+    let store = test_store();
+    let before = jiff::Timestamp::now();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    store
+        .create_session("ses-1", "alice", "key-1", None, None)
+        .expect("create first session");
+    store
+        .create_session("ses-2", "alice", "key-2", None, None)
+        .expect("create second session");
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let midpoint = jiff::Timestamp::now();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    store
+        .create_session("ses-3", "alice", "key-3", None, None)
+        .expect("create third session");
+
+    let ids = store
+        .list_session_ids_since(midpoint, "alice")
+        .expect("list ids since midpoint");
+    assert_eq!(ids.len(), 1, "only the third session is after midpoint");
+    assert_eq!(ids[0], "ses-3");
+
+    let mut all_ids = store
+        .list_session_ids_since(before, "alice")
+        .expect("list ids since before");
+    all_ids.sort_unstable();
+    assert_eq!(all_ids.len(), 3, "all three sessions are after `before`");
+    assert_eq!(all_ids, ["ses-1", "ses-2", "ses-3"]);
+}
+
+#[test]
 fn session_provenance_updates_on_mutation_paths() {
     let store = test_store();
     store
