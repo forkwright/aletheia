@@ -212,7 +212,7 @@ pub fn now_iso() -> String {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -266,6 +266,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        unsafe_code,
+        reason = "WHY(#4742): single-threaded test; TZ env mutation is isolated by catch_unwind and unconditionally restored before the function returns"
+    )]
     fn now_iso_is_utc_under_non_utc_timezone() {
         // WHY(#4742): the helper must produce real UTC timestamps even when the
         // host uses a non-UTC timezone. A local wall-time value labeled with a

@@ -22,6 +22,10 @@ fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value
 /// WHY: jiff resolves the local timezone from `TZ` on first use, so tests that
 /// exercise timezone-sensitive code must set the variable before opening the
 /// store and must restore it to avoid polluting other tests.
+#[expect(
+    unsafe_code,
+    reason = "WHY(#4742): single-threaded test helper; TZ env mutation is isolated by catch_unwind and unconditionally restored before return"
+)]
 fn with_tz<F, R>(tz: &str, f: F) -> R
 where
     F: FnOnce() -> R,
