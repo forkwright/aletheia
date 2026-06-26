@@ -1050,6 +1050,10 @@ fn existing_fixed_backup_path(instance_root: &Path, source: &Path) -> Option<Pat
     None
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "synchronous maintenance utility invoked from spawn_blocking outside the async runtime"
+)]
 fn write_text_file(path: &Path, contents: &str) -> error::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context(error::MaintenanceIoSnafu {
