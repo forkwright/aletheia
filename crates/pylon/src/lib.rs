@@ -6,6 +6,8 @@
 pub mod approval_registry;
 /// Typed HTTP client for first-party gateway consumers.
 pub mod client;
+/// Runtime state for pylon-managed provider credentials (#4872).
+pub mod credential_runtime;
 /// Service discovery file writer (Tailscale IP + file-based announcement).
 pub mod discovery;
 /// API error types with Axum HTTP status code mapping.

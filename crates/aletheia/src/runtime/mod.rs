@@ -917,6 +917,10 @@ impl RuntimeBuilder {
             &self.oikos,
             self.config.workspace.root.as_deref(),
         );
+        let credential_runtime =
+            Arc::new(pylon::credential_runtime::CredentialRuntimeManager::new(
+                Arc::clone(&provider_registry),
+            ));
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::clone(&nous_manager),
@@ -926,6 +930,7 @@ impl RuntimeBuilder {
             workspace_root,
             jwt_manager: Arc::new(jwt_manager),
             auth_facade: Arc::new(auth_facade),
+            credential_runtime,
             start_time: Instant::now(),
             auth_mode: self.config.gateway.auth.mode.clone(),
             none_role: self.config.gateway.auth.none_role.clone(),

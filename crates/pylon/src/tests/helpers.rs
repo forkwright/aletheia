@@ -99,12 +99,27 @@ pub(super) async fn test_state_with_auth_mode(
     test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "test harness setup is inherently linear — splitting adds indirection without reducing reader burden"
-)]
 async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
+    include_private_nous: bool,
+    auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_provider_name_private_and_auth_mode(
+        with_provider,
+        None,
+        include_private_nous,
+        auth_mode,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "WHY(#4872): test harness AppState construction with per-provider fixture setup is inherently long; inner expect(disallowed_methods) annotations inflate line count"
+)]
+async fn test_state_with_provider_name_private_and_auth_mode(
+    with_provider: bool,
+    provider_name: Option<&str>,
     include_private_nous: bool,
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
@@ -187,8 +202,9 @@ bind = "localhost"
 
     let mut provider_registry = ProviderRegistry::new();
     if with_provider {
+        let name = provider_name.unwrap_or("Hello from mock!");
         provider_registry.register(Box::new(
-            MockProvider::new("Hello from mock!").models(&["mock-model", "claude-opus-4-20250514"]),
+            MockProvider::new(name).models(&["mock-model", "claude-opus-4-20250514"]),
         ));
     }
     let provider_registry = Arc::new(provider_registry);
@@ -251,6 +267,10 @@ bind = "localhost"
     let metrics_registry = koina::metrics::MetricsRegistry::new();
     crate::metrics::init(&metrics_registry);
 
+    let credential_runtime = Arc::new(crate::credential_runtime::CredentialRuntimeManager::new(
+        Arc::clone(&provider_registry),
+    ));
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -260,6 +280,7 @@ bind = "localhost"
         workspace_root,
         jwt_manager,
         auth_facade,
+        credential_runtime,
         start_time: Instant::now(),
         auth_mode: auth_mode.to_owned(),
         none_role: "admin".to_owned(),
@@ -292,6 +313,19 @@ pub(super) async fn app_no_providers() -> (axum::Router, tempfile::TempDir) {
 
 pub(super) async fn app_with_auth_mode(auth_mode: &str) -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state_with_auth_mode(auth_mode).await;
+    (build_router(state, &test_security_config()), dir)
+}
+
+/// Test helper: app with a registered provider named "anthropic" so that
+/// credential-management mutations exercise the canonical managed-provider path.
+pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = test_state_with_provider_name_private_and_auth_mode(
+        true,
+        Some("anthropic"),
+        false,
+        "token",
+    )
+    .await;
     (build_router(state, &test_security_config()), dir)
 }
 

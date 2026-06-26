@@ -83,33 +83,7 @@ impl TestEnvBuilder {
         let tmp = tempfile::TempDir::new().expect("tmpdir");
         let root = tmp.path();
 
-        // WHY: oikos layout is load-bearing for health checks: missing
-        // directories cause fail-closed behaviour that hides real bugs.
-        for dir in [
-            "nous/syn",
-            "nous/workspace",
-            "shared",
-            "theke",
-            "data",
-            "config",
-            "config/credentials",
-        ] {
-            std::fs::create_dir_all(root.join(dir)).expect("mkdir oikos subdir");
-        }
-
-        std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.")
-            .expect("write SOUL.md");
-        std::fs::write(root.join("theke/USER.md"), "Test user.").expect("write USER.md");
-        std::fs::write(
-            root.join("config/aletheia.toml"),
-            "[gateway]\nport = 18789\nbind = \"localhost\"\n",
-        )
-        .expect("write config");
-        std::fs::write(
-            root.join("config/credentials/anthropic.json"),
-            r#"{"token":"sk-ant-test-key"}"#,
-        )
-        .expect("write credential");
+        setup_instance_layout(root);
 
         let oikos = Arc::new(Oikos::from_root(root));
         let session_store = Arc::new(Mutex::new(
@@ -164,6 +138,10 @@ impl TestEnvBuilder {
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
         let metrics_registry = koina::metrics::MetricsRegistry::new();
         metrics_registry.with_registry(pylon::metrics::register);
+        let credential_runtime =
+            Arc::new(pylon::credential_runtime::CredentialRuntimeManager::new(
+                Arc::clone(&provider_registry),
+            ));
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::new(nous_manager),
@@ -173,6 +151,7 @@ impl TestEnvBuilder {
             workspace_root,
             jwt_manager,
             auth_facade,
+            credential_runtime,
             start_time: Instant::now(),
             auth_mode: self.auth_mode.unwrap_or_else(|| "token".to_owned()),
             none_role: "admin".to_owned(),
@@ -192,6 +171,38 @@ impl TestEnvBuilder {
 
         TestEnv { state, _tmp: tmp }
     }
+}
+
+/// Set up the minimal Oikos directory tree and fixture files that
+/// health-check handlers require to be readable.
+///
+/// WHY: oikos layout is load-bearing for health checks: missing
+/// directories cause fail-closed behaviour that hides real bugs.
+fn setup_instance_layout(root: &std::path::Path) {
+    for dir in [
+        "nous/syn",
+        "nous/workspace",
+        "shared",
+        "theke",
+        "data",
+        "config",
+        "config/credentials",
+    ] {
+        std::fs::create_dir_all(root.join(dir)).expect("mkdir oikos subdir");
+    }
+    std::fs::write(root.join("nous/syn/SOUL.md"), "I am Syn, a test agent.")
+        .expect("write SOUL.md");
+    std::fs::write(root.join("theke/USER.md"), "Test user.").expect("write USER.md");
+    std::fs::write(
+        root.join("config/aletheia.toml"),
+        "[gateway]\nport = 18789\nbind = \"localhost\"\n",
+    )
+    .expect("write config");
+    std::fs::write(
+        root.join("config/credentials/anthropic.json"),
+        r#"{"token":"sk-ant-test-key"}"#,
+    )
+    .expect("write credential");
 }
 
 fn test_auth_state(access_ttl: Option<Duration>) -> (Arc<JwtManager>, Arc<AuthFacade>) {
