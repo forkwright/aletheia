@@ -9,6 +9,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 
+use compact_str::CompactString;
+use parking_lot::RwLock;
+use rustc_hash::FxHashSet;
 use tracing::error;
 
 use crate::data::program::ReturnMutation;
@@ -16,6 +19,7 @@ use crate::data::tuple::TupleT;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::fts::TokenizerCache;
+use crate::fts::indexing::FtsCache;
 use crate::runtime::callback::CallbackCollector;
 use crate::runtime::error::StorageVersionSnafu;
 use crate::runtime::relation::RelationId;
@@ -34,6 +38,8 @@ pub struct SessionTx<'a> {
     pub(crate) relation_store_id: Arc<AtomicU64>,
     pub(crate) temp_store_id: AtomicU32,
     pub(crate) tokenizers: Arc<TokenizerCache>,
+    pub(crate) fts_cache: Arc<RwLock<FtsCache>>,
+    pub(crate) fts_cache_invalidations: FxHashSet<(CompactString, CompactString)>,
 }
 
 pub const CURRENT_STORAGE_VERSION: [u8; 1] = [0x00];
@@ -152,6 +158,17 @@ impl SessionTx<'_> {
     #[must_use = "commit can fail"]
     pub fn commit_tx(&mut self) -> Result<()> {
         self.store_tx.commit()?;
+        // WHY: FTS statistics cached during this transaction may have been
+        // computed against the pre-commit snapshot by concurrent readers. Re-
+        // invalidating on commit ensures the shared cache does not retain stale
+        // values after the indexed relation has been mutated.
+        if !self.fts_cache_invalidations.is_empty() {
+            let mut cache = self.fts_cache.write();
+            for (base_name, idx_name) in &self.fts_cache_invalidations {
+                cache.invalidate(base_name, idx_name);
+            }
+        }
+        self.fts_cache_invalidations.clear();
         Ok(())
     }
 }
@@ -161,7 +178,6 @@ use std::collections::btree_map::Entry;
 use std::iter;
 use std::sync::atomic::Ordering;
 
-use compact_str::CompactString;
 use crossbeam::channel::{Receiver, Sender};
 use itertools::Itertools;
 use parking_lot::ArcRwLockReadGuard;
@@ -191,6 +207,8 @@ impl<'s, S: Storage<'s>> Db<S> {
             relation_store_id: self.relation_store_id.clone(),
             temp_store_id: Default::default(),
             tokenizers: self.tokenizers.clone(),
+            fts_cache: self.fts_cache.clone(),
+            fts_cache_invalidations: Default::default(),
         };
         Ok(ret)
     }
@@ -201,6 +219,8 @@ impl<'s, S: Storage<'s>> Db<S> {
             relation_store_id: self.relation_store_id.clone(),
             temp_store_id: Default::default(),
             tokenizers: self.tokenizers.clone(),
+            fts_cache: self.fts_cache.clone(),
+            fts_cache_invalidations: Default::default(),
         };
         Ok(ret)
     }

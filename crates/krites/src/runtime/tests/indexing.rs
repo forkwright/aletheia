@@ -229,6 +229,88 @@ fn when_fts_near_has_three_literals_chain_must_hold() {
 }
 
 #[test]
+fn fts_bm25_cache_is_shared_across_run_script_calls_and_invalidated_on_write() {
+    // WHY: The shared FTS cache must survive separate `run_script` invocations
+    // (avoiding a full index scan per query) and must be cleared when the
+    // indexed relation is mutated, so that subsequent searches see fresh stats.
+    use compact_str::CompactString;
+
+    let db = DbInstance::default();
+    db.run_default(r":create docs {id: String => text: String}")
+        .expect("creating docs relation should succeed");
+    db.run_default(
+        r"?[id, text] <- [
+            ['a', 'the quick brown fox'],
+            ['b', 'the lazy dog'],
+            ['c', 'quick brown quick']
+        ] :put docs {id => text}",
+    )
+    .expect("inserting initial docs should succeed");
+    db.run_default(
+        r"::fts create docs:fts {
+            extractor: text,
+            tokenizer: Simple,
+            filters: [Lowercase]
+        }",
+    )
+    .expect("creating FTS index should succeed");
+
+    let base_name = CompactString::from("docs");
+    let idx_name = CompactString::from("docs:fts");
+
+    // First BM25 search populates the shared cache.
+    let first = db
+        .run_default(
+            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score, score_kind: 'bm25'}",
+        )
+        .expect("first FTS search should succeed");
+    assert!(
+        db.fts_cache.read().is_cached(&base_name, &idx_name),
+        "first BM25 search should cache total_n and avgdl"
+    );
+
+    // A second run_script call should reuse the cached stats.
+    let second = db
+        .run_default(
+            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score, score_kind: 'bm25'}",
+        )
+        .expect("second FTS search should succeed");
+    assert_eq!(
+        first.rows.len(),
+        second.rows.len(),
+        "cached and non-cached searches should return the same rows"
+    );
+
+    // Inserting a new document must invalidate the cache.
+    db.run_default(r"?[id, text] <- [['d', 'quick quick quick quick']] :put docs {id => text}")
+        .expect("inserting additional doc should succeed");
+    assert!(
+        !db.fts_cache.read().is_cached(&base_name, &idx_name),
+        "FTS cache should be invalidated after indexing a new document"
+    );
+
+    // The next search recomputes and reflects the new document.
+    let after_invalidate = db
+        .run_default(
+            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score, score_kind: 'bm25'}",
+        )
+        .expect("FTS search after invalidation should succeed");
+    assert!(
+        db.fts_cache.read().is_cached(&base_name, &idx_name),
+        "FTS cache should be repopulated after recomputing"
+    );
+    let ids_after: std::collections::HashSet<String> = after_invalidate
+        .rows
+        .iter()
+        .filter_map(|r| r[0].get_str().map(str::to_owned))
+        .collect();
+    assert!(
+        ids_after.contains("d"),
+        "search after invalidation must include the newly inserted document"
+    );
+}
+
+#[test]
 fn when_lsh_index_created_exact_match_found_across_thresholds() {
     for i in 1..10 {
         let f = f64::from(i) / 10.;

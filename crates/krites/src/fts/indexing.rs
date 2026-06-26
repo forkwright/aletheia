@@ -30,6 +30,24 @@ pub(crate) struct FtsCache {
 }
 
 impl FtsCache {
+    /// Remove cached statistics for a base relation and its FTS index.
+    ///
+    /// WHY: `avgdl` and `total_n` change only when documents are inserted or
+    /// deleted from the indexed relation. Invalidating on those mutations keeps
+    /// the shared cache consistent with the committed index state.
+    pub(crate) fn invalidate(&mut self, base_name: &CompactString, idx_name: &CompactString) {
+        self.total_n_cache.remove(base_name);
+        self.avg_dl_cache.remove(idx_name);
+    }
+
+    /// Whether both `total_n` and `avgdl` are cached for the given relations.
+    #[cfg(test)]
+    pub(crate) fn is_cached(&self, base_name: &CompactString, idx_name: &CompactString) -> bool {
+        self.total_n_cache.contains_key(base_name) && self.avg_dl_cache.contains_key(idx_name)
+    }
+}
+
+impl FtsCache {
     /// Get total document count for a relation (cached).
     ///
     /// # Complexity
@@ -521,23 +539,26 @@ impl SessionTx<'_> {
         filter_code: &Option<(Vec<Bytecode>, SourceSpan)>,
         tokenizer: &TextAnalyzer,
         stack: &mut Vec<DataValue>,
-        cache: &mut FtsCache,
     ) -> Result<Vec<Tuple>> {
         let ast = parse_fts_query(q)?.tokenize(tokenizer);
         if ast.is_empty() {
             return Ok(vec![]);
         }
-        let n = if config.score_kind == FtsScoreKind::TfIdf
-            || config.score_kind == FtsScoreKind::Bm25
-        {
-            cache.get_n_for_relation(&config.base_handle, self)?
-        } else {
-            0
-        };
-        let avgdl = if config.score_kind == FtsScoreKind::Bm25 {
-            cache.get_avg_dl_for_relation(&config.idx_handle, self)?
-        } else {
-            0.0
+        let (n, avgdl) = {
+            let mut cache = self.fts_cache.write();
+            let n = if config.score_kind == FtsScoreKind::TfIdf
+                || config.score_kind == FtsScoreKind::Bm25
+            {
+                cache.get_n_for_relation(&config.base_handle, self)?
+            } else {
+                0
+            };
+            let avgdl = if config.score_kind == FtsScoreKind::Bm25 {
+                cache.get_avg_dl_for_relation(&config.idx_handle, self)?
+            } else {
+                0.0
+            };
+            (n, avgdl)
         };
         let mut result: Vec<_> = self
             .fts_search_impl(&ast, config, n, avgdl)?
@@ -644,6 +665,7 @@ impl SessionTx<'_> {
             let val_bytes = idx_handle.encode_val_only_for_store(&val, SourceSpan::default())?;
             self.store_tx.put(&key_bytes, &val_bytes)?;
         }
+        self.invalidate_fts_cache(&rel_handle.name, &idx_handle.name);
         Ok(())
     }
     /// Remove a document from the full-text search index.
@@ -693,7 +715,15 @@ impl SessionTx<'_> {
             let key_bytes = idx_handle.encode_key_for_store(&key, SourceSpan::default())?;
             self.store_tx.del(&key_bytes)?;
         }
+        self.invalidate_fts_cache(&rel_handle.name, &idx_handle.name);
         Ok(())
+    }
+
+    fn invalidate_fts_cache(&mut self, base_name: &CompactString, idx_name: &CompactString) {
+        self.fts_cache_invalidations
+            .insert((base_name.clone(), idx_name.clone()));
+        let mut cache = self.fts_cache.write();
+        cache.invalidate(base_name, idx_name);
     }
 }
 
