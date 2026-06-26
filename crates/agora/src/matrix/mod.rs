@@ -363,6 +363,10 @@ async fn sync_loop(
                         consecutive_failures = 0;
                         tokio::time::sleep(interval).await;
                     }
+                    Err(error::Error::ReceiverDropped { .. }) => {
+                        tracing::info!("receiver dropped, stopping Matrix sync");
+                        return;
+                    }
                     Err(e) => {
                         consecutive_failures = consecutive_failures.saturating_add(1);
                         tracing::warn!(
@@ -422,8 +426,9 @@ async fn sync_once(
             if let Some(message) = extract_message(room_id, event, own_user_id)
                 && tx.send(message).await.is_err()
             {
-                tracing::info!("receiver dropped, stopping Matrix sync");
-                return Ok(());
+                // WHY: the listener has shut down; returning an error lets
+                // sync_loop exit instead of issuing another long-poll.
+                return error::ReceiverDroppedSnafu.fail();
             }
         }
     }
