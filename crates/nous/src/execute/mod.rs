@@ -30,9 +30,9 @@ use organon::types::ToolContext;
 use self::dispatch::{
     DispatchResult, ToolDispatchPolicy, build_messages, classify_signals, dispatch_tools,
 };
+pub(crate) use self::resolve::resolve_turn_model;
 use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
-    resolve_turn_model,
 };
 use crate::approval::ApprovalGate;
 use crate::config::NousConfig;

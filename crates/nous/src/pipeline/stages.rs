@@ -22,7 +22,7 @@ use crate::bootstrap::{BootstrapFileCache, BootstrapSection, LlmRecipe, TaskHint
 use crate::compact::{CompactConfig, CompactReason, map_strategy, select_prompt};
 use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
-use crate::execute::resolve::resolve_turn_model;
+use crate::execute::resolve_turn_model;
 use crate::history::{self, HistoryConfig};
 use crate::hooks::registry::HookRegistry;
 use crate::session::SessionState;

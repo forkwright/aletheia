@@ -291,11 +291,15 @@ pub(crate) fn finalize(
     if let Some(degraded) = &result.degraded {
         let provenance = degraded.provenance();
         completed.attempted_model = Some(provenance.attempted_model.clone());
-        completed.routed_model_context = provenance.routed_model_context.clone();
+        completed
+            .routed_model_context
+            .clone_from(&provenance.routed_model_context);
         completed.error_class = Some(provenance.error_class.clone());
         completed.error_hash = Some(provenance.error_message_hash.clone());
         completed.degradation_source = Some(provenance.source.clone());
-        completed.distillation_id = provenance.distillation_id.clone();
+        completed
+            .distillation_id
+            .clone_from(&provenance.distillation_id);
         completed.user_content_saved = Some(messages_persisted >= 1);
     }
 

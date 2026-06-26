@@ -24,6 +24,8 @@
 //! and cannot be masked with cached content. Use [`is_storage_failure`] to
 //! identify these explicitly for observability and alerting purposes.
 
+use std::fmt::Write as _;
+
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
@@ -135,24 +137,23 @@ pub fn is_storage_failure(err: &error::Error) -> bool {
 /// avoid trivial collisions in a single session's degraded turns.
 fn short_hash(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
-    let hex = format!("{digest:x}");
-    // WHY: SHA-256 hex is always 64 characters; `get` avoids a clippy
-    // `string_slice` warning while still producing a 16-character prefix.
-    hex.get(..16).map_or(hex, |s| s.to_owned())
+    // WHY: GenericArray does not implement LowerHex; iterate bytes instead.
+    let mut hex = String::with_capacity(64);
+    for b in &digest {
+        write!(hex, "{b:02x}").ok();
+    }
+    // WHY: SHA-256 is always 64 hex chars; truncate to 16 for compact durable records.
+    hex.truncate(16);
+    hex
 }
 
 fn error_class_name(class: ErrorClass) -> &'static str {
     // WHY: `ErrorClass` is `#[non_exhaustive]` in `koina`; the wildcard arm
     // prevents a downstream crate from failing to compile when a variant is added.
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "ErrorClass is non_exhaustive across crate boundary"
-    )]
     match class {
         ErrorClass::Transient => "transient",
         ErrorClass::Permanent => "permanent",
-        ErrorClass::Unknown => "unknown",
-        _ => "unknown",
+        ErrorClass::Unknown | _ => "unknown",
     }
 }
 
@@ -292,6 +293,7 @@ pub fn build_degraded_response(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
