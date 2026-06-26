@@ -335,8 +335,45 @@ async fn restart_log_records_events() {
 
     let log = wd.restart_log();
     assert_eq!(log.len(), 1, "should have one restart event");
-    assert_eq!(log[0].process_id, "agent-1");
-    assert_eq!(log[0].attempt, 1);
+    assert_eq!(log.front().unwrap().process_id, "agent-1");
+    assert_eq!(log.front().unwrap().attempt, 1);
+}
+
+#[tokio::test]
+async fn restart_log_is_capped() {
+    let token = CancellationToken::new();
+    let config = WatchdogConfig {
+        heartbeat_timeout: Duration::from_millis(50),
+        check_interval: Duration::from_millis(10),
+        max_restarts: 5,
+        ..WatchdogConfig::default()
+    };
+    let mut wd = Watchdog::new(config, token);
+
+    for i in 0..150 {
+        let id = format!("agent-{i}");
+        let proc = Arc::new(MockProcess::new(&id));
+        wd.register(proc);
+        wd.processes.get_mut(&id).unwrap().last_heartbeat =
+            Instant::now() - Duration::from_millis(100);
+    }
+
+    wd.check_processes().await;
+
+    let log = wd.restart_log();
+    assert_eq!(
+        log.len(),
+        RESTART_LOG_CAP,
+        "restart log should be capped at RESTART_LOG_CAP"
+    );
+    assert!(
+        !log.iter().any(|e| e.process_id == "agent-0"),
+        "oldest events should be evicted when the cap is exceeded"
+    );
+    assert!(
+        log.iter().any(|e| e.process_id == "agent-149"),
+        "newest event should be retained after capping"
+    );
 }
 
 #[test]
