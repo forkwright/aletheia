@@ -407,10 +407,15 @@ async fn validated_path_async_read_round_trip() {
         .expect("valid path should pass validation");
 
     let data = b"async memory gate contents";
-    vp.async_write(data).await.expect("async_write should succeed");
+    vp.async_write(data)
+        .await
+        .expect("async_write should succeed");
 
     let read_back = vp.async_read().await.expect("async_read should succeed");
-    assert_eq!(read_back, data, "async_read must return async_write payload");
+    assert_eq!(
+        read_back, data,
+        "async_read must return async_write payload"
+    );
 }
 
 #[tokio::test]
@@ -421,14 +426,12 @@ async fn validated_path_async_write_creates_parent_dirs() {
     let root = dir.path();
     std::fs::create_dir_all(root.join(MemoryScope::User.as_dir_name())).expect("mkdir scope");
 
-    let vp = validate_memory_path(
-        Path::new("deeply/nested/file.md"),
-        root,
-        MemoryScope::User,
-    )
-    .expect("valid nested path should pass validation");
+    let vp = validate_memory_path(Path::new("deeply/nested/file.md"), root, MemoryScope::User)
+        .expect("valid nested path should pass validation");
 
-    vp.async_write(b"nested data").await.expect("async_write should create parents");
+    vp.async_write(b"nested data")
+        .await
+        .expect("async_write should create parents");
 
     let read_back = vp.async_read().await.expect("async_read should succeed");
     assert_eq!(read_back, b"nested data");
@@ -445,6 +448,9 @@ async fn validated_path_async_read_missing_file_errors() {
     let vp = validate_memory_path(Path::new("missing.md"), root, MemoryScope::Reference)
         .expect("valid path should pass validation");
 
-    let err = vp.async_read().await.expect_err("async_read on missing file must error");
+    let err = vp
+        .async_read()
+        .await
+        .expect_err("async_read on missing file must error");
     assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
 }
