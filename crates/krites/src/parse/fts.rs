@@ -271,10 +271,7 @@ mod tests {
         let src = " NEAR(abc def \"ghi\"^22.8) ";
         let res = parse_fts_query(src).unwrap().flatten();
         assert!(
-            matches!(
-                &res,
-                FtsExpr::Near(FtsNear { distance: 10, .. })
-            ),
+            matches!(&res, FtsExpr::Near(FtsNear { distance: 10, .. })),
             "NEAR query should parse to a Near node with default distance 10"
         );
         if let FtsExpr::Near(FtsNear { literals, distance }) = res {

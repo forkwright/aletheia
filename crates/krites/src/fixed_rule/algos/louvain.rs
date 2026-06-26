@@ -407,7 +407,10 @@ mod tests {
         let hierarchy = louvain(&graph, 0., 100, Poison::default()).unwrap();
 
         // INVARIANT: Louvain must produce at least one partition for a non-empty graph.
-        assert!(!hierarchy.is_empty(), "Louvain must return at least one hierarchy level");
+        assert!(
+            !hierarchy.is_empty(),
+            "Louvain must return at least one hierarchy level"
+        );
 
         // INVARIANT: the first level assigns every original node to a community.
         let first = &hierarchy[0];
