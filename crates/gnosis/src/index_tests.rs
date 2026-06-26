@@ -279,8 +279,7 @@ fn index_file_uses_passed_content_not_disk_content() {
     // creating a TOCTOU window between hash computation and parsing. After the
     // refactor, index_file must index the exact content passed to it.
     std::fs::write(tmp.path(), "pub fn alpha() {}").expect("write disk");
-    index_file(&store, "krate", &path_str, "", "pub fn beta() {}")
-        .expect("index passed content");
+    index_file(&store, "krate", &path_str, "", "pub fn beta() {}").expect("index passed content");
 
     let symbols = store.symbols().expect("query");
     let beta_count = symbols
