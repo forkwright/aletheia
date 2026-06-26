@@ -198,8 +198,10 @@ fn callback_channel_does_not_grow_unboundedly_with_slow_consumer() {
     // WHY: Send more events than the channel can hold without consuming. The
     // producer must drop on full rather than accumulate unbounded tuples.
     for i in 0..10 {
-        db.run_default(&format!("?[k, v] <- [[{i}, {i}]] :put bounded_test {{k => v}}"))
-            .expect("put should succeed");
+        db.run_default(&format!(
+            "?[k, v] <- [[{i}, {i}]] :put bounded_test {{k => v}}"
+        ))
+        .expect("put should succeed");
     }
 
     assert!(
