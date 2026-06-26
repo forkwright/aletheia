@@ -529,7 +529,7 @@ impl LlmProvider for SlowDeltaEmitter {
 }
 
 /// Tool executor that drops the stream receiver when it runs, simulating a
-/// client disconnect after a tool_use response has been dispatched.
+/// client disconnect after a `tool_use` response has been dispatched.
 struct DisconnectOnExecute {
     rx: tokio::sync::Mutex<Option<tokio::sync::mpsc::Receiver<TurnStreamEvent>>>,
 }

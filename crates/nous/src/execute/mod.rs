@@ -574,7 +574,6 @@ pub async fn execute_streaming(
         if stream_tx.is_closed() {
             info!("client disconnected, stopping LLM turn");
             STOP_REASON_CLIENT_DISCONNECT.clone_into(&mut final_stop_reason);
-            client_disconnected = true;
             break;
         }
 
