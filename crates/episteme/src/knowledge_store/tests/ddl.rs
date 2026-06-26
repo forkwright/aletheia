@@ -11,10 +11,37 @@ use super::super::*;
 
 #[test]
 fn ddl_templates_are_valid_strings() {
-    assert!(
-        KNOWLEDGE_DDL.len() == 16,
-        "expected 16 DDL entries (including type_hierarchy, derived_facts, defaults, published_facts, provenance, embedding_meta, entity_flags, derived_source_revision, derived_rule_watermarks)"
+    // WHY: every relation has a named constant so adding a new one cannot
+    // silently shift positional indices in migration.rs.
+    let ddls: &[(&str, &str)] = &[
+        (FACTS_DDL, "facts"),
+        (RELATIONSHIPS_DDL, "relationships"),
+        (FACT_ENTITIES_DDL, "fact_entities"),
+        (MERGE_AUDIT_DDL, "merge_audit"),
+        (PENDING_MERGES_DDL, "pending_merges"),
+        (CAUSAL_EDGES_DDL, "causal_edges"),
+        (TYPE_HIERARCHY_DDL, "type_hierarchy"),
+        (DERIVED_FACTS_DDL, "derived_facts"),
+        (DEFAULTS_DDL, "defaults"),
+        (PUBLISHED_FACTS_DDL, "published_facts"),
+        (PROVENANCE_DDL, "provenance"),
+        (EMBEDDING_META_DDL, "embedding_meta"),
+        (ENTITY_FLAGS_DDL, "entity_flags"),
+        (DERIVED_SOURCE_REVISION_DDL, "derived_source_revision"),
+        (DERIVED_RULE_WATERMARKS_DDL, "derived_rule_watermarks"),
+    ];
+    assert_eq!(
+        ddls.len(),
+        15,
+        "expected 15 non-sentinel DDL entries (entity DDL is dim-parameterized and created separately)"
     );
+    for (ddl, name) in ddls {
+        assert!(
+            ddl.contains(&format!(":create {name}")),
+            "DDL for {name} should declare its relation"
+        );
+    }
+
     let emb = embeddings_ddl(1024);
     assert!(emb.contains("1024"));
     let idx = hnsw_ddl(1024);
@@ -23,9 +50,7 @@ fn ddl_templates_are_valid_strings() {
     assert!(fts.contains("content_fts"));
     assert!(fts.contains("bm25") || fts.contains("Simple"));
     assert!(
-        KNOWLEDGE_DDL
-            .first()
-            .is_some_and(|ddl| ddl.contains("sensitivity: String default 'public'")),
+        FACTS_DDL.contains("sensitivity: String default 'public'"),
         "facts DDL should persist sensitivity with documented default"
     );
 }
