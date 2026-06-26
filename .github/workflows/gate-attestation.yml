@@ -109,6 +109,12 @@ jobs:
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: cargo check fuzz targets
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        env:
+          CARGO_TARGET_DIR: target
+        run: cargo check --manifest-path fuzz/Cargo.toml --bins
+
       - name: cargo nextest run
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo nextest run --profile ci --workspace --features test-core

@@ -67,8 +67,7 @@ fuzz_target!(|data: &[u8]| {
         let default_config = taxis::config::AletheiaConfig::default();
         let json = serde_json::to_vec(&default_config);
         if let Ok(bytes) = json {
-            let roundtrip =
-                serde_json::from_slice::<taxis::config::AletheiaConfig>(&bytes);
+            let roundtrip = serde_json::from_slice::<taxis::config::AletheiaConfig>(&bytes);
             assert!(roundtrip.is_ok(), "default config roundtrip must not fail");
         }
     }

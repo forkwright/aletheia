@@ -14,8 +14,7 @@ use libfuzzer_sys::fuzz_target;
 use mneme::id::FactId;
 use mneme::knowledge::{
     EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-    FactType, ForgetReason, MemoryScope, Visibility, far_future, format_timestamp,
-    parse_timestamp,
+    FactType, ForgetReason, MemoryScope, Visibility, far_future, format_timestamp, parse_timestamp,
 };
 use mneme::knowledge_store::KnowledgeStore;
 
@@ -87,7 +86,7 @@ fuzz_target!(|data: &[u8]| {
 
     // Clamp content to MAX_CONTENT_LENGTH to focus on store logic, not validation.
     // WHY: floor_char_boundary + .get() avoids panics on UTF-8 boundaries in fuzz input.
-    let max_len = mneme::knowledge::MAX_CONTENT_LENGTH;
+    let max_len = eidos::knowledge::MAX_CONTENT_LENGTH;
     let content: &str = if content.len() > max_len {
         let end = content.floor_char_boundary(max_len);
         content.get(..end).unwrap_or(&content)
@@ -149,6 +148,7 @@ fuzz_target!(|data: &[u8]| {
         fact_type: fact_type.as_str().to_owned(),
         content: content.to_string(),
         scope,
+        project_id: None,
         sensitivity,
         visibility,
         temporal: FactTemporal {
