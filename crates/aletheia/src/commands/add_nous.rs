@@ -335,6 +335,7 @@ fn apply_config_update(prepared: &PreparedConfig) -> Result<()> {
 ///
 /// WHY: Convenience wrapper for direct callers/tests; `run` uses the split
 /// prepare/apply path so it can validate before scaffolding.
+#[cfg(test)]
 fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     let prepared = prepare_config_update(oikos, args)?;
     apply_config_update(&prepared)
@@ -826,7 +827,7 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(run(Some(&dir.path().to_path_buf()), &args))
-            .expect("first add-nous should succeed");
+            .unwrap();
 
         let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
         assert!(
@@ -857,9 +858,12 @@ mod tests {
         let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
 
         // WHY: restore writable permissions so tempfile can clean up the directory.
-        let mut perms = std::fs::metadata(&config_dir).unwrap().permissions();
-        perms.set_readonly(false);
-        std::fs::set_permissions(&config_dir, perms).unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&config_dir).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&config_dir, perms).unwrap();
+        }
 
         assert!(
             result.is_err(),
