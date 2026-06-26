@@ -502,6 +502,15 @@ impl NousManager {
             .and_then(|tool_services| tool_services.blackboard_store.as_ref())
     }
 
+    /// Access the shared session store used by managed actors, if configured.
+    ///
+    /// WHY(#4801): non-turn dispatch paths need to attach durable records to the
+    /// same session history as normal actor turns.
+    #[must_use]
+    pub fn session_store(&self) -> Option<Arc<TokioMutex<SessionStore>>> {
+        self.session_store.clone()
+    }
+
     /// Look up a config by nous id.
     #[must_use]
     pub fn get_config(&self, nous_id: &str) -> Option<&NousConfig> {

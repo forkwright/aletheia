@@ -1,16 +1,83 @@
 //! Background dispatch loop: routes inbound messages to nous actors.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
 use tokio::task::{JoinHandle, JoinSet};
 use tracing::{Instrument, debug, info, warn};
 
 use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
 use agora::registry::ChannelRegistry;
-use agora::router::{MessageRouter, reply_target};
+use agora::router::{MessageRouter, RouteDecision, reply_target};
 use agora::types::{InboundMessage, SendParams};
+use mneme::types::Role;
 use nous::manager::NousManager;
+
+use crate::error::{Error as AletheiaError, Result as AletheiaResult};
+
+const COMMAND_RECORD_CATEGORY: &str = "context";
+const COMMAND_RECORD_VERSION: u32 = 1;
+
+struct PreparedCommandRecord {
+    store: Arc<tokio::sync::Mutex<mneme::store::SessionStore>>,
+    session_id: String,
+    idempotency_key: String,
+}
+
+enum CommandPrepareOutcome {
+    Fresh(PreparedCommandRecord),
+    Duplicate { reply_text: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CommandLifecycleRecord {
+    version: u32,
+    record_type: String,
+    idempotency_key: String,
+    session_id: String,
+    nous_id: String,
+    session_key: String,
+    origin: CommandOriginRecord,
+    command: CommandInvocationRecord,
+    result: CommandResultRecord,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CommandOriginRecord {
+    channel: String,
+    sender: String,
+    sender_name: Option<String>,
+    group_id: Option<String>,
+    thread_id: Option<String>,
+    transport_message_id: Option<String>,
+    inbound_timestamp_ms: u64,
+    reply_target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CommandInvocationRecord {
+    name: String,
+    arguments_redacted: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CommandResultRecord {
+    status: CommandResponseStatus,
+    duration_ms: u128,
+    failure_class: Option<String>,
+    reply_text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum CommandResponseStatus {
+    Success,
+    Failed,
+}
 
 /// Spawn a background task that dispatches inbound messages to nous actors.
 ///
@@ -95,6 +162,19 @@ async fn dispatch_one(
             command = cmd.name(),
             "dispatching !-command"
         );
+        let prepared_record = prepare_command_record(&msg, &cmd, &decision, &nous_manager).await;
+        if let Some(CommandPrepareOutcome::Duplicate { reply_text }) = prepared_record.as_ref() {
+            debug!(
+                nous_id = %decision.nous_id,
+                session_key = %decision.session_key,
+                command = cmd.name(),
+                "replaying duplicate !-command response"
+            );
+            send_reply(&msg, reply_text, &channel_registry).await;
+            return;
+        }
+
+        let started_at = Instant::now();
         let reply_text = execute_command(
             &cmd,
             decision.nous_id,
@@ -103,6 +183,19 @@ async fn dispatch_one(
             &channel_registry,
         )
         .await;
+        if let Some(CommandPrepareOutcome::Fresh(record)) = prepared_record
+            && let Err(error) =
+                persist_command_record(&record, &msg, &cmd, &decision, &reply_text, started_at)
+                    .await
+        {
+            warn!(
+                error = %error,
+                nous_id = %decision.nous_id,
+                session_key = %decision.session_key,
+                command = cmd.name(),
+                "failed to persist !-command record"
+            );
+        }
         send_reply(&msg, &reply_text, &channel_registry).await;
         return;
     }
@@ -131,6 +224,367 @@ async fn dispatch_one(
     };
 
     send_reply(&msg, &turn_result.content, &channel_registry).await;
+}
+
+async fn prepare_command_record(
+    msg: &InboundMessage,
+    cmd: &command::Command,
+    decision: &RouteDecision<'_>,
+    nous_manager: &NousManager,
+) -> Option<CommandPrepareOutcome> {
+    let Some(store) = nous_manager.session_store() else {
+        warn!(
+            nous_id = %decision.nous_id,
+            session_key = %decision.session_key,
+            command = cmd.name(),
+            "no session store configured; !-command will not be durable"
+        );
+        return None;
+    };
+
+    let model = nous_manager
+        .get_config(decision.nous_id)
+        .map(|config| config.generation.model.clone());
+    let candidate_session_id = koina::id::SessionId::new().to_string();
+    let idempotency_key = command_idempotency_key(msg, cmd, decision);
+
+    let session_id = {
+        let guard = store.lock().await;
+        let session = match guard.find_or_create_session(
+            &candidate_session_id,
+            decision.nous_id,
+            &decision.session_key,
+            model.as_deref(),
+            None,
+        ) {
+            Ok(session) => session,
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    nous_id = %decision.nous_id,
+                    session_key = %decision.session_key,
+                    command = cmd.name(),
+                    "failed to resolve session for !-command record"
+                );
+                return None;
+            }
+        };
+
+        match find_command_record_by_idempotency_key(&guard, &session.id, &idempotency_key) {
+            Ok(Some(record)) => {
+                return Some(CommandPrepareOutcome::Duplicate {
+                    reply_text: record.result.reply_text,
+                });
+            }
+            Ok(None) => session.id,
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    session_id = %session.id,
+                    command = cmd.name(),
+                    "failed to scan prior !-command records; proceeding without duplicate replay"
+                );
+                session.id
+            }
+        }
+    };
+
+    Some(CommandPrepareOutcome::Fresh(PreparedCommandRecord {
+        store,
+        session_id,
+        idempotency_key,
+    }))
+}
+
+async fn persist_command_record(
+    prepared: &PreparedCommandRecord,
+    msg: &InboundMessage,
+    cmd: &command::Command,
+    decision: &RouteDecision<'_>,
+    reply_text: &str,
+    started_at: Instant,
+) -> AletheiaResult<()> {
+    let duration = started_at.elapsed();
+    let record = build_command_lifecycle_record(
+        prepared,
+        msg,
+        cmd,
+        decision,
+        reply_text,
+        duration,
+        jiff::Timestamp::now().to_string(),
+    );
+    let record_json = serde_json::to_string(&record).map_err(|error| {
+        AletheiaError::msg(format!("serialize command lifecycle record: {error}"))
+    })?;
+    let input_tokens = estimate_tokens(&msg.text);
+    let output_tokens = estimate_tokens(reply_text);
+
+    let guard = prepared.store.lock().await;
+    if find_command_record_by_idempotency_key(
+        &guard,
+        &prepared.session_id,
+        &prepared.idempotency_key,
+    )
+    .map_err(|error| AletheiaError::msg(format!("scan existing command record: {error}")))?
+    .is_some()
+    {
+        return Ok(());
+    }
+
+    guard
+        .append_message(
+            &prepared.session_id,
+            Role::User,
+            &msg.text,
+            None,
+            None,
+            input_tokens,
+        )
+        .map_err(|error| {
+            AletheiaError::msg(format!("append command invocation message: {error}"))
+        })?;
+    guard
+        .append_message(
+            &prepared.session_id,
+            Role::Assistant,
+            reply_text,
+            None,
+            None,
+            output_tokens,
+        )
+        .map_err(|error| AletheiaError::msg(format!("append command response message: {error}")))?;
+    guard
+        .add_note(
+            &prepared.session_id,
+            decision.nous_id,
+            COMMAND_RECORD_CATEGORY,
+            &record_json,
+        )
+        .map_err(|error| AletheiaError::msg(format!("append command lifecycle note: {error}")))?;
+    guard
+        .ensure_durable()
+        .map_err(|error| AletheiaError::msg(format!("sync command lifecycle note: {error}")))?;
+
+    Ok(())
+}
+
+fn find_command_record_by_idempotency_key(
+    store: &mneme::store::SessionStore,
+    session_id: &str,
+    idempotency_key: &str,
+) -> AletheiaResult<Option<CommandLifecycleRecord>> {
+    let notes = store
+        .get_notes(session_id)
+        .map_err(|error| AletheiaError::msg(format!("read session notes: {error}")))?;
+    Ok(notes
+        .into_iter()
+        .filter(|note| note.category == COMMAND_RECORD_CATEGORY)
+        .filter_map(|note| serde_json::from_str::<CommandLifecycleRecord>(&note.content).ok())
+        .find(|record| {
+            record.record_type == "agora_command" && record.idempotency_key == idempotency_key
+        }))
+}
+
+fn build_command_lifecycle_record(
+    prepared: &PreparedCommandRecord,
+    msg: &InboundMessage,
+    cmd: &command::Command,
+    decision: &RouteDecision<'_>,
+    reply_text: &str,
+    duration: Duration,
+    created_at: String,
+) -> CommandLifecycleRecord {
+    CommandLifecycleRecord {
+        version: COMMAND_RECORD_VERSION,
+        record_type: "agora_command".to_owned(),
+        idempotency_key: prepared.idempotency_key.clone(),
+        session_id: prepared.session_id.clone(),
+        nous_id: decision.nous_id.to_owned(),
+        session_key: decision.session_key.clone(),
+        origin: CommandOriginRecord {
+            channel: msg.channel.clone(),
+            sender: msg.sender.clone(),
+            sender_name: msg.sender_name.clone(),
+            group_id: msg.group_id.clone(),
+            thread_id: extract_raw_thread_id(msg.raw.as_ref()),
+            transport_message_id: extract_raw_message_id(msg.raw.as_ref()),
+            inbound_timestamp_ms: msg.timestamp,
+            reply_target: reply_target(msg),
+        },
+        command: CommandInvocationRecord {
+            name: cmd.name().to_owned(),
+            arguments_redacted: command_arguments_redacted(&msg.text),
+        },
+        result: CommandResultRecord {
+            status: command_response_status(cmd),
+            duration_ms: duration.as_millis(),
+            failure_class: command_failure_class(cmd).map(str::to_owned),
+            reply_text: reply_text.to_owned(),
+        },
+        created_at,
+    }
+}
+
+fn command_response_status(cmd: &command::Command) -> CommandResponseStatus {
+    match cmd {
+        command::Command::Unknown { .. } => CommandResponseStatus::Failed,
+        _ => CommandResponseStatus::Success,
+    }
+}
+
+fn command_failure_class(cmd: &command::Command) -> Option<&'static str> {
+    match cmd {
+        command::Command::Unknown { .. } => Some("unknown_command"),
+        _ => None,
+    }
+}
+
+fn estimate_tokens(content: &str) -> i64 {
+    let len = i64::try_from(content.len()).unwrap_or(i64::MAX - 3);
+    len.saturating_add(3) / 4
+}
+
+fn command_idempotency_key(
+    msg: &InboundMessage,
+    cmd: &command::Command,
+    decision: &RouteDecision<'_>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, "agora-command-v1");
+    hash_field(&mut hasher, &msg.channel);
+    hash_field(&mut hasher, &msg.sender);
+    hash_field(&mut hasher, msg.group_id.as_deref().unwrap_or(""));
+    hash_field(&mut hasher, decision.nous_id);
+    hash_field(&mut hasher, &decision.session_key);
+    hash_field(&mut hasher, cmd.name());
+    hash_field(&mut hasher, &msg.text);
+    hash_field(&mut hasher, &msg.timestamp.to_string());
+    hash_field(
+        &mut hasher,
+        extract_raw_message_id(msg.raw.as_ref())
+            .as_deref()
+            .unwrap_or(""),
+    );
+    hex_encode_digest(hasher.finalize())
+}
+
+fn hex_encode_digest(digest: impl IntoIterator<Item = u8>) -> String {
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
+        encoded.push(hex_digit(byte >> 4));
+        encoded.push(hex_digit(byte & 0x0f));
+    }
+    encoded
+}
+
+fn hex_digit(nibble: u8) -> char {
+    match nibble {
+        0..=9 => char::from(b'0' + nibble),
+        10..=15 => char::from(b'a' + (nibble - 10)),
+        _ => '0',
+    }
+}
+
+fn hash_field(hasher: &mut Sha256, value: &str) {
+    hasher.update(value.len().to_string().as_bytes());
+    hasher.update(b":");
+    hasher.update(value.as_bytes());
+    hasher.update(b";");
+}
+
+fn command_arguments_redacted(text: &str) -> String {
+    let without_bang = text.trim().strip_prefix('!').unwrap_or(text).trim();
+    let args = without_bang
+        .split_once(char::is_whitespace)
+        .map_or("", |(_name, rest)| rest.trim());
+    redact_command_arguments(args)
+}
+
+fn redact_command_arguments(args: &str) -> String {
+    let mut redacted = Vec::new();
+    let mut redact_next = false;
+
+    for token in args.split_whitespace() {
+        if redact_next {
+            redacted.push("[REDACTED]".to_owned());
+            redact_next = false;
+            continue;
+        }
+
+        if let Some((key, _value)) = token.split_once('=')
+            && is_sensitive_argument_name(key)
+        {
+            redacted.push(format!("{key}=[REDACTED]"));
+            continue;
+        }
+
+        if is_sensitive_argument_name(token) {
+            redacted.push(token.to_owned());
+            redact_next = true;
+            continue;
+        }
+
+        if looks_like_secret_token(token) {
+            redacted.push("[REDACTED]".to_owned());
+            continue;
+        }
+
+        redacted.push(token.to_owned());
+    }
+
+    redacted.join(" ")
+}
+
+fn is_sensitive_argument_name(name: &str) -> bool {
+    let normalized = name
+        .trim_start_matches('-')
+        .trim_end_matches(':')
+        .to_ascii_lowercase();
+    normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("passwd")
+        || normalized.contains("api_key")
+        || normalized.contains("apikey")
+        || normalized == "key"
+}
+
+fn looks_like_secret_token(token: &str) -> bool {
+    token.len() >= 48
+        && token
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
+fn extract_raw_message_id(raw: Option<&serde_json::Value>) -> Option<String> {
+    let raw = raw?;
+    raw_path_to_string(raw, &["event_id"])
+        .or_else(|| raw_path_to_string(raw, &["eventId"]))
+        .or_else(|| raw_path_to_string(raw, &["message_id"]))
+        .or_else(|| raw_path_to_string(raw, &["messageId"]))
+        .or_else(|| raw_path_to_string(raw, &["id"]))
+        .or_else(|| raw_path_to_string(raw, &["dataMessage", "timestamp"]))
+        .or_else(|| raw_path_to_string(raw, &["timestamp"]))
+}
+
+fn extract_raw_thread_id(raw: Option<&serde_json::Value>) -> Option<String> {
+    let raw = raw?;
+    raw_path_to_string(raw, &["thread_id"])
+        .or_else(|| raw_path_to_string(raw, &["threadId"]))
+        .or_else(|| raw_path_to_string(raw, &["content", "m.relates_to", "event_id"]))
+}
+
+fn raw_path_to_string(raw: &serde_json::Value, path: &[&str]) -> Option<String> {
+    let mut current = raw;
+    for segment in path {
+        current = current.get(*segment)?;
+    }
+    match current {
+        serde_json::Value::String(value) if !value.is_empty() => Some(value.clone()),
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        _ => None,
+    }
 }
 
 /// Build a `CommandContext` and execute a parsed command, returning the reply text.
@@ -310,12 +764,15 @@ async fn send_reply(msg: &InboundMessage, text: &str, channel_registry: &Channel
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::future::Future;
     use std::path::PathBuf;
-    use std::sync::Arc;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex as StdMutex};
 
     #[cfg(feature = "recall")]
     use std::collections::HashMap;
 
+    use agora::types::{ChannelCapabilities, ChannelProvider, ProbeResult, SendResult};
     use hermeneus::provider::ProviderRegistry;
     use hermeneus::test_utils::MockProvider;
     use mneme::store::SessionStore;
@@ -324,10 +781,74 @@ mod tests {
     use nous::manager::NousManager;
     use organon::registry::ToolRegistry;
     use organon::types::{BlackboardStore, ToolHttpClients, ToolServices};
+    use taxis::config::ChannelBinding;
     use taxis::oikos::Oikos;
     use tokio::sync::Mutex;
+    use tokio::task::JoinSet;
+    use tokio_util::sync::CancellationToken;
 
     use super::*;
+
+    static TEST_CAPABILITIES: ChannelCapabilities = ChannelCapabilities {
+        threads: false,
+        reactions: false,
+        typing: false,
+        media: false,
+        streaming: false,
+        rich_formatting: false,
+        max_text_length: 4000,
+    };
+
+    struct RecordingProvider {
+        sent: Arc<StdMutex<Vec<SendParams>>>,
+    }
+
+    impl ChannelProvider for RecordingProvider {
+        fn id(&self) -> &'static str {
+            "signal"
+        }
+
+        fn name(&self) -> &'static str {
+            "Signal Test"
+        }
+
+        fn capabilities(&self) -> &ChannelCapabilities {
+            &TEST_CAPABILITIES
+        }
+
+        fn send<'a>(
+            &'a self,
+            params: &'a SendParams,
+        ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
+            Box::pin(async move {
+                self.sent
+                    .lock()
+                    .expect("sent messages lock")
+                    .push(params.clone());
+                SendResult::ok()
+            })
+        }
+
+        fn listen(
+            &self,
+            _poll_interval: Option<std::time::Duration>,
+            _cancel: CancellationToken,
+        ) -> (tokio::sync::mpsc::Receiver<InboundMessage>, JoinSet<()>) {
+            let (_tx, rx) = tokio::sync::mpsc::channel(1);
+            (rx, JoinSet::new())
+        }
+
+        fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
+            Box::pin(async {
+                ProbeResult {
+                    ok: true,
+                    latency_ms: None,
+                    error: None,
+                    details: None,
+                }
+            })
+        }
+    }
 
     #[expect(
         clippy::disallowed_methods,
@@ -389,9 +910,65 @@ mod tests {
         }
     }
 
+    fn make_command_router() -> Arc<MessageRouter> {
+        Arc::new(MessageRouter::new(
+            vec![ChannelBinding {
+                channel: "signal".to_owned(),
+                source: "*".to_owned(),
+                nous_id: "alice".to_owned(),
+                session_key: "signal:{source}".to_owned(),
+            }],
+            None,
+        ))
+    }
+
+    fn make_recording_channel_registry(
+        sent: Arc<StdMutex<Vec<SendParams>>>,
+    ) -> Arc<ChannelRegistry> {
+        let mut registry = ChannelRegistry::new();
+        registry
+            .register(Arc::new(RecordingProvider { sent }))
+            .expect("register recording provider");
+        Arc::new(registry)
+    }
+
+    fn command_message(text: &str, timestamp: u64, event_id: &str) -> InboundMessage {
+        InboundMessage {
+            channel: "signal".to_owned(),
+            sender: "+15550100".to_owned(),
+            sender_name: Some("Alice".to_owned()),
+            group_id: Some("group-alpha".to_owned()),
+            text: text.to_owned(),
+            timestamp,
+            attachments: Vec::new(),
+            raw: Some(serde_json::json!({
+                "event_id": event_id,
+                "thread_id": "thread-1",
+            })),
+        }
+    }
+
+    fn only_session_id(store: &SessionStore) -> String {
+        let sessions = store
+            .list_sessions(Some("alice"))
+            .expect("list alice sessions");
+        assert_eq!(sessions.len(), 1);
+        sessions.into_iter().next().expect("one session").id
+    }
+
+    fn command_records(store: &SessionStore, session_id: &str) -> Vec<CommandLifecycleRecord> {
+        store
+            .get_notes(session_id)
+            .expect("get notes")
+            .into_iter()
+            .filter_map(|note| serde_json::from_str::<CommandLifecycleRecord>(&note.content).ok())
+            .collect()
+    }
+
     #[cfg(feature = "recall")]
     fn make_dispatch_manager(
         oikos: Arc<Oikos>,
+        session_store: Option<Arc<Mutex<SessionStore>>>,
         tool_services: Option<Arc<ToolServices>>,
     ) -> NousManager {
         use mneme::knowledge_store::KnowledgeStore;
@@ -408,7 +985,7 @@ mod tests {
             oikos,
             None,
             None,
-            None,
+            session_store,
             Some(knowledge_stores),
             Arc::new(Vec::new()),
             None,
@@ -421,6 +998,7 @@ mod tests {
     #[cfg(not(feature = "recall"))]
     fn make_dispatch_manager(
         oikos: Arc<Oikos>,
+        session_store: Option<Arc<Mutex<SessionStore>>>,
         tool_services: Option<Arc<ToolServices>>,
     ) -> NousManager {
         NousManager::new(
@@ -429,7 +1007,7 @@ mod tests {
             oikos,
             None,
             None,
-            None,
+            session_store,
             Arc::new(Vec::new()),
             None,
             tool_services,
@@ -512,6 +1090,161 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn command_dispatch_persists_successful_command_turn() {
+        let (_dir, oikos) = make_oikos();
+        let session_store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory().expect("in-memory session store"),
+        ));
+        let mgr = Arc::new(make_dispatch_manager(
+            oikos,
+            Some(Arc::clone(&session_store)),
+            None,
+        ));
+        let sent = Arc::new(StdMutex::new(Vec::new()));
+        let channels = make_recording_channel_registry(Arc::clone(&sent));
+        let msg = command_message("!ping", 1_000, "evt-success");
+
+        dispatch_one(msg, make_command_router(), mgr, channels).await;
+
+        let store = session_store.lock().await;
+        let session_id = only_session_id(&store);
+        let history = store.get_history(&session_id, None).expect("history");
+        assert_eq!(history.len(), 2);
+        let mut history_iter = history.iter();
+        let user = history_iter.next().expect("user command message");
+        let assistant = history_iter.next().expect("assistant command response");
+        assert_eq!(user.role, Role::User);
+        assert_eq!(user.content, "!ping");
+        assert_eq!(assistant.role, Role::Assistant);
+        assert!(
+            assistant
+                .content
+                .contains("Agent 'alice' is not responding.")
+        );
+
+        let records = command_records(&store, &session_id);
+        assert_eq!(records.len(), 1);
+        let record = records.into_iter().next().expect("command record");
+        assert_eq!(record.record_type, "agora_command");
+        assert_eq!(record.nous_id, "alice");
+        assert_eq!(record.session_key, "signal:+15550100");
+        assert_eq!(record.origin.channel, "signal");
+        assert_eq!(record.origin.sender, "+15550100");
+        assert_eq!(record.origin.group_id.as_deref(), Some("group-alpha"));
+        assert_eq!(record.origin.thread_id.as_deref(), Some("thread-1"));
+        assert_eq!(
+            record.origin.transport_message_id.as_deref(),
+            Some("evt-success")
+        );
+        assert_eq!(record.command.name, "ping");
+        assert_eq!(record.command.arguments_redacted, "");
+        assert_eq!(record.result.status, CommandResponseStatus::Success);
+        assert!(record.result.failure_class.is_none());
+        assert!(record.result.reply_text.contains("not responding"));
+        drop(store);
+
+        let sent = sent.lock().expect("sent messages lock");
+        assert_eq!(sent.len(), 1);
+        let sent_reply = sent.iter().next().expect("sent reply");
+        assert_eq!(sent_reply.to, "group:group-alpha");
+        assert_eq!(sent_reply.text, record.result.reply_text);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn command_dispatch_persists_failed_unknown_command() {
+        let (_dir, oikos) = make_oikos();
+        let session_store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory().expect("in-memory session store"),
+        ));
+        let mgr = Arc::new(make_dispatch_manager(
+            oikos,
+            Some(Arc::clone(&session_store)),
+            None,
+        ));
+        let sent = Arc::new(StdMutex::new(Vec::new()));
+        let channels = make_recording_channel_registry(Arc::clone(&sent));
+        let msg = command_message("!launch --token secret-value keep", 2_000, "evt-failed");
+
+        dispatch_one(msg, make_command_router(), mgr, channels).await;
+
+        let store = session_store.lock().await;
+        let session_id = only_session_id(&store);
+        let history = store.get_history(&session_id, None).expect("history");
+        assert_eq!(history.len(), 2);
+        let records = command_records(&store, &session_id);
+        assert_eq!(records.len(), 1);
+        let record = records.into_iter().next().expect("command record");
+        assert_eq!(record.command.name, "launch");
+        assert_eq!(record.command.arguments_redacted, "--token [REDACTED] keep");
+        assert_eq!(record.result.status, CommandResponseStatus::Failed);
+        assert_eq!(
+            record.result.failure_class.as_deref(),
+            Some("unknown_command")
+        );
+        assert!(
+            record
+                .result
+                .reply_text
+                .contains("Unknown command '!launch'")
+        );
+        drop(store);
+
+        let sent = sent.lock().expect("sent messages lock");
+        assert_eq!(sent.len(), 1);
+        let sent_reply = sent.iter().next().expect("sent reply");
+        assert_eq!(sent_reply.text, record.result.reply_text);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn command_dispatch_replays_duplicate_without_new_history() {
+        let (_dir, oikos) = make_oikos();
+        let session_store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory().expect("in-memory session store"),
+        ));
+        let mgr = Arc::new(make_dispatch_manager(
+            oikos,
+            Some(Arc::clone(&session_store)),
+            None,
+        ));
+        let sent = Arc::new(StdMutex::new(Vec::new()));
+        let channels = make_recording_channel_registry(Arc::clone(&sent));
+        let router = make_command_router();
+        let msg = command_message("!ping", 3_000, "evt-duplicate");
+
+        dispatch_one(
+            msg.clone(),
+            Arc::clone(&router),
+            Arc::clone(&mgr),
+            Arc::clone(&channels),
+        )
+        .await;
+        dispatch_one(msg, router, mgr, channels).await;
+
+        let store = session_store.lock().await;
+        let session_id = only_session_id(&store);
+        let history = store.get_history(&session_id, None).expect("history");
+        assert_eq!(
+            history.len(),
+            2,
+            "duplicate delivery must not append a second command turn"
+        );
+        let records = command_records(&store, &session_id);
+        assert_eq!(
+            records.len(),
+            1,
+            "duplicate delivery must reuse the first lifecycle record"
+        );
+        drop(store);
+
+        let sent = sent.lock().expect("sent messages lock");
+        assert_eq!(sent.len(), 2);
+        let mut sent_iter = sent.iter();
+        let first = sent_iter.next().expect("first send");
+        let second = sent_iter.next().expect("second send");
+        assert_eq!(first.text, second.text);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     #[cfg(feature = "recall")]
     async fn skills_command_uses_seeded_knowledge_store() {
         let (_dir, oikos) = make_oikos();
@@ -550,7 +1283,8 @@ mod tests {
             SessionStore::open_in_memory().expect("in-memory session store"),
         ));
         let tool_services = make_tool_services(&session_store);
-        let mgr = make_dispatch_manager(oikos, Some(tool_services));
+        let mgr =
+            make_dispatch_manager(oikos, Some(Arc::clone(&session_store)), Some(tool_services));
 
         let blackboard_store = mgr.blackboard_store().expect("blackboard store");
         blackboard_store
@@ -576,7 +1310,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn empty_state_falls_back_without_stores() {
         let (_dir, oikos) = make_oikos();
-        let mgr = make_dispatch_manager(oikos, None);
+        let mgr = make_dispatch_manager(oikos, None, None);
 
         let skills_reply = execute_command(
             &command::Command::Skills,
