@@ -5,9 +5,10 @@
     reason = "test assertions on Vecs with asserted length"
 )]
 
+use super::{FinalizeMessage, FinalizeTurnRequest, test_persist_counter};
 use crate::error::Error;
 use crate::test_fixtures::test_store;
-use crate::types::{BlackboardRow, Role, SessionStatus};
+use crate::types::{BlackboardRow, Role, SessionStatus, UsageRecord};
 
 fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value: &[u8]) {
     let partition = store.partition(partition_name).expect("partition opens");
@@ -788,6 +789,69 @@ fn corrupted_blackboard_json_propagates_from_list() {
         matches!(result, Err(Error::StoredJson { .. })),
         "corrupt blackboard JSON must not be silently skipped"
     );
+}
+
+#[test]
+fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
+    test_persist_counter::reset();
+    let store = test_store();
+    let session_id = "ses-finalize-1";
+    let usage = UsageRecord {
+        session_id: session_id.to_owned(),
+        turn_seq: 7,
+        input_tokens: 10,
+        output_tokens: 20,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        model: Some("test-model".to_owned()),
+    };
+    let messages = vec![
+        FinalizeMessage {
+            role: Role::User,
+            content: "hello",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 2,
+        },
+        FinalizeMessage {
+            role: Role::Assistant,
+            content: "hi there",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 5,
+        },
+    ];
+    let request = FinalizeTurnRequest {
+        session_id,
+        nous_id: "syn",
+        session_key: "main",
+        model: Some("test-model"),
+        parent_session_id: None,
+        messages: &messages,
+        usage: &usage,
+    };
+
+    let result = store
+        .finalize_turn(&request)
+        .expect("finalize_turn should succeed");
+    assert_eq!(result.messages_persisted, 2);
+    assert!(result.usage_recorded);
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "finalize_turn must issue exactly one ensure_durable/fsync"
+    );
+
+    let history = store.get_history(session_id, None).expect("read history");
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].role, Role::User);
+    assert_eq!(history[0].content, "hello");
+    assert_eq!(history[1].role, Role::Assistant);
+    assert_eq!(history[1].content, "hi there");
+
+    let usage_rows = store.get_usage_for_session(session_id).expect("read usage");
+    assert_eq!(usage_rows.len(), 1);
+    assert_eq!(usage_rows[0].turn_seq, 7);
 }
 
 #[path = "fjall_store_tests_notes.rs"]

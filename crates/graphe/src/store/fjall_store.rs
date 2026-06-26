@@ -143,6 +143,81 @@ pub struct SessionStore {
     _temp_dir: Option<tempfile::TempDir>,
 }
 
+/// One message to append as part of a batched turn finalization.
+///
+/// WHY: [`SessionStore::finalize_turn`] needs the same inputs as
+/// [`SessionStore::append_message`] but must avoid the per-write fsync that
+/// makes the one-message-at-a-time API expensive on the hot path.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeMessage<'a> {
+    /// Author role for this message.
+    pub role: Role,
+    /// Message body text.
+    pub content: &'a str,
+    /// Tool call identifier, if this message is a tool result.
+    pub tool_call_id: Option<&'a str>,
+    /// Tool name, if this message is a tool result.
+    pub tool_name: Option<&'a str>,
+    /// Estimated token count for this message.
+    pub token_estimate: i64,
+}
+
+/// Request to persist a complete conversational turn in a single transaction.
+///
+/// WHY: grouping session creation, message appends, and usage recording under
+/// one `tx.commit()` followed by one [`SessionStore::ensure_durable`] call
+/// removes the hard fsync-per-write latency floor described in issue #5675.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeTurnRequest<'a> {
+    /// Session identifier for the turn.
+    pub session_id: &'a str,
+    /// Owning agent identifier.
+    pub nous_id: &'a str,
+    /// Logical key used to look up or resume this session.
+    pub session_key: &'a str,
+    /// LLM model used for this turn.
+    pub model: Option<&'a str>,
+    /// Parent session for sub-task lineage, if any.
+    pub parent_session_id: Option<&'a str>,
+    /// Messages to append, in order.
+    pub messages: &'a [FinalizeMessage<'a>],
+    /// Token-usage record for the turn.
+    pub usage: &'a UsageRecord,
+}
+
+/// Result of a batched turn finalization.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeTurnResult {
+    /// Number of messages appended.
+    pub messages_persisted: usize,
+    /// Whether a usage record was written.
+    pub usage_recorded: bool,
+}
+
+// WHY: the counter is thread-local so concurrent unit tests do not interfere;
+// each test that asserts on `ensure_durable` usage resets it before exercising
+// the store.
+#[cfg(test)]
+pub(crate) mod test_persist_counter {
+    use std::cell::Cell;
+
+    thread_local! {
+        static COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub fn reset() {
+        COUNT.with(|c| c.set(0));
+    }
+
+    pub fn record() {
+        COUNT.with(|c| c.set(c.get().saturating_add(1)));
+    }
+
+    pub fn count() -> usize {
+        COUNT.with(Cell::get)
+    }
+}
+
 impl SessionStore {
     /// Open (or create) a persistent session store at the given path.
     ///
@@ -217,7 +292,10 @@ impl SessionStore {
                 message: format!("fjall persist: {e}"),
             }
             .build()
-        })
+        })?;
+        #[cfg(test)]
+        test_persist_counter::record();
+        Ok(())
     }
 
     // ── Partition helpers ─────────────────────────────────────────────────
@@ -324,6 +402,129 @@ impl SessionStore {
             b"",
         );
         Ok(())
+    }
+
+    /// Find or create an active session inside an existing write transaction.
+    ///
+    /// WHY: lets batched callers (e.g. [`Self::finalize_turn`]) include session
+    /// creation in the same transaction as message and usage writes, avoiding
+    /// an extra `ensure_durable()` fsync on the hot path.
+    fn find_or_create_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        id: &str,
+        nous_id: &str,
+        session_key: &str,
+        model: Option<&str>,
+        parent_session_id: Option<&str>,
+    ) -> Result<(Session, bool)> {
+        use fjall::Readable;
+
+        if let Some(existing_bytes) = tx
+            .get(sessions_part, id)
+            .map_err(|e| storage_error(format!("fjall find_or_create_session session get: {e}")))?
+        {
+            let existing: Session =
+                serde_json::from_slice(&existing_bytes).context(error::StoredJsonSnafu)?;
+            if existing.nous_id != nous_id || existing.session_key != session_key {
+                return Err(error::StorageSnafu {
+                    message: format!(
+                        "UNIQUE constraint failed: session id {id} already exists \
+                         for ({}, {})",
+                        existing.nous_id, existing.session_key
+                    ),
+                }
+                .build());
+            }
+            return Self::active_or_reactivated_session(tx, sessions_part, existing);
+        }
+
+        let idx_key = Self::session_key_index_key(nous_id, session_key);
+        if let Some(existing_id_bytes) = tx
+            .get(sessions_part, idx_key.as_str())
+            .map_err(|e| storage_error(format!("fjall find_or_create_session key idx: {e}")))?
+        {
+            let existing_id = String::from_utf8_lossy(&existing_id_bytes).into_owned();
+            let existing_bytes = tx
+                .get(sessions_part, existing_id.as_str())
+                .map_err(|e| {
+                    storage_error(format!("fjall find_or_create_session existing get: {e}"))
+                })?
+                .ok_or_else(|| {
+                    error::SessionCreateSnafu {
+                        nous_id: nous_id.to_owned(),
+                    }
+                    .build()
+                })?;
+            let existing: Session =
+                serde_json::from_slice(&existing_bytes).context(error::StoredJsonSnafu)?;
+            return Self::active_or_reactivated_session(tx, sessions_part, existing);
+        }
+
+        let session_type = SessionType::from_key(session_key);
+        let now = now_iso();
+        let session = Session {
+            id: id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            session_key: session_key.to_owned(),
+            status: SessionStatus::Active,
+            model: model.map(str::to_owned),
+            session_type,
+            created_at: now.clone(),
+            updated_at: now,
+            metrics: SessionMetrics {
+                token_count_estimate: 0,
+                message_count: 0,
+                last_input_tokens: 0,
+                bootstrap_hash: None,
+                distillation_count: 0,
+                last_distilled_at: None,
+                computed_context_tokens: 0,
+            },
+            origin: SessionOrigin {
+                parent_session_id: parent_session_id.map(str::to_owned),
+                thread_id: None,
+                transport: None,
+                display_name: None,
+            },
+            artefact_meta: None,
+        };
+
+        Self::write_session_in_tx(tx, sessions_part, &session)?;
+        metrics::record_session_created(nous_id, session_type.as_str());
+        info!(id, nous_id, session_key, %session_type, "created session");
+        Ok((session, true))
+    }
+
+    /// Return an active session, reactivating it if necessary, inside a tx.
+    ///
+    /// The returned boolean is `true` when the transaction was mutated
+    /// (reactivation), `false` when the session was already active.
+    fn active_or_reactivated_session(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        mut session: Session,
+    ) -> Result<(Session, bool)> {
+        match session.status {
+            SessionStatus::Active => Ok((session, false)),
+            SessionStatus::Archived => {
+                // WHY: Archived sessions are lifecycle-closed by operator or
+                // policy action. Silently reactivating them loses the intent
+                // of the archival and can resurface stale context to the
+                // agent. Callers must explicitly unarchive via the dedicated
+                // endpoint before resuming the session.
+                Err(error::SessionIsArchivedSnafu { id: session.id }.build())
+            }
+            _ => {
+                let old_updated_at = session.updated_at.clone();
+                session.status = SessionStatus::Active;
+                session.updated_at = now_iso();
+                Self::update_session_nous_index(tx, sessions_part, &session, &old_updated_at);
+                Self::write_session_in_tx(tx, sessions_part, &session)?;
+                info!(id = session.id, "reactivated session");
+                Ok((session, true))
+            }
+        }
     }
 
     fn update_session_nous_index(
@@ -486,110 +687,25 @@ impl SessionStore {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
-
-        if let Some(existing) = self.read_session_by_raw_id(id)?
-            && (existing.nous_id != nous_id || existing.session_key != session_key)
-        {
-            return Err(error::StorageSnafu {
-                message: format!(
-                    "UNIQUE constraint failed: session id {id} already exists \
-                     for ({}, {})",
-                    existing.nous_id, existing.session_key
-                ),
-            }
-            .build());
-        }
-
-        let idx_key = Self::session_key_index_key(nous_id, session_key);
-
-        if let Some(existing_id_bytes) = self.get_bytes(&sessions_part, &idx_key)? {
-            let existing_id = String::from_utf8(existing_id_bytes).map_err(|e| {
+        let mut tx = self.db.write_tx();
+        let (session, mutated) = Self::find_or_create_session_in_tx(
+            &mut tx,
+            &sessions_part,
+            id,
+            nous_id,
+            session_key,
+            model,
+            parent_session_id,
+        )?;
+        if mutated {
+            tx.commit().map_err(|e| {
                 error::StorageSnafu {
-                    message: format!("invalid session id bytes: {e}"),
+                    message: format!("fjall find_or_create_session commit: {e}"),
                 }
                 .build()
             })?;
-
-            let mut session = self.read_session_by_raw_id(&existing_id)?.ok_or_else(|| {
-                error::SessionCreateSnafu {
-                    nous_id: nous_id.to_owned(),
-                }
-                .build()
-            })?;
-
-            match session.status {
-                SessionStatus::Active => {}
-                SessionStatus::Archived => {
-                    // WHY: Archived sessions are lifecycle-closed by operator or
-                    // policy action. Silently reactivating them loses the intent
-                    // of the archival and can resurface stale context to the
-                    // agent. Callers must explicitly unarchive via the dedicated
-                    // endpoint before resuming the session.
-                    return Err(error::SessionIsArchivedSnafu {
-                        id: session.id.clone(),
-                    }
-                    .build());
-                }
-                _ => {
-                    let old_updated_at = session.updated_at.clone();
-                    session.status = SessionStatus::Active;
-                    session.updated_at = now_iso();
-
-                    let mut tx = self.db.write_tx();
-                    Self::update_session_nous_index(
-                        &mut tx,
-                        &sessions_part,
-                        &session,
-                        &old_updated_at,
-                    );
-                    Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
-                    tx.commit().map_err(|e| {
-                        error::StorageSnafu {
-                            message: format!("fjall reactivate session: {e}"),
-                        }
-                        .build()
-                    })?;
-                    self.ensure_durable()?;
-
-                    info!(id = session.id, nous_id, session_key, "reactivated session");
-                }
-            }
-
-            return Ok(session);
+            self.ensure_durable()?;
         }
-
-        let session_type = SessionType::from_key(session_key);
-        let now = now_iso();
-        let session = Session {
-            id: id.to_owned(),
-            nous_id: nous_id.to_owned(),
-            session_key: session_key.to_owned(),
-            status: SessionStatus::Active,
-            model: model.map(str::to_owned),
-            session_type,
-            created_at: now.clone(),
-            updated_at: now,
-            metrics: SessionMetrics {
-                token_count_estimate: 0,
-                message_count: 0,
-                last_input_tokens: 0,
-                bootstrap_hash: None,
-                distillation_count: 0,
-                last_distilled_at: None,
-                computed_context_tokens: 0,
-            },
-            origin: SessionOrigin {
-                parent_session_id: parent_session_id.map(str::to_owned),
-                thread_id: None,
-                transport: None,
-                display_name: None,
-            },
-            artefact_meta: None,
-        };
-
-        self.write_session(&session)?;
-        metrics::record_session_created(nous_id, session_type.as_str());
-        info!(id, nous_id, session_key, %session_type, "created session (find_or_create)");
         Ok(session)
     }
 
@@ -851,47 +967,87 @@ impl SessionStore {
         tool_name: Option<&str>,
         token_estimate: i64,
     ) -> Result<i64> {
-        use fjall::Readable;
-
         let _guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let messages_part = self.partition("messages")?;
         let sessions_part = self.partition("sessions")?;
+        let counters_part = self.partition("counters")?;
 
+        let mut session = self.read_session_by_raw_id(session_id)?.ok_or_else(|| {
+            error::SessionNotFoundSnafu {
+                id: session_id.to_owned(),
+            }
+            .build()
+        })?;
+
+        let mut tx = self.db.write_tx();
+        let seq = Self::append_message_in_tx(
+            &mut tx,
+            &messages_part,
+            &sessions_part,
+            &counters_part,
+            &mut session,
+            &FinalizeMessage {
+                role,
+                content,
+                tool_call_id,
+                tool_name,
+                token_estimate,
+            },
+        )?;
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall append_message commit: {e}"),
+            }
+            .build()
+        })?;
+        self.ensure_durable()?;
+
+        debug!(session_id, seq, %role, token_estimate, "appended message");
+        Ok(seq)
+    }
+
+    /// Append a message inside an existing write transaction.
+    ///
+    /// WHY: reused by [`Self::append_message`] (one fsync per call) and
+    /// [`Self::finalize_turn`] (one fsync for the whole turn).
+    fn append_message_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        messages_part: &fjall::SingleWriterTxKeyspace,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        counters_part: &fjall::SingleWriterTxKeyspace,
+        session: &mut Session,
+        msg: &FinalizeMessage<'_>,
+    ) -> Result<i64> {
+        use fjall::Readable;
+        let &FinalizeMessage {
+            role,
+            content,
+            tool_call_id,
+            tool_name,
+            token_estimate,
+        } = msg;
+
+        let session_id = session.id.as_str();
         let next_seq_key = format!("next_seq:{session_id}");
-        let snap = self.db.read_tx();
-        let current_seq = match snap
-            .get(&messages_part, next_seq_key.as_str())
-            .map_err(|e| {
-                error::StorageSnafu {
-                    message: format!("fjall seq read: {e}"),
-                }
-                .build()
-            })? {
+        let current_seq = match tx
+            .get(messages_part, next_seq_key.as_str())
+            .map_err(|e| storage_error(format!("fjall seq read: {e}")))?
+        {
             None => 0u64,
             Some(b) => try_decode_u64(&b, "next_seq")?,
         };
         let seq = current_seq + 1;
-        drop(snap);
 
-        let msg_id_counter = {
-            // WHY: the `id` field uses a global counter so it is unique across sessions.
-            let counters = self.partition("counters")?;
-            let snap2 = self.db.read_tx();
-            let c = match snap2.get(&counters, "msg_id").map_err(|e| {
-                error::StorageSnafu {
-                    message: format!("fjall msg_id counter: {e}"),
-                }
-                .build()
-            })? {
-                None => 0u64,
-                Some(b) => try_decode_u64(&b, "msg_id")?,
-            } + 1;
-            drop(snap2);
-            c
-        };
+        let msg_id_counter = match tx
+            .get(counters_part, "msg_id")
+            .map_err(|e| storage_error(format!("fjall msg_id counter: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "msg_id")?,
+        } + 1;
 
         let now = now_iso();
         let msg = Message {
@@ -904,40 +1060,23 @@ impl SessionStore {
             tool_name: tool_name.map(str::to_owned),
             token_estimate,
             is_distilled: false,
-            created_at: now,
+            created_at: now.clone(),
         };
 
         let msg_key = format!("{session_id}:{}", pad_u64(seq));
         let msg_data = serde_json::to_vec(&msg).context(error::StoredJsonSnafu)?;
 
-        let mut session = self.read_session_by_raw_id(session_id)?.ok_or_else(|| {
-            error::SessionNotFoundSnafu {
-                id: session_id.to_owned(),
-            }
-            .build()
-        })?;
         let old_updated_at = session.updated_at.clone();
         session.metrics.message_count += 1;
         session.metrics.token_count_estimate += token_estimate;
-        session.updated_at = now_iso();
+        session.updated_at = now;
 
-        let counters_part = self.partition("counters")?;
+        tx.insert(messages_part, msg_key.as_str(), msg_data.as_slice());
+        tx.insert(messages_part, next_seq_key.as_str(), encode_u64(seq));
+        tx.insert(counters_part, "msg_id", encode_u64(msg_id_counter));
+        Self::update_session_nous_index(tx, sessions_part, session, &old_updated_at);
+        Self::write_session_in_tx(tx, sessions_part, session)?;
 
-        let mut tx = self.db.write_tx();
-        tx.insert(&messages_part, msg_key.as_str(), msg_data.as_slice());
-        tx.insert(&messages_part, next_seq_key.as_str(), encode_u64(seq));
-        tx.insert(&counters_part, "msg_id", encode_u64(msg_id_counter));
-        Self::update_session_nous_index(&mut tx, &sessions_part, &session, &old_updated_at);
-        Self::write_session_in_tx(&mut tx, &sessions_part, &session)?;
-        tx.commit().map_err(|e| {
-            error::StorageSnafu {
-                message: format!("fjall append_message commit: {e}"),
-            }
-            .build()
-        })?;
-        self.ensure_durable()?;
-
-        debug!(session_id, seq, %role, token_estimate, "appended message");
         Ok(seq as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
     }
 
@@ -1486,37 +1625,15 @@ impl SessionStore {
     /// Record token usage for a turn.
     #[instrument(skip(self, record), level = "debug")]
     pub fn record_usage(&self, record: &UsageRecord) -> Result<()> {
-        use fjall::Readable;
-
         let _guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let usage_part = self.partition("usage")?;
-
-        // WHY: referential integrity — reject usage writes to non-existent sessions (#5027).
         let sessions_part = self.partition("sessions")?;
-        let snap = self.db.read_tx();
-        if snap
-            .get(&sessions_part, record.session_id.as_str())
-            .map_err(|e| storage_error(format!("fjall record_usage session check: {e}")))?
-            .is_none()
-        {
-            return Err(error::SessionNotFoundSnafu {
-                id: record.session_id.clone(),
-            }
-            .build());
-        }
-        drop(snap);
 
-        let key = format!(
-            "{}:{}",
-            record.session_id,
-            pad_u64(record.turn_seq.cast_unsigned())
-        );
-        let data = serde_json::to_vec(record).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
-        tx.insert(&usage_part, key.as_str(), data.as_slice());
+        Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, record)?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall record_usage: {e}"),
@@ -1525,6 +1642,106 @@ impl SessionStore {
         })?;
         self.ensure_durable()?;
         Ok(())
+    }
+
+    /// Record token usage inside an existing write transaction.
+    ///
+    /// WHY: reused by [`Self::record_usage`] (one fsync per call) and
+    /// [`Self::finalize_turn`] (one fsync for the whole turn).
+    fn record_usage_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        usage_part: &fjall::SingleWriterTxKeyspace,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        record: &UsageRecord,
+    ) -> Result<()> {
+        use fjall::Readable;
+
+        // WHY: referential integrity — reject usage writes to non-existent sessions (#5027).
+        if tx
+            .get(sessions_part, record.session_id.as_str())
+            .map_err(|e| storage_error(format!("fjall record_usage session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: record.session_id.clone(),
+            }
+            .build());
+        }
+
+        let key = format!(
+            "{}:{}",
+            record.session_id,
+            pad_u64(record.turn_seq.cast_unsigned())
+        );
+        let data = serde_json::to_vec(record).context(error::StoredJsonSnafu)?;
+        tx.insert(usage_part, key.as_str(), data.as_slice());
+        Ok(())
+    }
+
+    /// Persist a complete conversational turn in a single transaction.
+    ///
+    /// This batches session creation, message appends, and usage recording so
+    /// the hot path issues exactly one `ensure_durable()` fsync per logical
+    /// turn instead of one per individual write (issue #5675).
+    ///
+    /// # Errors
+    /// Returns an error if any partition operation, transaction commit, or
+    /// durability flush fails.
+    #[instrument(skip(self, request), fields(session_id = %request.session_id))]
+    pub fn finalize_turn(&self, request: &FinalizeTurnRequest<'_>) -> Result<FinalizeTurnResult> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let sessions_part = self.partition("sessions")?;
+        let messages_part = self.partition("messages")?;
+        let usage_part = self.partition("usage")?;
+        let counters_part = self.partition("counters")?;
+
+        let mut tx = self.db.write_tx();
+
+        let (mut session, _mutated) = Self::find_or_create_session_in_tx(
+            &mut tx,
+            &sessions_part,
+            request.session_id,
+            request.nous_id,
+            request.session_key,
+            request.model,
+            request.parent_session_id,
+        )?;
+
+        let mut messages_persisted = 0usize;
+        for spec in request.messages {
+            Self::append_message_in_tx(
+                &mut tx,
+                &messages_part,
+                &sessions_part,
+                &counters_part,
+                &mut session,
+                spec,
+            )?;
+            messages_persisted += 1;
+        }
+
+        Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, request.usage)?;
+
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall finalize_turn commit: {e}"),
+            }
+            .build()
+        })?;
+        self.ensure_durable()?;
+
+        debug!(
+            session_id = request.session_id,
+            messages_persisted, "finalize_turn complete"
+        );
+        Ok(FinalizeTurnResult {
+            messages_persisted,
+            usage_recorded: true,
+        })
     }
 
     /// Get all usage records for a session, ordered by turn sequence.
