@@ -99,56 +99,6 @@ impl Oikos {
         self.root.join("shared")
     }
 
-    /// Shared tools directory.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn shared_tools(&self) -> PathBuf {
-        self.root.join("shared").join("tools")
-    }
-
-    /// Shared skills directory.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn shared_skills(&self) -> PathBuf {
-        self.root.join("shared").join("skills")
-    }
-
-    /// Shared hooks directory.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn shared_hooks(&self) -> PathBuf {
-        self.root.join("shared").join("hooks")
-    }
-
-    /// Shared coordination directory.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn coordination(&self) -> PathBuf {
-        self.root.join("shared").join("coordination")
-    }
-
-    /// The nous directory containing all agent workspaces.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn nous_root(&self) -> PathBuf {
-        self.root.join("nous")
-    }
-
     /// A specific agent's workspace directory.
     #[must_use]
     pub fn nous_dir(&self, id: &str) -> PathBuf {
@@ -181,34 +131,10 @@ impl Oikos {
         self.root.join("config")
     }
 
-    /// The main config file (prefers TOML, falls back to JSON).
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn config_file(&self) -> PathBuf {
-        let toml = self.root.join("config").join("aletheia.toml");
-        if toml.exists() {
-            return toml;
-        }
-        self.root.join("config").join("aletheia.json")
-    }
-
     /// The credentials directory.
     #[must_use]
     pub fn credentials(&self) -> PathBuf {
         self.root.join("config").join("credentials")
-    }
-
-    /// The session encryption key file.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn session_key(&self) -> PathBuf {
-        self.root.join("config").join("session.key")
     }
 
     /// The data directory (runtime state).
@@ -221,16 +147,6 @@ impl Oikos {
     #[must_use]
     pub fn sessions_db(&self) -> PathBuf {
         self.root.join("data").join("sessions.db")
-    }
-
-    /// The planning database file.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn planning_db(&self) -> PathBuf {
-        self.root.join("data").join("planning.db")
     }
 
     /// The knowledge store directory (fjall persistent storage).
@@ -273,16 +189,6 @@ impl Oikos {
     #[must_use]
     pub fn trace_archive(&self) -> PathBuf {
         self.root.join("logs").join("traces").join("archive")
-    }
-
-    /// The Signal data directory.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "instance layout accessor; no non-test caller yet")
-    )]
-    pub(crate) fn signal(&self) -> PathBuf {
-        self.root.join("signal")
     }
 
     /// Validate the instance layout at startup.
@@ -397,6 +303,67 @@ impl Oikos {
 mod tests {
     use super::*;
     use std::io::Write as _;
+
+    #[cfg(test)]
+    impl Oikos {
+        /// Shared tools directory.
+        #[must_use]
+        fn shared_tools(&self) -> PathBuf {
+            self.root.join("shared").join("tools")
+        }
+
+        /// Shared skills directory.
+        #[must_use]
+        fn shared_skills(&self) -> PathBuf {
+            self.root.join("shared").join("skills")
+        }
+
+        /// Shared hooks directory.
+        #[must_use]
+        fn shared_hooks(&self) -> PathBuf {
+            self.root.join("shared").join("hooks")
+        }
+
+        /// Shared coordination directory.
+        #[must_use]
+        fn coordination(&self) -> PathBuf {
+            self.root.join("shared").join("coordination")
+        }
+
+        /// The nous directory containing all agent workspaces.
+        #[must_use]
+        fn nous_root(&self) -> PathBuf {
+            self.root.join("nous")
+        }
+
+        /// The main config file (prefers TOML, falls back to JSON).
+        #[must_use]
+        fn config_file(&self) -> PathBuf {
+            let toml = self.root.join("config").join("aletheia.toml");
+            if toml.exists() {
+                return toml;
+            }
+            self.root.join("config").join("aletheia.json")
+        }
+
+        /// The session encryption key file.
+        #[must_use]
+        fn session_key(&self) -> PathBuf {
+            self.root.join("config").join("session.key")
+        }
+
+        /// The planning database file.
+        #[must_use]
+        fn planning_db(&self) -> PathBuf {
+            self.root.join("data").join("planning.db")
+        }
+
+        /// The Signal data directory.
+        #[must_use]
+        fn signal(&self) -> PathBuf {
+            self.root.join("signal")
+        }
+    }
 
     fn write_test_file(path: &Path, contents: &[u8]) {
         let mut file = std::fs::File::create(path).unwrap();
