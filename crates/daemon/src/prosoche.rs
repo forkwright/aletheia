@@ -192,9 +192,30 @@ impl ProsocheCheck {
             items.extend(check_disk_space(data_dir).await);
         }
 
-        items.extend(check_db_sizes(&self.db_paths));
+        // WHY: database metadata is a blocking syscall; offload it from the
+        // Tokio executor so worker threads remain available for actor turns.
+        items.extend(
+            tokio::task::spawn_blocking({
+                let paths = self.db_paths.clone();
+                move || check_db_sizes(&paths)
+            })
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "database size check task failed");
+                Vec::new()
+            }),
+        );
 
-        items.extend(check_memory());
+        // WHY: /proc/self/status reads are synchronous filesystem IO; run them
+        // on the blocking pool to avoid stalling the async runtime.
+        items.extend(
+            tokio::task::spawn_blocking(check_memory)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(error = %e, "memory check task failed");
+                    Vec::new()
+                }),
+        );
 
         #[cfg(feature = "knowledge-store")]
         if let Some(ref store) = self.knowledge_store {

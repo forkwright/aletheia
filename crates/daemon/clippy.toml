@@ -20,3 +20,7 @@ reason = "use tokio::fs for async or abstract behind a trait for testability"
 [[disallowed-methods]]
 path = "std::fs::File::open"
 reason = "use tokio::fs::File::open for async or abstract behind a trait for testability"
+
+[[disallowed-methods]]
+path = "std::fs::File::create"
+reason = "use tokio::fs::File::create for async or abstract behind a trait for testability"
