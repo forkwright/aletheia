@@ -520,6 +520,12 @@ impl NousManager {
             .map(|def| def.name.as_str().to_owned())
             .collect();
         known.extend(config.server_tools.iter().map(|tool| tool.name.clone()));
+        if config.server_tool_config.web_search {
+            known.insert("web_search".to_owned());
+        }
+        if config.server_tool_config.code_execution {
+            known.insert("code_execution".to_owned());
+        }
         if let Some(services) = self.tool_services.as_ref() {
             known.extend(
                 services
@@ -527,12 +533,6 @@ impl NousManager {
                     .iter()
                     .map(|(name, _description)| name.as_str().to_owned()),
             );
-            if services.server_tool_config.web_search {
-                known.insert("web_search".to_owned());
-            }
-            if services.server_tool_config.code_execution {
-                known.insert("code_execution".to_owned());
-            }
         }
 
         let unknown: Vec<&str> = allowlist

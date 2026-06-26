@@ -52,7 +52,7 @@ Sorted by criticality (highest sovereignty impact first).
 |----------|--------------|----------------|
 | `api.anthropic.com` | Yes | Set a different provider base URL in provider config, or use local LLM (CC CLI, Ollama, OpenAI-compatible) |
 | `claude` CLI subprocess | Yes | Do not select `cc` provider; use direct API key or another provider |
-| Anthropic server-side `web_search` | Yes | Do not enable `web_search` in server tool config |
+| Anthropic server-side `web_search` | Yes | Keep `serverTools.webSearch = false` |
 | `console.anthropic.com` | Partial (URL is hard-coded for Anthropic OAuth) | Do not use OAuth credentials; use static API key instead |
 | Configurable OAuth PKCE / device code | Partial (URLs are configurable per provider) | Use a static API key; PKCE / device-code flows are not exposed as CLI commands |
 | HuggingFace Hub | Partial (model repo is configurable) | Use a pre-cached model directory (`HF_HOME`), or air-gap the host |

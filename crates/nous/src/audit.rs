@@ -358,10 +358,7 @@ pub(crate) fn build_audit_record(
         allowlist: config.tool_allowlist.as_deref(),
         active: &active_snapshot,
         server_tools: &config.server_tools,
-        server_tool_config: tool_ctx
-            .services
-            .as_deref()
-            .map(|services| &services.server_tool_config),
+        server_tool_config: Some(&config.server_tool_config),
     });
     let mut tool_names: Vec<String> = surface
         .provider_tools()

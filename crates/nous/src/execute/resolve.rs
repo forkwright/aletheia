@@ -10,7 +10,7 @@ use hermeneus::health::ProviderHealth;
 use hermeneus::provider::{DeploymentTarget, LlmProvider, ProviderRegistry};
 use hermeneus::types::{ContentBlock, ServerToolDefinition};
 use koina::id::ToolName;
-use organon::types::ToolContext;
+use organon::types::{ServerToolConfig, ToolContext};
 
 use crate::config::NousConfig;
 use crate::error;
@@ -128,12 +128,12 @@ pub(super) fn resolve_provider_checked<'a>(
 /// The `config_server_tools` argument is an `Arc` of the config's static
 /// server-tool list, hoisted out of the per-iteration loop by the caller so
 /// the backward-compatibility clone pays once per turn instead of once per
-/// LLM iteration. When the session has no dynamically-activated server tools
-/// and the call site has no [`ToolServices`], the same `Arc` is returned
-/// without allocation.
+/// LLM iteration. When the session has no dynamically-activated server tools,
+/// the same `Arc` is returned without allocation.
 pub(super) fn resolve_active_server_tools(
     tool_ctx: &ToolContext,
     config_server_tools: &Arc<Vec<ServerToolDefinition>>,
+    server_tool_config: &ServerToolConfig,
 ) -> (Arc<HashSet<ToolName>>, Arc<Vec<ServerToolDefinition>>) {
     // WHY: the std::sync::RwLock is held only long enough to clone the inner
     // HashSet into an Arc. Downstream iteration reads the Arc without the lock,
@@ -149,14 +149,7 @@ pub(super) fn resolve_active_server_tools(
         .clone();
     let active = Arc::new(active_snapshot);
 
-    // WHY: fast path — no ToolServices means server tools come solely from
-    // static config, which we already hold as an Arc. Skip the Vec allocation
-    // and return the shared handle unchanged.
-    let Some(services) = tool_ctx.services.as_deref() else {
-        return (active, Arc::clone(config_server_tools));
-    };
-
-    let dynamic = services.server_tool_config.active_definitions(&active);
+    let dynamic = server_tool_config.active_definitions(&active);
 
     // WHY: fast path — no dynamically-activated server tools (the common case
     // when no enable_tool call has fired) reuses the config Arc as-is.

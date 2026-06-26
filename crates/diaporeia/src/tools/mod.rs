@@ -989,7 +989,7 @@ impl DiaporeiaServer {
             allowlist: config.tool_allowlist.as_deref(),
             active: &active,
             server_tools: &config.server_tools,
-            server_tool_config: None,
+            server_tool_config: Some(&config.server_tool_config),
         });
 
         let tools: Vec<serde_json::Value> = surface

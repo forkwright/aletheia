@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use tracing::{Instrument, info, warn};
 
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use koina::defaults::{
     BOOTSTRAP_MAX_TOKENS, CHARS_PER_TOKEN, CONTEXT_TOKENS, DEFAULT_MODEL, MAX_OUTPUT_TOKENS,
     MAX_TOOL_ITERATIONS, MAX_TOOL_RESULT_BYTES,
@@ -18,7 +18,9 @@ use mneme::embedding::EmbeddingProvider;
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
-use organon::types::{SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolServices};
+use organon::types::{
+    ServerToolConfig, SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolServices,
+};
 use taxis::oikos::Oikos;
 use tokio::sync::Mutex;
 
@@ -28,6 +30,23 @@ use crate::handle::DEFAULT_SEND_TIMEOUT;
 use crate::roles::Role;
 
 const SONNET_MODEL: &str = DEFAULT_MODEL;
+const WEB_SEARCH_TOOL: &str = "web_search";
+const CODE_EXECUTION_TOOL: &str = "code_execution";
+
+fn server_tool_config_for_provider(
+    config: &ServerToolConfig,
+    provider: Option<&dyn LlmProvider>,
+) -> ServerToolConfig {
+    let Some(provider) = provider else {
+        return ServerToolConfig::default();
+    };
+    let web_search = config.web_search && provider.supports_server_tool(WEB_SEARCH_TOOL);
+    ServerToolConfig {
+        web_search,
+        web_search_max_uses: web_search.then_some(config.web_search_max_uses).flatten(),
+        code_execution: config.code_execution && provider.supports_server_tool(CODE_EXECUTION_TOOL),
+    }
+}
 
 /// Conservative read-only allowlist applied to spawned actors with no role
 /// template and no explicit `allowed_tools`. Prevents an unrecognized role
@@ -203,6 +222,15 @@ impl SpawnServiceImpl {
         // not the entire oikos root. `workspace` is already under the oikos root
         // and is created before the actor starts.
         let allowed_roots = vec![workspace.clone()];
+        let server_tool_config =
+            self.tool_services
+                .get()
+                .map_or_else(ServerToolConfig::default, |services| {
+                    server_tool_config_for_provider(
+                        &services.server_tool_config,
+                        self.providers.find_provider(&model),
+                    )
+                });
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
@@ -240,6 +268,7 @@ impl SpawnServiceImpl {
             episteme_cohort: std::sync::Arc::from("shared"),
             workspace,
             allowed_roots,
+            server_tool_config,
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: crate::recall::RecallConfig::default(),

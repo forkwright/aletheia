@@ -175,7 +175,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "tools" => validate_tools(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
         "packs" | "pricing" | "sandbox" | "logging" | "observability" | "mcp" | "localProvider"
-        | "training" | "anthropic" | "promptAudit" | "dispatch" | "workspace" => {}
+        | "training" | "anthropic" | "serverTools" | "promptAudit" | "dispatch" | "workspace" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 

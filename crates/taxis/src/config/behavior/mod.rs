@@ -24,7 +24,7 @@ pub use messaging::MessagingConfig;
 pub use nous::NousBehaviorConfig;
 pub use provider::{
     AnthropicConfig, DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, PromptCacheMode,
-    ProviderBehaviorConfig, ProviderKind,
+    ProviderBehaviorConfig, ProviderKind, ServerToolsConfig,
 };
 pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
 pub use tools::ToolLimitsConfig;

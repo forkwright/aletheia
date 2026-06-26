@@ -442,6 +442,25 @@ The `aletheia add-nous` scaffolding command validates only `anthropic` and `open
 
 ---
 
+## serverTools
+
+Provider-side server tools are off by default and become available only when both `serverTools` enables them and the selected provider supports them. Today these map to Anthropic Messages API server tools and are activated per session with `enable_tool`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `webSearch` | bool | `false` | Make provider-side `web_search` available for lazy activation. |
+| `webSearchMaxUses` | u32 | provider default | Optional per-turn cap for provider-side web search uses. |
+| `codeExecution` | bool | `false` | Make provider-side `code_execution` available for lazy activation. |
+
+```toml
+[serverTools]
+webSearch = true
+webSearchMaxUses = 5
+codeExecution = false
+```
+
+---
+
 ## data
 
 ### data.retention

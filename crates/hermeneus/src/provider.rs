@@ -119,6 +119,15 @@ pub trait LlmProvider: Send + Sync {
         DeploymentTarget::Cloud
     }
 
+    /// Whether this provider can accept a named provider-side server tool in
+    /// [`CompletionRequest::server_tools`].
+    ///
+    /// Defaults fail closed because OpenAI-compatible and subprocess-backed
+    /// providers either reject these definitions or own their own agent loop.
+    fn supports_server_tool(&self, _name: &str) -> bool {
+        false
+    }
+
     /// Whether this provider supports streaming completions.
     fn supports_streaming(&self) -> bool {
         false

@@ -17,7 +17,7 @@ pub use behavior::{
     CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DeploymentTarget, DispatchConfig,
     DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
     MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig,
-    ProviderKind, RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    ProviderKind, RetrySettings, ServerToolsConfig, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
@@ -176,6 +176,13 @@ pub struct AletheiaConfig {
     /// on provider rate limits and latency characteristics. Complexity
     /// thresholds control model routing (Haiku vs Opus) which affects cost.
     pub provider_behavior: ProviderBehaviorConfig,
+    /// Provider-side server tools available for lazy activation.
+    ///
+    /// WHY configurable: these tools execute inside the model provider's
+    /// infrastructure rather than on the local host. Operators must explicitly
+    /// opt in before `enable_tool` can advertise or activate them, and runtime
+    /// provider capability checks keep unsupported providers fail-closed.
+    pub server_tools: ServerToolsConfig,
     /// Pylon request size and idempotency limits.
     ///
     /// WHY configurable: API body size limits, idempotency cache capacity,

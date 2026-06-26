@@ -38,6 +38,25 @@ impl Default for ProviderBehaviorConfig {
     }
 }
 
+/// Provider-side server tools available for lazy activation via `enable_tool`.
+///
+/// This is operator-owned configuration. Runtime still gates these toggles by
+/// the selected provider's capabilities and the agent's tool policy before any
+/// tool is advertised or sent to an LLM provider.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+#[serde(default)]
+pub struct ServerToolsConfig {
+    /// Whether Anthropic-compatible server-side web search is available.
+    pub web_search: bool,
+    /// Maximum web search uses per turn. `None` uses the provider default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_search_max_uses: Option<u32>,
+    /// Whether Anthropic-compatible server-side code execution is available.
+    pub code_execution: bool,
+}
+
 /// Anthropic-specific sovereignty and privacy settings.
 ///
 /// Defaults are sovereignty-first: nothing is cached on Anthropic servers

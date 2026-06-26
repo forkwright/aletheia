@@ -19,14 +19,14 @@ use tracing::{debug, info, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use hermeneus::fallback::FallbackConfig;
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::types::{
     CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
     ThinkingConfig, ToolResultContent,
 };
 use organon::registry::ToolRegistry;
 use organon::surface::SurfaceInputs;
-use organon::types::ToolContext;
+use organon::types::{ServerToolConfig, ToolContext};
 
 use self::dispatch::{
     DispatchResult, ToolDispatchPolicy, build_messages, classify_signals, dispatch_tools,
@@ -49,6 +49,23 @@ use crate::stream::TurnStreamEvent;
 const STOP_REASON_MAX_TOOL_ITERATIONS: &str = "max_tool_iterations";
 const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
 const STOP_REASON_TURN_TIMEOUT: &str = "turn_timeout";
+const WEB_SEARCH_TOOL: &str = "web_search";
+const CODE_EXECUTION_TOOL: &str = "code_execution";
+
+fn server_tool_config_for_provider(
+    config: &ServerToolConfig,
+    provider: Option<&dyn LlmProvider>,
+) -> ServerToolConfig {
+    let Some(provider) = provider else {
+        return ServerToolConfig::default();
+    };
+    let web_search = config.web_search && provider.supports_server_tool(WEB_SEARCH_TOOL);
+    ServerToolConfig {
+        web_search,
+        web_search_max_uses: web_search.then_some(config.web_search_max_uses).flatten(),
+        code_execution: config.code_execution && provider.supports_server_tool(CODE_EXECUTION_TOOL),
+    }
+}
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -116,6 +133,10 @@ pub(crate) async fn execute_with_deadline(
         Vec::len,
     );
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
+    let turn_server_tool_config = server_tool_config_for_provider(
+        &config.server_tool_config,
+        providers.find_provider(&turn_model),
+    );
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -182,19 +203,15 @@ pub(crate) async fn execute_with_deadline(
             break;
         }
 
-        let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
-        let surface = Arc::new(
-            tools.effective_surface(SurfaceInputs {
-                policy: &config.tool_groups,
-                allowlist: config.tool_allowlist.as_deref(),
-                active: active.as_ref(),
-                server_tools: server_tools.as_slice(),
-                server_tool_config: tool_ctx
-                    .services
-                    .as_deref()
-                    .map(|services| &services.server_tool_config),
-            }),
-        );
+        let (active, server_tools) =
+            resolve_active_server_tools(tool_ctx, &config_server_tools, &turn_server_tool_config);
+        let surface = Arc::new(tools.effective_surface(SurfaceInputs {
+            policy: &config.tool_groups,
+            allowlist: config.tool_allowlist.as_deref(),
+            active: active.as_ref(),
+            server_tools: server_tools.as_slice(),
+            server_tool_config: Some(&turn_server_tool_config),
+        }));
         let surface_hash = surface.hash().as_str().to_owned();
         tool_surface_hashes.insert(surface_hash);
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
@@ -667,6 +684,8 @@ pub(crate) async fn execute_streaming_with_deadline(
     };
 
     let provider = resolve_provider_checked(providers, &turn_model)?;
+    let turn_server_tool_config =
+        server_tool_config_for_provider(&config.server_tool_config, Some(provider));
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -728,19 +747,15 @@ pub(crate) async fn execute_streaming_with_deadline(
 
         // WHY: derive server tools on each iteration so enable_tool activations take effect.
         // resolve_active_server_tools reuses the hoisted Arc when no dynamic changes occurred.
-        let (active, server_tools) = resolve_active_server_tools(tool_ctx, &config_server_tools);
-        let surface = Arc::new(
-            tools.effective_surface(SurfaceInputs {
-                policy: &config.tool_groups,
-                allowlist: config.tool_allowlist.as_deref(),
-                active: active.as_ref(),
-                server_tools: server_tools.as_slice(),
-                server_tool_config: tool_ctx
-                    .services
-                    .as_deref()
-                    .map(|services| &services.server_tool_config),
-            }),
-        );
+        let (active, server_tools) =
+            resolve_active_server_tools(tool_ctx, &config_server_tools, &turn_server_tool_config);
+        let surface = Arc::new(tools.effective_surface(SurfaceInputs {
+            policy: &config.tool_groups,
+            allowlist: config.tool_allowlist.as_deref(),
+            active: active.as_ref(),
+            server_tools: server_tools.as_slice(),
+            server_tool_config: Some(&turn_server_tool_config),
+        }));
         let surface_hash = surface.hash().as_str().to_owned();
         tool_surface_hashes.insert(surface_hash);
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));

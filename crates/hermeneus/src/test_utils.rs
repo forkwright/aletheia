@@ -62,6 +62,7 @@ pub struct MockProvider {
     requests: Mutex<Vec<CompletionRequest>>,
     /// Override for `match_specificity`. `None` = use the default exact-match logic.
     match_kind_override: Option<MatchKind>,
+    server_tools: &'static [&'static str],
 }
 
 impl MockProvider {
@@ -76,6 +77,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            server_tools: &[],
         }
     }
 
@@ -92,6 +94,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            server_tools: &[],
         }
     }
 
@@ -111,6 +114,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            server_tools: &[],
         }
     }
 
@@ -138,6 +142,14 @@ impl MockProvider {
     pub fn with_match_kind(mut self, kind: MatchKind) -> Self {
         // kanon:ignore RUST/pub-visibility
         self.match_kind_override = Some(kind);
+        self
+    }
+
+    /// Set the provider-side server tools this mock reports as supported.
+    #[must_use]
+    pub fn server_tools(mut self, tools: &'static [&'static str]) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        self.server_tools = tools;
         self
     }
 
@@ -212,5 +224,9 @@ impl LlmProvider for MockProvider {
 
     fn name(&self) -> &str {
         self.provider_name
+    }
+
+    fn supports_server_tool(&self, name: &str) -> bool {
+        self.server_tools.contains(&name)
     }
 }

@@ -271,7 +271,10 @@ pub struct NousConfig {
     /// Canonical filesystem roots that local tools may access.
     #[serde(default)]
     pub allowed_roots: Vec<PathBuf>,
-    /// Server-side tools to include in API requests (e.g., web search).
+    /// Server-side tools available for lazy activation through `enable_tool`.
+    #[serde(default)]
+    pub server_tool_config: organon::types::ServerToolConfig,
+    /// Server-side tools to include in API requests from the start of a turn.
     #[serde(default)]
     pub server_tools: Vec<hermeneus::types::ServerToolDefinition>,
     /// Whether prompt caching is enabled for this agent.
@@ -427,6 +430,7 @@ impl Default for NousConfig {
             episteme_cohort: default_episteme_cohort(),
             workspace: default_workspace(),
             allowed_roots: Vec::new(),
+            server_tool_config: organon::types::ServerToolConfig::default(),
             server_tools: Vec::new(),
             cache_enabled: true,
             recall: RecallConfig::default(),
@@ -754,6 +758,7 @@ mod tests {
             episteme_cohort: std::sync::Arc::from("shared"),
             workspace: std::path::PathBuf::from("/tmp/analyst"),
             allowed_roots: vec![std::path::PathBuf::from("/tmp")],
+            server_tool_config: organon::types::ServerToolConfig::default(),
             server_tools: Vec::new(),
             cache_enabled: false,
             recall: RecallConfig::default(),

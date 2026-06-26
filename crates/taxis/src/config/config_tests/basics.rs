@@ -463,6 +463,21 @@ args = ["--stdio"]
 }
 
 #[test]
+fn server_tools_config_deserializes_to_typed_owner() {
+    let toml = r"
+[serverTools]
+webSearch = true
+webSearchMaxUses = 3
+codeExecution = true
+";
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
+
+    assert!(config.server_tools.web_search);
+    assert_eq!(config.server_tools.web_search_max_uses, Some(3));
+    assert!(config.server_tools.code_execution);
+}
+
+#[test]
 fn tools_config_requires_type_at_deserialize_time() {
     let toml = r#"
 [tools.optional.search]

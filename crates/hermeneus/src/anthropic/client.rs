@@ -1119,6 +1119,10 @@ impl LlmProvider for AnthropicProvider {
         self.meta.deployment_target
     }
 
+    fn supports_server_tool(&self, name: &str) -> bool {
+        matches!(name, "web_search" | "code_execution")
+    }
+
     fn supports_streaming(&self) -> bool {
         true
     }

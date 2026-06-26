@@ -613,7 +613,7 @@ impl RuntimeBuilder {
             },
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
-            server_tool_config: organon::types::ServerToolConfig::default(),
+            server_tool_config: configured_server_tool_config(&self.config.server_tools),
         });
         if let Some(spawn_impl) = spawn_impl.as_ref() {
             spawn_impl.set_tool_services(Arc::clone(&tool_services));
@@ -643,8 +643,13 @@ impl RuntimeBuilder {
 
         {
             for agent_def in &self.config.agents.list {
-                let (nous_config, pipeline_config) =
-                    build_nous_runtime_config(&self.config, &self.oikos, &packs, &agent_def.id);
+                let (nous_config, pipeline_config) = build_nous_runtime_config(
+                    &self.config,
+                    &self.oikos,
+                    &packs,
+                    &agent_def.id,
+                    &provider_registry,
+                );
                 if let Err(e) = nous_manager.spawn(nous_config, pipeline_config).await {
                     error!(
                         agent = %agent_def.id,
@@ -882,6 +887,7 @@ impl RuntimeBuilder {
         let reload_manager = Arc::clone(&nous_manager);
         let reload_oikos = Arc::clone(&self.oikos);
         let reload_packs = Arc::clone(&packs);
+        let reload_provider_registry = Arc::clone(&provider_registry);
         task_tracker.spawn(
             async move {
                 loop {
@@ -899,6 +905,7 @@ impl RuntimeBuilder {
                                 &reload_oikos,
                                 &reload_packs,
                                 &agent.id,
+                                &reload_provider_registry,
                             );
                             (agent.id.clone(), nous_config, pipeline_config)
                         })
@@ -968,7 +975,7 @@ mod metrics;
 mod nous_config;
 
 use metrics::{RuntimeBackupMetricsRecorder, register_all_metrics, task_state_component};
-use nous_config::build_nous_runtime_config;
+use nous_config::{build_nous_runtime_config, configured_server_tool_config};
 
 mod setup;
 mod tool_adapters;

@@ -424,11 +424,7 @@ impl NousActor {
             allowlist: self.config.tool_allowlist.as_deref(),
             active: &active,
             server_tools: &self.config.server_tools,
-            server_tool_config: self
-                .services
-                .tool_services
-                .as_deref()
-                .map(|services| &services.server_tool_config),
+            server_tool_config: Some(&self.config.server_tool_config),
         });
         if let Some(section) =
             crate::bootstrap::tools::tool_summary_bootstrap_section(&surface, &tool_estimator)
