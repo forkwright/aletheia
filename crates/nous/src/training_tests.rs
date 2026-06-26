@@ -845,8 +845,7 @@ mod audit_separation_tests {
         let training_dir = dir.path().join("training");
         for entry in std::fs::read_dir(&training_dir).expect("read dir") {
             let entry = entry.expect("entry");
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".jsonl") {
+            if entry.path().extension().and_then(|e| e.to_str()) == Some("jsonl") {
                 let content = std::fs::read_to_string(entry.path()).expect("read");
                 assert!(
                     content.trim().is_empty(),
