@@ -185,7 +185,7 @@ fn enable_tool_def() -> ToolDef {
                     description: "Name of the tool to activate".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec!["name".to_owned()],

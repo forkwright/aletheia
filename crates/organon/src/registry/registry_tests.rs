@@ -202,7 +202,10 @@ async fn execute_rejects_invalid_input_before_dispatch() {
         tool_use_id: "toolu_1".to_owned(),
         arguments: serde_json::json!({"count": "five"}),
     };
-    let err = reg.execute(&input, &mock_ctx()).await.expect_err("invalid input");
+    let err = reg
+        .execute(&input, &mock_ctx())
+        .await
+        .expect_err("invalid input");
     assert!(
         err.to_string().contains("expected integer, got string"),
         "expected schema validation error, got: {err}"
@@ -268,7 +271,7 @@ fn to_hermeneus_tools_produces_valid_definitions() {
                     description: "File path".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec!["path".to_owned()],
@@ -517,7 +520,7 @@ fn schema_includes_required_fields() {
                     description: "File path".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec!["path".to_owned()],
@@ -553,7 +556,7 @@ fn schema_includes_enum_values() {
                     description: "Type filter".to_owned(),
                     enum_values: Some(vec!["f".to_owned(), "d".to_owned()]),
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec![],
@@ -588,7 +591,7 @@ fn schema_includes_default_values() {
                     description: "Case sensitive".to_owned(),
                     enum_values: None,
                     default: Some(serde_json::json!(true)),
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec![],

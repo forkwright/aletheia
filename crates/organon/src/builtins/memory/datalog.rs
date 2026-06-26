@@ -153,7 +153,7 @@ fn datalog_query_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -166,7 +166,7 @@ fn datalog_query_def() -> ToolDef {
                         enum_values: None,
                         default: None,
                         additional_properties: Some(AdditionalProperties::Bool(true)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -176,7 +176,7 @@ fn datalog_query_def() -> ToolDef {
                         description: "Query timeout in seconds (default: 5)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(5)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -186,7 +186,7 @@ fn datalog_query_def() -> ToolDef {
                         description: "Maximum number of result rows (default: 100)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(100)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

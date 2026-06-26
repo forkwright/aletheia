@@ -147,7 +147,7 @@ fn render_pptx_report_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -157,7 +157,7 @@ fn render_pptx_report_def() -> ToolDef {
                         description: "Optional filesystem path to write the rendered PPTX to, in addition to returning base64 bytes.".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

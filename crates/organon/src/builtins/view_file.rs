@@ -261,7 +261,7 @@ fn view_file_def() -> crate::types::ToolDef {
                         description: "File path (absolute or relative to workspace)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -271,7 +271,7 @@ fn view_file_def() -> crate::types::ToolDef {
                         description: "For text files: maximum lines to return".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

@@ -317,7 +317,7 @@ fn web_fetch_def() -> ToolDef {
                         description: "URL to fetch".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -328,7 +328,7 @@ fn web_fetch_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(50000)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

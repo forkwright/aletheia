@@ -228,7 +228,7 @@ fn memory_search_def() -> ToolDef {
                         description: "Semantic search query".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -238,7 +238,7 @@ fn memory_search_def() -> ToolDef {
                         description: "Max results (default 10, max 100)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(10)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -266,7 +266,7 @@ fn memory_correct_def() -> ToolDef {
                         description: "ID of the fact to correct".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -276,7 +276,7 @@ fn memory_correct_def() -> ToolDef {
                         description: "Corrected fact content".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -304,7 +304,7 @@ fn memory_retract_def() -> ToolDef {
                         description: "ID of the fact to retract".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -314,7 +314,7 @@ fn memory_retract_def() -> ToolDef {
                         description: "Optional reason for retraction".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -343,7 +343,7 @@ fn memory_forget_def() -> ToolDef {
                         description: "ID of the fact to forget".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -358,7 +358,7 @@ fn memory_forget_def() -> ToolDef {
                             "privacy".to_owned(),
                         ]),
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -386,7 +386,7 @@ fn memory_audit_def() -> ToolDef {
                         description: "Filter by agent ID (defaults to current agent)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -396,7 +396,7 @@ fn memory_audit_def() -> ToolDef {
                         description: "Filter facts recorded after this ISO datetime".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -406,7 +406,7 @@ fn memory_audit_def() -> ToolDef {
                         description: "Max results (default 20)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(20)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

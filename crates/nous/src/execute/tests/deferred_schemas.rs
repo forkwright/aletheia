@@ -53,6 +53,7 @@ fn make_big_schema_tool_def(name: &str) -> ToolDef {
                     "option_e".to_owned(),
                 ]),
                 default: None,
+                ..Default::default()
             },
         );
     }

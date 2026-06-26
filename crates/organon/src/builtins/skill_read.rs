@@ -167,7 +167,7 @@ fn skill_read_def() -> ToolDef {
                     description: "Name of the skill to load (e.g. \"refactor-pattern\")".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec!["name".to_owned()],

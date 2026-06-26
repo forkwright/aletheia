@@ -151,7 +151,7 @@ fn scaffold_report_def() -> ToolDef {
                         description: "Project slug / short name (used for filenames)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -161,7 +161,7 @@ fn scaffold_report_def() -> ToolDef {
                         description: "Project description".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!("")),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -175,7 +175,7 @@ fn scaffold_report_def() -> ToolDef {
                             "both".to_owned(),
                         ]),
                         default: Some(serde_json::json!("typst")),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -185,7 +185,7 @@ fn scaffold_report_def() -> ToolDef {
                         description: "Inject CONFIDENTIAL headers/footers".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -195,7 +195,7 @@ fn scaffold_report_def() -> ToolDef {
                         description: "Optional directory to write scaffolded files to".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

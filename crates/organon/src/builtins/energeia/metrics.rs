@@ -47,7 +47,7 @@ pub(super) fn metron_def() -> ToolDef {
                             "status".to_owned(),
                         ]),
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -58,7 +58,7 @@ pub(super) fn metron_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(30)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -70,7 +70,7 @@ pub(super) fn metron_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

@@ -209,7 +209,10 @@ pub struct PropertyDef {
     /// Policy for object properties not declared in `properties`.
     /// `false` forbids extra keys; `true` allows any value; a schema object
     /// constrains the values of extra keys.
-    #[serde(rename = "additionalProperties", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "additionalProperties",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub additional_properties: Option<AdditionalProperties>,
     /// Minimum numeric value (inclusive).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -431,23 +434,23 @@ impl PropertyDef {
         let Some(num) = value.as_f64() else {
             return Ok(());
         };
-        if let Some(min) = self.minimum {
-            if num < min {
-                return Err(crate::error::InvalidInputSnafu {
-                    name: name.clone(),
-                    reason: format!("{path}: value {num} is below minimum {min}"),
-                }
-                .build());
+        if let Some(min) = self.minimum
+            && num < min
+        {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: value {num} is below minimum {min}"),
             }
+            .build());
         }
-        if let Some(max) = self.maximum {
-            if num > max {
-                return Err(crate::error::InvalidInputSnafu {
-                    name: name.clone(),
-                    reason: format!("{path}: value {num} is above maximum {max}"),
-                }
-                .build());
+        if let Some(max) = self.maximum
+            && num > max
+        {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: value {num} is above maximum {max}"),
             }
+            .build());
         }
         Ok(())
     }
@@ -462,23 +465,23 @@ impl PropertyDef {
             return Ok(());
         };
         let len = s.chars().count();
-        if let Some(min) = self.min_length {
-            if len < min {
-                return Err(crate::error::InvalidInputSnafu {
-                    name: name.clone(),
-                    reason: format!("{path}: string length {len} is below minimum {min}"),
-                }
-                .build());
+        if let Some(min) = self.min_length
+            && len < min
+        {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: string length {len} is below minimum {min}"),
             }
+            .build());
         }
-        if let Some(max) = self.max_length {
-            if len > max {
-                return Err(crate::error::InvalidInputSnafu {
-                    name: name.clone(),
-                    reason: format!("{path}: string length {len} is above maximum {max}"),
-                }
-                .build());
+        if let Some(max) = self.max_length
+            && len > max
+        {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: string length {len} is above maximum {max}"),
             }
+            .build());
         }
         if let Some(ref pattern) = self.pattern {
             let re = regex::Regex::new(pattern).map_err(|e| {
@@ -508,23 +511,23 @@ impl PropertyDef {
         let Some(arr) = value.as_array() else {
             return Ok(());
         };
-        if let Some(min) = self.min_items {
-            if arr.len() < min {
-                return Err(crate::error::InvalidInputSnafu {
-                    name: name.clone(),
-                    reason: format!("{path}: array length {} is below minimum {min}", arr.len()),
-                }
-                .build());
+        if let Some(min) = self.min_items
+            && arr.len() < min
+        {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: array length {} is below minimum {min}", arr.len()),
             }
+            .build());
         }
-        if let Some(max) = self.max_items {
-            if arr.len() > max {
-                return Err(crate::error::InvalidInputSnafu {
-                    name: name.clone(),
-                    reason: format!("{path}: array length {} is above maximum {max}", arr.len()),
-                }
-                .build());
+        if let Some(max) = self.max_items
+            && arr.len() > max
+        {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: array length {} is above maximum {max}", arr.len()),
             }
+            .build());
         }
         if let Some(ref items) = self.items {
             for (i, item) in arr.iter().enumerate() {
@@ -554,23 +557,21 @@ impl PropertyDef {
                 }
             }
         }
-        if let Some(ref properties) = self.properties {
-            for (key, val) in obj {
-                if let Some(prop_def) = properties.get(key) {
-                    prop_def.validate(name, &format!("{path}.{key}"), val)?;
-                } else if let Some(ref additional) = self.additional_properties {
-                    match additional {
-                        AdditionalProperties::Bool(false) => {
-                            return Err(crate::error::InvalidInputSnafu {
-                                name: name.clone(),
-                                reason: format!("{path}: extra property {key:?} is not allowed"),
-                            }
-                            .build());
+        for (key, val) in obj {
+            if let Some(prop_def) = self.properties.as_ref().and_then(|p| p.get(key)) {
+                prop_def.validate(name, &format!("{path}.{key}"), val)?;
+            } else if let Some(ref additional) = self.additional_properties {
+                match additional {
+                    AdditionalProperties::Bool(false) => {
+                        return Err(crate::error::InvalidInputSnafu {
+                            name: name.clone(),
+                            reason: format!("{path}: extra property {key:?} is not allowed"),
                         }
-                        AdditionalProperties::Bool(true) => {}
-                        AdditionalProperties::Schema(schema) => {
-                            schema.validate(name, &format!("{path}.{key}"), val)?;
-                        }
+                        .build());
+                    }
+                    AdditionalProperties::Bool(true) => {}
+                    AdditionalProperties::Schema(schema) => {
+                        schema.validate(name, &format!("{path}.{key}"), val)?;
                     }
                 }
             }

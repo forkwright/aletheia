@@ -260,7 +260,7 @@ fn input_schema() -> InputSchema {
         description: desc.to_owned(),
         enum_values,
         default: None,
-        ..Default::default(),
+        ..Default::default()
     };
     let ops = vec![
         "symbol_rdeps".to_owned(),

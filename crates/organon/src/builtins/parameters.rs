@@ -135,7 +135,7 @@ fn query_parameters_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -147,7 +147,7 @@ fn query_parameters_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -159,7 +159,7 @@ fn query_parameters_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

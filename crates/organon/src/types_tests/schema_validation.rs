@@ -1,4 +1,4 @@
-//! Schema validation tests for rich PropertyDef and InputSchema.
+//! Schema validation tests for rich `PropertyDef` and `InputSchema`.
 
 #![expect(clippy::expect_used, reason = "test assertions")]
 
@@ -173,7 +173,8 @@ fn validates_array_items() {
         .validate(&name, &serde_json::json!({"tags": ["a", 2]}))
         .expect_err("invalid array item");
     assert!(
-        err.to_string().contains("tags[1]: expected string, got number"),
+        err.to_string()
+            .contains("tags[1]: expected string, got number"),
         "unexpected error: {err}"
     );
 }
@@ -235,10 +236,7 @@ fn validates_object_properties_and_rejects_extra() {
     };
     let name = ToolName::new("test").expect("valid");
     schema
-        .validate(
-            &name,
-            &serde_json::json!({"config": {"enabled": true}}),
-        )
+        .validate(&name, &serde_json::json!({"config": {"enabled": true}}))
         .expect("valid object");
     let err = schema
         .validate(
@@ -247,7 +245,8 @@ fn validates_object_properties_and_rejects_extra() {
         )
         .expect_err("extra property");
     assert!(
-        err.to_string().contains("extra property \"extra\" is not allowed"),
+        err.to_string()
+            .contains("extra property \"extra\" is not allowed"),
         "unexpected error: {err}"
     );
 }
@@ -260,13 +259,11 @@ fn validates_object_additional_properties_schema() {
             PropertyDef {
                 property_type: PropertyType::Object,
                 description: "Headers".to_owned(),
-                additional_properties: Some(AdditionalProperties::Schema(Box::new(
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Header value".to_owned(),
-                        ..Default::default()
-                    },
-                ))),
+                additional_properties: Some(AdditionalProperties::Schema(Box::new(PropertyDef {
+                    property_type: PropertyType::String,
+                    description: "Header value".to_owned(),
+                    ..Default::default()
+                }))),
                 ..Default::default()
             },
         )]),
@@ -286,12 +283,17 @@ fn validates_object_additional_properties_schema() {
         )
         .expect_err("non-string header value");
     assert!(
-        err.to_string().contains("headers.Content-Length: expected string, got number"),
+        err.to_string()
+            .contains("headers.Content-Length: expected string, got number"),
         "unexpected error: {err}"
     );
 }
 
 #[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "WHY(#4741): test assertions on known-valid JSON structure; panics caught as test failures"
+)]
 fn json_schema_emits_nested_properties() {
     let schema = InputSchema {
         properties: IndexMap::from([(
@@ -320,17 +322,15 @@ fn json_schema_emits_nested_properties() {
         json["properties"]["task"]["properties"]["role"]["type"],
         "string"
     );
-    assert_eq!(
-        json["properties"]["task"]["required"][0],
-        "role"
-    );
-    assert_eq!(
-        json["properties"]["task"]["additionalProperties"],
-        false
-    );
+    assert_eq!(json["properties"]["task"]["required"][0], "role");
+    assert_eq!(json["properties"]["task"]["additionalProperties"], false);
 }
 
 #[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "WHY(#4741): test assertions on known-valid JSON structure; panics caught as test failures"
+)]
 fn http_request_headers_schema_rejects_non_string_values() {
     let registry = make_registry_with_builtins();
     let def = registry
@@ -364,12 +364,17 @@ fn http_request_headers_schema_rejects_non_string_values() {
         )
         .expect_err("non-string header value");
     assert!(
-        err.to_string().contains("headers.Content-Length: expected string, got number"),
+        err.to_string()
+            .contains("headers.Content-Length: expected string, got number"),
         "unexpected error: {err}"
     );
 }
 
 #[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "WHY(#4741): test assertions on known-valid JSON structure; panics caught as test failures"
+)]
 fn sessions_dispatch_tasks_schema_requires_role_and_task() {
     let registry = make_registry_with_builtins();
     let def = registry
@@ -403,7 +408,8 @@ fn sessions_dispatch_tasks_schema_requires_role_and_task() {
         )
         .expect_err("missing role");
     assert!(
-        err.to_string().contains("tasks[0]: missing required property \"role\""),
+        err.to_string()
+            .contains("tasks[0]: missing required property \"role\""),
         "unexpected error: {err}"
     );
 
@@ -414,12 +420,17 @@ fn sessions_dispatch_tasks_schema_requires_role_and_task() {
         )
         .expect_err("extra property");
     assert!(
-        err.to_string().contains("tasks[0]: extra property \"extra\" is not allowed"),
+        err.to_string()
+            .contains("tasks[0]: extra property \"extra\" is not allowed"),
         "unexpected error: {err}"
     );
 }
 
 #[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "WHY(#4741): test assertions on known-valid JSON structure; panics caught as test failures"
+)]
 fn datalog_query_params_schema_accepts_arbitrary_params() {
     let registry = make_registry_with_builtins();
     let def = registry
@@ -427,7 +438,10 @@ fn datalog_query_params_schema_accepts_arbitrary_params() {
         .expect("datalog_query tool registered");
     let schema = &def.input_schema;
     let json_schema = schema.to_json_schema();
-    assert_eq!(json_schema["properties"]["params"]["additionalProperties"], true);
+    assert_eq!(
+        json_schema["properties"]["params"]["additionalProperties"],
+        true
+    );
     let name = ToolName::from_static("datalog_query");
 
     schema

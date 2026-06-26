@@ -149,7 +149,7 @@ fn tool_schema_def() -> ToolDef {
                         .to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec!["tool_name".to_owned()],
@@ -534,7 +534,7 @@ mod tests {
                 description: format!("Example property for {name}"),
                 enum_values: None,
                 default: None,
-                ..Default::default(),
+                ..Default::default()
             },
         );
 

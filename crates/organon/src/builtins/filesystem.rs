@@ -575,7 +575,7 @@ fn grep_def() -> ToolDef {
                         description: "Search pattern (regex supported)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -586,7 +586,7 @@ fn grep_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -596,7 +596,7 @@ fn grep_def() -> ToolDef {
                         description: "File glob filter (e.g., '*.ts', '*.md')".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -606,7 +606,7 @@ fn grep_def() -> ToolDef {
                         description: "Case-sensitive search (default: true)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(true)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -616,7 +616,7 @@ fn grep_def() -> ToolDef {
                         description: "Maximum matching lines per file (default: 50)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(50)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -644,7 +644,7 @@ fn find_def() -> ToolDef {
                         description: "File name pattern (glob or regex)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -654,7 +654,7 @@ fn find_def() -> ToolDef {
                         description: "Directory to search (default: workspace root)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -664,7 +664,7 @@ fn find_def() -> ToolDef {
                         description: "Filter: 'f' for files, 'd' for directories".to_owned(),
                         enum_values: Some(vec!["f".to_owned(), "d".to_owned()]),
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -674,7 +674,7 @@ fn find_def() -> ToolDef {
                         description: "Maximum directory depth".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -684,7 +684,7 @@ fn find_def() -> ToolDef {
                         description: "Maximum results (default: 100)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(100)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -712,7 +712,7 @@ fn ls_def() -> ToolDef {
                         description: "Directory to list (default: workspace root)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -722,7 +722,7 @@ fn ls_def() -> ToolDef {
                         description: "Include hidden files (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

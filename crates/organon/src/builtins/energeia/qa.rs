@@ -40,7 +40,7 @@ pub(super) fn dokimasia_def() -> ToolDef {
                         description: "Prompt spec number that generated this PR".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -50,7 +50,7 @@ pub(super) fn dokimasia_def() -> ToolDef {
                         description: "GitHub pull request number to evaluate".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -62,7 +62,7 @@ pub(super) fn dokimasia_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -73,7 +73,7 @@ pub(super) fn dokimasia_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -166,7 +166,7 @@ pub(super) fn diorthosis_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -176,7 +176,7 @@ pub(super) fn diorthosis_def() -> ToolDef {
                         description: "Prompt spec number that produced the failing PR".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

@@ -182,7 +182,7 @@ fn render_graph_audit_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -195,7 +195,7 @@ fn render_graph_audit_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

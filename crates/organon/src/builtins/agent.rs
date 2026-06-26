@@ -297,7 +297,7 @@ fn sessions_spawn_def() -> ToolDef {
                             "runner".to_owned(),
                         ]),
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -307,7 +307,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Task instruction for the sub-agent".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -317,7 +317,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Model override (default: role-based)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -327,7 +327,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Max execution time in seconds (default: 300)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(300)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -377,7 +377,7 @@ fn sessions_dispatch_def() -> ToolDef {
                                             "explorer".to_owned(),
                                             "runner".to_owned(),
                                         ]),
-                                        ..Default::default(),
+                                        ..Default::default()
                                     },
                                 ),
                                 (
@@ -386,7 +386,7 @@ fn sessions_dispatch_def() -> ToolDef {
                                         property_type: PropertyType::String,
                                         description: "Task instruction for the sub-agent"
                                             .to_owned(),
-                                        ..Default::default(),
+                                        ..Default::default()
                                     },
                                 ),
                                 (
@@ -395,7 +395,7 @@ fn sessions_dispatch_def() -> ToolDef {
                                         property_type: PropertyType::String,
                                         description: "Model override (default: role-based)"
                                             .to_owned(),
-                                        ..Default::default(),
+                                        ..Default::default()
                                     },
                                 ),
                                 (
@@ -403,17 +403,17 @@ fn sessions_dispatch_def() -> ToolDef {
                                     PropertyDef {
                                         property_type: PropertyType::Number,
                                         description: "Max execution time in seconds".to_owned(),
-                                        ..Default::default(),
+                                        ..Default::default()
                                     },
                                 ),
                             ])),
                             required: Some(vec!["role".to_owned(), "task".to_owned()]),
                             additional_properties: Some(AdditionalProperties::Bool(false)),
-                            ..Default::default(),
+                            ..Default::default()
                         })),
                         min_items: Some(1),
                         max_items: Some(10),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -423,7 +423,7 @@ fn sessions_dispatch_def() -> ToolDef {
                         description: "Default timeout for all tasks (default: 300)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(300)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -666,11 +666,14 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"tasks": tasks}),
         };
-        let result = reg.execute(&input, &ctx).await.expect("execute");
-        assert!(result.is_error, "expected result.is_error to be true");
+        // WHY(#4741): schema now enforces max_items:10 on tasks before the executor runs.
+        let err = reg
+            .execute(&input, &ctx)
+            .await
+            .expect_err("schema should reject >10 tasks");
         assert!(
-            result.content.text_summary().contains("Too many tasks"),
-            "expected result.content.text_summary().contains(\"Too many tasks\") to be true"
+            err.to_string().contains("above maximum 10"),
+            "expected schema error about max items: {err}"
         );
     }
 

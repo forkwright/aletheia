@@ -670,7 +670,7 @@ fn read_def() -> ToolDef {
                         description: "File path (absolute or relative to workspace)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -680,7 +680,7 @@ fn read_def() -> ToolDef {
                         description: "Maximum lines to return (default: all)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -708,7 +708,7 @@ fn write_def() -> ToolDef {
                         description: "File path (absolute or relative to workspace)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -718,7 +718,7 @@ fn write_def() -> ToolDef {
                         description: "Content to write".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -728,7 +728,7 @@ fn write_def() -> ToolDef {
                         description: "Append instead of overwrite (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -756,7 +756,7 @@ fn edit_def() -> ToolDef {
                         description: "File path (absolute or relative to workspace)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -766,7 +766,7 @@ fn edit_def() -> ToolDef {
                         description: "Exact text to find in the file".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -776,7 +776,7 @@ fn edit_def() -> ToolDef {
                         description: "Replacement text".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -809,7 +809,7 @@ fn exec_def() -> ToolDef {
                         description: "The shell command to execute".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -820,7 +820,7 @@ fn exec_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

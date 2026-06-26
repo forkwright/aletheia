@@ -159,7 +159,7 @@ fn inspect_report_def() -> crate::types::ToolDef {
                             "docx".to_owned(),
                         ]),
                         default: Some(serde_json::json!("pdf")),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -169,7 +169,7 @@ fn inspect_report_def() -> crate::types::ToolDef {
                         description: "Base64-encoded document bytes".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

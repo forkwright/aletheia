@@ -598,28 +598,28 @@ fn issue_scan_def() -> ToolDef {
                     description: "GitHub repository in owner/repo format (e.g. `forkwright/aletheia`)".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("label".to_owned(), PropertyDef {
                     property_type: PropertyType::String,
                     description: "Filter by label name (optional)".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("milestone".to_owned(), PropertyDef {
                     property_type: PropertyType::String,
                     description: "Filter by milestone name (optional)".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("limit".to_owned(), PropertyDef {
                     property_type: PropertyType::Integer,
                     description: "Maximum number of issues to fetch (default: 30)".to_owned(),
                     enum_values: None,
                     default: Some(serde_json::json!(30)),
-                    ..Default::default(),
+                    ..Default::default()
                 }),
             ]),
             required: vec!["repo".to_owned()],
@@ -649,49 +649,49 @@ fn issue_triage_def() -> ToolDef {
                     description: "GitHub repository in owner/repo format (e.g. `forkwright/aletheia`)".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("staging_dir".to_owned(), PropertyDef {
                     property_type: PropertyType::String,
                     description: "Path to the staging directory for generated prompts".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("label".to_owned(), PropertyDef {
                     property_type: PropertyType::String,
                     description: "Filter by label name (optional)".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("milestone".to_owned(), PropertyDef {
                     property_type: PropertyType::String,
                     description: "Filter by milestone name (optional)".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("threshold".to_owned(), PropertyDef {
                     property_type: PropertyType::Number,
                     description: "Minimum relevance score (0.0-1.0) to generate a prompt (default: 0.3)".to_owned(),
                     enum_values: None,
                     default: Some(serde_json::json!(0.3)),
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("context_keywords".to_owned(), PropertyDef {
                     property_type: PropertyType::String,
                     description: "Comma-separated keywords describing agent's current context and capabilities".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 }),
                 ("limit".to_owned(), PropertyDef {
                     property_type: PropertyType::Integer,
                     description: "Maximum number of issues to fetch (default: 30)".to_owned(),
                     enum_values: None,
                     default: Some(serde_json::json!(30)),
-                    ..Default::default(),
+                    ..Default::default()
                 }),
             ]),
             required: vec!["repo".to_owned(), "staging_dir".to_owned()],
@@ -726,7 +726,7 @@ fn issue_approve_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -736,7 +736,7 @@ fn issue_approve_def() -> ToolDef {
                         description: "Path to the dispatch queue directory".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -747,7 +747,7 @@ fn issue_approve_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

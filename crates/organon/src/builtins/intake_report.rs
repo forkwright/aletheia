@@ -92,7 +92,7 @@ fn intake_report_def() -> ToolDef {
                     description: "Free-form intake text to classify and scaffold".to_owned(),
                     enum_values: None,
                     default: None,
-                    ..Default::default(),
+                    ..Default::default()
                 },
             )]),
             required: vec!["text".to_owned()],

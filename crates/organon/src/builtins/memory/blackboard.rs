@@ -112,7 +112,7 @@ fn blackboard_def() -> ToolDef {
                         description: "Action: 'write', 'read', 'list', 'delete'".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -122,7 +122,7 @@ fn blackboard_def() -> ToolDef {
                         description: "Blackboard key (required for write/read/delete)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -132,7 +132,7 @@ fn blackboard_def() -> ToolDef {
                         description: "Value to write (required for write action)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -142,7 +142,7 @@ fn blackboard_def() -> ToolDef {
                         description: "Time-to-live in seconds (default 3600)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(3600)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),

@@ -39,7 +39,7 @@ pub(super) fn dromeus_def() -> ToolDef {
                         description: "Dispatch spec identifier or inline spec JSON".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -49,7 +49,7 @@ pub(super) fn dromeus_def() -> ToolDef {
                         description: "GitHub project slug (owner/repo)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -59,7 +59,7 @@ pub(super) fn dromeus_def() -> ToolDef {
                         description: "Maximum total spend in USD (default: no limit)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -69,7 +69,7 @@ pub(super) fn dromeus_def() -> ToolDef {
                         description: "Maximum simultaneous sessions (default: no limit)".to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -80,7 +80,7 @@ pub(super) fn dromeus_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -91,7 +91,7 @@ pub(super) fn dromeus_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
-                        ..Default::default(),
+                        ..Default::default()
                     },
                 ),
             ]),
