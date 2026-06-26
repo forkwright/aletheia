@@ -153,9 +153,11 @@ fn from_config_default_models_and_name_unchanged() {
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     assert_eq!(provider.name(), "anthropic");
     assert!(provider.supports_model("claude-opus-4-6"));
+    // WHY (#4881): built-in Anthropic catalog models are exact matches,
+    // not catch-all, so they win over broad claude-* providers.
     assert_eq!(
         provider.match_specificity("claude-opus-4-6"),
-        Some(MatchKind::CatchAll)
+        Some(MatchKind::Exact)
     );
     assert_eq!(
         provider.match_specificity("claude-future-family-model"),
