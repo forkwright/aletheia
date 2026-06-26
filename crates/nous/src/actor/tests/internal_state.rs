@@ -566,6 +566,7 @@ async fn cancelled_turn_reverts_turn_counter() {
         actor.spawn_pipeline_task(
             session_key,
             None,
+            None,
             "hello",
             None,
             None,

@@ -33,6 +33,8 @@ pub(crate) enum NousMessage {
         session_key: String, // kanon:ignore RUST/plain-string-secret
         /// Database session ID from the session store. See `Turn::session_id`.
         session_id: Option<String>,
+        /// Canonical turn ULID supplied by the gateway for idempotent streams.
+        turn_id: Option<koina::ulid::Ulid>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         /// Operator approval gate for reversibility-class tool calls (#3958, ADR-005).

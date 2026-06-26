@@ -400,6 +400,7 @@ impl NousActor {
                         NousMessage::StreamingTurn {
                             session_key,
                             session_id,
+                            turn_id,
                             content,
                             stream_tx,
                             approval_gate,
@@ -418,6 +419,7 @@ impl NousActor {
                                 self.handle_streaming_turn(turn::StreamingTurnRequest {
                                     session_key,
                                     session_id,
+                                    turn_id,
                                     content,
                                     stream_tx,
                                     approval_gate,

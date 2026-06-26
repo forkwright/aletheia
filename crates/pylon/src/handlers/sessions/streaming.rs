@@ -1,13 +1,14 @@
 //! SSE streaming handlers for session message delivery.
 
 use std::convert::Infallible;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use axum::Json;
 use axum::extract::State;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{Event, KeepAlive, KeepAliveStream, Sse};
 use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
@@ -26,7 +27,7 @@ use taxis::config::AletheiaConfig;
 
 use crate::error::{
     ApiError, BadRequestSnafu, ConflictSnafu, FieldError, InternalSnafu, NousNotFoundSnafu,
-    ValidationFailedSnafu,
+    StreamTurnConflictSnafu, ValidationFailedSnafu,
 };
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::idempotency::LookupResult;
@@ -46,6 +47,17 @@ const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
 const HEX_DECIMAL_DIGITS: u8 = 10;
 const ASCII_DIGIT_ZERO: u8 = b'0';
 const ASCII_LOWER_A: u8 = b'a';
+
+type AxumEventStream =
+    Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send + 'static>>;
+type BoxedSse = Sse<KeepAliveStream<AxumEventStream>>;
+
+fn boxed_event_stream<S>(stream: S) -> AxumEventStream
+where
+    S: tokio_stream::Stream<Item = Result<Event, Infallible>> + Send + 'static,
+{
+    Box::pin(stream)
+}
 
 /// Build an SSE [`KeepAlive`] using the configured gateway heartbeat interval.
 ///
@@ -653,7 +665,7 @@ pub async fn send_message(
 
 /// POST /api/v1/sessions/stream: stream a conversation turn (turn stream protocol).
 ///
-/// Accepts a `StreamTurnRequest` (`nous_id`, `message`, `session_key`) and
+/// Accepts a `StreamTurnRequest` (`nous_id`, `message`, `session_key`, `client_turn_id`) and
 /// returns SSE events in `TurnStreamEvent` format (used by TUI and desktop clients):
 /// `message_start`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`,
 /// `message_complete`, `error`.
@@ -662,7 +674,7 @@ pub async fn send_message(
     path = "/api/v1/sessions/stream",
     request_body(
         content = serde_json::Value,
-        description = "Stream turn request: `{nous_id, message, session_key?}`",
+        description = "Stream turn request: `{nous_id, message, session_key?, client_turn_id?}`. `client_turn_id` is a client-generated ULID scoped to one user action for idempotency.",
         content_type = "application/json"
     ),
     responses(
@@ -670,6 +682,7 @@ pub async fn send_message(
         (status = 400, description = "Bad request", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
         (status = 404, description = "Nous not found", body = crate::error::ErrorResponse),
+        (status = 409, description = "Stream turn idempotency conflict", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -691,12 +704,13 @@ pub async fn stream_turn(
     claims: Claims,
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     Json(body): Json<StreamTurnRequest>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+) -> Result<BoxedSse, ApiError> {
     require_role(&claims, Role::Operator)?;
     require_nous_access(&claims, &body.nous_id)?;
     let agent_id = body.nous_id;
     let message = body.message;
     let session_key = body.session_key;
+    let client_turn_id = body.client_turn_id;
 
     // WHY(#3275): collect all field errors and return in one response.
     let api_limits = &state.config.read().await.api_limits;
@@ -731,12 +745,42 @@ pub async fn stream_turn(
             message: format!("exceeds maximum length of {max_id_bytes} bytes"),
         });
     }
+    if let Some(ref id) = client_turn_id {
+        if id.is_empty() {
+            field_errors.push(FieldError {
+                field: "client_turn_id".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            });
+        } else if id.len() > max_id_bytes {
+            field_errors.push(FieldError {
+                field: "client_turn_id".to_owned(),
+                code: "too_long".to_owned(),
+                message: format!("exceeds maximum length of {max_id_bytes} bytes"),
+            });
+        } else if id.parse::<koina::ulid::Ulid>().is_err() {
+            field_errors.push(FieldError {
+                field: "client_turn_id".to_owned(),
+                code: "invalid".to_owned(),
+                message: "must be a valid ULID".to_owned(),
+            });
+        }
+    }
     if !field_errors.is_empty() {
         return Err(ValidationFailedSnafu {
             errors: field_errors,
         }
         .build());
     }
+
+    let turn_ulid = client_turn_id
+        .as_deref()
+        .and_then(|id| id.parse::<koina::ulid::Ulid>().ok())
+        .unwrap_or_else(koina::ulid::Ulid::new);
+    let turn_id = turn_ulid.to_string();
+    let idempotency_key = client_turn_id
+        .as_ref()
+        .map(|_| stream_turn_idempotency_key(&turn_id));
 
     let handle = state
         .nous_manager
@@ -756,8 +800,58 @@ pub async fn stream_turn(
 
     let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
 
+    let body_fingerprint = stream_turn_body_fingerprint(&agent_id, &session_key, &message);
+    if let Some(ref key) = idempotency_key {
+        match state.idempotency_cache.check_or_insert(
+            &claims.sub,
+            key,
+            &session_id,
+            &body_fingerprint,
+        ) {
+            LookupResult::Miss => {}
+            LookupResult::Hit { body, .. } => {
+                let existing_turn_id =
+                    cached_stream_turn_id(&body).unwrap_or_else(|| turn_id.clone());
+                tracing::info!(
+                    client_turn_id = %existing_turn_id,
+                    "stream turn idempotency cache hit"
+                );
+                if let Some(response) =
+                    existing_turn_stream(&state, &session_id, &existing_turn_id).await
+                {
+                    return Ok(response);
+                }
+                return Err(StreamTurnConflictSnafu {
+                    message: "stream turn already exists but its replay buffer is no longer available",
+                    turn_id: existing_turn_id,
+                }
+                .build());
+            }
+            LookupResult::Conflict => {
+                tracing::info!(
+                    client_turn_id = %turn_id,
+                    "stream turn duplicate while original request is in flight"
+                );
+                if let Some(response) = existing_turn_stream(&state, &session_id, &turn_id).await {
+                    return Ok(response);
+                }
+                return Err(StreamTurnConflictSnafu {
+                    message: "stream turn already exists but is not ready for replay",
+                    turn_id,
+                }
+                .build());
+            }
+            LookupResult::Rejected { reason } => {
+                return Err(StreamTurnConflictSnafu {
+                    message: reason.message(),
+                    turn_id,
+                }
+                .build());
+            }
+        }
+    }
+
     let stream_request_id = request_id.0.clone();
-    let turn_id = koina::ulid::Ulid::new().to_string();
     // WHY(#3276): channel carries (seq, event) pairs for Last-Event-ID support.
     let (turn_tx, turn_rx) = mpsc::channel::<(u64, PylonTurnStreamEvent)>(32);
     let (nous_tx, mut nous_rx) = mpsc::channel::<TurnStreamEvent>(64);
@@ -892,6 +986,12 @@ pub async fn stream_turn(
     let turn_cancel_task = turn_cancel.clone();
     let buf_handle_task = buf_handle.clone();
     let event_bus = Arc::clone(&state.event_bus);
+    let idem_key = idempotency_key.clone();
+    let idem_principal = claims.sub.clone();
+    let idem_session_id = session_id.clone();
+    let idem_body_fingerprint = body_fingerprint.clone();
+    let idem_cache = Arc::clone(&state.idempotency_cache);
+    let idem_turn_id = turn_id.clone();
     let stream_turn_handle = tokio::spawn(
         async move {
             // WHY(#3958): hold the approval registry guard for the lifetime of
@@ -900,12 +1000,13 @@ pub async fn stream_turn(
             let _approval_guard = approval_guard;
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
-            let turn_fut = handle.send_turn_streaming_with_approval(
+            let turn_fut = handle.send_turn_streaming_with_approval_and_turn_id(
                 &session_key,
                 Some(sid.clone()),
                 &message,
                 nous_tx,
                 approval_gate,
+                turn_ulid,
                 nous::handle::DEFAULT_SEND_TIMEOUT,
                 turn_cancel_task.clone(),
             );
@@ -959,6 +1060,17 @@ pub async fn stream_turn(
                             turn_complete_event_payload(&sid, &aid, &turn_id, &result),
                         ))
                         .await;
+
+                    if let Some(ref key) = idem_key {
+                        idem_cache.complete(
+                            &idem_principal,
+                            key,
+                            &idem_session_id,
+                            &idem_body_fingerprint,
+                            axum::http::StatusCode::OK,
+                            stream_turn_idempotency_body(&idem_turn_id, "completed"),
+                        );
+                    }
                 }
                 Err(err) => {
                     // WHY: Log full error internally; span carries session/nous context (#844).
@@ -1016,6 +1128,16 @@ pub async fn stream_turn(
                     if !is_abort {
                         buf_handle_task.mark_failed().await;
                     }
+                    if let Some(ref key) = idem_key {
+                        idem_cache.complete(
+                            &idem_principal,
+                            key,
+                            &idem_session_id,
+                            &idem_body_fingerprint,
+                            axum::http::StatusCode::OK,
+                            stream_turn_idempotency_body(&idem_turn_id, "failed"),
+                        );
+                    }
                 }
             }
         }
@@ -1050,7 +1172,8 @@ pub async fn stream_turn(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "heartbeat").await))
+    Ok(Sse::new(boxed_event_stream(stream))
+        .keep_alive(gateway_keepalive(&state.config, "heartbeat").await))
 }
 
 /// GET /api/v1/events: global SSE keep-alive channel.
@@ -1117,6 +1240,44 @@ fn sse_event_to_axum_with_id((seq, event): (u64, SseEvent)) -> Result<Event, Inf
     }
 }
 
+async fn existing_turn_stream(
+    state: &SessionsState,
+    session_id: &str,
+    turn_id: &str,
+) -> Option<BoxedSse> {
+    let buf = state.turn_buffer_registry.get(session_id, turn_id).await?;
+    let handle = TurnBufferHandle::new(buf);
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(32);
+
+    let shutdown_token = state.shutdown.child_token();
+    let turn_cancel = CancellationToken::new();
+    let task_cancel = turn_cancel.clone();
+    let reconnect_task = tokio::spawn(reconnect_turn_task(
+        tx,
+        handle,
+        0,
+        shutdown_token,
+        task_cancel,
+        Duration::from_mins(5),
+    ));
+
+    let stream = GuardedStream {
+        inner: ReceiverStream::new(rx),
+        _guard: AbortOnDrop {
+            task: reconnect_task,
+            turn_cancel,
+            _idem_guard: None,
+            turn_buffer: None,
+            abort_reason: "",
+        },
+    };
+
+    Some(
+        Sse::new(boxed_event_stream(stream))
+            .keep_alive(gateway_keepalive(&state.config, "ping").await),
+    )
+}
+
 fn send_message_body_fingerprint(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"send_message\0content\0");
@@ -1131,6 +1292,53 @@ fn send_message_body_fingerprint(content: &str) -> String {
         hex.push(lower_hex_char(byte & HEX_LOW_NIBBLE_MASK));
     }
     hex
+}
+
+fn stream_turn_body_fingerprint(nous_id: &str, session_key: &str, message: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"stream_turn\0nous_id\0");
+    hasher.update(nous_id.len().to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(nous_id.as_bytes());
+    hasher.update(b"\0session_key\0");
+    hasher.update(session_key.len().to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(session_key.as_bytes());
+    hasher.update(b"\0message\0");
+    hasher.update(message.len().to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(message.as_bytes());
+
+    let digest = hasher.finalize();
+    let mut hex = String::from("sha256:");
+    for byte in digest {
+        hex.push(lower_hex_char(byte >> HEX_HIGH_NIBBLE_SHIFT));
+        hex.push(lower_hex_char(byte & HEX_LOW_NIBBLE_MASK));
+    }
+    hex
+}
+
+fn stream_turn_idempotency_key(turn_id: &str) -> String {
+    format!("stream_turn:{turn_id}")
+}
+
+fn stream_turn_idempotency_body(turn_id: &str, status: &str) -> String {
+    serde_json::json!({
+        "turn_id": turn_id,
+        "status": status,
+    })
+    .to_string()
+}
+
+fn cached_stream_turn_id(body: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("turn_id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
 }
 
 fn lower_hex_char(nibble: u8) -> char {

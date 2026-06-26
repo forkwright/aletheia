@@ -15,7 +15,7 @@
 //!
 //! ```ignore
 //! let cancel = CancellationToken::new();
-//! let mut rx = stream_turn(client, &url, &agent, &key, &msg, cancel.child_token());
+//! let mut rx = stream_turn(client, &url, &agent, &key, &msg, &turn_id, cancel.child_token());
 //!
 //! // In a coroutine:
 //! while let Some(event) = rx.recv().await {
@@ -57,6 +57,7 @@ pub(crate) fn stream_turn(
     nous_id: &str,
     session_key: &str,
     message: &str,
+    client_turn_id: &str,
     cancel: CancellationToken,
 ) -> mpsc::Receiver<StreamEvent> {
     let (tx, rx) = mpsc::channel(256);
@@ -66,6 +67,7 @@ pub(crate) fn stream_turn(
         "message": message,
         "nous_id": nous_id,
         "session_key": session_key,
+        "client_turn_id": client_turn_id,
     });
 
     let builder = client

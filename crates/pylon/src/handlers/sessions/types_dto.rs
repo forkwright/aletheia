@@ -37,6 +37,9 @@ pub struct StreamTurnRequest {
     /// Session key for deduplication (defaults to "main").
     #[serde(default = "super::default_session_key")]
     pub session_key: String,
+    /// Client-generated ULID that identifies one user action for idempotency.
+    #[serde(default, alias = "clientTurnId")]
+    pub client_turn_id: Option<String>,
 }
 
 /// Query parameters for `GET /api/v1/sessions`.

@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use koina::id::{NousId, SessionId};
+use koina::ulid::Ulid;
 use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
 use tokio::sync::mpsc;
@@ -33,6 +34,7 @@ pub(super) struct StreamingTurnRequest {
     // kanon:ignore RUST/plain-string-secret — session_key is a HashMap lookup identifier (not an auth secret)
     pub session_key: String,
     pub session_id: Option<String>,
+    pub turn_id: Option<Ulid>,
     pub content: String,
     pub stream_tx: mpsc::Sender<TurnStreamEvent>,
     /// Operator approval gate for reversibility-class tool calls (#3958).
@@ -181,6 +183,7 @@ impl NousActor {
         let StreamingTurnRequest {
             session_key,
             session_id,
+            turn_id,
             content,
             stream_tx,
             approval_gate,
@@ -199,6 +202,7 @@ impl NousActor {
             .execute_streaming_turn_with_panic_boundary(
                 &session_key,
                 session_id.as_deref(),
+                turn_id,
                 &content,
                 &stream_tx,
                 approval_gate,
@@ -238,6 +242,7 @@ impl NousActor {
             .spawn_pipeline_task(
                 session_key,
                 session_id,
+                None,
                 content,
                 None,
                 None,
@@ -257,6 +262,7 @@ impl NousActor {
         &mut self,
         session_key: &str,
         session_id: Option<&str>,
+        turn_id: Option<Ulid>,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -267,6 +273,7 @@ impl NousActor {
             .spawn_pipeline_task(
                 session_key,
                 session_id,
+                turn_id,
                 content,
                 Some(stream_tx.clone()),
                 approval_gate,
@@ -301,6 +308,7 @@ impl NousActor {
         &mut self,
         session_key: &str,
         db_session_id: Option<&str>,
+        turn_id: Option<Ulid>,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -318,7 +326,7 @@ impl NousActor {
                 SessionState::new(id, session_key.to_owned(), &self.config)
             });
 
-        session.next_turn();
+        session.next_turn_with_id(turn_id);
 
         // WHY: surprise is episodic — advance the running session prior with
         // this turn's content here, on the authoritative SessionState, so the

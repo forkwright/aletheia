@@ -141,8 +141,17 @@ impl SessionState {
     /// globally unique dedup key, even after actor restarts with session
     /// adoption from the database.
     pub fn next_turn(&mut self) -> u64 {
+        self.next_turn_with_id(None)
+    }
+
+    /// Advance to the next turn using a caller-supplied canonical turn ID.
+    ///
+    /// WHY(#4793): the streaming HTTP gateway emits the public turn ID before
+    /// dispatching into the actor. Passing that ULID through keeps SSE replay
+    /// buffers, approval routing, and durable finalize records aligned.
+    pub fn next_turn_with_id(&mut self, turn_id: Option<Ulid>) -> u64 {
         self.turn += 1;
-        self.turn_id = Ulid::new();
+        self.turn_id = turn_id.unwrap_or_default();
         // WHY: update last_accessed so LRU eviction correctly keeps active sessions
         // over idle ones. Without this, eviction is effectively creation-time ordering
         // because Instant::now() is only set in new(). (#3253)
