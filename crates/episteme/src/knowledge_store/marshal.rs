@@ -1491,8 +1491,9 @@ mod tests {
                 "expected one fact for tier {}",
                 tier.as_str()
             );
+            let fact = facts.first().expect("asserted len == 1 above");
             assert_eq!(
-                facts[0].provenance.tier,
+                fact.provenance.tier,
                 tier,
                 "rows_to_facts must round-trip tier {}, not downgrade to Assumed",
                 tier.as_str()
@@ -1513,8 +1514,9 @@ mod tests {
                 "expected one fact for tier {}",
                 tier.as_str()
             );
+            let fact = facts.first().expect("asserted len == 1 above");
             assert_eq!(
-                facts[0].provenance.tier,
+                fact.provenance.tier,
                 tier,
                 "rows_to_raw_facts must round-trip tier {}, not downgrade to Assumed",
                 tier.as_str()
