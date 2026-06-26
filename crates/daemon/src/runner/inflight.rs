@@ -184,18 +184,16 @@ impl TaskRunner {
             return;
         }
 
-        self.self_prompt_limiter.record(&self.nous_id);
-
         let bridge = self.bridge.clone();
         let nous_id = self.nous_id.clone();
         let task_id_owned = task_id.to_owned();
         let cancel = self.shutdown.child_token();
 
-        // WHY: spawn as a detached task. Self-prompt execution should not block
-        // the main scheduler loop. Failures are logged but do not affect the
-        // originating task status.
+        // WHY: spawn as a tracked task. Self-prompt execution should not block
+        // the main scheduler loop, but the handle must be retained so a panic
+        // surfaces as a JoinError instead of disappearing silently.
         let task_name = "self_prompt";
-        tokio::spawn(
+        self.self_prompt_tasks.spawn(
             async move {
                 tracing::info!(
                     nous_id = %nous_id,
@@ -241,5 +239,9 @@ impl TaskRunner {
             }
             .instrument(tracing::info_span!("background_task", task = task_name)),
         );
+
+        // WHY: record the rate-limit slot only after the task has been stored
+        // in the tracked set. If spawn itself fails, the slot is not consumed.
+        self.self_prompt_limiter.record(&self.nous_id);
     }
 }

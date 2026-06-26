@@ -70,6 +70,9 @@ pub struct TaskRunner {
     self_prompt_config: crate::self_prompt::SelfPromptConfig,
     /// Optional per-task watchdog supervisor.
     watchdog: Option<TaskWatchdog>,
+    /// Tracked self-prompt tasks so panics surface as `JoinError`s instead of
+    /// disappearing silently when the returned handle is dropped.
+    self_prompt_tasks: tokio::task::JoinSet<()>,
 }
 
 /// Tracks a task that is currently executing.
@@ -215,6 +218,7 @@ impl TaskRunner {
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
             watchdog: None,
+            self_prompt_tasks: tokio::task::JoinSet::new(),
         }
     }
 
@@ -241,6 +245,7 @@ impl TaskRunner {
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
             watchdog: None,
+            self_prompt_tasks: tokio::task::JoinSet::new(),
         }
     }
 
