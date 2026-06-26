@@ -641,13 +641,10 @@ async fn resolve_with_hop_limit_async(
     let mut hops: usize = 0;
 
     loop {
-        let meta = match tokio::fs::symlink_metadata(&current).await {
-            Ok(m) => m,
-            Err(_) => {
-                return Err(PathValidationError::DanglingSymlink {
-                    path: start.to_path_buf(),
-                });
-            }
+        let Ok(meta) = tokio::fs::symlink_metadata(&current).await else {
+            return Err(PathValidationError::DanglingSymlink {
+                path: start.to_path_buf(),
+            });
         };
 
         if !meta.file_type().is_symlink() {
@@ -662,13 +659,10 @@ async fn resolve_with_hop_limit_async(
             });
         }
 
-        let target = match tokio::fs::read_link(&current).await {
-            Ok(t) => t,
-            Err(_) => {
-                return Err(PathValidationError::DanglingSymlink {
-                    path: start.to_path_buf(),
-                });
-            }
+        let Ok(target) = tokio::fs::read_link(&current).await else {
+            return Err(PathValidationError::DanglingSymlink {
+                path: start.to_path_buf(),
+            });
         };
 
         current = if target.is_absolute() {
