@@ -472,3 +472,187 @@ async fn streaming_dropped_llm_deltas_record_metric() {
         "expected buffer_full reason label, got: {buf}"
     );
 }
+
+/// Provider that emits text deltas with yields between them, allowing a
+/// concurrent task to drop the receiver mid-stream.
+struct SlowDeltaEmitter {
+    deltas: usize,
+    response: CompletionResponse,
+}
+
+impl SlowDeltaEmitter {
+    fn new(deltas: usize, response: CompletionResponse) -> Self {
+        Self { deltas, response }
+    }
+}
+
+impl LlmProvider for SlowDeltaEmitter {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let response = self.response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+        on_event: &'a mut (dyn FnMut(hermeneus::anthropic::StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let response = self.response.clone();
+        let deltas = self.deltas;
+        Box::pin(async move {
+            for i in 0..deltas {
+                on_event(hermeneus::anthropic::StreamEvent::TextDelta {
+                    text: format!("delta-{i}"),
+                });
+                tokio::task::yield_now().await;
+            }
+            Ok(response)
+        })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &'static str {
+        "slow-delta-emitter"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+}
+
+/// Tool executor that drops the stream receiver when it runs, simulating a
+/// client disconnect after a `tool_use` response has been dispatched.
+struct DisconnectOnExecute {
+    rx: tokio::sync::Mutex<Option<tokio::sync::mpsc::Receiver<TurnStreamEvent>>>,
+}
+
+impl DisconnectOnExecute {
+    fn new(rx: tokio::sync::mpsc::Receiver<TurnStreamEvent>) -> Self {
+        Self {
+            rx: tokio::sync::Mutex::new(Some(rx)),
+        }
+    }
+}
+
+impl ToolExecutor for DisconnectOnExecute {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            let mut guard = self.rx.lock().await;
+            drop(guard.take());
+            Ok(ToolResult::text(format!(
+                "executed: {}",
+                input.name.as_str()
+            )))
+        })
+    }
+}
+
+#[tokio::test]
+async fn streaming_client_disconnect_mid_delta_reports_stop_reason() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(SlowDeltaEmitter::new(
+        10,
+        make_text_response("partial answer"),
+    )));
+
+    let tools = ToolRegistry::new();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(1);
+
+    // WHY: read a couple of deltas so the disconnect happens mid-stream, then
+    // drop the receiver so the remaining deltas and final response are dropped.
+    let reader = tokio::spawn(async move {
+        let mut seen = 0;
+        while let Some(event) = rx.recv().await {
+            if matches!(event, TurnStreamEvent::LlmDelta(_)) {
+                seen += 1;
+                if seen >= 2 {
+                    break;
+                }
+            }
+        }
+    });
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    let _ = reader.await;
+
+    assert_eq!(
+        result.stop_reason, "client_disconnect",
+        "streaming stop reason should report client disconnect when receiver drops mid-delta"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "one LLM call should have completed before detecting disconnect"
+    );
+    assert_eq!(
+        result.content, "partial answer",
+        "partial response content should still be captured"
+    );
+}
+
+#[tokio::test]
+async fn streaming_client_disconnect_after_tool_use_reports_stop_reason() {
+    let mut providers = ProviderRegistry::new();
+    // WHY: first response requests a tool; the executor will drop the receiver.
+    // The second response should never be reached because the closed check
+    // breaks the loop on the next iteration.
+    providers.register(Box::new(StreamingMockProvider::with_responses(vec![
+        make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+        make_text_response("should not be reached"),
+    ])));
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+    let tools = make_registry_with("exec", Box::new(DisconnectOnExecute::new(rx)));
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    assert_eq!(
+        result.stop_reason, "client_disconnect",
+        "streaming stop reason should report client disconnect after tool-use disconnect"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 1,
+        "only one LLM call should run before disconnect"
+    );
+    assert_eq!(
+        result.tool_calls.len(),
+        1,
+        "the tool call dispatched before disconnect should be recorded"
+    );
+}

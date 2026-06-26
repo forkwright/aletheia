@@ -167,6 +167,7 @@ pub(crate) async fn execute_with_deadline(
 
         if iterations > config.limits.max_tool_iterations {
             warn!(iterations, "max tool iterations reached");
+            STOP_REASON_MAX_TOOL_ITERATIONS.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -681,6 +682,7 @@ pub(crate) async fn execute_streaming_with_deadline(
     let mut consecutive_tool_only: u32 = 0;
     let mut final_content = String::new();
     let mut final_stop_reason = STOP_REASON_CLIENT_DISCONNECT.to_owned();
+    let mut client_disconnected = false;
     let mut used_server_web_search = false;
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
@@ -711,6 +713,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         // channel is closed.  Continuing to call the LLM wastes compute and credits (#1721).
         if stream_tx.is_closed() {
             info!("client disconnected, stopping LLM turn");
+            STOP_REASON_CLIENT_DISCONNECT.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -801,6 +804,13 @@ pub(crate) async fn execute_streaming_with_deadline(
             }
         };
 
+        // WHY: the receiver may be dropped while `complete_streaming` is in flight.  Capture
+        // the disconnect so we override any model stop_reason with `client_disconnect` and do
+        // not dispatch further tools (#4915).
+        if stream_tx.is_closed() {
+            client_disconnected = true;
+        }
+
         let hermeneus::types::CompletionResponse {
             content: response_content,
             stop_reason,
@@ -820,6 +830,15 @@ pub(crate) async fn execute_streaming_with_deadline(
         final_content = extracted.text_parts.join("");
         reasoning_parts.extend(extracted.reasoning_parts);
         final_stop_reason = stop_reason.to_string();
+
+        // WHY: if the client disconnected during the in-flight call we still capture the
+        // partial/full response content, but we must not dispatch further tools or report the
+        // model's stop_reason as a clean completion (#4915).
+        client_disconnected |= stream_tx.is_closed();
+        if client_disconnected {
+            STOP_REASON_CLIENT_DISCONNECT.clone_into(&mut final_stop_reason);
+            break;
+        }
 
         let mut denied_blocks: Vec<ContentBlock> = Vec::new();
 
