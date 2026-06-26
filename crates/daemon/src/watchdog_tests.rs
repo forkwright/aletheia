@@ -366,14 +366,58 @@ async fn restart_log_is_capped() {
         RESTART_LOG_CAP,
         "restart log should be capped at RESTART_LOG_CAP"
     );
-    assert!(
-        !log.iter().any(|e| e.process_id == "agent-0"),
-        "oldest events should be evicted when the cap is exceeded"
+}
+
+#[tokio::test]
+async fn restart_log_evicts_oldest_first() {
+    let token = CancellationToken::new();
+    let cap = u32::try_from(RESTART_LOG_CAP).expect("cap fits u32");
+    let total = cap + 5;
+    let config = WatchdogConfig {
+        heartbeat_timeout: Duration::from_millis(50),
+        check_interval: Duration::from_millis(10),
+        max_restarts: total + 10,
+        ..WatchdogConfig::default()
+    };
+    let mut wd = Watchdog::new(config, token);
+    let proc = Arc::new(MockProcess::new("agent-1"));
+    wd.register(proc);
+
+    // WHY: a single agent restarted in a controlled loop records contiguous,
+    // 1-indexed `attempt` numbers in FIFO order. A many-agent HashMap has
+    // non-deterministic iteration order, so per-agent eviction cannot be asserted.
+    for _ in 0..total {
+        wd.processes.get_mut("agent-1").unwrap().last_heartbeat =
+            Instant::now() - Duration::from_millis(100);
+        wd.check_processes().await;
+    }
+
+    let log = wd.restart_log();
+    assert_eq!(
+        log.len(),
+        RESTART_LOG_CAP,
+        "restart log stays capped at RESTART_LOG_CAP"
     );
-    assert!(
-        log.iter().any(|e| e.process_id == "agent-149"),
-        "newest event should be retained after capping"
+
+    let first_retained = total - cap + 1;
+    assert_eq!(
+        log.front().unwrap().attempt,
+        first_retained,
+        "oldest attempts evicted; retained window starts at the right attempt"
     );
+    assert_eq!(
+        log.back().unwrap().attempt,
+        total,
+        "newest attempt is retained"
+    );
+    for (idx, ev) in log.iter().enumerate() {
+        assert_eq!(
+            ev.attempt,
+            first_retained + u32::try_from(idx).expect("idx fits u32"),
+            "retained attempts are contiguous and FIFO-ordered"
+        );
+        assert_eq!(ev.process_id, "agent-1");
+    }
 }
 
 #[test]
