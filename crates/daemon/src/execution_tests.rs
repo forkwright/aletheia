@@ -5,7 +5,6 @@
 )]
 
 use std::future::Future;
-use std::io::Write as _;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -289,17 +288,15 @@ async fn execute_action_dispatches_builtin_variant() {
 async fn routing_store_refresh_builtin_refreshes_attached_store() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let path = tmp.path().join("2026-04-17.jsonl");
-    let mut file = std::fs::File::create(path).expect("jsonl file");
-    writeln!(
-        file,
-        "{}",
+    let content = format!(
+        "{}\n",
         serde_json::json!({
             "session_outcomes": [
                 {"model": "provider-a", "status": "success", "category": "feature"}
             ]
         })
-    )
-    .expect("write jsonl");
+    );
+    tokio::fs::write(&path, content).await.expect("write jsonl");
 
     let store = Arc::new(aletheia_routing::AfterActionStore::new(
         tmp.path().to_owned(),
