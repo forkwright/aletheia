@@ -159,6 +159,8 @@ pub(crate) struct ActorRuntime {
     background_failure: BackgroundFailureState,
     /// When the actor started running.
     started_at: Instant,
+    /// Wall-clock timestamp corresponding to [`Self::started_at`].
+    started_at_wall: jiff::Timestamp,
     /// Timestamp of the most recent pipeline panic, used for auto-recovery from degraded mode.
     last_panic_at: Option<Instant>,
     /// Consecutive inbox recv timeouts without a successful message. (#2159)
@@ -304,6 +306,7 @@ impl NousActor {
                     latest_kind: None,
                 },
                 started_at: Instant::now(),
+                started_at_wall: jiff::Timestamp::now(),
                 last_panic_at: None,
                 consecutive_timeouts: 0,
                 #[cfg(feature = "knowledge-store")]
@@ -339,6 +342,7 @@ impl NousActor {
         // zombie ActorEntry creation on validation failure (#3248).
 
         self.runtime.started_at = Instant::now();
+        self.runtime.started_at_wall = jiff::Timestamp::now();
         info!(lifecycle = %self.channel.status, "actor started");
 
         loop {
@@ -638,6 +642,7 @@ impl NousActor {
             session_count: self.sessions.len(),
             active_session: self.active_session.clone(),
             panic_count: self.runtime.pipeline_panic_count,
+            started_at: self.runtime.started_at_wall,
             uptime: self.runtime.started_at.elapsed(),
             background_failure_total_count: self.runtime.background_failure.total_count,
             background_failure_recent_count: u32::try_from(recent_background_failures)

@@ -34,21 +34,31 @@ fn nous_state_contains_manager_and_registry() {
 fn nous_list_response_serializes_nous_array() {
     let resp = NousListResponse {
         nous: vec![NousSummary {
+            configured: true,
             id: "alice".to_owned(),
             name: "Alice".to_owned(),
             enabled: true,
             model: "anthropic/claude-opus-4-6".to_owned(),
             fallback_models: vec![],
             provider_readiness: vec![],
-            status: "active".to_owned(),
+            status: "idle".to_owned(),
+            live: true,
+            reachable: true,
+            running: false,
+            stale: false,
+            degraded: false,
+            last_seen: Some("2026-01-01T00:00:00Z".to_owned()),
+            started_at: Some("2026-01-01T00:00:00Z".to_owned()),
             tools: vec![],
         }],
     };
     let json = serde_json::to_value(&resp).unwrap();
     assert!(json.get("nous").is_some());
     assert_eq!(json["nous"][0]["id"], "alice");
-    assert_eq!(json["nous"][0]["status"], "active");
+    assert_eq!(json["nous"][0]["status"], "idle");
     assert_eq!(json["nous"][0]["enabled"], true);
+    assert_eq!(json["nous"][0]["live"], true);
+    assert_eq!(json["nous"][0]["stale"], false);
 }
 
 #[test]
@@ -61,19 +71,29 @@ fn nous_list_response_empty_array() {
 #[test]
 fn nous_summary_name_falls_back_to_id() {
     let summary = NousSummary {
+        configured: true,
         id: "bob".to_owned(),
         name: "bob".to_owned(), // fallback case: name == id
         enabled: false,
         model: "anthropic/claude-sonnet-4-6".to_owned(),
         fallback_models: vec![],
         provider_readiness: vec![],
-        status: "active".to_owned(),
+        status: "unknown".to_owned(),
+        live: false,
+        reachable: false,
+        running: false,
+        stale: true,
+        degraded: false,
+        last_seen: None,
+        started_at: None,
         tools: vec![],
     };
     let json = serde_json::to_value(&summary).unwrap();
     assert_eq!(json["name"], "bob");
     assert_eq!(json["id"], "bob");
     assert_eq!(json["enabled"], false);
+    assert_eq!(json["configured"], true);
+    assert_eq!(json["reachable"], false);
 }
 
 #[test]
@@ -91,6 +111,7 @@ fn nous_status_serializes_all_config_fields() {
         thinking_budget: 10_000,
         max_tool_iterations: 10,
         status: "active".to_owned(),
+        started_at: Some("2026-01-01T00:00:00Z".to_owned()),
         background_failure_total_count: 5,
         background_failure_recent_count: 2,
         background_failure_latest_message: Some("indexer unreachable".to_owned()),
@@ -106,6 +127,7 @@ fn nous_status_serializes_all_config_fields() {
     assert_eq!(json["context_window"], 200_000);
     assert_eq!(json["thinking_enabled"], true);
     assert_eq!(json["max_tool_iterations"], 10);
+    assert_eq!(json["started_at"], "2026-01-01T00:00:00Z");
     assert_eq!(json["background_failure_total_count"], 5);
     assert_eq!(json["background_failure_recent_count"], 2);
     assert_eq!(

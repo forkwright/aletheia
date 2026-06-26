@@ -1,13 +1,15 @@
 // kanon:ignore RUST/file-too-long — nous handler covers agent CRUD, tool management, and recovery; tracked for split in #4201
 //! Nous (agent) information endpoints.
 
+use std::collections::{BTreeSet, HashMap};
+
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use nous::config::NousConfig;
 use nous::cross::AddressMask;
 use symbolon::types::Role;
-use taxis::config::{AletheiaConfig, NousDefinition};
+use taxis::config::{AletheiaConfig, NousDefinition, resolve_nous};
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
@@ -99,11 +101,12 @@ fn address_mask_status(mask: &AddressMask) -> AddressMaskStatus {
 }
 
 fn nous_visible_to_claims(claims: &Claims, config: &NousConfig) -> bool {
-    let in_scope = claims
-        .nous_id
-        .as_deref()
-        .is_none_or(|scoped| scoped == config.id.as_ref());
-    let private_visible = !config.private || claims.role >= Role::Operator;
+    nous_identity_visible_to_claims(claims, config.id.as_ref(), config.private)
+}
+
+fn nous_identity_visible_to_claims(claims: &Claims, id: &str, private: bool) -> bool {
+    let in_scope = claims.nous_id.as_deref().is_none_or(|scoped| scoped == id);
+    let private_visible = !private || claims.role >= Role::Operator;
     in_scope && private_visible
 }
 
@@ -112,6 +115,193 @@ fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiE
         Ok(())
     } else {
         Err(ApiError::forbidden("access denied for this agent"))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RuntimeSummarySource {
+    id: String,
+    name: String,
+    model: String,
+    fallback_models: Vec<String>,
+    private: bool,
+}
+
+impl RuntimeSummarySource {
+    fn from_config(config: &NousConfig) -> Self {
+        Self {
+            id: config.id.to_string(),
+            name: config.name.clone().unwrap_or_else(|| config.id.to_string()),
+            model: config.generation.model.clone(),
+            fallback_models: config.generation.fallback_models.clone(),
+            private: config.private,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct PendingNousSummary {
+    configured: bool,
+    id: String,
+    name: String,
+    enabled: bool,
+    model: String,
+    fallback_models: Vec<String>,
+    tools: Vec<ToolSummary>,
+}
+
+#[derive(Debug)]
+struct RuntimeHealthSummary {
+    status: String,
+    reachability: RuntimeReachability,
+    activity: RuntimeActivity,
+    last_seen: Option<String>,
+    started_at: Option<String>,
+}
+
+#[derive(Debug)]
+struct RuntimeReachability {
+    live: bool,
+    reachable: bool,
+    stale: bool,
+}
+
+#[derive(Debug)]
+struct RuntimeActivity {
+    running: bool,
+    degraded: bool,
+}
+
+impl RuntimeHealthSummary {
+    fn not_live() -> Self {
+        Self {
+            status: "unknown".to_owned(),
+            reachability: RuntimeReachability {
+                live: false,
+                reachable: false,
+                stale: true,
+            },
+            activity: RuntimeActivity {
+                running: false,
+                degraded: false,
+            },
+            last_seen: None,
+            started_at: None,
+        }
+    }
+
+    fn unreachable() -> Self {
+        Self {
+            status: "unknown".to_owned(),
+            reachability: RuntimeReachability {
+                live: true,
+                reachable: false,
+                stale: true,
+            },
+            activity: RuntimeActivity {
+                running: false,
+                degraded: false,
+            },
+            last_seen: None,
+            started_at: None,
+        }
+    }
+}
+
+async fn runtime_health_summary(state: &NousState, id: &str) -> RuntimeHealthSummary {
+    let Some(handle) = state.nous_manager.get(id) else {
+        return RuntimeHealthSummary::not_live();
+    };
+
+    match handle.status().await {
+        Ok(status) => {
+            let status_text = status.lifecycle.to_string();
+            let running = status_text == "active";
+            let degraded = status_text == "degraded" || status.background_health_degraded;
+            RuntimeHealthSummary {
+                status: status_text,
+                reachability: RuntimeReachability {
+                    live: true,
+                    reachable: true,
+                    stale: false,
+                },
+                activity: RuntimeActivity { running, degraded },
+                last_seen: None,
+                started_at: Some(status.started_at.to_string()),
+            }
+        }
+        Err(e) => {
+            tracing::warn!(nous_id = %id, error = %e, "failed to query listed nous status");
+            RuntimeHealthSummary::unreachable()
+        }
+    }
+}
+
+fn pending_from_runtime(
+    state: &NousState,
+    source: &RuntimeSummarySource,
+    configured: bool,
+    enabled: bool,
+    allowlist: Option<&[String]>,
+) -> PendingNousSummary {
+    PendingNousSummary {
+        configured,
+        id: source.id.clone(),
+        name: source.name.clone(),
+        enabled,
+        model: source.model.clone(),
+        fallback_models: source.fallback_models.clone(),
+        tools: tool_summaries_for_agent(state, allowlist),
+    }
+}
+
+fn pending_from_definition(
+    state: &NousState,
+    config: &AletheiaConfig,
+    definition: &NousDefinition,
+) -> PendingNousSummary {
+    let resolved = resolve_nous(config, &definition.id);
+    PendingNousSummary {
+        configured: true,
+        id: definition.id.clone(),
+        name: resolved.name.unwrap_or_else(|| definition.id.clone()),
+        enabled: definition.enabled,
+        model: resolved.model.primary.to_string(),
+        fallback_models: resolved
+            .model
+            .fallbacks
+            .into_iter()
+            .map(|model| model.to_string())
+            .collect(),
+        tools: tool_summaries_for_agent(state, definition.tool_allowlist.as_deref()),
+    }
+}
+
+fn summary_from_pending(
+    state: &NousState,
+    pending: PendingNousSummary,
+    runtime: RuntimeHealthSummary,
+) -> NousSummary {
+    let mut models = vec![pending.model.clone()];
+    models.extend(pending.fallback_models.clone());
+
+    NousSummary {
+        configured: pending.configured,
+        id: pending.id,
+        name: pending.name,
+        enabled: pending.enabled,
+        model: pending.model,
+        fallback_models: pending.fallback_models,
+        provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
+        status: runtime.status,
+        live: runtime.reachability.live,
+        reachable: runtime.reachability.reachable,
+        running: runtime.activity.running,
+        stale: runtime.reachability.stale,
+        degraded: runtime.activity.degraded,
+        last_seen: runtime.last_seen,
+        started_at: runtime.started_at,
+        tools: pending.tools,
     }
 }
 
@@ -127,29 +317,65 @@ fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiE
 )]
 pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
     let config = state.config.read().await;
-    let nous: Vec<NousSummary> = state
+    let runtime_sources: HashMap<String, RuntimeSummarySource> = state
         .nous_manager
         .configs()
         .into_iter()
-        .filter(|c| nous_visible_to_claims(&claims, c))
         .map(|c| {
-            let agent_id = c.id.as_ref();
-            let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
-            let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, agent_id));
-            let mut models = vec![c.generation.model.clone()];
-            models.extend(c.generation.fallback_models.clone());
-            NousSummary {
-                id: c.id.to_string(),
-                name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
-                enabled,
-                model: c.generation.model.clone(),
-                fallback_models: c.generation.fallback_models.clone(),
-                provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
-                status: "active".to_owned(),
-                tools,
-            }
+            let source = RuntimeSummarySource::from_config(c);
+            (source.id.clone(), source)
         })
         .collect();
+
+    let mut seen = BTreeSet::new();
+    let mut pending = Vec::new();
+    for definition in &config.agents.list {
+        let runtime = runtime_sources.get(&definition.id);
+        let private = runtime.map_or(definition.private, |source| source.private);
+        if !nous_identity_visible_to_claims(&claims, &definition.id, private) {
+            continue;
+        }
+
+        seen.insert(definition.id.clone());
+        if let Some(source) = runtime {
+            pending.push(pending_from_runtime(
+                &state,
+                source,
+                true,
+                definition.enabled,
+                definition.tool_allowlist.as_deref(),
+            ));
+        } else {
+            pending.push(pending_from_definition(&state, &config, definition));
+        }
+    }
+
+    let mut runtime_only: Vec<&RuntimeSummarySource> = runtime_sources
+        .values()
+        .filter(|source| {
+            !seen.contains(&source.id)
+                && nous_identity_visible_to_claims(&claims, &source.id, source.private)
+        })
+        .collect();
+    runtime_only.sort_by(|a, b| a.id.cmp(&b.id));
+    for source in runtime_only {
+        let enabled = agent_definition(&config, &source.id).is_none_or(|agent| agent.enabled);
+        pending.push(pending_from_runtime(
+            &state,
+            source,
+            false,
+            enabled,
+            allowlist_for_agent(&config, &source.id),
+        ));
+    }
+    drop(config);
+
+    let mut nous = Vec::with_capacity(pending.len());
+    for pending_summary in pending {
+        let runtime = runtime_health_summary(&state, &pending_summary.id).await;
+        nous.push(summary_from_pending(&state, pending_summary, runtime));
+    }
+
     Json(NousListResponse { nous })
 }
 
@@ -183,6 +409,7 @@ pub async fn get_status(
 
     let (
         status,
+        started_at,
         background_failure_total_count,
         background_failure_recent_count,
         background_failure_latest_message,
@@ -192,15 +419,16 @@ pub async fn get_status(
         Some(handle) => match handle.status().await {
             Ok(s) => (
                 s.lifecycle.to_string(),
+                Some(s.started_at.to_string()),
                 s.background_failure_total_count,
                 s.background_failure_recent_count,
                 s.background_failure_latest_message,
                 s.background_failure_latest_kind,
                 s.background_health_degraded,
             ),
-            Err(_) => ("unknown".to_owned(), 0, 0, None, None, false),
+            Err(_) => ("unknown".to_owned(), None, 0, 0, None, None, false),
         },
-        None => ("unknown".to_owned(), 0, 0, None, None, false),
+        None => ("unknown".to_owned(), None, 0, 0, None, None, false),
     };
 
     let mut status_models = vec![config.generation.model.clone()];
@@ -224,6 +452,7 @@ pub async fn get_status(
         thinking_budget: config.generation.thinking_budget,
         max_tool_iterations: config.limits.max_tool_iterations,
         status,
+        started_at,
         background_failure_total_count,
         background_failure_recent_count,
         background_failure_latest_message,
@@ -345,32 +574,19 @@ pub async fn update_enabled(
 
     let config = state.config.read().await;
     let enabled = agent_definition(&config, &id).is_none_or(|agent| agent.enabled);
-    let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
-    drop(config);
-    let status = match state.nous_manager.get(&id) {
-        Some(handle) => handle
-            .status()
-            .await
-            .map_or_else(|_| "unknown".to_owned(), |s| s.lifecycle.to_string()),
-        None => "unknown".to_owned(),
-    };
-
-    let mut summary_models = vec![runtime.generation.model.clone()];
-    summary_models.extend(runtime.generation.fallback_models.clone());
-
-    Ok(Json(NousSummary {
-        id: runtime.id.to_string(),
-        name: runtime
-            .name
-            .clone()
-            .unwrap_or_else(|| runtime.id.to_string()),
+    let configured = agent_definition(&config, &id).is_some();
+    let source = RuntimeSummarySource::from_config(&runtime);
+    let pending = pending_from_runtime(
+        &state,
+        &source,
+        configured,
         enabled,
-        model: runtime.generation.model.clone(),
-        fallback_models: runtime.generation.fallback_models.clone(),
-        provider_readiness: resolve_model_readiness(&state.provider_registry, &summary_models),
-        status,
-        tools,
-    }))
+        allowlist_for_agent(&config, &id),
+    );
+    drop(config);
+    let runtime = runtime_health_summary(&state, &id).await;
+
+    Ok(Json(summary_from_pending(&state, pending, runtime)))
 }
 
 /// PATCH /api/v1/nous/{id}/tools: toggle one agent tool.

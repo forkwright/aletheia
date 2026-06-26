@@ -104,6 +104,8 @@ pub struct NousStatus {
     pub active_session: Option<String>,
     /// Number of panics caught by the panic boundary.
     pub panic_count: u32,
+    /// Wall-clock timestamp when this actor instance started.
+    pub started_at: jiff::Timestamp,
     /// How long the actor has been running.
     pub uptime: Duration,
     /// Total background task failures (panics and join errors) since start.
@@ -181,6 +183,7 @@ mod tests {
             session_count: 3,
             active_session: None,
             panic_count: 0,
+            started_at: jiff::Timestamp::UNIX_EPOCH,
             uptime: Duration::from_mins(1),
             background_failure_total_count: 0,
             background_failure_recent_count: 0,
@@ -205,6 +208,7 @@ mod tests {
             session_count: 1,
             active_session: Some("main".to_owned()),
             panic_count: 0,
+            started_at: jiff::Timestamp::UNIX_EPOCH,
             uptime: Duration::from_secs(0),
             background_failure_total_count: 0,
             background_failure_recent_count: 0,

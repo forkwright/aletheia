@@ -11,8 +11,10 @@ use skene::id::NousId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum HealthTier {
-    /// Agent is operating normally.
+    /// Agent health has not been observed.
     #[default]
+    Unknown,
+    /// Agent is operating normally.
     Healthy,
     /// Agent has warnings or partial failures.
     Degraded,
@@ -25,6 +27,7 @@ impl HealthTier {
     #[must_use]
     pub(crate) fn dot_color(&self) -> &'static str {
         match self {
+            Self::Unknown => "var(--text-muted)",
             Self::Healthy => "var(--status-success)",
             Self::Degraded => "var(--status-warning)",
             Self::Error => "var(--status-error)",
@@ -35,6 +38,7 @@ impl HealthTier {
     #[must_use]
     pub(crate) fn label(&self) -> &'static str {
         match self {
+            Self::Unknown => "unknown",
             Self::Healthy => "healthy",
             Self::Degraded => "degraded",
             Self::Error => "error",
@@ -402,9 +406,14 @@ impl ToggleStore {
 #[must_use]
 pub(crate) fn health_from_status(status: &str) -> HealthTier {
     match status {
+        "" | "unknown" | "stale" => HealthTier::Unknown,
         s if s.starts_with("tool-failed:") => HealthTier::Degraded,
+        "degraded" => HealthTier::Degraded,
         "error" | "failed" => HealthTier::Error,
-        _ => HealthTier::Healthy,
+        "active" | "busy" | "dormant" | "healthy" | "idle" | "running" | "working" => {
+            HealthTier::Healthy
+        }
+        _ => HealthTier::Unknown,
     }
 }
 
@@ -531,13 +540,18 @@ mod tests {
     fn health_from_status_mapping() {
         assert_eq!(health_from_status("idle"), HealthTier::Healthy);
         assert_eq!(health_from_status("working"), HealthTier::Healthy);
+        assert_eq!(health_from_status("unknown"), HealthTier::Unknown);
+        assert_eq!(health_from_status("stale"), HealthTier::Unknown);
+        assert_eq!(health_from_status("new-future-status"), HealthTier::Unknown);
         assert_eq!(health_from_status("tool-failed:exec"), HealthTier::Degraded);
+        assert_eq!(health_from_status("degraded"), HealthTier::Degraded);
         assert_eq!(health_from_status("error"), HealthTier::Error);
         assert_eq!(health_from_status("failed"), HealthTier::Error);
     }
 
     #[test]
     fn health_tier_dot_color() {
+        assert_eq!(HealthTier::Unknown.dot_color(), "var(--text-muted)");
         assert_eq!(HealthTier::Healthy.dot_color(), "var(--status-success)");
         assert_eq!(HealthTier::Degraded.dot_color(), "var(--status-warning)");
         assert_eq!(HealthTier::Error.dot_color(), "var(--status-error)");
@@ -545,14 +559,15 @@ mod tests {
 
     #[test]
     fn health_tier_label() {
+        assert_eq!(HealthTier::Unknown.label(), "unknown");
         assert_eq!(HealthTier::Healthy.label(), "healthy");
         assert_eq!(HealthTier::Degraded.label(), "degraded");
         assert_eq!(HealthTier::Error.label(), "error");
     }
 
     #[test]
-    fn health_tier_default_healthy() {
-        assert_eq!(HealthTier::default(), HealthTier::Healthy);
+    fn health_tier_default_unknown() {
+        assert_eq!(HealthTier::default(), HealthTier::Unknown);
     }
 
     #[test]

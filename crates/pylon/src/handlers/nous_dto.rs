@@ -48,7 +48,13 @@ pub struct NousListResponse {
 
 /// Brief overview of a registered nous agent.
 #[derive(Debug, Serialize, ToSchema)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "WHY(#4807): ops dashboard health needs independent configured/live/reachable/running/stale/degraded response flags"
+)]
 pub struct NousSummary {
+    /// Whether this row comes from persisted operator configuration.
+    pub configured: bool,
     /// Agent identifier.
     pub id: String,
     /// Human-readable display name (falls back to `id`).
@@ -61,8 +67,22 @@ pub struct NousSummary {
     pub fallback_models: Vec<String>,
     /// Per-model provider readiness for the agent's model chain.
     pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
-    /// Lifecycle status (e.g. `"active"`).
+    /// Lifecycle status (`"idle"`, `"active"`, `"dormant"`, `"degraded"`, or `"unknown"`).
     pub status: String,
+    /// Whether an actor entry exists in the runtime manager.
+    pub live: bool,
+    /// Whether the actor responded to a status request during this snapshot.
+    pub reachable: bool,
+    /// Whether the actor is currently processing work.
+    pub running: bool,
+    /// Whether runtime health is missing or stale for this agent.
+    pub stale: bool,
+    /// Whether the actor reports degraded lifecycle or degraded background health.
+    pub degraded: bool,
+    /// Timestamp of the most recent successful external observation, when tracked.
+    pub last_seen: Option<String>,
+    /// Wall-clock timestamp when the current actor instance started, if live.
+    pub started_at: Option<String>,
     /// Tool toggle summaries for the agent.
     pub tools: Vec<ToolSummary>,
 }
@@ -94,6 +114,8 @@ pub struct NousStatus {
     pub max_tool_iterations: u32,
     /// Actor lifecycle status.
     pub status: String,
+    /// Wall-clock timestamp when the current actor instance started, if known.
+    pub started_at: Option<String>,
     /// Total number of background failures recorded since actor start.
     pub background_failure_total_count: u32,
     /// Number of background failures recorded in the recent window.

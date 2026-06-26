@@ -95,7 +95,52 @@ async fn list_nous_returns_agents() {
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
     assert_eq!(agents[0]["enabled"], true);
+    assert_eq!(agents[0]["live"], true);
+    assert_eq!(agents[0]["reachable"], true);
+    assert_eq!(agents[0]["stale"], false);
     assert!(agents[0]["tools"].is_array());
+}
+
+#[tokio::test]
+async fn list_nous_marks_enabled_configured_agent_without_actor_stale() {
+    let (state, _dir) = test_state().await;
+    {
+        let mut config = state.config.write().await;
+        config.agents.list.push(taxis::config::NousDefinition {
+            id: "bob".to_owned(),
+            name: Some("Bob".to_owned()),
+            enabled: true,
+            workspace: "nous/bob".to_owned(),
+            model: Some(taxis::config::ModelSpec {
+                primary: "mock-model".to_owned(),
+                fallbacks: Vec::new(),
+                retries_before_fallback: 2,
+            }),
+            ..Default::default()
+        });
+    }
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let agents = body["nous"].as_array().unwrap();
+    let bob = agents
+        .iter()
+        .find(|agent| agent["id"] == "bob")
+        .expect("configured agent must be listed");
+    assert_eq!(bob["configured"], true);
+    assert_eq!(bob["enabled"], true);
+    assert_eq!(bob["model"], "mock-model");
+    assert_eq!(bob["status"], "unknown");
+    assert_eq!(bob["live"], false);
+    assert_eq!(bob["reachable"], false);
+    assert_eq!(bob["running"], false);
+    assert_eq!(bob["stale"], true);
+    assert_eq!(bob["degraded"], false);
+    assert!(bob["last_seen"].is_null());
+    assert!(bob["started_at"].is_null());
 }
 
 #[tokio::test]
@@ -270,8 +315,16 @@ async fn nous_list_from_manager() {
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
     assert_eq!(agents[0]["model"], "mock-model");
-    assert_eq!(agents[0]["status"], "active");
+    assert_eq!(agents[0]["status"], "idle");
     assert_eq!(agents[0]["enabled"], true);
+    assert_eq!(agents[0]["configured"], false);
+    assert_eq!(agents[0]["live"], true);
+    assert_eq!(agents[0]["reachable"], true);
+    assert_eq!(agents[0]["running"], false);
+    assert_eq!(agents[0]["stale"], false);
+    assert_eq!(agents[0]["degraded"], false);
+    assert!(agents[0]["last_seen"].is_null());
+    assert!(agents[0]["started_at"].is_string());
 }
 
 #[tokio::test]
@@ -301,6 +354,7 @@ async fn nous_status_response_has_all_fields() {
     assert!(body["thinking_budget"].is_number());
     assert!(body["max_tool_iterations"].is_number());
     assert!(body["status"].is_string());
+    assert!(body["started_at"].is_null() || body["started_at"].is_string());
     assert!(body["background_failure_total_count"].is_number());
     assert!(body["background_failure_recent_count"].is_number());
     assert!(

@@ -47,6 +47,22 @@ struct AgentEntry {
     #[serde(default)]
     enabled: Option<bool>,
     #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    live: Option<bool>,
+    #[serde(default)]
+    reachable: Option<bool>,
+    #[serde(default)]
+    running: Option<bool>,
+    #[serde(default)]
+    stale: Option<bool>,
+    #[serde(default)]
+    degraded: Option<bool>,
+    #[serde(default)]
+    last_seen: Option<String>,
+    #[serde(default)]
+    started_at: Option<String>,
+    #[serde(default)]
     tools: Vec<ToolEntryResp>,
 }
 
@@ -67,6 +83,20 @@ impl AgentListResponse {
             Self::Bare(agents) => agents,
         }
     }
+}
+
+fn agent_health(entry: &AgentEntry) -> HealthTier {
+    if entry.stale.unwrap_or_else(|| entry.status.is_none()) {
+        return HealthTier::Unknown;
+    }
+    if entry.degraded.unwrap_or(false) {
+        return HealthTier::Degraded;
+    }
+    health_from_status(entry.status.as_deref().unwrap_or(""))
+}
+
+fn agent_connected(entry: &AgentEntry) -> bool {
+    entry.live.unwrap_or(false) && entry.reachable.unwrap_or(false) && !entry.stale.unwrap_or(true)
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -335,11 +365,11 @@ pub(crate) fn Ops() -> Element {
                     id: a.id.as_str().into(),
                     name: a.name.clone().unwrap_or_else(|| a.id.clone()),
                     emoji: a.emoji.clone(),
-                    health: HealthTier::Healthy,
+                    health: agent_health(a),
                     model: a.model.clone().unwrap_or_else(|| "-".to_string()),
-                    active_turns: 0,
-                    last_activity: None,
-                    connected: true,
+                    active_turns: u32::from(a.running.unwrap_or(false)),
+                    last_activity: a.last_seen.clone().or_else(|| a.started_at.clone()),
+                    connected: agent_connected(a),
                 })
                 .collect();
             agent_store.write().load(cards);
