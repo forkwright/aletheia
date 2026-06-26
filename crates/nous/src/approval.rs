@@ -242,7 +242,10 @@ mod tests {
             .expect("send future");
         // Await a different tool; the future decision stays buffered.
         assert_eq!(gate.await_decision("now").await, ApprovalChoice::Denied);
-        assert_eq!(gate.await_decision("future").await, ApprovalChoice::Approved);
+        assert_eq!(
+            gate.await_decision("future").await,
+            ApprovalChoice::Approved
+        );
     }
 
     #[tokio::test]
@@ -256,7 +259,10 @@ mod tests {
             .await
             .expect("send tool-1");
         assert_eq!(gate.await_decision("tool-1").await, ApprovalChoice::Denied);
-        assert_eq!(gate.await_decision("tool-2").await, ApprovalChoice::Approved);
+        assert_eq!(
+            gate.await_decision("tool-2").await,
+            ApprovalChoice::Approved
+        );
     }
 
     #[tokio::test]
@@ -272,7 +278,10 @@ mod tests {
         // While awaiting tool-1, two decisions for tool-2 arrive.
         assert_eq!(gate.await_decision("tool-1").await, ApprovalChoice::Denied);
         // First-writer-wins: Approved, not the later Denied.
-        assert_eq!(gate.await_decision("tool-2").await, ApprovalChoice::Approved);
+        assert_eq!(
+            gate.await_decision("tool-2").await,
+            ApprovalChoice::Approved
+        );
     }
 
     #[test]
