@@ -435,8 +435,7 @@ mod tests {
     #[test]
     fn diff_identical_configs_is_empty() {
         let config = AletheiaConfig::default();
-        let diff = diff_configs(&config, &config)
-            .unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let diff = diff_configs(&config, &config).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(diff.is_empty(), "identical configs should have no diff");
     }
 
@@ -446,8 +445,7 @@ mod tests {
         let mut new = old.clone();
         new.agents.defaults.model_defaults.thinking_budget = 20_000;
 
-        let diff = diff_configs(&old, &new)
-            .unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(!diff.is_empty(), "changed config should have diff");
         assert!(
             diff.hot_changes()
@@ -467,8 +465,7 @@ mod tests {
         let mut new = old.clone();
         new.gateway.port = 9999;
 
-        let diff = diff_configs(&old, &new)
-            .unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(!diff.is_empty(), "changed config should have diff");
         assert!(
             diff.cold_changes()
@@ -486,8 +483,7 @@ mod tests {
         new.gateway.port = 9999;
         new.maintenance.trace_rotation.max_age_days = 7;
 
-        let diff = diff_configs(&old, &new)
-            .unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(
             diff.changes.len() >= 3,
             "expected at least 3 changes, got {}",
@@ -502,8 +498,7 @@ mod tests {
         new.agents.defaults.max_tool_iterations = 500;
         new.gateway.port = 9999;
 
-        let diff = diff_configs(&old, &new)
-            .unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         let hot = diff.hot_changes();
         let cold = diff.cold_changes();
 
@@ -658,8 +653,7 @@ mod tests {
         );
         staged.agents.defaults.model_defaults.thinking_budget = 20_000;
 
-        let diff = diff_configs(&current, &staged)
-            .unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let diff = diff_configs(&current, &staged).unwrap_or_else(|e| panic!("diff configs: {e}"));
         let live = preserve_restart_required_values(&current, &staged, &diff)
             .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
 
