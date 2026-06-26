@@ -250,7 +250,7 @@ fn sessions_ask_def() -> ToolDef {
             required: vec!["agentId".to_owned(), "message".to_owned()],
         },
         category: ToolCategory::Communication,
-        reversibility: Reversibility::Reversible,
+        reversibility: Reversibility::Irreversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Mcp],
         tags: vec![ToolTag::Execute],
@@ -325,8 +325,8 @@ mod tests {
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        CrossNousService, MessageService, ServerToolConfig, ToolContext, ToolHttpClients,
-        ToolInput, ToolServices,
+        ApprovalRequirement, CrossNousService, MessageService, Reversibility,
+        ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {
@@ -454,6 +454,26 @@ mod tests {
             def.input_schema.required,
             vec!["agentId", "message"],
             "expected def.input_schema.required to equal vec![\"agentId\", \"message\"]"
+        );
+    }
+
+    #[tokio::test]
+    async fn sessions_ask_def_is_irreversible_mandatory_approval() {
+        install_crypto_provider();
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::from_static("sessions_ask");
+        let def = reg.get_def(&name).expect("found");
+        assert_eq!(
+            def.reversibility,
+            Reversibility::Irreversible,
+            "expected sessions_ask reversibility to be Irreversible: outbound message is \
+             delivered before any reply is received and cannot be unsent"
+        );
+        assert_eq!(
+            ApprovalRequirement::from(def.reversibility),
+            ApprovalRequirement::Mandatory,
+            "expected ApprovalRequirement::from(Irreversible) to be Mandatory"
         );
     }
 
