@@ -61,7 +61,7 @@ impl ToolPolicyDenial {
             Self::Group { message } | Self::ParseError { message } => message.clone(),
             Self::Inactive => {
                 format!(
-                    "Tool '{tool_name}' is not active for this turn. Use enable_tool before calling it."
+                    "Tool '{tool_name}' is not active for this session. Use enable_tool before calling it."
                 )
             }
             Self::ServerTool => {

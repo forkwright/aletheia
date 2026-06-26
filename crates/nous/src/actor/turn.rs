@@ -401,9 +401,7 @@ impl NousActor {
             workspace: self.config.workspace.clone(),
             allowed_roots: self.config.allowed_roots.clone(),
             services: self.services.tool_services.clone(),
-            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
-                std::collections::HashSet::new(),
-            )),
+            active_tools: Arc::clone(&session.active_tools),
             tool_config: self.services.tool_config.clone(),
         };
 
