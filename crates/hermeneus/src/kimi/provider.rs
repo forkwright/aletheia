@@ -448,9 +448,7 @@ mod tests {
         #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
         r.encode(&mut buf).unwrap();
         assert!(
-            buf.contains(
-                "aletheia_llm_cache_tokens_total{provider=\"kimi\",direction=\"read\"} 5"
-            ),
+            buf.contains("aletheia_llm_cache_tokens_total{provider=\"kimi\",direction=\"read\"} 5"),
             "missing cache read metrics: {buf}"
         );
         assert!(

@@ -645,7 +645,9 @@ mod tests {
         );
         // WHY: Codex only reports cache reads; write direction must be absent.
         assert!(
-            !buf.contains("aletheia_llm_cache_tokens_total{provider=\"codex\",direction=\"write\"}"),
+            !buf.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"codex\",direction=\"write\"}"
+            ),
             "codex must not emit zero cache write metrics: {buf}"
         );
     }
