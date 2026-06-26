@@ -8,7 +8,8 @@ use std::sync::Arc;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{
     Implementation, InitializeResult, ListResourceTemplatesResult, ListResourcesResult,
-    ReadResourceRequestParams, ReadResourceResult, ResourceTemplate, ServerCapabilities,
+    RawResource, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceTemplate,
+    ServerCapabilities,
 };
 use rmcp::tool_handler;
 
@@ -178,9 +179,36 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         self.require_resource_role(&context, Role::Operator, "list_resources")
             .await?;
 
-        // NOTE: static resources only: dynamic listing deferred
+        let mut resources: Vec<Resource> = Vec::new();
+
+        // WHY(#4635): Advertise the concrete config resource that is already
+        // readable via `read_resource`.
+        resources.push(Resource::new(
+            RawResource::new("aletheia://config", "Aletheia Configuration")
+                .with_description("Runtime configuration (sensitive fields redacted)")
+                .with_mime_type("application/json"),
+            None,
+        ));
+
+        // WHY(#4635): Enumerate per-agent workspace files, but only advertise
+        // files that actually exist so clients do not discover unreadable URIs.
+        let config = self.state.config.read().await;
+        for agent in &config.agents.list {
+            for (slug, name, description) in resources::nous::WORKSPACE_FILES {
+                let uri = format!("aletheia://nous/{}/{slug}", agent.id);
+                if resources::nous::resource_exists(self.state.oikos.as_ref(), &uri) {
+                    resources.push(Resource::new(
+                        RawResource::new(uri, *name)
+                            .with_description(*description)
+                            .with_mime_type("text/markdown"),
+                        None,
+                    ));
+                }
+            }
+        }
+
         Ok(ListResourcesResult {
-            resources: vec![],
+            resources,
             next_cursor: None,
             meta: None,
         })
