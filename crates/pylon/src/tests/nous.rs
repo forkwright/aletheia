@@ -84,6 +84,22 @@ impl Drop for ReadOnlyGuard<'_> {
     }
 }
 
+async fn stop_actor_until_channel_closes(state: &AppState, id: &str) {
+    let handle = state.nous_manager.get(id).expect("actor handle");
+    handle.shutdown().await.expect("send shutdown");
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if handle.status().await.is_err() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("actor channel closes");
+}
+
 #[tokio::test]
 async fn list_nous_returns_agents() {
     let (app, _dir) = app().await;
@@ -240,6 +256,34 @@ async fn patch_nous_enabled_updates_summary() {
     let body = body_json(resp).await;
     assert_eq!(body["id"], "syn");
     assert_eq!(body["enabled"], false);
+    assert_eq!(body["config_applied"], true);
+    assert_eq!(body["live_applied"], true);
+    assert_eq!(body["reload_required"], false);
+    assert_eq!(body["restart_required"], false);
+}
+
+#[tokio::test]
+async fn patch_nous_enabled_reports_persisted_config_when_live_apply_fails() {
+    let (state, _dir) = test_state().await;
+    stop_actor_until_channel_closes(&state, "syn").await;
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn",
+        Some(serde_json::json!({ "enabled": false })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["id"], "syn");
+    assert_eq!(body["enabled"], false);
+    assert_eq!(body["status"], "unknown");
+    assert_eq!(body["config_applied"], true);
+    assert_eq!(body["live_applied"], false);
+    assert_eq!(body["reload_required"], false);
+    assert_eq!(body["restart_required"], true);
 }
 
 #[tokio::test]
@@ -255,6 +299,35 @@ async fn patch_nous_tools_unknown_tool_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn patch_nous_tools_reports_reload_required_for_persisted_allowlist() {
+    let (state, _dir) = test_state().await;
+    let mut state = Arc::try_unwrap(state).unwrap_or_else(|_| panic!("unique app state"));
+    state.tool_registry = Arc::new(probe_tool_registry());
+    let state = Arc::new(state);
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn/tools",
+        Some(serde_json::json!({ "tool": "probe_tool", "enabled": false })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let tools = body["tools"].as_array().expect("tools array");
+    let probe = tools
+        .iter()
+        .find(|t| t["name"] == "probe_tool")
+        .expect("probe_tool present");
+    assert_eq!(probe["enabled"], false);
+    assert_eq!(body["config_applied"], true);
+    assert_eq!(body["live_applied"], false);
+    assert_eq!(body["reload_required"], true);
+    assert_eq!(body["restart_required"], false);
 }
 
 #[tokio::test]

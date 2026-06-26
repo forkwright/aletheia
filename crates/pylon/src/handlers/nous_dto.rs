@@ -65,6 +65,18 @@ pub struct NousSummary {
     pub status: String,
     /// Tool toggle summaries for the agent.
     pub tools: Vec<ToolSummary>,
+    /// Whether the requested config change was persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_applied: Option<bool>,
+    /// Whether the running actor/runtime now reflects the requested state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_applied: Option<bool>,
+    /// Whether a config reload is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reload_required: Option<bool>,
+    /// Whether a process restart is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_required: Option<bool>,
 }
 
 /// Detailed status of a single nous agent.
@@ -125,6 +137,18 @@ pub struct AddressMaskStatus {
 pub struct ToolsResponse {
     /// Tool summaries.
     pub tools: Vec<ToolSummary>,
+    /// Whether the requested config change was persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_applied: Option<bool>,
+    /// Whether the running actor/runtime now reflects the requested state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_applied: Option<bool>,
+    /// Whether a config reload is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reload_required: Option<bool>,
+    /// Whether a process restart is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_required: Option<bool>,
 }
 
 /// Brief description of a registered tool.
