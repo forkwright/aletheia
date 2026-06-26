@@ -440,6 +440,8 @@ fn compute_agent_performance(
     let sessions_per_day = compute_sessions_per_day(sessions);
 
     // NOTE: No data source for tool call counts, success rates, or errors.
+    // The zero placeholders are paired with `data_unavailable` so clients can
+    // distinguish "not measured" from "zero observed".
     warn!(
         agent_id = %agent_id,
         "tool_calls_per_session, tool_success_rate, and errors_per_session have no backing data source in pylon — returning 0.0"
@@ -817,6 +819,9 @@ fn model_rows(models: HashMap<String, TokenTotals>) -> Vec<ModelTokenRow> {
 }
 
 fn costs_from_tokens(tokens: &TokenMetricsResponse) -> CostMetricsResponse {
+    // NOTE: Cost values remain zero because pylon has no provider/model pricing
+    // source. The zero placeholders are paired with `data_unavailable` so clients
+    // can distinguish "not measured" from "zero observed".
     let agents = tokens
         .agents
         .iter()
