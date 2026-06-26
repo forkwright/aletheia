@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use compact_str::CompactString;
-use crossbeam::channel::{Receiver, bounded, unbounded};
+use crossbeam::channel::{Receiver, bounded};
 use crossbeam::sync::ShardedLock;
 use itertools::Itertools;
 use parking_lot::RwLock;
@@ -461,17 +461,17 @@ impl<'s, S: Storage<'s>> Db<S> {
 
     /// Register callback channel to receive changes when the requested relation are successfully committed.
     /// The returned ID can be used to unregister the callback channel.
+    ///
+    /// `capacity` bounds the channel; when it is full, new events are dropped so a slow
+    /// consumer cannot cause unbounded memory growth. Consumers can recover missed
+    /// notifications by re-reading the relation.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn register_callback(
         &self,
         relation: &str,
-        capacity: Option<usize>,
+        capacity: usize,
     ) -> (u32, Receiver<(CallbackOp, NamedRows, NamedRows)>) {
-        let (sender, receiver) = if let Some(c) = capacity {
-            bounded(c)
-        } else {
-            unbounded()
-        };
+        let (sender, receiver) = bounded(capacity);
         let cb = CallbackDeclaration {
             dependent: CompactString::from(relation),
             sender,

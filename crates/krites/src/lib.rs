@@ -292,12 +292,16 @@ impl Db {
     }
 
     /// Register a callback for relation changes.
+    ///
+    /// `capacity` bounds the channel; when it is full, new events are dropped so a slow
+    /// consumer cannot cause unbounded memory growth. Consumers can recover missed
+    /// notifications by re-reading the relation.
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
     pub fn register_callback(
         &self,
         relation: &str,
-        capacity: Option<usize>,
+        capacity: usize,
     ) -> (
         u32,
         crossbeam::channel::Receiver<(CallbackOp, NamedRows, NamedRows)>,

@@ -216,7 +216,7 @@ fn named_rows_json_roundtrip() {
 fn callback_receives_changes() {
     let db = Db::open_mem().expect("opening in-memory database should succeed");
 
-    let (_callback_id, receiver) = db.register_callback("changes_test", Some(10));
+    let (_callback_id, receiver) = db.register_callback("changes_test", 10);
 
     db.run(
         ":create changes_test {id: Int => value: String}",

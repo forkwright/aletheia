@@ -171,7 +171,7 @@ fn cache_with_mutations_tracks_separately() {
 fn callback_receives_put_and_rm_notifications() {
     let db = Db::open_mem().expect("in-memory db creation should succeed");
 
-    let (_id, rx) = db.register_callback("cb_test", Some(16));
+    let (_id, rx) = db.register_callback("cb_test", 16);
 
     db.run(
         ":create cb_test {id: Int => val: String}",
