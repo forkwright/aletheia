@@ -116,7 +116,7 @@ impl AuthService {
 
     /// Authenticate via API key. Returns claims.
     pub fn authenticate_api_key(&self, raw_key: &str) -> Result<Claims> {
-        let result = api_key::validate(&self.store, raw_key);
+        let result = api_key::validate(&self.store, raw_key, self.jwt.issuer());
         crate::metrics::record_auth_attempt("api_key", result.is_ok());
         result
     }
@@ -234,7 +234,7 @@ impl AuthService {
         nous_id: Option<&str>,
         expires_in: Option<Duration>,
     ) -> Result<(String, ApiKeyRecord)> {
-        api_key::generate(&self.store, prefix, role, nous_id, expires_in)
+        api_key::generate(&self.store, prefix, role, nous_id, expires_in, self.jwt.issuer())
     }
 
     /// Revoke an API key.
