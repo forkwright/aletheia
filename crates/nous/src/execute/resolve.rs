@@ -6,8 +6,9 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use hermeneus::complexity::{ComplexityInput, route_model};
-use hermeneus::health::ProviderHealth;
-use hermeneus::provider::{DeploymentTarget, LlmProvider, ProviderRegistry};
+use hermeneus::provider::{
+    DeploymentTarget, LlmProvider, ProviderRegistry, ProviderResolutionError, ProviderRoute,
+};
 use hermeneus::types::{ContentBlock, ServerToolDefinition};
 use koina::id::ToolName;
 use organon::types::ToolContext;
@@ -98,25 +99,23 @@ pub(super) fn resolve_provider_checked<'a>(
     providers: &'a ProviderRegistry,
     model: &str,
 ) -> error::Result<&'a dyn LlmProvider> {
-    let provider = providers.find_provider(model).ok_or_else(|| {
-        error::PipelineStageSnafu {
-            stage: "execute",
-            message: format!("no provider for model: {model}"),
-        }
-        .build()
-    })?;
-
-    if let Some(health) = providers.provider_health(provider.name())
-        && matches!(health, ProviderHealth::Down { .. })
-    {
-        return Err(error::PipelineStageSnafu {
-            stage: "execute",
-            message: format!("provider '{}' is currently unavailable", provider.name()),
-        }
-        .build());
-    }
-
-    Ok(provider)
+    providers
+        .resolve_provider(model, ProviderRoute::ModelOnly)
+        .map_err(|err| {
+            let message = match err {
+                ProviderResolutionError::NoProvider { model } => {
+                    format!("no provider for model: {model}")
+                }
+                ProviderResolutionError::ProviderUnavailable { name, health } => {
+                    format!("provider '{name}' is currently unavailable: {health:?}")
+                }
+            };
+            error::PipelineStageSnafu {
+                stage: "execute",
+                message,
+            }
+            .build()
+        })
 }
 
 /// Read the current active-tools set and derive server-tool definitions.

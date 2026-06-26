@@ -219,6 +219,202 @@ fn registry_record_unknown_provider_does_not_mutate_known_or_insert_unknown() {
     );
 }
 
+// --- Health-aware provider selection tests ---
+
+fn down_after_one_error_config() -> HealthConfig {
+    HealthConfig {
+        consecutive_failure_threshold: 1,
+        down_cooldown_ms: 60_000,
+    }
+}
+
+fn api_request_error() -> crate::error::Error {
+    crate::error::ApiRequestSnafu {
+        message: "simulated timeout".to_owned(),
+    }
+    .build()
+}
+
+#[test]
+fn health_aware_selection_prefers_healthy_equivalent_provider() {
+    // WHY: the first registered exact-match provider is down, so an equivalent
+    // (same specificity) healthy provider must be selected instead.
+    let mut registry = ProviderRegistry::new();
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("first response")
+                .named("first")
+                .models(&["shared-model"]),
+        ),
+        down_after_one_error_config(),
+    );
+    registry.register(Box::new(
+        MockProvider::new("second response")
+            .named("second")
+            .models(&["shared-model"]),
+    ));
+
+    registry.record_error("first", &api_request_error());
+
+    let selected = registry
+        .find_provider("shared-model")
+        .expect("a healthy equivalent provider must exist");
+    assert_eq!(selected.name(), "second");
+}
+
+#[test]
+fn health_aware_selection_returns_none_when_all_unavailable() {
+    // WHY: when every provider for a model is down, model-only routing must
+    // fail rather than hand a request to an unavailable provider.
+    let mut registry = ProviderRegistry::new();
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("a")
+                .named("alpha")
+                .models(&["shared-model"]),
+        ),
+        down_after_one_error_config(),
+    );
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("b")
+                .named("beta")
+                .models(&["shared-model"]),
+        ),
+        down_after_one_error_config(),
+    );
+
+    let err = api_request_error();
+    registry.record_error("alpha", &err);
+    registry.record_error("beta", &err);
+
+    assert!(
+        registry.find_provider("shared-model").is_none(),
+        "no healthy provider should be returned when all are down"
+    );
+}
+
+#[test]
+fn explicit_provider_route_selects_named_provider() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("named")
+            .named("named-provider")
+            .models(&["some-model"]),
+    ));
+
+    let selected = registry
+        .resolve_provider("some-model", ProviderRoute::Explicit("named-provider"))
+        .expect("explicit route to a healthy provider must succeed");
+    assert_eq!(selected.name(), "named-provider");
+}
+
+#[test]
+fn explicit_provider_route_reports_health_failure_directly() {
+    // WHY: when the operator names a provider explicitly, health failures must
+    // surface for that provider rather than silently falling back.
+    let mut registry = ProviderRegistry::new();
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("named")
+                .named("named-provider")
+                .models(&["some-model"]),
+        ),
+        down_after_one_error_config(),
+    );
+    registry.register(Box::new(
+        MockProvider::new("fallback")
+            .named("fallback-provider")
+            .models(&["some-model"]),
+    ));
+
+    registry.record_error("named-provider", &api_request_error());
+
+    let err = registry
+        .resolve_provider("some-model", ProviderRoute::Explicit("named-provider"))
+        .expect_err("explicit route to a down provider must fail");
+
+    match err {
+        ProviderResolutionError::ProviderUnavailable { name, health } => {
+            assert_eq!(name, "named-provider");
+            assert!(matches!(health, ProviderHealth::Down { .. }));
+        }
+        other => panic!("expected ProviderUnavailable, got {other}"),
+    }
+}
+
+#[test]
+fn health_aware_mixed_specificity_prefers_highest_healthy() {
+    // WHY: specificity ordering must still hold when all providers are healthy.
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("catch")
+            .named("catch-provider")
+            .models(&["mixed-model"])
+            .with_match_kind(MatchKind::CatchAll),
+    ));
+    registry.register(Box::new(
+        MockProvider::new("prefix")
+            .named("prefix-provider")
+            .models(&["mixed-model"])
+            .with_match_kind(MatchKind::Prefix),
+    ));
+    registry.register(Box::new(
+        MockProvider::new("exact")
+            .named("exact-provider")
+            .models(&["mixed-model"])
+            .with_match_kind(MatchKind::Exact),
+    ));
+
+    let selected = registry
+        .find_provider("mixed-model")
+        .expect("a healthy provider must be selected");
+    assert_eq!(selected.name(), "exact-provider");
+}
+
+#[test]
+fn health_aware_mixed_specificity_does_not_fall_back_to_lower_tier() {
+    // WHY: health is a tie-breaker within the same specificity level, not an
+    // override. When all exact-match providers are down, model-only routing
+    // must fail rather than silently fall back to a prefix or catch-all match.
+    let mut registry = ProviderRegistry::new();
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("catch")
+                .named("catch-provider")
+                .models(&["mixed-model"])
+                .with_match_kind(MatchKind::CatchAll),
+        ),
+        down_after_one_error_config(),
+    );
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("prefix")
+                .named("prefix-provider")
+                .models(&["mixed-model"])
+                .with_match_kind(MatchKind::Prefix),
+        ),
+        down_after_one_error_config(),
+    );
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("exact")
+                .named("exact-provider")
+                .models(&["mixed-model"])
+                .with_match_kind(MatchKind::Exact),
+        ),
+        down_after_one_error_config(),
+    );
+
+    let err = api_request_error();
+    registry.record_error("exact-provider", &err);
+
+    assert!(
+        registry.find_provider("mixed-model").is_none(),
+        "must not fall back to a lower-specificity provider when the exact tier is unavailable"
+    );
+}
+
 // --- Specificity-based routing tests ---
 
 #[test]

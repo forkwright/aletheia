@@ -41,6 +41,44 @@ pub enum MatchKind {
     Exact = 2,
 }
 
+/// Routing intent for provider selection.
+///
+/// WHY: execution needs to distinguish "use any healthy provider for this model"
+/// from "the operator explicitly named a provider". The two paths have different
+/// failure semantics: model-only routing may try equivalent providers, while an
+/// explicit provider id fails fast if that provider is unhealthy.
+#[derive(Debug, Clone, Copy)]
+pub enum ProviderRoute<'a> {
+    /// Select any provider that claims the model, preferring the healthiest,
+    /// most-specific match.
+    ModelOnly,
+    /// Use the provider with this exact instance name, regardless of specificity.
+    Explicit(&'a str),
+}
+
+/// Provider selection failure.
+#[derive(Debug, Clone)]
+pub enum ProviderResolutionError {
+    /// No registered provider supports the requested model (model-only routing),
+    /// or the explicitly named provider does not exist.
+    NoProvider { model: String },
+    /// The explicitly named provider exists but is not available.
+    ProviderUnavailable { name: String, health: ProviderHealth },
+}
+
+impl std::fmt::Display for ProviderResolutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoProvider { model } => write!(f, "no provider for model: {model}"),
+            Self::ProviderUnavailable { name, health } => {
+                write!(f, "provider '{name}' is currently unavailable: {health:?}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProviderResolutionError {}
+
 /// Trait for LLM providers.
 ///
 /// Implementations handle authentication, request formatting, response parsing,
@@ -401,22 +439,20 @@ impl ProviderRegistry {
         }
     }
 
-    /// Find the best provider for `model` using specificity-based selection.
+    /// Find the best healthy provider for `model` using specificity-based selection.
     ///
     /// # Selection contract
     ///
-    /// WHY: a first-match linear scan over registration order is
-    /// non-deterministic when multiple providers claim overlapping model IDs
-    /// (e.g. `CcProvider` accepts all `claude-*` via a broad family pattern,
-    /// while `AnthropicProvider` lists exact model IDs). Registration order is
-    /// an incidental artifact of startup sequencing, not an intentful
-    /// contract. Specificity-based selection makes routing deterministic and
-    /// intent-driven: a provider that names the model explicitly
-    /// (`MatchKind::Exact`) always wins over one that matches by a broad
-    /// family pattern (`MatchKind::CatchAll`), regardless of which was
-    /// registered first. When multiple providers share the same specificity
-    /// level the tie is broken by registration order (first registered wins),
-    /// which is a stable, auditable contract.
+    /// WHY: provider health is live state, not a static preference. When multiple
+    /// providers claim the same model ID, a down provider must not block an
+    /// equivalent healthy alternative. This method first determines the highest
+    /// specificity tier claimed by any matching provider, then selects the first
+    /// healthy provider within that tier (registration order breaks ties).
+    /// Lower-specificity providers are not used as fallbacks because they are
+    /// not equivalent matches.
+    ///
+    /// Providers that match at the target specificity but are unhealthy are logged
+    /// so operators can see which providers were skipped and why.
     ///
     /// # Complexity
     ///
@@ -424,33 +460,135 @@ impl ProviderRegistry {
     #[must_use]
     pub fn find_provider(&self, model: &str) -> Option<&dyn LlmProvider> {
         // kanon:ignore RUST/pub-visibility
-        let mut best: Option<(MatchKind, &dyn LlmProvider)> = None;
+        self.resolve_provider(model, ProviderRoute::ModelOnly).ok()
+    }
 
+    /// Resolve a provider for `model` according to `route`.
+    ///
+    /// Model-only routing is health-aware and specificity-ordered. An explicit
+    /// provider id respects operator intent and reports the provider's health
+    /// directly when it is unavailable.
+    pub fn resolve_provider<'a>(
+        &'a self,
+        model: &str,
+        route: ProviderRoute<'_>,
+    ) -> std::result::Result<&'a dyn LlmProvider, ProviderResolutionError> {
+        // kanon:ignore RUST/pub-visibility
+        match route {
+            ProviderRoute::ModelOnly => self.resolve_model_only(model),
+            ProviderRoute::Explicit(name) => self.resolve_explicit_provider(model, name),
+        }
+    }
+
+    /// Whether a health snapshot represents a provider that may receive traffic.
+    ///
+    /// WHY: routing uses the non-mutating [`ProviderHealthTracker::health`]
+    /// snapshot so that merely querying the registry does not elect recovery
+    /// probes or alter the state of providers that are not selected.
+    fn is_available(health: &ProviderHealth) -> bool {
+        matches!(health, ProviderHealth::Up | ProviderHealth::Degraded { .. })
+    }
+
+    fn resolve_model_only<'a>(
+        &'a self,
+        model: &str,
+    ) -> std::result::Result<&'a dyn LlmProvider, ProviderResolutionError> {
+        // WHY: specificity is an intentful contract. Determine the best
+        // specificity claimed by any matching provider first, then only
+        // consider healthy providers at that tier. Lower-specificity providers
+        // are not used as fallbacks because they are not equivalent matches.
+        let mut target_specificity: Option<MatchKind> = None;
         for entry in &self.providers {
             if let Some(kind) = entry.provider.match_specificity(model) {
-                tracing::debug!(
-                    provider = entry.provider.name(),
-                    model,
-                    specificity = ?kind,
-                    "provider selection candidate"
-                );
-                let is_better = best.as_ref().is_none_or(|(prev, _)| kind > *prev);
-                if is_better {
-                    best = Some((kind, entry.provider.as_ref()));
+                if target_specificity.as_ref().is_none_or(|prev| kind > *prev) {
+                    target_specificity = Some(kind);
                 }
             }
         }
 
-        if let Some((kind, provider)) = &best {
+        let Some(target_kind) = target_specificity else {
+            tracing::debug!(model, "no provider claims model");
+            return Err(ProviderResolutionError::NoProvider {
+                model: model.to_owned(),
+            });
+        };
+
+        let mut skipped: Vec<(String, ProviderHealth)> = Vec::new();
+
+        for entry in &self.providers {
+            if entry.provider.match_specificity(model) != Some(target_kind) {
+                continue;
+            }
+
+            let health = entry.health.health();
+            if Self::is_available(&health) {
+                let skipped_summary: Vec<String> = skipped
+                    .iter()
+                    .map(|(name, health)| format!("{name} ({target_kind:?}: {health:?})"))
+                    .collect();
+
+                tracing::info!(
+                    provider = entry.provider.name(),
+                    model,
+                    specificity = ?target_kind,
+                    skipped = ?skipped_summary,
+                    "provider selected"
+                );
+
+                return Ok(entry.provider.as_ref());
+            }
+
             tracing::debug!(
-                provider = provider.name(),
+                provider = entry.provider.name(),
                 model,
-                specificity = ?kind,
-                "provider selected"
+                specificity = ?target_kind,
+                ?health,
+                "provider skipped: unhealthy"
             );
+            skipped.push((entry.provider.name().to_owned(), health));
         }
 
-        best.map(|(_, p)| p)
+        tracing::warn!(
+            model,
+            specificity = ?target_kind,
+            skipped = ?skipped,
+            "no healthy provider at target specificity"
+        );
+
+        Err(ProviderResolutionError::NoProvider {
+            model: model.to_owned(),
+        })
+    }
+
+    fn resolve_explicit_provider<'a>(
+        &'a self,
+        model: &str,
+        name: &str,
+    ) -> std::result::Result<&'a dyn LlmProvider, ProviderResolutionError> {
+        let entry = self
+            .providers
+            .iter()
+            .find(|e| e.provider.name() == name)
+            .ok_or_else(|| ProviderResolutionError::NoProvider {
+                model: model.to_owned(),
+            })?;
+
+        let health = entry.health.health();
+        if !Self::is_available(&health) {
+            tracing::info!(
+                provider = name,
+                model,
+                ?health,
+                "explicit provider unavailable"
+            );
+            return Err(ProviderResolutionError::ProviderUnavailable {
+                name: name.to_owned(),
+                health,
+            });
+        }
+
+        tracing::info!(provider = name, model, "explicit provider selected");
+        Ok(entry.provider.as_ref())
     }
 
     /// List all registered providers.
