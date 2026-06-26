@@ -319,7 +319,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let handoff = HandoffFile::new(dir.path());
         let json_path = handoff.json_path();
-        std::fs::write(&json_path, "not valid json").unwrap();
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&json_path).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
 
         let err = handoff.read().unwrap_err();
         let msg = err.to_string();

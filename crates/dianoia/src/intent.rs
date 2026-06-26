@@ -482,7 +482,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = IntentStore::new(dir.path());
         let intents_path = dir.path().join("intents.json");
-        std::fs::write(&intents_path, "not valid json").unwrap();
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&intents_path).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
 
         let err = store.list_intents().unwrap_err();
         let msg = err.to_string();

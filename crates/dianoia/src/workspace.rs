@@ -351,7 +351,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
         let project_file = ws.layout().project_file;
-        std::fs::write(&project_file, "not valid json").unwrap();
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&project_file).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
 
         let err = ws.load_project().unwrap_err();
         let msg = err.to_string();
@@ -375,7 +379,11 @@ mod tests {
             .join("phase-1")
             .join("blocker.json");
         std::fs::create_dir_all(blocker_path.parent().unwrap()).unwrap();
-        std::fs::write(&blocker_path, "not valid json").unwrap();
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&blocker_path).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
 
         let err = ws.read_blockers("phase-1").unwrap_err();
         let msg = err.to_string();
