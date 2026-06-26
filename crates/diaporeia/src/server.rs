@@ -56,7 +56,7 @@ impl DiaporeiaServer {
     /// Check that the caller has at least `minimum` role for a resource operation.
     ///
     /// Extracts the role from auth state: uses the configured `none_role` in
-    /// auth-disabled mode, otherwise validates the JWT via `jwt_manager`.
+    /// auth-disabled mode, otherwise validates through the shared auth facade.
     async fn require_resource_role(
         &self,
         context: &rmcp::service::RequestContext<rmcp::RoleServer>,
@@ -118,8 +118,11 @@ impl DiaporeiaServer {
             .and_then(|v| v.to_str().ok())?;
         let token = header.strip_prefix(koina::http::BEARER_PREFIX)?;
 
-        if let Some(ref jwt) = self.state.jwt_manager {
-            return jwt.validate(token).ok().map(|claims| claims.role);
+        if let Some(ref auth_facade) = self.state.auth_facade {
+            return auth_facade
+                .validate_token(token)
+                .ok()
+                .map(|claims| claims.role);
         }
 
         None

@@ -88,19 +88,19 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     #[cfg(feature = "mcp")]
     let app = {
-        // WHY: auth_mode == "none" means no signing key; pass None so the
-        // middleware skips JWT validation and injects anonymous claims.
-        let mcp_jwt = if runtime.state.auth_mode == "none" {
+        // WHY(#4750): auth_mode == "none" has no bearer-token validation;
+        // otherwise MCP must share Pylon's revocation-aware auth facade.
+        let mcp_auth_facade = if runtime.state.auth_mode == "none" {
             None
         } else {
-            Some(Arc::clone(&runtime.state.jwt_manager))
+            Some(Arc::clone(&runtime.state.auth_facade))
         };
         let diaporeia_state = Arc::new(diaporeia::state::DiaporeiaState {
             session_store: Arc::clone(&runtime.state.session_store),
             nous_manager: Arc::clone(&runtime.state.nous_manager),
             tool_registry: Arc::clone(&runtime.state.tool_registry),
             oikos: Arc::clone(&runtime.state.oikos),
-            jwt_manager: mcp_jwt,
+            auth_facade: mcp_auth_facade,
             start_time: runtime.state.start_time,
             config: Arc::clone(&runtime.state.config),
             auth_mode: runtime.state.auth_mode.clone(),

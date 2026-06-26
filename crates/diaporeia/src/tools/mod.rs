@@ -106,21 +106,20 @@ async fn extract_caller(
 
     let token = header.strip_prefix(BEARER_PREFIX)?;
 
-    // WHY(#3337): When jwt_manager is available, validate the signature
-    // instead of just decoding the payload. This prevents role spoofing
-    // on direct MCP connections that bypass the gateway.
-    if let Some(ref jwt) = server.state.jwt_manager {
-        return jwt.validate(token).ok().map(|claims| Caller {
+    // WHY(#4750): validate through AuthFacade so MCP honors the same
+    // revocation store and access-token checks as Pylon HTTP routes.
+    if let Some(ref auth_facade) = server.state.auth_facade {
+        return auth_facade.validate_token(token).ok().map(|claims| Caller {
             sub: claims.sub,
             role: claims.role,
             nous_id: claims.nous_id,
         });
     }
 
-    // INVARIANT: jwt_manager must be Some when auth_mode != "none".
+    // INVARIANT: auth_facade must be Some when auth_mode != "none".
     // Fail closed: reject rather than granting access via unsigned decode.
     tracing::error!(
-        "INVARIANT violation: jwt_manager is None but auth_mode != \"none\" — denying MCP tool access"
+        "INVARIANT violation: auth_facade is None but auth_mode != \"none\"; denying MCP tool access"
     );
     None
 }
@@ -2596,7 +2595,7 @@ mod tests {
             )),
             tool_registry: Arc::new(organon::registry::ToolRegistry::new()),
             oikos,
-            jwt_manager: None,
+            auth_facade: None,
             start_time: Instant::now(),
             config: Arc::new(tokio::sync::RwLock::new(config)),
             auth_mode: "none".to_owned(),
