@@ -213,7 +213,19 @@ impl ProjectState {
                 Transition::Abandon,
                 Transition::Pause,
             ],
-            Self::Verifying => vec![Transition::Complete, Transition::Abandon],
+            Self::Verifying => vec![
+                Transition::Complete,
+                Transition::Abandon,
+                Transition::Revert {
+                    to: ProjectState::Executing,
+                },
+                Transition::Revert {
+                    to: ProjectState::Planning,
+                },
+                Transition::Revert {
+                    to: ProjectState::Scoping,
+                },
+            ],
             Self::Complete | Self::Abandoned => vec![],
             Self::Paused { .. } => vec![Transition::Resume, Transition::Abandon],
         }
