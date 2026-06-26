@@ -462,11 +462,14 @@ mod test {
         assert_eq!(m1.0, m2.0);
         assert_eq!(m1.jaccard(&m2), 1.0);
         m1.update([7, 8, 9].iter(), &perms);
-        assert!(m1.jaccard(&m2) < 1.0);
-        println!("{:?}", m1.jaccard(&m2));
+        let j1 = m1.jaccard(&m2);
+        assert!(j1 < 1.0);
+        assert!((0.0..=1.0).contains(&j1));
         m2.update([17, 18, 19].iter(), &perms);
-        assert!(m1.jaccard(&m2) < 1.0);
-        println!("{:?}", m1.jaccard(&m2));
+        let j2 = m1.jaccard(&m2);
+        assert!(j2 < 1.0);
+        assert!((0.0..=1.0).contains(&j2));
+        assert!(j2 < j1, "diverging sets should decrease Jaccard estimate");
         assert_eq!(
             perms.0,
             HashPermutations::from_bytes(perms.as_bytes()).unwrap().0

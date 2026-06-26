@@ -318,12 +318,13 @@ impl NormalFormProgram {
 
 #[cfg(test)]
 mod tests {
+    use crate::DataValue;
     use crate::DbInstance;
 
     #[test]
     fn stratified_query_with_recursive_rules_executes_successfully() {
         let db = DbInstance::default();
-        let _res = db
+        let res = db
             .run_default(
                 r"
         x[a] <- [[1], [2]]
@@ -337,7 +338,26 @@ mod tests {
         ?[a] := w[a]
         ",
             )
-            .unwrap_or_else(|e| panic!("stratified query test must succeed: {e}"))
-            .rows;
+            .unwrap_or_else(|e| panic!("stratified query test must succeed: {e}"));
+
+        let mut values: Vec<DataValue> = res
+            .rows
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .next()
+                    .unwrap_or_else(|| panic!("INVARIANT: result row has exactly one column"))
+            })
+            .collect();
+        values.sort_unstable();
+        // WHY(#4515): w[a] := a < 10 stops the recursion before a=10 (guard fails), so
+        // w produces 2..=9.  The z aggregation contributes only values already in w's range.
+        let mut expected: Vec<DataValue> = (2..=9).map(DataValue::from).collect();
+        expected.sort_unstable();
+        assert_eq!(
+            values, expected,
+            "recursive w should produce 2..=9 (guard a<10 stops at 9); z adds no new values"
+        );
+        assert_eq!(res.headers, vec!["a".to_string()]);
     }
 }

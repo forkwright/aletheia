@@ -382,6 +382,7 @@ mod proptests {
     use proptest::prelude::*;
 
     use crate::data::value::ValidityTs;
+    use crate::parse::DatalogScript;
     use crate::parse::parse_script;
 
     fn empty_fixed_rules() -> BTreeMap<String, Arc<Box<dyn crate::FixedRule>>> {
@@ -398,6 +399,44 @@ mod proptests {
                 &BTreeMap::new(),
                 &empty_fixed_rules(),
                 ValidityTs(std::cmp::Reverse(0)),
+            );
+        }
+
+        /// Valid minimal Datalog programs must parse to a single program with the
+        /// expected entry arity and the generated relation present in the program.
+        #[test]
+        fn datalog_valid_program_parses_with_shape(
+            rel in "[a-z][a-z0-9_]{0,15}",
+            vals in proptest::collection::vec(0i64..100, 1..10),
+        ) {
+            let val_list = vals
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let src = format!("{rel}[a] := a in [{val_list}]\n?[a] := {rel}[a]");
+            let parsed = parse_script(
+                &src,
+                &BTreeMap::new(),
+                &empty_fixed_rules(),
+                ValidityTs(std::cmp::Reverse(0)),
+            )
+            .unwrap_or_else(|e| panic!("valid generated Datalog should parse: {e}"));
+            let program = match parsed {
+                DatalogScript::Single(p) => p,
+                other => panic!("expected a single program, got {:?}", other),
+            };
+            prop_assert_eq!(
+                program.get_entry_arity().unwrap_or_else(|e| panic!("entry should exist: {e}")),
+                1,
+                "entry query has one column"
+            );
+            prop_assert!(
+                program.prog.contains_key(&crate::data::symb::Symbol::new(
+                    rel.clone(),
+                    crate::parse::SourceSpan(0, 0)
+                )),
+                "generated relation {rel} should be present in program"
             );
         }
     }

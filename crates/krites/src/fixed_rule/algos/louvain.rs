@@ -366,6 +366,8 @@ fn louvain_step(
     reason = "test: node indices fit in u32 for small fixed graphs"
 )]
 mod tests {
+    use std::collections::BTreeSet;
+
     use crate::fixed_rule::csr::CsrBuilder;
 
     use crate::fixed_rule::algos::louvain::louvain;
@@ -402,6 +404,57 @@ mod tests {
                 },
             ))
             .build();
-        louvain(&graph, 0., 100, Poison::default()).unwrap();
+        let hierarchy = louvain(&graph, 0., 100, Poison::default()).unwrap();
+
+        // INVARIANT: Louvain must produce at least one partition for a non-empty graph.
+        assert!(
+            !hierarchy.is_empty(),
+            "Louvain must return at least one hierarchy level"
+        );
+
+        // INVARIANT: the first level assigns every original node to a community.
+        let first = hierarchy.first().unwrap();
+        assert_eq!(
+            first.len(),
+            graph.node_count() as usize,
+            "first level must contain one community assignment per node"
+        );
+
+        // INVARIANT: community ids are a dense range [0, num_communities).
+        let mut communities: BTreeSet<u32> = first.iter().copied().collect();
+        assert!(
+            communities.len() > 1,
+            "sample graph has two clear communities, so more than one is expected"
+        );
+        assert!(
+            communities.len() < first.len() as usize,
+            "some nodes must share a community"
+        );
+        assert_eq!(
+            *communities.iter().max().unwrap(),
+            communities.len() as u32 - 1,
+            "community ids must be a dense 0..n range"
+        );
+
+        // INVARIANT: each coarsened level is smaller than the level before it and
+        // its length equals the number of distinct communities in the prior level.
+        let mut prev_len = first.len();
+        for level in hierarchy.iter().skip(1) {
+            assert!(
+                level.len() < prev_len,
+                "coarsened level must be strictly smaller than the previous level"
+            );
+            assert_eq!(
+                level.len(),
+                communities.len(),
+                "coarsened level length must equal the number of communities above it"
+            );
+            communities = level.iter().copied().collect();
+            assert!(
+                communities.len() < prev_len,
+                "coarsened level must have fewer distinct communities"
+            );
+            prev_len = level.len();
+        }
     }
 }
