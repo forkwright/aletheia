@@ -168,7 +168,6 @@ impl FtsSearchRA {
         let config = self.fts_search.clone();
         let filter_code = self.filter_bytecode.clone();
         let mut stack = vec![];
-        let mut idf_cache = Default::default();
         let tokenizer = tx.tokenizers.get(
             &config.idx_handle.name,
             &config.manifest.tokenizer,
@@ -217,14 +216,7 @@ impl FtsSearchRA {
                     }
                 };
 
-                let res = tx.fts_search(
-                    &q,
-                    &config,
-                    &filter_code,
-                    &tokenizer,
-                    &mut stack,
-                    &mut idf_cache,
-                )?;
+                let res = tx.fts_search(&q, &config, &filter_code, &tokenizer, &mut stack)?;
                 Ok(res.into_iter().map(move |t| {
                     let mut r = tuple.clone();
                     r.extend(t);

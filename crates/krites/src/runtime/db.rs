@@ -32,6 +32,7 @@ use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::fixed_rule::DEFAULT_FIXED_RULES;
 use crate::fts::TokenizerCache;
+use crate::fts::indexing::FtsCache;
 use crate::runtime::callback::{CallbackDeclaration, CallbackOp, EventCallbackRegistry};
 use crate::runtime::error::{InvalidOperationSnafu, QueryKilledSnafu};
 use crate::runtime::relation::RelationId;
@@ -147,6 +148,7 @@ pub struct Db<S> {
     pub(crate) running_queries: Arc<Mutex<BTreeMap<u64, RunningQueryHandle>>>,
     pub(crate) fixed_rules: Arc<ShardedLock<BTreeMap<String, Arc<Box<dyn FixedRule>>>>>,
     pub(crate) tokenizers: Arc<TokenizerCache>,
+    pub(crate) fts_cache: Arc<RwLock<FtsCache>>,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) callback_count: Arc<AtomicU32>,
     #[cfg(not(target_arch = "wasm32"))]
@@ -378,6 +380,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             running_queries: Default::default(),
             fixed_rules: Arc::new(ShardedLock::new(DEFAULT_FIXED_RULES.clone())),
             tokenizers: Arc::new(Default::default()),
+            fts_cache: Arc::new(RwLock::new(FtsCache::default())),
             #[cfg(not(target_arch = "wasm32"))]
             callback_count: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
