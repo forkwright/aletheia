@@ -17,7 +17,7 @@ use quick_xml::escape::unescape;
 /// slice is returned unchanged so callers still see the XML text that was
 /// present in the document.
 fn unescape_xml(raw: &str) -> Cow<'_, str> {
-    unescape(raw).unwrap_or_else(|_| Cow::Borrowed(raw))
+    unescape(raw).unwrap_or(Cow::Borrowed(raw))
 }
 
 /// Extract shared strings from `xl/sharedStrings.xml`.
@@ -139,19 +139,19 @@ mod tests {
 
     #[test]
     fn extract_shared_strings_unescapes_xml_entities() {
-        let xml = r#"<sst><si><t>Sales &amp; Marketing &lt; 100 &gt; 0 &apos;ok&apos; &quot;quote&quot; &#x2019;</t></si></sst>"#;
+        let xml = r"<sst><si><t>Sales &amp; Marketing &lt; 100 &gt; 0 &apos;ok&apos; &quot;quote&quot; &#x2019;</t></si></sst>";
         let result = extract_shared_strings(xml);
         assert_eq!(
             result,
-            vec![r#"Sales & Marketing < 100 > 0 'ok' "quote' ’"#]
+            vec![r#"Sales & Marketing < 100 > 0 'ok' "quote" ’"#]
         );
     }
 
     #[test]
     fn extract_shared_strings_normalises_different_entity_encodings() {
         let named =
-            r#"<sst><si><t>A &amp; B &lt; C &gt; D &apos;E&apos; &quot;F&quot; ’</t></si></sst>"#;
-        let numeric = r#"<sst><si><t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</t></si></sst>"#;
+            r"<sst><si><t>A &amp; B &lt; C &gt; D &apos;E&apos; &quot;F&quot; ’</t></si></sst>";
+        let numeric = r"<sst><si><t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</t></si></sst>";
         let expected = vec![r#"A & B < C > D 'E' "F" ’"#.to_owned()];
         assert_eq!(extract_shared_strings(named), expected);
         assert_eq!(extract_shared_strings(numeric), expected);
@@ -159,17 +159,17 @@ mod tests {
 
     #[test]
     fn extract_text_from_slide_unescapes_xml_entities() {
-        let xml = r#"<p:sp><a:t>Sales &amp; Marketing &lt; 100 &gt; 0 &apos;ok&apos; &quot;quote&quot; &#x2019;</a:t></p:sp>"#;
+        let xml = r"<p:sp><a:t>Sales &amp; Marketing &lt; 100 &gt; 0 &apos;ok&apos; &quot;quote&quot; &#x2019;</a:t></p:sp>";
         let result = extract_text_from_slide(xml);
-        assert_eq!(result, r#"Sales & Marketing < 100 > 0 'ok' "quote' ’"#);
+        assert_eq!(result, r#"Sales & Marketing < 100 > 0 'ok' "quote" ’"#);
     }
 
     #[test]
     fn extract_text_from_slide_normalises_different_entity_encodings() {
         let named =
-            r#"<p:sp><a:t>A &amp; B &lt; C &gt; D &apos;E&apos; &quot;F&quot; ’</a:t></p:sp>"#;
+            r"<p:sp><a:t>A &amp; B &lt; C &gt; D &apos;E&apos; &quot;F&quot; ’</a:t></p:sp>";
         let numeric =
-            r#"<p:sp><a:t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</a:t></p:sp>"#;
+            r"<p:sp><a:t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</a:t></p:sp>";
         let expected = r#"A & B < C > D 'E' "F" ’"#;
         assert_eq!(extract_text_from_slide(named), expected);
         assert_eq!(extract_text_from_slide(numeric), expected);

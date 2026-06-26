@@ -7059,6 +7059,7 @@ dependencies = [
  "indexmap 2.14.0",
  "poiesis-ooxml-parse",
  "poiesis-sheet",
+ "poiesis-slides",
  "serde_json",
  "snafu",
  "tracing",
@@ -7098,6 +7099,7 @@ dependencies = [
  "poiesis-doc",
  "poiesis-ooxml-parse",
  "poiesis-sheet",
+ "poiesis-slides",
  "serde_json",
  "snafu",
  "tracing",
@@ -7128,6 +7130,9 @@ dependencies = [
 [[package]]
 name = "poiesis-ooxml-parse"
 version = "0.31.1"
+dependencies = [
+ "quick-xml 0.39.2",
+]
 
 [[package]]
 name = "poiesis-printer-chromium"
