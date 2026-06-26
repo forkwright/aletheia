@@ -14,7 +14,7 @@ use crate::types::{StopReason, Usage};
 #[derive(Debug, Clone)]
 #[expect(
     missing_docs,
-    reason = "variant fields (text, thinking, partial_json, index, block_type, usage, stop_reason) are self-documenting by name"
+    reason = "variant fields (text, thinking, partial_json, index, block_type, usage, stop_reason, event_type) are self-documenting by name"
 )]
 #[non_exhaustive]
 pub enum StreamEvent {
@@ -47,6 +47,14 @@ pub enum StreamEvent {
         stop_reason: StopReason,
         /// Final cumulative token usage for the entire message.
         usage: Usage,
+    },
+    /// A provider-specific stream event type this adapter does not yet surface.
+    ///
+    /// WHY: Unknown event types are provider drift, not silence. Emitting them
+    /// lets streaming consumers observe when the response was partially represented.
+    UnsupportedEvent {
+        /// The raw event type string from the provider.
+        event_type: String,
     },
 }
 

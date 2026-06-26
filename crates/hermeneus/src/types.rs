@@ -277,6 +277,24 @@ pub enum ContentBlock {
         /// Process return code (0 = success).
         return_code: i32,
     },
+
+    /// An output item or event the adapter received but could not map to a
+    /// stable Aletheia content block.
+    ///
+    /// WHY: Silently dropping provider-specific output (refusals, future item
+    /// shapes) makes model behavior invisible. Preserving them as opaque blocks
+    /// lets downstream callers detect that a response was partially represented.
+    #[serde(rename = "unsupported")]
+    Unsupported {
+        /// What kind of unsupported item this is, e.g. `"output_item"` or `"content"`.
+        kind: String,
+        /// The provider-specific type string when known.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        provider_type: Option<String>,
+        /// Opaque provider payload preserved for inspection.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<serde_json::Value>,
+    },
 }
 
 /// Tool result content: simple text or rich content blocks.
