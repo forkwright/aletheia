@@ -371,17 +371,23 @@ fn count_sessions_since_uses_index_not_full_scan() {
     let after = jiff::Timestamp::now();
 
     assert_eq!(
-        store.count_sessions_since(before, "alice").expect("count alice"),
+        store
+            .count_sessions_since(before, "alice")
+            .expect("count alice"),
         1,
         "exactly one alice session created after `before`"
     );
     assert_eq!(
-        store.count_sessions_since(before, "bob").expect("count bob"),
+        store
+            .count_sessions_since(before, "bob")
+            .expect("count bob"),
         1,
         "exactly one bob session created after `before`"
     );
     assert_eq!(
-        store.count_sessions_since(after, "alice").expect("count alice after"),
+        store
+            .count_sessions_since(after, "alice")
+            .expect("count alice after"),
         0,
         "no alice sessions created after `after`"
     );

@@ -310,8 +310,7 @@ impl DreamEngine {
         let acquired = {
             let engine = Arc::clone(self);
             let source = Arc::clone(source);
-            let check =
-                tokio::task::spawn_blocking(move || engine.check_gates(source.as_ref()));
+            let check = tokio::task::spawn_blocking(move || engine.check_gates(source.as_ref()));
             match check.await {
                 Ok(Ok(Some(lock))) => lock,
                 Ok(Ok(None)) => return,

@@ -457,11 +457,9 @@ impl NousActor {
             .get_or_insert_with(|| Arc::new(melete::dream::DreamEngine::new(dream_config)));
         let engine = engine.clone();
 
-        let source: Arc<dyn melete::dream::TranscriptSource> =
-            Arc::new(SessionStoreTranscriptSource::new(
-                Arc::clone(session_store),
-                self.id.clone(),
-            ));
+        let source: Arc<dyn melete::dream::TranscriptSource> = Arc::new(
+            SessionStoreTranscriptSource::new(Arc::clone(session_store), self.id.clone()),
+        );
         let target: Arc<dyn melete::dream::ConsolidationTarget> = Arc::new(
             KnowledgeStoreConsolidationTarget::new(Arc::clone(knowledge_store)),
         );
