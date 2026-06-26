@@ -71,6 +71,11 @@ impl LlmProvider for RegistryFallbackProvider<'_> {
     }
 }
 
+/// Execute a completion request with registry-backed model fallback.
+///
+/// Returns the successful [`CompletionResponse`] alongside the model identifier
+/// that produced it. The model may differ from `request.model` when a fallback
+/// model succeeded.
 pub(super) async fn complete_with_registry_fallback(
     providers: &ProviderRegistry,
     request: &CompletionRequest,

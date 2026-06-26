@@ -727,6 +727,7 @@ pub(super) async fn run_execute_stage(
     emitter: &EventEmitter,
     hooks: Option<&HookRegistry>,
     session_store: Option<&Mutex<SessionStore>>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
     time_budget.begin_stage("execute");
     let span = info_span!(
@@ -754,6 +755,7 @@ pub(super) async fn run_execute_stage(
                 approval_gate,
                 hooks,
                 execute_deadline,
+                audit_log,
             )
             .await
         } else {
@@ -768,6 +770,7 @@ pub(super) async fn run_execute_stage(
                 approval_gate,
                 hooks,
                 execute_deadline,
+                audit_log,
             )
             .await
         }

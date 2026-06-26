@@ -819,6 +819,7 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
         &emitter,
         None,
         Some(&TokioMutex::new(store)),
+        None,
     )
     .await
     .expect("degraded response should succeed");
@@ -889,6 +890,7 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
         &emitter,
         None,
         Some(&TokioMutex::new(store)),
+        None,
     )
     .await
     .expect("timeout without cache should return a degraded TurnResult");
@@ -994,6 +996,7 @@ async fn execute_timeout_streaming_with_distillation_returns_degraded_response()
         &emitter,
         None,
         Some(&TokioMutex::new(store)),
+        None,
     )
     .await
     .expect("streaming timeout should degrade");
@@ -1092,6 +1095,7 @@ async fn execute_timeout_preserves_side_effecting_tool_results() {
         &emitter,
         None,
         None,
+        None,
     )
     .await
     .expect("cooperative timeout should return a TurnResult");
@@ -1135,4 +1139,249 @@ async fn execute_timeout_preserves_side_effecting_tool_results() {
         .find(|r| r.name == "execute")
         .expect("execute timing record");
     assert_eq!(execute_record.status, StageTimingStatus::TimedOut);
+}
+
+// --- Prompt-audit boundary tests (#4831) ---
+
+struct AuditTestExecutor;
+
+impl ToolExecutor for AuditTestExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            Ok(ToolResult::text(format!(
+                "executed: {}",
+                input.name.as_str()
+            )))
+        })
+    }
+}
+
+fn make_audit_test_tool_def(name: &str) -> ToolDef {
+    ToolDef {
+        name: ToolName::new(name).expect("valid tool name"),
+        description: format!("Test tool: {name}"),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: indexmap::IndexMap::new(),
+            required: vec![],
+        },
+        category: ToolCategory::Workspace,
+        reversibility: Reversibility::FullyReversible,
+        auto_activate: true,
+        groups: vec![ToolGroupId::Read],
+        tags: vec![],
+    }
+}
+
+fn read_prompt_audit_records(log_dir: &std::path::Path) -> Vec<crate::audit::PromptAuditRecord> {
+    let mut entries = std::fs::read_dir(log_dir)
+        .expect("read audit log dir")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("dir entries");
+    assert_eq!(entries.len(), 1, "one daily JSONL file");
+    let path = entries.remove(0).path();
+    let content = std::fs::read_to_string(&path).expect("read audit log");
+    content
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("valid audit record"))
+        .collect()
+}
+
+#[tokio::test]
+async fn execute_stage_writes_one_audit_record_per_outbound_request() {
+    // WHY(#4831): a turn with one tool iteration produces two outbound
+    // CompletionRequests (initial tool_use call + final text response). Each
+    // must be logged with the actual model, provider, and effective tools.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_log = crate::audit::PromptAuditLog::new(dir.path().join("prompt-audit"), true);
+
+    let mut config = execute_stage_config();
+    config.tool_groups = organon::types::ToolGroupPolicy::AllowAll {
+        reason: "audit test".to_owned(),
+    };
+
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![
+            make_tool_response("echo", "tu-1"),
+            make_text_response("done"),
+        ])
+        .models(&["test-model"])
+        .named("audit-mock"),
+    ));
+
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(
+            make_audit_test_tool_def("echo"),
+            Box::new(AuditTestExecutor),
+        )
+        .expect("register echo tool");
+
+    let session = SessionState::new("audit-session".to_owned(), "main".to_owned(), &config);
+    let pipeline_config = PipelineConfig::default();
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext {
+        system_prompt: Some("You are a test agent.".to_owned()),
+        messages: vec![make_msg("user", "call echo")],
+        ..PipelineContext::default()
+    };
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, _captured) = capturing_emitter();
+
+    let result = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        None,
+        Some(&audit_log),
+    )
+    .await
+    .expect("execute stage should succeed");
+
+    assert_eq!(result.usage.llm_calls, 2, "two LLM calls for tool loop");
+
+    let records = read_prompt_audit_records(&dir.path().join("prompt-audit"));
+    assert_eq!(
+        records.len(),
+        2,
+        "two audit records, one per outbound request"
+    );
+
+    let first = &records[0];
+    assert_eq!(first.model, "test-model", "first record uses actual model");
+    assert_eq!(
+        first.provider, "audit-mock",
+        "first record uses actual provider"
+    );
+    assert!(
+        first.tool_names.contains(&"echo".to_owned()),
+        "first record includes effective tool"
+    );
+    assert!(
+        first.request_id.is_some(),
+        "first record has generated request id"
+    );
+
+    let second = &records[1];
+    assert_eq!(
+        second.model, "test-model",
+        "second record uses actual model"
+    );
+    assert_eq!(
+        second.provider, "audit-mock",
+        "second record uses actual provider"
+    );
+    assert!(
+        second.request_id.is_some(),
+        "second record has generated request id"
+    );
+}
+
+#[tokio::test]
+async fn execute_stage_audit_records_fallback_model_when_used() {
+    // WHY(#4831): when the primary model fails with a retryable error and the
+    // fallback model succeeds, the audit row must name the fallback model and
+    // its provider, not the configured primary model.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_log = crate::audit::PromptAuditLog::new(dir.path().join("prompt-audit"), true);
+
+    let mut config = execute_stage_config();
+    config.generation.model = "primary-model".to_owned();
+    config.generation.fallback_models = vec!["fallback-model".to_owned()];
+    config.generation.retries_before_fallback = 1;
+
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::error("primary provider timed out")
+            .models(&["primary-model"])
+            .named("primary-provider"),
+    ));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![CompletionResponse {
+            id: "resp-fallback".to_owned(),
+            model: "fallback-model".to_owned(),
+            stop_reason: StopReason::EndTurn,
+            content: vec![ContentBlock::Text {
+                text: "fallback done".to_owned(),
+                citations: None,
+            }],
+            usage: Usage {
+                input_tokens: 100,
+                output_tokens: 20,
+                ..Usage::default()
+            },
+            cost_usd: None,
+            duration_ms: None,
+        }])
+        .models(&["fallback-model"])
+        .named("fallback-provider"),
+    ));
+
+    let tools = ToolRegistry::new();
+    let session = SessionState::new("fallback-session".to_owned(), "main".to_owned(), &config);
+    let pipeline_config = PipelineConfig::default();
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext {
+        system_prompt: Some("You are a test agent.".to_owned()),
+        messages: vec![make_msg("user", "hello")],
+        ..PipelineContext::default()
+    };
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, _captured) = capturing_emitter();
+
+    run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        None,
+        Some(&audit_log),
+    )
+    .await
+    .expect("execute stage should succeed with fallback");
+
+    let records = read_prompt_audit_records(&dir.path().join("prompt-audit"));
+    assert_eq!(
+        records.len(),
+        1,
+        "one audit record for the successful fallback request"
+    );
+
+    let record = &records[0];
+    assert_eq!(
+        record.model, "fallback-model",
+        "audit record uses actual fallback model"
+    );
+    assert_eq!(
+        record.provider, "fallback-provider",
+        "audit record uses actual fallback provider"
+    );
+    assert!(
+        record.request_id.is_some(),
+        "record has generated request id"
+    );
 }

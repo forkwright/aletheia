@@ -19,7 +19,7 @@ use tracing::{debug, info, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use hermeneus::fallback::FallbackConfig;
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{DeploymentTarget, ProviderRegistry};
 use hermeneus::types::{
     CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
     ServerToolDefinition, StopReason, ThinkingConfig, ToolResultContent,
@@ -84,7 +84,7 @@ pub async fn execute(
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     execute_with_deadline(
-        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None,
+        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None, None,
     )
     .await
 }
@@ -95,7 +95,7 @@ pub async fn execute(
 )]
 #[expect(
     clippy::too_many_arguments,
-    reason = "shared execute core accepts optional streaming and approval adapters"
+    reason = "shared execute core accepts optional streaming, approval, deadline, and audit adapters"
 )]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub(crate) async fn execute_with_deadline(
@@ -109,6 +109,7 @@ pub(crate) async fn execute_with_deadline(
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
     deadline: Option<Instant>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the turn model once — complexity routing pins a tier for
     // the whole turn so tool-iteration continuations don't oscillate between
@@ -202,7 +203,7 @@ pub(crate) async fn execute_with_deadline(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        tool_surface_hashes.insert(surface_hash);
+        tool_surface_hashes.insert(surface_hash.clone());
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
@@ -244,10 +245,11 @@ pub(crate) async fn execute_with_deadline(
             // the fallback path (async fn → impl Future) or the direct path
             // (provider.complete → Pin<Box<dyn Future>>) is taken.
             let llm_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
+                let request_ref = &request;
                 Box::pin(async move {
                     let completion = model_fallback::complete_with_registry_fallback(
                         providers,
-                        &request,
+                        request_ref,
                         fallback_config,
                     )
                     .await?;
@@ -256,8 +258,9 @@ pub(crate) async fn execute_with_deadline(
             } else {
                 let provider = resolve_provider_checked(providers, &turn_model)?;
                 let requested_model = turn_model.clone();
+                let request_ref = &request;
                 Box::pin(async move {
-                    let response = provider.complete(&request).await?;
+                    let response = provider.complete(request_ref).await?;
                     Ok((response, requested_model))
                 })
             };
@@ -298,6 +301,45 @@ pub(crate) async fn execute_with_deadline(
                 return Err(e).context(error::LlmSnafu);
             }
         };
+
+        // WHY(#4831): log one prompt audit record per outbound CompletionRequest
+        // using the actual model/provider/route and effective tool surface for
+        // this iteration, not the top-level config defaults.
+        if let Some(log) = audit_log {
+            let (provider_name, deployment_target) =
+                providers.find_provider(&model_used).map_or_else(
+                    || {
+                        (
+                            "unknown".to_owned(),
+                            DeploymentTarget::Cloud.as_str().to_owned(),
+                        )
+                    },
+                    |provider| {
+                        (
+                            provider.name().to_owned(),
+                            provider.deployment_target().as_str().to_owned(),
+                        )
+                    },
+                );
+            let record = crate::audit::build_audit_record_for_request(
+                crate::audit::PromptAuditRequestRecordInput {
+                    ctx,
+                    session,
+                    model: &model_used,
+                    request: &request,
+                    provider: &provider_name,
+                    deployment_target: &deployment_target,
+                    surface_hash: &surface_hash,
+                    options: log.record_options(),
+                    chars_per_token: usize::try_from(config.generation.chars_per_token.max(1))
+                        .unwrap_or(4),
+                    request_id: Some(koina::ulid::Ulid::new().to_string()),
+                },
+            );
+            if let Err(e) = log.log_request(&record) {
+                tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
+            }
+        }
 
         let hermeneus::types::CompletionResponse {
             content: response_content,
@@ -625,6 +667,7 @@ pub async fn execute_streaming(
         approval_gate,
         hooks,
         None,
+        None,
     )
     .await
 }
@@ -633,14 +676,15 @@ pub async fn execute_streaming(
 ///
 /// The deadline is observed at safe boundaries (between LLM calls and after
 /// tool results have been processed) and around the LLM call itself, so tool
-/// side effects are never orphaned by a timeout.
+/// side effects are never orphaned by a timeout. Accepts an optional prompt
+/// audit log so the pipeline can record one row per outbound request.
 #[expect(
     clippy::too_many_lines,
     reason = "streaming agent loop parallels execute() with provider callback — one cohesive operation"
 )]
 #[expect(
     clippy::too_many_arguments,
-    reason = "streaming execute requires provider, tools, context, stream channel, hooks, and deadline"
+    reason = "streaming execute requires provider, tools, context, stream channel, hooks, deadline, and audit log"
 )]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub(crate) async fn execute_streaming_with_deadline(
@@ -654,6 +698,7 @@ pub(crate) async fn execute_streaming_with_deadline(
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
     deadline: Option<Instant>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the streaming turn model once — same reasoning as execute().
     // Must come before find_streaming_provider so the streaming provider is
@@ -677,6 +722,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             approval_gate,
             hooks,
             deadline,
+            audit_log,
         )
         .await;
     };
@@ -757,7 +803,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        tool_surface_hashes.insert(surface_hash);
+        tool_surface_hashes.insert(surface_hash.clone());
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
@@ -812,6 +858,29 @@ pub(crate) async fn execute_streaming_with_deadline(
             Ok(resp) => {
                 providers.record_success(provider.name());
                 model_used = turn_model.clone();
+                // WHY(#4831): log the outbound streaming request with actual route/surface.
+                if let Some(log) = audit_log {
+                    let record = crate::audit::build_audit_record_for_request(
+                        crate::audit::PromptAuditRequestRecordInput {
+                            ctx,
+                            session,
+                            model: &model_used,
+                            request: &request,
+                            provider: provider.name(),
+                            deployment_target: provider.deployment_target().as_str(),
+                            surface_hash: &surface_hash,
+                            options: log.record_options(),
+                            chars_per_token: usize::try_from(
+                                config.generation.chars_per_token.max(1),
+                            )
+                            .unwrap_or(4),
+                            request_id: Some(koina::ulid::Ulid::new().to_string()),
+                        },
+                    );
+                    if let Err(e) = log.log_request(&record) {
+                        tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
+                    }
+                }
                 resp
             }
             Err(e) => {

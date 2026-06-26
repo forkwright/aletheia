@@ -34,8 +34,10 @@ use std::path::{Path, PathBuf};
 // kanon:ignore RUST/std-mutex-in-async — PromptAuditLog methods are synchronous; std::sync::Mutex is correct for sync code
 use std::sync::Mutex;
 
+use hermeneus::types::CompletionRequest;
 use jiff::Timestamp;
 use jiff::civil::Date;
+#[cfg(test)]
 use organon::surface::SurfaceInputs;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -120,7 +122,7 @@ impl From<&taxis::config::PromptAuditSettings> for PromptAuditRecordOptions {
     }
 }
 
-/// One append-only audit record per completed model-backed turn.
+/// One append-only audit record per outbound `CompletionRequest`.
 ///
 /// See module docs for the sovereignty contract on what is and is not logged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,7 +142,7 @@ pub struct PromptAuditRecord {
     pub provider: String,
     /// Deployment target (cloud/local/…). See [`DeploymentTarget`].
     pub deployment_target: DeploymentTarget,
-    /// Selected model identifier that served the turn.
+    /// Model identifier passed to the provider.
     pub model: String,
     /// SHA-256 of the system prompt (hex). Empty string when no system prompt.
     pub system_prompt_hash: String,
@@ -320,7 +322,8 @@ impl PromptAuditLog {
     }
 }
 
-/// Inputs needed to construct a prompt audit record.
+/// Inputs needed by legacy audit unit tests to construct a turn-level record.
+#[cfg(test)]
 #[derive(Clone, Copy)]
 pub(crate) struct PromptAuditRecordInput<'a> {
     /// Pipeline context assembled for the turn.
@@ -343,9 +346,10 @@ pub(crate) struct PromptAuditRecordInput<'a> {
 
 /// Build a [`PromptAuditRecord`] from the assembled pipeline context.
 ///
-/// Called once per successful pipeline turn, after execute has reported the
-/// selected model. Never touches the system prompt content — the hash and
-/// length are the only signal that leave this function.
+/// Test helper kept for the existing audit unit tests. Production logging now
+/// uses [`build_audit_record_for_request`] inside the execute loop so each
+/// outbound [`CompletionRequest`] gets its own record.
+#[cfg(test)]
 pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAuditRecord {
     let PromptAuditRecordInput {
         ctx,
@@ -454,6 +458,113 @@ pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAud
         // TODO(#3384): thread request_id from pylon middleware
         // through PipelineInput once the extraction path reaches nous.
         request_id: None,
+    }
+}
+
+/// Estimate tokens for an outbound request from serialized text length.
+///
+/// WHY: the audit record is generated from the assembled [`CompletionRequest`]
+/// rather than the pipeline's [`PipelineMessage`] estimates, because execute may
+/// append tool-result messages that were never pipeline messages.
+fn estimate_request_tokens(request: &CompletionRequest, chars_per_token: usize) -> u32 {
+    let text_len: usize = request
+        .messages
+        .iter()
+        .map(|m| m.content.text().len())
+        .sum();
+    let sys_len = request.system.as_deref().map_or(0, str::len);
+    let total_len = text_len + sys_len;
+    let cpt = chars_per_token.max(1);
+    u32::try_from(total_len / cpt).unwrap_or(u32::MAX)
+}
+
+/// Inputs needed to construct a prompt audit record for one outbound request.
+pub(crate) struct PromptAuditRequestRecordInput<'a> {
+    /// Pipeline context assembled for the turn.
+    pub(crate) ctx: &'a crate::pipeline::PipelineContext,
+    /// Session that owns the turn.
+    pub(crate) session: &'a crate::session::SessionState,
+    /// Model identifier that served the request.
+    pub(crate) model: &'a str,
+    /// Outbound request sent to the provider.
+    pub(crate) request: &'a CompletionRequest,
+    /// Provider name that served the request.
+    pub(crate) provider: &'a str,
+    /// Provider deployment target.
+    pub(crate) deployment_target: &'a str,
+    /// Effective tool surface hash for this request.
+    pub(crate) surface_hash: &'a str,
+    /// Audit record options resolved from operator config.
+    pub(crate) options: PromptAuditRecordOptions,
+    /// Character-per-token estimate to use for this request.
+    pub(crate) chars_per_token: usize,
+    /// Request identifier for this outbound provider call.
+    pub(crate) request_id: Option<String>,
+}
+
+/// Build a [`PromptAuditRecord`] from an outbound [`CompletionRequest`].
+///
+/// Called once per outbound LLM request inside the execute loop. The model,
+/// provider, deployment target, and tool surface are taken from the actual
+/// request and resolved route rather than top-level config, so fallback models
+/// and per-iteration tool surfaces are recorded accurately.
+pub(crate) fn build_audit_record_for_request(
+    input: PromptAuditRequestRecordInput<'_>,
+) -> PromptAuditRecord {
+    let PromptAuditRequestRecordInput {
+        ctx,
+        session,
+        model,
+        request,
+        provider,
+        deployment_target,
+        surface_hash,
+        options,
+        chars_per_token,
+        request_id,
+    } = input;
+    let system_prompt = ctx.system_prompt.as_deref();
+    let system_prompt_bytes = system_prompt.map_or(0, str::len);
+
+    let fact_ids_included = ctx
+        .recall_result
+        .as_ref()
+        .map(|r| r.fact_ids.clone())
+        .unwrap_or_default();
+    let fact_ids_filtered = if options.include_filtered_ids {
+        ctx.recall_result.as_ref().map_or_else(Vec::new, |r| {
+            r.filtered_facts
+                .iter()
+                .map(|fact| FilteredFact {
+                    id: fact.id.clone(),
+                    sensitivity: fact.sensitivity.as_str().to_owned(),
+                })
+                .collect()
+        })
+    } else {
+        Vec::new()
+    };
+
+    let mut tool_names: Vec<String> = request.tools.iter().map(|td| td.name.clone()).collect();
+    tool_names.extend(request.server_tools.iter().map(|tool| tool.name.clone()));
+
+    PromptAuditRecord {
+        timestamp: Timestamp::now(),
+        nous_id: session.nous_id.clone(),
+        session_id: session.id.clone(),
+        turn_id: session.turn_id.to_string(),
+        provider: provider.to_owned(),
+        deployment_target: deployment_target.to_owned(),
+        model: model.to_owned(),
+        system_prompt_hash: hash_system_prompt(system_prompt),
+        system_prompt_bytes,
+        message_count: request.messages.len(),
+        token_count_estimate: estimate_request_tokens(request, chars_per_token),
+        fact_ids_included,
+        fact_ids_filtered,
+        tool_names,
+        tool_surface_hash: surface_hash.to_owned(),
+        request_id,
     }
 }
 
