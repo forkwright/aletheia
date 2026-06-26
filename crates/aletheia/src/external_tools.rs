@@ -27,7 +27,7 @@ use koina::id::ToolName;
 use organon::registry::{ToolExecutor, ToolRegistry};
 use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolOrigin, ToolResult, ToolTag,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 pub(crate) use taxis::config::{
     ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
