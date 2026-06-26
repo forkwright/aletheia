@@ -1493,6 +1493,96 @@ async fn record_turn_event(
     }
 }
 
+async fn reconnect_turn_task(
+    tx: mpsc::Sender<Result<Event, Infallible>>,
+    handle: TurnBufferHandle,
+    last_event_id: u64,
+    shutdown_token: CancellationToken,
+    task_cancel: CancellationToken,
+    max_live: Duration,
+) {
+    let mut last_seq = last_event_id;
+    let initial = handle.snapshot_after(last_seq).await;
+    let live = initial.state == crate::turn_buffer::TurnState::Running;
+    let state_name = match initial.state {
+        crate::turn_buffer::TurnState::Running => "running",
+        crate::turn_buffer::TurnState::Completed => "completed",
+        crate::turn_buffer::TurnState::Failed => "failed",
+        crate::turn_buffer::TurnState::Aborted { .. } => "aborted",
+    };
+    let control_data = serde_json::json!({
+        "type": "turn_reconnect_state",
+        "state": state_name,
+        "live": live,
+    })
+    .to_string();
+    let control_event = Event::default()
+        .event("turn_reconnect_state")
+        .data(control_data);
+    if tx.send(Ok(control_event)).await.is_err() {
+        return;
+    }
+
+    // Replay and stream: snapshot_after is race-free (WHY: see #5453).
+    let mut snapshot = initial;
+    // WHY(#4794): clone tx so the post-timeout branch can still send the
+    // turn_abort event after the inner async move consumes the original.
+    let tx_timeout = tx.clone();
+    // SAFETY: cancel-safe. timeout wraps a future and is cancel-safe.
+    let timed_out = tokio::time::timeout(max_live, async move {
+        loop {
+            for event in snapshot.events {
+                let sse_event = Event::default()
+                    .event(event.event_type)
+                    .data(event.data)
+                    .id(event.seq.to_string());
+                last_seq = event.seq;
+                if tx.send(Ok(sse_event)).await.is_err() {
+                    return;
+                }
+            }
+
+            if snapshot.state != crate::turn_buffer::TurnState::Running {
+                break;
+            }
+
+            tokio::select! {
+                biased;
+                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                () = shutdown_token.cancelled() => {
+                    tracing::info!("shutdown: cancelling in-flight SSE reconnect");
+                    let abort_data = serde_json::json!({
+                        "type": "turn_abort",
+                        "reason": TURN_ABORT_REASON_SERVER_SHUTDOWN,
+                    })
+                    .to_string();
+                    let abort_event = Event::default()
+                        .event("turn_abort")
+                        .data(abort_data);
+                    let _ = tx.send(Ok(abort_event)).await;
+                    break;
+                }
+                // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
+                () = task_cancel.cancelled() => break,
+                // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
+                () = snapshot.notified => {}
+            }
+            snapshot = handle.snapshot_after(last_seq).await;
+        }
+    })
+    .await;
+    if timed_out.is_err() {
+        tracing::warn!("reconnect_turn exceeded max live time; closing stream");
+        let abort_data = serde_json::json!({
+            "type": "turn_abort",
+            "reason": TURN_ABORT_REASON_TIMEOUT,
+        })
+        .to_string();
+        let abort_event = Event::default().event("turn_abort").data(abort_data);
+        let _ = tx_timeout.send(Ok(abort_event)).await;
+    }
+}
+
 /// Reconnect to a turn's SSE event stream.
 ///
 /// Supports `Last-Event-ID` header for resuming from the last received event.
@@ -1574,85 +1664,14 @@ pub async fn reconnect_turn(
     // reconnect to an orphaned Running buffer cannot block indefinitely.
     let max_live = Duration::from_mins(5);
 
-    let reconnect_task = tokio::spawn(async move {
-        let mut last_seq = last_event_id;
-        let initial = handle.snapshot_after(last_seq).await;
-        let live = initial.state == crate::turn_buffer::TurnState::Running;
-        let state_name = match initial.state {
-            crate::turn_buffer::TurnState::Running => "running",
-            crate::turn_buffer::TurnState::Completed => "completed",
-            crate::turn_buffer::TurnState::Failed => "failed",
-            crate::turn_buffer::TurnState::Aborted { .. } => "aborted",
-        };
-        let control_data = serde_json::json!({
-            "type": "turn_reconnect_state",
-            "state": state_name,
-            "live": live,
-        })
-        .to_string();
-        let control_event = Event::default()
-            .event("turn_reconnect_state")
-            .data(control_data);
-        if tx.send(Ok(control_event)).await.is_err() {
-            return;
-        }
-
-        // Replay and stream: snapshot_after is race-free (WHY: see #5453).
-        let mut snapshot = initial;
-        // SAFETY: cancel-safe. timeout wraps a future and is cancel-safe.
-        let timed_out = tokio::time::timeout(max_live, async move {
-            loop {
-                for event in snapshot.events {
-                    let sse_event = Event::default()
-                        .event(event.event_type)
-                        .data(event.data)
-                        .id(event.seq.to_string());
-                    last_seq = event.seq;
-                    if tx.send(Ok(sse_event)).await.is_err() {
-                        return;
-                    }
-                }
-
-                if snapshot.state != crate::turn_buffer::TurnState::Running {
-                    break;
-                }
-
-                tokio::select! {
-                    biased;
-                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                    () = shutdown_token.cancelled() => {
-                        tracing::info!("shutdown: cancelling in-flight SSE reconnect");
-                        let abort_data = serde_json::json!({
-                            "type": "turn_abort",
-                            "reason": TURN_ABORT_REASON_SERVER_SHUTDOWN,
-                        })
-                        .to_string();
-                        let abort_event = Event::default()
-                            .event("turn_abort")
-                            .data(abort_data);
-                        let _ = tx.send(Ok(abort_event)).await;
-                        break;
-                    }
-                    // SAFETY: cancel-safe. CancellationToken::cancelled() is cancel-safe.
-                    () = task_cancel.cancelled() => break,
-                    // SAFETY: cancel-safe. Notified::notified() is cancel-safe.
-                    () = snapshot.notified => {}
-                }
-                snapshot = handle.snapshot_after(last_seq).await;
-            }
-        })
-        .await;
-        if timed_out.is_err() {
-            tracing::warn!("reconnect_turn exceeded max live time; closing stream");
-            let abort_data = serde_json::json!({
-                "type": "turn_abort",
-                "reason": TURN_ABORT_REASON_TIMEOUT,
-            })
-            .to_string();
-            let abort_event = Event::default().event("turn_abort").data(abort_data);
-            let _ = tx.send(Ok(abort_event)).await;
-        }
-    });
+    let reconnect_task = tokio::spawn(reconnect_turn_task(
+        tx,
+        handle,
+        last_event_id,
+        shutdown_token,
+        task_cancel,
+        max_live,
+    ));
 
     // WHY(#5678): GuardedStream aborts the reconnect task on client disconnect
     // and cancels `turn_cancel` so the loop exits cleanly (mirrors send_message).
