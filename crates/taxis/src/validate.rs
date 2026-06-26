@@ -352,6 +352,27 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
             errors.push("gateway.csrf.headerValue must not be empty".to_owned());
         }
     }
+
+    if let Some(rate_limit) = value.get("rateLimit") {
+        let enabled = rate_limit
+            .get("enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if enabled {
+            check_positive_u32(rate_limit, "requestsPerMinute", errors);
+        }
+
+        let trust_proxy = rate_limit
+            .get("trustProxy")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if trust_proxy && !enabled {
+            errors.push(
+                "gateway.rateLimit.trustProxy = true requires gateway.rateLimit.enabled = true"
+                    .to_owned(),
+            );
+        }
+    }
 }
 
 /// Reject `gateway.auth.mode = "none"` unless the operator has set

@@ -289,6 +289,8 @@ models = [
 # [gateway.rateLimit]
 # enabled = false
 # requestsPerMinute = 60
+# trustProxy = false           # set true ONLY behind a trusted reverse proxy that
+#                              # strips/spoofs X-Forwarded-For from untrusted clients
 
 # --- Request body limit ---
 # [gateway.bodyLimit]

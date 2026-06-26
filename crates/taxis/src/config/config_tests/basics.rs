@@ -100,6 +100,10 @@ fn defaults_are_sensible() {
         "default rate limit should be 60 rpm"
     );
     assert!(
+        !config.gateway.rate_limit.trust_proxy,
+        "trust_proxy should default to false to prevent IP spoofing bypasses"
+    );
+    assert!(
         config.channels.signal.enabled,
         "signal channel should be enabled by default"
     );
@@ -195,6 +199,10 @@ fn serde_roundtrip() {
         "gateway port should survive serde roundtrip"
     );
     assert!(
+        !back.gateway.rate_limit.trust_proxy,
+        "trust_proxy should survive serde roundtrip as false by default"
+    );
+    assert!(
         back.channels.signal.enabled,
         "signal channel enabled should survive serde roundtrip"
     );
@@ -210,6 +218,35 @@ fn serde_roundtrip() {
         back.embedding.dimension, 384,
         "embedding dimension should survive serde roundtrip"
     );
+}
+
+#[test]
+fn gateway_rate_limit_trust_proxy_roundtrips() {
+    let mut config = AletheiaConfig::default();
+    config.gateway.rate_limit.enabled = true;
+    config.gateway.rate_limit.trust_proxy = true;
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let back: AletheiaConfig = serde_json::from_str(&json).expect("deserialize");
+
+    assert!(back.gateway.rate_limit.enabled);
+    assert!(back.gateway.rate_limit.trust_proxy);
+}
+
+#[test]
+fn gateway_rate_limit_trust_proxy_parses_from_toml() {
+    let toml = r"
+[gateway.rateLimit]
+enabled = true
+requestsPerMinute = 120
+trustProxy = true
+";
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse rate limit config");
+
+    assert!(config.gateway.rate_limit.enabled);
+    assert_eq!(config.gateway.rate_limit.requests_per_minute, 120);
+    assert!(config.gateway.rate_limit.trust_proxy);
 }
 
 #[test]

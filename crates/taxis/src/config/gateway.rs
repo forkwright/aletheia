@@ -172,6 +172,13 @@ pub struct RateLimitConfig {
     pub enabled: bool,
     /// Maximum requests per minute per client IP (global rate limit).
     pub requests_per_minute: u32,
+    /// Trust `X-Forwarded-For` / `X-Real-IP` headers for client IP resolution.
+    ///
+    /// Enable only when pylon sits behind a trusted reverse proxy that strips
+    /// or overwrites these headers from untrusted clients. When false, rate
+    /// limits use the peer TCP address and spoofed proxy headers are ignored.
+    /// Defaults to false to prevent IP spoofing bypasses.
+    pub trust_proxy: bool,
     /// Per-user rate limiting settings keyed by authenticated identity.
     pub per_user: PerUserRateLimitConfig,
 }
@@ -181,6 +188,7 @@ impl Default for RateLimitConfig {
         Self {
             enabled: false,
             requests_per_minute: 60,
+            trust_proxy: false,
             per_user: PerUserRateLimitConfig::default(),
         }
     }

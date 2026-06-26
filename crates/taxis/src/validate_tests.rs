@@ -97,6 +97,61 @@ fn accepts_valid_gateway() {
 }
 
 #[test]
+fn accepts_rate_limit_with_trust_proxy_when_enabled() {
+    let section = json!({
+        "rateLimit": {
+            "enabled": true,
+            "requestsPerMinute": 60,
+            "trustProxy": true
+        }
+    });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "trustProxy may be true when rate limiting is enabled"
+    );
+}
+
+#[test]
+fn rejects_trust_proxy_without_enabled_rate_limit() {
+    let section = json!({
+        "rateLimit": {
+            "enabled": false,
+            "trustProxy": true
+        }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "trustProxy without enabled rate limiting is a dead config branch"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("trustProxy")),
+        "error should mention trustProxy: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_enabled_rate_limit_with_zero_requests_per_minute() {
+    let section = json!({
+        "rateLimit": {
+            "enabled": true,
+            "requestsPerMinute": 0
+        }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "enabled rate limiting must have a positive requestsPerMinute"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("requestsPerMinute")),
+        "error should mention requestsPerMinute: {err:?}"
+    );
+}
+
+#[test]
 fn rejects_disabled_csrf_without_acknowledgement() {
     let section = json!({ "csrf": { "enabled": false } });
     let result = validate_section("gateway", &section);

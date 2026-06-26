@@ -963,3 +963,69 @@ async fn sse_endpoint_unaffected() {
         .expect("SSE must have content-type");
     assert!(ct.to_str().unwrap().starts_with("text/event-stream"));
 }
+
+/// Build a router with per-IP rate limiting enabled and the given trust-proxy flag.
+async fn app_with_ip_rate_limit(trust_proxy: bool) -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = test_state().await;
+    let security = SecurityConfig {
+        csrf: crate::security::CsrfConfig {
+            enabled: false,
+            disable_acknowledged: true,
+            ..crate::security::CsrfConfig::default()
+        },
+        rate_limit: crate::security::RateLimitConfig {
+            enabled: true,
+            requests_per_minute: 1,
+            trust_proxy,
+            ..crate::security::RateLimitConfig::default()
+        },
+        ..SecurityConfig::default()
+    };
+    (build_router(state, &security), dir)
+}
+
+/// Build a plain GET /api/health request with an optional X-Forwarded-For header.
+fn anon_health_request(x_forwarded_for: Option<&str>) -> Request<Body> {
+    let mut builder = Request::get("/api/health");
+    if let Some(xff) = x_forwarded_for {
+        builder = builder.header("x-forwarded-for", xff);
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn rate_limit_ignores_spoofed_forwarded_header_when_trust_proxy_false() {
+    let (app, _dir) = app_with_ip_rate_limit(false).await;
+
+    // Without trust_proxy, two requests with different spoofed X-Forwarded-For
+    // headers must still share the "peer" bucket and the second must be limited.
+    let first = app.clone().oneshot(anon_health_request(Some("1.2.3.4"))).await.unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = app.oneshot(anon_health_request(Some("5.6.7.8"))).await.unwrap();
+    assert_eq!(
+        second.status(),
+        StatusCode::TOO_MANY_REQUESTS,
+        "spoofed X-Forwarded-For must not bypass per-IP rate limiting when trust_proxy=false"
+    );
+}
+
+#[tokio::test]
+async fn rate_limit_uses_forwarded_header_when_trust_proxy_true() {
+    let (app, _dir) = app_with_ip_rate_limit(true).await;
+
+    // With trust_proxy, each distinct X-Forwarded-For value gets its own bucket.
+    let first = app.clone().oneshot(anon_health_request(Some("1.2.3.4"))).await.unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = app.clone().oneshot(anon_health_request(Some("5.6.7.8"))).await.unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+
+    // A repeat from the first IP should now hit its own bucket's limit.
+    let third = app.oneshot(anon_health_request(Some("1.2.3.4"))).await.unwrap();
+    assert_eq!(
+        third.status(),
+        StatusCode::TOO_MANY_REQUESTS,
+        "repeated X-Forwarded-For IP must be rate limited when trust_proxy=true"
+    );
+}

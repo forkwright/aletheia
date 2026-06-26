@@ -75,7 +75,8 @@ per-handler exceptions.
              ┌────────────────────────────────┐
              │      Per-IP Rate Limit *       │  Sliding window, keyed on
              │                                │  source IP (or X-Forwarded-For
-             │                                │  when trust_proxy = true).
+             │                                │  when gateway.rateLimit.trustProxy
+             │                                │  is true).
              └────────────────┬───────────────┘  * when enabled in config
                               │
                               ▼
