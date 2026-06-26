@@ -43,6 +43,8 @@ pub mod planning;
 /// Poiesis report tools: generate_document, lint_report, verify_report,
 /// render_typst_report, render_docx_report.
 pub mod poiesis;
+/// Report runtime dependency doctor (Pandoc, LaTeX, Chromium, Typst).
+pub mod report_runtime_health;
 /// DOCX report rendering tool (render_docx_report).
 pub mod render_docx_report;
 /// Render a JSON eval report to PDF (render_eval_report).
@@ -235,6 +237,7 @@ pub(crate) fn register_domain_tools(
     #[cfg(feature = "bookkeeper")]
     bookkeeper::register(registry)?;
     poiesis::register(registry)?;
+    report_runtime_health::register(registry)?;
     intake_report::register(registry)?;
     scaffold_report::register(registry)?;
     render_docx_report::register(registry)?;
