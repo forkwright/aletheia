@@ -392,7 +392,7 @@ claude_code_credentials = "~/.claude/.credentials.json"
 
 ## providers
 
-`[[providers]]` entries declare available LLM providers declaratively. The runtime registers them in list order; model routing picks the first provider that advertises the requested model. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and registered in `crates/aletheia/src/runtime/setup.rs`.
+`[[providers]]` entries declare available LLM providers declaratively. When the list is non-empty, it is the complete provider-ordering contract: the runtime registers entries in list order, and model routing picks the first provider that advertises the requested model at the highest match specificity. When the list is empty, startup preserves the legacy single-Anthropic fallback from the top-level credential chain. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and planned in `crates/aletheia/src/runtime/setup.rs`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -400,9 +400,9 @@ claude_code_credentials = "~/.claude/.credentials.json"
 | `providerType` | string | yes | `anthropic`, `openai`, `openai-compatible`, `claude-code`, or `codex-oauth`. |
 | `apiFamily` | string | no | For `openai`: `responses` (default) or `chat-completions`. For `openai-compatible`: `chat-completions` (default). Ignored for other kinds. |
 | `baseUrl` | string | no | HTTP base URL. Required for `openai-compatible`; optional for `anthropic` (defaults to `https://api.anthropic.com`); ignored for subprocess adapters. |
-| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. |
+| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. For `anthropic`, omit this to use the top-level credential chain at the entry's declared position. |
 | `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
-| `models` | string[] | no | Model identifiers this provider advertises. The first provider in list order claiming a model wins. |
+| `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity matches use list order. |
 
 ```toml
 [[providers]]
@@ -432,11 +432,11 @@ models = ["llama3.1-70b"]
 
 | Provider path | Credential source | Simple chat + recall | Aletheia organon tool-loop | Notes |
 |---|---|---|---|---|
-| Native Anthropic provider | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` | yes | yes | Messages API. Declarative `anthropic` entries require `apiKeyEnv` to avoid double-registering the first-party provider. |
+| Native Anthropic provider | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` | yes | yes | Messages API. Declarative `anthropic` entries without `apiKeyEnv` use the top-level credential chain at their list position; entries with `apiKeyEnv` use that static-key endpoint. |
 | OpenAI cloud (`openai`) | `OPENAI_API_KEY` | yes | yes | First-party `/v1/responses` by default; set `apiFamily = "chat-completions"` for the legacy endpoint. |
 | OpenAI-compatible local/third-party (`openai-compatible`) | Optional (`apiKeyEnv`) | yes | yes | `/v1/chat/completions` wire format for llama.cpp, ollama, vllm, and compatible proxies. |
-| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); registered via the credential chain, declarative entries are accepted but skipped by the registry to avoid duplicates. |
-| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); registered via the credential chain, declarative entries are accepted but do not change startup behavior. |
+| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); declare this provider in `[[providers]]` to place it in the routing order. |
+| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); declare this provider in `[[providers]]` to place it in the routing order. |
 
 The `aletheia add-nous` scaffolding command validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
 
