@@ -148,7 +148,15 @@ impl TraceRotator {
             // WHY: Rename-and-reopen: create a new empty file at the original path so active
             // writers complete their current write to the renamed file (old inode) and
             // immediately get the new file on the next open by name.
-            if let Err(e) = std::fs::File::create(&entry.path) {
+            // WHY: OpenOptions gives the same create-and-truncate behaviour as
+            // File::create without using the disallowed sync helper on the async
+            // path; trace rotation runs synchronously outside the Tokio runtime.
+            if let Err(e) = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(&entry.path)
+            {
                 tracing::warn!(
                     path = %entry.path.display(),
                     error = %e,

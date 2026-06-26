@@ -525,6 +525,10 @@ impl FjallBackup {
 }
 
 /// Write the completion manifest into a staged backup directory.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "synchronous maintenance utility invoked from spawn_blocking outside the async runtime"
+)]
 fn write_manifest(path: &Path, manifest: &FjallBackupManifest) -> error::Result<()> {
     let manifest_path = path.join(COMPLETE_MARKER);
     let manifest_json = serde_json::to_string_pretty(manifest)
