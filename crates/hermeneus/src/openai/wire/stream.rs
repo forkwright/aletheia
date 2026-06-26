@@ -579,7 +579,12 @@ impl ResponsesStreamAccumulator {
                 .build());
             }
             _ => {
-                // Ignore Responses event types this adapter does not surface.
+                // WHY: Unknown Responses event types are provider drift, not silence.
+                // Emit a typed unsupported event so streaming consumers can see that
+                // the response was partially represented.
+                on_event(StreamEvent::UnsupportedEvent {
+                    event_type: event.event_type.clone(),
+                });
             }
         }
         Ok(())
@@ -1394,6 +1399,44 @@ mod tests {
         assert_eq!(
             stop_count, 1,
             "expected exactly one ContentBlockStop for index 0, got {stop_count}"
+        );
+    }
+
+    #[test]
+    fn responses_unknown_stream_event_emits_unsupported_event() {
+        let (events, resp) = process_responses_events(&[
+            r#"{
+                "type": "response.created",
+                "response": {
+                    "id": "resp-unknown-event",
+                    "model": "gpt-5",
+                    "status": "in_progress",
+                    "output": [],
+                    "usage": { "input_tokens": 0, "output_tokens": 0 }
+                }
+            }"#,
+            r#"{
+                "type": "response.future_unknown_event",
+                "item_id": "x"
+            }"#,
+            r#"{
+                "type": "response.completed",
+                "response": {
+                    "id": "resp-unknown-event",
+                    "model": "gpt-5",
+                    "status": "completed",
+                    "output": [{ "type": "message", "content": [{ "type": "output_text", "text": "ok" }] }],
+                    "usage": { "input_tokens": 1, "output_tokens": 1 }
+                }
+            }"#,
+        ]);
+        assert_eq!(resp.content.len(), 1);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                StreamEvent::UnsupportedEvent { event_type } if event_type == "response.future_unknown_event"
+            )),
+            "expected UnsupportedEvent for unknown Responses stream event type, got {events:?}"
         );
     }
 }
