@@ -143,7 +143,7 @@ async fn self_prompt_panic_surfaces_as_join_error() {
     use std::pin::Pin;
 
     /// Bridge that panics when sending a prompt, so the spawned self-prompt
-    /// task unwinds inside the runner-owned JoinSet.
+    /// task unwinds inside the runner-owned `JoinSet`.
     struct PanicBridge;
 
     impl DaemonBridge for PanicBridge {

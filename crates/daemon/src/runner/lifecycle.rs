@@ -149,7 +149,7 @@ impl TaskRunner {
 
         // WHY: drain tracked self-prompt tasks so panics surface as JoinErrors
         // instead of being silently dropped when the runtime shuts down.
-        self.self_prompt_tasks.shutdown();
+        self.self_prompt_tasks.abort_all();
         while let Some(result) = self.self_prompt_tasks.join_next().await {
             match result {
                 Ok(()) => {
