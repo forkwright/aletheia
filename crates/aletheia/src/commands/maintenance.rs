@@ -650,7 +650,7 @@ pub(crate) fn build_config(
                 enabled: settings.knowledge_maintenance_serendipity.enabled,
                 cadence: settings.knowledge_maintenance_serendipity.cadence.clone(),
             },
-            index_maintenance_interval: std::time::Duration::from_secs(60 * 60),
+            index_maintenance_interval: std::time::Duration::from_hours(1),
         },
         instance_backup: InstanceBackupConfig {
             enabled: settings.backup.enabled,

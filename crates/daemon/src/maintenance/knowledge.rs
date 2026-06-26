@@ -174,7 +174,7 @@ impl Default for KnowledgeMaintenanceConfig {
             auto_dream: AutoDreamConfig::default(),
             serendipity: SerendipityMaintenanceConfig::default(),
             derived_rules: DerivedRulesConfig::default(),
-            index_maintenance_interval: Duration::from_secs(60 * 60),
+            index_maintenance_interval: Duration::from_hours(1),
         }
     }
 }

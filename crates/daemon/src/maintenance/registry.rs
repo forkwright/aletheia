@@ -951,9 +951,9 @@ mod tests {
             has_knowledge_executor: true,
             ..MaintenanceRuntimeCapabilities::default()
         };
-        let scheduled = definition
-            .scheduled_task(&config, capabilities)
-            .expect("index-maintenance should schedule when knowledge maintenance is enabled");
+        let Some(scheduled) = definition.scheduled_task(&config, capabilities) else {
+            panic!("index-maintenance should schedule when knowledge maintenance is enabled");
+        };
         assert_eq!(scheduled.id, "index-maintenance");
     }
 
