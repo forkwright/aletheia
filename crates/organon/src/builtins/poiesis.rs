@@ -238,6 +238,49 @@ pub(crate) fn rewrite_zip(
     Ok(cursor.into_inner())
 }
 
+async fn write_document_out_path(
+    out_path: &str,
+    ctx: &ToolContext,
+    tool_name: &koina::id::ToolName,
+    bytes: &[u8],
+) -> Option<ToolResult> {
+    let validated = match validate_path(out_path, ctx, tool_name) {
+        Ok(path) => path,
+        Err(e) => {
+            return Some(ToolResult::error(format!(
+                "invalid out_path {out_path:?}: {e}"
+            )));
+        }
+    };
+    if let Err(e) = tokio::fs::write(&validated, bytes).await {
+        return Some(ToolResult::error(format!(
+            "wrote 0 bytes to {}: {e}",
+            validated.display()
+        )));
+    }
+    None
+}
+
+fn build_document_result(format: &str, bytes: &[u8]) -> ToolResult {
+    let encoded = koina::base64::encode(bytes);
+    let summary = format!(
+        "Generated {} document: {} bytes",
+        format.to_uppercase(),
+        bytes.len()
+    );
+    let media_type = media_type_for_format(format).to_owned();
+    ToolResult::blocks(vec![
+        ToolResultBlock::Text { text: summary },
+        ToolResultBlock::Document {
+            source: DocumentSource {
+                source_type: "base64".to_owned(),
+                media_type,
+                data: encoded,
+            },
+        },
+    ])
+}
+
 // ── generate_document ─────────────────────────────────────────────────────────
 
 struct GenerateDocumentExecutor;
@@ -326,41 +369,13 @@ impl ToolExecutor for GenerateDocumentExecutor {
             };
 
             // NOTE: Write to a caller-provided path in addition to returning bytes.
-            if let Some(out_path) = out_path {
-                let validated = match validate_path(out_path, ctx, &input.name) {
-                    Ok(path) => path,
-                    Err(e) => {
-                        return Ok(ToolResult::error(format!(
-                            "invalid out_path {out_path:?}: {e}"
-                        )));
-                    }
-                };
-                if let Err(e) = tokio::fs::write(&validated, &bytes).await {
-                    return Ok(ToolResult::error(format!(
-                        "wrote 0 bytes to {}: {e}",
-                        validated.display()
-                    )));
-                }
+            if let Some(out_path) = out_path
+                && let Some(err) = write_document_out_path(out_path, ctx, &input.name, &bytes).await
+            {
+                return Ok(err);
             }
 
-            let encoded = koina::base64::encode(&bytes);
-            let summary = format!(
-                "Generated {} document: {} bytes",
-                format.to_uppercase(),
-                bytes.len()
-            );
-            let media_type = media_type_for_format(&format).to_owned();
-
-            Ok(ToolResult::blocks(vec![
-                ToolResultBlock::Text { text: summary },
-                ToolResultBlock::Document {
-                    source: DocumentSource {
-                        source_type: "base64".to_owned(),
-                        media_type,
-                        data: encoded,
-                    },
-                },
-            ]))
+            Ok(build_document_result(&format, &bytes))
         })
     }
 }
