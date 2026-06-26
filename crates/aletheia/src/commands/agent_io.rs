@@ -438,16 +438,27 @@ fn import_knowledge(
     use mneme::embedding::{EmbeddingConfig, create_provider};
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
-    let loaded_config = match taxis::loader::load_config(oikos) {
-        Ok(config) => Some(config),
-        Err(err) => {
-            tracing::warn!(
-                nous_id,
-                error = %err,
-                "failed to load instance config; imported fact vectors will be skipped"
-            );
-            None
+    // WHY(#4741): load_config returns Ok(defaults) even when no config file
+    // exists; the candle default provider then downloads BAAI/bge-small-en-v1.5
+    // on first use. Gate provider creation behind explicit config-file existence
+    // so environments without a deployed instance (test, fresh install) do not
+    // block on a network fetch.
+    let config_file_exists = oikos.config().join("aletheia.toml").exists()
+        || oikos.config().join("aletheia.yaml").exists();
+    let loaded_config = if config_file_exists {
+        match taxis::loader::load_config(oikos) {
+            Ok(config) => Some(config),
+            Err(err) => {
+                tracing::warn!(
+                    nous_id,
+                    error = %err,
+                    "failed to load instance config; imported fact vectors will be skipped"
+                );
+                None
+            }
         }
+    } else {
+        None
     };
 
     let knowledge_config = loaded_config
