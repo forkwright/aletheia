@@ -1,39 +1,30 @@
 //! Hot-reload classification, config diff, and reload orchestration.
 
+use std::sync::LazyLock;
+
 use serde_json::Value;
 use snafu::Snafu;
 use tracing::{info, warn};
 
 use crate::config::AletheiaConfig;
 use crate::oikos::Oikos;
+use crate::registry::all_specs;
 
 /// Field path prefixes that require a process restart to take effect.
 ///
 /// All other config paths are hot-reloadable: they take effect immediately
 /// when the in-memory config is swapped.
-const RESTART_PREFIXES: &[&str] = &[
-    "gateway.port",
-    "gateway.bind",
-    "gateway.tls",
-    "gateway.auth.mode",
-    "gateway.csrf",
-    "gateway.bodyLimit",
-    "channels",
-    // WHY: provider timeout is wired into the HTTP client at startup.
-    "providerBehavior.nonStreamingTimeoutSecs",
-    // WHY: poll interval and buffer capacity are set when the Semeion loop
-    // is created; they cannot be changed without restarting the loop.
-    "messaging.pollIntervalMs",
-    "messaging.bufferCapacity",
-    // WHY: idempotency capacity sets the LRU cache size at server startup.
-    "apiLimits.idempotencyCapacity",
-    // WHY: the workspace file-API root is resolved into AppState at startup.
-    "workspace.root",
-    // WHY: sandbox settings are captured into the tool registry at startup.
-    "sandbox",
-    // WHY: external tools are registered into the tool registry at startup.
-    "tools",
-];
+///
+/// Derived from the static parameter registry so that a single declaration
+/// (the registry's `hot_reloadable` flag) drives both metadata and reload
+/// behavior.
+static RESTART_PREFIXES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    all_specs()
+        .iter()
+        .filter(|spec| !spec.hot_reloadable)
+        .map(|spec| spec.key)
+        .collect()
+});
 
 /// Returns true if changing the given dotted field path requires a restart.
 #[must_use]
@@ -46,7 +37,7 @@ pub(crate) fn requires_restart(field_path: &str) -> bool {
 /// Returns the list of field path prefixes that require restart.
 #[must_use]
 pub fn restart_prefixes() -> &'static [&'static str] {
-    RESTART_PREFIXES
+    RESTART_PREFIXES.as_slice()
 }
 
 /// Return `staged` with every restart-required changed path restored from `current`.
@@ -364,6 +355,32 @@ mod tests {
             requires_restart("tools.optional.reader"),
             "tools change should require restart"
         );
+    }
+
+    #[test]
+    fn restart_prefixes_are_derived_from_registry() {
+        let prefixes = restart_prefixes();
+        for expected in [
+            "gateway.port",
+            "gateway.bind",
+            "gateway.tls",
+            "gateway.auth.mode",
+            "gateway.csrf",
+            "gateway.bodyLimit",
+            "channels",
+            "providerBehavior.nonStreamingTimeoutSecs",
+            "messaging.pollIntervalMs",
+            "messaging.bufferCapacity",
+            "apiLimits.idempotencyCapacity",
+            "workspace.root",
+            "sandbox",
+            "tools",
+        ] {
+            assert!(
+                prefixes.contains(&expected),
+                "expected restart prefix {expected} to be derived from registry"
+            );
+        }
     }
 
     #[test]
