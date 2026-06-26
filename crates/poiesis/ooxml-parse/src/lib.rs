@@ -151,8 +151,7 @@ mod tests {
     fn extract_shared_strings_normalises_different_entity_encodings() {
         let named =
             r#"<sst><si><t>A &amp; B &lt; C &gt; D &apos;E&apos; &quot;F&quot; ’</t></si></sst>"#;
-        let numeric =
-            r#"<sst><si><t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</t></si></sst>"#;
+        let numeric = r#"<sst><si><t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</t></si></sst>"#;
         let expected = vec![r#"A & B < C > D 'E' "F" ’"#.to_owned()];
         assert_eq!(extract_shared_strings(named), expected);
         assert_eq!(extract_shared_strings(numeric), expected);
