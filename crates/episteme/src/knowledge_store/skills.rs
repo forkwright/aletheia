@@ -2,9 +2,8 @@ use snafu::ResultExt;
 use tracing::instrument;
 
 use super::KnowledgeStore;
-use super::marshal::{
-    compute_name_similarity, compute_tool_overlap, rows_to_facts, sanitize_fts_query,
-};
+use super::marshal::{rows_to_facts, sanitize_fts_query};
+use crate::utils::{compute_name_similarity, compute_tool_overlap};
 
 #[cfg(feature = "mneme-engine")]
 fn normalize_review_input(

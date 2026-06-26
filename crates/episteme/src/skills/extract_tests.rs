@@ -2,6 +2,7 @@
 use super::*;
 use crate::skills::heuristics::PatternType;
 use crate::skills::signature::SequenceSignature;
+use crate::utils::{compute_name_similarity, compute_tool_overlap};
 
 struct MockProvider {
     response: Result<String, SkillExtractionError>,
