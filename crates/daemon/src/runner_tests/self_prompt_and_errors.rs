@@ -425,7 +425,9 @@ async fn propose_rules_reports_failure_when_write_blocked() {
     let blocked = tmp.path().join("blocked_data_dir");
     // WHY: create a file where propose_rules expects a directory so
     // create_dir_all fails deterministically without relying on permissions.
-    tokio::fs::write(&blocked, b"").await.expect("create blocking file");
+    tokio::fs::write(&blocked, b"")
+        .await
+        .expect("create blocking file");
 
     let maintenance = crate::maintenance::MaintenanceConfig {
         propose_rules: crate::maintenance::ProposeRulesConfig {
