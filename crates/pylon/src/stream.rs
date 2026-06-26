@@ -16,6 +16,7 @@ impl SseEvent {
             Self::MessageComplete { .. } => "message_complete",
             Self::Error { .. } => "error",
             Self::ReplayGap { .. } => "replay_gap",
+            Self::TurnAbort { .. } => "turn_abort",
         }
     }
 }
@@ -35,6 +36,7 @@ impl TurnStreamEvent {
             Self::MessageComplete { .. } => "message_complete",
             Self::Error { .. } => "error",
             Self::ReplayGap { .. } => "replay_gap",
+            Self::TurnAbort { .. } => "turn_abort",
         }
     }
 }
