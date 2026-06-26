@@ -218,6 +218,14 @@ pub(crate) mod test_persist_counter {
     }
 }
 
+/// Options passed to the private [`SessionStore::put_note`] write path.
+#[derive(Clone, Copy)]
+struct PutNoteOpts<'a> {
+    created_at: Option<&'a str>,
+    provided_id: Option<i64>,
+    validate_category: bool,
+}
+
 impl SessionStore {
     /// Open (or create) a persistent session store at the given path.
     ///
@@ -1781,9 +1789,43 @@ impl SessionStore {
         category: &str,
         content: &str,
     ) -> Result<i64> {
-        use fjall::Readable;
+        self.put_note(
+            session_id,
+            nous_id,
+            category,
+            content,
+            PutNoteOpts {
+                created_at: None,
+                provided_id: None,
+                validate_category: true,
+            },
+        )
+    }
 
-        if !Self::VALID_CATEGORIES.contains(&category) {
+    /// Shared note write path used by [`Self::add_note`] and the portability
+    /// [`Self::import_note`] entry point.
+    ///
+    /// When `created_at` is `None` the current time is used; when
+    /// `provided_id` is `None` (or non-positive) a fresh local/global id is
+    /// allocated from the counters. Set `validate_category` to `true` only for
+    /// normal operator writes that must respect [`Self::VALID_CATEGORIES`].
+    #[instrument(skip(self, content, opts))]
+    fn put_note(
+        &self,
+        session_id: &str,
+        nous_id: &str,
+        category: &str,
+        content: &str,
+        opts: PutNoteOpts<'_>,
+    ) -> Result<i64> {
+        use fjall::Readable;
+        let PutNoteOpts {
+            created_at,
+            provided_id,
+            validate_category,
+        } = opts;
+
+        if validate_category && !Self::VALID_CATEGORIES.contains(&category) {
             return Err(error::StorageSnafu {
                 message: format!(
                     "CHECK constraint failed: category '{category}' is not valid; \
@@ -1807,7 +1849,7 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
         if snap
             .get(&sessions_part, session_id.as_bytes())
-            .map_err(|e| storage_error(format!("fjall add_note session check: {e}")))?
+            .map_err(|e| storage_error(format!("fjall put_note session check: {e}")))?
             .is_none()
         {
             return Err(error::SessionNotFoundSnafu {
@@ -1816,21 +1858,32 @@ impl SessionStore {
             .build());
         }
 
-        let note_id = match snap
+        let current_local_id = match snap
             .get(&counters_part, "note_local_id")
             .map_err(|e| storage_error(format!("fjall note_local_id counter read: {e}")))?
         {
             None => 0u64,
             Some(b) => try_decode_u64(&b, "note_local_id")?,
-        } + 1;
-        let global_id = match snap
+        };
+        let current_global_id = match snap
             .get(&counters_part, "note_global_id")
             .map_err(|e| storage_error(format!("fjall note_global_id counter read: {e}")))?
         {
             None => 0u64,
             Some(b) => try_decode_u64(&b, "note_global_id")?,
-        } + 1;
+        };
         drop(snap);
+
+        // WHY: a non-positive provided id means the caller wants a fresh id,
+        // matching the legacy `add_note` allocation behaviour.
+        let local_id = provided_id
+            .and_then(|id| u64::try_from(id).ok())
+            .filter(|&id| id > 0)
+            .unwrap_or(current_local_id + 1);
+        let global_id = provided_id
+            .and_then(|id| u64::try_from(id).ok())
+            .filter(|&id| id > 0)
+            .unwrap_or(current_global_id + 1);
 
         let note = AgentNote {
             id: global_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
@@ -1838,23 +1891,31 @@ impl SessionStore {
             nous_id: nous_id.to_owned(),
             category: category.to_owned(),
             content: content.to_owned(),
-            created_at: now_iso(),
+            created_at: created_at.map_or_else(now_iso, str::to_owned),
         };
         let note_data = serde_json::to_vec(&note).context(error::StoredJsonSnafu)?;
-        let local_key = format!("{session_id}:{}", pad_u64(note_id));
+        let local_key = format!("{session_id}:{}", pad_u64(local_id));
         let gid_key = format!("gid:{}", pad_u64(global_id));
-        let gid_val = format!("{session_id}:{}", pad_u64(note_id));
+        let gid_val = format!("{session_id}:{}", pad_u64(local_id));
         let gid_idx_key = Self::note_gid_index_key(session_id, global_id);
 
         let mut tx = self.db.write_tx();
         tx.insert(&notes_part, local_key.as_str(), note_data.as_slice());
         tx.insert(&notes_part, gid_key.as_str(), gid_val.as_bytes());
         tx.insert(&notes_part, gid_idx_key.as_str(), b"");
-        tx.insert(&counters_part, "note_local_id", encode_u64(note_id));
-        tx.insert(&counters_part, "note_global_id", encode_u64(global_id));
+        tx.insert(
+            &counters_part,
+            "note_local_id",
+            encode_u64(local_id.max(current_local_id)),
+        );
+        tx.insert(
+            &counters_part,
+            "note_global_id",
+            encode_u64(global_id.max(current_global_id)),
+        );
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall add_note: {e}"),
+                message: format!("fjall put_note: {e}"),
             }
             .build()
         })?;
@@ -2553,6 +2614,36 @@ impl SessionStore {
             "imported session"
         );
         Ok(stamped)
+    }
+
+    /// Insert a note exactly as supplied, preserving its `id` and `created_at`.
+    ///
+    /// This is the faithful import counterpart to [`Self::add_note`]. Callers
+    /// restoring from a portable export must use this instead of `add_note`,
+    /// which would overwrite the original timestamp and allocate a new
+    /// identifier.
+    ///
+    /// A non-positive `note.id` is treated as "allocate a fresh id", so files
+    /// that do not record the original identifier still round-trip their
+    /// timestamps.
+    ///
+    /// # Errors
+    /// Returns an error if the owning session does not exist or any commit
+    /// fails.
+    #[instrument(skip(self, note), fields(id = note.id, session_id = %note.session_id))]
+    pub fn import_note(&self, note: &AgentNote) -> Result<()> {
+        self.put_note(
+            &note.session_id,
+            &note.nous_id,
+            &note.category,
+            &note.content,
+            PutNoteOpts {
+                created_at: Some(&note.created_at),
+                provided_id: Some(note.id),
+                validate_category: false,
+            },
+        )?;
+        Ok(())
     }
 }
 
