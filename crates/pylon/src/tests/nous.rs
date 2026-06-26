@@ -425,7 +425,11 @@ async fn patch_nous_enabled_rolls_back_on_persist_failure() {
 
     // WHY: The guard is dropped before `dir`, restoring write permissions.
     // Verify the in-memory config was not mutated by the failed write.
-    let resp = app.clone().oneshot(authed_get("/api/v1/nous")).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(authed_get("/api/v1/nous"))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     let agents = body["nous"].as_array().expect("nous array");
