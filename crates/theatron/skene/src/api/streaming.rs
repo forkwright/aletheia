@@ -45,11 +45,13 @@ pub fn stream_message(
 ) -> mpsc::Receiver<StreamEvent> {
     let (tx, rx) = mpsc::channel(256);
     let url = keryx::url::join_base_path(base_url, "/api/v1/sessions/stream");
+    let client_turn_id = koina::ulid::Ulid::new().to_string();
 
     let body = serde_json::json!({
         "message": text,
         "nous_id": nous_id,
         "session_key": session_key,
+        "client_turn_id": client_turn_id.clone(),
     });
 
     let builder = client
@@ -60,7 +62,8 @@ pub fn stream_message(
     let span = tracing::info_span!(
         "stream_message",
         nous.id = nous_id,
-        session.key = session_key
+        session.key = session_key,
+        client_turn_id = %client_turn_id
     );
     let task = async move {
         let resp = match builder.send().await {

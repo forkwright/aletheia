@@ -33,6 +33,19 @@ fn find_sse_event<'a>(
         .find(|e| e["type"].as_str() == Some(event_type))
 }
 
+fn stream_turn_req(session_key: &str, message: &str, client_turn_id: &str) -> Request<Body> {
+    authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "message": message,
+            "session_key": session_key,
+            "client_turn_id": client_turn_id,
+        })),
+    )
+}
+
 /// Happy path: every `data:` line in the SSE stream must be valid JSON with a
 /// `type` field. Tests structural correctness of the event format.
 #[tokio::test]
@@ -549,6 +562,135 @@ async fn stream_turn_oversized_session_key_returns_422() {
             .iter()
             .any(|e| e["field"] == "session_key" && e["code"] == "too_long")
     );
+}
+
+#[tokio::test]
+async fn stream_turn_duplicate_client_turn_id_does_not_persist_duplicate_messages() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let client_turn_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    let session_key = "stream-idempotency-duplicate";
+    let message = "dedupe this streamed turn";
+
+    let first = router
+        .clone()
+        .oneshot(stream_turn_req(session_key, message, client_turn_id))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_body = body_string(first).await;
+    let first_events = collect_sse_data_events(&first_body);
+    let first_start =
+        find_sse_event(&first_events, "message_start").expect("first stream must start");
+    let session_id = first_start["session_id"].as_str().unwrap().to_owned();
+    assert_eq!(first_start["turn_id"], client_turn_id);
+
+    let duplicate = router
+        .clone()
+        .oneshot(stream_turn_req(session_key, message, client_turn_id))
+        .await
+        .unwrap();
+    assert_eq!(duplicate.status(), StatusCode::OK);
+    let duplicate_body = body_string(duplicate).await;
+    let duplicate_events = collect_sse_data_events(&duplicate_body);
+    let duplicate_start = find_sse_event(&duplicate_events, "message_start")
+        .expect("duplicate stream must replay message_start");
+    assert_eq!(duplicate_start["session_id"], session_id);
+    assert_eq!(duplicate_start["turn_id"], client_turn_id);
+
+    let history_resp = router
+        .oneshot(authed_get(&format!(
+            "/api/v1/sessions/{session_id}/history"
+        )))
+        .await
+        .unwrap();
+    assert_eq!(history_resp.status(), StatusCode::OK);
+    let history = body_json(history_resp).await;
+    let messages = history["messages"].as_array().unwrap();
+    assert_eq!(
+        messages.len(),
+        2,
+        "duplicate client_turn_id must not persist another user/assistant pair"
+    );
+}
+
+#[tokio::test]
+async fn stream_turn_duplicate_client_turn_id_replays_reconnect_state() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let client_turn_id = "01ARZ3NDEKTSV4RRFFQ69G5FAW";
+    let session_key = "stream-idempotency-reconnect";
+    let message = "replay this streamed turn";
+
+    let first = router
+        .clone()
+        .oneshot(stream_turn_req(session_key, message, client_turn_id))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let _first_body = body_string(first).await;
+
+    let retry = router
+        .clone()
+        .oneshot(stream_turn_req(session_key, message, client_turn_id))
+        .await
+        .unwrap();
+    assert_eq!(retry.status(), StatusCode::OK);
+    let retry_body = body_string(retry).await;
+    let retry_events = collect_sse_data_events(&retry_body);
+
+    let lifecycle = retry_events
+        .first()
+        .expect("duplicate POST must emit reconnect lifecycle state");
+    assert_eq!(lifecycle["type"], "turn_reconnect_state");
+    assert_eq!(lifecycle["state"], "completed");
+    assert_eq!(lifecycle["live"], false);
+    assert!(
+        find_sse_event(&retry_events, "message_complete").is_some(),
+        "duplicate POST must replay terminal stream state"
+    );
+}
+
+#[tokio::test]
+async fn stream_turn_stale_duplicate_client_turn_id_returns_conflict_with_turn_id() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let client_turn_id = "01ARZ3NDEKTSV4RRFFQ69G5FAX";
+    let session_key = "stream-idempotency-stale";
+    let message = "expire this replay buffer";
+
+    let first = router
+        .clone()
+        .oneshot(stream_turn_req(session_key, message, client_turn_id))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let first_body = body_string(first).await;
+    let first_events = collect_sse_data_events(&first_body);
+    let first_start =
+        find_sse_event(&first_events, "message_start").expect("first stream must start");
+    let session_id = first_start["session_id"].as_str().unwrap();
+
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_mins(6)).await;
+    state.turn_buffer_registry.reap_expired().await;
+    assert!(
+        state
+            .turn_buffer_registry
+            .get(session_id, client_turn_id)
+            .await
+            .is_none(),
+        "test setup must expire the replay buffer while idempotency cache remains"
+    );
+
+    let conflict_response = router
+        .oneshot(stream_turn_req(session_key, message, client_turn_id))
+        .await
+        .unwrap();
+    assert_eq!(conflict_response.status(), StatusCode::CONFLICT);
+    let body = body_json(conflict_response).await;
+    assert_eq!(body["error"]["code"], "stream_turn_conflict");
+    assert_eq!(body["error"]["details"]["turn_id"], client_turn_id);
 }
 
 /// #5163: the `message_start` event for `POST /sessions/{id}/messages` must

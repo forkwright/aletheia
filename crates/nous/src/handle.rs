@@ -192,6 +192,7 @@ impl NousHandle {
         let msg = NousMessage::StreamingTurn {
             session_key: session_key.into(),
             session_id,
+            turn_id: None,
             content: content.into(),
             stream_tx,
             approval_gate: None,
@@ -222,6 +223,7 @@ impl NousHandle {
         let msg = NousMessage::StreamingTurn {
             session_key: session_key.into(),
             session_id,
+            turn_id: None,
             content: content.into(),
             stream_tx,
             approval_gate: None,
@@ -266,6 +268,52 @@ impl NousHandle {
         let msg = NousMessage::StreamingTurn {
             session_key: session_key.into(),
             session_id,
+            turn_id: None,
+            content: content.into(),
+            stream_tx,
+            approval_gate,
+            span: tracing::Span::current(),
+            turn_cancel,
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a streaming turn with an operator approval gate and canonical turn ID.
+    ///
+    /// Used by the HTTP streaming endpoint so the public `turn_id` emitted in
+    /// SSE also keys durable turn-attempt records and finalize idempotency.
+    ///
+    /// # Cancel safety
+    ///
+    /// Not cancel-safe. Same profile as
+    /// [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval).
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "WHY(#4793): gateway must supply canonical turn id alongside existing streaming turn inputs"
+    )]
+    pub async fn send_turn_streaming_with_approval_and_turn_id(
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        approval_gate: Option<crate::approval::ApprovalGate>,
+        turn_id: koina::ulid::Ulid,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::StreamingTurn {
+            session_key: session_key.into(),
+            session_id,
+            turn_id: Some(turn_id),
             content: content.into(),
             stream_tx,
             approval_gate,

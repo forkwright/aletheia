@@ -63,6 +63,10 @@ pub(crate) fn Chat() -> Element {
 
     // WHY: Track last user message to enable retry on stream failure.
     let mut last_user_message = use_signal(String::new);
+    // WHY(#4793): Retry must reuse the same client turn id so the server can
+    // resolve it to the existing persisted/replayable turn instead of creating
+    // a duplicate user action.
+    let mut last_client_turn_id = use_signal(String::new);
     // WHY: Track stream start time for elapsed-time indicator and timeout
     // escalation messages (30s "taking longer", 5m "abort and retry").
     let mut stream_start_time = use_signal(|| None::<Instant>);
@@ -208,14 +212,27 @@ pub(crate) fn Chat() -> Element {
         // when the user sends a new message.
         legacy_state.write().streaming.error = None;
 
+        let retry_same_bubble = is_retry && legacy_state.read().last_is_user_message(&text);
+        let client_turn_id = if retry_same_bubble {
+            let existing = last_client_turn_id.read().clone();
+            if existing.is_empty() {
+                koina::ulid::Ulid::new().to_string()
+            } else {
+                existing
+            }
+        } else {
+            koina::ulid::Ulid::new().to_string()
+        };
+
         last_user_message.set(text.clone());
+        last_client_turn_id.set(client_turn_id.clone());
         stream_start_time.set(Some(Instant::now()));
         elapsed_tick.set(0);
 
         // WHY: A retry re-sends the failed turn in place. The original user
         // bubble is already the last history entry, so appending again would
         // render the same message twice (or more on repeated retries).
-        let already_last = is_retry && legacy_state.read().last_is_user_message(&text);
+        let already_last = retry_same_bubble;
         if !already_last {
             legacy_state.write().messages.push(LegacyChatMessage {
                 role: MessageRole::User,
@@ -274,6 +291,7 @@ pub(crate) fn Chat() -> Element {
                 &nous_id,
                 &session_key,
                 &text,
+                &client_turn_id,
                 new_token.clone(),
             );
 
