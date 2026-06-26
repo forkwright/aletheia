@@ -75,9 +75,7 @@ pub(crate) fn resource_exists(oikos: &Oikos, uri: &str) -> bool {
     let Ok(path) = oikos.contained_nous_file(&nous_id, filename) else {
         return false;
     };
-    std::fs::metadata(&path)
-        .map(|m| m.is_file())
-        .unwrap_or(false)
+    std::fs::metadata(&path).is_ok_and(|m| m.is_file())
 }
 
 fn read_resource_content(oikos: &Oikos, uri: &str) -> Result<String, rmcp::ErrorData> {

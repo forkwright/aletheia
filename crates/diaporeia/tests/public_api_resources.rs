@@ -75,7 +75,8 @@ async fn add_agent_with_workspace(state: &Arc<DiaporeiaState>, id: &str, files: 
     let agent_dir = root.join("nous").join(id);
     std::fs::create_dir_all(&agent_dir).expect("create agent dir");
     for file in files {
-        std::fs::write(agent_dir.join(file), format!("# {id} {file}\n"))
+        tokio::fs::write(agent_dir.join(file), format!("# {id} {file}\n"))
+            .await
             .expect("write workspace file");
     }
 
@@ -164,7 +165,7 @@ async fn resources_list_rejects_non_operator() {
     assert_eq!(
         json.get("error")
             .and_then(|e| e.get("code"))
-            .and_then(|c| c.as_i64()),
+            .and_then(serde_json::Value::as_i64),
         Some(-32001),
         "Readonly callers must not list resources"
     );
