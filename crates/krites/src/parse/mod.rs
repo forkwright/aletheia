@@ -421,13 +421,13 @@ mod proptests {
                 &empty_fixed_rules(),
                 ValidityTs(std::cmp::Reverse(0)),
             )
-            .expect("valid generated Datalog should parse");
+            .unwrap_or_else(|e| panic!("valid generated Datalog should parse: {e}"));
             let program = match parsed {
                 DatalogScript::Single(p) => p,
                 other => panic!("expected a single program, got {:?}", other),
             };
             prop_assert_eq!(
-                program.get_entry_arity().expect("entry should exist"),
+                program.get_entry_arity().unwrap_or_else(|e| panic!("entry should exist: {e}")),
                 1,
                 "entry query has one column"
             );

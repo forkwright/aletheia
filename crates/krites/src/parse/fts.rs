@@ -274,14 +274,21 @@ mod tests {
             matches!(&res, FtsExpr::Near(FtsNear { distance: 10, .. })),
             "NEAR query should parse to a Near node with default distance 10"
         );
+        // WHY(#4515): fts_phrase_group = {fts_phrase_simple+} — adjacent unquoted words
+        // inside NEAR() merge into one phrase_group.  "abc def" is ONE literal; "ghi"^22.8
+        // is a second literal with its booster.  Three separate literals only arise when
+        // each word is individually quoted or separated by explicit NEAR nesting.
         if let FtsExpr::Near(FtsNear { literals, distance }) = res {
-            assert_eq!(*distance, 10);
-            assert_eq!(literals.len(), 3);
-            assert_eq!(literals[0].value, "abc");
-            assert_eq!(literals[1].value, "def");
-            assert_eq!(literals[2].value, "ghi");
-            assert_eq!(literals[2].booster.0, 22.8);
-            assert!(!literals[2].is_prefix);
+            assert_eq!(distance, 10);
+            assert_eq!(literals.len(), 2);
+            let lit0 = literals.first().unwrap();
+            let lit1 = literals.get(1).unwrap();
+            assert_eq!(lit0.value, "abc def");
+            assert!(!lit0.is_prefix);
+            assert_eq!(lit0.booster.0, 1.0);
+            assert_eq!(lit1.value, "ghi");
+            assert_eq!(lit1.booster.0, 22.8);
+            assert!(!lit1.is_prefix);
         } else {
             unreachable!("INVARIANT: prior match asserted NEAR shape");
         }
@@ -346,26 +353,28 @@ mod tests {
                     FtsExpr::Or(v) if op == "OR" => v,
                     other => panic!("expected {op} expression, got {:?}", other),
                 };
-                prop_assert_eq!(children.len(), 2, "{op} should combine exactly two children");
+                prop_assert_eq!(children.len(), 2, "{} should combine exactly two children", op);
+                let child0 = children.first().unwrap();
+                let child1 = children.get(1).unwrap();
                 prop_assert!(
                     matches!(
-                        &children[0],
+                        child0,
                         FtsExpr::Literal(FtsLiteral { value, is_prefix: false, booster })
                         if value.as_str() == lhs && booster.0 == 1.0
                     ),
                     "left operand should be the literal {:?}: got {:?}",
                     lhs,
-                    children[0]
+                    child0
                 );
                 prop_assert!(
                     matches!(
-                        &children[1],
+                        child1,
                         FtsExpr::Literal(FtsLiteral { value, is_prefix: false, booster })
                         if value.as_str() == rhs && booster.0 == 1.0
                     ),
                     "right operand should be the literal {:?}: got {:?}",
                     rhs,
-                    children[1]
+                    child1
                 );
             }
         }

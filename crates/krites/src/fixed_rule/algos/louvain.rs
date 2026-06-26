@@ -413,7 +413,7 @@ mod tests {
         );
 
         // INVARIANT: the first level assigns every original node to a community.
-        let first = &hierarchy[0];
+        let first = hierarchy.first().unwrap();
         assert_eq!(
             first.len(),
             graph.node_count() as usize,
@@ -431,7 +431,7 @@ mod tests {
             "some nodes must share a community"
         );
         assert_eq!(
-            *communities.iter().max().expect("non-empty community set"),
+            *communities.iter().max().unwrap(),
             communities.len() as u32 - 1,
             "community ids must be a dense 0..n range"
         );
@@ -439,7 +439,7 @@ mod tests {
         // INVARIANT: each coarsened level is smaller than the level before it and
         // its length equals the number of distinct communities in the prior level.
         let mut prev_len = first.len();
-        for level in &hierarchy[1..] {
+        for level in hierarchy.iter().skip(1) {
             assert!(
                 level.len() < prev_len,
                 "coarsened level must be strictly smaller than the previous level"
