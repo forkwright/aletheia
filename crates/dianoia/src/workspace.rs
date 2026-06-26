@@ -95,7 +95,9 @@ impl ProjectWorkspace {
                 path: &layout.project_file,
             })?;
         let project: Project =
-            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu)?;
+            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu {
+                path: layout.project_file.clone(),
+            })?;
         Ok(project)
     }
 
@@ -146,8 +148,8 @@ impl ProjectWorkspace {
             if path.extension().is_some_and(|ext| ext == "json") {
                 let content = std::fs::read_to_string(&path)
                     .context(error::WorkspaceIoSnafu { path: &path })?;
-                let blocker: Blocker =
-                    serde_json::from_str(&content).context(error::WorkspaceDeserializeSnafu)?;
+                let blocker: Blocker = serde_json::from_str(&content)
+                    .context(error::WorkspaceDeserializeSnafu { path: path.clone() })?;
                 blockers.push(blocker);
             }
         }
@@ -342,5 +344,56 @@ mod tests {
         let ws = ProjectWorkspace::create(dir.path().join("empty-project")).unwrap();
         let result = ws.load_project();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_project_malformed_json_includes_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        let project_file = ws.layout().project_file;
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&project_file).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
+
+        let err = ws.load_project().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("workspace deserialization error"),
+            "error should name the variant, got: {msg}"
+        );
+        assert!(
+            msg.contains(project_file.to_str().unwrap()),
+            "error should include the malformed path, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn read_blockers_malformed_json_includes_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        let blocker_path = ws
+            .layout()
+            .blockers_dir
+            .join("phase-1")
+            .join("blocker.json");
+        std::fs::create_dir_all(blocker_path.parent().unwrap()).unwrap();
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&blocker_path).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
+
+        let err = ws.read_blockers("phase-1").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("workspace deserialization error"),
+            "error should name the variant, got: {msg}"
+        );
+        assert!(
+            msg.contains(blocker_path.to_str().unwrap()),
+            "error should include the malformed path, got: {msg}"
+        );
     }
 }

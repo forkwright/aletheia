@@ -187,7 +187,9 @@ impl HandoffFile {
         let contents = std::fs::read_to_string(&json_path)
             .context(error::HandoffIoSnafu { path: &json_path })?;
         let context: HandoffContext =
-            serde_json::from_str(&contents).context(error::HandoffDeserializeSnafu)?;
+            serde_json::from_str(&contents).context(error::HandoffDeserializeSnafu {
+                path: json_path.clone(),
+            })?;
 
         Ok(Some(context))
     }
@@ -310,6 +312,29 @@ mod tests {
         let handoff = HandoffFile::new(dir.path());
         let result = handoff.read().unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn read_malformed_json_includes_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let handoff = HandoffFile::new(dir.path());
+        let json_path = handoff.json_path();
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&json_path).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
+
+        let err = handoff.read().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("handoff deserialization error"),
+            "error should name the variant, got: {msg}"
+        );
+        assert!(
+            msg.contains(json_path.to_str().unwrap()),
+            "error should include the malformed path, got: {msg}"
+        );
     }
 
     #[test]

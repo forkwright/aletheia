@@ -357,7 +357,9 @@ impl IntentStore {
             path: self.path.clone(),
         })?;
         let intents: Vec<Intent> =
-            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu)?;
+            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu {
+                path: self.path.clone(),
+            })?;
         Ok(intents)
     }
 
@@ -473,6 +475,29 @@ mod tests {
         let (_dir, store) = make_store();
         let intents = store.list_intents().unwrap();
         assert!(intents.is_empty());
+    }
+
+    #[test]
+    fn list_intents_malformed_json_includes_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = IntentStore::new(dir.path());
+        let intents_path = dir.path().join("intents.json");
+        std::io::Write::write_all(
+            &mut std::fs::File::create(&intents_path).unwrap(),
+            b"not valid json",
+        )
+        .unwrap();
+
+        let err = store.list_intents().unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("workspace deserialization error"),
+            "error should name the variant, got: {msg}"
+        );
+        assert!(
+            msg.contains(intents_path.to_str().unwrap()),
+            "error should include the malformed path, got: {msg}"
+        );
     }
 
     // --- Active / expiry ---

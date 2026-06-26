@@ -90,8 +90,10 @@ pub enum Error {
     },
 
     /// Failed to deserialize a project file from JSON.
-    #[snafu(display("workspace deserialization error"))]
+    #[snafu(display("workspace deserialization error at {}", path.display()))]
     WorkspaceDeserialize {
+        /// The path at which the deserialization error occurred.
+        path: PathBuf,
         /// The underlying deserialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
@@ -132,8 +134,10 @@ pub enum Error {
     },
 
     /// Failed to deserialize a handoff file from JSON.
-    #[snafu(display("handoff deserialization error"))]
+    #[snafu(display("handoff deserialization error at {}", path.display()))]
     HandoffDeserialize {
+        /// The path at which the deserialization error occurred.
+        path: PathBuf,
         /// The underlying deserialization error.
         source: serde_json::Error,
         #[snafu(implicit)]
