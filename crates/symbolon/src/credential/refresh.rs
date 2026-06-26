@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
-use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, warn};
 use zeroize::Zeroize;
@@ -14,22 +13,20 @@ use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
 
 use super::file_ops::CredentialFile;
+use super::oauth_types::{OAuthErrorResponse, OAuthTokenResponse};
 use super::providers::FileCredentialProvider;
 use super::{OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, REFRESH_CHECK_INTERVAL_SECS, unix_epoch_ms};
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
-/// OAuth error response from the token endpoint.
-// WHY: error_description is intentionally omitted — provider-controlled text
-// must not enter logs; only the normalized error code is safe to emit
-#[derive(Debug, Deserialize)]
-struct OAuthErrorResponse {
-    error: String,
-}
-
 /// Outcome of an OAuth refresh attempt.
 pub(super) enum RefreshOutcome {
     /// Refresh succeeded.
-    Success(OAuthResponse),
+    Success {
+        access_token: SecretString,
+        refresh_token: SecretString,
+        expires_in: u64,
+        scope: Option<String>,
+    },
     /// Refresh token is permanently invalid (e.g. `invalid_grant`).
     /// Retrying will never succeed — the user must re-authenticate.
     InvalidGrant,
@@ -37,31 +34,23 @@ pub(super) enum RefreshOutcome {
     TransientError,
 }
 
+/// Token data from a successful OAuth refresh.
+///
+/// WHY: bundled as a named struct so `persist_refresh_success` stays within
+/// clippy's argument-count limit while keeping all fields named.
+pub(super) struct RefreshSuccessPayload {
+    pub access_token: SecretString,
+    pub refresh_token: SecretString,
+    pub expires_in: u64,
+    pub scope: Option<String>,
+    pub subscription_type: Option<String>,
+}
+
 /// Minimum `expires_in` accepted from OAuth responses (seconds).
 const MIN_EXPIRES_IN_SECS: u64 = 60;
 
 /// Maximum `expires_in` accepted from OAuth responses (seconds).
 const MAX_EXPIRES_IN_SECS: u64 = 86400;
-
-#[derive(Deserialize)]
-pub(super) struct OAuthResponse {
-    pub access_token: SecretString,
-    pub refresh_token: SecretString,
-    #[serde(default = "default_expires_in")]
-    pub expires_in: u64,
-    pub scope: Option<String>,
-}
-
-impl std::fmt::Debug for OAuthResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OAuthResponse")
-            .field("access_token", &"[REDACTED]")
-            .field("refresh_token", &"[REDACTED]")
-            .field("expires_in", &self.expires_in)
-            .field("scope", &self.scope)
-            .finish()
-    }
-}
 
 fn default_expires_in() -> u64 {
     28800 // NOTE: 8 hours
@@ -284,7 +273,8 @@ fn try_reload_from_file(
 /// Build the post-refresh state, adopting the on-disk credential if newer.
 fn resolve_post_refresh_state(
     path: &Path,
-    resp: OAuthResponse,
+    access_token: SecretString,
+    refresh_token: SecretString,
     new_expires_at_ms: u64,
     subscription_type: Option<String>,
 ) -> RefreshState {
@@ -298,14 +288,14 @@ fn resolve_post_refresh_state(
         );
         RefreshState {
             current_token: on_disk.token,
-            refresh_token: on_disk.refresh_token.unwrap_or(resp.refresh_token),
+            refresh_token: on_disk.refresh_token.unwrap_or(refresh_token),
             expires_at_ms: on_disk.expires_at.unwrap_or(new_expires_at_ms),
             subscription_type: on_disk.subscription_type,
         }
     } else {
         RefreshState {
-            current_token: resp.access_token,
-            refresh_token: resp.refresh_token,
+            current_token: access_token,
+            refresh_token,
             expires_at_ms: new_expires_at_ms,
             subscription_type,
         }
@@ -318,30 +308,34 @@ fn persist_refresh_success(
     path: &Path,
     mtime_tracker: &mut FileMtimeTracker,
     circuit_breaker: &CircuitBreaker,
-    resp: OAuthResponse,
-    subscription_type: Option<String>,
+    payload: RefreshSuccessPayload,
 ) {
     circuit_breaker.record_success();
-    let expires_in = clamp_expires_in(resp.expires_in);
+    let expires_in = clamp_expires_in(payload.expires_in);
     let new_expires_at_ms = unix_epoch_ms() + expires_in * 1000;
 
-    let scopes = resp
+    let scopes = payload
         .scope
         .as_deref()
         .map(|s| s.split_whitespace().map(String::from).collect());
     let cred_file = CredentialFile {
-        token: resp.access_token.clone(),
-        refresh_token: Some(resp.refresh_token.clone()),
+        token: payload.access_token.clone(),
+        refresh_token: Some(payload.refresh_token.clone()),
         expires_at: Some(new_expires_at_ms),
         scopes,
-        subscription_type: subscription_type.clone(),
+        subscription_type: payload.subscription_type.clone(),
     };
 
     match cred_file.save(path) {
         Ok(()) => {
             mtime_tracker.has_changed(path);
-            let final_state =
-                resolve_post_refresh_state(path, resp, new_expires_at_ms, subscription_type);
+            let final_state = resolve_post_refresh_state(
+                path,
+                payload.access_token,
+                payload.refresh_token,
+                new_expires_at_ms,
+                payload.subscription_type,
+            );
             if let Ok(mut guard) = state.write() {
                 *guard = Some(final_state);
             }
@@ -440,17 +434,27 @@ async fn refresh_loop(
         let refresh_result = do_refresh(&client, &refresh_token_value, OAUTH_TOKEN_URL).await;
         // SAFETY: The refresh token is zeroized immediately after use to
         // limit the window for memory disclosure attacks. The token is
-        // still in the OAuthResponse if we need to persist it to disk.
+        // still in the OAuthTokenResponse if we need to persist it to disk.
         refresh_token_value.zeroize();
         match refresh_result {
-            RefreshOutcome::Success(resp) => {
+            RefreshOutcome::Success {
+                access_token,
+                refresh_token,
+                expires_in,
+                scope,
+            } => {
                 persist_refresh_success(
                     &state,
                     &path,
                     &mut mtime_tracker,
                     &circuit_breaker,
-                    resp,
-                    subscription_type,
+                    RefreshSuccessPayload {
+                        access_token,
+                        refresh_token,
+                        expires_in,
+                        scope,
+                        subscription_type,
+                    },
                 );
             }
             RefreshOutcome::InvalidGrant => {
@@ -534,8 +538,22 @@ pub(super) async fn do_refresh(
         return RefreshOutcome::TransientError;
     }
 
-    match resp.json::<OAuthResponse>().await {
-        Ok(oauth) => RefreshOutcome::Success(oauth),
+    match resp.json::<OAuthTokenResponse>().await {
+        Ok(oauth) => {
+            // WHY: the refresh contract expects a new refresh token; absence is
+            // treated as a malformed response rather than silently reusing the
+            // old one, matching the prior required-field behavior.
+            let Some(refresh_token) = oauth.refresh_token else {
+                warn!("OAuth refresh response missing refresh_token");
+                return RefreshOutcome::TransientError;
+            };
+            RefreshOutcome::Success {
+                access_token: oauth.access_token,
+                refresh_token,
+                expires_in: oauth.expires_in.unwrap_or_else(default_expires_in),
+                scope: oauth.scope,
+            }
+        }
         Err(e) => {
             warn!(error = %e, "failed to parse OAuth refresh response");
             RefreshOutcome::TransientError
@@ -563,30 +581,34 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
         .ok_or("no refresh token in credential file")?;
 
     let client = reqwest::Client::new();
-    let resp = match do_refresh(&client, refresh_token.expose_secret(), OAUTH_TOKEN_URL).await {
-        RefreshOutcome::Success(r) => r,
-        RefreshOutcome::InvalidGrant => {
-            return Err(
-                "OAuth refresh token is invalid (invalid_grant). Re-authenticate with \
+    let (access_token, refresh_token, expires_in, scope) =
+        match do_refresh(&client, refresh_token.expose_secret(), OAUTH_TOKEN_URL).await {
+            RefreshOutcome::Success {
+                access_token,
+                refresh_token,
+                expires_in,
+                scope,
+            } => (access_token, refresh_token, expires_in, scope),
+            RefreshOutcome::InvalidGrant => {
+                return Err(
+                    "OAuth refresh token is invalid (invalid_grant). Re-authenticate with \
                  `aletheia auth login` or re-authorize via Claude Code."
-                    .to_owned(),
-            );
-        }
-        RefreshOutcome::TransientError => {
-            return Err("OAuth refresh failed (transient error)".to_owned());
-        }
-    };
+                        .to_owned(),
+                );
+            }
+            RefreshOutcome::TransientError => {
+                return Err("OAuth refresh failed (transient error)".to_owned());
+            }
+        };
 
-    let expires_in = clamp_expires_in(resp.expires_in);
+    let expires_in = clamp_expires_in(expires_in);
     let now_ms = unix_epoch_ms();
     let expires_at_ms = now_ms + expires_in * 1000;
 
-    let scopes = resp
-        .scope
-        .map(|s| s.split_whitespace().map(String::from).collect());
+    let scopes = scope.map(|s| s.split_whitespace().map(String::from).collect());
     let updated = CredentialFile {
-        token: resp.access_token,
-        refresh_token: Some(resp.refresh_token),
+        token: access_token,
+        refresh_token: Some(refresh_token),
         expires_at: Some(expires_at_ms),
         scopes,
         subscription_type: cred.subscription_type,

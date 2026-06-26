@@ -10,9 +10,8 @@ use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info, warn};
 
-use koina::secret::SecretString;
-
 use super::file_ops::CredentialFile;
+use super::oauth_types::{OAuthErrorResponse, OAuthTokenResponse};
 use super::pkce::url_encode;
 use super::{OAuthProvider, OAuthRequiredAction};
 
@@ -130,30 +129,6 @@ fn default_interval() -> u64 {
     5 // 5 seconds default per RFC 8628
 }
 
-/// OAuth 2.0 Token Response.
-#[derive(Debug, Deserialize)]
-struct TokenResponse {
-    access_token: SecretString,
-    #[serde(default)]
-    refresh_token: Option<SecretString>,
-    #[serde(default)]
-    expires_in: Option<u64>,
-    #[serde(default)]
-    scope: Option<String>,
-    /// Token type (typically "Bearer").
-    #[serde(default)]
-    #[expect(dead_code, reason = "field provided by OAuth but not currently used")]
-    token_type: String, // kanon:ignore RUST/plain-string-secret
-}
-
-/// OAuth 2.0 Token Error Response (for device flow polling).
-#[derive(Debug, Deserialize)]
-struct TokenErrorResponse {
-    error: String,
-    #[serde(default)]
-    error_description: Option<String>,
-}
-
 /// Extended OAuth provider configuration with device authorization endpoint.
 // kanon:ignore RUST/no-debug-derive-on-public-types — DeviceOAuthProvider is a config struct with no secrets; Debug is safe for diagnostics and CLI output
 #[derive(Debug, Clone)]
@@ -233,7 +208,7 @@ async fn request_device_authorization(
     if !status.is_success() {
         // WHY: prefer the structured OAuth error body when it parses; fall back
         // to the raw HTTP status + body.
-        if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(&body_text) {
+        if let Ok(err) = serde_json::from_str::<OAuthErrorResponse>(&body_text) {
             return Err(DeviceCodeError::OAuthError {
                 error: err.error,
                 error_description: err.error_description,
@@ -257,7 +232,7 @@ async fn poll_token_endpoint(
     device_code: &str,
     interval_secs: u64,
     expires_in_secs: u64,
-) -> Result<TokenResponse> {
+) -> Result<OAuthTokenResponse> {
     let start_time = std::time::Instant::now();
     let expires_after = Duration::from_secs(expires_in_secs);
 
@@ -298,7 +273,7 @@ async fn poll_token_endpoint(
             return serde_json::from_str(&body_text).context(ParseResponseSnafu);
         }
 
-        let error_resp: TokenErrorResponse =
+        let error_resp: OAuthErrorResponse =
             serde_json::from_str(&body_text).context(ParseResponseSnafu)?;
 
         match error_resp.error.as_str() {

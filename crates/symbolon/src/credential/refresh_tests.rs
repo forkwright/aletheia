@@ -23,7 +23,7 @@ use super::super::file_ops::CredentialFile;
 use super::super::providers::FileCredentialProvider;
 use super::super::{REFRESH_THRESHOLD_SECS, unix_epoch_ms};
 use super::{
-    FileMtimeTracker, OAuthResponse, RefreshState, RefreshingCredentialProvider,
+    FileMtimeTracker, RefreshState, RefreshSuccessPayload, RefreshingCredentialProvider,
     persist_refresh_success, plan_refresh, resolve_post_refresh_state, try_reload_from_file,
 };
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
@@ -237,15 +237,13 @@ fn resolve_post_refresh_state_adopts_on_disk_when_newer() {
     let disk_expires = our_new_expires + 5_000_000;
     write_cred(&path, "tok-from-disk", "rt-from-disk", disk_expires);
 
-    let resp = OAuthResponse {
-        access_token: SecretString::from("tok-from-network"),
-        refresh_token: SecretString::from("rt-from-network"),
-        expires_in: 3600,
-        scope: None,
-    };
-
-    let final_state =
-        resolve_post_refresh_state(&path, resp, our_new_expires, Some("max".to_owned()));
+    let final_state = resolve_post_refresh_state(
+        &path,
+        SecretString::from("tok-from-network"),
+        SecretString::from("rt-from-network"),
+        our_new_expires,
+        Some("max".to_owned()),
+    );
 
     assert_eq!(
         final_state.current_token.expose_secret(),
@@ -275,15 +273,13 @@ fn resolve_post_refresh_state_keeps_network_when_disk_older() {
     let disk_expires = our_new_expires - 1_000_000;
     write_cred(&path, "tok-stale", "rt-stale", disk_expires);
 
-    let resp = OAuthResponse {
-        access_token: SecretString::from("tok-network-fresh"),
-        refresh_token: SecretString::from("rt-network-fresh"),
-        expires_in: 3600,
-        scope: None,
-    };
-
-    let final_state =
-        resolve_post_refresh_state(&path, resp, our_new_expires, Some("max".to_owned()));
+    let final_state = resolve_post_refresh_state(
+        &path,
+        SecretString::from("tok-network-fresh"),
+        SecretString::from("rt-network-fresh"),
+        our_new_expires,
+        Some("max".to_owned()),
+    );
 
     assert_eq!(
         final_state.current_token.expose_secret(),
@@ -310,14 +306,13 @@ fn resolve_post_refresh_state_keeps_network_when_disk_equal() {
     let expires = unix_epoch_ms() + 3_000_000;
     write_cred(&path, "tok-disk-eq", "rt-disk-eq", expires);
 
-    let resp = OAuthResponse {
-        access_token: SecretString::from("tok-network-eq"),
-        refresh_token: SecretString::from("rt-network-eq"),
-        expires_in: 3600,
-        scope: None,
-    };
-
-    let final_state = resolve_post_refresh_state(&path, resp, expires, None);
+    let final_state = resolve_post_refresh_state(
+        &path,
+        SecretString::from("tok-network-eq"),
+        SecretString::from("rt-network-eq"),
+        expires,
+        None,
+    );
 
     assert_eq!(
         final_state.current_token.expose_secret(),
@@ -336,14 +331,13 @@ fn resolve_post_refresh_state_no_disk_file_uses_network() {
     let path = dir.path().join("nope-does-not-exist.json");
 
     let expires = unix_epoch_ms() + 7_000_000;
-    let resp = OAuthResponse {
-        access_token: SecretString::from("tok-only-network"),
-        refresh_token: SecretString::from("rt-only-network"),
-        expires_in: 3600,
-        scope: None,
-    };
-
-    let final_state = resolve_post_refresh_state(&path, resp, expires, Some("pro".to_owned()));
+    let final_state = resolve_post_refresh_state(
+        &path,
+        SecretString::from("tok-only-network"),
+        SecretString::from("rt-only-network"),
+        expires,
+        Some("pro".to_owned()),
+    );
     assert_eq!(
         final_state.current_token.expose_secret(),
         "tok-only-network",
@@ -378,13 +372,13 @@ fn persist_refresh_success_writes_file_and_updates_state() {
         &path,
         &mut tracker,
         &cb,
-        OAuthResponse {
+        RefreshSuccessPayload {
             access_token: SecretString::from("tok-new"),
             refresh_token: SecretString::from("rt-new"),
             expires_in,
             scope: Some("user:inference".to_owned()),
+            subscription_type: Some("max".to_owned()),
         },
-        Some("max".to_owned()),
     );
     let after_ms = unix_epoch_ms();
 
@@ -462,13 +456,13 @@ fn persist_refresh_success_records_circuit_breaker_success() {
         &path,
         &mut tracker,
         &cb,
-        OAuthResponse {
+        RefreshSuccessPayload {
             access_token: SecretString::from("tok-new"),
             refresh_token: SecretString::from("rt-new"),
             expires_in: 3600,
             scope: None,
+            subscription_type: None,
         },
-        None,
     );
 
     // WHY: record_success on Closed state clears failure history. After the

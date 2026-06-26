@@ -4,6 +4,7 @@ pub(crate) mod admin;
 mod file_ops;
 #[cfg(feature = "keyring")]
 mod keyring_provider;
+mod oauth_types;
 mod providers;
 mod refresh;
 
