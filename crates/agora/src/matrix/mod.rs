@@ -707,11 +707,21 @@ mod tests {
                                     {
                                         "type": "m.room.message",
                                         "sender": "@alice:example.org",
-                                        "event_id": "$event",
+                                        "event_id": "$event1",
                                         "origin_server_ts": 123,
                                         "content": {
                                             "msgtype": "m.text",
                                             "body": "hello from Matrix"
+                                        }
+                                    },
+                                    {
+                                        "type": "m.room.message",
+                                        "sender": "@alice:example.org",
+                                        "event_id": "$event2",
+                                        "origin_server_ts": 124,
+                                        "content": {
+                                            "msgtype": "m.text",
+                                            "body": "second from Matrix"
                                         }
                                     }
                                 ]
@@ -732,10 +742,10 @@ mod tests {
         )
         .expect("client");
         let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-        // WHY: a zero-capacity bounded channel with a live but non-polling
-        // receiver makes tx.send await indefinitely, so aborting the task
-        // simulates cancellation at the first send await point.
-        let (tx, _rx) = mpsc::bounded_channel::<InboundMessage>(0);
+        // WHY: capacity-1 bounded channel with two events and a non-polling receiver:
+        // the first tx.send fills the buffer, the second tx.send suspends (buffer full),
+        // and handle.abort() cancels the task at that await point.
+        let (tx, _rx) = mpsc::channel::<InboundMessage>(1);
 
         let client_ref = client.clone();
         let since_ref = Arc::clone(&since);
