@@ -146,6 +146,27 @@ impl TaskRunner {
                 }
             }
         }
+
+        // WHY: drain tracked self-prompt tasks so panics surface as JoinErrors
+        // instead of being silently dropped when the runtime shuts down.
+        self.self_prompt_tasks.abort_all();
+        while let Some(result) = self.self_prompt_tasks.join_next().await {
+            match result {
+                Ok(()) => {
+                    tracing::debug!(
+                        nous_id = %self.nous_id,
+                        "self-prompt task completed on shutdown"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        nous_id = %self.nous_id,
+                        error = %e,
+                        "self-prompt task panicked or was cancelled on shutdown"
+                    );
+                }
+            }
+        }
     }
 
     pub(super) fn tick(&mut self) {

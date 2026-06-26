@@ -134,6 +134,52 @@ fn self_prompt_no_follow_up_no_dispatch() {
     );
 }
 
+/// Error path: a panic inside the spawned self-prompt closure surfaces as a
+/// `JoinError` when the runner-owned `JoinSet` is drained, rather than being
+/// silently lost because the `JoinHandle` was discarded.
+#[tokio::test]
+async fn self_prompt_panic_surfaces_as_join_error() {
+    use std::future::Future;
+    use std::pin::Pin;
+
+    /// Bridge that panics when sending a prompt, so the spawned self-prompt
+    /// task unwinds inside the runner-owned `JoinSet`.
+    struct PanicBridge;
+
+    impl DaemonBridge for PanicBridge {
+        fn send_prompt(
+            &self,
+            _nous_id: &str,
+            _session_key: &str,
+            _prompt: &str,
+        ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>>
+        {
+            Box::pin(async move { panic!("injected self-prompt panic") })
+        }
+    }
+
+    let token = CancellationToken::new();
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(PanicBridge);
+    let config = crate::self_prompt::SelfPromptConfig {
+        enabled: true,
+        max_per_hour: 3,
+    };
+    let mut runner = TaskRunner::with_bridge("test-nous", token, bridge).with_self_prompt(config);
+
+    let result = ExecutionResult {
+        outcome: TaskOutcome::Success,
+        errors: 0,
+        output: Some("## Follow-up\nTrigger panic.\n".to_owned()),
+    };
+    runner.maybe_queue_self_prompt("test-task", &result);
+
+    // WHY: the panic happens inside the spawned task; the runner-owned JoinSet
+    // is the only place it is observable. Draining it must yield a panic.
+    let join_result = runner.self_prompt_tasks.join_next().await;
+    let err = join_result.unwrap().unwrap_err();
+    assert!(err.is_panic(), "expected panic JoinError, got {err:?}");
+}
+
 #[test]
 fn register_top_issue_self_prompt_adds_recurring_task() {
     let token = CancellationToken::new();
