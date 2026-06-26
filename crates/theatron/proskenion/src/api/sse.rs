@@ -37,6 +37,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+use skene::api::error::{format_error_fields_for_display, format_http_error_body};
 use skene::api::types::SseEvent;
 use skene::id::{NousId, SessionId, TurnId};
 
@@ -276,15 +277,7 @@ fn advance_backoff(current: std::time::Duration) -> std::time::Duration {
 
 /// Extract a human-readable error message from an HTTP error response body.
 fn extract_error_message(body: &str, status_code: u16, reason: &str) -> String {
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-        json.get("message")
-            .or_else(|| json.get("error"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("{status_code} {reason}"))
-    } else {
-        format!("{status_code} {reason}")
-    }
+    format_http_error_body(status_code, reason, body)
 }
 
 fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
@@ -390,11 +383,30 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
         "ping" => Some(SseEvent::Ping),
         "stream_lagged" => stream_lagged_event(&json),
+        "error" => Some(SseEvent::Error {
+            message: sse_error_message(&json),
+        }),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
             None
         }
     }
+}
+
+fn sse_error_message(json: &serde_json::Value) -> String {
+    let message = json
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("server error");
+    format_error_fields_for_display(
+        message,
+        None,
+        json.get("code").and_then(serde_json::Value::as_str),
+        json.get("request_id")
+            .or_else(|| json.get("requestId"))
+            .and_then(serde_json::Value::as_str),
+        json.get("details"),
+    )
 }
 
 fn stream_lagged_event(json: &serde_json::Value) -> Option<SseEvent> {
@@ -517,6 +529,19 @@ mod tests {
     fn parse_stream_lagged_invalid_dropped_returns_none() {
         let result = parse_sse_event("stream_lagged", r#"{"dropped":"many"}"#);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_error_preserves_code_request_id_and_details() {
+        let data = r#"{"code":"stream_failed","message":"provider unavailable","request_id":"req-sse","details":{"provider":"synthetic"}}"#;
+        let result = parse_sse_event("error", data);
+        let Some(SseEvent::Error { message }) = result else {
+            panic!("expected Error");
+        };
+        assert!(message.contains("provider unavailable"));
+        assert!(message.contains("code stream_failed"));
+        assert!(message.contains("request_id req-sse"));
+        assert!(message.contains(r#""provider":"synthetic""#));
     }
 
     #[test]
@@ -683,6 +708,17 @@ mod tests {
     fn extract_error_message_error_field() {
         let body = r#"{"error":"forbidden"}"#;
         assert_eq!(extract_error_message(body, 403, "Forbidden"), "forbidden");
+    }
+
+    #[test]
+    fn extract_error_message_preserves_pylon_envelope() {
+        let body = r#"{"error":{"code":"validation_error","message":"invalid subscription","request_id":"req-http","details":{"errors":[{"field":"topic","code":"required","message":"topic is required"}]}}}"#;
+        let message = extract_error_message(body, 422, "Unprocessable Entity");
+        assert!(message.contains("invalid subscription"));
+        assert!(message.contains("status 422"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-http"));
+        assert!(message.contains(r#""field":"topic""#));
     }
 
     #[test]

@@ -17,7 +17,10 @@ use crate::events::{StreamEnvelope, StreamEvent};
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 use crate::sse::SseStream;
 
-use super::error::{parse_pylon_error_body, parse_retry_after_secs};
+use super::error::{
+    format_error_fields_for_display, format_http_error_body, parse_pylon_error_envelope,
+    parse_retry_after_secs,
+};
 
 /// If no streaming event is received within this window, the connection is
 /// treated as hung. Matches the SSE connection's `READ_TIMEOUT` in `sse.rs`
@@ -82,24 +85,25 @@ pub fn stream_message(
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let message = if status == StatusCode::TOO_MANY_REQUESTS {
-                let retry = parse_retry_after_secs(resp.headers());
-                retry.map_or_else(
-                    || "429 rate limited".to_string(),
-                    |secs| format!("429 rate limited (retry after {secs}s)"),
-                )
-            } else {
-                let reason = status.canonical_reason().unwrap_or("Unknown");
-                let body = match resp.text().await {
-                    Ok(body) => body,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed to read stream error response body");
-                        String::new()
-                    }
-                };
-                parse_pylon_error_body(&body)
-                    .map_or_else(|| format!("{} {}", status.as_u16(), reason), |d| d.message)
+            let reason = status.canonical_reason().unwrap_or("Unknown");
+            let retry_after_secs = (status == StatusCode::TOO_MANY_REQUESTS)
+                .then(|| parse_retry_after_secs(resp.headers()))
+                .flatten();
+            let body = match resp.text().await {
+                Ok(body) => body,
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to read stream error response body");
+                    String::new()
+                }
             };
+            let has_pylon_envelope = parse_pylon_error_envelope(status.as_u16(), &body).is_some();
+            let mut message = format_http_error_body(status.as_u16(), reason, &body);
+            if status == StatusCode::TOO_MANY_REQUESTS
+                && !has_pylon_envelope
+                && let Some(secs) = retry_after_secs
+            {
+                message = format!("{message} (retry after {secs}s)");
+            }
             if tx.send(StreamEvent::Error(message)).await.is_err() {
                 tracing::debug!("stream receiver dropped before HTTP error");
             }
@@ -351,9 +355,7 @@ fn parse_stream_event_envelope(
         "turn_abort" => wrap(StreamEvent::TurnAbort {
             reason: str_field(&json, "reason", event_type)?.to_string(),
         }),
-        "error" => wrap(StreamEvent::Error(
-            str_field(&json, "message", event_type)?.to_string(),
-        )),
+        "error" => wrap(StreamEvent::Error(stream_error_message(&json, event_type)?)),
         "queue_drained" => {
             // WHY: intentionally silent — queue_drained is a server-side
             // housekeeping event with no semantic meaning for UI consumers.
@@ -368,6 +370,19 @@ fn parse_stream_event_envelope(
             })
         }
     }
+}
+
+fn stream_error_message(json: &serde_json::Value, event_type: &str) -> Option<String> {
+    let message = str_field(json, "message", event_type)?;
+    Some(format_error_fields_for_display(
+        message,
+        None,
+        json.get("code").and_then(serde_json::Value::as_str),
+        json.get("request_id")
+            .or_else(|| json.get("requestId"))
+            .and_then(serde_json::Value::as_str),
+        json.get("details"),
+    ))
 }
 
 #[cfg(test)]
@@ -410,6 +425,29 @@ mod tests {
             stream
                 .write_all(response.as_bytes())
                 .expect("write SSE test response");
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn serve_http_error_once(
+        status_line: &'static str,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 2048];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\nconnection: close\r\n\r\n{body}"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write HTTP error test response");
         });
         (format!("http://{addr}"), handle)
     }
@@ -468,6 +506,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parse_error_event_preserves_request_id_and_details() {
+        let data = r#"{"type":"error","message":"provider unavailable","request_id":"req-stream","details":{"provider":"synthetic"}}"#;
+        let result = parse("error", data);
+        let Some(StreamEvent::Error(message)) = result else {
+            panic!("expected Error");
+        };
+        assert!(message.contains("provider unavailable"));
+        assert!(message.contains("request_id req-stream"));
+        assert!(message.contains(r#""provider":"synthetic""#));
+    }
+
     #[tokio::test]
     async fn stream_read_loop_delivers_completion_after_error_event() {
         let body = concat!(
@@ -507,6 +557,29 @@ mod tests {
         assert_eq!(outcome.cache_write_tokens, 1);
         assert_eq!(outcome.stop_reason.as_deref(), Some("error"));
         assert_eq!(outcome.error.as_deref(), Some("provider unavailable"));
+    }
+
+    #[tokio::test]
+    async fn stream_message_http_error_preserves_pylon_envelope() {
+        let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
+        let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", body);
+        let client = build_streaming_client(None).expect("build streaming test client");
+        let mut rx = stream_message(client, &base_url, "syn", "main", "hello");
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("stream HTTP error should arrive promptly")
+            .expect("stream HTTP error event should be delivered");
+        server.join().expect("test server thread should finish");
+
+        let StreamEvent::Error(message) = event else {
+            panic!("expected stream HTTP error event");
+        };
+        assert!(message.contains("invalid stream request"));
+        assert!(message.contains("status 422"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-http"));
+        assert!(message.contains(r#""field":"message""#));
     }
 
     // WHY: message_complete is the turn terminator; an unparseable outcome

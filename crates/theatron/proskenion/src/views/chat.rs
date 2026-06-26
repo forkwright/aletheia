@@ -757,7 +757,10 @@ pub(crate) fn Chat() -> Element {
                         gap: var(--space-3);
                         font-size: var(--text-sm);
                     ",
-                    span { "{err}" }
+                    span {
+                        style: "min-width: 0; overflow-wrap: anywhere; white-space: normal;",
+                        "{err}"
+                    }
                     button {
                         style: "
                             background: var(--status-error);
