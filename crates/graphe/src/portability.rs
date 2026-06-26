@@ -329,10 +329,7 @@ mod tests {
                     ("memory/notes.md".to_owned(), "# Notes\n".to_owned()),
                     ("config.yaml".to_owned(), "key: value\n".to_owned()),
                 ]),
-                binary_files: vec![binary_entry(
-                    "avatar.png",
-                    b"\x89PNG\r\n\x1a\n",
-                )],
+                binary_files: vec![binary_entry("avatar.png", b"\x89PNG\r\n\x1a\n")],
             },
             sessions: vec![ExportedSession {
                 id: "ses-001".to_owned(),
@@ -416,9 +413,7 @@ mod tests {
 
     #[test]
     fn binary_file_content_round_trips() {
-        let bytes: Vec<u8> = vec![
-            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff,
-        ];
+        let bytes: Vec<u8> = vec![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff];
         let entry = binary_entry("assets/icon.png", &bytes);
         let workspace = WorkspaceData {
             files: HashMap::new(),
