@@ -1,8 +1,16 @@
 //! Pylon API limits configuration.
 
 use serde::{Deserialize, Serialize};
+/// Default value used for `ApiLimitsConfig::idempotency_ttl_secs`.
+pub(crate) const DEFAULT_IDEMPOTENCY_TTL_SECS: u64 = 300;
+/// Default value used for `ApiLimitsConfig::idempotency_capacity`.
+pub(crate) const DEFAULT_IDEMPOTENCY_CAPACITY: usize = 10_000;
 
 /// Pylon API request size and idempotency cache limits.
+///
+/// Defaults for the fields that mirror `pylon` constants are enforced at
+/// test-build time by `const _: () = assert!` guards below.
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -24,11 +32,9 @@ pub struct ApiLimitsConfig {
     pub max_search_limit: usize,
     /// Maximum facts in a single bulk-import request. Default: 1000.
     pub max_import_batch_size: usize,
-    /// TTL in seconds for idempotency key cache entries. Default: 300.
-    /// Mirrors `pylon::idempotency::DEFAULT_TTL`.
+    /// TTL in seconds for idempotency key cache entries.
     pub idempotency_ttl_secs: u64,
-    /// Maximum idempotency cache entries (LRU cap). Default: 10000.
-    /// Mirrors `pylon::idempotency::DEFAULT_CAPACITY`.
+    /// Maximum idempotency cache entries (LRU cap).
     pub idempotency_capacity: usize,
     /// Maximum character length of an idempotency key. Default: 64.
     pub idempotency_max_key_length: usize,
@@ -49,11 +55,16 @@ impl Default for ApiLimitsConfig {
             max_facts_limit: 1_000,
             max_search_limit: 1_000,
             max_import_batch_size: 1_000,
-            idempotency_ttl_secs: 300,
-            idempotency_capacity: 10_000,
+            idempotency_ttl_secs: DEFAULT_IDEMPOTENCY_TTL_SECS,
+            idempotency_capacity: DEFAULT_IDEMPOTENCY_CAPACITY,
             idempotency_max_key_length: 64,
             clock_skew_leeway_secs: 30,
             expiry_warning_threshold_secs: 3_600,
         }
     }
 }
+
+#[cfg(test)]
+const _: () = assert!(DEFAULT_IDEMPOTENCY_TTL_SECS == pylon::idempotency::DEFAULT_TTL.as_secs());
+#[cfg(test)]
+const _: () = assert!(DEFAULT_IDEMPOTENCY_CAPACITY == pylon::idempotency::DEFAULT_CAPACITY);

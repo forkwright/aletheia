@@ -1,7 +1,7 @@
 //! Memory tool executors: `memory_search`, `note`, `blackboard`, `datalog_query`.
 
 mod blackboard;
-mod datalog;
+pub mod datalog;
 mod knowledge_ops;
 mod note;
 #[cfg(test)]

@@ -90,7 +90,8 @@ const OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const OAUTH_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
 
 /// Refresh when token has less than this many seconds remaining.
-const REFRESH_THRESHOLD_SECS: u64 = 3600;
+/// Fallback default; runtime reads `CredentialConfig::refresh_threshold_secs`.
+pub const REFRESH_THRESHOLD_SECS: u64 = 3600;
 
 // INVARIANT: the credential module does not redeclare the leeway value.
 // The alias imported above forces the OAuth expiry path to use the same

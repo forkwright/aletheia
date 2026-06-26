@@ -20,17 +20,9 @@ use super::require_services;
 
 const MUTATION_KEYWORDS: &[&str] = &[":put", ":rm", ":replace", ":create", ":ensure"];
 /// Fallback default; runtime reads `ctx.tool_config.datalog_default_row_limit`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const DEFAULT_ROW_LIMIT: usize = 100;
+pub const DEFAULT_ROW_LIMIT: usize = 100;
 /// Fallback default; runtime reads `ctx.tool_config.datalog_default_timeout_secs`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const DEFAULT_TIMEOUT_SECS: f64 = 5.0;
+pub const DEFAULT_TIMEOUT_SECS: f64 = 5.0;
 
 struct DatalogQueryExecutor;
 

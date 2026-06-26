@@ -10,44 +10,38 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 #[serde(default)]
 pub struct ProviderBehaviorConfig {
-    /// Timeout in seconds for non-streaming LLM requests. Default: 120.
-    /// Mirrors `hermeneus::anthropic::client::NON_STREAMING_TIMEOUT`.
+    /// Timeout in seconds for non-streaming LLM requests.
     pub non_streaming_timeout_secs: u64,
-    /// Default retry delay from SSE stream retry field in milliseconds. Default: 1000.
-    /// Mirrors `hermeneus::anthropic::error::SSE_DEFAULT_RETRY_MS`.
+    /// Default retry delay from SSE stream retry field in milliseconds.
     pub sse_default_retry_ms: u64,
-    /// EWMA smoothing factor for adaptive concurrency limiter. Default: 0.8.
-    /// Mirrors `hermeneus::concurrency::DEFAULT_EWMA_ALPHA`.
+    /// EWMA smoothing factor for adaptive concurrency limiter.
     pub concurrency_ewma_alpha: f64,
-    /// Latency threshold in seconds above which concurrency limit is reduced. Default: 30.0.
-    /// Mirrors `hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS`.
+    /// Latency threshold in seconds above which concurrency limit is reduced.
     pub concurrency_latency_threshold_secs: f64,
-    /// Complexity score below which Haiku-class model is selected. Default: 30.
-    /// Mirrors `hermeneus::complexity::DEFAULT_LOW_THRESHOLD`.
+    /// Complexity score below which Haiku-class model is selected.
     pub complexity_low_threshold: u32,
-    /// Complexity score above which Opus-class model is selected. Default: 70.
-    /// Mirrors `hermeneus::complexity::DEFAULT_HIGH_THRESHOLD`.
+    /// Complexity score above which Opus-class model is selected.
     pub complexity_high_threshold: u32,
 }
 
 impl Default for ProviderBehaviorConfig {
     fn default() -> Self {
         Self {
-            non_streaming_timeout_secs: 120,
-            sse_default_retry_ms: 1_000,
-            concurrency_ewma_alpha: 0.8,
-            concurrency_latency_threshold_secs: 30.0,
-            complexity_low_threshold: 30,
-            complexity_high_threshold: 70,
+            non_streaming_timeout_secs: hermeneus::anthropic::NON_STREAMING_TIMEOUT.as_secs(),
+            sse_default_retry_ms: hermeneus::anthropic::SSE_DEFAULT_RETRY_MS,
+            concurrency_ewma_alpha: hermeneus::concurrency::DEFAULT_EWMA_ALPHA,
+            concurrency_latency_threshold_secs:
+                hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS,
+            complexity_low_threshold: hermeneus::complexity::DEFAULT_LOW_THRESHOLD,
+            complexity_high_threshold: hermeneus::complexity::DEFAULT_HIGH_THRESHOLD,
         }
     }
 }
 
 /// Anthropic-specific sovereignty and privacy settings.
 ///
-/// Mirrors the operator-facing controls at the hermeneus (Anthropic client)
-/// boundary. Defaults are sovereignty-first: nothing is cached on Anthropic
-/// servers unless the operator explicitly opts in.
+/// Defaults are sovereignty-first: nothing is cached on Anthropic servers
+/// unless the operator explicitly opts in.
 ///
 /// Issues: #3406, #3410, #3409.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -73,9 +67,8 @@ pub struct AnthropicConfig {
 
 /// Prompt cache policy for the Anthropic provider.
 ///
-/// Mirrors `hermeneus::provider::PromptCacheMode` so the taxis config layer
-/// does not depend on hermeneus; the runtime wiring in `crates/aletheia`
-/// converts between the two.
+/// The runtime wiring in `crates/aletheia` converts this taxis-side policy to
+/// and from `hermeneus::provider::PromptCacheMode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]

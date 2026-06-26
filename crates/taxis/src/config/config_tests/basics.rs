@@ -948,3 +948,259 @@ enabled = true
     assert_eq!(prosoche.external_timer.task_id, "prosoche-self-audit");
     assert_eq!(prosoche.external_timer.interval_secs, 300);
 }
+
+// WHY(#5482): regression guard — each sub-function covers one logical group of
+// formerly-hand-duplicated constants; kept small to satisfy too_many_lines lint.
+#[test]
+#[expect(
+    clippy::float_cmp,
+    reason = "WHY(#5482): comparing compile-time constants that are by definition identical; exact equality is the invariant"
+)]
+fn mirrored_defaults_provider_behavior() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.provider_behavior.non_streaming_timeout_secs,
+        hermeneus::anthropic::NON_STREAMING_TIMEOUT.as_secs()
+    );
+    assert_eq!(
+        config.provider_behavior.sse_default_retry_ms,
+        hermeneus::anthropic::SSE_DEFAULT_RETRY_MS
+    );
+    assert_eq!(
+        config.provider_behavior.concurrency_ewma_alpha,
+        hermeneus::concurrency::DEFAULT_EWMA_ALPHA
+    );
+    assert_eq!(
+        config.provider_behavior.concurrency_latency_threshold_secs,
+        hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS
+    );
+    assert_eq!(
+        config.provider_behavior.complexity_low_threshold,
+        hermeneus::complexity::DEFAULT_LOW_THRESHOLD
+    );
+    assert_eq!(
+        config.provider_behavior.complexity_high_threshold,
+        hermeneus::complexity::DEFAULT_HIGH_THRESHOLD
+    );
+}
+
+#[test]
+#[expect(
+    clippy::float_cmp,
+    reason = "WHY(#5482): comparing compile-time constants that are by definition identical; exact equality is the invariant"
+)]
+fn mirrored_defaults_knowledge_behavior() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.knowledge.max_content_length,
+        eidos::knowledge::fact::MAX_CONTENT_LENGTH
+    );
+    assert_eq!(
+        config.knowledge.side_query_max_results,
+        episteme::side_query::DEFAULT_MAX_RESULTS
+    );
+    assert_eq!(
+        config.knowledge.side_query_cache_ttl_secs,
+        episteme::side_query::DEFAULT_CACHE_TTL_SECS
+    );
+    assert_eq!(
+        config.knowledge.side_query_cache_capacity,
+        episteme::side_query::DEFAULT_CACHE_CAPACITY
+    );
+    assert_eq!(
+        config.knowledge.skill_decay_needs_review_threshold,
+        episteme::skill::decay::NEEDS_REVIEW_THRESHOLD
+    );
+    assert_eq!(
+        config.knowledge.skill_decay_retire_threshold,
+        episteme::skill::decay::RETIRE_THRESHOLD
+    );
+    assert_eq!(
+        config.knowledge.skill_decay_stale_days,
+        episteme::skill::decay::DEFAULT_STALE_DAYS
+    );
+    assert_eq!(
+        config.knowledge.skill_decay_high_usage_threshold,
+        episteme::skill::decay::HIGH_USAGE_THRESHOLD
+    );
+    assert_eq!(
+        config.knowledge.skill_decay_high_usage_factor,
+        episteme::skill::decay::HIGH_USAGE_DECAY_FACTOR
+    );
+    assert_eq!(
+        config.knowledge.surprise_threshold,
+        episteme::surprise::DEFAULT_THRESHOLD
+    );
+    assert_eq!(
+        config.knowledge.surprise_ema_alpha,
+        episteme::surprise::DEFAULT_EMA_ALPHA
+    );
+}
+
+#[test]
+fn mirrored_defaults_messaging_behavior() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.messaging.poll_interval_ms,
+        agora::semeion::DEFAULT_POLL_INTERVAL.as_secs() * 1_000
+    );
+    assert_eq!(
+        config.messaging.buffer_capacity,
+        agora::semeion::DEFAULT_BUFFER_CAPACITY
+    );
+    assert_eq!(
+        config.messaging.circuit_breaker_threshold,
+        agora::semeion::CIRCUIT_BREAKER_THRESHOLD
+    );
+    assert_eq!(
+        config.messaging.halted_health_check_interval_secs,
+        agora::semeion::HALTED_HEALTH_CHECK_INTERVAL.as_secs()
+    );
+    assert_eq!(
+        config.messaging.rpc_timeout_secs,
+        agora::semeion::client::RPC_TIMEOUT.as_secs()
+    );
+    assert_eq!(
+        config.messaging.health_timeout_secs,
+        agora::semeion::client::HEALTH_TIMEOUT.as_secs()
+    );
+    assert_eq!(
+        config.messaging.receive_timeout_secs,
+        agora::semeion::client::RECEIVE_TIMEOUT.as_secs()
+    );
+    assert_eq!(
+        config.messaging.agent_dispatch_timeout_secs,
+        organon::builtins::agent::DEFAULT_TIMEOUT_SECS
+    );
+}
+
+#[test]
+fn mirrored_defaults_daemon_and_api() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.daemon_behavior.watchdog_backoff_base_secs,
+        oikonomos::watchdog::BACKOFF_BASE.as_secs()
+    );
+    assert_eq!(
+        config.daemon_behavior.watchdog_backoff_cap_secs,
+        oikonomos::watchdog::BACKOFF_CAP.as_secs()
+    );
+    assert_eq!(
+        config.api_limits.idempotency_ttl_secs,
+        pylon::idempotency::DEFAULT_TTL.as_secs()
+    );
+    assert_eq!(
+        config.api_limits.idempotency_capacity,
+        pylon::idempotency::DEFAULT_CAPACITY
+    );
+}
+
+#[test]
+fn mirrored_defaults_tool_limits() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.tool_limits.max_pattern_length,
+        organon::builtins::filesystem::MAX_PATTERN_LENGTH
+    );
+    assert_eq!(
+        config.tool_limits.subprocess_timeout_secs,
+        organon::builtins::filesystem::SUBPROCESS_TIMEOUT.as_secs()
+    );
+    assert_eq!(
+        config.tool_limits.max_write_bytes,
+        organon::builtins::workspace::MAX_WRITE_BYTES
+    );
+    assert_eq!(
+        config.tool_limits.max_read_bytes,
+        organon::builtins::workspace::MAX_READ_BYTES
+    );
+    assert_eq!(
+        config.tool_limits.max_command_length,
+        organon::builtins::workspace::MAX_COMMAND_LENGTH
+    );
+    assert_eq!(
+        config.tool_limits.message_max_len,
+        organon::builtins::communication::MESSAGE_MAX_LEN
+    );
+    assert_eq!(
+        config.tool_limits.inter_session_max_message_len,
+        organon::builtins::communication::INTER_SESSION_MAX_MESSAGE_LEN
+    );
+    assert_eq!(
+        config.tool_limits.inter_session_max_timeout_secs,
+        organon::builtins::communication::INTER_SESSION_MAX_TIMEOUT_SECS
+    );
+}
+
+#[test]
+#[expect(
+    clippy::float_cmp,
+    reason = "WHY(#5482): comparing compile-time constants that are by definition identical; exact equality is the invariant"
+)]
+fn mirrored_defaults_agent_behavior() {
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.agents.defaults.behavior.manifest_max_entries,
+        episteme::manifest::MAX_MEMORY_ENTRIES
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.planning_max_iterations,
+        dianoia::plan::DEFAULT_MAX_ITERATIONS
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.knowledge_surprise_threshold,
+        episteme::surprise::DEFAULT_THRESHOLD
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.dream_min_hours,
+        melete::dream::DEFAULT_MIN_HOURS
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.dream_min_sessions,
+        melete::dream::DEFAULT_MIN_SESSIONS
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.dream_stale_threshold_secs,
+        melete::dream::DEFAULT_STALE_THRESHOLD_SECS
+    );
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_agent_dispatch_max_tasks,
+        organon::builtins::agent::MAX_DISPATCH_TASKS
+    );
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_datalog_default_row_limit,
+        organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT
+    );
+    assert_eq!(
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_datalog_default_timeout_secs,
+        organon::builtins::memory::datalog::DEFAULT_TIMEOUT_SECS
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.tool_max_image_bytes,
+        organon::builtins::view_file::MAX_IMAGE_BYTES
+    );
+    assert_eq!(
+        config.agents.defaults.behavior.tool_max_pdf_bytes,
+        organon::builtins::view_file::MAX_PDF_BYTES
+    );
+    assert_eq!(
+        config.credential.refresh_threshold_secs,
+        symbolon::credential::REFRESH_THRESHOLD_SECS
+    );
+    assert_eq!(
+        config.jwt.clock_skew_leeway_secs,
+        symbolon::jwt::DEFAULT_CLOCK_SKEW_LEEWAY_SECS
+    );
+}

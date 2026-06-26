@@ -34,11 +34,7 @@ fn sanitize_path_in_msg(path: &std::path::Path) -> String {
 ///
 /// WHY: Prevents disk exhaustion or fork-bomb-like abuse via oversized writes.
 /// Fallback default; runtime reads `ctx.tool_config.max_write_bytes`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
+pub const MAX_WRITE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Expand a leading `~` in a path string to the HOME environment variable.
 ///
@@ -224,19 +220,11 @@ pub(crate) fn extract_opt_f64(args: &serde_json::Value, field: &str) -> Option<f
 
 /// Maximum file size the read tool will process.
 /// Fallback default; runtime reads `ctx.tool_config.max_read_bytes`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const MAX_READ_BYTES: u64 = 50 * 1024 * 1024;
+pub const MAX_READ_BYTES: u64 = 50 * 1024 * 1024;
 
 /// Maximum command string length for exec.
 /// Fallback default; runtime reads `ctx.tool_config.max_command_length`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const MAX_COMMAND_LENGTH: usize = 10_000;
+pub const MAX_COMMAND_LENGTH: usize = 10_000;
 
 /// Files that the LLM must not overwrite.
 const PROTECTED_FILES: &[&str] = &[

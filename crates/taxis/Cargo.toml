@@ -21,6 +21,11 @@ test-support = ["dep:tempfile"]
 [dependencies]
 koina = { path = "../koina" }
 eidos = { path = "../eidos" }
+hermeneus = { path = "../hermeneus" }
+episteme = { path = "../episteme" }
+dianoia = { path = "../dianoia" }
+melete = { path = "../melete" }
+symbolon = { path = "../symbolon" }
 rand = { workspace = true }
 chacha20poly1305 = { workspace = true }
 serde = { workspace = true }
@@ -37,6 +42,10 @@ tracing = { workspace = true }
 # to sibling integration-test binaries (tests/public_api_loader.rs etc).
 taxis = { path = ".", features = ["test-support"] }
 koina = { path = "../koina", features = ["test-support"] }
+agora = { path = "../agora" }
+organon = { path = "../organon" }
+oikonomos = { path = "../daemon" }
+pylon = { path = "../pylon" }
 proptest = { workspace = true }
 tempfile = { workspace = true }
 tracing-test = { workspace = true }

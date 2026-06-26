@@ -10,7 +10,7 @@
 pub mod architecture_fact;
 mod causal;
 mod entity;
-mod fact;
+pub mod fact;
 pub mod finding;
 mod path;
 mod scope;

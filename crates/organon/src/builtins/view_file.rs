@@ -27,17 +27,9 @@ fn relativize_path(path: &Path, workspace: &Path) -> String {
 }
 
 /// Fallback default; runtime reads `ctx.tool_config.max_image_bytes`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
+pub const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 /// Fallback default; runtime reads `ctx.tool_config.max_pdf_bytes`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const MAX_PDF_BYTES: u64 = 32 * 1024 * 1024;
+pub const MAX_PDF_BYTES: u64 = 32 * 1024 * 1024;
 
 enum MediaKind {
     Image(&'static str),

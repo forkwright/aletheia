@@ -18,10 +18,12 @@ const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 const DEFAULT_MAX_RESTARTS: u32 = 5;
 
 /// Base delay for exponential backoff (2 seconds).
-const BACKOFF_BASE: Duration = Duration::from_secs(2);
+/// Fallback default; runtime reads `DaemonBehaviorConfig::watchdog_backoff_base_secs`.
+pub const BACKOFF_BASE: Duration = Duration::from_secs(2);
 
 /// Maximum backoff delay cap (5 minutes).
-const BACKOFF_CAP: Duration = Duration::from_mins(5);
+/// Fallback default; runtime reads `DaemonBehaviorConfig::watchdog_backoff_cap_secs`.
+pub const BACKOFF_CAP: Duration = Duration::from_mins(5);
 
 /// Maximum number of restart events retained in memory.
 ///

@@ -38,38 +38,27 @@ pub struct KnowledgeConfig {
     pub instinct_max_param_value_len: usize,
     /// Maximum length for context summaries. Default: 100.
     pub instinct_max_context_summary_len: usize,
-    /// Maximum byte length for fact content strings. Default: 102400 (100 KiB).
-    /// Mirrors `eidos::knowledge::fact::MAX_CONTENT_LENGTH`.
+    /// Maximum byte length for fact content strings.
     pub max_content_length: usize,
-    /// Default maximum entries returned by a single side-query. Default: 5.
-    /// Mirrors `episteme::side_query::DEFAULT_MAX_RESULTS`.
+    /// Default maximum entries returned by a single side-query.
     pub side_query_max_results: usize,
-    /// Default cache time-to-live in seconds for side-query. Default: 300.
-    /// Mirrors `episteme::side_query::DEFAULT_CACHE_TTL_SECS`.
+    /// Default cache time-to-live in seconds for side-query.
     pub side_query_cache_ttl_secs: u64,
-    /// Default maximum cache entries for side-query. Default: 64.
-    /// Mirrors `episteme::side_query::DEFAULT_CACHE_CAPACITY`.
+    /// Default maximum cache entries for side-query.
     pub side_query_cache_capacity: usize,
-    /// Decay score below which a skill is flagged for review. Default: 0.3.
-    /// Mirrors `episteme::skill::decay::NEEDS_REVIEW_THRESHOLD`.
+    /// Decay score below which a skill is flagged for review.
     pub skill_decay_needs_review_threshold: f64,
-    /// Decay score below which a skill is auto-retired. Default: 0.08.
-    /// Mirrors `episteme::skill::decay::RETIRE_THRESHOLD`.
+    /// Decay score below which a skill is auto-retired.
     pub skill_decay_retire_threshold: f64,
-    /// Days of inactivity before decay reaches review threshold (low-usage skills). Default: 28.
-    /// Mirrors `episteme::skill::decay::DEFAULT_STALE_DAYS`.
+    /// Days of inactivity before decay reaches review threshold (low-usage skills).
     pub skill_decay_stale_days: u32,
-    /// Usage count above which a skill decays slower. Default: 10.
-    /// Mirrors `episteme::skill::decay::HIGH_USAGE_THRESHOLD`.
+    /// Usage count above which a skill decays slower.
     pub skill_decay_high_usage_threshold: u32,
-    /// Multiplier applied to decay half-life for high-usage skills. Default: 3.0.
-    /// Mirrors `episteme::skill::decay::HIGH_USAGE_DECAY_FACTOR`.
+    /// Multiplier applied to decay half-life for high-usage skills.
     pub skill_decay_high_usage_factor: f64,
-    /// Surprise threshold (nats) for episode boundary detection. Default: 2.0.
-    /// Mirrors `episteme::surprise::DEFAULT_THRESHOLD`.
+    /// Surprise threshold (nats) for episode boundary detection.
     pub surprise_threshold: f64,
-    /// EMA alpha for surprise baseline adaptation. Default: 0.3.
-    /// Mirrors `episteme::surprise::DEFAULT_EMA_ALPHA`.
+    /// EMA alpha for surprise baseline adaptation.
     pub surprise_ema_alpha: f64,
     /// Recall weight for Bayesian surprise contribution. Default: 0.0 (inert).
     ///
@@ -146,7 +135,7 @@ impl Default for KnowledgeConfig {
             decay_max_reinforcement_bonus: 1.0,
             decay_cross_agent_bonus_per_agent: 0.15,
             decay_max_cross_agent_multiplier: 1.75,
-            max_content_length: 102_400,
+            max_content_length: eidos::knowledge::fact::MAX_CONTENT_LENGTH,
             extraction_confidence_threshold: 0.3,
             extraction_min_fact_length: 10,
             extraction_max_fact_length: 500,
@@ -154,16 +143,16 @@ impl Default for KnowledgeConfig {
             instinct_min_tool_calls: 5,
             instinct_max_param_value_len: 200,
             instinct_max_context_summary_len: 100,
-            side_query_max_results: 5,
-            side_query_cache_ttl_secs: 300,
-            side_query_cache_capacity: 64,
-            skill_decay_needs_review_threshold: 0.3,
-            skill_decay_retire_threshold: 0.08,
-            skill_decay_stale_days: 28,
-            skill_decay_high_usage_threshold: 10,
-            skill_decay_high_usage_factor: 3.0,
-            surprise_threshold: 2.0,
-            surprise_ema_alpha: 0.3,
+            side_query_max_results: episteme::side_query::DEFAULT_MAX_RESULTS,
+            side_query_cache_ttl_secs: episteme::side_query::DEFAULT_CACHE_TTL_SECS,
+            side_query_cache_capacity: episteme::side_query::DEFAULT_CACHE_CAPACITY,
+            skill_decay_needs_review_threshold: episteme::skill::decay::NEEDS_REVIEW_THRESHOLD,
+            skill_decay_retire_threshold: episteme::skill::decay::RETIRE_THRESHOLD,
+            skill_decay_stale_days: episteme::skill::decay::DEFAULT_STALE_DAYS,
+            skill_decay_high_usage_threshold: episteme::skill::decay::HIGH_USAGE_THRESHOLD,
+            skill_decay_high_usage_factor: episteme::skill::decay::HIGH_USAGE_DECAY_FACTOR,
+            surprise_threshold: episteme::surprise::DEFAULT_THRESHOLD,
+            surprise_ema_alpha: episteme::surprise::DEFAULT_EMA_ALPHA,
             recall_surprise_weight: 0.0,
             recall_evidence_coverage_weight: 0.0,
             recall_convergence_weight: 0.0,

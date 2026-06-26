@@ -10,6 +10,17 @@ use serde::{Deserialize, Serialize};
 
 use super::{AgencyLevel, BookkeepingProviderKind, CompactionStrategyKind};
 
+/// Default value used for `AgentBehaviorDefaults::tool_agent_dispatch_max_tasks`.
+pub(crate) const DEFAULT_TOOL_AGENT_DISPATCH_MAX_TASKS: usize = 10;
+/// Default value used for `AgentBehaviorDefaults::tool_datalog_default_row_limit`.
+pub(crate) const DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT: usize = 100;
+/// Default value used for `AgentBehaviorDefaults::tool_datalog_default_timeout_secs`.
+pub(crate) const DEFAULT_TOOL_DATALOG_DEFAULT_TIMEOUT_SECS: f64 = 5.0;
+/// Default value used for `AgentBehaviorDefaults::tool_max_image_bytes`.
+pub(crate) const DEFAULT_TOOL_MAX_IMAGE_BYTES: u64 = 20_971_520;
+/// Default value used for `AgentBehaviorDefaults::tool_max_pdf_bytes`.
+pub(crate) const DEFAULT_TOOL_MAX_PDF_BYTES: u64 = 33_554_432;
+
 /// Agent configuration: shared defaults and per-agent definitions.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,8 +114,8 @@ impl<'de> Deserialize<'de> for AgentToolGroupPolicy {
 
 /// Per-factor scoring weights for the recall pipeline.
 ///
-/// Mirrors the weights in the nous recall stage but lives in taxis so operators
-/// can tune them per-agent via TOML without creating a taxis â†’ nous dependency.
+/// Lives in taxis so operators can tune them per-agent via TOML without
+/// creating a taxis â†’ nous dependency.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -542,8 +553,7 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields â
     pub uncertainty_max_calibration_points: usize,
 
     // --- Manifest ---
-    /// Maximum memory entries in a single manifest for side-query pre-filtering. Default: 200.
-    /// Mirrors `episteme::manifest::MAX_MEMORY_ENTRIES`.
+    /// Maximum memory entries in a single manifest for side-query pre-filtering.
     pub manifest_max_entries: usize,
 
     // --- Skills ---
@@ -559,8 +569,7 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields â
     pub working_state_max_task_stack: usize,
 
     // --- Planning ---
-    /// Maximum planning iterations per planning cycle. Default: 10.
-    /// Mirrors `dianoia::plan::DEFAULT_MAX_ITERATIONS`.
+    /// Maximum planning iterations per planning cycle.
     pub planning_max_iterations: u32,
     /// History turns inspected for stuck-detection. Default: 20.
     pub planning_stuck_history_window: u32,
@@ -582,8 +591,7 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields â
     pub knowledge_instinct_min_success_rate: f64,
     /// Minimum stability hours before an instinct is surfaced. Default: 168.0.
     pub knowledge_instinct_stability_hours: f64,
-    /// Standard deviations above baseline for surprise detection. Default: 2.0.
-    /// Mirrors `episteme::surprise::DEFAULT_THRESHOLD`.
+    /// Standard deviations above baseline for surprise detection.
     pub knowledge_surprise_threshold: f64,
     /// EMA alpha for surprise baseline. Default: 0.3.
     pub knowledge_surprise_ema_alpha: f64,
@@ -628,34 +636,26 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields â
     pub distillation_max_tool_result_len: usize,
 
     // --- Auto-dream consolidation ---
-    /// Minimum hours between auto-dream consolidation runs. Default: 24.
-    /// Mirrors `melete::dream::DEFAULT_MIN_HOURS`.
+    /// Minimum hours between auto-dream consolidation runs.
     pub dream_min_hours: u64,
-    /// Minimum sessions required to trigger auto-dream consolidation. Default: 5.
-    /// Mirrors `melete::dream::DEFAULT_MIN_SESSIONS`.
+    /// Minimum sessions required to trigger auto-dream consolidation.
     pub dream_min_sessions: usize,
     /// Session scan throttle interval in seconds. Default: 600.
     pub dream_scan_throttle_secs: i64,
-    /// Stale lock threshold in seconds for auto-dream. Default: 3600.
-    /// Mirrors `melete::dream::DEFAULT_STALE_THRESHOLD_SECS`.
+    /// Stale lock threshold in seconds for auto-dream.
     pub dream_stale_threshold_secs: i64,
 
     // --- Tool behavior ---
-    /// Maximum concurrent agent-dispatch tasks. Default: 10.
-    /// Mirrors `organon::builtins::agent::MAX_DISPATCH_TASKS`.
+    /// Maximum concurrent agent-dispatch tasks.
     pub tool_agent_dispatch_max_tasks: usize,
-    /// Default row limit for Datalog memory queries. Default: 100.
-    /// Mirrors `organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT`.
-    pub tool_datalog_default_row_limit: u32,
-    /// Default query timeout in seconds for the Datalog memory tool. Default: 5.0.
-    /// Mirrors `organon::builtins::memory::datalog::DEFAULT_TIMEOUT_SECS`.
+    /// Default row limit for Datalog memory queries.
+    pub tool_datalog_default_row_limit: usize,
+    /// Default query timeout in seconds for the Datalog memory tool.
     pub tool_datalog_default_timeout_secs: f64,
-    /// Maximum image file size in bytes for the view-file tool. Default: 20971520 (20 MiB).
-    /// Mirrors `organon::builtins::view_file::MAX_IMAGE_BYTES`.
-    pub tool_max_image_bytes: usize,
-    /// Maximum PDF file size in bytes for the view-file tool. Default: 33554432 (32 MiB).
-    /// Mirrors `organon::builtins::view_file::MAX_PDF_BYTES`.
-    pub tool_max_pdf_bytes: usize,
+    /// Maximum image file size in bytes for the view-file tool.
+    pub tool_max_image_bytes: u64,
+    /// Maximum PDF file size in bytes for the view-file tool.
+    pub tool_max_pdf_bytes: u64,
 
     // --- Bootstrap ---
     /// Minimum token budget remaining before attempting section truncation.
@@ -714,7 +714,7 @@ impl Default for AgentBehaviorDefaults {
             // Uncertainty
             uncertainty_max_calibration_points: 1_000,
             // Manifest
-            manifest_max_entries: 200,
+            manifest_max_entries: episteme::manifest::MAX_MEMORY_ENTRIES,
             // Skills
             skills_max_skills: 5,
             skills_max_context_chars: 200,
@@ -722,7 +722,7 @@ impl Default for AgentBehaviorDefaults {
             working_state_ttl_secs: 604_800,
             working_state_max_task_stack: 10,
             // Planning
-            planning_max_iterations: 10,
+            planning_max_iterations: dianoia::plan::DEFAULT_MAX_ITERATIONS,
             planning_stuck_history_window: 20,
             planning_stuck_repeated_error_threshold: 3,
             planning_stuck_same_args_threshold: 3,
@@ -733,7 +733,7 @@ impl Default for AgentBehaviorDefaults {
             knowledge_instinct_min_observations: 5,
             knowledge_instinct_min_success_rate: 0.80,
             knowledge_instinct_stability_hours: 168.0,
-            knowledge_surprise_threshold: 2.0,
+            knowledge_surprise_threshold: episteme::surprise::DEFAULT_THRESHOLD,
             knowledge_surprise_ema_alpha: 0.3,
             knowledge_rule_min_observations: 5,
             knowledge_rule_min_confidence: 0.60,
@@ -755,16 +755,16 @@ impl Default for AgentBehaviorDefaults {
             // Distillation prompt
             distillation_max_tool_result_len: 500,
             // Auto-dream
-            dream_min_hours: 24,
-            dream_min_sessions: 5,
+            dream_min_hours: melete::dream::DEFAULT_MIN_HOURS,
+            dream_min_sessions: melete::dream::DEFAULT_MIN_SESSIONS,
             dream_scan_throttle_secs: 600,
-            dream_stale_threshold_secs: 3_600,
+            dream_stale_threshold_secs: melete::dream::DEFAULT_STALE_THRESHOLD_SECS,
             // Tool behavior
-            tool_agent_dispatch_max_tasks: 10,
-            tool_datalog_default_row_limit: 100,
-            tool_datalog_default_timeout_secs: 5.0,
-            tool_max_image_bytes: 20_971_520,
-            tool_max_pdf_bytes: 33_554_432,
+            tool_agent_dispatch_max_tasks: DEFAULT_TOOL_AGENT_DISPATCH_MAX_TASKS,
+            tool_datalog_default_row_limit: DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT,
+            tool_datalog_default_timeout_secs: DEFAULT_TOOL_DATALOG_DEFAULT_TIMEOUT_SECS,
+            tool_max_image_bytes: DEFAULT_TOOL_MAX_IMAGE_BYTES,
+            tool_max_pdf_bytes: DEFAULT_TOOL_MAX_PDF_BYTES,
             // Bootstrap
             bootstrap_min_truncation_budget: 200,
             // Corrections
@@ -774,3 +774,21 @@ impl Default for AgentBehaviorDefaults {
         }
     }
 }
+
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_TOOL_AGENT_DISPATCH_MAX_TASKS == organon::builtins::agent::MAX_DISPATCH_TASKS);
+#[cfg(test)]
+const _: () = assert!(
+    DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT == organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT
+);
+#[cfg(test)]
+const _: () = assert!(
+    DEFAULT_TOOL_DATALOG_DEFAULT_TIMEOUT_SECS
+        == organon::builtins::memory::datalog::DEFAULT_TIMEOUT_SECS
+);
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_TOOL_MAX_IMAGE_BYTES == organon::builtins::view_file::MAX_IMAGE_BYTES);
+#[cfg(test)]
+const _: () = assert!(DEFAULT_TOOL_MAX_PDF_BYTES == organon::builtins::view_file::MAX_PDF_BYTES);

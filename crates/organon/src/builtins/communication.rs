@@ -16,23 +16,11 @@ use crate::types::{
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.message_max_len`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const MESSAGE_MAX_LEN: usize = 4000;
+pub const MESSAGE_MAX_LEN: usize = 4000;
 /// Fallback default; runtime reads `ctx.tool_config.inter_session_max_message_len`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
+pub const INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
 /// Fallback default; runtime reads `ctx.tool_config.inter_session_max_timeout_secs`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
+pub const INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
 
 struct MessageExecutor;
 

@@ -9606,14 +9606,23 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 name = "taxis"
 version = "0.31.1"
 dependencies = [
+ "agora",
  "chacha20poly1305",
+ "dianoia",
  "eidos",
+ "episteme",
+ "hermeneus",
  "koina",
+ "melete",
+ "oikonomos",
+ "organon",
  "proptest",
+ "pylon",
  "rand 0.10.1",
  "serde",
  "serde_json",
  "snafu",
+ "symbolon",
  "taxis",
  "tempfile",
  "toml 1.1.2+spec-1.1.0",
