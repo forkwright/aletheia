@@ -131,10 +131,14 @@ impl Linter {
         // Citation checks run on all lines because source markers may appear
         // adjacent to comment lines.
         let cleaned = strip_comments(text);
-        let effective: Vec<(usize, &str)> = cleaned
+        let cleaned_lines: Vec<(usize, &str)> = cleaned
             .lines()
             .enumerate()
             .map(|(i, l)| (i + 1, l))
+            .collect();
+        let effective: Vec<(usize, &str)> = cleaned_lines
+            .iter()
+            .copied()
             .filter(|(_, l)| !l.trim().is_empty())
             .collect();
 
@@ -147,7 +151,9 @@ impl Linter {
             findings.extend(citations::check(&all_lines, self.config.citation_window));
         }
         if self.config.check_structure {
-            findings.extend(structure::check_structure(&effective));
+            // WHY: preserve blank lines so paragraph-boundary resets in
+            // check_structure can fire; comments are already stripped to spaces.
+            findings.extend(structure::check_structure(&cleaned_lines));
         }
         if self.config.check_sections {
             findings.extend(structure::check_sections(&effective));
@@ -472,6 +478,27 @@ mod tests {
         assert!(
             findings.iter().any(|f| f.message.contains("robust")),
             "must flag banned word inside URL path"
+        );
+    }
+
+    #[test]
+    fn blank_lines_reset_transition_density() {
+        let linter = Linter {
+            config: LintConfig {
+                check_banned_words: false,
+                check_citations: false,
+                check_sections: false,
+                check_header_length: false,
+                ..LintConfig::default()
+            },
+        };
+        let text = "Furthermore, X.\n\nAdditionally, Y.\n\nMoreover, Z.\n";
+        let findings = linter.check(text);
+        assert!(
+            findings
+                .iter()
+                .all(|f| f.kind != FindingKind::StructuralPattern),
+            "blank-line-separated transitions must not produce a structural finding: {findings:?}"
         );
     }
 }
