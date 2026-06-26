@@ -4,7 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use hermeneus::error as llm_error;
-use hermeneus::fallback::{FallbackConfig, complete_with_fallback};
+use hermeneus::fallback::{FallbackCompletion, FallbackConfig, complete_with_fallback_observed};
 use hermeneus::health::ProviderHealth;
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::types::{CompletionRequest, CompletionResponse};
@@ -63,7 +63,7 @@ pub(super) async fn complete_with_registry_fallback(
     providers: &ProviderRegistry,
     request: &CompletionRequest,
     config: &FallbackConfig,
-) -> llm_error::Result<CompletionResponse> {
+) -> llm_error::Result<FallbackCompletion> {
     let fallback_provider = RegistryFallbackProvider { providers };
-    complete_with_fallback(&fallback_provider, request, config).await
+    complete_with_fallback_observed(&fallback_provider, request, config).await
 }

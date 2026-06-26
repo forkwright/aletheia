@@ -27,6 +27,7 @@ pub struct SessionState {
     pub nous_id: String,
     pub session_key: String, // kanon:ignore RUST/plain-string-secret
 
+    /// Configured default model for this session.
     pub model: String,
     pub thinking_enabled: bool,
     pub thinking_budget: u32,

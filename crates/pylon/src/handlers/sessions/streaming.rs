@@ -76,6 +76,7 @@ fn turn_complete_event_payload(
         "cache_read_tokens": result.usage.cache_read_tokens,
         "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
+        "model": result.model_used.as_str(),
     })
 }
 
@@ -749,12 +750,13 @@ pub async fn stream_turn(
         })?
         .clone();
 
-    let model = state
+    let configured_model = state
         .nous_manager
         .get_config(&agent_id)
         .map(|c| c.generation.model.clone());
 
-    let session_id = resolve_session(&state, &agent_id, &session_key, model.as_deref()).await?;
+    let session_id =
+        resolve_session(&state, &agent_id, &session_key, configured_model.as_deref()).await?;
 
     let stream_request_id = request_id.0.clone();
     let turn_id = koina::ulid::Ulid::new().to_string();
@@ -937,7 +939,7 @@ pub async fn stream_turn(
                             text: result.content.clone(),
                             nous_id: aid.clone(),
                             session_id: sid.clone(),
-                            model,
+                            model: Some(result.model_used.clone()),
                             tool_calls: result.tool_calls.len(),
                             input_tokens: result.usage.input_tokens,
                             output_tokens: result.usage.output_tokens,
@@ -1000,7 +1002,7 @@ pub async fn stream_turn(
                             text: String::new(),
                             nous_id: aid,
                             session_id: sid,
-                            model,
+                            model: configured_model,
                             tool_calls: 0,
                             input_tokens: 0,
                             output_tokens: 0,

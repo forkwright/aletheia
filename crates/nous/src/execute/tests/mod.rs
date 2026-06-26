@@ -139,6 +139,12 @@ fn make_text_response(text: &str) -> CompletionResponse {
     }
 }
 
+fn make_text_response_for_model(text: &str, model: &str) -> CompletionResponse {
+    let mut response = make_text_response(text);
+    response.model = model.to_owned();
+    response
+}
+
 fn make_tool_response(
     tool_name: &str,
     tool_id: &str,
