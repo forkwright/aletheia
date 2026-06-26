@@ -4,9 +4,9 @@ use std::process::Command;
 use tracing::warn;
 
 use mneme::workspace::ProjectId;
-use nous::config::{NousConfig, PipelineConfig};
+use nous::config::{HookConfig, NousConfig, NousLimits, PipelineConfig};
 use organon::types::{ToolGroupId, ToolGroupPolicy};
-use taxis::config::{AgentToolGroupPolicy, AletheiaConfig, resolve_nous};
+use taxis::config::{AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, resolve_nous};
 use taxis::oikos::Oikos;
 
 fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
@@ -78,6 +78,37 @@ fn resolve_tool_group_policy(agent_id: &str, policy: &AgentToolGroupPolicy) -> T
     }
 }
 
+fn build_nous_limits(
+    max_tool_iterations: u32,
+    max_tool_result_bytes: u32,
+    behavior: &AgentBehaviorDefaults,
+    config: &AletheiaConfig,
+) -> NousLimits {
+    NousLimits {
+        max_tool_iterations,
+        loop_detection_threshold: behavior.safety_loop_detection_threshold,
+        consecutive_error_threshold: behavior.safety_consecutive_error_threshold,
+        loop_max_warnings: behavior.safety_loop_max_warnings,
+        session_token_cap: behavior.safety_session_token_cap,
+        max_tool_result_bytes,
+        max_consecutive_tool_only_iterations: behavior.safety_max_consecutive_tool_only_iterations,
+        consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
+        loop_detection_window: config.nous_behavior.loop_detection_window,
+        cycle_detection_max_len: config.nous_behavior.cycle_detection_max_len,
+    }
+}
+
+fn build_hook_config(behavior: &AgentBehaviorDefaults) -> HookConfig {
+    HookConfig {
+        cost_control_enabled: behavior.hooks_cost_control_enabled,
+        turn_token_budget: behavior.hooks_turn_token_budget,
+        scope_enforcement_enabled: behavior.hooks_scope_enforcement_enabled,
+        correction_hooks_enabled: behavior.hooks_correction_hooks_enabled,
+        audit_logging_enabled: behavior.hooks_audit_logging_enabled,
+        ..HookConfig::default()
+    }
+}
+
 pub(super) fn build_nous_runtime_config(
     config: &AletheiaConfig,
     oikos: &Oikos,
@@ -117,6 +148,7 @@ pub(super) fn build_nous_runtime_config(
 
     let workspace = resolve_config_path(oikos, &resolved.workspace);
     let project_id = detect_project_id(&workspace);
+    let behavior = resolved.behavior.clone();
     let mut nous_config = NousConfig {
         id: resolved.id,
         name: resolved.name,
@@ -140,18 +172,12 @@ pub(super) fn build_nous_runtime_config(
             extraction_model: None,
             distillation_model: None,
         },
-        limits: nous::config::NousLimits {
+        limits: build_nous_limits(
             max_tool_iterations,
-            loop_detection_threshold: 3,
-            consecutive_error_threshold: 4,
-            loop_max_warnings: 2,
-            session_token_cap: 500_000,
-            max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
-            max_consecutive_tool_only_iterations: 3,
-            consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
-            loop_detection_window: config.nous_behavior.loop_detection_window,
-            cycle_detection_max_len: config.nous_behavior.cycle_detection_max_len,
-        },
+            resolved.limits.max_tool_result_bytes,
+            &behavior,
+            config,
+        ),
         domains,
         private: resolved.private,
         episteme_cohort: resolved.episteme_cohort,
@@ -163,8 +189,8 @@ pub(super) fn build_nous_runtime_config(
         recall_profile: resolved.recall_profile.into(),
         tool_allowlist: resolved.tool_allowlist,
         tool_groups: resolve_tool_group_policy(agent_id, &resolved.tool_groups),
-        hooks: nous::config::HookConfig::default(),
-        behavior: resolved.behavior,
+        hooks: build_hook_config(&behavior),
+        behavior,
     };
     // WHY: thread the knowledge-config surprise/evidence recall knobs into the
     // recall engine. The From<RecallSettings> conversion cannot carry these —
@@ -190,4 +216,66 @@ pub(super) fn build_nous_runtime_config(
             ..PipelineConfig::default()
         },
     )
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test setup assertions")]
+mod tests {
+    use taxis::config::{AgentBehaviorDefaults, AletheiaConfig, NousDefinition};
+    use taxis::oikos::Oikos;
+    use tempfile::TempDir;
+
+    use super::build_nous_runtime_config;
+
+    #[test]
+    fn resolved_behavior_drives_runtime_limits_and_hooks() {
+        let mut config = AletheiaConfig::default();
+        let behavior = AgentBehaviorDefaults {
+            safety_loop_detection_threshold: 7,
+            safety_consecutive_error_threshold: 8,
+            safety_loop_max_warnings: 9,
+            safety_session_token_cap: 123_456,
+            safety_max_consecutive_tool_only_iterations: 6,
+            hooks_cost_control_enabled: false,
+            hooks_turn_token_budget: 42,
+            hooks_scope_enforcement_enabled: false,
+            hooks_correction_hooks_enabled: false,
+            hooks_audit_logging_enabled: false,
+            ..AgentBehaviorDefaults::default()
+        };
+        config.agents.list.push(NousDefinition {
+            id: "custom".to_owned(),
+            workspace: "nous/custom".to_owned(),
+            behavior: Some(behavior.clone()),
+            ..NousDefinition::default()
+        });
+        let instance = TempDir::new().expect("create instance temp directory");
+        let oikos = Oikos::from_root(instance.path());
+
+        let (nous_config, _pipeline_config) =
+            build_nous_runtime_config(&config, &oikos, &[], "custom");
+
+        assert_eq!(nous_config.limits.loop_detection_threshold, 7);
+        assert_eq!(nous_config.limits.consecutive_error_threshold, 8);
+        assert_eq!(nous_config.limits.loop_max_warnings, 9);
+        assert_eq!(nous_config.limits.session_token_cap, 123_456);
+        assert_eq!(nous_config.limits.max_consecutive_tool_only_iterations, 6);
+        assert!(!nous_config.hooks.cost_control_enabled);
+        assert_eq!(nous_config.hooks.turn_token_budget, 42);
+        assert!(!nous_config.hooks.scope_enforcement_enabled);
+        assert!(!nous_config.hooks.correction_hooks_enabled);
+        assert!(!nous_config.hooks.audit_logging_enabled);
+        assert!(
+            nous_config.hooks.self_audit_enabled,
+            "schema-unbacked hook fields should keep their runtime defaults"
+        );
+        assert!(
+            nous_config.hooks.working_checkpoint_enabled,
+            "schema-unbacked hook fields should keep their runtime defaults"
+        );
+        assert_eq!(
+            nous_config.behavior.safety_loop_detection_threshold,
+            behavior.safety_loop_detection_threshold
+        );
+    }
 }
