@@ -350,13 +350,70 @@ pub fn commit_memory_flush(
     nous_id: &str,
     result: &DistillResult,
     history: &[mneme::types::Message],
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<usize> {
     if result.memory_flush.is_empty() {
         return Ok(0);
     }
 
     verify_memory_flush(&result.memory_flush, history)?;
-    persist_memory_flush_items(knowledge_store, &result.memory_flush, session_id, nous_id)
+    let policy = MemoryFlushPolicy::from_mneme_history(project_id, history);
+    persist_memory_flush_items(
+        knowledge_store,
+        &result.memory_flush,
+        session_id,
+        nous_id,
+        &policy,
+    )
+}
+
+#[cfg(feature = "knowledge-store")]
+#[derive(Debug, Clone)]
+pub(crate) struct MemoryFlushPolicy {
+    project_id: Option<mneme::workspace::ProjectId>,
+    sensitivity: mneme::knowledge::FactSensitivity,
+}
+
+#[cfg(feature = "knowledge-store")]
+impl MemoryFlushPolicy {
+    pub(crate) fn from_mneme_history(
+        project_id: Option<&mneme::workspace::ProjectId>,
+        history: &[mneme::types::Message],
+    ) -> Self {
+        Self {
+            project_id: project_id.cloned(),
+            sensitivity: infer_sensitivity(history.iter().map(|message| message.content.as_str())),
+        }
+    }
+
+    pub(crate) fn from_hermeneus_messages(
+        project_id: Option<&mneme::workspace::ProjectId>,
+        messages: &[HermeneusMessage],
+    ) -> Self {
+        Self {
+            project_id: project_id.cloned(),
+            sensitivity: infer_sensitivity(messages.iter().map(|message| message.content.text())),
+        }
+    }
+
+    fn scope(&self) -> Option<mneme::knowledge::MemoryScope> {
+        self.project_id
+            .as_ref()
+            .map(|_| mneme::knowledge::MemoryScope::Project)
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+fn infer_sensitivity<I, S>(texts: I) -> mneme::knowledge::FactSensitivity
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    texts
+        .into_iter()
+        .map(|text| crate::pipeline::triage::TriageStage::classify(text.as_ref()).sensitivity)
+        .max()
+        .unwrap_or(mneme::knowledge::FactSensitivity::Public)
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -365,17 +422,18 @@ pub(crate) fn persist_memory_flush_items(
     flush: &MemoryFlush,
     session_id: &str,
     nous_id: &str,
+    policy: &MemoryFlushPolicy,
 ) -> error::Result<usize> {
     let mut inserted = 0usize;
     for (kind, item) in flush_items(flush) {
-        let fact = fact_from_flush_item(kind, item, session_id, nous_id)?;
+        let fact = fact_from_flush_item(kind, item, session_id, nous_id, policy)?;
         knowledge_store
             .insert_fact(&fact)
             .context(error::KnowledgeStoreSnafu)?;
         inserted = inserted.saturating_add(1);
     }
     if let Some(task_state) = flush.task_state.as_deref() {
-        let fact = fact_from_content("task_state", task_state, session_id, nous_id)?;
+        let fact = fact_from_content("task_state", task_state, session_id, nous_id, policy)?;
         knowledge_store
             .insert_fact(&fact)
             .context(error::KnowledgeStoreSnafu)?;
@@ -420,8 +478,9 @@ fn fact_from_flush_item(
     item: &FlushItem,
     session_id: &str,
     nous_id: &str,
+    policy: &MemoryFlushPolicy,
 ) -> error::Result<mneme::knowledge::Fact> {
-    fact_from_content(kind, &item.content, session_id, nous_id)
+    fact_from_content(kind, &item.content, session_id, nous_id, policy)
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -430,11 +489,12 @@ fn fact_from_content(
     content: &str,
     session_id: &str,
     nous_id: &str,
+    policy: &MemoryFlushPolicy,
 ) -> error::Result<mneme::knowledge::Fact> {
     use mneme::id::FactId;
     use mneme::knowledge::{
-        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, MemoryScope,
-        Visibility, default_stability_hours, far_future,
+        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, Visibility,
+        default_stability_hours, far_future,
     };
 
     let now = jiff::Timestamp::now();
@@ -450,9 +510,9 @@ fn fact_from_content(
         nous_id: nous_id.to_owned(),
         fact_type: fact_type.clone(),
         content: content.to_owned(),
-        scope: Some(MemoryScope::Project),
-        project_id: None,
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
+        scope: policy.scope(),
+        project_id: policy.project_id.clone(),
+        sensitivity: policy.sensitivity,
         visibility: Visibility::Private,
         temporal: FactTemporal {
             valid_from: now,
@@ -774,9 +834,16 @@ mod tests {
     }
 
     #[cfg(feature = "knowledge-store")]
+    fn project_id() -> mneme::workspace::ProjectId {
+        mneme::workspace::ProjectId::from_git_remote("https://git.acme.corp/substrate.git")
+            .expect("valid project remote")
+    }
+
+    #[cfg(feature = "knowledge-store")]
     #[test]
     fn commit_memory_flush_persists_structured_items_and_task_state() {
         let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let project_id = project_id();
         let flush = melete::flush::MemoryFlush {
             decisions: vec![flush_item("alice chose rust for the substrate")],
             corrections: vec![],
@@ -788,8 +855,15 @@ mod tests {
             "alice chose rust for the substrate. bob owns the deployment checklist.",
         )];
 
-        let inserted =
-            commit_memory_flush(&store, "ses-1", "nous-1", &result, &history).expect("commit");
+        let inserted = commit_memory_flush(
+            &store,
+            "ses-1",
+            "nous-1",
+            &result,
+            &history,
+            Some(&project_id),
+        )
+        .expect("commit");
 
         assert_eq!(inserted, 3);
         let facts = store.list_all_facts(10).expect("list facts");
@@ -801,10 +875,80 @@ mod tests {
             "memory flush facts must preserve project scope"
         );
         assert!(
+            facts
+                .iter()
+                .all(|fact| fact.project_id.as_ref() == Some(&project_id)),
+            "project-scoped memory flush facts must preserve project identity"
+        );
+        assert!(
             facts.iter().any(|fact| fact.fact_type == "task_state"
                 && fact.content == "acme rollout remains in review"),
             "task_state must be persisted, not silently dropped"
         );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn commit_memory_flush_preserves_project_and_confidential_sensitivity() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let project_id = project_id();
+        let content = "alice stored the nda account plan for acme.corp";
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![],
+            corrections: vec![],
+            facts: vec![flush_item(content)],
+            task_state: None,
+        };
+        let result = distill_result_with_flush(flush);
+        let history = vec![mneme_message(content)];
+
+        let inserted = commit_memory_flush(
+            &store,
+            "ses-1",
+            "nous-1",
+            &result,
+            &history,
+            Some(&project_id),
+        )
+        .expect("commit");
+
+        assert_eq!(inserted, 1);
+        let facts = store.list_all_facts(10).expect("list facts");
+        let fact = facts.first().expect("one fact persisted");
+        assert_eq!(fact.scope, Some(mneme::knowledge::MemoryScope::Project));
+        assert_eq!(fact.project_id.as_ref(), Some(&project_id));
+        assert_eq!(
+            fact.sensitivity,
+            mneme::knowledge::FactSensitivity::Confidential,
+            "distillation must not downgrade confidential source history to public"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn commit_memory_flush_without_project_marks_facts_global() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let content = "bob owns the acme.corp deployment checklist";
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![],
+            corrections: vec![],
+            facts: vec![flush_item(content)],
+            task_state: None,
+        };
+        let result = distill_result_with_flush(flush);
+        let history = vec![mneme_message(content)];
+
+        let inserted = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history, None)
+            .expect("commit");
+
+        assert_eq!(inserted, 1);
+        let facts = store.list_all_facts(10).expect("list facts");
+        let fact = facts.first().expect("one fact persisted");
+        assert_eq!(
+            fact.scope, None,
+            "no-project flushes must be marked global instead of Project with project_id None"
+        );
+        assert!(fact.project_id.is_none());
     }
 
     #[cfg(feature = "knowledge-store")]
@@ -820,7 +964,7 @@ mod tests {
         let result = distill_result_with_flush(flush);
         let history = vec![mneme_message("alice chose rust for the substrate")];
 
-        let err = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history)
+        let err = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history, None)
             .expect_err("probe must reject ungrounded flush");
 
         assert!(

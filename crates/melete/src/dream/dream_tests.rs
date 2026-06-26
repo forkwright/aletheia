@@ -64,7 +64,7 @@ impl ConsolidationTarget for MockConsolidationTarget {
     fn merge_flush(
         &self,
         _flush: &MemoryFlush,
-        _nous_id: &str,
+        _transcript: &SessionTranscript,
     ) -> std::result::Result<MergeReport, std::io::Error> {
         self.merge_count.fetch_add(1, Ordering::Relaxed);
         Ok(MergeReport {
@@ -92,7 +92,7 @@ impl ConsolidationTarget for PanickingTarget {
     fn merge_flush(
         &self,
         _flush: &MemoryFlush,
-        _nous_id: &str,
+        _transcript: &SessionTranscript,
     ) -> std::result::Result<MergeReport, std::io::Error> {
         panic!("merge_flush exploded");
     }

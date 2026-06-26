@@ -145,7 +145,7 @@ pub trait ConsolidationTarget: Send + Sync {
     fn merge_flush(
         &self,
         flush: &MemoryFlush,
-        nous_id: &str,
+        transcript: &SessionTranscript,
     ) -> std::result::Result<MergeReport, std::io::Error>;
 
     /// Mark facts identified as contradictions for stale decay.
@@ -476,7 +476,7 @@ impl DreamEngine {
 
             // NOTE: merge extracted facts INTO the knowledge graph.
             match target
-                .merge_flush(&result.memory_flush, &transcript.nous_id)
+                .merge_flush(&result.memory_flush, transcript)
                 .context(DreamConsolidationTargetSnafu {
                     context: "merge flush INTO knowledge graph",
                 }) {

@@ -373,6 +373,8 @@ impl NousActor {
         let providers = Arc::clone(&self.services.providers);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.as_ref().map(Arc::clone);
+        #[cfg(feature = "knowledge-store")]
+        let project_id = self.pipeline_config.project_id.clone();
         let nous_id = self.id.clone();
         let span =
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
@@ -398,6 +400,8 @@ impl NousActor {
                         providers,
                         #[cfg(feature = "knowledge-store")]
                         knowledge_store,
+                        #[cfg(feature = "knowledge-store")]
+                        project_id,
                         session_id,
                         nous_id.clone(),
                         config,
@@ -452,9 +456,11 @@ impl NousActor {
         let engine = Arc::new(melete::dream::DreamEngine::new(dream_config));
         let source: Arc<dyn melete::dream::TranscriptSource> =
             Arc::new(SessionStoreTranscriptSource::new(Arc::clone(session_store)));
-        let target: Arc<dyn melete::dream::ConsolidationTarget> = Arc::new(
-            KnowledgeStoreConsolidationTarget::new(Arc::clone(knowledge_store)),
-        );
+        let target: Arc<dyn melete::dream::ConsolidationTarget> =
+            Arc::new(KnowledgeStoreConsolidationTarget::new(
+                Arc::clone(knowledge_store),
+                self.pipeline_config.project_id.clone(),
+            ));
         engine.on_turn_complete(&source, &target, &provider);
     }
 }
@@ -543,12 +549,13 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
 #[cfg(feature = "knowledge-store")]
 struct KnowledgeStoreConsolidationTarget {
     store: Arc<KnowledgeStore>,
+    project_id: Option<mneme::workspace::ProjectId>,
 }
 
 #[cfg(feature = "knowledge-store")]
 impl KnowledgeStoreConsolidationTarget {
-    fn new(store: Arc<KnowledgeStore>) -> Self {
-        Self { store }
+    fn new(store: Arc<KnowledgeStore>, project_id: Option<mneme::workspace::ProjectId>) -> Self {
+        Self { store, project_id }
     }
 }
 
@@ -557,13 +564,18 @@ impl melete::dream::ConsolidationTarget for KnowledgeStoreConsolidationTarget {
     fn merge_flush(
         &self,
         flush: &melete::flush::MemoryFlush,
-        nous_id: &str,
+        transcript: &melete::dream::SessionTranscript,
     ) -> std::result::Result<melete::dream::MergeReport, std::io::Error> {
+        let policy = crate::distillation::MemoryFlushPolicy::from_hermeneus_messages(
+            self.project_id.as_ref(),
+            &transcript.messages,
+        );
         let facts_added = crate::distillation::persist_memory_flush_items(
             &self.store,
             flush,
-            "auto-dream",
-            nous_id,
+            &transcript.session_id,
+            &transcript.nous_id,
+            &policy,
         )
         .map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(melete::dream::MergeReport {
@@ -964,6 +976,7 @@ async fn run_background_distillation(
     store: Arc<Mutex<SessionStore>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern
     providers: Arc<ProviderRegistry>,
     #[cfg(feature = "knowledge-store")] knowledge_store: Option<Arc<KnowledgeStore>>,
+    #[cfg(feature = "knowledge-store")] project_id: Option<mneme::workspace::ProjectId>,
     session_id: String,
     nous_id: String,
     config: crate::distillation::DistillTriggerConfig,
@@ -1036,6 +1049,7 @@ async fn run_background_distillation(
             &nous_id,
             &result,
             &history,
+            project_id.as_ref(),
         )
     {
         warn!(nous_id = %nous_id, session_id = %session_id, error = %e, "failed to commit distillation memory flush");
@@ -1066,9 +1080,11 @@ mod tests {
 
     use hermeneus::provider::ProviderRegistry;
     use hermeneus::test_utils::MockProvider;
-    use melete::dream::TranscriptSource;
+    use melete::dream::{ConsolidationTarget, TranscriptSource};
 
-    use super::{SessionStoreTranscriptSource, run_skill_extraction};
+    use super::{
+        KnowledgeStoreConsolidationTarget, SessionStoreTranscriptSource, run_skill_extraction,
+    };
 
     /// Drive real candidate/turn data through `run_skill_extraction` and assert
     /// the persisted pending skill carries derived source-session, redacted
@@ -1186,6 +1202,57 @@ mod tests {
         assert!(
             pending.extraction_audit.is_some(),
             "extraction audit refs retained"
+        );
+    }
+
+    #[test]
+    fn auto_dream_merge_flush_preserves_project_and_confidential_sensitivity() {
+        let store =
+            Arc::new(mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store"));
+        let project_id =
+            mneme::workspace::ProjectId::from_git_remote("https://git.acme.corp/dream.git")
+                .expect("valid project remote");
+        let target =
+            KnowledgeStoreConsolidationTarget::new(Arc::clone(&store), Some(project_id.clone()));
+        let content = "alice stored the nda account plan for acme.corp";
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![],
+            corrections: vec![],
+            facts: vec![melete::flush::FlushItem {
+                content: content.to_owned(),
+                timestamp: jiff::Timestamp::now().to_string(),
+                source: melete::flush::FlushSource::Extracted,
+            }],
+            task_state: None,
+        };
+        let transcript = melete::dream::SessionTranscript {
+            session_id: "ses-auto-dream".to_owned(),
+            nous_id: "nous-auto-dream".to_owned(),
+            messages: vec![hermeneus::types::Message {
+                role: hermeneus::types::Role::User,
+                content: hermeneus::types::Content::Text(content.to_owned()),
+                cache_breakpoint: false,
+            }],
+        };
+
+        let report = target
+            .merge_flush(&flush, &transcript)
+            .expect("auto-dream merge succeeds");
+
+        assert_eq!(report.facts_added, 1);
+        let facts = store.list_all_facts(10).expect("list facts");
+        let fact = facts.first().expect("one fact persisted");
+        assert_eq!(fact.scope, Some(mneme::knowledge::MemoryScope::Project));
+        assert_eq!(fact.project_id.as_ref(), Some(&project_id));
+        assert_eq!(
+            fact.sensitivity,
+            mneme::knowledge::FactSensitivity::Confidential,
+            "auto-dream must not downgrade confidential source transcripts to public"
+        );
+        assert_eq!(
+            fact.provenance.source_session_id.as_deref(),
+            Some("ses-auto-dream"),
+            "auto-dream facts should carry the source transcript session"
         );
     }
 
