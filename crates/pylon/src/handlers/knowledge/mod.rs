@@ -7,6 +7,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 
 use crate::error::{ApiError, BadRequestSnafu};
+use crate::extract::{Claims, require_nous_access};
 use crate::state::KnowledgeState;
 
 mod dto;
@@ -49,6 +50,41 @@ const VALID_ENTITY_SORT_FIELDS: &[&str] = &[
     "updated_at",
     "name",
 ];
+
+pub(super) fn require_fact_nous_access(
+    claims: &Claims,
+    fact: &mneme::knowledge::Fact,
+) -> Result<(), ApiError> {
+    require_nous_access(claims, &fact.nous_id)
+}
+
+pub(super) fn require_facts_nous_access<'a>(
+    claims: &Claims,
+    facts: impl IntoIterator<Item = &'a mneme::knowledge::Fact>,
+) -> Result<(), ApiError> {
+    for fact in facts {
+        require_fact_nous_access(claims, fact)?;
+    }
+    Ok(())
+}
+
+pub(super) fn require_facts_match_target<'a>(
+    facts: impl IntoIterator<Item = &'a mneme::knowledge::Fact>,
+    target_nous_id: &str,
+) -> Result<(), ApiError> {
+    for fact in facts {
+        if fact.nous_id != target_nous_id {
+            return Err(ApiError::BadRequest {
+                message: format!(
+                    "fact {} nous_id '{}' does not match target nous_id '{}'",
+                    fact.id, fact.nous_id, target_nous_id
+                ),
+                location: snafu::location!(),
+            });
+        }
+    }
+    Ok(())
+}
 
 /// Validate sort/order query parameters, returning 400 with descriptive errors.
 fn validate_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {

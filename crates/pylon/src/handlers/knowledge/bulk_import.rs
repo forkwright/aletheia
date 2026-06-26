@@ -99,6 +99,7 @@ pub async fn import_facts(
             location: snafu::location!(),
         });
     }
+    super::require_facts_nous_access(&claims, facts.iter())?;
 
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
@@ -137,6 +138,7 @@ pub async fn import_facts(
         })?;
 
         tracing::info!(
+            operator = %claims.sub,
             imported = result.imported,
             skipped = result.skipped,
             "bulk fact import complete"

@@ -61,6 +61,8 @@ pub struct TestEnvBuilder {
     with_actor: bool,
     auth_mode: Option<String>,
     jwt_access_ttl: Option<Duration>,
+    #[cfg(feature = "knowledge-store")]
+    knowledge_store: Option<Arc<mneme::knowledge_store::KnowledgeStore>>,
 }
 
 impl TestEnvBuilder {
@@ -76,6 +78,12 @@ impl TestEnvBuilder {
 
     pub fn jwt_access_ttl(mut self, ttl: Duration) -> Self {
         self.jwt_access_ttl = Some(ttl);
+        self
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    pub fn knowledge_store(mut self, store: Arc<mneme::knowledge_store::KnowledgeStore>) -> Self {
+        self.knowledge_store = Some(store);
         self
     }
 
@@ -181,7 +189,7 @@ impl TestEnvBuilder {
             idempotency_cache: Arc::new(IdempotencyCache::new()),
             shutdown: CancellationToken::new(),
             #[cfg(feature = "knowledge-store")]
-            knowledge_store: None,
+            knowledge_store: self.knowledge_store,
             embedding_provider: None,
             turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
             metrics_registry,
