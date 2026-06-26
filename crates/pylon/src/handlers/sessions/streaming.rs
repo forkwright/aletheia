@@ -385,22 +385,23 @@ pub async fn send_message(
                     idempotency_key = %key,
                     "idempotency cache hit — replaying original turn events"
                 );
-                let replay: IdempotencyReplayBody = serde_json::from_str(&body).unwrap_or_else(|_| {
-                    // WHY: legacy cache entries stored only the summary.
-                    // Treat them as a fallback replay bound to the current session.
-                    IdempotencyReplayBody {
-                        session_id: cached_session_id.clone(),
-                        turn_id: turn_id.clone(),
-                        nous_id: String::new(),
-                        summary: IdempotencyReplaySummary {
-                            stop_reason: "idempotency_replay".to_owned(),
-                            input_tokens: 0,
-                            output_tokens: 0,
-                            cache_read_tokens: 0,
-                            cache_write_tokens: 0,
-                        },
-                    }
-                });
+                let replay: IdempotencyReplayBody =
+                    serde_json::from_str(&body).unwrap_or_else(|_| {
+                        // WHY: legacy cache entries stored only the summary.
+                        // Treat them as a fallback replay bound to the current session.
+                        IdempotencyReplayBody {
+                            session_id: cached_session_id.clone(),
+                            turn_id: turn_id.clone(),
+                            nous_id: String::new(),
+                            summary: IdempotencyReplaySummary {
+                                stop_reason: "idempotency_replay".to_owned(),
+                                input_tokens: 0,
+                                output_tokens: 0,
+                                cache_read_tokens: 0,
+                                cache_write_tokens: 0,
+                            },
+                        }
+                    });
                 let stream = replay_idempotent_turn(&state, replay, request_id.0.clone()).await;
                 return Ok(stream.keep_alive(gateway_keepalive(&state.config, "ping").await));
             }
@@ -664,10 +665,8 @@ pub async fn send_message(
         },
     };
 
-    Ok(
-        Sse::new(Box::pin(stream) as BoxedSseStream)
-            .keep_alive(gateway_keepalive(&state.config, "ping").await),
-    )
+    Ok(Sse::new(Box::pin(stream) as BoxedSseStream)
+        .keep_alive(gateway_keepalive(&state.config, "ping").await))
 }
 
 /// Replay a completed idempotent turn from its durable turn buffer, falling
@@ -734,7 +733,9 @@ fn idempotent_fallback_stream(
             },
         ),
     ];
-    Box::pin(tokio_stream::iter(events.into_iter().map(sse_event_to_axum_with_id)))
+    Box::pin(tokio_stream::iter(
+        events.into_iter().map(sse_event_to_axum_with_id),
+    ))
 }
 
 /// POST /api/v1/sessions/stream: stream a conversation turn (turn stream protocol).

@@ -338,8 +338,7 @@ async fn idempotency_key_replay_preserves_tool_events_and_usage() {
     handle
         .record(
             "text_delta",
-            &serde_json::json!({"type": "text_delta", "text": "Let me check that."})
-                .to_string(),
+            &serde_json::json!({"type": "text_delta", "text": "Let me check that."}).to_string(),
         )
         .await;
     handle

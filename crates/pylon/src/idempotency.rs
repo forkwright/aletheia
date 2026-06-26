@@ -86,10 +86,7 @@ pub(crate) enum LookupResult {
         turn_id: String,
     },
     /// A request with this key is still in progress.
-    Conflict {
-        session_id: String,
-        turn_id: String,
-    },
+    Conflict { session_id: String, turn_id: String },
     /// This key was already bound to a different session or request body.
     Rejected { reason: RejectionReason },
 }
@@ -200,7 +197,10 @@ impl IdempotencyCache {
             let session_id = entry.context.session_id.clone();
             let turn_id = entry.turn_id.clone();
             return match &entry.state {
-                EntryState::InFlight => LookupResult::Conflict { session_id, turn_id },
+                EntryState::InFlight => LookupResult::Conflict {
+                    session_id,
+                    turn_id,
+                },
                 EntryState::Completed { status, body } => LookupResult::Hit {
                     status: *status,
                     body: body.clone(),
@@ -366,7 +366,12 @@ mod tests {
         );
 
         match cache.check_or_insert(principal, key, session_id, body_fingerprint) {
-            LookupResult::Hit { status, body, turn_id, .. } => {
+            LookupResult::Hit {
+                status,
+                body,
+                turn_id,
+                ..
+            } => {
                 assert_eq!(status, StatusCode::OK);
                 assert_eq!(body, r#"{"ok":true}"#);
                 assert_eq!(turn_id, "turn-001");
