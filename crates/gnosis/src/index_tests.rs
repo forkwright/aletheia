@@ -63,12 +63,12 @@ fn index_simple_fn() {
 #[test]
 fn index_nested_fn_is_excluded() {
     let (store, _dir) = open_test_store();
-    let src = r#"
+    let src = r"
         pub fn outer() {
             fn inner_helper() {}
             inner_helper();
         }
-    "#;
+    ";
     let tmp = tempfile::NamedTempFile::new().expect("tempfile");
     std::fs::write(tmp.path(), src).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
