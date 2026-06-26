@@ -186,10 +186,25 @@ fn tui_event_message_complete_type() {
 #[test]
 fn tui_event_error_type() {
     let event = crate::stream::TurnStreamEvent::Error {
+        code: "turn_failed".to_owned(),
         message: "fail".to_owned(),
         request_id: None,
     };
     assert_eq!(event.event_type(), "error");
+}
+
+#[test]
+fn tui_event_error_serialization_includes_code() {
+    let event = crate::stream::TurnStreamEvent::Error {
+        code: "provider_timeout".to_owned(),
+        message: "provider request timed out".to_owned(),
+        request_id: Some("req-4585".to_owned()),
+    };
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "error");
+    assert_eq!(json["code"], "provider_timeout");
+    assert_eq!(json["message"], "provider request timed out");
+    assert_eq!(json["request_id"], "req-4585");
 }
 
 #[test]

@@ -7,13 +7,13 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
 use mneme::embedding::MockEmbeddingProvider;
 use mneme::store::SessionStore;
-use nous::config::{NousConfig, PipelineConfig};
+use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use symbolon::auth::{AuthConfig, AuthFacade};
@@ -80,23 +80,23 @@ pub(super) fn token_scoped_to(role: symbolon::types::Role, nous_id: &str) -> Str
 }
 
 pub(super) async fn test_state() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(true, false, "token").await
+    test_state_with_provider_private_and_auth_mode(true, false, "token", None).await
 }
 
 pub(super) async fn test_state_with_provider(
     with_provider: bool,
 ) -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(with_provider, false, "token").await
+    test_state_with_provider_private_and_auth_mode(with_provider, false, "token", None).await
 }
 
 pub(super) async fn test_state_with_private_nous() -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(true, true, "token").await
+    test_state_with_provider_private_and_auth_mode(true, true, "token", None).await
 }
 
 pub(super) async fn test_state_with_auth_mode(
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
+    test_state_with_provider_private_and_auth_mode(true, false, auth_mode, None).await
 }
 
 #[expect(
@@ -107,6 +107,7 @@ async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
     include_private_nous: bool,
     auth_mode: &str,
+    extra_agent: Option<(Box<dyn LlmProvider>, NousConfig)>,
 ) -> (Arc<AppState>, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
@@ -191,6 +192,10 @@ bind = "localhost"
             MockProvider::new("Hello from mock!").models(&["mock-model", "claude-opus-4-20250514"]),
         ));
     }
+    let extra_nous_config = extra_agent.map(|(provider, config)| {
+        provider_registry.register(provider);
+        config
+    });
     let provider_registry = Arc::new(provider_registry);
     let tool_registry = Arc::new(ToolRegistry::new());
 
@@ -212,7 +217,7 @@ bind = "localhost"
 
     let nous_config = NousConfig {
         id: Arc::from("syn"),
-        generation: nous::config::NousGenerationConfig {
+        generation: NousGenerationConfig {
             model: "mock-model".to_owned(),
             ..Default::default()
         },
@@ -226,7 +231,7 @@ bind = "localhost"
         let hidden_config = NousConfig {
             id: Arc::from("hidden"),
             private: true,
-            generation: nous::config::NousGenerationConfig {
+            generation: NousGenerationConfig {
                 model: "mock-model".to_owned(),
                 ..Default::default()
             },
@@ -236,6 +241,12 @@ bind = "localhost"
             .spawn(hidden_config, PipelineConfig::default())
             .await
             .expect("spawn private nous in test harness");
+    }
+    if let Some(config) = extra_nous_config {
+        nous_manager
+            .spawn(config, PipelineConfig::default())
+            .await
+            .expect("spawn extra nous in test harness");
     }
 
     let jwt_manager = test_jwt_manager();
@@ -292,6 +303,35 @@ pub(super) async fn app_no_providers() -> (axum::Router, tempfile::TempDir) {
 
 pub(super) async fn app_with_auth_mode(auth_mode: &str) -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state_with_auth_mode(auth_mode).await;
+    (build_router(state, &test_security_config()), dir)
+}
+
+/// Test state with a second agent (`failing`) backed by a provider that always
+/// returns a provider timeout error. Used to exercise the `/sessions/stream`
+/// error-event path end-to-end (#4585).
+pub(super) async fn test_state_with_error_provider() -> (Arc<AppState>, tempfile::TempDir) {
+    let failing_provider = Box::new(
+        MockProvider::error("network timeout").models(&["failing-model"]).named("fail"),
+    );
+    let failing_config = NousConfig {
+        id: Arc::from("failing"),
+        generation: NousGenerationConfig {
+            model: "failing-model".to_owned(),
+            ..Default::default()
+        },
+        ..NousConfig::default()
+    };
+    test_state_with_provider_private_and_auth_mode(
+        true,
+        false,
+        "token",
+        Some((failing_provider, failing_config)),
+    )
+    .await
+}
+
+pub(super) async fn app_with_error_provider() -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = test_state_with_error_provider().await;
     (build_router(state, &test_security_config()), dir)
 }
 

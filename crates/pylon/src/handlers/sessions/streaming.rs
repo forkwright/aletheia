@@ -912,8 +912,9 @@ pub async fn stream_turn(
                     // WHY: Log full error internally; span carries session/nous context (#844).
                     tracing::error!(error = %err, "streaming turn failed");
                     let _ = bridge_handle.await;
-                    let (_, err_message) = turn_error_info(&err);
+                    let (err_code, err_message) = turn_error_info(&err);
                     let event = PylonTurnStreamEvent::Error {
+                        code: err_code,
                         message: err_message.clone(),
                         request_id: Some(stream_request_id.clone()),
                     };
@@ -962,7 +963,7 @@ pub async fn stream_turn(
                     // same structure as all other error events in the stream (#3160).
                     Ok(Event::default()
                         .event("error")
-                        .data(r#"{"type":"error","message":"serialization failed"}"#)
+                        .data(r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#)
                         .id(seq.to_string()))
                 }
             }

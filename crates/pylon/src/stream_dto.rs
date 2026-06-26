@@ -170,6 +170,10 @@ pub(crate) enum TurnStreamEvent {
     /// `MessageComplete` event.
     #[serde(rename = "error")]
     Error {
+        /// Stable machine-readable failure classification (e.g. `provider_timeout`,
+        /// `auth_failure`). Mirrors `SseEvent::Error::code` on the newer stream
+        /// surface (#4585).
+        code: String,
         message: String,
         /// Per-request correlation ID for cross-system error tracing.
         #[serde(skip_serializing_if = "Option::is_none")]

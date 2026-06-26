@@ -196,17 +196,22 @@ async fn sse_send_message_with_invalid_json_body_returns_client_error() {
     );
 }
 
-/// Error event: the fallback serialization-error data string is valid JSON
-/// with a `message` field: not empty data. This verifies that the SSE error
+/// Error event: the fallback serialization-error data string matches the
+/// `TurnStreamEvent::Error` wire shape. This verifies that the SSE error
 /// fallback path produces a well-formed JSON payload per the stream contract.
 #[test]
-fn sse_serialization_fallback_data_is_valid_json_with_message_field() {
+fn sse_serialization_fallback_data_matches_error_event_shape() {
     // WHY: sse_event_to_axum (and the stream_turn equivalent) fall back to
     // this literal string when serde_json::to_string fails. Verify the string
-    // is valid JSON with a non-empty message field: not an empty data line.
-    let fallback_data = r#"{"message":"serialization failed"}"#;
+    // matches the error-event shape including a stable failure code (#4585).
+    let fallback_data = r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#;
     let parsed: serde_json::Value =
         serde_json::from_str(fallback_data).expect("fallback data must be valid JSON");
+    assert_eq!(parsed["type"], "error");
+    assert!(
+        parsed["code"].is_string(),
+        "fallback error must have a string code field"
+    );
     assert!(
         parsed["message"].is_string(),
         "fallback error must have a string message field"
@@ -219,6 +224,50 @@ fn sse_serialization_fallback_data_is_valid_json_with_message_field() {
         !fallback_data.is_empty(),
         "fallback data must never be empty"
     );
+}
+
+/// Error path: `stream_turn` emits the server-computed failure code on the
+/// diagnostic `error` event when the provider fails (#4585).
+#[tokio::test]
+async fn stream_turn_error_event_includes_failure_code() {
+    let (app, _dir) = app_with_error_provider().await;
+    let token = default_token();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/sessions/stream")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-request-id", "req-4585")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "failing",
+                "message": "trigger failure",
+                "session_key": "stream-error-test"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    let events = collect_sse_data_events(&body);
+
+    let error = find_sse_event(&events, "error").expect("stream must emit an error event");
+    assert_eq!(error["type"], "error");
+    assert_eq!(error["code"], "provider_timeout");
+    assert!(
+        error["message"]
+            .as_str()
+            .expect("message is a string")
+            .contains("timed out"),
+        "error message should describe the timeout: {error}"
+    );
+    assert_eq!(error["request_id"], "req-4585");
+
+    let complete =
+        find_sse_event(&events, "message_complete").expect("stream must emit message_complete");
+    assert_eq!(complete["outcome"]["stop_reason"], "error");
 }
 
 /// Concurrent clients: multiple simultaneous SSE connections complete without
