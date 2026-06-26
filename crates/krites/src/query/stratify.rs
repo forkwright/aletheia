@@ -318,12 +318,15 @@ impl NormalFormProgram {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
+    use crate::DataValue;
     use crate::DbInstance;
 
     #[test]
     fn stratified_query_with_recursive_rules_executes_successfully() {
         let db = DbInstance::default();
-        let _res = db
+        let res = db
             .run_default(
                 r"
         x[a] <- [[1], [2]]
@@ -337,7 +340,14 @@ mod tests {
         ?[a] := w[a]
         ",
             )
-            .unwrap_or_else(|e| panic!("stratified query test must succeed: {e}"))
-            .rows;
+            .unwrap_or_else(|e| panic!("stratified query test must succeed: {e}"));
+
+        let values: BTreeSet<DataValue> = res.rows.into_iter().map(|row| row[0].clone()).collect();
+        let expected: BTreeSet<DataValue> = (2..=10).map(DataValue::from).collect();
+        assert_eq!(
+            values, expected,
+            "recursive w should produce 2..=10 and z should contribute only values already in that range"
+        );
+        assert_eq!(res.headers, vec!["a".to_string()]);
     }
 }

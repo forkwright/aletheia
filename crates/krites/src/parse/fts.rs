@@ -270,14 +270,41 @@ mod tests {
         assert!(matches!(res, FtsExpr::Not(_, _)));
         let src = " NEAR(abc def \"ghi\"^22.8) ";
         let res = parse_fts_query(src).unwrap().flatten();
-        assert!(matches!(res, FtsExpr::Near(FtsNear { distance: 10, .. })));
-        println!("{:#?}", res);
+        assert!(
+            matches!(
+                &res,
+                FtsExpr::Near(FtsNear { distance: 10, .. })
+            ),
+            "NEAR query should parse to a Near node with default distance 10"
+        );
+        if let FtsExpr::Near(FtsNear { literals, distance }) = res {
+            assert_eq!(*distance, 10);
+            assert_eq!(literals.len(), 3);
+            assert_eq!(literals[0].value, "abc");
+            assert_eq!(literals[1].value, "def");
+            assert_eq!(literals[2].value, "ghi");
+            assert_eq!(literals[2].booster.0, 22.8);
+            assert!(!literals[2].is_prefix);
+        } else {
+            unreachable!("INVARIANT: prior match asserted NEAR shape");
+        }
     }
 
     mod proptests {
         use proptest::prelude::*;
 
+        use crate::fts::ast::{FtsExpr, FtsLiteral};
         use crate::parse::fts::parse_fts_query;
+
+        /// Check whether an FTS word collides with a keyword prefix.
+        fn conflicts_with_kw(w: &str) -> bool {
+            let u = w.to_uppercase();
+            matches!(u.as_str(), "AND" | "OR" | "NOT" | "NEAR")
+                || u.starts_with("AND")
+                || u.starts_with("OR")
+                || u.starts_with("NOT")
+                || u.starts_with("NEAR")
+        }
 
         proptest! {
             /// The FTS parser must never panic on arbitrary input: it should return a
@@ -287,44 +314,62 @@ mod tests {
                 let _ = parse_fts_query(&input);
             }
 
-            /// Valid single-word queries must always parse successfully.
+            /// Valid single-word queries must parse to a single literal with the
+            /// original text preserved.
             #[test]
             fn fts_single_word_parses(word in "[a-zA-Z]{1,30}") {
-                // NOTE: pest grammar matches keywords greedily, so words
-                // starting with AND/OR/NOT/NEAR confuse the parser.
-                let conflicts_with_kw = |w: &str| {
-                    let u = w.to_uppercase();
-                    matches!(u.as_str(), "AND" | "OR" | "NOT" | "NEAR")
-                        || u.starts_with("AND")
-                        || u.starts_with("OR")
-                        || u.starts_with("NOT")
-                        || u.starts_with("NEAR")
-                };
                 prop_assume!(!conflicts_with_kw(&word));
-                parse_fts_query(&word).unwrap_or_else(|_| unreachable!("INVARIANT: non-keyword alphanumeric word always parses"));
+                let parsed = parse_fts_query(&word)
+                    .unwrap_or_else(|_| unreachable!("INVARIANT: non-keyword alphanumeric word always parses"));
+                prop_assert!(
+                    matches!(
+                        &parsed,
+                        FtsExpr::Literal(FtsLiteral { value, is_prefix: false, booster })
+                        if value.as_str() == word && booster.0 == 1.0
+                    ),
+                    "single word should parse to a single literal: got {:?}",
+                    parsed
+                );
             }
 
-            /// AND/OR combinations of alphanumeric words must always parse without error.
+            /// AND/OR combinations of alphanumeric words must parse to the expected
+            /// binary operator with two literal children.
             #[test]
             fn fts_and_or_parses(
                 lhs in "[a-zA-Z]{1,20}",
                 op in prop_oneof![Just("AND"), Just("OR")],
                 rhs in "[a-zA-Z]{1,20}",
             ) {
-                // NOTE: the pest grammar matches keywords greedily, so words
-                // starting with AND/OR/NOT/NEAR (e.g. "ORa") confuse the parser.
-                // Filter those out: the underlying grammar bug is tracked separately.
-                let conflicts_with_kw = |w: &str| {
-                    let u = w.to_uppercase();
-                    matches!(u.as_str(), "AND" | "OR" | "NOT" | "NEAR")
-                        || u.starts_with("AND")
-                        || u.starts_with("OR")
-                        || u.starts_with("NOT")
-                        || u.starts_with("NEAR")
-                };
                 prop_assume!(!conflicts_with_kw(&lhs) && !conflicts_with_kw(&rhs));
                 let query = format!("{lhs} {op} {rhs}");
-                parse_fts_query(&query).unwrap_or_else(|_| unreachable!("INVARIANT: non-keyword AND/OR query always parses"));
+                let parsed = parse_fts_query(&query)
+                    .unwrap_or_else(|_| unreachable!("INVARIANT: non-keyword AND/OR query always parses"));
+                let children = match &parsed {
+                    FtsExpr::And(v) if op == "AND" => v,
+                    FtsExpr::Or(v) if op == "OR" => v,
+                    other => panic!("expected {op} expression, got {:?}", other),
+                };
+                prop_assert_eq!(children.len(), 2, "{op} should combine exactly two children");
+                prop_assert!(
+                    matches!(
+                        &children[0],
+                        FtsExpr::Literal(FtsLiteral { value, is_prefix: false, booster })
+                        if value.as_str() == lhs && booster.0 == 1.0
+                    ),
+                    "left operand should be the literal {:?}: got {:?}",
+                    lhs,
+                    children[0]
+                );
+                prop_assert!(
+                    matches!(
+                        &children[1],
+                        FtsExpr::Literal(FtsLiteral { value, is_prefix: false, booster })
+                        if value.as_str() == rhs && booster.0 == 1.0
+                    ),
+                    "right operand should be the literal {:?}: got {:?}",
+                    rhs,
+                    children[1]
+                );
             }
         }
     }
