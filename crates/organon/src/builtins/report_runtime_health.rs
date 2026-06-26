@@ -30,8 +30,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, Reversibility, ToolCategory, ToolContext, ToolDef, ToolGroupId,
-    ToolInput, ToolResult, ToolTag,
+    InputSchema, Reversibility, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput,
+    ToolResult, ToolTag,
 };
 
 /// Readiness status for a single report renderer.
@@ -83,6 +83,7 @@ impl RendererHealth {
         }
     }
 
+    #[cfg(test)]
     fn error(
         name: &'static str,
         required: bool,
@@ -260,8 +261,8 @@ fn check_chromium() -> RendererHealth {
     let required = false;
     let configured = std::env::var("CHROMIUM_PATH").is_ok();
 
-    match find_chromium() {
-        Some(path) => RendererHealth {
+    if let Some(path) = find_chromium() {
+        RendererHealth {
             name: "chromium",
             status: "ok",
             required,
@@ -269,24 +270,22 @@ fn check_chromium() -> RendererHealth {
             path: Some(path.to_string_lossy().into_owned()),
             version: None,
             message: format!("chromium available at {}", path.display()),
-        },
-        None => {
-            let status = if configured { "error" } else { "missing" };
-            RendererHealth {
-                name: "chromium",
-                status,
-                required,
-                configured,
-                path: None,
-                version: None,
-                message: if configured {
-                    "CHROMIUM_PATH is set but the path does not exist; HTML-to-PDF is broken"
-                        .to_owned()
-                } else {
-                    "no chromium binary found on PATH; set CHROMIUM_PATH to enable HTML-to-PDF"
-                        .to_owned()
-                },
-            }
+        }
+    } else {
+        let status = if configured { "error" } else { "missing" };
+        RendererHealth {
+            name: "chromium",
+            status,
+            required,
+            configured,
+            path: None,
+            version: None,
+            message: if configured {
+                "CHROMIUM_PATH is set but the path does not exist; HTML-to-PDF is broken".to_owned()
+            } else {
+                "no chromium binary found on PATH; set CHROMIUM_PATH to enable HTML-to-PDF"
+                    .to_owned()
+            },
         }
     }
 }
@@ -395,6 +394,14 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    unsafe_code,
+    reason = "WHY(#4655): set_var/remove_var are unsafe in edition 2024; ENV_LOCK serializes access"
+)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions — missing key is a test bug"
+)]
 mod tests {
     use std::collections::HashSet;
     use std::ffi::OsStr;
@@ -422,7 +429,9 @@ mod tests {
         fn set(key: &'static str, value: &OsStr) -> Self {
             let lock = ENV_LOCK.lock().expect("env lock poisoned");
             let old_value = std::env::var(key).ok();
-            std::env::set_var(key, value);
+            // SAFETY(#4655): ENV_LOCK is held for the duration of this guard; no
+            // concurrent test can observe an inconsistent env state.
+            unsafe { std::env::set_var(key, value) };
             Self {
                 key,
                 old_value,
@@ -433,9 +442,11 @@ mod tests {
 
     impl Drop for EnvGuard {
         fn drop(&mut self) {
+            // SAFETY(#4655): ENV_LOCK is held while this guard is alive; drop
+            // restores the original value atomically within the lock window.
             match &self.old_value {
-                Some(v) => std::env::set_var(self.key, v),
-                None => std::env::remove_var(self.key),
+                Some(v) => unsafe { std::env::set_var(self.key, v) },
+                None => unsafe { std::env::remove_var(self.key) },
             }
         }
     }
@@ -467,7 +478,7 @@ mod tests {
         serde_json::from_str(&text).expect("output must be valid JSON")
     }
 
-    fn renderer(json: &serde_json::Value, name: &str) -> &serde_json::Value {
+    fn renderer<'a>(json: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
         json["renderers"]
             .as_array()
             .expect("renderers array")
