@@ -14,6 +14,15 @@ use crate::state::KnowledgeState;
 use super::FlagSeverity;
 use super::{EntityMemory, FlagRequest, MergeRequest};
 
+fn require_unscoped_entity_write(claims: &Claims) -> Result<(), ApiError> {
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot mutate aggregate knowledge entities",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(feature = "knowledge-store")]
 use mneme::engine::DataValue;
 #[cfg(feature = "knowledge-store")]
@@ -293,6 +302,7 @@ pub async fn merge_entities(
     Json(body): Json<MergeRequest>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
+    require_unscoped_entity_write(&claims)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &body;
 
@@ -354,6 +364,7 @@ pub async fn flag_entity(
     Json(body): Json<FlagRequest>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
+    require_unscoped_entity_write(&claims)?;
 
     if body.reason.trim().is_empty() {
         return Err(ApiError::BadRequest {
@@ -414,6 +425,7 @@ pub async fn delete_entity(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
+    require_unscoped_entity_write(&claims)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
 

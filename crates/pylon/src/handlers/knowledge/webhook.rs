@@ -7,7 +7,7 @@ use tracing::instrument;
 use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::extract::{Claims, require_role};
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::KnowledgeState;
 
 #[path = "webhook_dto.rs"]
@@ -47,6 +47,17 @@ pub async fn webhook_ingest(
 ) -> Result<Json<WebhookIngestResponse>, ApiError> {
     require_role(&claims, Role::Operator)?;
 
+    let target_nous_id = body.nous_id.trim();
+    if target_nous_id.is_empty() {
+        return Err(BadRequestSnafu {
+            message: "nous_id must not be empty".to_owned(),
+        }
+        .build());
+    }
+    require_nous_access(&claims, target_nous_id)?;
+    super::require_facts_nous_access(&claims, body.facts.iter())?;
+    super::require_facts_match_target(body.facts.iter(), target_nous_id)?;
+
     let max_batch = state.config.read().await.api_limits.max_import_batch_size;
     if body.facts.len() > max_batch {
         return Err(BadRequestSnafu {
@@ -61,6 +72,7 @@ pub async fn webhook_ingest(
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let store = std::sync::Arc::clone(store);
+        let target_nous_id = target_nous_id.to_owned();
         let facts = body.facts;
         let result = tokio::task::spawn_blocking(move || {
             let mut inserted = 0usize;
@@ -94,6 +106,8 @@ pub async fn webhook_ingest(
         })?;
 
         tracing::info!(
+            operator = %claims.sub,
+            target_nous_id = %target_nous_id,
             inserted = result.inserted,
             skipped = result.skipped,
             "webhook ingestion complete"

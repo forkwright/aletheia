@@ -12,7 +12,9 @@ pub struct IngestRequest {
     /// Format: markdown, text, json, jsonl.
     #[serde(default)]
     pub format: String,
-    /// Nous agent ID that will own the extracted facts.
+    /// Nous agent ID that will own the extracted facts. Scoped tokens may omit
+    /// this field to use their token-bound agent.
+    #[serde(default)]
     pub nous_id: String,
 }
 
