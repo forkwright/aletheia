@@ -58,23 +58,28 @@ fn probe_tool_registry() -> ToolRegistry {
 #[cfg(unix)]
 struct ReadOnlyGuard<'a> {
     path: &'a std::path::Path,
+    orig_mode: u32,
 }
 
 #[cfg(unix)]
 impl<'a> ReadOnlyGuard<'a> {
     fn new(path: &'a std::path::Path) -> Self {
-        let mut perms = std::fs::metadata(path).unwrap().permissions();
-        perms.set_readonly(true);
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(path).unwrap();
+        let orig_mode = meta.permissions().mode();
+        let mut perms = meta.permissions();
+        perms.set_mode(orig_mode & !0o222);
         std::fs::set_permissions(path, perms).unwrap();
-        Self { path }
+        Self { path, orig_mode }
     }
 }
 
 #[cfg(unix)]
-impl<'a> Drop for ReadOnlyGuard<'a> {
+impl Drop for ReadOnlyGuard<'_> {
     fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
         let mut perms = std::fs::metadata(self.path).unwrap().permissions();
-        perms.set_readonly(false);
+        perms.set_mode(self.orig_mode);
         let _ = std::fs::set_permissions(self.path, perms);
     }
 }
