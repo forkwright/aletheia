@@ -14,7 +14,7 @@ use crate::error::WorkspaceFileSnafu;
 use crate::state::DiaporeiaState;
 
 /// Workspace files exposed as resources.
-const WORKSPACE_FILES: &[(&str, &str, &str)] = &[
+pub(crate) const WORKSPACE_FILES: &[(&str, &str, &str)] = &[
     (
         "soul",
         "Nous SOUL",
@@ -62,6 +62,20 @@ pub(crate) fn read_resource(
     let content = read_resource_content(state.oikos.as_ref(), uri)?;
 
     Ok(vec![ResourceContents::text(content, uri)])
+}
+
+/// Return whether a concrete nous workspace resource exists and is readable.
+///
+/// WHY(#4635): `resources/list` should only advertise files that can actually
+/// be read; unreadable or missing files are silently omitted.
+pub(crate) fn resource_exists(oikos: &Oikos, uri: &str) -> bool {
+    let Ok((nous_id, filename)) = parse_resource_uri(uri) else {
+        return false;
+    };
+    let Ok(path) = oikos.contained_nous_file(&nous_id, filename) else {
+        return false;
+    };
+    std::fs::metadata(&path).is_ok_and(|m| m.is_file())
 }
 
 fn read_resource_content(oikos: &Oikos, uri: &str) -> Result<String, rmcp::ErrorData> {
