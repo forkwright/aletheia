@@ -1,7 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with direct indexing throughout"
-)]
 use snafu::ResultExt;
 #[cfg(feature = "mneme-engine")]
 #[expect(
