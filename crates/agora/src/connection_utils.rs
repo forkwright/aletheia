@@ -12,7 +12,6 @@ pub(crate) fn reconnect_delay(consecutive_failures: u32) -> Duration {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

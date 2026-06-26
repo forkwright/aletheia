@@ -1,14 +1,14 @@
 //! Connection state machine and outbound message buffering.
 
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use super::client;
 
 /// Exponential backoff delay for reconnection attempts.
 ///
 /// Re-exported from [`crate::connection_utils`].
-pub use crate::connection_utils::reconnect_delay;
+pub(crate) use crate::connection_utils::reconnect_delay;
 
 /// Connection states for a Signal account.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,6 +112,7 @@ pub struct ConnectionHealthReport {
 )]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn account_state_starts_connected() {
