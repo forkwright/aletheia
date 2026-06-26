@@ -77,6 +77,16 @@ pub(crate) enum SseEvent {
         dropped_after_seq: u64,
         retained_limit: usize,
     },
+
+    /// Turn was aborted before completion (client disconnect, server shutdown,
+    /// timeout, or explicit user cancellation).
+    #[serde(rename = "turn_abort")]
+    TurnAbort {
+        reason: String,
+        /// Per-request correlation ID for cross-system tracing.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 }
 
 /// Token usage summary sent with `message_complete`.
@@ -182,6 +192,16 @@ pub(crate) enum TurnStreamEvent {
         reason: String,
         dropped_after_seq: u64,
         retained_limit: usize,
+    },
+
+    /// Turn was aborted before completion (client disconnect, server shutdown,
+    /// timeout, or explicit user cancellation).
+    #[serde(rename = "turn_abort")]
+    TurnAbort {
+        reason: String,
+        /// Per-request correlation ID for cross-system tracing.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
 }
 

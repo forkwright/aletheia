@@ -5,13 +5,14 @@
 //! the server replays events from `N+1` onward.
 //!
 //! Buffers are held in a [`TurnBufferRegistry`] keyed by `(session_id, turn_id)`.
-//! Completed turns are retained for a configurable TTL (default 5 minutes) so
-//! that late reconnects can still recover. A background reaper task prunes
-//! expired entries.
+//! Completed, failed, or aborted turns are retained for a configurable TTL
+//! (default 5 minutes) so that late reconnects can still recover. A background
+//! reaper task prunes expired entries.
 
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -29,6 +30,15 @@ const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
 pub(crate) const REPLAY_GAP_EVENT_TYPE: &str = "replay_gap";
 
 pub(crate) const REPLAY_GAP_REASON_BUFFER_CAPACITY: &str = "buffer_capacity";
+
+/// Reason string for a turn aborted because the client disconnected.
+pub(crate) const TURN_ABORT_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
+
+/// Reason string for a turn aborted because the server is shutting down.
+pub(crate) const TURN_ABORT_REASON_SERVER_SHUTDOWN: &str = "server_shutdown";
+
+/// Reason string for a turn aborted because it exceeded its execution time limit.
+pub(crate) const TURN_ABORT_REASON_TIMEOUT: &str = "timeout";
 
 /// A single buffered SSE event with its sequence ID.
 #[derive(Debug, Clone)]
@@ -75,6 +85,8 @@ pub(crate) enum TurnState {
     Completed,
     /// Turn failed with an error.
     Failed,
+    /// Turn was aborted before completion (disconnect, shutdown, timeout, user cancel).
+    Aborted { reason: String },
 }
 
 /// Per-turn event buffer.
@@ -160,6 +172,13 @@ impl TurnBuffer {
     /// Mark the turn as completed or failed.
     fn finish(&mut self, state: TurnState) {
         self.state = state;
+        self.finished_at = Some(Instant::now());
+        self.notify.notify_waiters();
+    }
+
+    /// Mark the turn as aborted with a client-visible reason.
+    fn abort(&mut self, reason: String) {
+        self.state = TurnState::Aborted { reason };
         self.finished_at = Some(Instant::now());
         self.notify.notify_waiters();
     }
@@ -266,7 +285,7 @@ impl TurnBufferRegistry {
         map.get(&key).cloned()
     }
 
-    /// Remove expired completed/failed turn buffers.
+    /// Remove expired completed, failed, or aborted turn buffers.
     ///
     /// INVARIANT: the outer `buffers` lock is never held across an inner
     /// `Mutex::lock().await`. We snapshot the candidate entries under a brief
@@ -317,16 +336,23 @@ impl TurnBufferRegistry {
 
 /// Handle for a streaming handler to record events into a turn buffer.
 ///
-/// Wraps `Arc<Mutex<TurnBuffer>>` with convenience methods.
+/// Wraps `Arc<Mutex<TurnBuffer>>` with convenience methods. The embedded
+/// `terminal` flag ensures that only the first terminal transition
+/// (completed/failed/aborted) wins, even when both the turn task and the
+/// disconnect Drop guard race to mark the buffer (#4794).
 #[derive(Clone)]
 pub(crate) struct TurnBufferHandle {
     inner: Arc<Mutex<TurnBuffer>>,
+    terminal: Arc<AtomicBool>,
 }
 
 impl TurnBufferHandle {
     /// Create a handle from a buffer reference.
     pub(crate) fn new(buffer: Arc<Mutex<TurnBuffer>>) -> Self {
-        Self { inner: buffer }
+        Self {
+            inner: buffer,
+            terminal: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     /// Record an SSE event. Returns the retained record outcome.
@@ -335,16 +361,44 @@ impl TurnBufferHandle {
         buf.push(event_type.to_owned(), data.to_owned())
     }
 
-    /// Mark the turn as completed.
+    /// Mark the turn as completed if it is not already terminal.
     pub(crate) async fn mark_completed(&self) {
+        if self
+            .terminal
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
         let mut buf = self.inner.lock().await;
         buf.finish(TurnState::Completed);
     }
 
-    /// Mark the turn as failed.
+    /// Mark the turn as failed if it is not already terminal.
     pub(crate) async fn mark_failed(&self) {
+        if self
+            .terminal
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
         let mut buf = self.inner.lock().await;
         buf.finish(TurnState::Failed);
+    }
+
+    /// Mark the turn as aborted with a client-visible reason if it is not
+    /// already terminal.
+    pub(crate) async fn mark_aborted(&self, reason: &str) {
+        if self
+            .terminal
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        let mut buf = self.inner.lock().await;
+        buf.abort(reason.to_owned());
     }
 
     /// Get events after a given sequence number, plus the current turn state.
@@ -614,5 +668,60 @@ mod tests {
         assert_eq!(gap["reason"], REPLAY_GAP_REASON_BUFFER_CAPACITY);
         assert_eq!(gap["dropped_after_seq"], 2);
         assert_eq!(gap["retained_limit"], 3);
+    }
+
+    #[tokio::test]
+    async fn mark_aborted_sets_terminal_state_with_reason() {
+        let registry = TurnBufferRegistry::new();
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+
+        handle
+            .mark_aborted(TURN_ABORT_REASON_CLIENT_DISCONNECT)
+            .await;
+
+        let (_, state) = handle.events_after(0).await;
+        assert_eq!(
+            state,
+            TurnState::Aborted {
+                reason: TURN_ABORT_REASON_CLIENT_DISCONNECT.to_owned(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn reap_removes_expired_aborted_buffers() {
+        tokio::time::pause();
+        let registry =
+            TurnBufferRegistry::with_limits(Duration::from_secs(0), DEFAULT_MAX_EVENTS_PER_TURN);
+
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+        handle.mark_aborted(TURN_ABORT_REASON_SERVER_SHUTDOWN).await;
+
+        tokio::time::advance(Duration::from_millis(1)).await;
+
+        registry.reap_expired().await;
+        assert!(registry.get("ses-1", "turn-1").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn aborted_buffer_retains_events_before_reap() {
+        let registry = TurnBufferRegistry::new();
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+
+        handle.record("text_delta", r#"{"text":"partial"}"#).await;
+        handle.mark_aborted(TURN_ABORT_REASON_TIMEOUT).await;
+
+        let (events, state) = handle.events_after(0).await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, "text_delta");
+        assert_eq!(
+            state,
+            TurnState::Aborted {
+                reason: TURN_ABORT_REASON_TIMEOUT.to_owned(),
+            }
+        );
     }
 }
