@@ -282,10 +282,8 @@ fn fts_bm25_cache_is_shared_across_run_script_calls_and_invalidated_on_write() {
     );
 
     // Inserting a new document must invalidate the cache.
-    db.run_default(
-        r"?[id, text] <- [['d', 'quick quick quick quick']] :put docs {id => text}",
-    )
-    .expect("inserting additional doc should succeed");
+    db.run_default(r"?[id, text] <- [['d', 'quick quick quick quick']] :put docs {id => text}")
+        .expect("inserting additional doc should succeed");
     assert!(
         !db.fts_cache.read().is_cached(&base_name, &idx_name),
         "FTS cache should be invalidated after indexing a new document"

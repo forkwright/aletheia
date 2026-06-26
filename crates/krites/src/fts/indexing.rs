@@ -37,22 +37,14 @@ impl FtsCache {
     /// WHY: `avgdl` and `total_n` change only when documents are inserted or
     /// deleted from the indexed relation. Invalidating on those mutations keeps
     /// the shared cache consistent with the committed index state.
-    pub(crate) fn invalidate(
-        &mut self,
-        base_name: &CompactString,
-        idx_name: &CompactString,
-    ) {
+    pub(crate) fn invalidate(&mut self, base_name: &CompactString, idx_name: &CompactString) {
         self.total_n_cache.remove(base_name);
         self.avg_dl_cache.remove(idx_name);
     }
 
     /// Whether both `total_n` and `avgdl` are cached for the given relations.
     #[cfg(test)]
-    pub(crate) fn is_cached(
-        &self,
-        base_name: &CompactString,
-        idx_name: &CompactString,
-    ) -> bool {
+    pub(crate) fn is_cached(&self, base_name: &CompactString, idx_name: &CompactString) -> bool {
         self.total_n_cache.contains_key(base_name) && self.avg_dl_cache.contains_key(idx_name)
     }
 }
@@ -729,11 +721,7 @@ impl SessionTx<'_> {
         Ok(())
     }
 
-    fn invalidate_fts_cache(
-        &mut self,
-        base_name: &CompactString,
-        idx_name: &CompactString,
-    ) {
+    fn invalidate_fts_cache(&mut self, base_name: &CompactString, idx_name: &CompactString) {
         self.fts_cache_invalidations
             .insert((base_name.clone(), idx_name.clone()));
         let mut cache = self.fts_cache.write();
