@@ -127,6 +127,7 @@ mod tests {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "proptest assertions")]
 mod proptests {
+    use proptest::collection::vec;
     use proptest::prelude::*;
 
     use super::*;
@@ -146,28 +147,28 @@ mod proptests {
     const SEPARATORS: &[&str] = &["=", ":", " = ", " : "];
 
     fn wrapper() -> impl Strategy<Value = &'static str> {
-        (0..WRAPPERS.len() as u8).prop_map(|i| *WRAPPERS.get(usize::from(i)).unwrap())
+        (0..WRAPPERS.len()).prop_map(|i| *WRAPPERS.get(i).unwrap())
     }
 
     fn secret_key() -> impl Strategy<Value = &'static str> {
-        (0..SECRET_KEYS.len() as u8).prop_map(|i| *SECRET_KEYS.get(usize::from(i)).unwrap())
+        (0..SECRET_KEYS.len()).prop_map(|i| *SECRET_KEYS.get(i).unwrap())
     }
 
     fn separator() -> impl Strategy<Value = &'static str> {
-        (0..SEPARATORS.len() as u8).prop_map(|i| *SEPARATORS.get(usize::from(i)).unwrap())
+        (0..SEPARATORS.len()).prop_map(|i| *SEPARATORS.get(i).unwrap())
     }
 
     fn secret_body(
-        range: impl Strategy<Value = usize>,
+        range: std::ops::Range<usize>,
         allowed: &'static str,
     ) -> impl Strategy<Value = String> {
-        let len = allowed.len() as u8;
+        let char_count = allowed.chars().count();
         vec(
-            (0..len).prop_map(move |i| {
+            (0..char_count).prop_map(move |i| {
                 allowed
                     .chars()
-                    .nth(usize::from(i))
-                    // WHY: `i` is drawn from `0..allowed.len()`.
+                    .nth(i)
+                    // WHY: `i` is drawn from `0..allowed.chars().count()`.
                     .unwrap()
             }),
             range,
@@ -186,7 +187,9 @@ mod proptests {
             let input = format!("{prefix}{secret}{suffix}");
             let output = redact_sensitive(&input);
             prop_assert!(output.contains("sk-ant-***"), "placeholder missing: {}", output);
-            prop_assert!(!output.contains(&body), "secret body leaked: {}", output);
+            // WHY (#6003): check the full key format is absent, not just body chars — single
+            // chars from ALPHANUM_HYPHEN_UNDERSCORE can appear in "sk-ant-***" itself.
+            prop_assert!(!output.contains(secret.as_str()), "secret leaked: {}", output);
         }
 
         #[test]
@@ -222,7 +225,9 @@ mod proptests {
             let input = format!("{prefix}Bearer {token}{suffix}");
             let output = redact_sensitive(&input);
             prop_assert!(output.contains("Bearer ***"), "placeholder missing: {}", output);
-            prop_assert!(!output.contains(&token), "token leaked: {}", output);
+            // WHY (#6003): check the full bearer string is absent — single BEARER_CHARS
+            // like "B","e","a","r" appear in the "Bearer ***" placeholder itself.
+            prop_assert!(!output.contains(&format!("Bearer {token}")), "token leaked: {}", output);
         }
 
         #[test]
@@ -241,9 +246,10 @@ mod proptests {
                 "placeholder missing: {}",
                 output
             );
-            prop_assert!(!output.contains(&header), "header leaked: {}", output);
-            prop_assert!(!output.contains(&payload), "payload leaked: {}", output);
-            prop_assert!(!output.contains(&signature), "signature leaked: {}", output);
+            // WHY (#6003): check the full token is absent rather than individual parts —
+            // "[JWT REDACTED]" contains chars (J,W,T,R,E,D,A,C) that are valid BASE64URL
+            // chars, so a single-char header/payload/signature would cause a false failure.
+            prop_assert!(!output.contains(&token), "JWT token leaked: {}", output);
         }
 
         #[test]
@@ -257,7 +263,10 @@ mod proptests {
             let input = format!("{prefix}{key}{sep}{value}{suffix}");
             let output = redact_sensitive(&input);
             prop_assert!(output.contains("***"), "placeholder missing: {}", output);
-            prop_assert!(!output.contains(&value), "value leaked: {}", output);
+            // WHY (#6003): check the full key+sep+value context is absent — value chars like
+            // "p" appear in the retained key name ("password=***") causing false failures.
+            let full_secret = format!("{key}{sep}{value}");
+            prop_assert!(!output.contains(&full_secret), "value leaked in context: {}", output);
         }
 
         #[test]
@@ -271,7 +280,10 @@ mod proptests {
             let input = format!("{prefix}{key}{sep}\"{value}\"{suffix}");
             let output = redact_sensitive(&input);
             prop_assert!(output.contains("***"), "placeholder missing: {}", output);
-            prop_assert!(!output.contains(&value), "quoted value leaked: {}", output);
+            // WHY (#6003): check the full key+sep+"value" context is absent — same
+            // single-char leak as prop_redacts_key_value_secret.
+            let full_secret = format!("{key}{sep}\"{value}\"");
+            prop_assert!(!output.contains(&full_secret), "quoted value leaked: {}", output);
         }
     }
 }
