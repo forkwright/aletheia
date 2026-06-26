@@ -28,7 +28,9 @@ pub mod types;
 
 pub use router::{BoxFuture, Router};
 pub use store::{AfterActionStore, DEFAULT_ROUTING_WINDOW};
-pub use types::{InteractiveOutcome, RequestFeatures, RouterError, RoutingBoundary, RoutingDecision, TurnOutcome};
+pub use types::{
+    InteractiveOutcome, RequestFeatures, RouterError, RoutingBoundary, RoutingDecision, TurnOutcome,
+};
 
 use std::sync::Arc;
 

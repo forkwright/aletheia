@@ -605,14 +605,62 @@ mod tests {
             explicit_user_rating: None,
         };
 
-        assert!(!InteractiveOutcome { completed: false, ..base.clone() }.is_success());
-        assert!(!InteractiveOutcome { user_correction: true, ..base.clone() }.is_success());
-        assert!(!InteractiveOutcome { tool_error_rate: 1.0, ..base.clone() }.is_success());
-        assert!(!InteractiveOutcome { loop_guard_intervention: true, ..base.clone() }.is_success());
-        assert!(!InteractiveOutcome { mistake_brake_intervention: true, ..base.clone() }.is_success());
-        assert!(!InteractiveOutcome { budget_exceeded: true, ..base.clone() }.is_success());
-        assert!(!InteractiveOutcome { provider_failure: true, ..base.clone() }.is_success());
-        assert!(!InteractiveOutcome { explicit_user_rating: Some(-1), ..base }.is_success());
+        assert!(
+            !InteractiveOutcome {
+                completed: false,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                user_correction: true,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                tool_error_rate: 1.0,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                loop_guard_intervention: true,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                mistake_brake_intervention: true,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                budget_exceeded: true,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                provider_failure: true,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                explicit_user_rating: Some(-1),
+                ..base
+            }
+            .is_success()
+        );
     }
 
     #[test]

@@ -679,7 +679,10 @@ async fn poor_interactive_outcome_does_not_increase_success_rate() {
             .await
             .expect("rolling stats query")
         {
-            assert_eq!(stats.successes, 1, "only the clean turn should count as success");
+            assert_eq!(
+                stats.successes, 1,
+                "only the clean turn should count as success"
+            );
             assert_eq!(stats.failures, 1, "the poor turn should count as failure");
             assert_eq!(stats.total, 2);
 

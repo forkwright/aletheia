@@ -709,12 +709,7 @@ mod tests {
         // Simulate 5 interactive turns: 4 success, 1 failure
         let provider = ProviderId::new("claude");
         for i in 0..5u32 {
-            let outcome = TurnOutcome::new(
-                provider.clone(),
-                TaskCategory::Feature,
-                i < 4,
-                true,
-            );
+            let outcome = TurnOutcome::new(provider.clone(), TaskCategory::Feature, i < 4, true);
             store.record_outcome(&outcome).await.unwrap();
         }
 
