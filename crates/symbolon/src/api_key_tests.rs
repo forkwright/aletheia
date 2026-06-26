@@ -100,7 +100,8 @@ fn key_secret_is_64_hex_chars() {
 #[test]
 fn generate_returns_well_formed_full_key_string() {
     let store = memory_store();
-    let (key, _record) = generate(&store, "holder", Role::Operator, None, None, TEST_ISSUER).unwrap();
+    let (key, _record) =
+        generate(&store, "holder", Role::Operator, None, None, TEST_ISSUER).unwrap();
 
     let parts: Vec<&str> = key.splitn(3, '_').collect();
     assert_eq!(parts.len(), 3);
@@ -122,7 +123,8 @@ fn generate_returns_well_formed_full_key_string() {
 #[test]
 fn generate_record_reflects_requested_role_and_nous_id() {
     let store = memory_store();
-    let (_k, record) = generate(&store, "syn", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
+    let (_k, record) =
+        generate(&store, "syn", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
 
     assert_eq!(record.prefix, "syn");
     assert_eq!(record.role, Role::Agent);
@@ -159,7 +161,15 @@ fn generate_with_expiry_sets_expires_at_near_requested() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let (_k, record) = generate(&store, "exp", Role::Operator, None, Some(expires_in), TEST_ISSUER).unwrap();
+    let (_k, record) = generate(
+        &store,
+        "exp",
+        Role::Operator,
+        None,
+        Some(expires_in),
+        TEST_ISSUER,
+    )
+    .unwrap();
     let after = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -223,7 +233,8 @@ fn iso8601_to_unix_secs(s: &str) -> u64 {
 fn validate_with_stored_expiry(expires_at: &str) -> (crate::error::Result<Claims>, String) {
     let store = memory_store();
     // Generate a real key to get valid (raw_key, key_hash) pair.
-    let (raw_key, record) = generate(&store, "exp", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
+    let (raw_key, record) =
+        generate(&store, "exp", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
     let overridden = ApiKeyRecord {
         expires_at: Some(expires_at.to_owned()),
         ..record

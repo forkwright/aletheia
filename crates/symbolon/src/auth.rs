@@ -234,7 +234,14 @@ impl AuthService {
         nous_id: Option<&str>,
         expires_in: Option<Duration>,
     ) -> Result<(String, ApiKeyRecord)> {
-        api_key::generate(&self.store, prefix, role, nous_id, expires_in, self.jwt.issuer())
+        api_key::generate(
+            &self.store,
+            prefix,
+            role,
+            nous_id,
+            expires_in,
+            self.jwt.issuer(),
+        )
     }
 
     /// Revoke an API key.
