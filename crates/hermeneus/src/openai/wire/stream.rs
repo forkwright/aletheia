@@ -505,7 +505,8 @@ impl ResponsesStreamAccumulator {
     /// Return the stable content-block position for `key`, allocating one if new.
     #[expect(
         clippy::as_conversions,
-        reason = "usize→u32: content block positions are small"
+        clippy::cast_possible_truncation,
+        reason = "WHY(#5049): content block positions bounded by stream output size, fits u32"
     )]
     fn position_for_call(&mut self, key: &str) -> u32 {
         if let Some(pos) = self.call_order.iter().position(|id| id == key) {
@@ -536,78 +537,22 @@ impl ResponsesStreamAccumulator {
                 }
             }
             "response.function_call_arguments.delta" => {
-                let key = event
-                    .call_id
-                    .clone()
-                    .or(event.item_id.clone())
-                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
-                let position = self.position_for_call(&key);
-                let block_index = self.tool_block_index(position);
-                let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
-                    PendingResponsesToolCall {
-                        id: key,
-                        name: event.name.clone().unwrap_or_default(),
-                        arguments: String::new(),
-                        started: false,
-                        block_index,
-                    }
-                });
-                if !pending.started {
-                    on_event(StreamEvent::ContentBlockStart {
-                        index: pending.block_index,
-                        block_type: "tool_use".to_owned(),
-                    });
-                    pending.started = true;
-                }
-                if let Some(delta) = event.delta
-                    && !delta.is_empty()
-                {
-                    pending.arguments.push_str(&delta);
-                    on_event(StreamEvent::InputJsonDelta {
-                        partial_json: delta,
-                    });
-                }
+                self.handle_fn_call_delta(
+                    event.call_id,
+                    event.item_id,
+                    event.name,
+                    event.delta,
+                    on_event,
+                );
             }
             "response.function_call_arguments.done" => {
-                let key = event
-                    .call_id
-                    .clone()
-                    .or(event.item_id.clone())
-                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
-                let position = self.position_for_call(&key);
-                let block_index = self.tool_block_index(position);
-                let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
-                    PendingResponsesToolCall {
-                        id: key,
-                        name: String::new(),
-                        arguments: String::new(),
-                        started: false,
-                        block_index,
-                    }
-                });
-                if let Some(call_id) = event.call_id
-                    && !call_id.is_empty()
-                {
-                    pending.id = call_id;
-                }
-                if let Some(name) = event.name
-                    && !name.is_empty()
-                {
-                    pending.name = name;
-                }
-                if let Some(arguments) = event.arguments {
-                    pending.arguments = arguments;
-                }
-                if !pending.started {
-                    on_event(StreamEvent::ContentBlockStart {
-                        index: pending.block_index,
-                        block_type: "tool_use".to_owned(),
-                    });
-                    pending.started = true;
-                }
-                on_event(StreamEvent::ContentBlockStop {
-                    index: pending.block_index,
-                });
+                self.handle_fn_call_done(
+                    event.call_id,
+                    event.item_id,
+                    event.name,
+                    event.arguments,
+                    on_event,
+                );
             }
             "response.completed" => {
                 if let Some(response) = event.response {
@@ -636,6 +581,88 @@ impl ResponsesStreamAccumulator {
             }
         }
         Ok(())
+    }
+
+    fn handle_fn_call_delta<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        call_id: Option<String>,
+        item_id: Option<String>,
+        name: Option<String>,
+        delta: Option<String>,
+        on_event: &mut F,
+    ) {
+        let key = call_id.or(item_id).unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
+        let position = self.position_for_call(&key);
+        let block_index = self.tool_block_index(position);
+        let pending =
+            self.tool_calls
+                .entry(key.clone())
+                .or_insert_with(|| PendingResponsesToolCall {
+                    id: key,
+                    name: name.unwrap_or_default(),
+                    arguments: String::new(),
+                    started: false,
+                    block_index,
+                });
+        if !pending.started {
+            on_event(StreamEvent::ContentBlockStart {
+                index: pending.block_index,
+                block_type: "tool_use".to_owned(),
+            });
+            pending.started = true;
+        }
+        if let Some(d) = delta
+            && !d.is_empty()
+        {
+            pending.arguments.push_str(&d);
+            on_event(StreamEvent::InputJsonDelta { partial_json: d });
+        }
+    }
+
+    fn handle_fn_call_done<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        call_id: Option<String>,
+        item_id: Option<String>,
+        name: Option<String>,
+        arguments: Option<String>,
+        on_event: &mut F,
+    ) {
+        let key = call_id.clone().or(item_id).unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
+        let position = self.position_for_call(&key);
+        let block_index = self.tool_block_index(position);
+        let pending =
+            self.tool_calls
+                .entry(key.clone())
+                .or_insert_with(|| PendingResponsesToolCall {
+                    id: key,
+                    name: String::new(),
+                    arguments: String::new(),
+                    started: false,
+                    block_index,
+                });
+        if let Some(id) = call_id
+            && !id.is_empty()
+        {
+            pending.id = id;
+        }
+        if let Some(n) = name
+            && !n.is_empty()
+        {
+            pending.name = n;
+        }
+        if let Some(args) = arguments {
+            pending.arguments = args;
+        }
+        if !pending.started {
+            on_event(StreamEvent::ContentBlockStart {
+                index: pending.block_index,
+                block_type: "tool_use".to_owned(),
+            });
+            pending.started = true;
+        }
+        on_event(StreamEvent::ContentBlockStop {
+            index: pending.block_index,
+        });
     }
 
     fn capture_response_metadata<F: FnMut(StreamEvent) + ?Sized>(
@@ -1188,17 +1215,18 @@ mod tests {
             }
             _ => panic!("expected ToolUse"),
         }
-        let start_idx = events
-            .iter()
-            .position(|e| {
-                matches!(e, StreamEvent::ContentBlockStart { index: 0, block_type } if block_type == "tool_use")
-            })
-            .expect("tool-use ContentBlockStart");
+        let start_idx = events.iter().position(|e| {
+            matches!(e, StreamEvent::ContentBlockStart { index: 0, block_type } if block_type == "tool_use")
+        });
         let stop_idx = events
             .iter()
-            .position(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }))
-            .expect("tool-use ContentBlockStop");
-        assert!(start_idx < stop_idx);
+            .position(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }));
+        assert!(start_idx.is_some(), "expected tool-use ContentBlockStart");
+        assert!(stop_idx.is_some(), "expected tool-use ContentBlockStop");
+        assert!(
+            start_idx < stop_idx,
+            "ContentBlockStart must precede ContentBlockStop"
+        );
         assert!(events.iter().any(|e| matches!(
             e,
             StreamEvent::InputJsonDelta { partial_json } if partial_json == "{\"a\":"
@@ -1286,17 +1314,18 @@ mod tests {
             }
             _ => panic!("expected ToolUse"),
         }
-        let start_idx = events
-            .iter()
-            .position(|e| {
-                matches!(e, StreamEvent::ContentBlockStart { index: 0, block_type } if block_type == "tool_use")
-            })
-            .expect("tool-use ContentBlockStart");
+        let start_idx = events.iter().position(|e| {
+            matches!(e, StreamEvent::ContentBlockStart { index: 0, block_type } if block_type == "tool_use")
+        });
         let stop_idx = events
             .iter()
-            .position(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }))
-            .expect("tool-use ContentBlockStop");
-        assert!(start_idx < stop_idx);
+            .position(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }));
+        assert!(start_idx.is_some(), "expected tool-use ContentBlockStart");
+        assert!(stop_idx.is_some(), "expected tool-use ContentBlockStop");
+        assert!(
+            start_idx < stop_idx,
+            "ContentBlockStart must precede ContentBlockStop"
+        );
         assert!(events.iter().any(|e| matches!(
             e,
             StreamEvent::InputJsonDelta { partial_json } if partial_json == "{\"a\":"
