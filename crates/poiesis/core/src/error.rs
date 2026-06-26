@@ -130,6 +130,17 @@ pub enum FactbaseError {
         /// Free-form description of the mismatch.
         detail: String,
     },
+    /// A `Derived` fact's formula references a fact that exists in the
+    /// factbase but is missing from the derived fact's `inputs` list.
+    #[snafu(display(
+        "derived fact {derived_fact:?} references {id:?} in its formula but not in inputs"
+    ))]
+    FactInputsMissing {
+        /// The referenced fact id that is absent from `inputs`.
+        id: String,
+        /// The derived fact whose `inputs` list is incomplete.
+        derived_fact: String,
+    },
 }
 
 /// Errors raised by the component registry: discovery, schema parse, slot

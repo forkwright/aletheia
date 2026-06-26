@@ -428,3 +428,56 @@ fn money_sub_overflow_rejects() {
         .expect_err("money sub overflow must reject");
     assert!(matches!(err, FactbaseError::BadDerived { .. }));
 }
+
+#[test]
+fn derived_inputs_formula_divergence_rejects_with_distinct_variants() {
+    // Case 1: formula references a fact that exists in the factbase but is
+    // omitted from the derived fact's `inputs`.
+    let mut fb = Factbase::new();
+    fb.add_fact(manual_fact("a", Scalar::Count { value: 1 }, Unit::Count));
+    fb.add_fact(manual_fact("b", Scalar::Count { value: 2 }, Unit::Count));
+    fb.add_fact(Fact {
+        id: FactId::new("d1").unwrap(),
+        value: Scalar::Count { value: 0 },
+        unit: Unit::Count,
+        source: Source::Derived {
+            formula: Expr::Add {
+                a: FactId::new("a").unwrap(),
+                b: FactId::new("b").unwrap(),
+            },
+            inputs: vec![FactId::new("a").unwrap()],
+        },
+        captured: ts(),
+    });
+    let err = fb
+        .validate()
+        .expect_err("formula ref in factbase but outside inputs must reject");
+    assert!(matches!(
+        err,
+        FactbaseError::FactInputsMissing { id, derived_fact }
+            if id == "b" && derived_fact == "d1"
+    ));
+
+    // Case 2: formula references a fact that does not exist in the factbase at
+    // all. This must keep returning `UnknownFact`, distinct from the missing-
+    // from-inputs variant.
+    let mut fb = Factbase::new();
+    fb.add_fact(manual_fact("a", Scalar::Count { value: 1 }, Unit::Count));
+    fb.add_fact(Fact {
+        id: FactId::new("d2").unwrap(),
+        value: Scalar::Count { value: 0 },
+        unit: Unit::Count,
+        source: Source::Derived {
+            formula: Expr::Add {
+                a: FactId::new("a").unwrap(),
+                b: FactId::new("z").unwrap(),
+            },
+            inputs: vec![FactId::new("a").unwrap()],
+        },
+        captured: ts(),
+    });
+    let err = fb
+        .validate()
+        .expect_err("formula ref missing from factbase must reject");
+    assert!(matches!(err, FactbaseError::UnknownFact { id, .. } if id == "z"));
+}
