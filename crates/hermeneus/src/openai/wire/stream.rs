@@ -265,38 +265,62 @@ fn map_finish_reason(reason: &str) -> StopReason {
     }
 }
 
-/// Parse an OpenAI SSE stream from a `reqwest::Response`, emitting
-/// [`StreamEvent`]s and returning the finalized [`CompletionResponse`].
-#[tracing::instrument(skip_all)]
-pub(crate) async fn parse_chat_sse_response(
-    response: &mut Response,
-    on_event: &mut (dyn FnMut(StreamEvent) + Send),
-) -> Result<CompletionResponse> {
-    let mut accumulator = OpenAiStreamAccumulator::new();
-    let mut line_buf: Vec<u8> = Vec::with_capacity(256);
-    let mut current_data = String::new();
-    let mut done = false;
+/// Format a short, bounded diagnostic preview of buffered partial content.
+///
+/// WHY(#5050): When a stream is truncated we include the buffered text length
+/// and a small text prefix in the error so operators can distinguish a true
+/// empty stream from one that dropped mid-sentence, without leaking the full
+/// potentially-large buffer into logs.
+fn format_partial_preview(text_buf: &str, tool_call_count: usize) -> String {
+    const PREVIEW_LEN: usize = 64;
+    let mut text_preview: String = text_buf.chars().take(PREVIEW_LEN).collect();
+    // NOTE: `nth(PREVIEW_LEN)` is O(PREVIEW_LEN); avoids a full `count()` pass
+    // over potentially-large buffered text.
+    if text_buf.chars().nth(PREVIEW_LEN).is_some() {
+        text_preview.push('…');
+    }
+    format!("text_preview={text_preview:?}, tool_calls={tool_call_count}")
+}
 
-    loop {
-        let chunk = response.chunk().await.map_err(|e| {
-            error::ApiRequestSnafu {
-                message: error_chain_message("stream read error", &e),
-            }
-            .build()
-        })?;
-        let Some(bytes) = chunk else { break };
+/// Parser state for an OpenAI Chat Completions SSE stream.
+///
+/// WHY(#5050): The parser must distinguish between a provider-terminal
+/// `[DONE]` marker and a premature EOF. Keeping the line buffer and terminal
+/// flag alongside the accumulator lets tests feed raw byte chunks to the same
+/// code path used in production.
+struct ChatSseParser {
+    accumulator: OpenAiStreamAccumulator,
+    line_buf: Vec<u8>,
+    current_data: String,
+    done: bool,
+}
 
-        for &byte in &bytes {
+impl ChatSseParser {
+    fn new() -> Self {
+        Self {
+            accumulator: OpenAiStreamAccumulator::new(),
+            line_buf: Vec::with_capacity(256),
+            current_data: String::new(),
+            done: false,
+        }
+    }
+
+    fn feed<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        bytes: &[u8],
+        on_event: &mut F,
+    ) -> Result<()> {
+        for &byte in bytes {
             if byte == b'\n' {
-                let line_cow = String::from_utf8_lossy(&line_buf);
+                let line_cow = String::from_utf8_lossy(&self.line_buf);
                 let line = line_cow.trim_end_matches('\r');
                 if line.is_empty() {
-                    if !current_data.is_empty() {
-                        if current_data.trim() == "[DONE]" {
-                            done = true;
+                    if !self.current_data.is_empty() {
+                        if self.current_data.trim() == "[DONE]" {
+                            self.done = true;
                         } else {
-                            match serde_json::from_str::<ChatStreamChunk>(&current_data) {
-                                Ok(chunk) => accumulator.process_chunk(chunk, on_event),
+                            match serde_json::from_str::<ChatStreamChunk>(&self.current_data) {
+                                Ok(chunk) => self.accumulator.process_chunk(chunk, on_event),
                                 Err(e) => {
                                     return Err(error::ApiRequestSnafu {
                                         message: format!("stream parse error: {e}"),
@@ -306,32 +330,73 @@ pub(crate) async fn parse_chat_sse_response(
                             }
                         }
                     }
-                    current_data.clear();
+                    self.current_data.clear();
                 } else if let Some(data) = line.strip_prefix("data: ") {
-                    if !current_data.is_empty() {
-                        current_data.push('\n');
+                    if !self.current_data.is_empty() {
+                        self.current_data.push('\n');
                     }
-                    current_data.push_str(data);
+                    self.current_data.push_str(data);
                 } else if let Some(data) = line.strip_prefix("data:") {
                     // llama.cpp emits `data:{...}` without the space.
-                    if !current_data.is_empty() {
-                        current_data.push('\n');
+                    if !self.current_data.is_empty() {
+                        self.current_data.push('\n');
                     }
-                    current_data.push_str(data);
+                    self.current_data.push_str(data);
                 }
                 // Ignore comments, empty `:` lines, event:, id:, retry:
-                line_buf.clear();
+                self.line_buf.clear();
             } else {
-                line_buf.push(byte);
+                self.line_buf.push(byte);
             }
         }
+        Ok(())
+    }
 
-        if done {
+    fn is_terminal(&self) -> bool {
+        self.done
+    }
+
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(
+        self,
+        on_event: &mut F,
+    ) -> Result<CompletionResponse> {
+        if !self.done {
+            let partial = format_partial_preview(
+                &self.accumulator.text_buf,
+                self.accumulator.tool_calls.len(),
+            );
+            return Err(error::StreamIncompleteSnafu {
+                message: "SSE stream ended without [DONE] marker".to_owned(),
+                partial_content: partial,
+            }
+            .build());
+        }
+        Ok(self.accumulator.finish(on_event))
+    }
+}
+
+/// Parse an OpenAI SSE stream from a `reqwest::Response`, emitting
+/// [`StreamEvent`]s and returning the finalized [`CompletionResponse`].
+#[tracing::instrument(skip_all)]
+pub(crate) async fn parse_chat_sse_response(
+    response: &mut Response,
+    on_event: &mut (dyn FnMut(StreamEvent) + Send),
+) -> Result<CompletionResponse> {
+    let mut parser = ChatSseParser::new();
+    loop {
+        let chunk = response.chunk().await.map_err(|e| {
+            error::ApiRequestSnafu {
+                message: error_chain_message("stream read error", &e),
+            }
+            .build()
+        })?;
+        let Some(bytes) = chunk else { break };
+        parser.feed(&bytes, on_event)?;
+        if parser.is_terminal() {
             break;
         }
     }
-
-    Ok(accumulator.finish(on_event))
+    parser.finish(on_event)
 }
 
 #[derive(Debug, Deserialize)]
@@ -579,6 +644,95 @@ impl ResponsesStreamAccumulator {
     }
 }
 
+/// Parser state for an OpenAI Responses SSE stream.
+///
+/// WHY(#5050): Responses streams may terminate with `response.completed` or
+/// the legacy `[DONE]` marker. This parser tracks both and refuses to emit a
+/// synthesized completion when EOF arrives before either terminal signal.
+struct ResponsesSseParser {
+    accumulator: ResponsesStreamAccumulator,
+    line_buf: Vec<u8>,
+    current_data: String,
+    done: bool,
+}
+
+impl ResponsesSseParser {
+    fn new() -> Self {
+        Self {
+            accumulator: ResponsesStreamAccumulator::new(),
+            line_buf: Vec::with_capacity(256),
+            current_data: String::new(),
+            done: false,
+        }
+    }
+
+    fn feed<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        bytes: &[u8],
+        on_event: &mut F,
+    ) -> Result<()> {
+        for &byte in bytes {
+            if byte == b'\n' {
+                let line_cow = String::from_utf8_lossy(&self.line_buf);
+                let line = line_cow.trim_end_matches('\r');
+                if line.is_empty() {
+                    if !self.current_data.is_empty() {
+                        if self.current_data.trim() == "[DONE]" {
+                            self.done = true;
+                        } else {
+                            let event: ResponsesStreamEvent =
+                                serde_json::from_str(&self.current_data).map_err(|e| {
+                                    error::ApiRequestSnafu {
+                                        message: format!("Responses stream parse error: {e}"),
+                                    }
+                                    .build()
+                                })?;
+                            self.accumulator.process_event(event, on_event)?;
+                        }
+                    }
+                    self.current_data.clear();
+                } else if let Some(data) = line.strip_prefix("data: ") {
+                    if !self.current_data.is_empty() {
+                        self.current_data.push('\n');
+                    }
+                    self.current_data.push_str(data);
+                } else if let Some(data) = line.strip_prefix("data:") {
+                    if !self.current_data.is_empty() {
+                        self.current_data.push('\n');
+                    }
+                    self.current_data.push_str(data);
+                }
+                self.line_buf.clear();
+            } else {
+                self.line_buf.push(byte);
+            }
+        }
+        Ok(())
+    }
+
+    fn is_terminal(&self) -> bool {
+        self.done || self.accumulator.completed.is_some()
+    }
+
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(
+        self,
+        on_event: &mut F,
+    ) -> Result<CompletionResponse> {
+        if !self.is_terminal() {
+            let partial = format_partial_preview(
+                &self.accumulator.text_buf,
+                self.accumulator.tool_calls.len(),
+            );
+            return Err(error::StreamIncompleteSnafu {
+                message: "Responses SSE stream ended without completion marker".to_owned(),
+                partial_content: partial,
+            }
+            .build());
+        }
+        Ok(self.accumulator.finish(on_event))
+    }
+}
+
 /// Parse an OpenAI Responses SSE stream from a `reqwest::Response`, emitting
 /// [`StreamEvent`]s and returning the finalized [`CompletionResponse`].
 #[tracing::instrument(skip_all)]
@@ -586,11 +740,7 @@ pub(crate) async fn parse_responses_sse_response(
     response: &mut Response,
     on_event: &mut (dyn FnMut(StreamEvent) + Send),
 ) -> Result<CompletionResponse> {
-    let mut accumulator = ResponsesStreamAccumulator::new();
-    let mut line_buf: Vec<u8> = Vec::with_capacity(256);
-    let mut current_data = String::new();
-    let mut done = false;
-
+    let mut parser = ResponsesSseParser::new();
     loop {
         let chunk = response.chunk().await.map_err(|e| {
             error::ApiRequestSnafu {
@@ -599,50 +749,12 @@ pub(crate) async fn parse_responses_sse_response(
             .build()
         })?;
         let Some(bytes) = chunk else { break };
-
-        for &byte in &bytes {
-            if byte == b'\n' {
-                let line_cow = String::from_utf8_lossy(&line_buf);
-                let line = line_cow.trim_end_matches('\r');
-                if line.is_empty() {
-                    if !current_data.is_empty() {
-                        if current_data.trim() == "[DONE]" {
-                            done = true;
-                        } else {
-                            let event: ResponsesStreamEvent = serde_json::from_str(&current_data)
-                                .map_err(|e| {
-                                error::ApiRequestSnafu {
-                                    message: format!("Responses stream parse error: {e}"),
-                                }
-                                .build()
-                            })?;
-                            accumulator.process_event(event, on_event)?;
-                        }
-                    }
-                    current_data.clear();
-                } else if let Some(data) = line.strip_prefix("data: ") {
-                    if !current_data.is_empty() {
-                        current_data.push('\n');
-                    }
-                    current_data.push_str(data);
-                } else if let Some(data) = line.strip_prefix("data:") {
-                    if !current_data.is_empty() {
-                        current_data.push('\n');
-                    }
-                    current_data.push_str(data);
-                }
-                line_buf.clear();
-            } else {
-                line_buf.push(byte);
-            }
-        }
-
-        if done {
+        parser.feed(&bytes, on_event)?;
+        if parser.is_terminal() {
             break;
         }
     }
-
-    Ok(accumulator.finish(on_event))
+    parser.finish(on_event)
 }
 
 #[cfg(test)]
@@ -795,5 +907,157 @@ mod tests {
         assert_eq!(resp.usage.input_tokens, 3);
         assert_eq!(resp.usage.output_tokens, 2);
         assert_eq!(resp.usage.cache_read_tokens, 6);
+    }
+
+    use crate::error::Error;
+
+    fn run_chat_parser(chunks: &[&[u8]]) -> Result<(Vec<StreamEvent>, CompletionResponse)> {
+        let mut parser = ChatSseParser::new();
+        let mut events = Vec::new();
+        for chunk in chunks {
+            parser.feed(chunk, &mut |e| events.push(e))?;
+        }
+        let resp = parser.finish(&mut |e| events.push(e))?;
+        Ok((events, resp))
+    }
+
+    fn run_responses_parser(chunks: &[&[u8]]) -> Result<(Vec<StreamEvent>, CompletionResponse)> {
+        let mut parser = ResponsesSseParser::new();
+        let mut events = Vec::new();
+        for chunk in chunks {
+            parser.feed(chunk, &mut |e| events.push(e))?;
+        }
+        let resp = parser.finish(&mut |e| events.push(e))?;
+        Ok((events, resp))
+    }
+
+    #[test]
+    fn chat_sse_clean_completion_finishes_with_text() {
+        let (events, resp) = run_chat_parser(&[
+            b"data: {\"id\":\"chat-1\",\"model\":\"gpt-5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"}}]}\n\n".as_slice(),
+            b"data: [DONE]\n\n".as_slice(),
+        ])
+        .unwrap();
+        assert_eq!(resp.content.len(), 1);
+        assert!(
+            matches!(&resp.content[0], ContentBlock::Text { text, .. } if text == "Hello"),
+            "expected text content, got {resp:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "Hello")),
+            "expected a TextDelta event"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::MessageStop { .. })),
+            "expected a MessageStop event"
+        );
+    }
+
+    #[test]
+    fn chat_sse_eof_without_done_is_incomplete() {
+        let err = run_chat_parser(&[b"data: {\"id\":\"chat-1\",\"model\":\"gpt-5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Partial\"}}]}\n\n".as_slice()])
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::StreamIncomplete { ref message, .. } if message.contains("[DONE]")),
+            "expected StreamIncomplete for EOF without [DONE], got {err:?}"
+        );
+    }
+
+    #[test]
+    fn chat_sse_eof_after_partial_tool_call_is_incomplete() {
+        let err = run_chat_parser(&[b"data: {\"id\":\"chat-1\",\"model\":\"gpt-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"tc1\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\"}}]}}]}\n\n".as_slice()])
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::StreamIncomplete { .. }),
+            "expected StreamIncomplete for truncated tool stream, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn chat_sse_provider_error_event_returns_parse_error() {
+        let mut parser = ChatSseParser::new();
+        let mut events = Vec::new();
+        parser
+            .feed(
+                b"data: {\"id\":\"chat-1\",\"model\":\"gpt-5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Partial\"}}]}\n\n",
+                &mut |e| events.push(e),
+            )
+            .unwrap();
+        let err = parser
+            .feed(
+                b"data: {\"error\":{\"message\":\"rate limit\"}}\n\n",
+                &mut |e| events.push(e),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::ApiRequest { ref message, .. } if message.contains("stream parse error")),
+            "expected ApiRequest parse error after provider error event, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn responses_sse_clean_completion_finishes() {
+        let (events, resp) = run_responses_parser(&[
+            b"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-1\",\"model\":\"gpt-5\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello\"}]}]}}\n\n".as_slice(),
+        ])
+        .unwrap();
+        assert_eq!(resp.content.len(), 1);
+        assert!(
+            matches!(&resp.content[0], ContentBlock::Text { text, .. } if text == "Hello"),
+            "expected text content, got {resp:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::MessageStop { .. })),
+            "expected a MessageStop event"
+        );
+    }
+
+    #[test]
+    fn responses_sse_eof_without_completion_is_incomplete() {
+        let err = run_responses_parser(&[
+            b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Partial\"}\n\n".as_slice(),
+        ])
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::StreamIncomplete { ref message, .. } if message.contains("completion marker")),
+            "expected StreamIncomplete for EOF without response.completed, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn responses_sse_eof_after_partial_function_call_is_incomplete() {
+        let err = run_responses_parser(&[
+            b"data: {\"type\":\"response.function_call_arguments.delta\",\"call_id\":\"fc1\",\"name\":\"get_weather\",\"delta\":\"{\\\"city\\\":\"}\n\n".as_slice(),
+        ])
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::StreamIncomplete { .. }),
+            "expected StreamIncomplete for truncated function-call stream, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn responses_sse_error_event_returns_error() {
+        let mut parser = ResponsesSseParser::new();
+        let mut events = Vec::new();
+        parser
+            .feed(
+                b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Partial\"}\n\n",
+                &mut |e| events.push(e),
+            )
+            .unwrap();
+        let err = parser
+            .feed(b"data: {\"type\":\"error\"}\n\n", &mut |e| events.push(e))
+            .unwrap_err();
+        assert!(
+            matches!(err, Error::ApiRequest { ref message, .. } if message.contains("error")),
+            "expected ApiRequest error after error event, got {err:?}"
+        );
     }
 }

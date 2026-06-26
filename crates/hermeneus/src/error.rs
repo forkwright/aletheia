@@ -107,6 +107,16 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// SSE stream ended before the provider sent a terminal completion marker.
+    #[snafu(display("stream incomplete: {message} (partial content: {partial_content})"))]
+    StreamIncomplete {
+        message: String,
+        /// Buffered partial content preserved for diagnostics.
+        partial_content: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 impl Error {
@@ -125,6 +135,7 @@ impl Error {
             Error::ProviderInit { .. }
             | Error::RateLimited { .. }
             | Error::ApiErrorBodyRead { .. }
+            | Error::StreamIncomplete { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => true,
@@ -157,6 +168,7 @@ impl koina::error_class::Classifiable for Error {
             Error::RateLimited { .. }
             | Error::ProviderInit { .. }
             | Error::ApiErrorBodyRead { .. }
+            | Error::StreamIncomplete { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => ErrorClass::Transient,
@@ -203,7 +215,7 @@ impl koina::error_class::Classifiable for Error {
                 max_attempts: 3,
                 backoff_base_ms: 1_000,
             },
-            Error::ApiErrorBodyRead { .. } => ErrorAction::Retry {
+            Error::ApiErrorBodyRead { .. } | Error::StreamIncomplete { .. } => ErrorAction::Retry {
                 max_attempts: 3,
                 backoff_base_ms: 500,
             },
@@ -227,6 +239,7 @@ impl koina::error_class::Classifiable for Error {
                     ErrorAction::Escalate
                 }
             }
+
             Error::AuthFailed { .. } => ErrorAction::Surface {
                 user_message: "Authentication failed — check your API credentials.".to_owned(),
             },
@@ -462,6 +475,28 @@ mod tests {
         assert!(
             matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
             "circuit-breaker open should action as retry"
+        );
+    }
+
+    #[test]
+    fn stream_incomplete_is_retryable_and_transient() {
+        // WHY(#5050): A truncated SSE stream is a provider-transport failure;
+        // the caller should fall back or retry rather than surface a partial
+        // completion as a successful answer.
+        let err = StreamIncompleteSnafu {
+            message: "SSE stream ended without [DONE]".to_owned(),
+            partial_content: "text_len=12, tool_calls=0".to_owned(),
+        }
+        .build();
+        assert!(err.is_retryable(), "truncated stream should be retryable");
+        assert_eq!(
+            err.class(),
+            koina::error_class::ErrorClass::Transient,
+            "truncated stream should classify as transient"
+        );
+        assert!(
+            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+            "truncated stream should action as retry"
         );
     }
 }
