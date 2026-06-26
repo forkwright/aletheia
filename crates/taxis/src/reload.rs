@@ -7,6 +7,7 @@ use snafu::Snafu;
 use tracing::{info, warn};
 
 use crate::config::AletheiaConfig;
+use crate::error::SerializeJsonSnafu;
 use crate::oikos::Oikos;
 use crate::registry::all_specs;
 
@@ -147,15 +148,25 @@ impl ConfigDiff {
 ///
 /// Serializes both configs to JSON and walks the tree to find leaf differences.
 /// Each changed path is classified as hot-reloadable or cold (restart required).
-#[must_use]
-pub fn diff_configs(old: &AletheiaConfig, new: &AletheiaConfig) -> ConfigDiff {
-    let old_value = serde_json::to_value(old).unwrap_or(Value::Null);
-    let new_value = serde_json::to_value(new).unwrap_or(Value::Null);
+///
+/// # Errors
+///
+/// Returns [`crate::error::Error::SerializeJson`] if either config cannot be
+/// serialized to JSON. Previously such failures were silently replaced with
+/// [`Value::Null`], producing an empty diff and bypassing reload logic.
+pub fn diff_configs(
+    old: &AletheiaConfig,
+    new: &AletheiaConfig,
+) -> Result<ConfigDiff, crate::error::Error> {
+    use snafu::ResultExt;
+
+    let old_value = serde_json::to_value(old).context(SerializeJsonSnafu)?;
+    let new_value = serde_json::to_value(new).context(SerializeJsonSnafu)?;
 
     let mut changes = Vec::new();
     diff_values(&old_value, &new_value, String::new(), &mut changes);
 
-    ConfigDiff { changes }
+    Ok(ConfigDiff { changes })
 }
 
 /// Log all changes from a config diff at appropriate levels.
@@ -222,6 +233,14 @@ pub enum ReloadError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Failed to diff the current and new configs.
+    #[snafu(display("failed to diff configs: {source}"))]
+    Diff {
+        source: crate::error::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Outcome of a successful reload preparation.
@@ -244,6 +263,8 @@ pub struct ReloadOutcome {
 /// Returns [`ReloadError::Load`] if reading from disk fails.
 /// Returns [`ReloadError::Validation`] if the new config is invalid
 /// (the current config is unchanged).
+/// Returns [`ReloadError::Diff`] if the current and new configs cannot be
+/// compared due to a JSON serialization failure.
 pub fn prepare_reload(
     oikos: &Oikos,
     current: &AletheiaConfig,
@@ -253,7 +274,7 @@ pub fn prepare_reload(
     let new_config = crate::loader::load_config(oikos).context(LoadSnafu)?;
     crate::validate::validate_config(&new_config).context(ValidationSnafu)?;
 
-    let diff = diff_configs(current, &new_config);
+    let diff = diff_configs(current, &new_config).context(DiffSnafu)?;
 
     Ok(ReloadOutcome { new_config, diff })
 }
@@ -430,7 +451,7 @@ mod tests {
     #[test]
     fn diff_identical_configs_is_empty() {
         let config = AletheiaConfig::default();
-        let diff = diff_configs(&config, &config);
+        let diff = diff_configs(&config, &config).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(diff.is_empty(), "identical configs should have no diff");
     }
 
@@ -440,7 +461,7 @@ mod tests {
         let mut new = old.clone();
         new.agents.defaults.model_defaults.thinking_budget = 20_000;
 
-        let diff = diff_configs(&old, &new);
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(!diff.is_empty(), "changed config should have diff");
         assert!(
             diff.hot_changes()
@@ -460,7 +481,7 @@ mod tests {
         let mut new = old.clone();
         new.gateway.port = 9999;
 
-        let diff = diff_configs(&old, &new);
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(!diff.is_empty(), "changed config should have diff");
         assert!(
             diff.cold_changes()
@@ -478,7 +499,7 @@ mod tests {
         new.gateway.port = 9999;
         new.maintenance.trace_rotation.max_age_days = 7;
 
-        let diff = diff_configs(&old, &new);
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         assert!(
             diff.changes.len() >= 3,
             "expected at least 3 changes, got {}",
@@ -493,7 +514,7 @@ mod tests {
         new.agents.defaults.max_tool_iterations = 500;
         new.gateway.port = 9999;
 
-        let diff = diff_configs(&old, &new);
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
         let hot = diff.hot_changes();
         let cold = diff.cold_changes();
 
@@ -633,7 +654,7 @@ mod tests {
         );
         staged.agents.defaults.model_defaults.thinking_budget = 20_000;
 
-        let diff = diff_configs(&current, &staged);
+        let diff = diff_configs(&current, &staged).unwrap_or_else(|e| panic!("diff configs: {e}"));
         let live = preserve_restart_required_values(&current, &staged, &diff)
             .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
 

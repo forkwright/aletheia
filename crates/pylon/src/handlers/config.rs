@@ -528,7 +528,13 @@ pub async fn update_section(
     // fully merged candidate before any write or live swap can occur.
     validate_full_config(&new_config)?;
 
-    let diff = taxis::reload::diff_configs(&config, &new_config);
+    let diff = taxis::reload::diff_configs(&config, &new_config).map_err(|e| {
+        tracing::error!(error = %e, section = %section, "config diff failed after merge");
+        ApiError::Internal {
+            message: format!("failed to diff configs: {e}"),
+            location: snafu::location!(),
+        }
+    })?;
     let restart_required: Vec<String> = diff
         .cold_changes()
         .iter()

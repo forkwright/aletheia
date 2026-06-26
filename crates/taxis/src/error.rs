@@ -70,6 +70,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Failed to serialize configuration to JSON.
+    #[snafu(display("failed to serialize config to JSON: {source}"))]
+    SerializeJson {
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Failed to write configuration to disk.
     #[snafu(display("failed to write config to {}", path.display()))]
     WriteConfig {
