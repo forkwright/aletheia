@@ -228,7 +228,12 @@ impl StreamAccumulator {
             }
             WireStreamEvent::MessageDelta { delta, usage } => {
                 self.output_tokens = usage.output_tokens;
-                // NOTE: Cache token deltas are reported in message_delta, not message_start.
+                // INVARIANT: Per the Anthropic streaming API, cache_creation_input_tokens
+                // and cache_read_input_tokens are reported in message_start.usage (assigned in
+                // the MessageStart arm above), not message_delta.usage. WireMessageDeltaUsage
+                // carries these fields with #[serde(default)] so they are always zero in
+                // practice; += is additive for forward compatibility but must produce a
+                // zero increment from this arm under the current protocol.
                 self.cache_write_tokens += usage.cache_creation_input_tokens;
                 self.cache_read_tokens += usage.cache_read_input_tokens;
                 // WHY: Anthropic stop_reason strings we do not recognize are
@@ -725,13 +730,32 @@ mod tests {
     }
 
     #[test]
-    fn accumulator_accumulates_cache_tokens_from_message_delta() {
+    fn accumulator_cache_tokens_from_message_start_survive_to_finish() {
+        // WHY: The Anthropic API sends cache token counts in message_start.usage,
+        // not message_delta.usage. This verifies values assigned in the MessageStart
+        // arm survive through the MessageDelta arm (which carries zero cache counts
+        // per the current protocol) and into the final CompletionResponse.
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_08", "claude-opus"), &mut on_event, 1000)
-            .expect("start");
-        // First message_delta sends some cache_creation tokens
+        acc.process_event(
+            WireStreamEvent::MessageStart {
+                message: WireMessageStart {
+                    id: "msg_08".to_owned(),
+                    model: "claude-opus".to_owned(),
+                    usage: WireUsage {
+                        input_tokens: 10,
+                        output_tokens: 0,
+                        cache_creation_input_tokens: 100,
+                        cache_read_input_tokens: 200,
+                    },
+                },
+            },
+            &mut on_event,
+            1000,
+        )
+        .expect("start");
+        // MessageDelta carries zero cache counts per current Anthropic streaming API.
         acc.process_event(
             WireStreamEvent::MessageDelta {
                 delta: WireMessageDeltaBody {
@@ -739,8 +763,8 @@ mod tests {
                 },
                 usage: WireMessageDeltaUsage {
                     output_tokens: 50,
-                    cache_creation_input_tokens: 100,
-                    cache_read_input_tokens: 200,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
                 },
             },
             &mut on_event,
@@ -752,6 +776,54 @@ mod tests {
         assert_eq!(response.usage.output_tokens, 50);
         assert_eq!(response.usage.cache_write_tokens, 100);
         assert_eq!(response.usage.cache_read_tokens, 200);
+    }
+
+    #[test]
+    fn accumulator_message_delta_cache_fields_are_additive() {
+        // WHY: WireMessageDeltaUsage has cache fields with #[serde(default)], always
+        // zero under the current Anthropic streaming protocol. If they ever become
+        // non-zero (future API evolution), += must not clobber the value already
+        // assigned from message_start. This verifies the additive invariant.
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(
+            WireStreamEvent::MessageStart {
+                message: WireMessageStart {
+                    id: "msg_08b".to_owned(),
+                    model: "claude-opus".to_owned(),
+                    usage: WireUsage {
+                        input_tokens: 10,
+                        output_tokens: 0,
+                        cache_creation_input_tokens: 50,
+                        cache_read_input_tokens: 100,
+                    },
+                },
+            },
+            &mut on_event,
+            1000,
+        )
+        .expect("start");
+        acc.process_event(
+            WireStreamEvent::MessageDelta {
+                delta: WireMessageDeltaBody {
+                    stop_reason: "end_turn".to_owned(),
+                },
+                usage: WireMessageDeltaUsage {
+                    output_tokens: 20,
+                    cache_creation_input_tokens: 10,
+                    cache_read_input_tokens: 5,
+                },
+            },
+            &mut on_event,
+            1000,
+        )
+        .expect("delta");
+
+        let response = acc.finish();
+        // start(50) + delta(10) = 60; start(100) + delta(5) = 105
+        assert_eq!(response.usage.cache_write_tokens, 60);
+        assert_eq!(response.usage.cache_read_tokens, 105);
     }
 
     #[test]
