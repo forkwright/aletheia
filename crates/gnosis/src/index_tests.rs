@@ -327,3 +327,59 @@ edition = "2021"
         "file_hash for deleted file must be pruned"
     );
 }
+
+/// Regression test for #5602: functions defined inside function bodies must not
+/// be indexed as module-level symbols.
+#[test]
+fn nested_functions_are_not_indexed() {
+    let (store, _dir) = open_test_store();
+    let src = r"
+        pub fn outer() {
+            fn inner() {}
+            fn deeper() {
+                fn deepest() {}
+            }
+        }
+
+        pub trait Tr {
+            fn trait_method(&self) {
+                fn trait_helper() {}
+            }
+        }
+
+        pub struct St;
+        impl Tr for St {
+            fn trait_method(&self) {
+                fn impl_helper() {}
+            }
+        }
+    ";
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile");
+    std::fs::write(tmp.path(), src).expect("write");
+    let path_str = tmp.path().to_string_lossy().into_owned();
+
+    index_file(&store, "nested_crate", &path_str, "").expect("index");
+
+    let symbols = store.symbols().expect("query symbols");
+
+    let fn_names: Vec<&str> = symbols
+        .iter()
+        .filter(|symbol| symbol.symbol_kind == "fn")
+        .map(|symbol| symbol.symbol_name.as_str())
+        .collect();
+
+    // NOTE: module-level functions must still be present.
+    assert!(fn_names.contains(&"outer"), "outer fn should be indexed");
+    assert!(
+        fn_names.contains(&"trait_method"),
+        "trait/impl methods should be indexed"
+    );
+
+    // NOTE: nested helpers must NOT leak as module-level symbols.
+    for nested in ["inner", "deeper", "deepest", "trait_helper", "impl_helper"] {
+        assert!(
+            !fn_names.contains(&nested),
+            "nested function {nested} should not be indexed as a module-level symbol"
+        );
+    }
+}

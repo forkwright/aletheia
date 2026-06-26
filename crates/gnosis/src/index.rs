@@ -75,6 +75,12 @@ struct IndexVisitor<'a> {
     module_path: String,
     file_path: &'a str,
     last_symbol_id: Option<u64>,
+    /// Number of nested function scopes currently entered.
+    ///
+    /// WHY: `syn::visit` recurses into function bodies, so a `fn helper()`
+    /// defined inside another function would otherwise be recorded as a
+    /// module-level symbol. Only symbols at `scope_depth == 0` are indexed.
+    scope_depth: usize,
 }
 
 impl<'a> IndexVisitor<'a> {
@@ -85,6 +91,7 @@ impl<'a> IndexVisitor<'a> {
             module_path,
             file_path,
             last_symbol_id: None,
+            scope_depth: 0,
         }
     }
 
@@ -193,24 +200,36 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     // ── Functions ─────────────────────────────────────────────────────────────
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
-        let name = node.sig.ident.to_string();
-        let line = span_line(node.sig.ident.span());
-        self.record_symbol(&name, "fn", line);
+        if self.scope_depth == 0 {
+            let name = node.sig.ident.to_string();
+            let line = span_line(node.sig.ident.span());
+            self.record_symbol(&name, "fn", line);
+        }
+        self.scope_depth += 1;
         syn::visit::visit_item_fn(self, node);
+        self.scope_depth -= 1;
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
-        let name = node.sig.ident.to_string();
-        let line = span_line(node.sig.ident.span());
-        self.record_symbol(&name, "fn", line);
+        if self.scope_depth == 0 {
+            let name = node.sig.ident.to_string();
+            let line = span_line(node.sig.ident.span());
+            self.record_symbol(&name, "fn", line);
+        }
+        self.scope_depth += 1;
         syn::visit::visit_impl_item_fn(self, node);
+        self.scope_depth -= 1;
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
-        let name = node.sig.ident.to_string();
-        let line = span_line(node.sig.ident.span());
-        self.record_symbol(&name, "fn", line);
+        if self.scope_depth == 0 {
+            let name = node.sig.ident.to_string();
+            let line = span_line(node.sig.ident.span());
+            self.record_symbol(&name, "fn", line);
+        }
+        self.scope_depth += 1;
         syn::visit::visit_trait_item_fn(self, node);
+        self.scope_depth -= 1;
     }
 
     // ── Structs ───────────────────────────────────────────────────────────────
