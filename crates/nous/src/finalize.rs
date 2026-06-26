@@ -160,7 +160,9 @@ pub(crate) fn finalize(
         return Ok(FinalizeResult::new(0, false));
     }
 
-    // WHY: ensure session row exists before child messages: FK constraint on messages table would otherwise fail
+    // WHY: ensure session row exists before child messages: FK constraint on messages table would otherwise fail.
+    // The session row keeps the configured default model; per-turn usage and
+    // lifecycle records below use `result.model_used`, which is the observed model.
     store
         .find_or_create_session(
             &session.id,
@@ -177,7 +179,7 @@ pub(crate) fn finalize(
         &session.nous_id,
         TurnAttemptStatus::FinalizePending,
     );
-    pending.model = Some(session.model.clone());
+    pending.model = Some(result.model_used.clone());
     crate::turn_record::persist_turn_attempt(store, &session.nous_id, &pending)?;
 
     let mut messages_persisted = 0usize;
@@ -266,7 +268,7 @@ pub(crate) fn finalize(
             output_tokens: result.usage.output_tokens as i64, // kanon:ignore RUST/as-cast
             cache_read_tokens: result.usage.cache_read_tokens as i64, // kanon:ignore RUST/as-cast
             cache_write_tokens: result.usage.cache_write_tokens as i64, // kanon:ignore RUST/as-cast
-            model: Some(session.model.clone()),
+            model: Some(result.model_used.clone()),
         };
         store.record_usage(&record).context(error::StoreSnafu)?;
         usage_recorded = true;
@@ -278,7 +280,7 @@ pub(crate) fn finalize(
         &session.nous_id,
         TurnAttemptStatus::Completed,
     );
-    completed.model = Some(session.model.clone());
+    completed.model = Some(result.model_used.clone());
     crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
 
     debug!(messages_persisted, usage_recorded, "finalize complete");
@@ -523,6 +525,35 @@ mod tests {
         let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
         assert!(!fr.usage_recorded);
         assert_eq!(fr.messages_persisted, 2);
+    }
+
+    #[test]
+    fn finalize_records_observed_model_used() {
+        let (store, session) = make_store_and_session();
+        let mut result = simple_result();
+        result.model_used = "fallback-model".to_owned();
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let usage = store.get_usage_for_session("ses-1").expect("usage");
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].model.as_deref(), Some("fallback-model"));
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(
+            records[0].status,
+            crate::turn_record::TurnAttemptStatus::FinalizePending
+        );
+        assert_eq!(records[0].model.as_deref(), Some("fallback-model"));
+        assert_eq!(
+            records[1].status,
+            crate::turn_record::TurnAttemptStatus::Completed
+        );
+        assert_eq!(records[1].model.as_deref(), Some("fallback-model"));
     }
 
     #[test]

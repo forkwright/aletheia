@@ -1,4 +1,4 @@
-//! Prompt audit log: operator-visible record of every outbound LLM request.
+//! Prompt audit log: operator-visible record of completed model-backed turns.
 //!
 //! Append-only JSONL log at `{instance}/logs/prompt-audit/YYYY-MM-DD.jsonl`.
 //! Rotated daily based on the UTC calendar date of the record timestamp.
@@ -120,7 +120,7 @@ impl From<&taxis::config::PromptAuditSettings> for PromptAuditRecordOptions {
     }
 }
 
-/// One append-only audit record per outbound `CompletionRequest`.
+/// One append-only audit record per completed model-backed turn.
 ///
 /// See module docs for the sovereignty contract on what is and is not logged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,7 +140,7 @@ pub struct PromptAuditRecord {
     pub provider: String,
     /// Deployment target (cloud/local/…). See [`DeploymentTarget`].
     pub deployment_target: DeploymentTarget,
-    /// Model identifier passed to the provider.
+    /// Selected model identifier that served the turn.
     pub model: String,
     /// SHA-256 of the system prompt (hex). Empty string when no system prompt.
     pub system_prompt_hash: String,
@@ -320,27 +320,50 @@ impl PromptAuditLog {
     }
 }
 
+/// Inputs needed to construct a prompt audit record.
+#[derive(Clone, Copy)]
+pub(crate) struct PromptAuditRecordInput<'a> {
+    /// Pipeline context assembled for the turn.
+    pub(crate) ctx: &'a crate::pipeline::PipelineContext,
+    /// Session that owns the turn.
+    pub(crate) session: &'a crate::session::SessionState,
+    /// Agent config used for token-estimation settings.
+    pub(crate) config: &'a crate::config::NousConfig,
+    /// Selected model that successfully served the turn.
+    pub(crate) observed_model: &'a str,
+    /// Provider registry used to resolve provider/deployment metadata.
+    pub(crate) providers: &'a hermeneus::provider::ProviderRegistry,
+    /// Tool registry used to compute the exposed tool surface.
+    pub(crate) tools: &'a organon::registry::ToolRegistry,
+    /// Tool context with active dynamic tools.
+    pub(crate) tool_ctx: &'a organon::types::ToolContext,
+    /// Audit record options resolved from operator config.
+    pub(crate) options: PromptAuditRecordOptions,
+}
+
 /// Build a [`PromptAuditRecord`] from the assembled pipeline context.
 ///
-/// Called once per pipeline turn, right before the execute stage hands the
-/// request to hermeneus. Never touches the system prompt content — the
-/// hash and length are the only signal that leave this function.
-pub(crate) fn build_audit_record(
-    ctx: &crate::pipeline::PipelineContext,
-    session: &crate::session::SessionState,
-    config: &crate::config::NousConfig,
-    providers: &hermeneus::provider::ProviderRegistry,
-    tools: &organon::registry::ToolRegistry,
-    tool_ctx: &organon::types::ToolContext,
-    options: PromptAuditRecordOptions,
-) -> PromptAuditRecord {
+/// Called once per successful pipeline turn, after execute has reported the
+/// selected model. Never touches the system prompt content — the hash and
+/// length are the only signal that leave this function.
+pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAuditRecord {
+    let PromptAuditRecordInput {
+        ctx,
+        session,
+        config,
+        observed_model,
+        providers,
+        tools,
+        tool_ctx,
+        options,
+    } = input;
     let system_prompt = ctx.system_prompt.as_deref();
     let system_prompt_bytes = system_prompt.map_or(0, str::len);
 
-    // WHY: resolve provider from the configured model so the log reports the
-    // real route, not just the model alias. `"unknown"` keeps the log
+    // WHY: resolve provider from the observed model so the log reports the
+    // real route that served the turn. `"unknown"` keeps the log
     // writeable when the provider is mid-reconfiguration.
-    let provider = providers.find_provider(&config.generation.model);
+    let provider = providers.find_provider(observed_model);
     let provider_name = provider.map_or_else(|| "unknown".to_owned(), |p| p.name().to_owned());
     let deployment_target = provider
         .map_or(hermeneus::provider::DeploymentTarget::Cloud, |p| {
@@ -419,7 +442,7 @@ pub(crate) fn build_audit_record(
         turn_id: session.turn_id.to_string(),
         provider: provider_name,
         deployment_target,
-        model: config.generation.model.clone(),
+        model: observed_model.to_owned(),
         system_prompt_hash: hash_system_prompt(system_prompt),
         system_prompt_bytes,
         message_count: ctx.messages.len(),

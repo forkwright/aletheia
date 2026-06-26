@@ -166,6 +166,40 @@ async fn simple_text_response() {
 }
 
 #[tokio::test]
+async fn primary_success_records_observed_model_used() {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response_for_model(
+            "primary answer",
+            "primary-model",
+        )])
+        .models(&["primary-model"]),
+    ));
+
+    let mut config = test_config();
+    config.generation.model = "primary-model".to_owned();
+    let session = SessionState::new("test-session".to_owned(), "main".to_owned(), &config);
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &session,
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    assert_eq!(result.content, "primary answer");
+    assert_eq!(
+        result.model_used, "primary-model",
+        "primary success should report the observed response model"
+    );
+}
+
+#[tokio::test]
 async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
     let primary = Arc::new(FallbackSequenceProvider::new(
         "primary",
@@ -178,7 +212,10 @@ async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
     let secondary = Arc::new(FallbackSequenceProvider::new(
         "secondary",
         &["fallback-model"],
-        vec![Ok(make_text_response("fallback answer"))],
+        vec![Ok(make_text_response_for_model(
+            "fallback answer",
+            "fallback-model",
+        ))],
     ));
     let tertiary = Arc::new(FallbackSequenceProvider::new(
         "tertiary",
@@ -208,6 +245,10 @@ async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
     .expect("execute");
 
     assert_eq!(result.content, "fallback answer");
+    assert_eq!(
+        result.model_used, "fallback-model",
+        "fallback success should report the model that served the turn"
+    );
     assert_eq!(result.usage.llm_calls, 1);
     assert_eq!(primary.called_models(), ["test-model"]);
     assert_eq!(secondary.called_models(), ["fallback-model"]);

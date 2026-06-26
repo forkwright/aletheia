@@ -85,7 +85,7 @@ pub(crate) struct TurnCompleted {
     /// Agent identifier.
     // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
-    /// Model name.
+    /// Observed model name for the completed turn.
     pub(crate) model: String,
     /// Total duration in milliseconds.
     pub(crate) duration_ms: u64,

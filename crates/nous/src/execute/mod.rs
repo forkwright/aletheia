@@ -21,8 +21,8 @@ use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use hermeneus::fallback::FallbackConfig;
 use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{
-    CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
-    ThinkingConfig, ToolResultContent,
+    CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
+    ServerToolDefinition, StopReason, ThinkingConfig, ToolResultContent,
 };
 use organon::registry::ToolRegistry;
 use organon::surface::SurfaceInputs;
@@ -49,6 +49,11 @@ use crate::stream::TurnStreamEvent;
 const STOP_REASON_MAX_TOOL_ITERATIONS: &str = "max_tool_iterations";
 const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
 const STOP_REASON_TURN_TIMEOUT: &str = "turn_timeout";
+
+type LlmCompletion = (CompletionResponse, String);
+type LlmCallFuture<'a> = std::pin::Pin<
+    Box<dyn std::future::Future<Output = hermeneus::error::Result<LlmCompletion>> + Send + 'a>,
+>;
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -116,6 +121,7 @@ pub(crate) async fn execute_with_deadline(
         Vec::len,
     );
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
+    let mut model_used = turn_model.clone();
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -237,17 +243,24 @@ pub(crate) async fn execute_with_deadline(
             // tokio::time::timeout accepts a single future type regardless of whether
             // the fallback path (async fn → impl Future) or the direct path
             // (provider.complete → Pin<Box<dyn Future>>) is taken.
-            let llm_fut: std::pin::Pin<Box<dyn std::future::Future<Output = _> + Send + '_>> =
-                if let Some(fallback_config) = &fallback_config {
-                    Box::pin(model_fallback::complete_with_registry_fallback(
+            let llm_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
+                Box::pin(async move {
+                    let completion = model_fallback::complete_with_registry_fallback(
                         providers,
                         &request,
                         fallback_config,
-                    ))
-                } else {
-                    let provider = resolve_provider_checked(providers, &turn_model)?;
-                    provider.complete(&request)
-                };
+                    )
+                    .await?;
+                    Ok((completion.response, completion.model))
+                })
+            } else {
+                let provider = resolve_provider_checked(providers, &turn_model)?;
+                let requested_model = turn_model.clone();
+                Box::pin(async move {
+                    let response = provider.complete(&request).await?;
+                    Ok((response, requested_model))
+                })
+            };
             if let Some(deadline) = deadline {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
@@ -268,11 +281,12 @@ pub(crate) async fn execute_with_deadline(
         };
 
         let response = match completion {
-            Ok(resp) => {
+            Ok((resp, observed)) => {
                 if fallback_config.is_none() {
                     let provider = resolve_provider_checked(providers, &turn_model)?;
                     providers.record_success(provider.name());
                 }
+                model_used = observed;
                 resp
             }
             Err(e) => {
@@ -470,7 +484,7 @@ pub(crate) async fn execute_with_deadline(
             all_tool_calls,
             total_usage,
             reasoning_parts.join("\n"),
-            turn_model,
+            model_used,
             tool_surface_hashes.into_iter().collect(),
         ));
     }
@@ -498,7 +512,7 @@ pub(crate) async fn execute_with_deadline(
         stop_reason: final_stop_reason,
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
-        model_used: turn_model,
+        model_used,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }
@@ -649,6 +663,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         Vec::len,
     );
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
+    let mut model_used = turn_model.clone();
 
     let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
         return execute_with_deadline(
@@ -796,6 +811,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         let response = match response {
             Ok(resp) => {
                 providers.record_success(provider.name());
+                model_used = turn_model.clone();
                 resp
             }
             Err(e) => {
@@ -999,7 +1015,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             all_tool_calls,
             total_usage,
             reasoning_parts.join("\n"),
-            turn_model,
+            model_used,
             tool_surface_hashes.into_iter().collect(),
         ));
     }
@@ -1027,7 +1043,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         stop_reason: final_stop_reason,
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
-        model_used: turn_model,
+        model_used,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }

@@ -18,6 +18,15 @@ pub struct FallbackConfig {
     pub retries_before_fallback: u32,
 }
 
+/// Successful fallback-chain completion with the model that served it.
+#[derive(Debug, Clone)]
+pub struct FallbackCompletion {
+    /// Provider response.
+    pub response: CompletionResponse,
+    /// Request model that completed successfully.
+    pub model: String,
+}
+
 /// Execute a completion request with model fallback on retryable errors.
 ///
 /// Tries the primary model (from `request.model`) up to `retries_before_fallback`
@@ -41,6 +50,22 @@ pub async fn complete_with_fallback(
     request: &CompletionRequest,
     config: &FallbackConfig,
 ) -> Result<CompletionResponse> {
+    complete_with_fallback_observed(provider, request, config)
+        .await
+        .map(|completion| completion.response)
+}
+
+/// Execute a completion request with model fallback and return the successful model.
+///
+/// The returned model is the request model that succeeded. This lets callers
+/// attribute a turn to the fallback model instead of the originally configured
+/// model, without depending on provider-specific response metadata.
+#[tracing::instrument(skip_all)]
+pub async fn complete_with_fallback_observed(
+    provider: &dyn LlmProvider,
+    request: &CompletionRequest,
+    config: &FallbackConfig,
+) -> Result<FallbackCompletion> {
     let primary = &request.model;
     let mut last_error = None;
     let mut attempt_errors = Vec::new();
@@ -55,7 +80,12 @@ pub async fn complete_with_fallback(
         }
 
         match provider.complete(request).await {
-            Ok(resp) => return Ok(resp),
+            Ok(response) => {
+                return Ok(FallbackCompletion {
+                    model: primary.clone(),
+                    response,
+                });
+            }
             Err(e) => {
                 if !e.is_retryable() {
                     return Err(e);
@@ -96,7 +126,12 @@ pub async fn complete_with_fallback(
             }
 
             match provider.complete(&fallback_req).await {
-                Ok(resp) => return Ok(resp),
+                Ok(response) => {
+                    return Ok(FallbackCompletion {
+                        model: fallback_model.clone(),
+                        response,
+                    });
+                }
                 Err(e) => {
                     if !e.is_retryable() {
                         return Err(e);
