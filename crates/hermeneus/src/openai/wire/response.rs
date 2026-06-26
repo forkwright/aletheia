@@ -7,6 +7,7 @@
 use serde::Deserialize;
 use tracing::warn;
 
+use crate::error::{ApiRequestSnafu, Error, MalformedToolArgumentsSnafu};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 #[derive(Debug, Deserialize)]
@@ -138,7 +139,7 @@ impl ChatCompletionResponse {
     /// Returns an error string when the response contains no choices (the
     /// OpenAI API guarantees at least one but we defend against a degenerate
     /// server).
-    pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {
+    pub(crate) fn into_response(self) -> Result<CompletionResponse, Error> {
         let Self {
             id,
             model,
@@ -147,9 +148,12 @@ impl ChatCompletionResponse {
         } = self;
 
         let mut choices_iter = choices.into_iter();
-        let choice = choices_iter
-            .next()
-            .ok_or_else(|| "OpenAI response had no choices".to_owned())?;
+        let choice = choices_iter.next().ok_or_else(|| {
+            ApiRequestSnafu {
+                message: "OpenAI response had no choices".to_owned(),
+            }
+            .build()
+        })?;
 
         let finish_reason = choice.finish_reason.as_deref().unwrap_or("stop");
         let stop_reason = map_finish_reason(finish_reason);
@@ -168,7 +172,7 @@ impl ChatCompletionResponse {
         for call in choice.message.tool_calls {
             // WHY: arguments is a JSON-encoded string on the wire. An empty
             // string means the tool takes no input — map to an empty object.
-            let input = parse_arguments(&call.function.arguments);
+            let input = parse_arguments(&call.function.arguments, &call.function.name)?;
             content.push(ContentBlock::ToolUse {
                 id: call.id,
                 name: call.function.name,
@@ -211,7 +215,7 @@ impl ResponsesResponse {
     ///
     /// Returns an error string when the response contains neither output
     /// items nor an `output_text` convenience field.
-    pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {
+    pub(crate) fn into_response(self) -> Result<CompletionResponse, Error> {
         let Self {
             id,
             model,
@@ -247,8 +251,8 @@ impl ResponsesResponse {
                     saw_function_call = true;
                     content.push(ContentBlock::ToolUse {
                         id: call_id,
-                        name,
-                        input: parse_arguments(&arguments),
+                        name: name.clone(),
+                        input: parse_arguments(&arguments, &name)?,
                     });
                 }
                 ResponsesOutputItem::Other => {}
@@ -266,7 +270,10 @@ impl ResponsesResponse {
         }
 
         if content.is_empty() {
-            return Err("OpenAI Responses response had no output".to_owned());
+            return Err(ApiRequestSnafu {
+                message: "OpenAI Responses response had no output".to_owned(),
+            }
+            .build());
         }
 
         let stop_reason = if saw_function_call {
@@ -314,24 +321,33 @@ impl ResponsesResponse {
     }
 }
 
-pub(crate) fn parse_arguments(arguments: &str) -> serde_json::Value {
+/// Parse a provider's JSON-encoded tool arguments.
+///
+/// # Errors
+///
+/// Returns [`Error::MalformedToolArguments`] when the argument string is not
+/// valid JSON. This prevents malformed provider output from reaching Nous tool
+/// dispatch as a normal tool input.
+pub(crate) fn parse_arguments(
+    arguments: &str,
+    tool_name: &str,
+) -> Result<serde_json::Value, Error> {
     if arguments.is_empty() {
-        serde_json::json!({})
+        Ok(serde_json::json!({}))
     } else {
-        match serde_json::from_str(arguments) {
-            Ok(v) => v,
-            Err(e) => {
-                warn!(
-                    error = %e,
-                    raw_arguments = %arguments,
-                    "OpenAI tool arguments JSON parse failed; returning error object to agent"
-                );
-                serde_json::json!({
-                    "_parse_error": format!("malformed tool input: {e}"),
-                    "_raw_input": arguments,
-                })
+        serde_json::from_str(arguments).map_err(|e| {
+            warn!(
+                error = %e,
+                tool = %tool_name,
+                raw_arguments = %arguments,
+                "OpenAI tool arguments JSON parse failed; rejecting provider tool call"
+            );
+            MalformedToolArgumentsSnafu {
+                tool: tool_name.to_owned(),
+                source: e,
             }
-        }
+            .build()
+        })
     }
 }
 
@@ -360,6 +376,7 @@ fn map_finish_reason(reason: &str) -> StopReason {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
@@ -572,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed_arguments_becomes_parse_error_object() {
+    fn malformed_arguments_reject_parse_error() {
         let body = r#"{
             "id": "x",
             "model": "m",
@@ -590,39 +607,17 @@ mod tests {
             }]
         }"#;
         let parsed: ChatCompletionResponse = serde_json::from_str(body).unwrap();
-        let resp = parsed.into_response().unwrap();
-        match &resp.content[0] {
-            ContentBlock::ToolUse { input, .. } => {
-                assert!(
-                    input.is_object(),
-                    "malformed arguments must be an object, not a string: {input:?}"
-                );
-                let Some(obj) = input.as_object() else {
-                    panic!("malformed arguments should produce an object: {input:?}");
-                };
-                assert!(
-                    obj.get("_parse_error")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s.starts_with("malformed tool input:")),
-                    "expected _parse_error field: {input:?}"
-                );
-                assert!(
-                    obj.contains_key("_raw_input"),
-                    "expected _raw_input field: {input:?}"
-                );
-                assert!(
-                    obj.get("_raw_input")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s == "{not json"),
-                    "_raw_input should preserve raw argument string: {input:?}"
-                );
-            }
-            other => panic!("expected ToolUse, got {other:?}"),
-        }
+        let err = parsed.into_response().expect_err(
+            "malformed Chat tool arguments should be rejected as a provider contract failure",
+        );
+        assert!(
+            matches!(err, Error::MalformedToolArguments { .. }),
+            "expected MalformedToolArguments, got {err:?}"
+        );
     }
 
     #[test]
-    fn responses_malformed_arguments_becomes_parse_error_object() {
+    fn responses_malformed_arguments_reject_parse_error() {
         let body = r#"{
             "id": "resp-malformed",
             "model": "m",
@@ -635,28 +630,12 @@ mod tests {
             }]
         }"#;
         let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
-        let resp = parsed.into_response().unwrap();
-        match &resp.content[0] {
-            ContentBlock::ToolUse { input, .. } => {
-                assert!(
-                    input.is_object(),
-                    "malformed arguments must be an object, not a string: {input:?}"
-                );
-                let Some(obj) = input.as_object() else {
-                    panic!("malformed arguments should produce an object: {input:?}");
-                };
-                assert!(
-                    obj.get("_parse_error")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s.starts_with("malformed tool input:")),
-                    "expected _parse_error field: {input:?}"
-                );
-                assert!(
-                    obj.contains_key("_raw_input"),
-                    "expected _raw_input field: {input:?}"
-                );
-            }
-            other => panic!("expected ToolUse, got {other:?}"),
-        }
+        let err = parsed.into_response().expect_err(
+            "malformed Responses function arguments should be rejected as a provider contract failure",
+        );
+        assert!(
+            matches!(err, Error::MalformedToolArguments { .. }),
+            "expected MalformedToolArguments, got {err:?}"
+        );
     }
 }

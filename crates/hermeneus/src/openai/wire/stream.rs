@@ -9,7 +9,7 @@ use reqwest::Response;
 use serde::Deserialize;
 
 use crate::anthropic::StreamEvent;
-use crate::error::{self, Result};
+use crate::error::{self, Error, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::response::{ResponsesResponse, TokenDetails, parse_arguments};
@@ -238,7 +238,7 @@ impl OpenAiStreamAccumulator {
     pub(crate) fn finish<F: FnMut(StreamEvent) + ?Sized>(
         self,
         on_event: &mut F,
-    ) -> CompletionResponse {
+    ) -> Result<CompletionResponse, Error> {
         let Self {
             id,
             model,
@@ -268,14 +268,14 @@ impl OpenAiStreamAccumulator {
             }
             content.push(ContentBlock::ToolUse {
                 id: tc.id,
-                name: tc.name,
-                input: parse_arguments(&tc.arguments),
+                name: tc.name.clone(),
+                input: parse_arguments(&tc.arguments, &tc.name)?,
             });
         }
 
         on_event(StreamEvent::MessageStop { stop_reason, usage });
 
-        CompletionResponse {
+        Ok(CompletionResponse {
             id,
             model,
             stop_reason,
@@ -283,7 +283,7 @@ impl OpenAiStreamAccumulator {
             usage,
             cost_usd: None,
             duration_ms: None,
-        }
+        })
     }
 }
 
@@ -404,7 +404,7 @@ impl ChatSseParser {
             }
             .build());
         }
-        Ok(self.accumulator.finish(on_event))
+        self.accumulator.finish(on_event)
     }
 }
 
@@ -559,11 +559,7 @@ impl ResponsesStreamAccumulator {
             "response.completed" => {
                 if let Some(response) = event.response {
                     self.capture_response_metadata(&response, on_event);
-                    self.completed = Some(
-                        response
-                            .into_response()
-                            .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())?,
-                    );
+                    self.completed = Some(response.into_response()?);
                 }
             }
             "response.failed" => {
@@ -711,7 +707,10 @@ impl ResponsesStreamAccumulator {
         }
     }
 
-    fn finish<F: FnMut(StreamEvent) + ?Sized>(self, on_event: &mut F) -> CompletionResponse {
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(
+        self,
+        on_event: &mut F,
+    ) -> Result<CompletionResponse, Error> {
         let Self {
             id,
             model,
@@ -742,7 +741,9 @@ impl ResponsesStreamAccumulator {
             }
         }
 
-        let resp = completed.unwrap_or_else(|| {
+        let resp = if let Some(resp) = completed {
+            resp
+        } else {
             let mut content = Vec::new();
             if !text_buf.is_empty() {
                 content.push(ContentBlock::Text {
@@ -757,7 +758,7 @@ impl ResponsesStreamAccumulator {
                     content.push(ContentBlock::ToolUse {
                         id: call.id.clone(),
                         name: call.name.clone(),
-                        input: parse_arguments(&call.arguments),
+                        input: parse_arguments(&call.arguments, &call.name)?,
                     });
                 }
             }
@@ -778,13 +779,13 @@ impl ResponsesStreamAccumulator {
                 cost_usd: None,
                 duration_ms: None,
             }
-        });
+        };
 
         on_event(StreamEvent::MessageStop {
             stop_reason: resp.stop_reason,
             usage: resp.usage,
         });
-        resp
+        Ok(resp)
     }
 }
 
@@ -873,7 +874,7 @@ impl ResponsesSseParser {
             }
             .build());
         }
-        Ok(self.accumulator.finish(on_event))
+        self.accumulator.finish(on_event)
     }
 }
 
@@ -903,6 +904,7 @@ pub(crate) async fn parse_responses_sse_response(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
@@ -917,7 +919,9 @@ mod tests {
             let chunk: ChatStreamChunk = serde_json::from_str(chunk_json).unwrap();
             acc.process_chunk(chunk, &mut |e| events.push(e));
         }
-        let resp = acc.finish(&mut |e| events.push(e));
+        let resp = acc
+            .finish(&mut |e| events.push(e))
+            .expect("finish should succeed");
         (events, resp)
     }
 
@@ -928,7 +932,9 @@ mod tests {
             let event: ResponsesStreamEvent = serde_json::from_str(event_json).unwrap();
             acc.process_event(event, &mut |e| events.push(e)).unwrap();
         }
-        let resp = acc.finish(&mut |e| events.push(e));
+        let resp = acc
+            .finish(&mut |e| events.push(e))
+            .expect("finish should succeed");
         (events, resp)
     }
 
@@ -974,37 +980,24 @@ mod tests {
     }
 
     #[test]
-    fn malformed_tool_call_deltas_become_parse_error_object() {
-        let (_, resp) = process_chunks(&[
+    fn malformed_tool_call_deltas_reject_parse_error() {
+        let mut acc = OpenAiStreamAccumulator::new();
+        let mut events = Vec::new();
+        for chunk_json in [
             r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{not"}}]}}]}"#,
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" json"}}]}}]}"#,
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
-        ]);
-        assert_eq!(resp.stop_reason, StopReason::ToolUse);
-        match &resp.content[0] {
-            ContentBlock::ToolUse { id, name, input } => {
-                assert_eq!(id, "c1");
-                assert_eq!(name, "f");
-                assert!(
-                    input.is_object(),
-                    "malformed streaming arguments must be an object, not a string: {input:?}"
-                );
-                let Some(obj) = input.as_object() else {
-                    panic!("malformed streaming arguments should produce an object: {input:?}");
-                };
-                assert!(
-                    obj.get("_parse_error")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s.starts_with("malformed tool input:")),
-                    "expected _parse_error field: {input:?}"
-                );
-                assert!(
-                    obj.contains_key("_raw_input"),
-                    "expected _raw_input field: {input:?}"
-                );
-            }
-            _ => panic!("expected ToolUse"),
+        ] {
+            let chunk: ChatStreamChunk = serde_json::from_str(chunk_json).unwrap();
+            acc.process_chunk(chunk, &mut |e| events.push(e));
         }
+        let err = acc
+            .finish(&mut |e| events.push(e))
+            .expect_err("malformed tool arguments should fail finish");
+        assert!(
+            matches!(err, Error::MalformedToolArguments { .. }),
+            "expected MalformedToolArguments, got {err:?}"
+        );
     }
 
     #[test]
@@ -1394,6 +1387,27 @@ mod tests {
         assert_eq!(
             stop_count, 1,
             "expected exactly one ContentBlockStop for index 0, got {stop_count}"
+        );
+    }
+
+    #[test]
+    fn malformed_responses_function_arguments_reject_parse_error() {
+        let mut acc = ResponsesStreamAccumulator::new();
+        let mut events = Vec::new();
+        for event_json in [
+            r#"{"type":"response.function_call_arguments.delta","call_id":"c1","name":"f","delta":"{not"}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"c1","delta":" json"}"#,
+            r#"{"type":"response.function_call_arguments.done","call_id":"c1","name":"f","arguments":"{not json"}"#,
+        ] {
+            let event: ResponsesStreamEvent = serde_json::from_str(event_json).unwrap();
+            acc.process_event(event, &mut |e| events.push(e)).unwrap();
+        }
+        let err = acc
+            .finish(&mut |e| events.push(e))
+            .expect_err("malformed Responses function arguments should fail finish");
+        assert!(
+            matches!(err, Error::MalformedToolArguments { .. }),
+            "expected MalformedToolArguments, got {err:?}"
         );
     }
 }

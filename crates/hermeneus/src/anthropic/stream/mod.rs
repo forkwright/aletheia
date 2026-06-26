@@ -230,7 +230,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut events = Vec::new();
         parse_sse_stream(reader, &mut acc, &mut |e| events.push(e), 1000).unwrap();
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         (events, response)
     }
 

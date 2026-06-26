@@ -92,6 +92,16 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Provider returned malformed tool arguments that cannot be dispatched
+    /// as a normal tool input.
+    #[snafu(display("provider returned malformed tool arguments for {tool}: {source}"))]
+    MalformedToolArguments {
+        tool: String,
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Model not supported by this provider.
     #[snafu(display("model not supported: {model}"))]
     UnsupportedModel {
@@ -193,11 +203,12 @@ impl koina::error_class::Classifiable for Error {
             }
 
             // Permanent: retrying will not help — auth, unsupported model,
-            // non-5xx API errors, parse failures
+            // non-5xx API errors, parse failures, malformed provider tool arguments
             Error::AuthFailed { .. }
             | Error::UnsupportedModel { .. }
             | Error::ApiError { .. }
-            | Error::ParseResponse { .. } => ErrorClass::Permanent,
+            | Error::ParseResponse { .. }
+            | Error::MalformedToolArguments { .. } => ErrorClass::Permanent,
         }
     }
 
@@ -256,11 +267,17 @@ impl koina::error_class::Classifiable for Error {
                 backoff_base_ms: 2_000,
             },
             Error::ParseResponse { .. } => ErrorAction::Escalate,
+            Error::MalformedToolArguments { tool, source } => ErrorAction::Surface {
+                user_message: format!(
+                    "Provider returned malformed tool arguments for '{tool}': {source}"
+                ),
+            },
         }
     }
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use koina::error_class::Classifiable;
@@ -497,6 +514,36 @@ mod tests {
         assert!(
             matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
             "truncated stream should action as retry"
+        );
+    }
+
+    #[test]
+    fn malformed_tool_arguments_is_not_retryable() {
+        // WHY(#5047): malformed provider tool argument JSON is a provider
+        // contract failure, not a transient network issue. Retrying the same
+        // request will reproduce the same malformed payload.
+        let raw = "{not json";
+        let source = serde_json::from_str::<serde_json::Value>(raw).unwrap_err();
+        let err = MalformedToolArgumentsSnafu {
+            tool: "test_tool".to_owned(),
+            source,
+        }
+        .build();
+        assert!(
+            !err.is_retryable(),
+            "malformed tool arguments should not be retryable"
+        );
+        assert_eq!(
+            err.class(),
+            koina::error_class::ErrorClass::Permanent,
+            "malformed tool arguments should classify as permanent"
+        );
+        assert!(
+            matches!(
+                err.action(),
+                koina::error_class::ErrorAction::Surface { .. }
+            ),
+            "malformed tool arguments should surface to the user/UI"
         );
     }
 }

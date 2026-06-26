@@ -3,7 +3,7 @@
 use tracing::warn;
 
 use super::super::wire::{WireContentBlockStart, WireDelta, WireStreamEvent, WireUsage};
-use crate::error::Result;
+use crate::error::{Error, MalformedToolArgumentsSnafu, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::StreamEvent;
@@ -265,15 +265,20 @@ impl StreamAccumulator {
     }
 
     /// Build the final `CompletionResponse` from accumulated state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedToolArguments`] when a streamed tool's
+    /// accumulated `input_json` is not valid JSON. This prevents malformed
+    /// provider output from reaching Nous tool dispatch as a normal tool input.
     #[expect(
         clippy::too_many_lines,
         reason = "stream accumulator converts every supported Anthropic block variant"
     )]
-    pub(crate) fn finish(self) -> CompletionResponse {
-        let content = self
-            .blocks
-            .into_iter()
-            .map(|b| match b {
+    pub(crate) fn finish(self) -> Result<CompletionResponse, Error> {
+        let mut content = Vec::with_capacity(self.blocks.len());
+        for block in self.blocks {
+            let converted = match block {
                 BlockBuilder::Text(text) => ContentBlock::Text {
                     text,
                     citations: None,
@@ -288,21 +293,19 @@ impl StreamAccumulator {
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
-                        match serde_json::from_str(&input_json) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                warn!(
-                                    error = %e,
-                                    tool = %name,
-                                    raw_json = %input_json,
-                                    "tool input JSON parse failed; returning error object to agent"
-                                );
-                                serde_json::json!({
-                                    "_parse_error": format!("malformed tool input: {e}"),
-                                    "_raw_input": input_json,
-                                })
+                        serde_json::from_str(&input_json).map_err(|e| {
+                            warn!(
+                                error = %e,
+                                tool = %name,
+                                raw_json = %input_json,
+                                "tool input JSON parse failed; rejecting provider tool call"
+                            );
+                            MalformedToolArgumentsSnafu {
+                                tool: name.clone(),
+                                source: e,
                             }
-                        }
+                            .build()
+                        })?
                     };
                     ContentBlock::ToolUse { id, name, input }
                 }
@@ -323,21 +326,19 @@ impl StreamAccumulator {
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
-                        match serde_json::from_str(&input_json) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                warn!(
-                                    error = %e,
-                                    tool = %name,
-                                    raw_json = %input_json,
-                                    "server tool input JSON parse failed; returning error object to agent"
-                                );
-                                serde_json::json!({
-                                    "_parse_error": format!("malformed tool input: {e}"),
-                                    "_raw_input": input_json,
-                                })
+                        serde_json::from_str(&input_json).map_err(|e| {
+                            warn!(
+                                error = %e,
+                                tool = %name,
+                                raw_json = %input_json,
+                                "server tool input JSON parse failed; rejecting provider tool call"
+                            );
+                            MalformedToolArgumentsSnafu {
+                                tool: name.clone(),
+                                source: e,
                             }
-                        }
+                            .build()
+                        })?
                     };
                     ContentBlock::ServerToolUse { id, name, input }
                 }
@@ -359,10 +360,11 @@ impl StreamAccumulator {
                     stderr,
                     return_code,
                 },
-            })
-            .collect();
+            };
+            content.push(converted);
+        }
 
-        CompletionResponse {
+        Ok(CompletionResponse {
             id: self.id,
             model: self.model,
             stop_reason: self.stop_reason.unwrap_or(StopReason::EndTurn),
@@ -375,7 +377,7 @@ impl StreamAccumulator {
             },
             cost_usd: None,
             duration_ms: None,
-        }
+        })
     }
 }
 
@@ -441,7 +443,7 @@ mod tests {
         )
         .expect("process should succeed");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         assert_eq!(response.id, "msg_01");
         assert_eq!(response.model, "claude-opus");
         assert_eq!(response.usage.input_tokens, 10);
@@ -496,7 +498,7 @@ mod tests {
         acc.process_event(stop_event("end_turn", 42), &mut on_event, 1000)
             .expect("message stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         assert_eq!(response.content.len(), 1);
         match &response.content[0] {
             ContentBlock::Text { text, .. } => assert_eq!(text, "Hello, world!"),
@@ -549,7 +551,7 @@ mod tests {
         acc.process_event(stop_event("tool_use", 5), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         match &response.content[0] {
             ContentBlock::ToolUse { id, name, input } => {
                 assert_eq!(id, "toolu_1");
@@ -584,7 +586,7 @@ mod tests {
         acc.process_event(stop_event("tool_use", 2), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         match &response.content[0] {
             ContentBlock::ToolUse { input, .. } => {
                 assert!(input.is_object(), "empty input should be empty object");
@@ -595,9 +597,9 @@ mod tests {
     }
 
     #[test]
-    fn accumulator_handles_malformed_tool_json_gracefully() {
-        // WHY: a malformed JSON delta must not crash the accumulator; it
-        // returns an error object so the agent can retry.
+    fn accumulator_rejects_malformed_tool_json() {
+        // WHY: a malformed JSON delta must not be dispatched as normal tool
+        // input; it is a provider contract failure.
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
@@ -629,16 +631,13 @@ mod tests {
         acc.process_event(stop_event("tool_use", 3), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
-        match &response.content[0] {
-            ContentBlock::ToolUse { input, .. } => {
-                assert!(
-                    input.get("_parse_error").is_some(),
-                    "malformed JSON should surface as _parse_error: {input:?}"
-                );
-            }
-            _ => panic!("expected ToolUse"),
-        }
+        let err = acc
+            .finish()
+            .expect_err("malformed tool JSON should fail finish");
+        assert!(
+            matches!(err, Error::MalformedToolArguments { .. }),
+            "expected MalformedToolArguments, got {err:?}"
+        );
     }
 
     #[test]
@@ -684,7 +683,7 @@ mod tests {
         acc.process_event(stop_event("end_turn", 10), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         match &response.content[0] {
             ContentBlock::Thinking {
                 thinking,
@@ -721,7 +720,7 @@ mod tests {
         acc.process_event(stop_event("end_turn", 5), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         assert_eq!(
             response.content.len(),
             3,
@@ -772,7 +771,7 @@ mod tests {
         )
         .expect("delta");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         assert_eq!(response.usage.output_tokens, 50);
         assert_eq!(response.usage.cache_write_tokens, 100);
         assert_eq!(response.usage.cache_read_tokens, 200);
@@ -858,7 +857,7 @@ mod tests {
         acc.process_event(WireStreamEvent::MessageStop {}, &mut on_event, 1000)
             .expect("message stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         assert_eq!(response.id, "msg_09");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
     }
@@ -868,7 +867,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         acc.process_event(start_event("msg_10", "claude-opus"), &mut |_| {}, 1000)
             .expect("start");
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
     }
 
@@ -892,7 +891,7 @@ mod tests {
         )
         .expect("orphan delta should not error");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         assert_eq!(response.content.len(), 0);
     }
 }
