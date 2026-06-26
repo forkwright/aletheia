@@ -55,6 +55,7 @@ async fn auth_expired_token_returns_401() {
         nous_id: None,
         iss: "aletheia-test".to_owned(),
         iat: 1_000_000,
+        nbf: None,
         exp: 1_000_001, // 1970-01-12: well past any leeway
         jti: "expired-test".to_owned(),
         kind: symbolon::types::TokenKind::Access,

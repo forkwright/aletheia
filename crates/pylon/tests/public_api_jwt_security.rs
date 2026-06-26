@@ -59,6 +59,7 @@ async fn jwt_expired_token_is_rejected_by_router() {
         nous_id: None,
         iss: "aletheia-test".to_owned(),
         iat: 1_000_000,
+        nbf: None,
         exp: 1_000_001,
         jti: "expired-jti".to_owned(),
         kind: TokenKind::Access,

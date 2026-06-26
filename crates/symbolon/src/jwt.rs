@@ -256,13 +256,22 @@ impl JwtManager {
             .build());
         }
 
+        let now = now_unix();
+        if let Some(nbf) = claims.nbf
+            && now < nbf
+        {
+            return Err(error::TokenDecodeSnafu {
+                message: "token not yet valid (nbf)".to_owned(),
+            }
+            .build());
+        }
+
         // WHY: apply clock-skew leeway so NTP jumps or drift between the
         // issuer and validator do not immediately invalidate fresh tokens.
         // A token is still accepted if `now` is within `leeway` seconds past
         // `exp`. Saturates to i64 to tolerate pathological leeway values
         // configured through TOML without overflow.
         let leeway = i64::try_from(self.config.clock_skew_leeway_secs).unwrap_or(i64::MAX);
-        let now = now_unix();
         if claims.exp.saturating_add(leeway) <= now {
             return Err(error::ExpiredTokenSnafu.build());
         }
@@ -339,6 +348,7 @@ impl JwtManager {
             nous_id: nous_id.map(str::to_owned),
             iss: self.config.issuer.clone(),
             iat: now,
+            nbf: Some(now),
             // WHY: saturate to i64::MAX: a TTL exceeding ~292 billion years is effectively infinite
             exp: now + i64::try_from(ttl.as_secs()).unwrap_or(i64::MAX),
             jti: koina::ulid::Ulid::new().to_string(),
@@ -446,6 +456,7 @@ mod tests {
             nous_id: None,
             iss: "aletheia-test".to_owned(),
             iat: 1_000_000,
+            nbf: None,
             exp: 1_000_001,
             jti: "expired-jti".to_owned(),
             kind: TokenKind::Access,
@@ -627,6 +638,7 @@ mod tests {
         assert_eq!(claims.iss, "aletheia-test");
         assert_eq!(claims.kind, TokenKind::Access);
         assert!(claims.iat > 0, "iat must be set");
+        assert_eq!(claims.nbf, Some(claims.iat), "nbf must match iat");
         assert!(claims.exp > claims.iat, "exp must be after iat");
         assert!(!claims.jti.is_empty(), "jti must be set");
     }
@@ -644,6 +656,7 @@ mod tests {
             nous_id: Some("nous-42".to_owned()),
             iss: "aletheia-test".to_owned(),
             iat: now,
+            nbf: Some(now - 5),
             exp: now + 3600,
             jti: "distinctive-jti-123".to_owned(),
             kind: TokenKind::Access,
@@ -656,6 +669,7 @@ mod tests {
         assert_eq!(actual.nous_id, expected.nous_id);
         assert_eq!(actual.iss, expected.iss);
         assert_eq!(actual.iat, expected.iat);
+        assert_eq!(actual.nbf, expected.nbf);
         assert_eq!(actual.exp, expected.exp);
         assert_eq!(actual.jti, expected.jti);
         assert_eq!(actual.kind, expected.kind);
@@ -719,6 +733,7 @@ mod tests {
             nous_id: None,
             iss: "aletheia-test".to_owned(),
             iat: now - 3600,
+            nbf: None,
             // WHY: exp = now - 20s lies 20s in the past, within the 30s
             // default leeway, so the token must still validate.
             exp: now - 20,
@@ -744,6 +759,7 @@ mod tests {
             nous_id: None,
             iss: "aletheia-test".to_owned(),
             iat: now - 3600,
+            nbf: None,
             // WHY: exp = now - 45s lies outside the 30s default leeway,
             // so the token must be rejected as expired.
             exp: now - 45,
@@ -776,6 +792,7 @@ mod tests {
             nous_id: None,
             iss: "aletheia-test".to_owned(),
             iat: now - 3600,
+            nbf: None,
             exp: now - 1,
             jti: "zero-leeway-jti".to_owned(),
             kind: TokenKind::Access,
@@ -794,6 +811,7 @@ mod tests {
         let config = JwtConfig::default();
         assert_eq!(config.clock_skew_leeway_secs, 30);
     }
+
     /// Token with a forged alg field in the header must be rejected.
     ///
     /// WHY: ensures `HS256_HEADER_B64` is actively enforced on the decode
@@ -820,5 +838,48 @@ mod tests {
             result.is_err(),
             "token with alg=RS256 header must be rejected; validate returned {result:?}"
         );
+    }
+
+    #[test]
+    fn token_with_future_nbf_is_rejected() {
+        let mgr = hmac_manager();
+        let now = now_unix();
+        let claims = Claims {
+            sub: "user-1".to_owned(),
+            role: Role::Operator,
+            nous_id: None,
+            iss: "aletheia-test".to_owned(),
+            iat: now,
+            nbf: Some(now + 3600),
+            exp: now + 7200,
+            jti: "future-nbf-jti".to_owned(),
+            kind: TokenKind::Access,
+        };
+        let token = mgr.encode_claims(&claims).unwrap();
+        let result = mgr.validate(&token);
+        assert!(
+            result.is_err_and(|err| err.to_string().contains("token not yet valid (nbf)")),
+            "token with future nbf must be rejected"
+        );
+    }
+
+    #[test]
+    fn token_with_past_nbf_is_accepted() {
+        let mgr = hmac_manager();
+        let now = now_unix();
+        let claims = Claims {
+            sub: "user-1".to_owned(),
+            role: Role::Operator,
+            nous_id: None,
+            iss: "aletheia-test".to_owned(),
+            iat: now - 60,
+            nbf: Some(now - 30),
+            exp: now + 3600,
+            jti: "past-nbf-jti".to_owned(),
+            kind: TokenKind::Access,
+        };
+        let token = mgr.encode_claims(&claims).unwrap();
+        let result = mgr.validate(&token);
+        assert!(result.is_ok(), "token with past nbf must be accepted");
     }
 }
