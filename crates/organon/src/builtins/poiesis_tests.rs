@@ -108,7 +108,10 @@ async fn assert_generate_document_ok(ctx: &ToolContext, format: &str) {
     );
     let expected_media_type = media_type_for_format(format);
     let bytes = document_bytes(&result, expected_media_type);
-    assert!(!bytes.is_empty(), "{format} document block must contain bytes");
+    assert!(
+        !bytes.is_empty(),
+        "{format} document block must contain bytes"
+    );
 }
 
 #[tokio::test]
@@ -489,7 +492,10 @@ async fn assert_generate_document_out_path(ctx: &ToolContext, format: &str) {
         .execute(&input, ctx)
         .await
         .expect("exec");
-    assert!(!result.is_error, "{format} out_path render must succeed: {result:?}");
+    assert!(
+        !result.is_error,
+        "{format} out_path render must succeed: {result:?}"
+    );
     let expected_media_type = media_type_for_format(format);
     let block_bytes = document_bytes(&result, expected_media_type);
     assert!(
