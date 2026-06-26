@@ -87,9 +87,25 @@ fn history_message_deserialization() {
         "created_at": "2025-01-01T00:00:00Z"
     }"#;
     let msg: HistoryMessage = serde_json::from_str(json).unwrap();
+    assert!(msg.id.is_none());
+    assert!(msg.seq.is_none());
     assert_eq!(msg.role, "user");
     assert!(msg.content.is_some());
     assert!(msg.created_at.is_some());
+}
+
+#[test]
+fn history_message_deserializes_sequence_cursor() {
+    let json = r#"{
+        "id": 7,
+        "seq": 42,
+        "role": "assistant",
+        "content": "hello",
+        "created_at": "2025-01-01T00:00:00Z"
+    }"#;
+    let msg: HistoryMessage = serde_json::from_str(json).unwrap();
+    assert_eq!(msg.id, Some(7));
+    assert_eq!(msg.seq, Some(42));
 }
 
 #[test]

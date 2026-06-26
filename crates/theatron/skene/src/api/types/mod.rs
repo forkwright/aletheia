@@ -118,6 +118,12 @@ pub struct ListSessionsRequest {
 /// A single message from session history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryMessage {
+    /// Database row ID, when returned by the server.
+    #[serde(default)]
+    pub id: Option<i64>,
+    /// Sequence number within the session, when returned by the server.
+    #[serde(default)]
+    pub seq: Option<i64>,
     /// Role: "user", "assistant", or "tool".
     pub role: String,
     /// Message content (text or structured).
