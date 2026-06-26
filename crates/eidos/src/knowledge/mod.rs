@@ -40,7 +40,7 @@ pub use fact::{
 
 pub use path::{
     PATH_VALIDATION_FS_LAYERS, PathValidationError, PathValidationLayer, SYMLINK_HOP_LIMIT,
-    ValidatedPath, validate_memory_path,
+    ValidatedPath, validate_memory_path, validate_memory_path_async,
 };
 
 // ── Re-exports: scope ────────────────────────────────────────────────────
