@@ -4,8 +4,11 @@
     reason = "test: map key is asserted present by contains_key check above"
 )]
 use super::*;
+use crate::anthropic::client::AnthropicProvider;
+use crate::cc::provider::{CcProvider, CcProviderConfig};
 use crate::test_utils::MockProvider;
 use crate::types::*;
+use koina::secret::SecretString;
 
 #[tokio::test]
 async fn mock_provider_completes() {
@@ -332,4 +335,88 @@ fn find_provider_is_deterministic_regardless_of_registration_order() {
             "registration order ({first} before {second}) must not change the winner"
         );
     }
+}
+
+// WHY (#4881): real-provider fixtures below exercise the actual routing code
+// paths in `AnthropicProvider::match_specificity` and `ProviderRegistry`.
+
+/// Build an [`AnthropicProvider`] using the built-in first-party catalog.
+fn anthropic_provider_with_builtin_catalog() -> AnthropicProvider {
+    let config = ProviderConfig {
+        // NOTE: test-only fixture value, not a real credential
+        api_key: Some(SecretString::from("sk-test-123")),
+        ..ProviderConfig::default()
+    };
+    AnthropicProvider::from_config(&config).expect("valid config")
+}
+
+/// Build a [`CcProvider`] pointing at a temporary dummy binary.
+fn cc_provider_with_dummy_binary() -> CcProvider {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "hermeneus-cc-dummy-{}-{}.sh",
+        std::process::id(),
+        counter
+    ));
+    std::fs::write(&path, b"#!/bin/sh\n").expect("create dummy cc binary");
+
+    let config = CcProviderConfig {
+        cc_binary: Some(path.clone()),
+        default_model: crate::models::names::opus().to_owned(),
+        timeout: std::time::Duration::from_secs(1),
+    };
+    let provider = CcProvider::new(&config).expect("valid cc provider");
+
+    // The provider only needs the path to exist at construction time.
+    let _ = std::fs::remove_file(&path);
+    provider
+}
+
+#[test]
+fn known_anthropic_catalog_model_routes_to_anthropic_when_cc_registered_first() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(cc_provider_with_dummy_binary()));
+    registry.register(Box::new(anthropic_provider_with_builtin_catalog()));
+
+    let found = registry
+        .find_provider(koina::models::names::sonnet())
+        .expect("should find a provider for a known catalog model");
+    assert_eq!(
+        found.name(),
+        "anthropic",
+        "first-party catalog model must route to Anthropic even when CC was registered first"
+    );
+}
+
+#[test]
+fn known_anthropic_catalog_model_routes_to_anthropic_when_anthropic_registered_first() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(anthropic_provider_with_builtin_catalog()));
+    registry.register(Box::new(cc_provider_with_dummy_binary()));
+
+    let found = registry
+        .find_provider(koina::models::names::haiku())
+        .expect("should find a provider for a known catalog model");
+    assert_eq!(
+        found.name(),
+        "anthropic",
+        "first-party catalog model must route to Anthropic when Anthropic was registered first"
+    );
+}
+
+#[test]
+fn unknown_claude_model_routes_to_first_catch_all_provider() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(cc_provider_with_dummy_binary()));
+    registry.register(Box::new(anthropic_provider_with_builtin_catalog()));
+
+    let found = registry
+        .find_provider("claude-future-unknown-model")
+        .expect("should find a provider for an unknown claude-* ID");
+    assert_eq!(
+        found.name(),
+        "cc",
+        "unknown claude-* IDs must fall through to the first-registered catch-all provider"
+    );
 }
