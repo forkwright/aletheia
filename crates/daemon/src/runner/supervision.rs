@@ -61,7 +61,7 @@ impl TaskWatchdog {
         self.watchdog.status()
     }
 
-    pub(super) fn restart_log(&self) -> &[RestartEvent] {
+    pub(super) fn restart_log(&self) -> &std::collections::VecDeque<RestartEvent> {
         self.watchdog.restart_log()
     }
 }

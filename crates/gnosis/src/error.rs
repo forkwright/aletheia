@@ -49,13 +49,6 @@ pub enum GnosisError {
         dir: PathBuf,
         source: std::io::Error,
     },
-
-    /// The stale index cache file could not be removed.
-    #[snafu(display("failed to remove stale cache file {}: {source}", path.display()))]
-    RemoveCacheFile {
-        path: PathBuf,
-        source: std::io::Error,
-    },
 }
 
 /// Convenience alias.
