@@ -437,10 +437,28 @@ pub struct RetentionSettings {
     /// deletion without an archive artifact is explicitly desired.
     #[serde(default = "default_archive_before_delete")]
     pub archive_before_delete: bool,
+    /// Number of days to retain session JSON archives under
+    /// `<data_dir>/archive/sessions/` before pruning. `None` disables pruning.
+    ///
+    /// WHY: `archive_before_delete` writes a full JSON dump for every deleted
+    /// session. Without a TTL the archive directory grows monotonically and can
+    /// exhaust disk (#5658).
+    #[serde(
+        alias = "archiveTtlDays",
+        alias = "archive_ttl_days",
+        default = "default_archive_ttl_days"
+    )]
+    pub archive_ttl_days: Option<u32>,
 }
 
 fn default_archive_before_delete() -> bool {
     true
+}
+
+fn default_archive_ttl_days() -> Option<u32> {
+    // WHY: 90 days bounds archive growth by default while keeping a reasonable
+    // recovery window for recently deleted sessions (#5658).
+    Some(90)
 }
 
 impl Default for RetentionSettings {
@@ -451,6 +469,7 @@ impl Default for RetentionSettings {
             orphan_message_max_age_days: None,
             max_sessions_per_nous: 0,
             archive_before_delete: true,
+            archive_ttl_days: default_archive_ttl_days(),
         }
     }
 }
