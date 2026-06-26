@@ -233,9 +233,15 @@ impl std::error::Error for PathValidationError {}
 /// `PathBuf` is private, so callers must go through the validation function
 /// to obtain an instance.
 ///
-/// Provides [`read()`](Self::read) and [`write()`](Self::write) methods
-/// that gate all memory I/O through validated paths, making it impossible
-/// to perform memory file operations without passing validation first.
+/// Provides [`read()`](Self::read), [`write()`](Self::write),
+/// [`async_read()`](Self::async_read), and [`async_write()`](Self::async_write)
+/// methods that gate all memory I/O through validated paths, making it
+/// impossible to perform memory file operations without passing validation
+/// first.
+///
+/// WHY: The synchronous `read`/`write` methods are retained for non-async
+/// callers but are deprecated for async contexts; `async_read`/`async_write`
+/// yield to the Tokio runtime so file syscalls do not block worker threads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedPath {
     inner: PathBuf,
@@ -266,6 +272,10 @@ impl ValidatedPath {
     /// # Errors
     ///
     /// Returns `std::io::Error` if the file cannot be read.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use `async_read` from async/Tokio contexts to avoid blocking the runtime thread."
+    )]
     pub fn read(&self) -> std::io::Result<Vec<u8>> {
         std::fs::read(&self.inner)
     }
@@ -276,11 +286,45 @@ impl ValidatedPath {
     ///
     /// Returns `std::io::Error` if directories cannot be created or the file
     /// cannot be written.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use `async_write` from async/Tokio contexts to avoid blocking the runtime thread."
+    )]
     pub fn write(&self, data: &[u8]) -> std::io::Result<()> {
         if let Some(parent) = self.inner.parent() {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&self.inner, data)
+    }
+
+    /// Asynchronously read the validated file's contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns `std::io::Error` if the file cannot be read.
+    ///
+    /// WHY: Uses `tokio::fs::read` so the syscall is executed on the blocking
+    /// thread pool instead of stalling a Tokio worker thread.
+    pub async fn async_read(&self) -> std::io::Result<Vec<u8>> {
+        tokio::fs::read(&self.inner).await
+    }
+
+    /// Asynchronously write data to the validated path, creating parent
+    /// directories as needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns `std::io::Error` if directories cannot be created or the file
+    /// cannot be written.
+    ///
+    /// WHY: Uses `tokio::fs::create_dir_all` and `tokio::fs::write` so the
+    /// syscalls are executed on the blocking thread pool instead of stalling a
+    /// Tokio worker thread.
+    pub async fn async_write(&self, data: &[u8]) -> std::io::Result<()> {
+        if let Some(parent) = self.inner.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&self.inner, data).await
     }
 }
 
