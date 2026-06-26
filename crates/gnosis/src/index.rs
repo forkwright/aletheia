@@ -44,7 +44,7 @@ use proc_macro2::Span;
 use snafu::ResultExt;
 use syn::visit::Visit;
 
-use crate::error::{CargoMetadataSnafu, ParseSnafu, ReadSourceSnafu, Result};
+use crate::error::{CargoMetadataSnafu, ParseSnafu, Result};
 use crate::schema::Store;
 
 // ── SHA-256 helper ───────────────────────────────────────────────────────────

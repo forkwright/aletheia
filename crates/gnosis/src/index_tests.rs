@@ -74,7 +74,7 @@ fn index_nested_fn_is_excluded() {
     std::fs::write(tmp.path(), src).expect("write");
     let path_str = tmp.path().to_string_lossy().into_owned();
 
-    index_file(&store, "test_crate", &path_str, "").expect("index");
+    index_file(&store, "test_crate", &path_str, "", src).expect("index");
 
     let symbols = store.symbols().expect("query");
     let outer_count = symbols
