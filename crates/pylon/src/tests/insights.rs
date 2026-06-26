@@ -39,15 +39,21 @@ async fn list_agent_perf_marks_unbacked_tool_metrics_unavailable() {
         .as_array()
         .expect("data_unavailable array");
     assert!(
-        unavailable.iter().any(|u| u["metric"] == "tool_calls_per_session"),
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "tool_calls_per_session"),
         "tool_calls_per_session should be marked unavailable"
     );
     assert!(
-        unavailable.iter().any(|u| u["metric"] == "tool_success_rate"),
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "tool_success_rate"),
         "tool_success_rate should be marked unavailable"
     );
     assert!(
-        unavailable.iter().any(|u| u["metric"] == "errors_per_session"),
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "errors_per_session"),
         "errors_per_session should be marked unavailable"
     );
 }
@@ -79,15 +85,21 @@ async fn get_agent_perf_one_marks_unbacked_tool_metrics_unavailable() {
         .as_array()
         .expect("data_unavailable array");
     assert!(
-        unavailable.iter().any(|u| u["metric"] == "tool_calls_per_session"),
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "tool_calls_per_session"),
         "tool_calls_per_session should be marked unavailable"
     );
     assert!(
-        unavailable.iter().any(|u| u["metric"] == "tool_success_rate"),
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "tool_success_rate"),
         "tool_success_rate should be marked unavailable"
     );
     assert!(
-        unavailable.iter().any(|u| u["metric"] == "errors_per_session"),
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "errors_per_session"),
         "errors_per_session should be marked unavailable"
     );
 }
@@ -114,9 +126,13 @@ async fn get_quality_metrics_returns_ok() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert!(body["series"].is_object());
-    let unavailable = body["data_unavailable"].as_array().expect("data_unavailable array");
+    let unavailable = body["data_unavailable"]
+        .as_array()
+        .expect("data_unavailable array");
     assert!(
-        unavailable.iter().any(|u| u["metric"] == "thinking_time_ratio"),
+        unavailable
+            .iter()
+            .any(|u| u["metric"] == "thinking_time_ratio"),
         "thinking_time_ratio should be marked unavailable"
     );
 }
@@ -131,7 +147,9 @@ async fn get_cost_metrics_marks_unbacked_cost_unavailable() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let unavailable = body["data_unavailable"].as_array().expect("data_unavailable array");
+    let unavailable = body["data_unavailable"]
+        .as_array()
+        .expect("data_unavailable array");
     assert!(
         unavailable.iter().any(|u| u["metric"] == "cost"),
         "cost should be marked unavailable"
