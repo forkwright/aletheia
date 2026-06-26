@@ -293,6 +293,23 @@ fn health_aware_selection_returns_none_when_all_unavailable() {
         registry.find_provider("shared-model").is_none(),
         "no healthy provider should be returned when all are down"
     );
+
+    let err = match registry.resolve_provider("shared-model", ProviderRoute::ModelOnly) {
+        Ok(provider) => panic!(
+            "model-only resolution should report provider unavailability, got {}",
+            provider.name()
+        ),
+        Err(err) => err,
+    };
+    match err {
+        ProviderResolutionError::ProviderUnavailable { name, health } => {
+            assert_eq!(name, "alpha");
+            assert!(matches!(health, ProviderHealth::Down { .. }));
+        }
+        other @ ProviderResolutionError::NoProvider { .. } => {
+            panic!("expected ProviderUnavailable, got {other}")
+        }
+    }
 }
 
 #[test]

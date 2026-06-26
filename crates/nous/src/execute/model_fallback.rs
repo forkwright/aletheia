@@ -6,7 +6,7 @@ use std::pin::Pin;
 use hermeneus::error as llm_error;
 use hermeneus::fallback::{FallbackCompletion, FallbackConfig, complete_with_fallback_observed};
 use hermeneus::health::ProviderHealth;
-use hermeneus::provider::{LlmProvider, ProviderRegistry};
+use hermeneus::provider::{LlmProvider, ProviderRegistry, ProviderResolutionError, ProviderRoute};
 use hermeneus::types::{CompletionRequest, CompletionResponse};
 
 struct RegistryFallbackProvider<'a> {
@@ -20,12 +20,24 @@ impl LlmProvider for RegistryFallbackProvider<'_> {
     ) -> Pin<Box<dyn Future<Output = llm_error::Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(async move {
             let model = request.model.clone();
-            let provider = self.providers.find_provider(&model).ok_or_else(|| {
-                llm_error::UnsupportedModelSnafu {
-                    model: model.clone(),
+            let provider = match self
+                .providers
+                .resolve_provider(&model, ProviderRoute::ModelOnly)
+            {
+                Ok(provider) => provider,
+                Err(ProviderResolutionError::NoProvider { .. }) => {
+                    return Err(llm_error::UnsupportedModelSnafu {
+                        model: model.clone(),
+                    }
+                    .build());
                 }
-                .build()
-            })?;
+                Err(ProviderResolutionError::ProviderUnavailable { name, health }) => {
+                    return Err(llm_error::ApiRequestSnafu {
+                        message: format!("provider '{name}' is currently unavailable: {health:?}"),
+                    }
+                    .build());
+                }
+            };
 
             if let Some(health) = self.providers.provider_health(provider.name())
                 && matches!(health, ProviderHealth::Down { .. })

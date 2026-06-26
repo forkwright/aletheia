@@ -563,9 +563,13 @@ impl ProviderRegistry {
             "no healthy provider at target specificity"
         );
 
-        Err(ProviderResolutionError::NoProvider {
-            model: model.to_owned(),
-        })
+        if let Some((name, health)) = skipped.into_iter().next() {
+            Err(ProviderResolutionError::ProviderUnavailable { name, health })
+        } else {
+            Err(ProviderResolutionError::NoProvider {
+                model: model.to_owned(),
+            })
+        }
     }
 
     fn resolve_explicit_provider<'a>(
