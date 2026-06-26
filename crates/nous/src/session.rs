@@ -1,9 +1,10 @@
 //! Session manager: creates, finds, and manages agent sessions.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
+use koina::id::ToolName;
 use koina::ulid::Ulid;
 use organon::receipts::{ReceiptLedger, ReceiptSigner};
 use organon::types::ToolGroupId;
@@ -50,6 +51,12 @@ pub struct SessionState {
     pub receipt_signer: ReceiptSigner,
     /// Per-session in-memory ledger of all emitted tool receipts.
     pub receipt_ledger: Arc<Mutex<ReceiptLedger>>,
+    /// Per-session dynamically activated tools.
+    ///
+    /// WHY(#4715): `enable_tool` is documented as session-scoped. The actor
+    /// owns the session, so each turn receives a clone of this shared set
+    /// instead of starting from an empty turn-local activation set.
+    pub active_tools: Arc<RwLock<HashSet<ToolName>>>,
     /// Extended loop detector: doom-loop, ping-pong, and no-progress.
     ///
     /// WHY: persisted per-session so patterns are tracked across turns.
@@ -93,6 +100,7 @@ impl SessionState {
             brake_tripped: false,
             receipt_signer: ReceiptSigner::new_session(),
             receipt_ledger: Arc::new(Mutex::new(ReceiptLedger::default())),
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
             loop_guard: hermeneus::loop_detector::LoopGuard::new(),
             surprise_calculator: mneme::surprise::SurpriseCalculator::with_alpha(
                 config.recall.surprise_ema_alpha,
