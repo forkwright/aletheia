@@ -30,6 +30,7 @@
 //!
 //! - Macro-expanded code is not indexed (syn operates pre-expansion).
 //! - Call sites inside macro arguments are not captured.
+//! - Nested functions defined inside another function body are not indexed.
 //! - Only direct `pub use` re-exports are tracked; transitive re-export chains
 //!   require multiple query hops (via `reexport_chain` query).
 
@@ -75,6 +76,12 @@ struct IndexVisitor<'a> {
     module_path: String,
     file_path: &'a str,
     last_symbol_id: Option<u64>,
+    /// Number of nested function bodies we are currently inside.
+    ///
+    /// Only module-level functions (`scope_depth == 0`) are recorded as
+    /// symbols; nested helpers defined inside another function body are
+    /// skipped.
+    scope_depth: usize,
 }
 
 impl<'a> IndexVisitor<'a> {
@@ -85,6 +92,7 @@ impl<'a> IndexVisitor<'a> {
             module_path,
             file_path,
             last_symbol_id: None,
+            scope_depth: 0,
         }
     }
 
@@ -193,24 +201,36 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     // ── Functions ─────────────────────────────────────────────────────────────
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
-        let name = node.sig.ident.to_string();
-        let line = span_line(node.sig.ident.span());
-        self.record_symbol(&name, "fn", line);
+        if self.scope_depth == 0 {
+            let name = node.sig.ident.to_string();
+            let line = span_line(node.sig.ident.span());
+            self.record_symbol(&name, "fn", line);
+        }
+        self.scope_depth += 1;
         syn::visit::visit_item_fn(self, node);
+        self.scope_depth -= 1;
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
-        let name = node.sig.ident.to_string();
-        let line = span_line(node.sig.ident.span());
-        self.record_symbol(&name, "fn", line);
+        if self.scope_depth == 0 {
+            let name = node.sig.ident.to_string();
+            let line = span_line(node.sig.ident.span());
+            self.record_symbol(&name, "fn", line);
+        }
+        self.scope_depth += 1;
         syn::visit::visit_impl_item_fn(self, node);
+        self.scope_depth -= 1;
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
-        let name = node.sig.ident.to_string();
-        let line = span_line(node.sig.ident.span());
-        self.record_symbol(&name, "fn", line);
+        if self.scope_depth == 0 {
+            let name = node.sig.ident.to_string();
+            let line = span_line(node.sig.ident.span());
+            self.record_symbol(&name, "fn", line);
+        }
+        self.scope_depth += 1;
         syn::visit::visit_trait_item_fn(self, node);
+        self.scope_depth -= 1;
     }
 
     // ── Structs ───────────────────────────────────────────────────────────────
