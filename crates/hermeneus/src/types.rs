@@ -162,16 +162,18 @@ impl Content {
         // kanon:ignore RUST/pub-visibility
         match self {
             Self::Text(s) => s.clone(),
-            Self::Blocks(blocks) => blocks
-                .iter()
-                .filter_map(ContentBlock::text)
-                .fold(String::new(), |mut acc, s| {
-                    if !acc.is_empty() {
-                        acc.push('\n');
-                    }
-                    acc.push_str(s);
-                    acc
-                }),
+            Self::Blocks(blocks) => {
+                blocks
+                    .iter()
+                    .filter_map(ContentBlock::text)
+                    .fold(String::new(), |mut acc, s| {
+                        if !acc.is_empty() {
+                            acc.push('\n');
+                        }
+                        acc.push_str(s);
+                        acc
+                    })
+            }
         }
     }
 }

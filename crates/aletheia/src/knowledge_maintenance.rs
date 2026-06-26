@@ -429,16 +429,29 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
 
         let results = self
             .store
-            .consolidate_knowledge(provider.as_ref(), nous_id, &ConsolidationConfig::default(), false)
-            .map_err(|e| oikonomos::error::TaskFailedSnafu {
-                task_id: "knowledge-consolidation".to_owned(),
-                reason: e.to_string(),
-            }
-            .build())?;
+            .consolidate_knowledge(
+                provider.as_ref(),
+                nous_id,
+                &ConsolidationConfig::default(),
+                false,
+            )
+            .map_err(|e| {
+                oikonomos::error::TaskFailedSnafu {
+                    task_id: "knowledge-consolidation".to_owned(),
+                    reason: e.to_string(),
+                }
+                .build()
+            })?;
 
-        #[expect(clippy::as_conversions, reason = "fact counts are bounded by batch limits")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "fact counts are bounded by batch limits"
+        )]
         let items_processed: u64 = results.iter().map(|r| r.original_count as u64).sum();
-        #[expect(clippy::as_conversions, reason = "fact counts are bounded by batch limits")]
+        #[expect(
+            clippy::as_conversions,
+            reason = "fact counts are bounded by batch limits"
+        )]
         let items_modified: u64 = results.iter().map(|r| r.consolidated_count as u64).sum();
         let candidate_count = results.len();
 
@@ -509,12 +522,12 @@ impl ConsolidationProvider for LlmConsolidationProvider {
             }
         })?;
 
-        let response = runtime
-            .block_on(provider.complete(&request))
-            .map_err(|e| episteme::consolidation::ConsolidationError::LlmCall {
+        let response = runtime.block_on(provider.complete(&request)).map_err(|e| {
+            episteme::consolidation::ConsolidationError::LlmCall {
                 message: format!("consolidation LLM call failed: {e}"),
                 location: snafu::location!(),
-            })?;
+            }
+        })?;
 
         let text = response
             .content

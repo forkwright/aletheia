@@ -701,12 +701,17 @@ impl RuntimeBuilder {
                 // WHY (#5530): wire the LLM provider into the knowledge
                 // consolidation engine so the scheduled daemon task can call
                 // `consolidate_knowledge` instead of leaving it dead code.
-                let consolidation_provider = Arc::new(
-                    crate::knowledge_maintenance::LlmConsolidationProvider::new(
+                let consolidation_provider =
+                    Arc::new(crate::knowledge_maintenance::LlmConsolidationProvider::new(
                         Arc::clone(&provider_registry),
-                        self.config.agents.defaults.model_defaults.model.primary.clone(),
-                    ),
-                );
+                        self.config
+                            .agents
+                            .defaults
+                            .model_defaults
+                            .model
+                            .primary
+                            .clone(),
+                    ));
                 let km_executor = Arc::new(
                     crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(Arc::clone(ks))
                         .with_embedding_provider(Arc::clone(&embedding_provider))
