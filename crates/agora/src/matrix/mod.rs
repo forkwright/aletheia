@@ -17,6 +17,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
+use crate::connection_utils::reconnect_delay;
 use crate::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
     SendParams as ChannelSendParams, SendResult,
@@ -403,7 +404,13 @@ async fn sync_loop(
                                 tracing::debug!("Matrix health check failed, remaining halted");
                             }
                         } else {
-                            tokio::time::sleep(interval).await;
+                            let delay = reconnect_delay(consecutive_failures);
+                            tracing::debug!(
+                                consecutive_failures,
+                                backoff_secs = delay.as_secs(),
+                                "Matrix sync backing off after error"
+                            );
+                            tokio::time::sleep(delay).await;
                         }
                     }
                 }
@@ -517,6 +524,21 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+
+    #[test]
+    fn matrix_sync_error_backoff_grows_with_failures() {
+        let mut previous = reconnect_delay(0);
+        for failures in 1..=5 {
+            let delay = reconnect_delay(failures);
+            assert!(
+                delay > previous,
+                "backoff should grow at failure count {failures}"
+            );
+            previous = delay;
+        }
+        assert_eq!(reconnect_delay(6), Duration::from_mins(1));
+        assert_eq!(reconnect_delay(100), Duration::from_mins(1));
+    }
 
     #[test]
     fn encode_matrix_room_id_as_path_segment() {

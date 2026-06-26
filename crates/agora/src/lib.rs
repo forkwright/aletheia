@@ -7,6 +7,8 @@
 
 /// Signal `!`-command parser and dispatcher for operator control messages.
 pub mod command;
+/// Shared connection utilities used by channel providers.
+pub(crate) mod connection_utils;
 /// Error types for channel operations and provider failures.
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.
