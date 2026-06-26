@@ -218,6 +218,14 @@ pub(crate) mod test_persist_counter {
     }
 }
 
+/// Options passed to the private [`SessionStore::put_note`] write path.
+#[derive(Clone, Copy)]
+struct PutNoteOpts<'a> {
+    created_at: Option<&'a str>,
+    provided_id: Option<i64>,
+    validate_category: bool,
+}
+
 impl SessionStore {
     /// Open (or create) a persistent session store at the given path.
     ///
@@ -1781,7 +1789,17 @@ impl SessionStore {
         category: &str,
         content: &str,
     ) -> Result<i64> {
-        self.put_note(session_id, nous_id, category, content, None, None, true)
+        self.put_note(
+            session_id,
+            nous_id,
+            category,
+            content,
+            PutNoteOpts {
+                created_at: None,
+                provided_id: None,
+                validate_category: true,
+            },
+        )
     }
 
     /// Shared note write path used by [`Self::add_note`] and the portability
@@ -1791,18 +1809,21 @@ impl SessionStore {
     /// `provided_id` is `None` (or non-positive) a fresh local/global id is
     /// allocated from the counters. Set `validate_category` to `true` only for
     /// normal operator writes that must respect [`Self::VALID_CATEGORIES`].
-    #[instrument(skip(self, content, created_at, provided_id))]
+    #[instrument(skip(self, content, opts))]
     fn put_note(
         &self,
         session_id: &str,
         nous_id: &str,
         category: &str,
         content: &str,
-        created_at: Option<&str>,
-        provided_id: Option<i64>,
-        validate_category: bool,
+        opts: PutNoteOpts<'_>,
     ) -> Result<i64> {
         use fjall::Readable;
+        let PutNoteOpts {
+            created_at,
+            provided_id,
+            validate_category,
+        } = opts;
 
         if validate_category && !Self::VALID_CATEGORIES.contains(&category) {
             return Err(error::StorageSnafu {
@@ -1870,7 +1891,7 @@ impl SessionStore {
             nous_id: nous_id.to_owned(),
             category: category.to_owned(),
             content: content.to_owned(),
-            created_at: created_at.map_or_else(now_iso, |s| s.to_owned()),
+            created_at: created_at.map_or_else(now_iso, str::to_owned),
         };
         let note_data = serde_json::to_vec(&note).context(error::StoredJsonSnafu)?;
         let local_key = format!("{session_id}:{}", pad_u64(local_id));
@@ -2616,9 +2637,11 @@ impl SessionStore {
             &note.nous_id,
             &note.category,
             &note.content,
-            Some(&note.created_at),
-            Some(note.id),
-            false,
+            PutNoteOpts {
+                created_at: Some(&note.created_at),
+                provided_id: Some(note.id),
+                validate_category: false,
+            },
         )?;
         Ok(())
     }

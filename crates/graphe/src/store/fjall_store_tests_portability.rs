@@ -419,14 +419,14 @@ fn import_note_preserves_created_at_and_id() {
 
 #[test]
 fn lossless_session_round_trip_exceeds_default_message_limit() {
+    // WHY: the old default `--max-messages` was 500; a lossless round-trip must
+    // survive more than that many messages.
+    const MESSAGE_COUNT: usize = 505;
     let source = test_store();
     let session = source
         .create_session("ses-lossless", "syn", "main", None, None)
         .expect("create session");
 
-    // WHY: the old default `--max-messages` was 500; a lossless round-trip must
-    // survive more than that many messages.
-    const MESSAGE_COUNT: usize = 505;
     for i in 1..=MESSAGE_COUNT {
         let (role, tool_call_id, tool_name) = if i % 5 == 0 {
             (
