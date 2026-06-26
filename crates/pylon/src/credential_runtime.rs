@@ -13,7 +13,6 @@ use tokio::sync::Mutex;
 use hermeneus::provider::ProviderRegistry;
 use serde::Serialize;
 use snafu::Snafu;
-use taxis::oikos::Oikos;
 use utoipa::ToSchema;
 
 /// Effect of a credential-management mutation on the running harness.
@@ -51,12 +50,9 @@ pub struct LastCredentialEffect {
 
 /// Manager that owns the runtime view of pylon-managed credentials.
 ///
-/// It knows the canonical credential root, the current provider registry, the
-/// set of providers whose credentials pylon can manage, and the effect of the
-/// last mutation.
+/// It knows the current provider registry, the set of providers whose
+/// credentials pylon can manage, and the effect of the last mutation.
 pub struct CredentialRuntimeManager {
-    /// Instance directory layout for credential path resolution.
-    oikos: Arc<Oikos>,
     /// Registry of available LLM providers.
     provider_registry: Arc<ProviderRegistry>,
     /// Last mutation effect recorded for health/capability output.
@@ -72,9 +68,8 @@ struct RecordedEffect {
 impl CredentialRuntimeManager {
     /// Create a manager bound to an instance layout and provider registry.
     #[must_use]
-    pub fn new(oikos: Arc<Oikos>, provider_registry: Arc<ProviderRegistry>) -> Self {
+    pub fn new(provider_registry: Arc<ProviderRegistry>) -> Self {
         Self {
-            oikos,
             provider_registry,
             last_effect: Mutex::new(None),
         }

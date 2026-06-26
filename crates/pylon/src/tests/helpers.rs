@@ -99,10 +99,6 @@ pub(super) async fn test_state_with_auth_mode(
     test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "test harness setup is inherently linear — splitting adds indirection without reducing reader burden"
-)]
 async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
     include_private_nous: bool,
@@ -117,6 +113,10 @@ async fn test_state_with_provider_private_and_auth_mode(
     .await
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "WHY(#4872): test harness AppState construction with per-provider fixture setup is inherently long; inner expect(disallowed_methods) annotations inflate line count"
+)]
 async fn test_state_with_provider_name_private_and_auth_mode(
     with_provider: bool,
     provider_name: Option<&str>,
@@ -268,7 +268,6 @@ bind = "localhost"
     crate::metrics::init(&metrics_registry);
 
     let credential_runtime = Arc::new(crate::credential_runtime::CredentialRuntimeManager::new(
-        Arc::clone(&oikos),
         Arc::clone(&provider_registry),
     ));
 

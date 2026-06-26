@@ -109,7 +109,6 @@ fn minimal_app_state() -> Arc<AppState> {
     let workspace_root = crate::state::resolve_workspace_root(&oikos, None);
 
     let credential_runtime = Arc::new(crate::credential_runtime::CredentialRuntimeManager::new(
-        Arc::clone(&oikos),
         Arc::clone(&provider_registry),
     ));
 

@@ -167,7 +167,6 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     metrics_registry.with_registry(crate::metrics::register);
 
     let credential_runtime = Arc::new(crate::credential_runtime::CredentialRuntimeManager::new(
-        Arc::clone(&oikos),
         Arc::clone(&provider_registry),
     ));
 
