@@ -99,7 +99,7 @@ fn when_trigger_set_on_put_reverse_relation_synced() {
 fn when_callback_registered_receives_all_operation_events() {
     let db = DbInstance::default();
     let mut collected = vec![];
-    let (_id, receiver) = db.register_callback("friends", None);
+    let (_id, receiver) = db.register_callback("friends", 16);
     db.run_default(":create friends {fr: Int, to: Int => data: Any}")
         .expect("creating friends relation should succeed");
     db.run_default(r"?[fr, to, data] <- [[1,2,3],[4,5,6]] :put friends {fr, to => data}")
@@ -183,6 +183,40 @@ fn when_callback_registered_receives_all_operation_events() {
         collected[2].2.rows[0].len(),
         3,
         "rm deleted row should have 3 columns"
+    );
+}
+
+#[test]
+fn callback_channel_does_not_grow_unboundedly_with_slow_consumer() {
+    let db = DbInstance::default();
+    let capacity = 2;
+    let (_id, receiver) = db.register_callback("bounded_test", capacity);
+
+    db.run_default(":create bounded_test {k: Int => v: Int}")
+        .expect("creating relation should succeed");
+
+    // WHY: Send more events than the channel can hold without consuming. The
+    // producer must drop on full rather than accumulate unbounded tuples.
+    for i in 0..10 {
+        db.run_default(&format!(
+            "?[k, v] <- [[{i}, {i}]] :put bounded_test {{k => v}}"
+        ))
+        .expect("put should succeed");
+    }
+
+    assert!(
+        receiver.len() <= capacity,
+        "channel should not grow beyond capacity {capacity}, got {}",
+        receiver.len()
+    );
+
+    let mut received = 0;
+    while receiver.try_recv().is_ok() {
+        received += 1;
+    }
+    assert!(
+        received > 0,
+        "slow consumer should still receive at least some events"
     );
 }
 

@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use compact_str::CompactString;
-use crossbeam::channel::Sender;
+use crossbeam::channel::{Sender, TrySendError};
 
 use crate::{DbCore as Db, NamedRows, Storage};
 
@@ -88,17 +88,22 @@ impl<'s, S: Storage<'s>> Db<S> {
                     let mut it = cb_ids.iter();
                     if let Some(fst) = it.next() {
                         for cb_id in it {
-                            if let Some(cb) = cbs.get(cb_id)
-                                && cb.sender.send((op, new.clone(), old.clone())).is_err()
-                            {
-                                to_remove.push(*cb_id)
+                            if let Some(cb) = cbs.get(cb_id) {
+                                // WHY: callbacks use bounded channels so a slow consumer cannot
+                                // cause unbounded memory growth. Drop new events when full;
+                                // consumers can recover by re-reading the relation.
+                                match cb.sender.try_send((op, new.clone(), old.clone())) {
+                                    Ok(()) | Err(TrySendError::Full(_)) => {}
+                                    Err(TrySendError::Disconnected(_)) => to_remove.push(*cb_id),
+                                }
                             }
                         }
 
-                        if let Some(cb) = cbs.get(fst)
-                            && cb.sender.send((op, new, old)).is_err()
-                        {
-                            to_remove.push(*fst)
+                        if let Some(cb) = cbs.get(fst) {
+                            match cb.sender.try_send((op, new, old)) {
+                                Ok(()) | Err(TrySendError::Full(_)) => {}
+                                Err(TrySendError::Disconnected(_)) => to_remove.push(*fst),
+                            }
                         }
                     }
                 }

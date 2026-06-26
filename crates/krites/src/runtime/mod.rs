@@ -15,7 +15,6 @@
 //! - [`error`]: `RuntimeError` enum with snafu context variants
 #[expect(
     clippy::redundant_closure_for_method_calls,
-    clippy::semicolon_if_nothing_returned,
     reason = "engine callback wiring — pedantic style lints"
 )]
 pub(crate) mod callback;
