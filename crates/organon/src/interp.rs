@@ -4,11 +4,13 @@
 //! files or out-of-bounds line ranges — silent empty strings let stale refs
 //! appear to work, which violates the no-false-capability discipline.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
 use snafu::{IntoError as _, Snafu};
+
+use crate::builtins::workspace::normalize;
 
 /// Errors from file-ref interpolation.
 #[derive(Debug, Snafu)]
@@ -39,6 +41,13 @@ pub enum InterpError {
     #[snafu(display("absolute path not allowed: {}", path.display()))]
     AbsolutePathRejected { path: PathBuf },
 
+    /// Path traversal outside `workspace_root` is rejected.
+    ///
+    // WHY: A `../`-containing ref resolves outside `workspace_root`, defeating
+    // the containment boundary and enabling exfiltration of arbitrary files.
+    #[snafu(display("path escapes workspace root: {}", path.display()))]
+    PathTraversal { path: PathBuf },
+
     /// An I/O error occurred while reading the file.
     #[snafu(display("io error reading {}: {source}", path.display()))]
     Io {
@@ -54,7 +63,9 @@ pub enum InterpError {
 /// Expand all `{{file:path:start:end}}` references in `text`.
 ///
 /// Paths are resolved relative to `workspace_root`. Absolute paths are rejected
-/// unless the `allow-absolute-file-refs` feature is enabled.
+/// unless the `allow-absolute-file-refs` feature is enabled. Paths that
+/// normalize to a location outside `workspace_root` (e.g. via `../`) are always
+/// rejected regardless of the feature flag.
 ///
 /// Line numbers are 1-indexed and inclusive. If `start` is absent the range
 /// begins at line 1; if `end` is absent the range runs to the end of the file.
@@ -63,8 +74,8 @@ pub enum InterpError {
 /// # Errors
 ///
 /// Returns [`InterpError`] if a file is missing, a range is out of bounds,
-/// an absolute path is supplied (and the feature is off), an I/O error
-/// occurs, or a line number is invalid.
+/// an absolute path is supplied (and the feature is off), a path escapes
+/// `workspace_root`, an I/O error occurs, or a line number is invalid.
 #[expect(
     clippy::expect_used,
     reason = "compile-time constant regex pattern cannot fail"
@@ -178,14 +189,52 @@ fn resolve_file_ref(
         .fail();
     }
 
-    let full_path = workspace_root.join(path);
-    if !full_path.exists() {
-        return FileNotFoundSnafu { path: full_path }.fail();
+    // WHY: Reject any `..` component before joining so the error message names
+    // the raw input rather than the joined path. This is a defense-in-depth
+    // early check; the post-normalize containment check below is the primary
+    // enforcer and catches obfuscated forms (e.g. `a/../../b`).
+    if path.components().any(|c| c == Component::ParentDir) {
+        return PathTraversalSnafu {
+            path: path.to_path_buf(),
+        }
+        .fail();
     }
 
-    let content = std::fs::read_to_string(&full_path).map_err(|e| {
+    let joined = workspace_root.join(path);
+    let normalized = normalize(&joined);
+    let normalized_root = normalize(workspace_root);
+
+    // SAFETY: Verify the normalized result is still within workspace_root.
+    // normalize() resolves `..` components lexically, so any escape attempt
+    // that survived the ParentDir check above (e.g. via symlinks at join time)
+    // is caught here. Symlink-based escapes that survive normalization are
+    // caught by the canonicalize step below.
+    if !normalized.starts_with(&normalized_root) {
+        return PathTraversalSnafu { path: normalized }.fail();
+    }
+
+    if !normalized.exists() {
+        return FileNotFoundSnafu { path: normalized }.fail();
+    }
+
+    // SAFETY: Resolve symlinks and read from the canonical path to close the
+    // TOCTOU window between the containment check and the read. canonicalize()
+    // requires the path to exist (verified above); reading the canonical path
+    // (not `normalized`) prevents a symlink swapped after the check from being
+    // followed at read time.
+    let canonical = normalized
+        .canonicalize()
+        .unwrap_or_else(|_| normalized.clone());
+    let canonical_root = normalized_root
+        .canonicalize()
+        .unwrap_or_else(|_| normalized_root.clone());
+    if !canonical.starts_with(&canonical_root) {
+        return PathTraversalSnafu { path: canonical }.fail();
+    }
+
+    let content = std::fs::read_to_string(&canonical).map_err(|e| {
         IoSnafu {
-            path: full_path.clone(),
+            path: canonical.clone(),
         }
         .into_error(e)
     })?;
@@ -203,7 +252,7 @@ fn resolve_file_ref(
         || start_idx > end_idx
     {
         return OutOfBoundsSnafu {
-            path: full_path,
+            path: normalized,
             requested_start: start_idx,
             requested_end: end_idx,
             actual_lines: line_count,
@@ -355,5 +404,79 @@ mod tests {
             "num": 42
         });
         assert_eq!(result, expected);
+    }
+
+    // --- traversal regression tests ---
+
+    #[test]
+    fn dotdot_direct_rejected() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // `../` escapes workspace_root regardless of what exists above it.
+        let text = "{{file:../some-file.txt}}";
+        let err = expand_file_refs(text, tmp.path()).expect_err("should fail");
+        assert!(
+            matches!(err, InterpError::PathTraversal { .. }),
+            "expected PathTraversal, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn dotdot_nested_rejected() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Multi-hop traversal attempt: subdir/../../escape
+        let text = "{{file:subdir/../../etc/passwd}}";
+        let err = expand_file_refs(text, tmp.path()).expect_err("should fail");
+        assert!(
+            matches!(err, InterpError::PathTraversal { .. }),
+            "expected PathTraversal, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn dotdot_in_valid_subpath_rejected() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // `subdir/../foo.txt` normalizes to `foo.txt` inside root — still
+        // rejected by the early ParentDir check (defense-in-depth).
+        let text = "{{file:subdir/../foo.txt}}";
+        let err = expand_file_refs(text, tmp.path()).expect_err("should fail");
+        assert!(
+            matches!(err, InterpError::PathTraversal { .. }),
+            "expected PathTraversal, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn symlink_ancestor_escape_rejected() {
+        // WHY: A symlink inside workspace_root pointing outside must be caught
+        // by the canonicalize step even though normalization alone won't catch it.
+        let outer = tempfile::tempdir().expect("outer tempdir");
+        let inner = tempfile::tempdir().expect("inner tempdir");
+
+        // Create a secret file outside the workspace.
+        let secret = make_temp_file(outer.path(), "secret.txt", &["secret-content"]);
+
+        // Create a symlink inside the workspace pointing to the outer file.
+        let link = inner.path().join("escape-link.txt");
+        std::os::unix::fs::symlink(&secret, &link).expect("create symlink");
+
+        let text = "{{file:escape-link.txt}}";
+        let err = expand_file_refs(text, inner.path()).expect_err("should fail on symlink escape");
+        assert!(
+            matches!(err, InterpError::PathTraversal { .. }),
+            "expected PathTraversal for symlink escape, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn valid_subdir_file_allowed() {
+        // Ensure legitimate subdir access still works after the containment fix.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let subdir = tmp.path().join("subdir");
+        std::fs::create_dir(&subdir).expect("create subdir");
+        make_temp_file(&subdir, "nested.txt", &["hello"]);
+
+        let text = "{{file:subdir/nested.txt}}";
+        let result = expand_file_refs(text, tmp.path()).expect("expand");
+        assert_eq!(result, "hello");
     }
 }
