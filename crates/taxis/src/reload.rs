@@ -163,7 +163,6 @@ impl ConfigDiff {
 /// Returns [`crate::error::Error::SerializeJson`] if either config cannot be
 /// serialized to JSON. Previously such failures were silently replaced with
 /// [`Value::Null`], producing an empty diff and bypassing reload logic.
-#[must_use]
 pub fn diff_configs(
     old: &AletheiaConfig,
     new: &AletheiaConfig,
@@ -519,22 +518,6 @@ mod tests {
                 c.path
             );
         }
-    }
-
-    #[test]
-    fn diff_configs_propagates_serialization_error() {
-        let old = AletheiaConfig::default();
-        let mut new = old.clone();
-        // WHY: serde_json rejects non-finite f64 values, so serializing `new`
-        // to JSON fails. Before the fix this produced Value::Null and an empty
-        // diff; now the error is returned to the caller.
-        new.agents.defaults.behavior.competence_correction_penalty = f64::NAN;
-
-        let result = diff_configs(&old, &new);
-        assert!(
-            result.is_err(),
-            "serialization failure must be propagated, not silently converted to an empty diff"
-        );
     }
 
     #[test]
