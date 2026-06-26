@@ -205,4 +205,49 @@ mod tests {
         assert!(values.contains("x"));
         assert!(values.contains("y"));
     }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_workbooks_no_false_diff_for_entity_content() {
+        let data = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Sheet1",
+                    "columns": [{ "header": "Label" }],
+                    "rows": [[r#"A & B < C > D "E" 'F' ’"#]]
+                }
+            ]
+        });
+
+        let bytes_a = poiesis_sheet::render_xlsx(&data).expect("render a");
+        let bytes_b = poiesis_sheet::render_xlsx(&data).expect("render b");
+
+        let diffs = diff_workbooks(&bytes_a, &bytes_b).expect("diff must succeed");
+        assert!(
+            diffs.is_empty(),
+            "identical workbooks must produce no diffs, got: {diffs:?}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_presentations_no_false_diff_for_entity_content() {
+        let data = serde_json::json!({
+            "slides": [
+                {
+                    "title": r#"A & B < C > D "E" 'F' ’"#,
+                    "content": []
+                }
+            ]
+        });
+
+        let bytes_a = poiesis_slides::render_pptx(&data).expect("render a");
+        let bytes_b = poiesis_slides::render_pptx(&data).expect("render b");
+
+        let diffs = diff_presentations(&bytes_a, &bytes_b).expect("diff must succeed");
+        assert!(
+            diffs.is_empty(),
+            "identical presentations must produce no diffs, got: {diffs:?}"
+        );
+    }
 }

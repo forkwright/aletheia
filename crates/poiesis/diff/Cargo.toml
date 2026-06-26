@@ -17,6 +17,7 @@ poiesis-ooxml-parse = { path = "../ooxml-parse" }
 
 [dev-dependencies]
 poiesis-sheet = { path = "../sheet" }
+poiesis-slides = { path = "../slides" }
 serde_json = { workspace = true }
 
 [lints]

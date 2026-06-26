@@ -6,11 +6,27 @@
 //! pulling in a full XML parser; callers that need structural validation
 //! should use a dedicated OOXML library.
 
+use std::borrow::Cow;
+
+use quick_xml::escape::unescape;
+
+/// Decode standard XML character entities in `raw`.
+///
+/// Unescapes `&amp;`, `&lt;`, `&gt;`, `&apos;`, `&quot;` and numeric
+/// character references. If `raw` contains a malformed entity, the original
+/// slice is returned unchanged so callers still see the XML text that was
+/// present in the document.
+fn unescape_xml(raw: &str) -> Cow<'_, str> {
+    unescape(raw).unwrap_or_else(|_| Cow::Borrowed(raw))
+}
+
 /// Extract shared strings from `xl/sharedStrings.xml`.
 ///
 /// Splits the XML on `<si>` elements and concatenates all `<t>...</t>` text
-/// fragments inside each shared-string item. This mirrors the compact XML
-/// emitted by common XLSX writers.
+/// fragments inside each shared-string item, decoding XML character entities
+/// so that values such as `Sales &amp; Marketing` are returned as
+/// `Sales & Marketing`. This mirrors the compact XML emitted by common XLSX
+/// writers.
 pub fn extract_shared_strings(xml_data: &str) -> Vec<String> {
     let mut strings = Vec::new();
     for chunk in xml_data.split("<si>") {
@@ -24,7 +40,7 @@ pub fn extract_shared_strings(xml_data: &str) -> Vec<String> {
                     && let Some(lt) = after_gt.find("</t>")
                     && let Some(slice) = after_gt.get(..lt)
                 {
-                    text.push_str(slice);
+                    text.push_str(&unescape_xml(slice));
                 }
             }
             strings.push(text);
@@ -35,8 +51,8 @@ pub fn extract_shared_strings(xml_data: &str) -> Vec<String> {
 
 /// Extract text content from a PPTX slide XML using simple string matching.
 ///
-/// Concatenates the raw text content of all `<a:t>...</a:t>` elements and
-/// returns a single trimmed string.
+/// Concatenates the text content of all `<a:t>...</a:t>` elements, decoding
+/// XML character entities, and returns a single trimmed string.
 pub fn extract_text_from_slide(xml_data: &str) -> String {
     let mut text_content = String::new();
 
@@ -45,7 +61,7 @@ pub fn extract_text_from_slide(xml_data: &str) -> String {
             && let Some(text) = chunk.get(..end)
             && !text.is_empty()
         {
-            text_content.push_str(text);
+            text_content.push_str(&unescape_xml(text));
             text_content.push(' ');
         }
     }
@@ -119,5 +135,44 @@ mod tests {
     #[test]
     fn parse_sheet_names_no_sheets_returns_empty() {
         assert!(parse_sheet_names("<workbook><sheets/></workbook>").is_empty());
+    }
+
+    #[test]
+    fn extract_shared_strings_unescapes_xml_entities() {
+        let xml = r#"<sst><si><t>Sales &amp; Marketing &lt; 100 &gt; 0 &apos;ok&apos; &quot;quote&quot; &#x2019;</t></si></sst>"#;
+        let result = extract_shared_strings(xml);
+        assert_eq!(
+            result,
+            vec![r#"Sales & Marketing < 100 > 0 'ok' "quote' ’"#]
+        );
+    }
+
+    #[test]
+    fn extract_shared_strings_normalises_different_entity_encodings() {
+        let named =
+            r#"<sst><si><t>A &amp; B &lt; C &gt; D &apos;E&apos; &quot;F&quot; ’</t></si></sst>"#;
+        let numeric =
+            r#"<sst><si><t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</t></si></sst>"#;
+        let expected = vec![r#"A & B < C > D 'E' "F" ’"#.to_owned()];
+        assert_eq!(extract_shared_strings(named), expected);
+        assert_eq!(extract_shared_strings(numeric), expected);
+    }
+
+    #[test]
+    fn extract_text_from_slide_unescapes_xml_entities() {
+        let xml = r#"<p:sp><a:t>Sales &amp; Marketing &lt; 100 &gt; 0 &apos;ok&apos; &quot;quote&quot; &#x2019;</a:t></p:sp>"#;
+        let result = extract_text_from_slide(xml);
+        assert_eq!(result, r#"Sales & Marketing < 100 > 0 'ok' "quote' ’"#);
+    }
+
+    #[test]
+    fn extract_text_from_slide_normalises_different_entity_encodings() {
+        let named =
+            r#"<p:sp><a:t>A &amp; B &lt; C &gt; D &apos;E&apos; &quot;F&quot; ’</a:t></p:sp>"#;
+        let numeric =
+            r#"<p:sp><a:t>A &#38; B &#60; C &#62; D &#39;E&#39; &#34;F&#34; &#x2019;</a:t></p:sp>"#;
+        let expected = r#"A & B < C > D 'E' "F" ’"#;
+        assert_eq!(extract_text_from_slide(named), expected);
+        assert_eq!(extract_text_from_slide(numeric), expected);
     }
 }

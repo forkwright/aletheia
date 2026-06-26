@@ -234,4 +234,49 @@ mod tests {
             "page count from a valid PDF must be marked reliable"
         );
     }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_xlsx_decodes_xml_entities() {
+        let data = serde_json::json!({
+            "sheets": [
+                {
+                    "name": "Entities",
+                    "columns": [{ "header": "Label" }],
+                    "rows": [[r#"A & B < C > D "E" 'F' ’"#]]
+                }
+            ]
+        });
+
+        let bytes = poiesis_sheet::render_xlsx(&data).expect("render must succeed");
+        let summary = inspect_xlsx(&bytes).expect("inspect must succeed");
+
+        let text = summary.sheets.get("Entities").expect("sheet must exist");
+        assert!(
+            text.contains(r#"A & B < C > D "E" 'F' ’"#),
+            "expected decoded XML entities in sheet text, got: {text}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pptx_decodes_xml_entities() {
+        let data = serde_json::json!({
+            "slides": [
+                {
+                    "title": r#"A & B < C > D "E" 'F' ’"#,
+                    "content": []
+                }
+            ]
+        });
+
+        let bytes = poiesis_slides::render_pptx(&data).expect("render must succeed");
+        let summary = inspect_pptx(&bytes).expect("inspect must succeed");
+
+        assert_eq!(summary.slides.len(), 1);
+        assert_eq!(
+            summary.slides.first().expect("one slide"),
+            r#"A & B < C > D "E" 'F' ’"#
+        );
+    }
 }
