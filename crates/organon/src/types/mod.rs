@@ -293,6 +293,22 @@ impl From<Reversibility> for ApprovalRequirement {
     }
 }
 
+/// Origin metadata for an externally-provided tool.
+///
+/// WHY: MCP and other external tool planes expose tools whose public local
+/// name is namespaced to avoid collisions. Keeping the original server and
+/// remote name alongside the local name makes origin unambiguous in
+/// diagnostics, approval prompts, and audit trails.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolOrigin {
+    /// Local name under which the tool is registered.
+    pub local_name: String,
+    /// External server or service that provides the tool.
+    pub server_name: String,
+    /// Tool name as exposed by the external server.
+    pub remote_name: String,
+}
+
 /// Metadata recorded per tool call for session audit trails.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallMetadata {
@@ -302,6 +318,9 @@ pub struct ToolCallMetadata {
     pub approval: ApprovalRequirement,
     /// Whether the call was a dry-run simulation.
     pub dry_run: bool,
+    /// Origin metadata when the tool is externally provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<ToolOrigin>,
 }
 
 /// Semantic tool category: classifies tool purpose.
