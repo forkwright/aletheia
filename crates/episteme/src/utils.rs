@@ -104,7 +104,10 @@ mod tests {
         let a = vec!["read".to_owned(), "write".to_owned(), "bash".to_owned()];
         let b = vec!["read".to_owned(), "write".to_owned(), "grep".to_owned()];
         let result = compute_tool_overlap(&a, &b);
-        assert!((result - 0.5).abs() < f64::EPSILON, "expected 0.5, got {result}");
+        assert!(
+            (result - 0.5).abs() < f64::EPSILON,
+            "expected 0.5, got {result}"
+        );
     }
 
     #[test]
@@ -170,7 +173,10 @@ mod tests {
     fn name_similarity_substring_match() {
         // "kitten" vs "kit" — LCS = "kit" (3), max_len = 6, ratio = 0.5
         let result = compute_name_similarity("kitten", "kit");
-        assert!((result - 0.5).abs() < f64::EPSILON, "expected 0.5, got {result}");
+        assert!(
+            (result - 0.5).abs() < f64::EPSILON,
+            "expected 0.5, got {result}"
+        );
     }
 
     #[test]
@@ -207,7 +213,11 @@ mod tests {
         // "abcde" vs "ace" → LCS = "ace" (3)
         let a: Vec<char> = "abcde".chars().collect();
         let b: Vec<char> = "ace".chars().collect();
-        assert_eq!(lcs_char_length(&a, &b), 3, "LCS of abcde vs ace should be 3");
+        assert_eq!(
+            lcs_char_length(&a, &b),
+            3,
+            "LCS of abcde vs ace should be 3"
+        );
     }
 
     #[test]
