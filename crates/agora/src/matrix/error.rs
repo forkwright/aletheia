@@ -41,4 +41,12 @@ pub enum Error {
         /// Source location captured by snafu.
         location: snafu::Location,
     },
+
+    /// Downstream receiver has been dropped; sync should stop immediately.
+    #[snafu(display("Matrix sync receiver dropped"))]
+    ReceiverDropped {
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
 }
