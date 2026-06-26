@@ -39,6 +39,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+use skene::api::error::{format_error_fields_for_display, format_http_error_body};
 use skene::events::StreamEvent;
 use skene::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
@@ -160,15 +161,7 @@ pub(crate) fn stream_turn(
 
 /// Extract a human-readable error message from an HTTP error response body.
 fn extract_error_message(body: &str, status_code: u16, reason: &str) -> String {
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-        json.get("message")
-            .or_else(|| json.get("error"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("{status_code} {reason}"))
-    } else {
-        format!("{status_code} {reason}")
-    }
+    format_http_error_body(status_code, reason, body)
 }
 
 fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
@@ -318,9 +311,7 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "turn_abort" => Some(StreamEvent::TurnAbort {
             reason: str_field(&json, "reason", event_type)?.to_string(),
         }),
-        "error" => Some(StreamEvent::Error(
-            str_field(&json, "message", event_type)?.to_string(),
-        )),
+        "error" => Some(StreamEvent::Error(stream_error_message(&json, event_type)?)),
         "plan_proposed" => {
             let plan = json
                 .get("plan")
@@ -361,6 +352,19 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             None
         }
     }
+}
+
+fn stream_error_message(json: &serde_json::Value, event_type: &str) -> Option<String> {
+    let message = str_field(json, "message", event_type)?;
+    Some(format_error_fields_for_display(
+        message,
+        None,
+        json.get("code").and_then(serde_json::Value::as_str),
+        json.get("request_id")
+            .or_else(|| json.get("requestId"))
+            .and_then(serde_json::Value::as_str),
+        json.get("details"),
+    ))
 }
 
 #[cfg(test)]
@@ -541,6 +545,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_error_event_preserves_request_id_and_details() {
+        let data = r#"{"message":"provider unavailable","request_id":"req-stream","details":{"provider":"synthetic"}}"#;
+        let result = parse_stream_event("error", data);
+        let Some(StreamEvent::Error(message)) = result else {
+            panic!("expected Error");
+        };
+        assert!(message.contains("provider unavailable"));
+        assert!(message.contains("request_id req-stream"));
+        assert!(message.contains(r#""provider":"synthetic""#));
+    }
+
+    #[test]
     fn parse_turn_abort() {
         let data = r#"{"reason":"guard rejected"}"#;
         let result = parse_stream_event("turn_abort", data);
@@ -604,6 +620,17 @@ mod tests {
             extract_error_message(body, 429, "Too Many Requests"),
             "rate limited"
         );
+    }
+
+    #[test]
+    fn extract_error_message_preserves_pylon_envelope() {
+        let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
+        let message = extract_error_message(body, 422, "Unprocessable Entity");
+        assert!(message.contains("invalid stream request"));
+        assert!(message.contains("status 422"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-http"));
+        assert!(message.contains(r#""field":"message""#));
     }
 
     #[test]
