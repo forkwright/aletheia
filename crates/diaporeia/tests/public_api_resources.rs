@@ -116,7 +116,10 @@ async fn resources_list_includes_config_and_existing_workspace_files() {
         .filter_map(|r| r.get("uri").and_then(|u| u.as_str()))
         .collect();
 
-    assert!(uris.contains(&"aletheia://config"), "config resource must be listed");
+    assert!(
+        uris.contains(&"aletheia://config"),
+        "config resource must be listed"
+    );
     assert!(
         uris.contains(&"aletheia://nous/syn/soul"),
         "existing soul file must be listed"
