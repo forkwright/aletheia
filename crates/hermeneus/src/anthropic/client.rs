@@ -566,7 +566,7 @@ impl AnthropicProvider {
                         );
                         return Err(e);
                     }
-                    if matches!(e, error::Error::RateLimited { .. }) {
+                    if e.is_retryable() {
                         tracing::warn!("SSE stream returned retryable error before content");
                         self.health.record_error(&e);
                         last_error = Some(e);
