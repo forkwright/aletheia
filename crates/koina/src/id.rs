@@ -188,7 +188,7 @@ impl From<NousId> for String {
 /// WHY: ULID uses only 80 bits of randomness; UUID v4 provides 122 bits,
 /// eliminating any practical guessability risk for session tokens.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "String")]
+#[serde(try_from = "String", into = "String")]
 pub struct SessionId(Uuid);
 
 impl SessionId {
@@ -257,6 +257,12 @@ impl TryFrom<String> for SessionId {
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl From<SessionId> for String {
+    fn from(id: SessionId) -> Self {
+        id.0.to_string()
     }
 }
 

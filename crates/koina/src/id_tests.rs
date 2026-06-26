@@ -180,6 +180,20 @@ fn session_id_display_is_uuid_format() {
 }
 
 #[test]
+fn session_id_serde_roundtrip_is_quoted_uuid_string() {
+    let id = SessionId::new();
+    let json = serde_json::to_string(&id).unwrap();
+    assert!(
+        json.starts_with('"') && json.ends_with('"'),
+        "SessionId must serialize to a quoted UUID string, got {json}"
+    );
+    let inner = json.trim_matches('"');
+    assert_eq!(inner, id.to_string());
+    let back: SessionId = serde_json::from_str(&json).unwrap();
+    assert_eq!(id, back);
+}
+
+#[test]
 fn turn_id_zero() {
     let t = TurnId::new(0);
     assert_eq!(t.as_u64(), 0);
