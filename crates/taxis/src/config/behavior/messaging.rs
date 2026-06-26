@@ -1,12 +1,6 @@
 //! Agora messaging transport configuration.
 
 use serde::{Deserialize, Serialize};
-
-/// Agora messaging transport poll, buffer, circuit-breaker, and RPC settings.
-///
-/// Defaults for the fields that mirror `agora`/`organon` constants are
-/// enforced at test-build time by `const _: () = assert!` guards below.
-
 /// Default value used for `MessagingConfig::poll_interval_ms`.
 pub(crate) const DEFAULT_POLL_INTERVAL_MS: u64 = 2_000;
 /// Default value used for `MessagingConfig::buffer_capacity`.
@@ -23,6 +17,11 @@ pub(crate) const DEFAULT_HEALTH_TIMEOUT_SECS: u64 = 2;
 pub(crate) const DEFAULT_RECEIVE_TIMEOUT_SECS: u64 = 15;
 /// Default value used for `MessagingConfig::agent_dispatch_timeout_secs`.
 pub(crate) const DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS: u64 = 300;
+
+/// Agora messaging transport poll, buffer, circuit-breaker, and RPC settings.
+///
+/// Defaults for the fields that mirror `agora`/`organon` constants are
+/// enforced at test-build time by `const _: () = assert!` guards below.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,7 +66,7 @@ impl Default for MessagingConfig {
 
 #[cfg(test)]
 const _: () =
-    assert!(DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_millis() as u64);
+    assert!(DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_secs() * 1_000);
 #[cfg(test)]
 const _: () = assert!(DEFAULT_BUFFER_CAPACITY == agora::semeion::DEFAULT_BUFFER_CAPACITY);
 #[cfg(test)]

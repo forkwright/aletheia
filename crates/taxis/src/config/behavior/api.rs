@@ -1,16 +1,15 @@
 //! Pylon API limits configuration.
 
 use serde::{Deserialize, Serialize};
+/// Default value used for `ApiLimitsConfig::idempotency_ttl_secs`.
+pub(crate) const DEFAULT_IDEMPOTENCY_TTL_SECS: u64 = 300;
+/// Default value used for `ApiLimitsConfig::idempotency_capacity`.
+pub(crate) const DEFAULT_IDEMPOTENCY_CAPACITY: usize = 10_000;
 
 /// Pylon API request size and idempotency cache limits.
 ///
 /// Defaults for the fields that mirror `pylon` constants are enforced at
 /// test-build time by `const _: () = assert!` guards below.
-
-/// Default value used for `ApiLimitsConfig::idempotency_ttl_secs`.
-pub(crate) const DEFAULT_IDEMPOTENCY_TTL_SECS: u64 = 300;
-/// Default value used for `ApiLimitsConfig::idempotency_capacity`.
-pub(crate) const DEFAULT_IDEMPOTENCY_CAPACITY: usize = 10_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

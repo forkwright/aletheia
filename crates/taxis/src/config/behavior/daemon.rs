@@ -1,16 +1,15 @@
 //! Daemon behavior configuration.
 
 use serde::{Deserialize, Serialize};
+/// Default value used for `DaemonBehaviorConfig::watchdog_backoff_base_secs`.
+pub(crate) const DEFAULT_WATCHDOG_BACKOFF_BASE_SECS: u64 = 2;
+/// Default value used for `DaemonBehaviorConfig::watchdog_backoff_cap_secs`.
+pub(crate) const DEFAULT_WATCHDOG_BACKOFF_CAP_SECS: u64 = 300;
 
 /// Daemon watchdog, prosoche anomaly detection, and runner output settings.
 ///
 /// Defaults for the fields that mirror `daemon` constants are enforced at
 /// test-build time by `const _: () = assert!` guards below.
-
-/// Default value used for `DaemonBehaviorConfig::watchdog_backoff_base_secs`.
-pub(crate) const DEFAULT_WATCHDOG_BACKOFF_BASE_SECS: u64 = 2;
-/// Default value used for `DaemonBehaviorConfig::watchdog_backoff_cap_secs`.
-pub(crate) const DEFAULT_WATCHDOG_BACKOFF_CAP_SECS: u64 = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +42,7 @@ impl Default for DaemonBehaviorConfig {
 
 #[cfg(test)]
 const _: () =
-    assert!(DEFAULT_WATCHDOG_BACKOFF_BASE_SECS == daemon::watchdog::BACKOFF_BASE.as_secs());
+    assert!(DEFAULT_WATCHDOG_BACKOFF_BASE_SECS == oikonomos::watchdog::BACKOFF_BASE.as_secs());
 #[cfg(test)]
-const _: () = assert!(DEFAULT_WATCHDOG_BACKOFF_CAP_SECS == daemon::watchdog::BACKOFF_CAP.as_secs());
+const _: () =
+    assert!(DEFAULT_WATCHDOG_BACKOFF_CAP_SECS == oikonomos::watchdog::BACKOFF_CAP.as_secs());

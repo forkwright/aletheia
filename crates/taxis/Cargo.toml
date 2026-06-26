@@ -44,7 +44,7 @@ taxis = { path = ".", features = ["test-support"] }
 koina = { path = "../koina", features = ["test-support"] }
 agora = { path = "../agora" }
 organon = { path = "../organon" }
-daemon = { path = "../daemon" }
+oikonomos = { path = "../daemon" }
 pylon = { path = "../pylon" }
 proptest = { workspace = true }
 tempfile = { workspace = true }

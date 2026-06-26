@@ -13,13 +13,13 @@ use super::{AgencyLevel, BookkeepingProviderKind, CompactionStrategyKind};
 /// Default value used for `AgentBehaviorDefaults::tool_agent_dispatch_max_tasks`.
 pub(crate) const DEFAULT_TOOL_AGENT_DISPATCH_MAX_TASKS: usize = 10;
 /// Default value used for `AgentBehaviorDefaults::tool_datalog_default_row_limit`.
-pub(crate) const DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT: u32 = 100;
+pub(crate) const DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT: usize = 100;
 /// Default value used for `AgentBehaviorDefaults::tool_datalog_default_timeout_secs`.
 pub(crate) const DEFAULT_TOOL_DATALOG_DEFAULT_TIMEOUT_SECS: f64 = 5.0;
 /// Default value used for `AgentBehaviorDefaults::tool_max_image_bytes`.
-pub(crate) const DEFAULT_TOOL_MAX_IMAGE_BYTES: usize = 20_971_520;
+pub(crate) const DEFAULT_TOOL_MAX_IMAGE_BYTES: u64 = 20_971_520;
 /// Default value used for `AgentBehaviorDefaults::tool_max_pdf_bytes`.
-pub(crate) const DEFAULT_TOOL_MAX_PDF_BYTES: usize = 33_554_432;
+pub(crate) const DEFAULT_TOOL_MAX_PDF_BYTES: u64 = 33_554_432;
 
 /// Agent configuration: shared defaults and per-agent definitions.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -649,13 +649,13 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields â
     /// Maximum concurrent agent-dispatch tasks.
     pub tool_agent_dispatch_max_tasks: usize,
     /// Default row limit for Datalog memory queries.
-    pub tool_datalog_default_row_limit: u32,
+    pub tool_datalog_default_row_limit: usize,
     /// Default query timeout in seconds for the Datalog memory tool.
     pub tool_datalog_default_timeout_secs: f64,
     /// Maximum image file size in bytes for the view-file tool.
-    pub tool_max_image_bytes: usize,
+    pub tool_max_image_bytes: u64,
     /// Maximum PDF file size in bytes for the view-file tool.
-    pub tool_max_pdf_bytes: usize,
+    pub tool_max_pdf_bytes: u64,
 
     // --- Bootstrap ---
     /// Minimum token budget remaining before attempting section truncation.
@@ -780,8 +780,7 @@ const _: () =
     assert!(DEFAULT_TOOL_AGENT_DISPATCH_MAX_TASKS == organon::builtins::agent::MAX_DISPATCH_TASKS);
 #[cfg(test)]
 const _: () = assert!(
-    DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT as usize
-        == organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT
+    DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT == organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT
 );
 #[cfg(test)]
 const _: () = assert!(
@@ -790,7 +789,6 @@ const _: () = assert!(
 );
 #[cfg(test)]
 const _: () =
-    assert!(DEFAULT_TOOL_MAX_IMAGE_BYTES as u64 == organon::builtins::view_file::MAX_IMAGE_BYTES);
+    assert!(DEFAULT_TOOL_MAX_IMAGE_BYTES == organon::builtins::view_file::MAX_IMAGE_BYTES);
 #[cfg(test)]
-const _: () =
-    assert!(DEFAULT_TOOL_MAX_PDF_BYTES as u64 == organon::builtins::view_file::MAX_PDF_BYTES);
+const _: () = assert!(DEFAULT_TOOL_MAX_PDF_BYTES == organon::builtins::view_file::MAX_PDF_BYTES);

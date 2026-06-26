@@ -1,12 +1,6 @@
 //! Organon tool limits configuration.
 
 use serde::{Deserialize, Serialize};
-
-/// Organon tool size, timeout, and length limits.
-///
-/// Defaults for the fields that mirror `organon` constants are enforced at
-/// test-build time by `const _: () = assert!` guards below.
-
 /// Default value used for `ToolLimitsConfig::max_pattern_length`.
 pub(crate) const DEFAULT_MAX_PATTERN_LENGTH: usize = 1_000;
 /// Default value used for `ToolLimitsConfig::subprocess_timeout_secs`.
@@ -23,6 +17,11 @@ pub(crate) const DEFAULT_MESSAGE_MAX_LEN: usize = 4_000;
 pub(crate) const DEFAULT_INTER_SESSION_MAX_MESSAGE_LEN: usize = 100_000;
 /// Default value used for `ToolLimitsConfig::inter_session_max_timeout_secs`.
 pub(crate) const DEFAULT_INTER_SESSION_MAX_TIMEOUT_SECS: u64 = 300;
+
+/// Organon tool size, timeout, and length limits.
+///
+/// Defaults for the fields that mirror `organon` constants are enforced at
+/// test-build time by `const _: () = assert!` guards below.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

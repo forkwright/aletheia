@@ -949,15 +949,15 @@ enabled = true
     assert_eq!(prosoche.external_timer.interval_secs, 300);
 }
 
+// WHY(#5482): regression guard — each sub-function covers one logical group of
+// formerly-hand-duplicated constants; kept small to satisfy too_many_lines lint.
 #[test]
-fn mirrored_defaults_match_foreign_constants() {
-    // WHY: regression guard for #5482. If a default is ever reverted to a
-    // hand-written literal that drifts from the upstream constant, this test
-    // fails at runtime (compile-time assertions in the source files catch it
-    // during test builds as well).
+#[expect(
+    clippy::float_cmp,
+    reason = "WHY(#5482): comparing compile-time constants that are by definition identical; exact equality is the invariant"
+)]
+fn mirrored_defaults_provider_behavior() {
     let config = AletheiaConfig::default();
-
-    // hermeneus provider behavior
     assert_eq!(
         config.provider_behavior.non_streaming_timeout_secs,
         hermeneus::anthropic::NON_STREAMING_TIMEOUT.as_secs()
@@ -982,8 +982,15 @@ fn mirrored_defaults_match_foreign_constants() {
         config.provider_behavior.complexity_high_threshold,
         hermeneus::complexity::DEFAULT_HIGH_THRESHOLD
     );
+}
 
-    // eidos / episteme knowledge behavior
+#[test]
+#[expect(
+    clippy::float_cmp,
+    reason = "WHY(#5482): comparing compile-time constants that are by definition identical; exact equality is the invariant"
+)]
+fn mirrored_defaults_knowledge_behavior() {
+    let config = AletheiaConfig::default();
     assert_eq!(
         config.knowledge.max_content_length,
         eidos::knowledge::fact::MAX_CONTENT_LENGTH
@@ -1028,11 +1035,14 @@ fn mirrored_defaults_match_foreign_constants() {
         config.knowledge.surprise_ema_alpha,
         episteme::surprise::DEFAULT_EMA_ALPHA
     );
+}
 
-    // agora / organon messaging behavior
+#[test]
+fn mirrored_defaults_messaging_behavior() {
+    let config = AletheiaConfig::default();
     assert_eq!(
         config.messaging.poll_interval_ms,
-        agora::semeion::DEFAULT_POLL_INTERVAL.as_millis() as u64
+        agora::semeion::DEFAULT_POLL_INTERVAL.as_secs() * 1_000
     );
     assert_eq!(
         config.messaging.buffer_capacity,
@@ -1062,18 +1072,19 @@ fn mirrored_defaults_match_foreign_constants() {
         config.messaging.agent_dispatch_timeout_secs,
         organon::builtins::agent::DEFAULT_TIMEOUT_SECS
     );
+}
 
-    // daemon behavior
+#[test]
+fn mirrored_defaults_daemon_and_api() {
+    let config = AletheiaConfig::default();
     assert_eq!(
         config.daemon_behavior.watchdog_backoff_base_secs,
-        daemon::watchdog::BACKOFF_BASE.as_secs()
+        oikonomos::watchdog::BACKOFF_BASE.as_secs()
     );
     assert_eq!(
         config.daemon_behavior.watchdog_backoff_cap_secs,
-        daemon::watchdog::BACKOFF_CAP.as_secs()
+        oikonomos::watchdog::BACKOFF_CAP.as_secs()
     );
-
-    // pylon api limits
     assert_eq!(
         config.api_limits.idempotency_ttl_secs,
         pylon::idempotency::DEFAULT_TTL.as_secs()
@@ -1082,8 +1093,11 @@ fn mirrored_defaults_match_foreign_constants() {
         config.api_limits.idempotency_capacity,
         pylon::idempotency::DEFAULT_CAPACITY
     );
+}
 
-    // organon tool limits
+#[test]
+fn mirrored_defaults_tool_limits() {
+    let config = AletheiaConfig::default();
     assert_eq!(
         config.tool_limits.max_pattern_length,
         organon::builtins::filesystem::MAX_PATTERN_LENGTH
@@ -1116,8 +1130,15 @@ fn mirrored_defaults_match_foreign_constants() {
         config.tool_limits.inter_session_max_timeout_secs,
         organon::builtins::communication::INTER_SESSION_MAX_TIMEOUT_SECS
     );
+}
 
-    // episteme / dianoia / melete / organon agent behavior
+#[test]
+#[expect(
+    clippy::float_cmp,
+    reason = "WHY(#5482): comparing compile-time constants that are by definition identical; exact equality is the invariant"
+)]
+fn mirrored_defaults_agent_behavior() {
+    let config = AletheiaConfig::default();
     assert_eq!(
         config.agents.defaults.behavior.manifest_max_entries,
         episteme::manifest::MAX_MEMORY_ENTRIES
@@ -1155,7 +1176,7 @@ fn mirrored_defaults_match_foreign_constants() {
             .agents
             .defaults
             .behavior
-            .tool_datalog_default_row_limit as usize,
+            .tool_datalog_default_row_limit,
         organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT
     );
     assert_eq!(
@@ -1167,21 +1188,17 @@ fn mirrored_defaults_match_foreign_constants() {
         organon::builtins::memory::datalog::DEFAULT_TIMEOUT_SECS
     );
     assert_eq!(
-        config.agents.defaults.behavior.tool_max_image_bytes as u64,
+        config.agents.defaults.behavior.tool_max_image_bytes,
         organon::builtins::view_file::MAX_IMAGE_BYTES
     );
     assert_eq!(
-        config.agents.defaults.behavior.tool_max_pdf_bytes as u64,
+        config.agents.defaults.behavior.tool_max_pdf_bytes,
         organon::builtins::view_file::MAX_PDF_BYTES
     );
-
-    // symbolon credential refresh
     assert_eq!(
         config.credential.refresh_threshold_secs,
         symbolon::credential::REFRESH_THRESHOLD_SECS
     );
-
-    // symbolon JWT clock skew
     assert_eq!(
         config.jwt.clock_skew_leeway_secs,
         symbolon::jwt::DEFAULT_CLOCK_SKEW_LEEWAY_SECS
