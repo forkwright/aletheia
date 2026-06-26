@@ -5,7 +5,9 @@
 Aletheia has no air-gapped mode flag. The capability emerges from config: remove
 every cloud provider from `[[providers]]`, declare one or more local
 OpenAI-compatible providers, and the runtime never opens an outbound connection
-the operator did not authorize.
+the operator did not authorize. Once `[[providers]]` is non-empty, there is no
+implicit legacy Anthropic provider; only the declared list participates in LLM
+routing.
 
 The remainder describes the required local LLM stack, a reference `aletheia.toml`
 fragment, and the feature set that drops when no Anthropic provider is
@@ -55,8 +57,9 @@ models = ["Qwen3.5-35B-A3B-Q8_0"]
 ```
 
 For a mixed cloud + local deployment, keep the Anthropic entry and add the
-local one; the provider registry routes each request to the first entry that
-claims the requested model, so model IDs must be unique.
+local one. Exact model matches beat broad provider catch-alls, and
+equal-specificity matches use list order, so model IDs should be unique unless
+the ordering is intentional.
 
 ```toml
 [[providers]]

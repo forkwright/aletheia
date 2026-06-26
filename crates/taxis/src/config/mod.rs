@@ -224,13 +224,17 @@ pub struct AletheiaConfig {
     pub jwt: JwtSettings,
     /// LLM provider definitions (#3424, #3414).
     ///
-    /// Ordered list of backends — the provider registry routes each request
-    /// to the first entry that claims the requested model. Empty by default
-    /// for backward compatibility: when empty, the runtime falls back to the
+    /// Ordered list of backends — the provider registry prefers the highest
+    /// model-match specificity and breaks equal-specificity ties by this
+    /// order. Empty by default for backward compatibility: when empty, the
+    /// runtime falls back to the
     /// legacy single-Anthropic setup driven by [`Self::anthropic`] and the
-    /// top-level credential chain. Populate this to enable OpenAI-compatible
-    /// endpoints (local llama.cpp/ollama/vllm, other cloud APIs) or to
-    /// declare explicit deployment targets for the factsensitivity filter.
+    /// top-level credential chain. Once populated, this list is the complete
+    /// provider-ordering contract. An `anthropic` entry without `apiKeyEnv`
+    /// uses the top-level credential chain at that entry's declared position.
+    /// Populate this to enable OpenAI-compatible endpoints (local
+    /// llama.cpp/ollama/vllm, other cloud APIs) or to declare explicit
+    /// deployment targets for the factsensitivity filter.
     #[serde(default)]
     pub providers: Vec<LlmProviderConfig>,
     /// Prompt audit log: operator visibility into outbound LLM requests (#3411).

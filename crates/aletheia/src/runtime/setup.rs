@@ -42,10 +42,18 @@ mod tool_registry;
 
 pub(super) use tool_registry::{build_tool_registry, sandbox_config};
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "service wiring function — splitting would scatter related provider setup logic"
-)]
+#[derive(Clone, Copy)]
+enum ProviderPlanEntry<'a> {
+    Declared(&'a taxis::config::LlmProviderConfig),
+    LegacyAnthropic,
+    #[cfg(feature = "cc-provider")]
+    AutoClaudeCode,
+    #[cfg(feature = "codex-provider")]
+    AutoCodex,
+    #[cfg(feature = "kimi-provider")]
+    AutoKimi,
+}
+
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
@@ -64,6 +72,77 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         .collect();
 
     let cred_source = config.credential.source.as_str();
+    let credential_chain = if provider_plan_needs_credential_chain(config) {
+        build_anthropic_credential_chain(config, oikos, cred_source)
+    } else {
+        let empty_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(Vec::new()));
+        empty_chain
+    };
+    let resolved_source = credential_chain.get_credential().map(|c| c.source);
+    if let Some(ref source) = resolved_source {
+        // SAFETY: logging credential source name (e.g. "oauth", "api-key"), not credential value
+        info!(source = %source, "credential resolved"); // kanon:ignore SECURITY/credential-logging -- logs source type string, not the secret
+    } else if config.providers.is_empty() {
+        warn!(
+            "no credential found -- server will start in degraded mode (no LLM)\n  \
+             Fix: SET ANTHROPIC_API_KEY env var, or run `aletheia credential status`"
+        );
+    }
+
+    // WHY(#3410): the taxis and hermeneus PromptCacheMode enums are
+    // intentionally decoupled so taxis does not depend on hermeneus; both
+    // default to `Disabled` (sovereignty-first).
+    let prompt_cache_mode = match config.anthropic.prompt_cache_mode {
+        taxis::config::PromptCacheMode::Ephemeral => {
+            hermeneus::provider::PromptCacheMode::Ephemeral
+        }
+        taxis::config::PromptCacheMode::Extended => hermeneus::provider::PromptCacheMode::Extended,
+        // WHY: taxis::config::PromptCacheMode is #[non_exhaustive] to keep
+        // future additions non-breaking. Unknown/Disabled variants default to
+        // the sovereignty-first policy.
+        _ => hermeneus::provider::PromptCacheMode::Disabled,
+    };
+    let provider_config = ProviderConfig {
+        pricing,
+        prompt_cache_mode,
+        ..ProviderConfig::default()
+    };
+
+    let behavior = ProviderBehavior {
+        non_streaming_timeout: std::time::Duration::from_secs(
+            config.provider_behavior.non_streaming_timeout_secs,
+        ),
+        sse_retry_ms: config.provider_behavior.sse_default_retry_ms,
+    };
+    let provider_plan = build_provider_plan(config, cred_source, resolved_source.as_ref());
+
+    register_provider_plan(
+        &mut registry,
+        &provider_plan,
+        &credential_chain,
+        resolved_source.is_some(),
+        &provider_config,
+        &behavior,
+    );
+
+    registry
+}
+
+fn provider_plan_needs_credential_chain(config: &AletheiaConfig) -> bool {
+    use taxis::config::ProviderKind;
+
+    config.providers.is_empty()
+        || config
+            .providers
+            .iter()
+            .any(|entry| entry.kind == ProviderKind::Anthropic && entry.api_key_env.is_none())
+}
+
+fn build_anthropic_credential_chain(
+    config: &AletheiaConfig,
+    oikos: &Oikos,
+    cred_source: &str,
+) -> Arc<dyn CredentialProvider> {
     let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
@@ -120,114 +199,85 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         chain.push(provider);
     }
 
-    let credential_chain: Arc<dyn CredentialProvider> = Arc::new(CredentialChain::new(chain));
+    Arc::new(CredentialChain::new(chain))
+}
+
+/// Build the complete provider registration plan in the exact order the
+/// registry should see providers.
+///
+/// When `providers` is empty, this preserves the legacy single-Anthropic
+/// startup path, including auto-discovered subprocess adapters. Once the
+/// operator supplies any `[[providers]]` entries, that declarative list is the
+/// complete routing contract; legacy Anthropic is only registered when an
+/// `anthropic` entry appears and is placed at that entry's position.
+fn build_provider_plan<'a>(
+    config: &'a AletheiaConfig,
+    cred_source: &str,
+    resolved_source: Option<&CredentialSource>,
+) -> Vec<ProviderPlanEntry<'a>> {
+    if !config.providers.is_empty() {
+        return config
+            .providers
+            .iter()
+            .map(ProviderPlanEntry::Declared)
+            .collect();
+    }
+
+    let mut plan = Vec::new();
 
     #[cfg(feature = "kimi-provider")]
-    {
-        use hermeneus::kimi::{KimiProvider, KimiProviderConfig};
-        let kimi_config = KimiProviderConfig::default();
-        match KimiProvider::new(&kimi_config) {
-            Ok(provider) => {
-                registry.register(Box::new(provider));
-                // SAFETY: logging provider registration status, not credential value
-                info!("Kimi subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
-            }
-            Err(e) => {
-                tracing::debug!(error = %e, "Kimi provider unavailable");
-            }
-        }
-    }
+    plan.push(ProviderPlanEntry::AutoKimi);
 
-    let resolved_source = credential_chain.get_credential().map(|c| c.source);
-    if let Some(ref source) = resolved_source {
-        // SAFETY: logging credential source name (e.g. "oauth", "api-key"), not credential value
-        info!(source = %source, "credential resolved"); // kanon:ignore SECURITY/credential-logging -- logs source type string, not the secret
-    } else {
-        warn!(
-            "no credential found -- server will start in degraded mode (no LLM)\n  \
-             Fix: SET ANTHROPIC_API_KEY env var, or run `aletheia credential status`"
-        );
-        return registry;
-    }
-
-    // WHY(#3410): the taxis and hermeneus PromptCacheMode enums are
-    // intentionally decoupled so taxis does not depend on hermeneus; both
-    // default to `Disabled` (sovereignty-first).
-    let prompt_cache_mode = match config.anthropic.prompt_cache_mode {
-        taxis::config::PromptCacheMode::Ephemeral => {
-            hermeneus::provider::PromptCacheMode::Ephemeral
-        }
-        taxis::config::PromptCacheMode::Extended => hermeneus::provider::PromptCacheMode::Extended,
-        // WHY: taxis::config::PromptCacheMode is #[non_exhaustive] to keep
-        // future additions non-breaking. Unknown/Disabled variants default to
-        // the sovereignty-first policy.
-        _ => hermeneus::provider::PromptCacheMode::Disabled,
-    };
-    let provider_config = ProviderConfig {
-        pricing,
-        prompt_cache_mode,
-        ..ProviderConfig::default()
-    };
-
-    // WHY: Only register CC subprocess provider when the credential source
-    // is not "api-key" AND the resolved credential is OAuth. The CC provider
-    // accepts all claude-* models and wins first-match routing, so registering
-    // it unconditionally causes API key users to be routed through the CC CLI
-    // unnecessarily, and OAuth tokens to be forwarded raw to the API (which
-    // rejects them with 401).
+    // WHY: Only auto-register CC on the legacy empty-provider path when the
+    // credential source is not "api-key" AND the resolved credential is OAuth.
+    // With declarative providers, `claude-code` must be listed explicitly so
+    // it cannot bypass provider ordering.
     #[cfg(feature = "cc-provider")]
-    if cred_source != "api-key" && resolved_source == Some(CredentialSource::OAuth) {
-        use hermeneus::cc::{CcProvider, CcProviderConfig};
-        let cc_config = CcProviderConfig::default();
-        match CcProvider::new(&cc_config) {
-            Ok(provider) => {
-                registry.register(Box::new(provider));
-                // SAFETY: logging provider registration status, not credential value
-                info!("CC subprocess provider registered (OAuth credential detected)"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
-            }
-            Err(e) => {
-                tracing::debug!(error = %e, "CC provider unavailable, falling back to direct API");
-            }
-        }
+    if cred_source != "api-key" && resolved_source == Some(&CredentialSource::OAuth) {
+        plan.push(ProviderPlanEntry::AutoClaudeCode);
     }
 
     #[cfg(feature = "codex-provider")]
-    {
-        use hermeneus::codex::{CodexProvider, CodexProviderConfig};
-        let codex_config = CodexProviderConfig::default();
-        match CodexProvider::new(&codex_config) {
-            Ok(provider) => {
-                registry.register(Box::new(provider));
-                info!("Codex subprocess provider registered");
-            }
-            Err(e) => {
-                tracing::debug!(error = %e, "Codex provider unavailable");
-            }
+    plan.push(ProviderPlanEntry::AutoCodex);
+
+    plan.push(ProviderPlanEntry::LegacyAnthropic);
+    plan
+}
+
+fn register_provider_plan(
+    registry: &mut ProviderRegistry,
+    plan: &[ProviderPlanEntry<'_>],
+    credential_chain: &Arc<dyn CredentialProvider>,
+    has_credential: bool,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
+) {
+    for entry in plan {
+        match entry {
+            ProviderPlanEntry::Declared(entry) => register_declared_provider(
+                registry,
+                entry,
+                credential_chain,
+                has_credential,
+                provider_config,
+                behavior,
+            ),
+            ProviderPlanEntry::LegacyAnthropic => register_credential_chain_anthropic(
+                registry,
+                "anthropic",
+                credential_chain,
+                has_credential,
+                provider_config,
+                behavior,
+            ),
+            #[cfg(feature = "cc-provider")]
+            ProviderPlanEntry::AutoClaudeCode => register_auto_claude_code(registry),
+            #[cfg(feature = "codex-provider")]
+            ProviderPlanEntry::AutoCodex => register_auto_codex(registry),
+            #[cfg(feature = "kimi-provider")]
+            ProviderPlanEntry::AutoKimi => register_auto_kimi(registry),
         }
     }
-
-    let behavior = ProviderBehavior {
-        non_streaming_timeout: std::time::Duration::from_secs(
-            config.provider_behavior.non_streaming_timeout_secs,
-        ),
-        sse_retry_ms: config.provider_behavior.sse_default_retry_ms,
-    };
-
-    match AnthropicProvider::with_credential_provider_and_behavior(
-        credential_chain,
-        &provider_config,
-        &behavior,
-    ) {
-        Ok(provider) => {
-            registry.register(Box::new(provider));
-            info!("anthropic provider registered");
-        }
-        Err(e) => warn!(error = %e, "failed to init anthropic provider"),
-    }
-
-    register_declared_providers(&mut registry, config);
-
-    registry
 }
 
 /// Translate the taxis-side [`taxis::config::DeploymentTarget`] to the
@@ -237,7 +287,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
 /// `Embedded` — but live in separate crates so neither depends on the
 /// other. This site is the first place both types are in scope, so the
 /// mapping lives here alongside every other config→provider conversion
-/// done by `register_declared_providers`. Any unknown variant
+/// done by the provider registration plan. Any unknown variant
 /// (`#[non_exhaustive]` guard) falls back to `Cloud`, the sovereignty-safe
 /// default that strips `Internal` / `Confidential` facts rather than
 /// leaking them to an unclassified boundary.
@@ -280,141 +330,139 @@ fn configured_openai_api_family(
     )
 }
 
-/// Iterate `config.providers` and register each entry with the provider
-/// registry (#3424, #3414).
-///
-/// Dispatches on `ProviderKind` to pick between Anthropic, OpenAI-compatible
-/// HTTP, and subprocess adapters. Anthropic and subprocess entries in the
-/// declarative list are skipped when their legacy registration path already
-/// owns the provider so we do not double-register. Empty list (the default) is
-/// a no-op, preserving legacy single-provider behavior.
-fn register_declared_providers(registry: &mut ProviderRegistry, config: &AletheiaConfig) {
+/// Register one declarative `[[providers]]` entry at its exact list position.
+fn register_declared_provider(
+    registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+    credential_chain: &Arc<dyn CredentialProvider>,
+    has_credential: bool,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
+) {
     use taxis::config::ProviderKind;
 
-    for entry in &config.providers {
-        match entry.kind {
-            ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
-                let api_family = configured_openai_api_family(entry);
-                let base_url = if entry.kind == ProviderKind::OpenAi {
-                    entry
-                        .base_url
-                        .clone()
-                        .unwrap_or_else(|| OpenAiProviderConfig::default().base_url)
-                } else if let Some(base_url) = entry.base_url.clone() {
-                    base_url
-                } else {
-                    warn!(
-                        provider = %entry.name,
-                        "OpenAI-compatible provider missing base_url — skipping"
-                    );
-                    continue;
-                };
-                let api_key =
-                    entry
-                        .api_key_env
-                        .as_deref()
-                        .and_then(|name| match std::env::var(name) {
-                            Ok(v) if !v.is_empty() => Some(SecretString::from(v)),
-                            Ok(_) => None,
-                            Err(_) => {
-                                // WHY: missing env var is expected for loopback
-                                // llama.cpp / ollama (no auth required). Log at
-                                // debug, not warn.
-                                tracing::debug!(
-                                    provider = %entry.name,
-                                    env = name,
-                                    "api_key_env unset for OpenAI-compatible provider"
-                                );
-                                None
-                            }
-                        });
-                let cfg = OpenAiProviderConfig {
-                    name: entry.name.clone(),
-                    base_url,
-                    api_key,
-                    models: entry.models.clone(),
-                    api_family,
-                    // WHY (#3736): the operator-declared deployment target
-                    // was previously logged below but never threaded to the
-                    // provider, so every OpenAI-compat provider silently
-                    // inherited the `Cloud` trait default. That broke the
-                    // air-gap claim in `docs/AIR-GAPPED.md` — the recall
-                    // filter stripped `Internal` / `Confidential` facts
-                    // from traffic bound for loopback llama.cpp / logismos.
-                    deployment_target: map_deployment_target(entry.deployment_target),
-                    ..OpenAiProviderConfig::default()
-                };
-                match OpenAiProvider::new(cfg) {
-                    Ok(provider) => {
-                        info!(
-                            provider = %entry.name,
-                            target = ?entry.deployment_target,
-                            api_family = ?api_family,
-                            models = ?entry.models,
-                            "OpenAI provider registered"
-                        );
-                        registry.register(Box::new(provider));
-                    }
-                    Err(e) => warn!(
-                        provider = %entry.name,
-                        error = %e,
-                        "failed to init OpenAI-compatible provider"
-                    ),
-                }
-            }
-            ProviderKind::Anthropic => {
-                register_declared_anthropic(registry, entry);
-            }
-            ProviderKind::ClaudeCode => {
-                // WHY: declarative registration of the CC adapter would
-                // duplicate the `cred_source` check above, and the binary
-                // path is already resolved by `CcProvider::new`. The
-                // credential-chain branch above handles this case.
-                tracing::debug!(
-                    provider = %entry.name,
-                    "declarative ClaudeCode entry skipped — provider already registered via credential chain"
-                );
-            }
-            ProviderKind::CodexOauth => {
-                // WHY: codex-provider registration is feature-gated above and
-                // owns binary discovery / CLI OAuth inheritance when enabled.
-                // Accepting the typed config shape here makes the provider
-                // declarable without changing startup behavior or introducing
-                // duplicate routing.
-                tracing::debug!(
-                    provider = %entry.name,
-                    "declarative Codex OAuth entry accepted; registration remains controlled by codex-provider feature path"
-                );
-            }
-            // WHY: ProviderKind is #[non_exhaustive] so future additions
-            // never accidentally break the build. Unknown variants fall
-            // through to a clear operator warning.
-            _ => {
-                warn!(
-                    provider = %entry.name,
-                    "unknown provider kind in config — skipping"
-                );
-            }
+    match entry.kind {
+        ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
+            register_declared_openai(registry, entry);
+        }
+        ProviderKind::Anthropic => register_declared_anthropic(
+            registry,
+            entry,
+            credential_chain,
+            has_credential,
+            provider_config,
+            behavior,
+        ),
+        ProviderKind::ClaudeCode => register_declared_claude_code(registry, entry),
+        ProviderKind::CodexOauth => register_declared_codex(registry, entry),
+        // WHY: ProviderKind is #[non_exhaustive] so future additions
+        // never accidentally break the build. Unknown variants fall
+        // through to a clear operator warning.
+        _ => {
+            warn!(
+                provider = %entry.name,
+                "unknown provider kind in config — skipping"
+            );
         }
     }
 }
 
-/// Register a declarative Anthropic-protocol provider entry.
-///
-/// WHY: the first-party Anthropic provider is registered by the
-/// credential-chain path in [`build_provider_registry`], so a declarative
-/// entry without its own credential would double-register it. An entry
-/// naming its own `apiKeyEnv` is a distinct Anthropic-protocol endpoint
-/// (proxy, self-hosted, or a compatible third-party host) and registers
-/// independently with its configured base URL and model claims.
-fn register_declared_anthropic(
+fn register_declared_openai(
     registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
 ) {
-    let Some(env_name) = entry.api_key_env.as_deref() else {
-        tracing::debug!(
+    use taxis::config::ProviderKind;
+
+    let api_family = configured_openai_api_family(entry);
+    let base_url = if entry.kind == ProviderKind::OpenAi {
+        entry
+            .base_url
+            .clone()
+            .unwrap_or_else(|| OpenAiProviderConfig::default().base_url)
+    } else if let Some(base_url) = entry.base_url.clone() {
+        base_url
+    } else {
+        warn!(
             provider = %entry.name,
-            "declarative Anthropic entry without apiKeyEnv skipped — first-party provider is registered via the credential chain"
+            "OpenAI-compatible provider missing base_url — skipping"
+        );
+        return;
+    };
+    let api_key = entry
+        .api_key_env
+        .as_deref()
+        .and_then(|name| match std::env::var(name) {
+            Ok(v) if !v.is_empty() => Some(SecretString::from(v)),
+            Ok(_) => None,
+            Err(_) => {
+                // WHY: missing env var is expected for loopback
+                // llama.cpp / ollama (no auth required). Log at
+                // debug, not warn.
+                tracing::debug!(
+                    provider = %entry.name,
+                    env = name,
+                    "api_key_env unset for OpenAI-compatible provider"
+                );
+                None
+            }
+        });
+    let cfg = OpenAiProviderConfig {
+        name: entry.name.clone(),
+        base_url,
+        api_key,
+        models: entry.models.clone(),
+        api_family,
+        // WHY (#3736): the operator-declared deployment target
+        // was previously logged below but never threaded to the
+        // provider, so every OpenAI-compat provider silently
+        // inherited the `Cloud` trait default. That broke the
+        // air-gap claim in `docs/AIR-GAPPED.md` — the recall
+        // filter stripped `Internal` / `Confidential` facts
+        // from traffic bound for loopback llama.cpp / logismos.
+        deployment_target: map_deployment_target(entry.deployment_target),
+        ..OpenAiProviderConfig::default()
+    };
+    match OpenAiProvider::new(cfg) {
+        Ok(provider) => {
+            info!(
+                provider = %entry.name,
+                target = ?entry.deployment_target,
+                api_family = ?api_family,
+                models = ?entry.models,
+                "OpenAI provider registered"
+            );
+            registry.register(Box::new(provider));
+        }
+        Err(e) => warn!(
+            provider = %entry.name,
+            error = %e,
+            "failed to init OpenAI-compatible provider"
+        ),
+    }
+}
+
+/// Register a declarative Anthropic-protocol provider entry at list position.
+///
+/// An entry with `apiKeyEnv` is an independent static-key endpoint. An entry
+/// without `apiKeyEnv` normalizes the legacy Anthropic credential chain into
+/// the declarative provider list at this exact position.
+fn register_declared_anthropic(
+    registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+    credential_chain: &Arc<dyn CredentialProvider>,
+    has_credential: bool,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
+) {
+    let Some(env_name) = entry.api_key_env.as_deref() else {
+        let cfg = anthropic_config_for_entry(provider_config, entry, None);
+        register_credential_chain_anthropic(
+            registry,
+            &entry.name,
+            credential_chain,
+            has_credential,
+            &cfg,
+            behavior,
         );
         return;
     };
@@ -429,14 +477,7 @@ fn register_declared_anthropic(
             return;
         }
     };
-    let cfg = ProviderConfig {
-        api_key: Some(key),
-        base_url: entry.base_url.clone(),
-        name: Some(entry.name.clone()),
-        models: entry.models.clone(),
-        deployment_target: map_deployment_target(entry.deployment_target),
-        ..ProviderConfig::default()
-    };
+    let cfg = anthropic_config_for_entry(provider_config, entry, Some(key));
     match AnthropicProvider::from_config(&cfg) {
         Ok(provider) => {
             info!(
@@ -453,6 +494,173 @@ fn register_declared_anthropic(
             error = %e,
             "failed to init declarative Anthropic provider"
         ),
+    }
+}
+
+fn anthropic_config_for_entry(
+    base: &ProviderConfig,
+    entry: &taxis::config::LlmProviderConfig,
+    api_key: Option<SecretString>,
+) -> ProviderConfig {
+    ProviderConfig {
+        api_key,
+        base_url: entry.base_url.clone(),
+        name: Some(entry.name.clone()),
+        models: entry.models.clone(),
+        deployment_target: map_deployment_target(entry.deployment_target),
+        ..base.clone()
+    }
+}
+
+fn register_credential_chain_anthropic(
+    registry: &mut ProviderRegistry,
+    provider_name: &str,
+    credential_chain: &Arc<dyn CredentialProvider>,
+    has_credential: bool,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
+) {
+    if !has_credential {
+        warn!(
+            provider = provider_name,
+            "Anthropic provider skipped because no credential-chain credential is available"
+        );
+        return;
+    }
+
+    match AnthropicProvider::with_credential_provider_and_behavior(
+        Arc::clone(credential_chain),
+        provider_config,
+        behavior,
+    ) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            info!(provider = provider_name, "Anthropic provider registered");
+        }
+        Err(e) => warn!(
+            provider = provider_name,
+            error = %e,
+            "failed to init Anthropic provider"
+        ),
+    }
+}
+
+#[cfg(feature = "cc-provider")]
+fn register_auto_claude_code(registry: &mut ProviderRegistry) {
+    use hermeneus::cc::{CcProvider, CcProviderConfig};
+
+    let cc_config = CcProviderConfig::default();
+    match CcProvider::new(&cc_config) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            // SAFETY: logging provider registration status, not credential value
+            info!("CC subprocess provider registered (OAuth credential detected)"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "CC provider unavailable, falling back to direct API");
+        }
+    }
+}
+
+#[cfg(feature = "cc-provider")]
+fn register_declared_claude_code(
+    registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+) {
+    use hermeneus::cc::{CcProvider, CcProviderConfig};
+
+    let cc_config = CcProviderConfig::default();
+    match CcProvider::new(&cc_config) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            // SAFETY: logging provider registration status, not credential value
+            info!(provider = %entry.name, "CC subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
+        }
+        Err(e) => {
+            tracing::debug!(
+                provider = %entry.name,
+                error = %e,
+                "CC provider unavailable"
+            );
+        }
+    }
+}
+
+#[cfg(not(feature = "cc-provider"))]
+fn register_declared_claude_code(
+    _registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+) {
+    warn!(
+        provider = %entry.name,
+        "ClaudeCode provider declared but cc-provider feature is disabled — skipping"
+    );
+}
+
+#[cfg(feature = "codex-provider")]
+fn register_auto_codex(registry: &mut ProviderRegistry) {
+    use hermeneus::codex::{CodexProvider, CodexProviderConfig};
+
+    let codex_config = CodexProviderConfig::default();
+    match CodexProvider::new(&codex_config) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            info!("Codex subprocess provider registered");
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "Codex provider unavailable");
+        }
+    }
+}
+
+#[cfg(feature = "codex-provider")]
+fn register_declared_codex(
+    registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+) {
+    use hermeneus::codex::{CodexProvider, CodexProviderConfig};
+
+    let codex_config = CodexProviderConfig::default();
+    match CodexProvider::new(&codex_config) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            info!(provider = %entry.name, "Codex subprocess provider registered");
+        }
+        Err(e) => {
+            tracing::debug!(
+                provider = %entry.name,
+                error = %e,
+                "Codex provider unavailable"
+            );
+        }
+    }
+}
+
+#[cfg(not(feature = "codex-provider"))]
+fn register_declared_codex(
+    _registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+) {
+    warn!(
+        provider = %entry.name,
+        "Codex OAuth provider declared but codex-provider feature is disabled — skipping"
+    );
+}
+
+#[cfg(feature = "kimi-provider")]
+fn register_auto_kimi(registry: &mut ProviderRegistry) {
+    use hermeneus::kimi::{KimiProvider, KimiProviderConfig};
+
+    let kimi_config = KimiProviderConfig::default();
+    match KimiProvider::new(&kimi_config) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            // SAFETY: logging provider registration status, not credential value
+            info!("Kimi subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, "Kimi provider unavailable");
+        }
     }
 }
 
@@ -924,8 +1132,10 @@ fn register_channel_provider(
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::error::Error as _;
+    use std::ffi::OsString;
     use std::future::Future;
     use std::pin::Pin;
+    use std::sync::{Mutex, MutexGuard};
 
     use agora::types::{ChannelCapabilities, InboundMessage, ProbeResult, SendParams, SendResult};
     use taxis::config::{MessagingConfig, SignalAccountConfig, SignalConfig};
@@ -943,6 +1153,85 @@ mod tests {
         rich_formatting: false,
         max_text_length: 1000,
     };
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvVarGuard {
+        originals: Vec<(&'static str, Option<OsString>)>,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl EnvVarGuard {
+        #[expect(
+            unsafe_code,
+            reason = "std::env::set_var is unsafe in edition 2024; tests serialize env access with ENV_LOCK"
+        )]
+        fn set(key: &'static str, value: &str) -> Self {
+            let lock = ENV_LOCK.lock().expect("lock env var mutex");
+            let original = std::env::var_os(key);
+            // SAFETY: ENV_LOCK serializes all test env mutations in this module.
+            unsafe { std::env::set_var(key, value) };
+            Self {
+                originals: vec![(key, original)],
+                _lock: lock,
+            }
+        }
+
+        #[expect(
+            unsafe_code,
+            reason = "std::env::remove_var is unsafe in edition 2024; tests serialize env access with ENV_LOCK"
+        )]
+        fn remove(key: &'static str) -> Self {
+            let lock = ENV_LOCK.lock().expect("lock env var mutex");
+            let original = std::env::var_os(key);
+            // SAFETY: ENV_LOCK serializes all test env mutations in this module.
+            unsafe { std::env::remove_var(key) };
+            Self {
+                originals: vec![(key, original)],
+                _lock: lock,
+            }
+        }
+
+        #[expect(
+            unsafe_code,
+            reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; tests serialize env access with ENV_LOCK"
+        )]
+        fn set_and_remove(set_key: &'static str, value: &str, remove_key: &'static str) -> Self {
+            let lock = ENV_LOCK.lock().expect("lock env var mutex");
+            let set_original = std::env::var_os(set_key);
+            let remove_original = std::env::var_os(remove_key);
+            // SAFETY: ENV_LOCK serializes all test env mutations in this module.
+            unsafe {
+                std::env::set_var(set_key, value);
+                std::env::remove_var(remove_key);
+            }
+            Self {
+                originals: vec![(set_key, set_original), (remove_key, remove_original)],
+                _lock: lock,
+            }
+        }
+    }
+
+    #[expect(
+        unsafe_code,
+        reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; tests serialize env access with ENV_LOCK"
+    )]
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            for (key, original) in self.originals.drain(..).rev() {
+                match original {
+                    Some(value) => {
+                        // SAFETY: ENV_LOCK is held until this guard is dropped.
+                        unsafe { std::env::set_var(key, value) };
+                    }
+                    None => {
+                        // SAFETY: ENV_LOCK is held until this guard is dropped.
+                        unsafe { std::env::remove_var(key) };
+                    }
+                }
+            }
+        }
+    }
 
     struct TestProvider {
         id: &'static str,
@@ -1080,18 +1369,146 @@ mod tests {
             HermeneusOpenAiApiFamily::ChatCompletions
         );
     }
+
+    fn local_openai_provider(name: &str, model: &str) -> taxis::config::LlmProviderConfig {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+        LlmProviderConfig {
+            name: name.to_owned(),
+            kind: ProviderKind::OpenAiCompatible,
+            base_url: Some("http://127.0.0.1:8088/v1".to_owned()),
+            api_key_env: None,
+            api_family: None,
+            deployment_target: DeploymentTarget::Embedded,
+            models: vec![model.to_owned()],
+        }
+    }
+
+    fn credential_chain_anthropic_provider(
+        name: &str,
+        model: &str,
+    ) -> taxis::config::LlmProviderConfig {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+        LlmProviderConfig {
+            name: name.to_owned(),
+            kind: ProviderKind::Anthropic,
+            base_url: None,
+            api_key_env: None,
+            api_family: None,
+            deployment_target: DeploymentTarget::Cloud,
+            models: vec![model.to_owned()],
+        }
+    }
+
+    fn build_test_provider_registry(config: &AletheiaConfig) -> ProviderRegistry {
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let oikos = Oikos::from_root(oikos_dir.path());
+        build_provider_registry(config, &oikos)
+    }
+
+    #[test]
+    fn declared_provider_order_wins_before_credential_chain_anthropic() {
+        let _env = EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-test-123");
+        let model = koina::models::names::sonnet();
+        let mut config = AletheiaConfig::default();
+        config.credential.source = "api-key".to_owned();
+        config.providers = vec![
+            local_openai_provider("local-claude", model),
+            credential_chain_anthropic_provider("anthropic-cloud", model),
+        ];
+
+        let registry = build_test_provider_registry(&config);
+        let provider = registry
+            .find_provider(model)
+            .expect("equal-specificity model should resolve");
+
+        assert_eq!(
+            provider.name(),
+            "local-claude",
+            "the provider declared first must win equal-specificity routing"
+        );
+    }
+
+    #[test]
+    fn credential_chain_anthropic_keeps_its_declared_order_position() {
+        let _env = EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-test-123");
+        let model = koina::models::names::sonnet();
+        let mut config = AletheiaConfig::default();
+        config.credential.source = "api-key".to_owned();
+        config.providers = vec![
+            credential_chain_anthropic_provider("anthropic-cloud", model),
+            local_openai_provider("local-claude", model),
+        ];
+
+        let registry = build_test_provider_registry(&config);
+        let provider = registry
+            .find_provider(model)
+            .expect("equal-specificity model should resolve");
+
+        assert_eq!(
+            provider.name(),
+            "anthropic-cloud",
+            "credential-chain Anthropic must win only when declared first"
+        );
+    }
+
+    #[test]
+    fn declared_local_provider_registers_without_anthropic_credential() {
+        let _env = EnvVarGuard::remove("ANTHROPIC_API_KEY");
+        let model = "local-test-model";
+        let mut config = AletheiaConfig::default();
+        config.credential.source = "api-key".to_owned();
+        config.providers = vec![local_openai_provider("local-only", model)];
+
+        let registry = build_test_provider_registry(&config);
+        let provider = registry
+            .find_provider(model)
+            .expect("declared local provider should register without Anthropic credentials");
+
+        assert_eq!(provider.name(), "local-only");
+    }
+
     #[expect(
-        unsafe_code,
-        reason = "std::env::set_var requires unsafe in edition 2024; nextest isolates each test in its own process"
+        clippy::disallowed_methods,
+        reason = "test fixture writes a fake Claude Code credential file under a temp HOME"
     )]
+    #[test]
+    fn declared_local_provider_does_not_touch_claude_code_refresh_credentials() {
+        let fake_home = tempfile::tempdir().expect("create fake home");
+        let claude_dir = fake_home.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
+        std::fs::write(
+            claude_dir.join(".credentials.json"),
+            r#"{"accessToken":"sk-ant-oat-local","refreshToken":"rt-local"}"#,
+        )
+        .expect("write fake Claude Code credentials");
+        let fake_home = fake_home
+            .path()
+            .to_str()
+            .expect("temp home path should be utf-8");
+        let _env = EnvVarGuard::set_and_remove("HOME", fake_home, "ANTHROPIC_API_KEY");
+        let model = "local-test-model";
+        let config = AletheiaConfig {
+            providers: vec![local_openai_provider("local-only", model)],
+            ..AletheiaConfig::default()
+        };
+
+        let registry = build_test_provider_registry(&config);
+        let provider = registry
+            .find_provider(model)
+            .expect("declared local provider should register without legacy credential discovery");
+
+        assert_eq!(provider.name(), "local-only");
+    }
+
     #[test]
     fn declarative_anthropic_with_own_key_registers() {
         use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
 
-        // SAFETY: nextest runs this test in its own process; no other
-        // thread reads or mutates the environment concurrently.
-        unsafe { std::env::set_var("TEST_DECL_ANTHROPIC_KEY", "sk-test-123") };
+        let _env = EnvVarGuard::set("TEST_DECL_ANTHROPIC_KEY", "sk-test-123");
         let mut config = AletheiaConfig::default();
+        config.credential.source = "api-key".to_owned();
         config.providers.push(LlmProviderConfig {
             name: "kimi-coding".to_owned(),
             kind: ProviderKind::Anthropic,
@@ -1101,8 +1518,7 @@ mod tests {
             deployment_target: DeploymentTarget::Cloud,
             models: vec!["kimi-for-coding".to_owned()],
         });
-        let mut registry = ProviderRegistry::new();
-        register_declared_providers(&mut registry, &config);
+        let registry = build_test_provider_registry(&config);
         assert!(
             registry.find_provider("kimi-for-coding").is_some(),
             "declarative Anthropic-protocol entry with its own key must register and claim its models"
@@ -1116,10 +1532,12 @@ mod tests {
     }
 
     #[test]
-    fn declarative_anthropic_without_key_env_is_skipped() {
+    fn declarative_anthropic_without_key_env_needs_credential_chain() {
         use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
 
+        let _env = EnvVarGuard::remove("ANTHROPIC_API_KEY");
         let mut config = AletheiaConfig::default();
+        config.credential.source = "api-key".to_owned();
         config.providers.push(LlmProviderConfig {
             name: "anthropic-cloud".to_owned(),
             kind: ProviderKind::Anthropic,
@@ -1129,11 +1547,10 @@ mod tests {
             deployment_target: DeploymentTarget::Cloud,
             models: Vec::new(),
         });
-        let mut registry = ProviderRegistry::new();
-        register_declared_providers(&mut registry, &config);
+        let registry = build_test_provider_registry(&config);
         assert!(
             registry.find_provider("claude-opus-4-6").is_none(),
-            "entry without apiKeyEnv defers to the credential-chain registration"
+            "entry without apiKeyEnv uses the credential chain and must skip when no credential is available"
         );
     }
 }
