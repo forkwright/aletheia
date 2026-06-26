@@ -30,7 +30,7 @@ use organon::types::{
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 pub(crate) use taxis::config::{
-    ExternalToolAuth, ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
+    ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
 };
 
 // ── Tool manifest ───────────────────────────────────────────────────────────

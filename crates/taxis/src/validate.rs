@@ -957,7 +957,7 @@ fn validate_tool_auth(path: &str, value: &Value, errors: &mut Vec<String>) {
             if value
                 .get("token")
                 .and_then(Value::as_str)
-                .is_none_or(|s| s.is_empty())
+                .is_none_or(str::is_empty)
             {
                 errors.push(format!("{path}.token is required and must not be empty"));
             }
@@ -966,14 +966,14 @@ fn validate_tool_auth(path: &str, value: &Value, errors: &mut Vec<String>) {
             if value
                 .get("name")
                 .and_then(Value::as_str)
-                .is_none_or(|s| s.is_empty())
+                .is_none_or(str::is_empty)
             {
                 errors.push(format!("{path}.name is required and must not be empty"));
             }
             if value
                 .get("value")
                 .and_then(Value::as_str)
-                .is_none_or(|s| s.is_empty())
+                .is_none_or(str::is_empty)
             {
                 errors.push(format!("{path}.value is required and must not be empty"));
             }
@@ -982,7 +982,7 @@ fn validate_tool_auth(path: &str, value: &Value, errors: &mut Vec<String>) {
             if value
                 .get("header_name")
                 .and_then(Value::as_str)
-                .is_none_or(|s| s.is_empty())
+                .is_none_or(str::is_empty)
             {
                 errors.push(format!(
                     "{path}.header_name is required and must not be empty"
@@ -991,7 +991,7 @@ fn validate_tool_auth(path: &str, value: &Value, errors: &mut Vec<String>) {
             if value
                 .get("env_var")
                 .and_then(Value::as_str)
-                .is_none_or(|s| s.is_empty())
+                .is_none_or(str::is_empty)
             {
                 errors.push(format!("{path}.env_var is required and must not be empty"));
             }
