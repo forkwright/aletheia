@@ -313,7 +313,9 @@ impl FactStore {
     pub async fn list(&self, scope: Option<FactScope>) -> Result<Vec<ArchitectureFact>, FactError> {
         self.ensure_loaded().await?;
         let guard = self.cache.lock().await;
-        let Some(idx) = guard.as_ref() else { return Ok(vec![]); };
+        let Some(idx) = guard.as_ref() else {
+            return Ok(vec![]);
+        };
         Ok(idx
             .iter()
             .filter(|i| scope.map_or(true, |s| i.fact.scope == s))
@@ -333,7 +335,9 @@ impl FactStore {
         self.ensure_loaded().await?;
         let query_lower = query.to_lowercase();
         let guard = self.cache.lock().await;
-        let Some(idx) = guard.as_ref() else { return Ok(vec![]); };
+        let Some(idx) = guard.as_ref() else {
+            return Ok(vec![]);
+        };
         Ok(idx
             .iter()
             .filter(|i| {
@@ -774,7 +778,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = FactStore::new(dir.path());
         store
-            .put(test_fact("test.cache.search", FactScope::Boundary, "Find me."))
+            .put(test_fact(
+                "test.cache.search",
+                FactScope::Boundary,
+                "Find me.",
+            ))
             .await
             .expect("put");
         let first = store.search("find").await.expect("search");
@@ -806,7 +814,11 @@ mod tests {
             .await
             .expect("put second");
         let second = store.list(None).await.expect("list after second put");
-        assert_eq!(second.len(), 2, "put should keep the in-memory cache up to date");
+        assert_eq!(
+            second.len(),
+            2,
+            "put should keep the in-memory cache up to date"
+        );
     }
 
     #[tokio::test]
@@ -822,10 +834,18 @@ mod tests {
         assert_eq!(by_id.len(), 1, "search should match id case-insensitively");
 
         let by_scope = store.search("CRATE").await.expect("search scope");
-        assert_eq!(by_scope.len(), 1, "search should match scope case-insensitively");
+        assert_eq!(
+            by_scope.len(),
+            1,
+            "search should match scope case-insensitively"
+        );
 
         let by_claim = store.search("CLAIM TEXT").await.expect("search claim");
-        assert_eq!(by_claim.len(), 1, "search should match claim case-insensitively");
+        assert_eq!(
+            by_claim.len(),
+            1,
+            "search should match claim case-insensitively"
+        );
     }
 
     #[test]
