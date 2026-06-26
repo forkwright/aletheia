@@ -1,6 +1,6 @@
 //! `aletheia add-nous`: scaffold a new nous agent directory.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Args;
 use snafu::prelude::*;
@@ -34,6 +34,15 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
         None => Oikos::discover(),
     };
 
+    // WHY: refuse to create partial structure in an uninitialized directory.
+    ensure_initialized(&oikos)?;
+
+    check_credential(&args.provider);
+
+    // WHY: parse, validate, and prepare the config update before touching the
+    // filesystem so bad TOML, duplicate IDs, or unwritable config fail fast.
+    let prepared = prepare_config_update(&oikos, args)?;
+
     let nous_dir = oikos.nous_dir(&args.name);
     if nous_dir.exists() {
         whatever!(
@@ -42,10 +51,15 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
         );
     }
 
-    check_credential(&args.provider);
-
     scaffold_directory(&oikos, args)?;
-    update_config(&oikos, args)?;
+
+    // WHY: apply the validated config update; rollback the scaffold if it fails.
+    if let Err(e) = apply_config_update(&prepared) {
+        // kanon:ignore RUST/no-silent-result-swallow — best-effort rollback of partial scaffold
+        let _ = std::fs::remove_dir_all(&nous_dir);
+        return Err(e);
+    }
+
     try_register(&oikos, &args.name).await;
     print_summary(&oikos, args);
 
@@ -104,6 +118,49 @@ fn check_credential(provider: &str) {
              config/credentials/{provider}.json before starting the server."
         );
     }
+}
+
+/// Require an initialized Aletheia instance before mutating state.
+///
+/// WHY: `add-nous` is not `init`; running it in an empty directory should not
+/// create a partial instance layout. An initialized root has the config and
+/// data directories and the main TOML config file produced by `aletheia init`.
+fn ensure_initialized(oikos: &Oikos) -> Result<()> {
+    let root = oikos.root();
+    if !root.exists() {
+        whatever!(
+            "instance not found at {}\n  \
+             Use -r /path/to/instance or set ALETHEIA_ROOT.\n  \
+             To create a new instance: aletheia init",
+            root.display()
+        );
+    }
+
+    for dir in &[oikos.config(), oikos.data()] {
+        if !dir.exists() {
+            whatever!(
+                "instance at {} is not initialized (missing {} directory)\n  \
+                 Run `aletheia init` first.",
+                root.display(),
+                dir.file_name().map_or_else(
+                    || dir.as_os_str().to_string_lossy(),
+                    |n| n.to_string_lossy()
+                )
+            );
+        }
+    }
+
+    let config_file = oikos.config().join("aletheia.toml");
+    if !config_file.exists() {
+        whatever!(
+            "instance at {} is not initialized (missing {})\n  \
+             Run `aletheia init` first.",
+            root.display(),
+            config_file.display()
+        );
+    }
+
+    Ok(())
 }
 
 fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
@@ -172,8 +229,17 @@ fn scaffold_directory(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
     Ok(())
 }
 
-/// Modify the TOML config in-place using `toml_edit` to preserve comments and structure.
-fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
+/// A config update that has been validated but not yet written.
+struct PreparedConfig {
+    config_path: PathBuf,
+    content: String,
+}
+
+/// Validate the target config and build the updated TOML without writing it.
+///
+/// WHY: This lets `run` detect bad TOML, duplicate IDs, and unwritable config
+/// before scaffolding the agent directory, keeping failures transactional.
+fn prepare_config_update(oikos: &Oikos, args: &AddNousArgs) -> Result<PreparedConfig> {
     let config_path = oikos.config().join("aletheia.toml");
 
     let existing = if config_path.exists() {
@@ -250,10 +316,45 @@ fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
 
     list.push(entry);
 
-    koina::fs::write_restricted(&config_path, doc.to_string().as_bytes())
-        .with_whatever_context(|_| format!("failed to write {}", config_path.display()))?;
+    // WHY: prove the config directory is writable before scaffolding.
+    ensure_writable(&config_path)?;
 
-    Ok(())
+    Ok(PreparedConfig {
+        config_path,
+        content: doc.to_string(),
+    })
+}
+
+/// Write a prepared config update to disk.
+fn apply_config_update(prepared: &PreparedConfig) -> Result<()> {
+    koina::fs::write_restricted(&prepared.config_path, prepared.content.as_bytes())
+        .with_whatever_context(|_| format!("failed to write {}", prepared.config_path.display()))
+}
+
+/// Modify the TOML config in-place using `toml_edit` to preserve comments and structure.
+///
+/// WHY: Convenience wrapper for direct callers/tests; `run` uses the split
+/// prepare/apply path so it can validate before scaffolding.
+#[cfg(test)]
+fn update_config(oikos: &Oikos, args: &AddNousArgs) -> Result<()> {
+    let prepared = prepare_config_update(oikos, args)?;
+    apply_config_update(&prepared)
+}
+
+/// Verify that the parent directory of `path` is writable.
+fn ensure_writable(path: &Path) -> Result<()> {
+    let Some(parent) = path.parent() else {
+        return Err(crate::error::Error::msg("path has no parent directory"));
+    };
+
+    let test_file = parent.join(".aletheia-write-test");
+    let result = koina::fs::write_restricted(&test_file, b"ok");
+    // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of transient test file
+    let _ = std::fs::remove_file(&test_file);
+
+    result.with_whatever_context(|_| {
+        format!("config directory is not writable: {}", parent.display())
+    })
 }
 
 /// Check if the server is reachable by hitting its health endpoint.
@@ -604,10 +705,27 @@ mod tests {
         assert!(msg.contains("already exists"), "got: {msg}");
     }
 
+    /// Set up a minimal initialized instance layout for `run()` tests.
+    fn init_instance(dir: &tempfile::TempDir) -> Oikos {
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "test setup writes a minimal initialized config"
+        )]
+        std::fs::write(
+            root.join("config/aletheia.toml"),
+            "[gateway]\nport = 18789\n",
+        )
+        .unwrap();
+        Oikos::from_root(root)
+    }
+
     #[test]
     fn scaffold_errors_when_directory_exists() {
         let dir = tempfile::tempdir().unwrap();
-        let _oikos = Oikos::from_root(dir.path());
+        let _oikos = init_instance(&dir);
         std::fs::create_dir_all(dir.path().join("nous/existing")).unwrap();
 
         let args = AddNousArgs {
@@ -627,6 +745,138 @@ mod tests {
         assert!(
             msg.contains("already exists"),
             "expected 'already exists' in: {msg}"
+        );
+    }
+
+    #[test]
+    fn run_rejects_uninitialized_instance() {
+        let dir = tempfile::tempdir().unwrap();
+        // NOTE: only create nous/; the instance lacks config/ and data/.
+        std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+
+        let args = AddNousArgs {
+            name: "uninitialized".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
+        assert!(
+            result.is_err(),
+            "run should fail when the instance is not initialized"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("not initialized"),
+            "expected 'not initialized' in: {msg}"
+        );
+        assert!(
+            !dir.path().join("nous/uninitialized").exists(),
+            "must not create partial scaffold in uninitialized directory"
+        );
+    }
+
+    #[test]
+    fn run_rejects_bad_toml_before_scaffolding() {
+        let dir = tempfile::tempdir().unwrap();
+        let _oikos = init_instance(&dir);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "test setup writes intentionally broken TOML"
+        )]
+        std::fs::write(
+            dir.path().join("config/aletheia.toml"),
+            "[[agents.list\nid = ",
+        )
+        .unwrap();
+
+        let args = AddNousArgs {
+            name: "bad-toml".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
+        assert!(
+            result.is_err(),
+            "run should fail when the config file contains invalid TOML"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("parse") || msg.contains("TOML"),
+            "expected parse error, got: {msg}"
+        );
+        assert!(
+            !dir.path().join("nous/bad-toml").exists(),
+            "must not scaffold when config parsing fails"
+        );
+    }
+
+    #[test]
+    fn run_rejects_duplicate_id_before_scaffolding() {
+        let dir = tempfile::tempdir().unwrap();
+        let _oikos = init_instance(&dir);
+
+        let args = AddNousArgs {
+            name: "duplicate".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(run(Some(&dir.path().to_path_buf()), &args))
+            .unwrap();
+
+        let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
+        assert!(
+            result.is_err(),
+            "run should fail when the agent id already exists"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("already exists"), "got: {msg}");
+    }
+
+    #[test]
+    fn run_rejects_unwritable_config_before_scaffolding() {
+        let dir = tempfile::tempdir().unwrap();
+        let _oikos = init_instance(&dir);
+        let config_dir = dir.path().join("config");
+
+        let mut perms = std::fs::metadata(&config_dir).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&config_dir, perms).unwrap();
+
+        let args = AddNousArgs {
+            name: "unwritable".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(run(Some(&dir.path().to_path_buf()), &args));
+
+        // WHY: restore writable permissions so tempfile can clean up the directory.
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&config_dir).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&config_dir, perms).unwrap();
+        }
+
+        assert!(
+            result.is_err(),
+            "run should fail when the config directory is not writable"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("writable") || msg.contains("Permission denied"),
+            "expected writable/permission error, got: {msg}"
+        );
+        assert!(
+            !dir.path().join("nous/unwritable").exists(),
+            "must not scaffold when config directory is not writable"
         );
     }
 }
