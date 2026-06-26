@@ -41,6 +41,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use fjall::{KeyspaceCreateOptions, PersistMode, SingleWriterTxDatabase};
@@ -141,6 +142,11 @@ pub struct SessionStore {
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
     _temp_dir: Option<tempfile::TempDir>,
+    /// Approximate number of session rows, maintained by create/delete paths.
+    ///
+    /// WHY: O(1) counter for the Prometheus `/metrics` scrape path; avoids a
+    /// full LSM scan on every scrape (issue #5662).
+    session_count: AtomicUsize,
 }
 
 /// One message to append as part of a batched turn finalization.
@@ -240,7 +246,7 @@ impl SessionStore {
             }
             .build()
         })?;
-        Ok(Self::from_fjall_db(fdb, path.to_path_buf()))
+        Self::from_fjall_db(fdb, path.to_path_buf())
     }
 
     /// Open an ephemeral session store backed by a `TempDir` (for testing).
@@ -267,16 +273,42 @@ impl SessionStore {
             ._temp_dir
             .as_ref()
             .map_or_else(std::env::temp_dir, |dir| dir.path().join("sessions"));
-        Ok(Self::from_fjall_db(fdb, path))
+        Self::from_fjall_db(fdb, path)
     }
 
-    fn from_fjall_db(fdb: koina::fjall::FjallDb, path: PathBuf) -> Self {
-        Self {
+    fn from_fjall_db(fdb: koina::fjall::FjallDb, path: PathBuf) -> Result<Self> {
+        use fjall::Readable;
+
+        let sessions_part = fdb
+            .db
+            .keyspace("sessions", KeyspaceCreateOptions::default)
+            .map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall session-count partition: {e}"),
+                }
+                .build()
+            })?;
+        let snap = fdb.db.read_tx();
+        let mut count = 0usize;
+        for guard in snap.range::<&str, _>(&sessions_part, ..) {
+            let (k, _v) = guard.into_inner().map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall session-count scan: {e}"),
+                }
+                .build()
+            })?;
+            if !k.starts_with(b"idx:") {
+                count += 1;
+            }
+        }
+
+        Ok(Self {
             db: Arc::new(fdb.db),
             path,
             write_lock: fdb.write_lock,
             _temp_dir: fdb._temp_dir,
-        }
+            session_count: AtomicUsize::new(count),
+        })
     }
 
     /// Path used when opening this Fjall session store.
@@ -425,7 +457,7 @@ impl SessionStore {
         session_key: &str,
         model: Option<&str>,
         parent_session_id: Option<&str>,
-    ) -> Result<(Session, bool)> {
+    ) -> Result<(Session, bool, bool)> {
         use fjall::Readable;
 
         if let Some(existing_bytes) = tx
@@ -501,20 +533,21 @@ impl SessionStore {
         Self::write_session_in_tx(tx, sessions_part, &session)?;
         metrics::record_session_created(nous_id, session_type.as_str());
         info!(id, nous_id, session_key, %session_type, "created session");
-        Ok((session, true))
+        Ok((session, true, true))
     }
 
     /// Return an active session, reactivating it if necessary, inside a tx.
     ///
-    /// The returned boolean is `true` when the transaction was mutated
-    /// (reactivation), `false` when the session was already active.
+    /// Returns `(session, mutated, created)`: `mutated` is `true` when the
+    /// transaction was written (reactivation); `created` is always `false`
+    /// because this function only handles existing sessions.
     fn active_or_reactivated_session(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         sessions_part: &fjall::SingleWriterTxKeyspace,
         mut session: Session,
-    ) -> Result<(Session, bool)> {
+    ) -> Result<(Session, bool, bool)> {
         match session.status {
-            SessionStatus::Active => Ok((session, false)),
+            SessionStatus::Active => Ok((session, false, false)),
             SessionStatus::Archived => {
                 // WHY: Archived sessions are lifecycle-closed by operator or
                 // policy action. Silently reactivating them loses the intent
@@ -530,7 +563,7 @@ impl SessionStore {
                 Self::update_session_nous_index(tx, sessions_part, &session, &old_updated_at);
                 Self::write_session_in_tx(tx, sessions_part, &session)?;
                 info!(id = session.id, "reactivated session");
-                Ok((session, true))
+                Ok((session, true, false))
             }
         }
     }
@@ -583,6 +616,16 @@ impl SessionStore {
     pub fn ping(&self) -> Result<()> {
         let _ = self.partition("counters")?;
         Ok(())
+    }
+
+    /// Return the number of sessions in O(1).
+    ///
+    /// WHY: the Prometheus `/metrics` handler scrapes this every 15-30 seconds.
+    /// A full `list_sessions(None)` scan blocks the Tokio worker thread and
+    /// holds the session-store mutex for unbounded time as sessions grow
+    /// (issue #5662).
+    pub fn session_count(&self) -> usize {
+        self.session_count.load(Ordering::Relaxed)
     }
 
     /// Find an active session by nous ID and session key.
@@ -675,6 +718,7 @@ impl SessionStore {
         }
 
         self.write_session(&session)?;
+        self.session_count.fetch_add(1, Ordering::Relaxed);
         metrics::record_session_created(nous_id, session_type.as_str());
         info!(id, nous_id, session_key, %session_type, "created session");
         Ok(session)
@@ -696,7 +740,7 @@ impl SessionStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
         let mut tx = self.db.write_tx();
-        let (session, mutated) = Self::find_or_create_session_in_tx(
+        let (session, mutated, created) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             id,
@@ -713,6 +757,9 @@ impl SessionStore {
                 .build()
             })?;
             self.ensure_durable()?;
+            if created {
+                self.session_count.fetch_add(1, Ordering::Relaxed);
+            }
         }
         Ok(session)
     }
@@ -1026,6 +1073,7 @@ impl SessionStore {
             }
             .build()
         })?;
+        self.session_count.fetch_sub(1, Ordering::Relaxed);
 
         Ok(true)
     }
@@ -1777,7 +1825,7 @@ impl SessionStore {
 
         let mut tx = self.db.write_tx();
 
-        let (mut session, _mutated) = Self::find_or_create_session_in_tx(
+        let (mut session, _mutated, _) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             request.session_id,
@@ -2617,9 +2665,9 @@ impl SessionStore {
         // - `idx:nous:{nous_id}:upd:{ts}:{id}` — orphaned when `nous_id` or
         //   `updated_at` changes; both are embedded in the key prefix.
         let mut tx = self.db.write_tx();
-        if let Some(prev_bytes) = existing_self {
+        if let Some(prev_bytes) = existing_self.as_ref() {
             let prev: Session =
-                serde_json::from_slice(&prev_bytes).context(error::StoredJsonSnafu)?;
+                serde_json::from_slice(prev_bytes).context(error::StoredJsonSnafu)?;
             if prev.nous_id != session.nous_id || prev.session_key != session.session_key {
                 let stale_key_idx = Self::session_key_index_key(&prev.nous_id, &prev.session_key);
                 tx.remove(&sessions_part, stale_key_idx.as_str());
@@ -2673,6 +2721,21 @@ impl SessionStore {
             .build()
         })?;
         self.ensure_durable()?;
+
+        // WHY: imports can overwrite or displace existing sessions; adjust the
+        // counter to reflect the true delta in session rows (issue #5662).
+        let displaced = existing_key_owner
+            .as_deref()
+            .is_some_and(|owner| owner != session.id.as_str());
+        match (existing_self.is_none(), displaced) {
+            (true, false) => {
+                self.session_count.fetch_add(1, Ordering::Relaxed);
+            }
+            (false, true) => {
+                self.session_count.fetch_sub(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
 
         metrics::record_session_created(&session.nous_id, session.session_type.as_str());
         info!(

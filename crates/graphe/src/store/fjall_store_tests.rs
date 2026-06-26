@@ -189,6 +189,37 @@ fn list_sessions_by_nous_id() {
 }
 
 #[test]
+fn session_count_tracks_creates_and_deletes() {
+    let store = test_store();
+    assert_eq!(store.session_count(), 0);
+
+    store
+        .create_session("ses-a", "nous-a", "main", None, None)
+        .expect("create a");
+    assert_eq!(store.session_count(), 1);
+
+    store
+        .create_session("ses-b", "nous-b", "main", None, None)
+        .expect("create b");
+    assert_eq!(store.session_count(), 2);
+
+    store.delete_session("ses-a").expect("delete a");
+    assert_eq!(store.session_count(), 1);
+
+    // Finding an existing session must not change the count.
+    store
+        .find_or_create_session("ses-b", "nous-b", "main", None, None)
+        .expect("find existing");
+    assert_eq!(store.session_count(), 1);
+
+    // Creating through find_or_create must increment the count.
+    store
+        .find_or_create_session("ses-c", "nous-c", "main", None, None)
+        .expect("create c");
+    assert_eq!(store.session_count(), 2);
+}
+
+#[test]
 fn update_session_status() {
     let store = test_store();
     store
