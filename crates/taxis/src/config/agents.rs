@@ -776,9 +776,8 @@ impl Default for AgentBehaviorDefaults {
 }
 
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_TOOL_AGENT_DISPATCH_MAX_TASKS == organon::builtins::agent::MAX_DISPATCH_TASKS
-);
+const _: () =
+    assert!(DEFAULT_TOOL_AGENT_DISPATCH_MAX_TASKS == organon::builtins::agent::MAX_DISPATCH_TASKS);
 #[cfg(test)]
 const _: () = assert!(
     DEFAULT_TOOL_DATALOG_DEFAULT_ROW_LIMIT as usize
@@ -790,10 +789,8 @@ const _: () = assert!(
         == organon::builtins::memory::datalog::DEFAULT_TIMEOUT_SECS
 );
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_TOOL_MAX_IMAGE_BYTES as u64 == organon::builtins::view_file::MAX_IMAGE_BYTES
-);
+const _: () =
+    assert!(DEFAULT_TOOL_MAX_IMAGE_BYTES as u64 == organon::builtins::view_file::MAX_IMAGE_BYTES);
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_TOOL_MAX_PDF_BYTES as u64 == organon::builtins::view_file::MAX_PDF_BYTES
-);
+const _: () =
+    assert!(DEFAULT_TOOL_MAX_PDF_BYTES as u64 == organon::builtins::view_file::MAX_PDF_BYTES);

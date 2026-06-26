@@ -86,29 +86,21 @@ impl Default for ToolLimitsConfig {
 }
 
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_MAX_PATTERN_LENGTH == organon::builtins::filesystem::MAX_PATTERN_LENGTH
-);
+const _: () =
+    assert!(DEFAULT_MAX_PATTERN_LENGTH == organon::builtins::filesystem::MAX_PATTERN_LENGTH);
 #[cfg(test)]
 const _: () = assert!(
     DEFAULT_SUBPROCESS_TIMEOUT_SECS == organon::builtins::filesystem::SUBPROCESS_TIMEOUT.as_secs()
 );
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_MAX_WRITE_BYTES == organon::builtins::workspace::MAX_WRITE_BYTES
-);
+const _: () = assert!(DEFAULT_MAX_WRITE_BYTES == organon::builtins::workspace::MAX_WRITE_BYTES);
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_MAX_READ_BYTES == organon::builtins::workspace::MAX_READ_BYTES
-);
+const _: () = assert!(DEFAULT_MAX_READ_BYTES == organon::builtins::workspace::MAX_READ_BYTES);
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_MAX_COMMAND_LENGTH == organon::builtins::workspace::MAX_COMMAND_LENGTH
-);
+const _: () =
+    assert!(DEFAULT_MAX_COMMAND_LENGTH == organon::builtins::workspace::MAX_COMMAND_LENGTH);
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_MESSAGE_MAX_LEN == organon::builtins::communication::MESSAGE_MAX_LEN
-);
+const _: () = assert!(DEFAULT_MESSAGE_MAX_LEN == organon::builtins::communication::MESSAGE_MAX_LEN);
 #[cfg(test)]
 const _: () = assert!(
     DEFAULT_INTER_SESSION_MAX_MESSAGE_LEN

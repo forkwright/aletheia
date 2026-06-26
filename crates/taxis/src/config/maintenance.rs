@@ -548,9 +548,8 @@ impl Default for CredentialConfig {
 }
 
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_REFRESH_THRESHOLD_SECS == symbolon::credential::REFRESH_THRESHOLD_SECS
-);
+const _: () =
+    assert!(DEFAULT_REFRESH_THRESHOLD_SECS == symbolon::credential::REFRESH_THRESHOLD_SECS);
 
 /// Circuit breaker settings for OAuth token refresh.
 ///

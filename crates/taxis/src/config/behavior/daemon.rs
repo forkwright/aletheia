@@ -42,10 +42,7 @@ impl Default for DaemonBehaviorConfig {
 }
 
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_WATCHDOG_BACKOFF_BASE_SECS == daemon::watchdog::BACKOFF_BASE.as_secs()
-);
+const _: () =
+    assert!(DEFAULT_WATCHDOG_BACKOFF_BASE_SECS == daemon::watchdog::BACKOFF_BASE.as_secs());
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_WATCHDOG_BACKOFF_CAP_SECS == daemon::watchdog::BACKOFF_CAP.as_secs()
-);
+const _: () = assert!(DEFAULT_WATCHDOG_BACKOFF_CAP_SECS == daemon::watchdog::BACKOFF_CAP.as_secs());

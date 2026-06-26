@@ -66,10 +66,6 @@ impl Default for ApiLimitsConfig {
 }
 
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_IDEMPOTENCY_TTL_SECS == pylon::idempotency::DEFAULT_TTL.as_secs()
-);
+const _: () = assert!(DEFAULT_IDEMPOTENCY_TTL_SECS == pylon::idempotency::DEFAULT_TTL.as_secs());
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_IDEMPOTENCY_CAPACITY == pylon::idempotency::DEFAULT_CAPACITY
-);
+const _: () = assert!(DEFAULT_IDEMPOTENCY_CAPACITY == pylon::idempotency::DEFAULT_CAPACITY);

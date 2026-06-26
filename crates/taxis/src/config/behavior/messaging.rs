@@ -66,35 +66,26 @@ impl Default for MessagingConfig {
 }
 
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_millis() as u64
-);
+const _: () =
+    assert!(DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_millis() as u64);
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_BUFFER_CAPACITY == agora::semeion::DEFAULT_BUFFER_CAPACITY
-);
+const _: () = assert!(DEFAULT_BUFFER_CAPACITY == agora::semeion::DEFAULT_BUFFER_CAPACITY);
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_CIRCUIT_BREAKER_THRESHOLD == agora::semeion::CIRCUIT_BREAKER_THRESHOLD
-);
+const _: () =
+    assert!(DEFAULT_CIRCUIT_BREAKER_THRESHOLD == agora::semeion::CIRCUIT_BREAKER_THRESHOLD);
 #[cfg(test)]
 const _: () = assert!(
     DEFAULT_HALTED_HEALTH_CHECK_INTERVAL_SECS
         == agora::semeion::HALTED_HEALTH_CHECK_INTERVAL.as_secs()
 );
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_RPC_TIMEOUT_SECS == agora::semeion::client::RPC_TIMEOUT.as_secs()
-);
+const _: () = assert!(DEFAULT_RPC_TIMEOUT_SECS == agora::semeion::client::RPC_TIMEOUT.as_secs());
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_HEALTH_TIMEOUT_SECS == agora::semeion::client::HEALTH_TIMEOUT.as_secs()
-);
+const _: () =
+    assert!(DEFAULT_HEALTH_TIMEOUT_SECS == agora::semeion::client::HEALTH_TIMEOUT.as_secs());
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_RECEIVE_TIMEOUT_SECS == agora::semeion::client::RECEIVE_TIMEOUT.as_secs()
-);
+const _: () =
+    assert!(DEFAULT_RECEIVE_TIMEOUT_SECS == agora::semeion::client::RECEIVE_TIMEOUT.as_secs());
 #[cfg(test)]
-const _: () = assert!(
-    DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS == organon::builtins::agent::DEFAULT_TIMEOUT_SECS
-);
+const _: () =
+    assert!(DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS == organon::builtins::agent::DEFAULT_TIMEOUT_SECS);

@@ -949,7 +949,6 @@ enabled = true
     assert_eq!(prosoche.external_timer.interval_secs, 300);
 }
 
-
 #[test]
 fn mirrored_defaults_match_foreign_constants() {
     // WHY: regression guard for #5482. If a default is ever reverted to a
@@ -1144,15 +1143,27 @@ fn mirrored_defaults_match_foreign_constants() {
         melete::dream::DEFAULT_STALE_THRESHOLD_SECS
     );
     assert_eq!(
-        config.agents.defaults.behavior.tool_agent_dispatch_max_tasks,
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_agent_dispatch_max_tasks,
         organon::builtins::agent::MAX_DISPATCH_TASKS
     );
     assert_eq!(
-        config.agents.defaults.behavior.tool_datalog_default_row_limit as usize,
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_datalog_default_row_limit as usize,
         organon::builtins::memory::datalog::DEFAULT_ROW_LIMIT
     );
     assert_eq!(
-        config.agents.defaults.behavior.tool_datalog_default_timeout_secs,
+        config
+            .agents
+            .defaults
+            .behavior
+            .tool_datalog_default_timeout_secs,
         organon::builtins::memory::datalog::DEFAULT_TIMEOUT_SECS
     );
     assert_eq!(

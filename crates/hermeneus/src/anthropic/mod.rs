@@ -11,6 +11,6 @@ pub(crate) mod pricing;
 pub(crate) mod stream;
 pub(crate) mod wire;
 
-pub use client::{AnthropicProvider, ProviderBehavior, NON_STREAMING_TIMEOUT};
+pub use client::{AnthropicProvider, NON_STREAMING_TIMEOUT, ProviderBehavior};
 pub use error::SSE_DEFAULT_RETRY_MS;
 pub use stream::StreamEvent;
