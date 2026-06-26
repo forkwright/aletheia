@@ -1146,7 +1146,7 @@ mod tests {
         let check = rate_limiting_check(false, false, false);
         assert_eq!(check.name, "rate_limiting");
         assert_eq!(check.status, "pass");
-        let details = check.details.expect("details must be present");
+        let details = check.details.unwrap();
         assert_eq!(details["enabled"], false);
         assert_eq!(details["keying"], "disabled");
         assert!(check.message.as_deref().unwrap().contains("disabled"));
@@ -1156,7 +1156,7 @@ mod tests {
     fn rate_limiting_check_reports_peer_socket_by_default() {
         let check = rate_limiting_check(true, false, false);
         assert_eq!(check.status, "pass");
-        let details = check.details.expect("details must be present");
+        let details = check.details.unwrap();
         assert_eq!(details["keying"], "peer_socket");
         assert!(
             check.message.as_deref().unwrap().contains("peer socket"),
@@ -1169,7 +1169,7 @@ mod tests {
     fn rate_limiting_check_reports_forwarded_ip_when_trusted() {
         let check = rate_limiting_check(true, true, false);
         assert_eq!(check.status, "pass");
-        let details = check.details.expect("details must be present");
+        let details = check.details.unwrap();
         assert_eq!(details["keying"], "forwarded_client_ip");
         assert!(
             check.message.as_deref().unwrap().contains("forwarded"),
@@ -1182,7 +1182,7 @@ mod tests {
     fn rate_limiting_check_reports_authenticated_user_when_per_user_enabled() {
         let check = rate_limiting_check(true, false, true);
         assert_eq!(check.status, "pass");
-        let details = check.details.expect("details must be present");
+        let details = check.details.unwrap();
         assert_eq!(details["keying"], "authenticated_user");
         assert!(
             check
