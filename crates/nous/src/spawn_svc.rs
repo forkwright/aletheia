@@ -311,7 +311,13 @@ impl SpawnService for SpawnServiceImpl {
                 let actor_cancel = ephemeral_cancel.clone();
                 let (cross_tx, cross_rx) = if let Some(router) = router.as_ref() {
                     let (tx, rx) = tokio::sync::mpsc::channel(32);
-                    router.register(&spawn_id, tx.clone()).await;
+                    router
+                        .register_with_address_mask(
+                            &spawn_id,
+                            tx.clone(),
+                            crate::cross::AddressMask::for_agent_privacy(config.private),
+                        )
+                        .await;
                     (Some(tx), Some(rx))
                 } else {
                     (None, None)

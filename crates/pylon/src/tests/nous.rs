@@ -312,6 +312,8 @@ async fn nous_status_response_has_all_fields() {
             || body["background_failure_latest_kind"].is_string()
     );
     assert!(body["background_health_degraded"].is_boolean());
+    assert_eq!(body["address_mask"]["kind"], "public");
+    assert!(body["address_mask"]["allowed_senders"].is_array());
 }
 
 #[tokio::test]

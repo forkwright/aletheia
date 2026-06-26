@@ -41,6 +41,25 @@ fn make_manager_with_behavior(
     oikos: Arc<Oikos>,
     behavior: taxis::config::NousBehaviorConfig,
 ) -> NousManager {
+    make_manager_with_behavior_and_router(oikos, behavior, None)
+}
+
+fn make_manager_with_router(
+    oikos: Arc<Oikos>,
+    router: Arc<crate::cross::CrossNousRouter>,
+) -> NousManager {
+    make_manager_with_behavior_and_router(
+        oikos,
+        taxis::config::NousBehaviorConfig::default(),
+        Some(router),
+    )
+}
+
+fn make_manager_with_behavior_and_router(
+    oikos: Arc<Oikos>,
+    behavior: taxis::config::NousBehaviorConfig,
+    router: Option<Arc<crate::cross::CrossNousRouter>>,
+) -> NousManager {
     NousManager::new(
         make_providers(),
         Arc::new(ToolRegistry::new()),
@@ -51,7 +70,7 @@ fn make_manager_with_behavior(
         #[cfg(feature = "knowledge-store")]
         None,
         Arc::new(Vec::new()),
-        None,
+        router,
         None,
         behavior,
         taxis::config::ToolLimitsConfig::default(),
@@ -247,6 +266,73 @@ async fn list_all_includes_private_statuses() {
         ids.contains(&"demiurge"),
         "statuses should include private demiurge"
     );
+
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn spawn_registers_private_address_mask_and_rejects_unsolicited_knowledge() {
+    let (_dir, oikos) = make_oikos();
+    let router = Arc::new(crate::cross::CrossNousRouter::default());
+    let mut mgr = make_manager_with_router(oikos, Arc::clone(&router));
+
+    mgr.spawn(private_demiurge_config(), PipelineConfig::default())
+        .await
+        .expect("spawn private demiurge");
+
+    assert_eq!(
+        router.address_mask("demiurge").await,
+        crate::cross::AddressMask::OperatorOnly,
+        "private nous should register an operator-only inbound mask"
+    );
+
+    let requester = koina::id::NousId::new("syn").expect("valid requester id");
+    let proposal = crate::cross::knowledge::verify_message(
+        "syn",
+        "demiurge",
+        "shared claim needs verification",
+        requester,
+        Duration::from_secs(1),
+    );
+    let err = router
+        .send(proposal)
+        .await
+        .expect_err("private nous should reject unsolicited peer knowledge proposal");
+    assert!(
+        matches!(
+            &err,
+            crate::error::Error::AddressRejected { from, to, .. }
+                if from == "syn" && to == "demiurge"
+        ),
+        "expected address rejection, got {err:?}"
+    );
+
+    mgr.shutdown_all().await;
+}
+
+#[tokio::test]
+async fn spawn_registers_public_shared_address_mask_and_allows_knowledge_delivery() {
+    let (_dir, oikos) = make_oikos();
+    let router = Arc::new(crate::cross::CrossNousRouter::default());
+    let mut mgr = make_manager_with_router(oikos, Arc::clone(&router));
+
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn shared public syn");
+
+    assert_eq!(
+        router.address_mask("syn").await,
+        crate::cross::AddressMask::Public,
+        "non-private shared nous should register a public inbound mask"
+    );
+
+    let proposal =
+        crate::cross::knowledge::published_message("demiurge", "syn", "shared-1", "summary");
+    let state = router
+        .send(proposal)
+        .await
+        .expect("public/shared nous should accept peer knowledge proposal");
+    assert_eq!(state, crate::cross::DeliveryState::Delivered);
 
     mgr.shutdown_all().await;
 }

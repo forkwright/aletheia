@@ -421,7 +421,13 @@ impl NousManager {
 
         let (cross_tx, cross_rx) = if let Some(ref router) = self.router {
             let (cross_tx, cross_rx) = tokio::sync::mpsc::channel(32);
-            router.register(&id, cross_tx.clone()).await;
+            router
+                .register_with_address_mask(
+                    &id,
+                    cross_tx.clone(),
+                    crate::cross::AddressMask::for_agent_privacy(config.private),
+                )
+                .await;
             (Some(cross_tx), Some(cross_rx))
         } else {
             (None, None)
