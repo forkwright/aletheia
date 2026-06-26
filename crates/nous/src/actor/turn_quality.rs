@@ -3,7 +3,10 @@
 use std::sync::Arc;
 
 use aletheia_routing::RoutingDecision;
-use aletheia_routing::types::{InteractiveOutcome, ProviderId, TaskCategory, TurnOutcome};
+use aletheia_routing::types::{
+    BudgetStatus, CompletionStatus, CorrectionStatus, InteractiveOutcome, InterventionStatus,
+    ProviderId, ProviderStatus, TaskCategory, TurnOutcome,
+};
 use tracing::warn;
 
 use super::NousActor;
@@ -264,18 +267,36 @@ fn build_interactive_outcome(
     // so the budget check reflects the session state after the current turn.
     let budget_exceeded = session_token_cap > 0 && session.cumulative_tokens > session_token_cap;
 
-    InteractiveOutcome {
-        completed: turn_result.degraded.is_none(),
+    let completion = if turn_result.degraded.is_none() {
+        CompletionStatus::Completed
+    } else {
+        CompletionStatus::Incomplete
+    };
+    let loop_guard = if loop_guard_intervention {
+        InterventionStatus::Triggered
+    } else {
+        InterventionStatus::Clear
+    };
+    let mistake_brake = if mistake_brake_intervention {
+        InterventionStatus::Triggered
+    } else {
+        InterventionStatus::Clear
+    };
+    let budget = if budget_exceeded {
+        BudgetStatus::Exceeded
+    } else {
+        BudgetStatus::WithinLimit
+    };
+
+    InteractiveOutcome::new(completion, tool_error_rate)
         // WHY: user correction is detected from the *next* user message and is
         // not available at finalize time. The field is wired for future hooks.
-        user_correction: false,
-        tool_error_rate,
-        loop_guard_intervention,
-        mistake_brake_intervention,
-        budget_exceeded,
-        provider_failure: false,
-        explicit_user_rating: None,
-    }
+        .with_user_correction(CorrectionStatus::Clear)
+        .with_loop_guard(loop_guard)
+        .with_mistake_brake(mistake_brake)
+        .with_budget(budget)
+        .with_provider(ProviderStatus::Available)
+        .with_explicit_user_rating(None)
 }
 
 fn loop_guard_result_signature(result: Option<&str>) -> String {

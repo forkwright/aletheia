@@ -14,7 +14,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_routing::types::{ProviderId, TaskCategory};
+use aletheia_routing::types::{InterventionStatus, ProviderId, TaskCategory};
 use aletheia_routing::{AfterActionStore, RecordingRouter};
 
 use super::*;
@@ -698,7 +698,7 @@ async fn poor_interactive_outcome_does_not_increase_success_rate() {
                 .interactive_outcome
                 .as_ref()
                 .expect("interactive provenance recorded");
-            assert!(io.loop_guard_intervention);
+            assert_eq!(io.loop_guard, InterventionStatus::Triggered);
             assert!((io.tool_error_rate - 1.0).abs() < f64::EPSILON);
             return;
         }

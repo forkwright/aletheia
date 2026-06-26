@@ -219,10 +219,10 @@ impl AfterActionStore {
     /// `success` boolean. The outcome is also appended to the bounded audit log
     /// so operators can inspect why a turn was counted as success or failure.
     pub async fn record_outcome(&self, outcome: &TurnOutcome) -> Result<(), AfterActionStoreError> {
-        let success = outcome
-            .interactive_outcome
-            .as_ref()
-            .map_or(outcome.success, |io| io.is_success());
+        let success = outcome.interactive_outcome.as_ref().map_or(
+            outcome.success,
+            super::types::InteractiveOutcome::is_success,
+        );
         let key = (outcome.provider.clone(), outcome.task_category);
         let mut cache = self.cache.write().await;
         record_stats(cache.entry(key.clone()).or_default(), success);
@@ -795,13 +795,13 @@ mod tests {
             success: true,
             is_interactive: true,
             interactive_outcome: Some(InteractiveOutcome {
-                completed: true,
-                user_correction: false,
+                completion: crate::types::CompletionStatus::Completed,
+                user_correction: crate::types::CorrectionStatus::Clear,
                 tool_error_rate: 1.0,
-                loop_guard_intervention: false,
-                mistake_brake_intervention: false,
-                budget_exceeded: false,
-                provider_failure: false,
+                loop_guard: crate::types::InterventionStatus::Clear,
+                mistake_brake: crate::types::InterventionStatus::Clear,
+                budget: crate::types::BudgetStatus::WithinLimit,
+                provider: crate::types::ProviderStatus::Available,
                 explicit_user_rating: None,
             }),
         };
@@ -818,6 +818,10 @@ mod tests {
 
         let audit = store.recent_outcomes().await;
         assert_eq!(audit.len(), 1);
-        assert!(audit[0].interactive_outcome.is_some());
+        assert!(
+            audit
+                .first()
+                .is_some_and(|outcome| outcome.interactive_outcome.is_some())
+        );
     }
 }
