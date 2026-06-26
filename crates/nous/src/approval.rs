@@ -133,9 +133,9 @@ impl ApprovalGate {
                         // Buffer decisions targeting other tools in this turn so that
                         // sequential dispatch can consume them when it reaches each tool.
                         match state.pending.entry(d.tool_id) {
-                            Entry::Occupied(_) => {
+                            Entry::Occupied(occ) => {
                                 warn!(
-                                    tool_id = %d.tool_id,
+                                    tool_id = %occ.key(),
                                     "duplicate approval decision; keeping first-writer-wins"
                                 );
                             }
