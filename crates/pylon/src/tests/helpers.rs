@@ -109,7 +109,10 @@ async fn test_state_with_provider_private_and_auth_mode(
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
     test_state_with_provider_name_private_and_auth_mode(
-        with_provider, None, include_private_nous, auth_mode,
+        with_provider,
+        None,
+        include_private_nous,
+        auth_mode,
     )
     .await
 }
@@ -317,9 +320,13 @@ pub(super) async fn app_with_auth_mode(auth_mode: &str) -> (axum::Router, tempfi
 /// Test helper: app with a registered provider named "anthropic" so that
 /// credential-management mutations exercise the canonical managed-provider path.
 pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::TempDir) {
-    let (state, dir) =
-        test_state_with_provider_name_private_and_auth_mode(true, Some("anthropic"), false, "token")
-            .await;
+    let (state, dir) = test_state_with_provider_name_private_and_auth_mode(
+        true,
+        Some("anthropic"),
+        false,
+        "token",
+    )
+    .await;
     (build_router(state, &test_security_config()), dir)
 }
 

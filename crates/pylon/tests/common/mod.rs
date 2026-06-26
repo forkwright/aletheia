@@ -164,12 +164,11 @@ impl TestEnvBuilder {
         let (config_tx, _config_rx) = tokio::sync::watch::channel(default_config.clone());
         let metrics_registry = koina::metrics::MetricsRegistry::new();
         metrics_registry.with_registry(pylon::metrics::register);
-        let credential_runtime = Arc::new(
-            pylon::credential_runtime::CredentialRuntimeManager::new(
+        let credential_runtime =
+            Arc::new(pylon::credential_runtime::CredentialRuntimeManager::new(
                 Arc::clone(&oikos),
                 Arc::clone(&provider_registry),
-            ),
-        );
+            ));
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::new(nous_manager),

@@ -210,7 +210,9 @@ impl std::fmt::Display for CredentialMutationEffect {
 #[snafu(visibility(pub))]
 pub enum CredentialRuntimeError {
     /// Provider name is not known to the runtime.
-    #[snafu(display("provider '{provider}' is not supported by runtime credential management; supported: {supported:?}"))]
+    #[snafu(display(
+        "provider '{provider}' is not supported by runtime credential management; supported: {supported:?}"
+    ))]
     UnsupportedProvider {
         /// Provider name supplied by the caller.
         provider: String,

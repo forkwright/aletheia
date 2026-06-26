@@ -260,7 +260,9 @@ async fn credentials_delete_live_provider_reports_restart_required() {
     assert_eq!(add.status(), StatusCode::CREATED);
 
     let remove = app
-        .oneshot(authed_delete("/api/v1/system/credentials/anthropic:primary"))
+        .oneshot(authed_delete(
+            "/api/v1/system/credentials/anthropic:primary",
+        ))
         .await
         .unwrap();
     assert_eq!(remove.status(), StatusCode::OK);

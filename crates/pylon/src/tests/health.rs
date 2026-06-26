@@ -169,13 +169,17 @@ async fn detailed_health_exposes_credential_runtime_state() {
         .expect("credential_runtime check present");
     assert_eq!(runtime_check["status"], "pass");
 
-    let details = runtime_check["details"].as_object().expect("details object");
+    let details = runtime_check["details"]
+        .as_object()
+        .expect("details object");
     let supported = details["supported_providers"]
         .as_array()
         .expect("supported_providers array");
     assert!(supported.iter().any(|p| p == "anthropic"));
 
-    let last_effect = details["last_effect"].as_object().expect("last_effect object");
+    let last_effect = details["last_effect"]
+        .as_object()
+        .expect("last_effect object");
     assert_eq!(last_effect["provider"], "anthropic");
     assert_eq!(last_effect["effect"], "restart_required");
 }
