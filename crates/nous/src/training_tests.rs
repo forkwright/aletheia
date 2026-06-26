@@ -24,6 +24,10 @@ fn good_input() -> CaptureInput<'static> {
         tool_outcomes: None,
         recall_signals: None,
         tool_surface_hashes: &[],
+        turn_id: None,
+        turn_seq: 0,
+        capture_policy_ref: None,
+        finalization_status: Some("finalized"),
     }
 }
 
@@ -796,4 +800,114 @@ fn authorship_gate_disabled_is_noop() {
 
     let content = std::fs::read_to_string(capture.file_path()).expect("read");
     assert_eq!(content.lines().count(), 1);
+}
+
+// -- Training capture is ML corpus, not audit ledger -------------------------
+
+#[cfg(test)]
+mod audit_separation_tests {
+    use super::*;
+    use serde_json::Value;
+
+    #[test]
+    fn training_capture_does_not_represent_failure_modes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = test_config_no_pii("training", 50 * 1024 * 1024);
+
+        for (label, stop_reason, has_tool_calls) in [
+            ("max_tokens", CaptureStopReason::MaxTokens, false),
+            ("degraded", CaptureStopReason::Degraded, false),
+            (
+                "content_filtered",
+                CaptureStopReason::ContentFiltered,
+                false,
+            ),
+            ("tool_use_only", CaptureStopReason::ToolUse, true),
+        ] {
+            let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+            let captured = capture.maybe_capture(CaptureInput {
+                stop_reason,
+                has_tool_calls,
+                assistant_response: if has_tool_calls {
+                    "Let me check that."
+                } else {
+                    "A truncated or filtered response."
+                },
+                ..good_input()
+            });
+            assert!(
+                !captured,
+                "{label} must not be captured as training evidence"
+            );
+        }
+
+        // The training directory should contain no rows for any failure mode.
+        let training_dir = dir.path().join("training");
+        for entry in std::fs::read_dir(&training_dir).expect("read dir") {
+            let entry = entry.expect("entry");
+            if entry.path().extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                let content = std::fs::read_to_string(entry.path()).expect("read");
+                assert!(
+                    content.trim().is_empty(),
+                    "no training rows should exist for failure modes: {content}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn finalized_turn_records_finalization_status() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = test_config_no_pii("training", 50 * 1024 * 1024);
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        assert!(capture.maybe_capture(CaptureInput {
+            turn_id: Some("turn-final-001"),
+            turn_seq: 5,
+            finalization_status: Some("finalized"),
+            ..good_input()
+        }));
+
+        let content = std::fs::read_to_string(capture.file_path()).expect("read");
+        let value: Value =
+            serde_json::from_str(content.lines().next().expect("line")).expect("parse");
+        assert_eq!(value["finalization_status"], "finalized");
+        assert_eq!(value["turn_id"], "turn-final-001");
+        assert_eq!(value["turn_seq"], 5);
+    }
+
+    #[test]
+    fn unfinalized_turn_is_not_captured() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = test_config_no_pii("training", 50 * 1024 * 1024);
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            finalization_status: Some("pending"),
+            ..good_input()
+        });
+        assert!(
+            !captured,
+            "unfinalized turn must not enter the training corpus"
+        );
+    }
+
+    #[test]
+    fn duplicate_turn_id_is_not_captured_twice() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = test_config_no_pii("training", 50 * 1024 * 1024);
+        let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+        assert!(capture.maybe_capture(CaptureInput {
+            turn_id: Some("turn-dup-001"),
+            ..good_input()
+        }));
+        assert!(
+            !capture.maybe_capture(CaptureInput {
+                turn_id: Some("turn-dup-001"),
+                ..good_input()
+            }),
+            "duplicate turn id must not append a second training row"
+        );
+    }
 }

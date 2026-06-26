@@ -1293,6 +1293,7 @@ pub(crate) async fn run_pipeline(
             };
 
         if pipeline_config.training.enabled && finalize_outcome == FinalizeOutcome::Persisted {
+            let turn_id = input.session.turn_id.to_string();
             match crate::training::TrainingCapture::new(oikos.root(), &pipeline_config.training) {
                 Ok(mut capture) => {
                     // NOTE: one entry per tool call with success/error
@@ -1356,7 +1357,7 @@ pub(crate) async fn run_pipeline(
                         nous_id: &config.id,
                         user_message: &input.content,
                         assistant_response: &result.content,
-                        model: &config.generation.model,
+                        model: &result.model_used,
                         tokens: result.usage.total_tokens(),
                         stop_reason: crate::training::CaptureStopReason::parse(&result.stop_reason),
                         has_tool_calls: !result.tool_calls.is_empty(),
@@ -1366,6 +1367,10 @@ pub(crate) async fn run_pipeline(
                         tool_outcomes,
                         recall_signals,
                         tool_surface_hashes: &result.tool_surface_hashes,
+                        turn_id: Some(turn_id.as_str()),
+                        turn_seq: input.session.turn,
+                        capture_policy_ref: Some("nous-training-capture-v1"),
+                        finalization_status: Some("finalized"),
                     });
                 }
                 Err(e) => {
