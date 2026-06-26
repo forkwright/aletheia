@@ -131,7 +131,7 @@ impl SecurityConfig {
             rate_limit: RateLimitConfig {
                 enabled: gateway.rate_limit.enabled,
                 requests_per_minute: gateway.rate_limit.requests_per_minute,
-                trust_proxy: false,
+                trust_proxy: gateway.rate_limit.trust_proxy,
                 per_user: gateway.rate_limit.per_user.clone(),
             },
         }
@@ -182,6 +182,17 @@ mod tests {
         assert!(
             !sec.rate_limit.trust_proxy,
             "trust_proxy must default to false"
+        );
+    }
+
+    #[test]
+    fn from_gateway_preserves_trust_proxy() {
+        let mut gateway = GatewayConfig::default();
+        gateway.rate_limit.trust_proxy = true;
+        let sec = SecurityConfig::from_gateway(&gateway);
+        assert!(
+            sec.rate_limit.trust_proxy,
+            "SecurityConfig must propagate gateway.rate_limit.trust_proxy"
         );
     }
 }

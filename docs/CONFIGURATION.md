@@ -186,13 +186,17 @@ secrets; the runtime config API redacts it.
 Per-IP rate limiting for API endpoints. Requests that exceed the limit receive
 `429 Too Many Requests` with a `Retry-After` header indicating when to retry.
 
-The client IP is read from `X-Forwarded-For` or `X-Real-IP` (reverse proxy)
-and falls back to `127.0.0.1` for direct connections.
+By default the client IP is the peer TCP socket address and proxy headers are
+ignored, so untrusted clients cannot spoof their IP. When pylon runs behind a
+trusted reverse proxy that strips or overwrites `X-Forwarded-For` and
+`X-Real-IP` from untrusted clients, set `trust_proxy = true` to use those
+headers for rate-limit keying.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Whether rate limiting is active |
 | `requests_per_minute` | u32 | `60` | Maximum requests per minute per client IP |
+| `trust_proxy` | bool | `false` | Trust proxy headers for client IP (only behind a trusted reverse proxy) |
 
 ```toml
 [gateway]
