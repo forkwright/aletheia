@@ -18,6 +18,7 @@ test-full = ["test-core"]
 [dependencies]
 # HTTP framework
 axum = { workspace = true }
+reqwest = { workspace = true }
 utoipa = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
@@ -56,6 +57,9 @@ indexmap = { workspace = true, features = ["std"] }
 
 # Hashing for ETag computation
 sha2 = { workspace = true }
+
+# URL encoding for first-party client route builders
+keryx = { workspace = true }
 
 # Body stream utilities for ETag middleware
 http-body-util = "0.1"

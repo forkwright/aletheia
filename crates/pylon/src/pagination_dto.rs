@@ -1,14 +1,14 @@
 // WHY: wire DTO
 //! Pagination response wire shapes.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Standard pagination envelope for all list endpoints.
 ///
 /// Wraps a `Vec<T>` with metadata so clients can page through results
 /// with a single, consistent implementation.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PaginatedResponse<T> {
     /// The items in this page.
     pub items: Vec<T>,
