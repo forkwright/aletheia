@@ -208,6 +208,106 @@ async fn complete_success() {
     );
 }
 
+#[tokio::test]
+#[expect(
+    deprecated,
+    reason = "set_linger(Duration::ZERO) sends RST immediately and does not block; test-only"
+)]
+async fn complete_streaming_retries_pre_content_connection_reset() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind test listener");
+    let addr = listener.local_addr().expect("read listener address");
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let call_count_server = Arc::clone(&call_count);
+
+    let good_sse = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_sse_retry\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":3,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Ok\"}}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
+    let server = tokio::spawn(async move {
+        {
+            let (mut socket, _) = listener.accept().await.expect("accept attempt 1");
+            call_count_server.fetch_add(1, Ordering::SeqCst);
+            let mut buf = vec![0_u8; 4096];
+            loop {
+                let n = socket.read(&mut buf).await.expect("read request 1");
+                if n == 0 || buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\n")
+                .await
+                .expect("write attempt 1 headers");
+            socket
+                .set_linger(Some(Duration::ZERO))
+                .expect("set reset linger");
+            drop(socket);
+        }
+
+        {
+            let (mut socket, _) = listener.accept().await.expect("accept attempt 2");
+            call_count_server.fetch_add(1, Ordering::SeqCst);
+            let mut buf = vec![0_u8; 4096];
+            loop {
+                let n = socket.read(&mut buf).await.expect("read request 2");
+                if n == 0 || buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                good_sse.len(),
+                good_sse
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write retry response");
+        }
+    });
+
+    let mut config = test_config_with(&format!("http://{addr}"));
+    config.max_retries = Some(1);
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+
+    let mut events = Vec::new();
+    let response = provider
+        .complete_streaming(&test_request(), |event| events.push(event))
+        .await
+        .expect("streaming should retry after pre-content reset");
+
+    server.await.expect("server task completes");
+
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        2,
+        "pre-content connection reset should be retried once"
+    );
+    assert_eq!(response.id, "msg_sse_retry");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::TextDelta { text } if text == "Ok")),
+        "retry response text delta should be emitted: {events:?}"
+    );
+}
+
 /// #3406: every outbound request must carry a training opt-out header.
 /// Sovereignty default — not configurable.
 #[tokio::test]
