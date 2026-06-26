@@ -356,7 +356,10 @@ impl ChatSseParser {
         self.done
     }
 
-    fn finish<F: FnMut(StreamEvent) + ?Sized>(self, on_event: &mut F) -> Result<CompletionResponse> {
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(
+        self,
+        on_event: &mut F,
+    ) -> Result<CompletionResponse> {
         if !self.done {
             let partial = format_partial_preview(
                 &self.accumulator.text_buf,
@@ -711,7 +714,10 @@ impl ResponsesSseParser {
         self.done || self.accumulator.completed.is_some()
     }
 
-    fn finish<F: FnMut(StreamEvent) + ?Sized>(self, on_event: &mut F) -> Result<CompletionResponse> {
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(
+        self,
+        on_event: &mut F,
+    ) -> Result<CompletionResponse> {
         if !self.is_terminal() {
             let partial = format_partial_preview(
                 &self.accumulator.text_buf,
@@ -938,11 +944,15 @@ mod tests {
             "expected text content, got {resp:?}"
         );
         assert!(
-            events.iter().any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "Hello")),
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "Hello")),
             "expected a TextDelta event"
         );
         assert!(
-            events.iter().any(|e| matches!(e, StreamEvent::MessageStop { .. })),
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::MessageStop { .. })),
             "expected a MessageStop event"
         );
     }
@@ -952,14 +962,14 @@ mod tests {
         let err = run_chat_parser(&[b"data: {\"id\":\"chat-1\",\"model\":\"gpt-5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Partial\"}}]}\n\n".as_slice()])
             .unwrap_err();
         assert!(
-            matches!(err, Error::StreamIncomplete { message, .. } if message.contains("[DONE]")),
+            matches!(err, Error::StreamIncomplete { ref message, .. } if message.contains("[DONE]")),
             "expected StreamIncomplete for EOF without [DONE], got {err:?}"
         );
     }
 
     #[test]
     fn chat_sse_eof_after_partial_tool_call_is_incomplete() {
-        let err = run_chat_parser(&[b"data: {\"id\":\"chat-1\",\"model\":\"gpt-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"tc1\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":"}}]}}]}\n\n".as_slice()])
+        let err = run_chat_parser(&[b"data: {\"id\":\"chat-1\",\"model\":\"gpt-5\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"tc1\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"{\\\"city\\\":\"}}]}}]}\n\n".as_slice()])
             .unwrap_err();
         assert!(
             matches!(err, Error::StreamIncomplete { .. }),
@@ -984,7 +994,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(
-            matches!(err, Error::ApiRequest { message } if message.contains("stream parse error")),
+            matches!(err, Error::ApiRequest { ref message, .. } if message.contains("stream parse error")),
             "expected ApiRequest parse error after provider error event, got {err:?}"
         );
     }
@@ -1001,7 +1011,9 @@ mod tests {
             "expected text content, got {resp:?}"
         );
         assert!(
-            events.iter().any(|e| matches!(e, StreamEvent::MessageStop { .. })),
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::MessageStop { .. })),
             "expected a MessageStop event"
         );
     }
@@ -1013,7 +1025,7 @@ mod tests {
         ])
         .unwrap_err();
         assert!(
-            matches!(err, Error::StreamIncomplete { message, .. } if message.contains("completion marker")),
+            matches!(err, Error::StreamIncomplete { ref message, .. } if message.contains("completion marker")),
             "expected StreamIncomplete for EOF without response.completed, got {err:?}"
         );
     }
@@ -1044,7 +1056,7 @@ mod tests {
             .feed(b"data: {\"type\":\"error\"}\n\n", &mut |e| events.push(e))
             .unwrap_err();
         assert!(
-            matches!(err, Error::ApiRequest { message } if message.contains("error")),
+            matches!(err, Error::ApiRequest { ref message, .. } if message.contains("error")),
             "expected ApiRequest error after error event, got {err:?}"
         );
     }

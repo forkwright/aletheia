@@ -215,7 +215,7 @@ impl koina::error_class::Classifiable for Error {
                 max_attempts: 3,
                 backoff_base_ms: 1_000,
             },
-            Error::ApiErrorBodyRead { .. } => ErrorAction::Retry {
+            Error::ApiErrorBodyRead { .. } | Error::StreamIncomplete { .. } => ErrorAction::Retry {
                 max_attempts: 3,
                 backoff_base_ms: 500,
             },
@@ -239,10 +239,7 @@ impl koina::error_class::Classifiable for Error {
                     ErrorAction::Escalate
                 }
             }
-            Error::StreamIncomplete { .. } => ErrorAction::Retry {
-                max_attempts: 3,
-                backoff_base_ms: 500,
-            },
+
             Error::AuthFailed { .. } => ErrorAction::Surface {
                 user_message: "Authentication failed — check your API credentials.".to_owned(),
             },
