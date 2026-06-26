@@ -203,6 +203,40 @@ fn valid_transitions_per_state() {
         "Created valid transitions should include Abandon"
     );
 
+    let verifying = ProjectState::Verifying;
+    let transitions = verifying.valid_transitions();
+    assert_eq!(
+        transitions.len(),
+        5,
+        "Verifying should have exactly 5 valid transitions"
+    );
+    assert!(
+        transitions.contains(&Transition::Complete),
+        "Verifying valid transitions should include Complete"
+    );
+    assert!(
+        transitions.contains(&Transition::Abandon),
+        "Verifying valid transitions should include Abandon"
+    );
+    assert!(
+        transitions.contains(&Transition::Revert {
+            to: ProjectState::Executing
+        }),
+        "Verifying valid transitions should include Revert(Executing)"
+    );
+    assert!(
+        transitions.contains(&Transition::Revert {
+            to: ProjectState::Planning
+        }),
+        "Verifying valid transitions should include Revert(Planning)"
+    );
+    assert!(
+        transitions.contains(&Transition::Revert {
+            to: ProjectState::Scoping
+        }),
+        "Verifying valid transitions should include Revert(Scoping)"
+    );
+
     assert!(
         ProjectState::Complete.valid_transitions().is_empty(),
         "Complete should have no valid transitions"
