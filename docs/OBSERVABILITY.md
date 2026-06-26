@@ -79,8 +79,19 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 |--------|------|--------|-------------|
 | `aletheia_knowledge_facts_total` | Counter | `nous_id` | Facts inserted |
 | `aletheia_knowledge_extractions_total` | Counter | `nous_id`, `status` | Extraction operations |
+| `aletheia_extraction_quality_total` | Counter | `nous_id`, `producer`, `provider`, `model`, `status`, `reason` | Facts accepted/rejected by reason during extraction refinement |
+| `aletheia_extraction_confidence` | Histogram | `nous_id`, `producer`, `provider`, `model`, `status` | Distribution of fact confidence (`extracted`, `accepted`, `rejected`) |
+| `aletheia_extraction_confidence_inflation_total` | Counter | `nous_id`, `producer`, `provider`, `model` | Batches where >80% of facts have confidence >= 0.95 |
+| `aletheia_extraction_corrections_total` | Counter | `nous_id`, `producer`, `provider`, `model` | Facts flagged as corrections during refinement |
+| `aletheia_extraction_contradictions_total` | Counter | `nous_id`, `producer`, `provider`, `model` | Contradictions detected against existing knowledge |
+| `aletheia_extraction_conflicts_total` | Counter | `nous_id`, `producer`, `provider`, `model` | All conflicts (contradictions + duplicates) detected |
+| `aletheia_knowledge_low_confidence_admissions_total` | Counter | `nous_id`, `threshold` | Facts admitted despite confidence below 0.5 |
+| `aletheia_knowledge_admission_total` | Counter | `nous_id`, `fact_type`, `outcome`, `reason` | Admission gate decisions |
+| `aletheia_conflict_unclassifiable_total` | Counter | - | Unclassifiable conflict-classifier responses |
 | `aletheia_recall_duration_seconds` | Histogram | `nous_id` | Recall query latency |
 | `aletheia_embedding_duration_seconds` | Histogram | `provider` | Embedding computation latency |
+
+> **Quality semantics:** `aletheia_knowledge_facts_total` and `aletheia_knowledge_extractions_total` measure throughput and liveness. The `aletheia_extraction_*_quality` counters measure whether the admitted facts are calibrated, non-redundant, and non-contradictory. A healthy deployment should see stable or falling rejection/empty-extraction rates, a broad confidence distribution rather than a spike at 0.95+, and contradiction rates that are low relative to the volume of new facts.
 
 ### Distillation
 
@@ -104,6 +115,10 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 | LLM TTFT p95 | < 5 seconds | `aletheia_llm_ttft_seconds` |
 | Backup freshness | Deployment-defined | `aletheia_backup_duration_seconds{status="ok"}` (recorded per completed whole-instance backup) |
 | Hung processes | 0 | `aletheia_watchdog_hung_processes` |
+| Extraction confidence inflation | < 5% of batches over 10 minutes | `rate(aletheia_extraction_confidence_inflation_total[10m]) / rate(aletheia_knowledge_extractions_total{status="ok"}[10m])` |
+| Extraction rejection/empty rate | < 50% of batches over 10 minutes | `rate(aletheia_extraction_quality_total{status="rejected"}[10m]) / rate(aletheia_extraction_quality_total[10m])` |
+| Contradiction spike | < 1% of admitted facts over 10 minutes | `rate(aletheia_extraction_contradictions_total[10m]) / rate(aletheia_knowledge_facts_total[10m])` |
+| Low-confidence admission rate | < 10% of admitted facts over 10 minutes | `rate(aletheia_knowledge_low_confidence_admissions_total[10m]) / rate(aletheia_knowledge_admission_total{outcome="admitted"}[10m])` |
 
 ---
 
@@ -212,6 +227,54 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 2. If `full`, the consumer is slower than the producer. Check client read speed or network latency
 3. If `disconnected`, clients are dropping connections mid-stream. Check load balancer idle timeouts
 4. Review `aletheia_active_sessions` for a sudden spike in concurrent streams
+
+### ExtractionConfidenceInflation
+
+**What it means:** More than 5% of extraction batches over 10 minutes had >80% of facts with confidence >= 0.95.
+
+**Impact:** The extractor is assigning unrealistically high confidence, which inflates admission and contradiction rates and degrades memory quality.
+
+**Steps:**
+1. Slice by `provider` and `model` to identify the offending producer.
+2. Review the extraction prompt for the affected turn types; consider tightening the confidence calibration instructions.
+3. Check whether the LLM temperature or model version changed recently.
+4. If the rate is sustained, temporarily raise the refinement confidence threshold or switch model.
+
+### ExtractionHighRejectionRate
+
+**What it means:** More than 50% of extracted facts were rejected during refinement over a 10-minute window.
+
+**Impact:** The extractor is emitting low-value or malformed facts (empty fields, self-references, trivial content, low confidence). Memory growth stalls while token cost stays high.
+
+**Steps:**
+1. Break down `aletheia_extraction_quality_total{status="rejected"}` by `reason`.
+2. If `empty_field` or `self_reference` dominates, improve entity normalization or prompt instructions.
+3. If `low_confidence` dominates, check whether the model is hedging on the input or the confidence threshold is miscalibrated.
+4. If `trivial` dominates, tune the prompt to skip metadata-heavy turns.
+
+### ExtractionContradictionSpike
+
+**What it means:** Contradictions detected during extraction exceeded 1% of admitted facts over 10 minutes.
+
+**Impact:** The knowledge store is accumulating mutually inconsistent facts, reducing recall precision and trust.
+
+**Steps:**
+1. Slice by `nous_id` and `producer` to find the affected cohort.
+2. Inspect examples of conflicting facts via the recall API or conflict reports.
+3. If contradictions follow a model change, the new extractor may disagree with older facts; consider marking older facts as stale or re-extracting.
+4. If a single agent produces many contradictions, review its context window or extraction cadence.
+
+### ExtractionLowConfidenceAdmissionSpike
+
+**What it means:** More than 10% of admitted facts had source confidence below 0.5 over 10 minutes.
+
+**Impact:** The admission gate is letting weakly supported claims into long-term memory, raising hallucination and contradiction risk.
+
+**Steps:**
+1. Compare `aletheia_knowledge_low_confidence_admissions_total` against `aletheia_knowledge_admission_total{outcome="admitted"}` by `nous_id`.
+2. If admissions spike after a model switch, review the new model's calibration.
+3. If a specific fact type dominates, consider raising its admission threshold or adding a per-type prior.
+4. For transient spikes, verify that the low-confidence facts are not corrections that should supersede older facts.
 
 ---
 

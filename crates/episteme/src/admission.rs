@@ -403,6 +403,9 @@ impl AdmissionPolicy for StructuredAdmissionPolicy {
         // Fact is admitted: record its hash to catch future duplicates.
         self.record_admitted(fact);
         crate::metrics::record_admission_ok(&fact.nous_id, &fact.fact_type);
+        if fact.provenance.confidence < crate::metrics::LOW_CONFIDENCE_ADMISSION_THRESHOLD {
+            crate::metrics::record_low_confidence_admission(&fact.nous_id);
+        }
         AdmissionDecision::Admit
     }
 }

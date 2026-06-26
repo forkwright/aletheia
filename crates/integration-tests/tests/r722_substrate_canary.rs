@@ -453,7 +453,7 @@ async fn extract_self_facts_false_rejects_self_descriptive_facts_in_canary() {
     }];
 
     let result = engine
-        .extract_refined(&messages, &SelfFactProvider)
+        .extract_refined(&messages, &SelfFactProvider, "canary-nous", "test")
         .await
         .expect("extraction should succeed");
 

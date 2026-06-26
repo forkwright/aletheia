@@ -699,7 +699,10 @@ async fn run_extraction(
         },
     ];
 
-    match engine.extract_refined(&messages, &provider).await {
+    match engine
+        .extract_refined(&messages, &provider, nous_id, "background")
+        .await
+    {
         Ok(refined) => {
             let entities = refined.extraction.entities.len();
             let relationships = refined.extraction.relationships.len();

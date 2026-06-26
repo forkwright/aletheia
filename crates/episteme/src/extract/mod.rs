@@ -1,5 +1,7 @@
 //! Knowledge extraction pipeline: LLM-driven entity/relationship/fact extraction.
 
+/// Optional extraction precision/recall eval hooks for labeled fixtures.
+pub mod eval;
 /// Unified diff parser for structured change analysis.
 pub mod diff;
 /// Dispatch pattern detection and scoring for steward learning.
@@ -25,6 +27,7 @@ pub(crate) mod utils;
 
 pub use engine::ExtractionEngine;
 pub use error::{ExtractionError, LlmCallSnafu, ParseResponseSnafu, PersistSnafu};
+pub use eval::{ExtractionScores, LabeledFixture, score_extraction};
 pub use provider::ExtractionProvider;
 pub use types::{
     BookkeepingProviderKind, ConversationMessage, ExtractedEntity, ExtractedFact,

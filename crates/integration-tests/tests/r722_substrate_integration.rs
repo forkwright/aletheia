@@ -294,7 +294,7 @@ async fn extract_self_facts_false_rejects_self_descriptive_facts() {
     }];
 
     let result = engine
-        .extract_refined(&messages, &SelfFactProvider)
+        .extract_refined(&messages, &SelfFactProvider, "test-nous", "test")
         .await
         .expect("extraction should succeed");
 
@@ -314,7 +314,7 @@ async fn extract_self_facts_false_rejects_self_descriptive_facts() {
         ..mneme::extract::ExtractionConfig::default()
     });
     let result_allowed = engine_allowed
-        .extract_refined(&messages, &SelfFactProvider)
+        .extract_refined(&messages, &SelfFactProvider, "test-nous", "test")
         .await
         .expect("extraction should succeed");
     assert!(
@@ -538,7 +538,7 @@ async fn extract_self_facts_false_backstop_in_engine() {
     }];
 
     let result = engine
-        .extract_refined(&messages, &SelfFactProvider)
+        .extract_refined(&messages, &SelfFactProvider, "test-nous", "test")
         .await
         .expect("extraction should succeed");
     assert!(
