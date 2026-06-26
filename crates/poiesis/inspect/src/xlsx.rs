@@ -81,9 +81,10 @@ pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
     let sheet_entries = parse_sheet_entries(&workbook_xml);
 
     for (idx, (sheet_name, rid)) in sheet_entries.into_iter().enumerate() {
-        let worksheet_path = rels
-            .get(&rid)
-            .map_or_else(|| format!("xl/worksheets/sheet{}.xml", idx + 1), |target| format!("xl/{target}"));
+        let worksheet_path = rels.get(&rid).map_or_else(
+            || format!("xl/worksheets/sheet{}.xml", idx + 1),
+            |target| format!("xl/{target}"),
+        );
         if let Ok(mut file) = archive.by_name(&worksheet_path) {
             let mut content = String::new();
             std::io::Read::read_to_string(&mut file, &mut content)
