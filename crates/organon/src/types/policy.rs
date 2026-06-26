@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub enum ToolGroupId {
     /// File/code reading tools (`read`, `grep`, `find`, `ls`, `view_file`, ...).
     Read,
-    /// File/code mutation tools (`write`, `edit`, `mkdir`, `mv`, `cp`, `rm`, ...).
+    /// File, memory, or session-state mutation tools (`write`, `edit`, `memory_correct`, ...).
     Edit,
     /// Shell/cargo execution (`exec`, `git_checkout`, `computer_use`, ...).
     Command,
