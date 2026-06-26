@@ -568,4 +568,36 @@ mod tests {
         );
         assert_eq!(output.exit_code, 0, "command should complete");
     }
+
+    #[test]
+    fn runner_drains_both_streams_past_pipe_capacity() {
+        // WHY: Linux pipe buffers are typically 64 KiB. A child that writes
+        // more than that to stdout or stderr without the parent draining
+        // concurrently will fill the pipe and deadlock before it can exit.
+        // This exercises the real SubprocessRunner path used by the `exec`
+        // and git tools.
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let stream_len = 256 * 1024;
+        let max_output = 32 * 1024;
+        let cmd = format!("yes x | head -c {stream_len} & yes y | head -c {stream_len} >&2; wait");
+
+        let output = test_runner()
+            .run(
+                SubprocessRequest::new("sh", dir.path())
+                    .args(["-c", &cmd])
+                    .max_output_bytes(max_output),
+                &test_ctx(dir.path()),
+            )
+            .expect("child should exit instead of deadlocking on a full pipe");
+
+        assert_eq!(output.exit_code, 0, "child should exit cleanly");
+        assert!(
+            output.stdout.ends_with("[output truncated]"),
+            "stdout should be bounded and marked truncated"
+        );
+        assert!(
+            output.stderr.ends_with("[output truncated]"),
+            "stderr should be bounded and marked truncated"
+        );
+    }
 }
