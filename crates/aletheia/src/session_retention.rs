@@ -377,7 +377,7 @@ fn prune_session_archive_dir(
             return Err(retention_failure(format!(
                 "read archive dir {} failed: {e}",
                 archive_dir.display()
-            )))
+            )));
         }
     };
 
@@ -890,8 +890,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retention_cap_enforces_per_nous_and_preserves_active_sessions(
-    ) -> oikonomos::error::Result<()> {
+    async fn retention_cap_enforces_per_nous_and_preserves_active_sessions()
+    -> oikonomos::error::Result<()> {
         let store = Arc::new(Mutex::new(
             SessionStore::open_in_memory()
                 .map_err(|e| retention_error(format!("store open: {e}")))?,
