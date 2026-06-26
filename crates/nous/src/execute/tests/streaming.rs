@@ -490,7 +490,8 @@ impl LlmProvider for SlowDeltaEmitter {
     fn complete<'a>(
         &'a self,
         _request: &'a hermeneus::types::CompletionRequest,
-    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
         let response = self.response.clone();
         Box::pin(async move { Ok(response) })
     }
@@ -499,7 +500,8 @@ impl LlmProvider for SlowDeltaEmitter {
         &'a self,
         _request: &'a hermeneus::types::CompletionRequest,
         on_event: &'a mut (dyn FnMut(hermeneus::anthropic::StreamEvent) + Send),
-    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
         let response = self.response.clone();
         let deltas = self.deltas;
         Box::pin(async move {
