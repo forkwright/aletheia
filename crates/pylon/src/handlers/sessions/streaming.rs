@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::extract::State;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{Event, KeepAlive, KeepAliveStream, Sse};
 use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
@@ -299,7 +299,7 @@ pub async fn send_message(
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     Json(body): Json<SendMessageRequest>,
-) -> Result<Sse<BoxedSseStream>, ApiError> {
+) -> Result<Sse<KeepAliveStream<BoxedSseStream>>, ApiError> {
     require_role(&claims, Role::Operator)?;
 
     let idempotency_key =
@@ -402,8 +402,7 @@ pub async fn send_message(
                             },
                         }
                     });
-                let stream = replay_idempotent_turn(&state, replay, request_id.0.clone()).await;
-                return Ok(stream.keep_alive(gateway_keepalive(&state.config, "ping").await));
+                return Ok(replay_idempotent_turn(&state, replay, request_id.0.clone()).await);
             }
             LookupResult::Conflict {
                 session_id: conflict_session_id,
@@ -574,9 +573,11 @@ pub async fn send_message(
                             key,
                             &idem_session_id,
                             &idem_body_fingerprint,
-                            &turn_id,
-                            axum::http::StatusCode::OK,
-                            body,
+                            crate::idempotency::CompletionRecord {
+                                turn_id: turn_id.clone(),
+                                status: axum::http::StatusCode::OK,
+                                body,
+                            },
                         );
                     }
                     // WHY(#5453): Mark the idempotency guard completed so the shared
@@ -665,8 +666,8 @@ pub async fn send_message(
         },
     };
 
-    Ok(Sse::new(Box::pin(stream) as BoxedSseStream)
-        .keep_alive(gateway_keepalive(&state.config, "ping").await))
+    let boxed: BoxedSseStream = Box::pin(stream);
+    Ok(Sse::new(boxed).keep_alive(gateway_keepalive(&state.config, "ping").await))
 }
 
 /// Replay a completed idempotent turn from its durable turn buffer, falling
@@ -679,7 +680,7 @@ async fn replay_idempotent_turn(
     state: &SessionsState,
     replay: IdempotencyReplayBody,
     request_id: String,
-) -> Sse<BoxedSseStream> {
+) -> Sse<KeepAliveStream<BoxedSseStream>> {
     if let Some(buf) = state
         .turn_buffer_registry
         .get(&replay.session_id, &replay.turn_id)
@@ -693,9 +694,11 @@ async fn replay_idempotent_turn(
                 .data(event.data)
                 .id(event.seq.to_string()))
         }));
-        Sse::new(Box::pin(stream) as BoxedSseStream)
+        let boxed: BoxedSseStream = Box::pin(stream);
+        Sse::new(boxed).keep_alive(gateway_keepalive(&state.config, "ping").await)
     } else {
         Sse::new(idempotent_fallback_stream(&replay, request_id))
+            .keep_alive(gateway_keepalive(&state.config, "ping").await)
     }
 }
 

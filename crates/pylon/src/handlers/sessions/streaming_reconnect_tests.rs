@@ -334,9 +334,11 @@ fn idempotency_guard_preserves_completed_entry() {
         &key,
         &session_id,
         &body_fingerprint,
-        "turn-complete-key",
-        axum::http::StatusCode::OK,
-        r#"{"ok":true}"#.to_owned(),
+        crate::idempotency::CompletionRecord {
+            turn_id: "turn-complete-key".to_owned(),
+            status: axum::http::StatusCode::OK,
+            body: r#"{"ok":true}"#.to_owned(),
+        },
     );
 
     {

@@ -125,6 +125,16 @@ fn request_context(session_id: &str, body_fingerprint: &str) -> RequestContext {
     }
 }
 
+/// Completion record passed to [`IdempotencyCache::complete`].
+///
+/// WHY(#4865): groups the completion fields so `complete` stays within the
+/// argument-count lint threshold.
+pub(crate) struct CompletionRecord {
+    pub(crate) turn_id: String,
+    pub(crate) status: StatusCode,
+    pub(crate) body: String,
+}
+
 impl Default for IdempotencyCache {
     fn default() -> Self {
         Self::new()
@@ -254,7 +264,7 @@ impl IdempotencyCache {
             && entry.context == context
             && matches!(entry.state, EntryState::InFlight)
         {
-            entry.turn_id = turn_id.to_owned();
+            turn_id.clone_into(&mut entry.turn_id);
         }
     }
 
@@ -265,9 +275,7 @@ impl IdempotencyCache {
         key: &str,
         session_id: &str,
         body_fingerprint: &str,
-        turn_id: &str,
-        status: StatusCode,
-        body: String,
+        record: CompletionRecord,
     ) {
         let composite = composite_key(principal, key);
         let context = request_context(session_id, body_fingerprint);
@@ -275,8 +283,11 @@ impl IdempotencyCache {
         if let Some(entry) = inner.entries.get_mut(&composite)
             && entry.context == context
         {
-            entry.turn_id = turn_id.to_owned();
-            entry.state = EntryState::Completed { status, body };
+            entry.turn_id = record.turn_id;
+            entry.state = EntryState::Completed {
+                status: record.status,
+                body: record.body,
+            };
         }
     }
 
@@ -360,9 +371,11 @@ mod tests {
             key,
             session_id,
             body_fingerprint,
-            "turn-001",
-            StatusCode::OK,
-            r#"{"ok":true}"#.to_owned(),
+            CompletionRecord {
+                turn_id: "turn-001".to_owned(),
+                status: StatusCode::OK,
+                body: r#"{"ok":true}"#.to_owned(),
+            },
         );
 
         match cache.check_or_insert(principal, key, session_id, body_fingerprint) {
@@ -467,9 +480,11 @@ mod tests {
             key,
             session_id,
             body_fingerprint,
-            "turn-alice",
-            StatusCode::OK,
-            r#"{"user":"alice"}"#.to_owned(),
+            CompletionRecord {
+                turn_id: "turn-alice".to_owned(),
+                status: StatusCode::OK,
+                body: r#"{"user":"alice"}"#.to_owned(),
+            },
         );
 
         // Alice's replay returns her own cached response.
@@ -502,9 +517,11 @@ mod tests {
             key,
             session_id,
             body_fingerprint,
-            "turn-bob",
-            StatusCode::OK,
-            r#"{"user":"bob"}"#.to_owned(),
+            CompletionRecord {
+                turn_id: "turn-bob".to_owned(),
+                status: StatusCode::OK,
+                body: r#"{"user":"bob"}"#.to_owned(),
+            },
         );
         match cache.check_or_insert("alice", key, session_id, body_fingerprint) {
             LookupResult::Hit { body, .. } => {

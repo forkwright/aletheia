@@ -303,7 +303,11 @@ async fn idempotency_key_in_flight_returns_turn_id_and_replay_url() {
 }
 
 /// #4865: idempotency replay must preserve the original event order and all
-/// event types, including tool_use/tool_result, from the durable turn buffer.
+/// event types, including `tool_use/tool_result`, from the durable turn buffer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "WHY(#4865): seeds the durable turn-event store and asserts full event-sequence preservation — inherently linear setup"
+)]
 #[tokio::test]
 async fn idempotency_key_replay_preserves_tool_events_and_usage() {
     let (state, _dir) = test_state().await;
@@ -384,6 +388,12 @@ async fn idempotency_key_replay_preserves_tool_events_and_usage() {
         .await;
     handle.mark_completed().await;
 
+    // WHY(#4865): complete() is update-only; seed the cache entry first so the
+    // subsequent HTTP request sees LookupResult::Hit and triggers the replay path.
+    state
+        .idempotency_cache
+        .check_or_insert("test-user", key, session_id, &fingerprint);
+
     // Bind the idempotency key to the canonical turn identity.
     let replay_body = serde_json::json!({
         "session_id": session_id,
@@ -403,9 +413,11 @@ async fn idempotency_key_replay_preserves_tool_events_and_usage() {
         key,
         session_id,
         &fingerprint,
-        turn_id,
-        StatusCode::OK,
-        replay_body,
+        crate::idempotency::CompletionRecord {
+            turn_id: turn_id.to_owned(),
+            status: StatusCode::OK,
+            body: replay_body,
+        },
     );
 
     let req = send_message_req_with_content(session_id, Some(key), "Hello!");
@@ -475,6 +487,11 @@ async fn idempotency_key_replay_fallback_includes_turn_id_and_usage() {
     let key = "replay-fallback-key-001";
     let fingerprint = body_fingerprint("Hello!");
 
+    // WHY(#4865): complete() is update-only; seed the cache entry first.
+    state
+        .idempotency_cache
+        .check_or_insert("test-user", key, session_id, &fingerprint);
+
     let replay_body = serde_json::json!({
         "session_id": session_id,
         "turn_id": turn_id,
@@ -493,9 +510,11 @@ async fn idempotency_key_replay_fallback_includes_turn_id_and_usage() {
         key,
         session_id,
         &fingerprint,
-        turn_id,
-        StatusCode::OK,
-        replay_body,
+        crate::idempotency::CompletionRecord {
+            turn_id: turn_id.to_owned(),
+            status: StatusCode::OK,
+            body: replay_body,
+        },
     );
 
     let req = send_message_req_with_content(session_id, Some(key), "Hello!");

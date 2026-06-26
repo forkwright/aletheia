@@ -99,16 +99,6 @@ pub(super) async fn test_state_with_auth_mode(
     test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
 }
 
-/// Test helper: build state with a custom mock provider response.
-///
-/// WHY(#4865): idempotency replay tests need a provider that emits tool calls
-/// so the replay can be verified to preserve tool_use/tool_result events.
-pub(super) async fn test_state_with_mock_provider(
-    provider: hermeneus::test_utils::MockProvider,
-) -> (Arc<AppState>, tempfile::TempDir) {
-    test_state_inner(Some(provider), false, "token").await
-}
-
 async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
     include_private_nous: bool,
