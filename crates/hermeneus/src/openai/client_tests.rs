@@ -208,3 +208,118 @@ fn repeated_construction_does_not_leak_model_storage() {
         // provider drops here, freeing the owned model list.
     }
 }
+
+mod cache_metrics_tests {
+    use std::time::{Duration, Instant};
+
+    use koina::metrics::MetricsRegistry;
+
+    use super::{record_nonstream_success, record_stream_success};
+    use crate::metrics::register;
+    use crate::types::{
+        CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role, StopReason,
+        Usage,
+    };
+
+    fn fresh_registry() -> MetricsRegistry {
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+        r
+    }
+
+    fn encode(r: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        buf
+    }
+
+    fn request() -> CompletionRequest {
+        CompletionRequest {
+            model: "gpt-4o".to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_owned()),
+                cache_breakpoint: false,
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn response_with_cache() -> CompletionResponse {
+        CompletionResponse {
+            id: "resp_1".to_owned(),
+            model: "gpt-4o".to_owned(),
+            stop_reason: StopReason::EndTurn,
+            content: vec![ContentBlock::Text {
+                text: "hi".to_owned(),
+                citations: None,
+            }],
+            usage: Usage {
+                input_tokens: 100,
+                output_tokens: 50,
+                cache_read_tokens: 30,
+                cache_write_tokens: 10,
+            },
+            cost_usd: None,
+            duration_ms: None,
+        }
+    }
+
+    #[test]
+    fn nonstream_success_records_cache_tokens() {
+        let r = fresh_registry();
+        let start = Instant::now() - Duration::from_millis(10);
+        let mut response = response_with_cache();
+        record_nonstream_success(
+            start,
+            0,
+            "openai-test",
+            "responses",
+            &request(),
+            &mut response,
+            0.001,
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"openai-test\",direction=\"read\"} 30"
+            ),
+            "missing cache read metrics: {out}"
+        );
+        assert!(
+            out.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"openai-test\",direction=\"write\"} 10"
+            ),
+            "missing cache write metrics: {out}"
+        );
+    }
+
+    #[test]
+    fn stream_success_records_cache_tokens() {
+        let r = fresh_registry();
+        let start = Instant::now() - Duration::from_millis(10);
+        let mut response = response_with_cache();
+        record_stream_success(
+            start,
+            0,
+            "openai-stream-test",
+            &request(),
+            &mut response,
+            0.001,
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"openai-stream-test\",direction=\"read\"} 30"
+            ),
+            "missing cache read metrics: {out}"
+        );
+        assert!(
+            out.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"openai-stream-test\",direction=\"write\"} 10"
+            ),
+            "missing cache write metrics: {out}"
+        );
+    }
+}

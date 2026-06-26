@@ -206,12 +206,20 @@ impl KimiProvider {
         let output =
             process::run_completion(&process_config, system, &prompt, request.max_tokens).await?;
 
-        parse::result_to_response(
+        let response = parse::result_to_response(
             &output.result_text,
             output.usage,
             model,
             output.message_id.as_deref(),
-        )
+        )?;
+        // WHY(#4658): Kimi reports input_cache_read and input_cache_creation;
+        // emit them so prompt-cache usage is visible in provider metrics.
+        crate::metrics::record_cache_tokens(
+            self.name(),
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+        Ok(response)
     }
 
     async fn execute_streaming(
@@ -247,12 +255,20 @@ impl KimiProvider {
         )
         .await?;
 
-        parse::result_to_response(
+        let response = parse::result_to_response(
             &output.result_text,
             output.usage,
             model,
             output.message_id.as_deref(),
-        )
+        )?;
+        // WHY(#4658): Streaming Kimi output preserves cache tokens; emit them
+        // for metrics parity with the non-streaming path.
+        crate::metrics::record_cache_tokens(
+            self.name(),
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+        Ok(response)
     }
 }
 
@@ -393,5 +409,55 @@ mod tests {
             Some(MatchKind::Exact)
         );
         assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);
+    }
+
+    #[test]
+    fn records_cache_metrics_from_response() {
+        use koina::metrics::MetricsRegistry;
+
+        use crate::metrics::register;
+        use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+
+        let r = MetricsRegistry::new();
+        r.with_registry(register);
+
+        let response = CompletionResponse {
+            id: "kimi_1".to_owned(),
+            model: "kimi".to_owned(),
+            stop_reason: StopReason::EndTurn,
+            content: vec![ContentBlock::Text {
+                text: "hi".to_owned(),
+                citations: None,
+            }],
+            usage: Usage {
+                input_tokens: 20,
+                output_tokens: 10,
+                cache_read_tokens: 5,
+                cache_write_tokens: 2,
+            },
+            cost_usd: None,
+            duration_ms: None,
+        };
+        crate::metrics::record_cache_tokens(
+            "kimi",
+            response.usage.cache_read_tokens,
+            response.usage.cache_write_tokens,
+        );
+
+        let mut buf = String::new();
+        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+        r.encode(&mut buf).unwrap();
+        assert!(
+            buf.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"kimi\",direction=\"read\"} 5"
+            ),
+            "missing cache read metrics: {buf}"
+        );
+        assert!(
+            buf.contains(
+                "aletheia_llm_cache_tokens_total{provider=\"kimi\",direction=\"write\"} 2"
+            ),
+            "missing cache write metrics: {buf}"
+        );
     }
 }
