@@ -269,7 +269,9 @@ impl FactStore {
     pub async fn list(&self, scope: Option<FactScope>) -> Result<Vec<ArchitectureFact>, FactError> {
         if !tokio::fs::try_exists(&self.dir)
             .await
-            .with_context(|_| ReadDirSnafu { dir: self.dir.clone() })?
+            .with_context(|_| ReadDirSnafu {
+                dir: self.dir.clone(),
+            })?
         {
             return Ok(vec![]);
         }
@@ -291,7 +293,9 @@ impl FactStore {
     pub async fn search(&self, query: &str) -> Result<Vec<ArchitectureFact>, FactError> {
         if !tokio::fs::try_exists(&self.dir)
             .await
-            .with_context(|_| ReadDirSnafu { dir: self.dir.clone() })?
+            .with_context(|_| ReadDirSnafu {
+                dir: self.dir.clone(),
+            })?
         {
             return Ok(vec![]);
         }
