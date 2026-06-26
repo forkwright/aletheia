@@ -999,10 +999,17 @@ async fn rate_limit_ignores_spoofed_forwarded_header_when_trust_proxy_false() {
 
     // Without trust_proxy, two requests with different spoofed X-Forwarded-For
     // headers must still share the "peer" bucket and the second must be limited.
-    let first = app.clone().oneshot(anon_health_request(Some("1.2.3.4"))).await.unwrap();
+    let first = app
+        .clone()
+        .oneshot(anon_health_request(Some("1.2.3.4")))
+        .await
+        .unwrap();
     assert_eq!(first.status(), StatusCode::OK);
 
-    let second = app.oneshot(anon_health_request(Some("5.6.7.8"))).await.unwrap();
+    let second = app
+        .oneshot(anon_health_request(Some("5.6.7.8")))
+        .await
+        .unwrap();
     assert_eq!(
         second.status(),
         StatusCode::TOO_MANY_REQUESTS,
@@ -1015,14 +1022,25 @@ async fn rate_limit_uses_forwarded_header_when_trust_proxy_true() {
     let (app, _dir) = app_with_ip_rate_limit(true).await;
 
     // With trust_proxy, each distinct X-Forwarded-For value gets its own bucket.
-    let first = app.clone().oneshot(anon_health_request(Some("1.2.3.4"))).await.unwrap();
+    let first = app
+        .clone()
+        .oneshot(anon_health_request(Some("1.2.3.4")))
+        .await
+        .unwrap();
     assert_eq!(first.status(), StatusCode::OK);
 
-    let second = app.clone().oneshot(anon_health_request(Some("5.6.7.8"))).await.unwrap();
+    let second = app
+        .clone()
+        .oneshot(anon_health_request(Some("5.6.7.8")))
+        .await
+        .unwrap();
     assert_eq!(second.status(), StatusCode::OK);
 
     // A repeat from the first IP should now hit its own bucket's limit.
-    let third = app.oneshot(anon_health_request(Some("1.2.3.4"))).await.unwrap();
+    let third = app
+        .oneshot(anon_health_request(Some("1.2.3.4")))
+        .await
+        .unwrap();
     assert_eq!(
         third.status(),
         StatusCode::TOO_MANY_REQUESTS,

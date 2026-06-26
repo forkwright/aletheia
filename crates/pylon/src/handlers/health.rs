@@ -218,11 +218,7 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
 /// rate limits are keyed by peer socket, forwarded client IP, or authenticated
 /// user. Per-user rate limiting takes precedence when enabled; otherwise the
 /// per-IP limiter follows the `trust_proxy` flag.
-fn rate_limiting_check(
-    enabled: bool,
-    trust_proxy: bool,
-    per_user_enabled: bool,
-) -> HealthCheck {
+fn rate_limiting_check(enabled: bool, trust_proxy: bool, per_user_enabled: bool) -> HealthCheck {
     let keying = if per_user_enabled {
         "authenticated_user"
     } else if enabled {
@@ -1189,7 +1185,11 @@ mod tests {
         let details = check.details.expect("details must be present");
         assert_eq!(details["keying"], "authenticated_user");
         assert!(
-            check.message.as_deref().unwrap().contains("authenticated user"),
+            check
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("authenticated user"),
             "message should name authenticated-user keying: {:?}",
             check.message
         );
