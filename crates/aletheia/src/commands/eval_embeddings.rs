@@ -412,7 +412,13 @@ pub(crate) fn run(args: &EvalEmbeddingsArgs) -> Result<()> {
 
     // Output.
     if args.json {
-        let report = build_report(&run, args, dataset.queries.len(), builtin_meta, corpus.len());
+        let report = build_report(
+            &run,
+            args,
+            dataset.queries.len(),
+            builtin_meta,
+            corpus.len(),
+        );
         let json = serde_json::to_string_pretty(&report)
             .whatever_context("failed to serialize eval result as JSON")?;
         println!("{json}");
