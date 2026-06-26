@@ -6,6 +6,7 @@
 //! whose sender lives in the caller (e.g. pylon's per-turn registry,
 //! koilon's overlay handler).
 
+use std::collections::{HashMap, hash_map::Entry};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -60,6 +61,17 @@ impl ApprovalChoice {
     }
 }
 
+/// Shared state held by every clone of an [`ApprovalGate`].
+///
+/// WHY(#5010): a single mpsc channel carries decisions for every tool in
+/// the turn, but dispatch awaits tools sequentially. Buffering decisions
+/// keyed by `tool_id` lets decisions arrive in any order without being
+/// dropped as stale.
+struct ApprovalState {
+    rx: mpsc::Receiver<ApprovalDecision>,
+    pending: HashMap<String, ApprovalChoice>,
+}
+
 /// Cloneable handle wrapping a shared decision receiver.
 ///
 /// Multiple plumbing layers (actor, pipeline, execute) hold a clone but
@@ -67,7 +79,7 @@ impl ApprovalChoice {
 /// inner `Mutex` is uncontended in practice.
 #[derive(Clone)]
 pub struct ApprovalGate {
-    rx: Arc<Mutex<mpsc::Receiver<ApprovalDecision>>>,
+    state: Arc<Mutex<ApprovalState>>,
     timeout: Duration,
 }
 
@@ -84,7 +96,10 @@ impl ApprovalGate {
     #[must_use]
     pub fn new(rx: mpsc::Receiver<ApprovalDecision>, timeout: Duration) -> Self {
         Self {
-            rx: Arc::new(Mutex::new(rx)),
+            state: Arc::new(Mutex::new(ApprovalState {
+                rx,
+                pending: HashMap::new(),
+            })),
             timeout,
         }
     }
@@ -97,20 +112,37 @@ impl ApprovalGate {
 
     /// Block until a decision targeted at `tool_id` arrives.
     ///
-    /// Stale decisions (mismatched `tool_id`) are dropped with a warning.
-    /// Channel-closed or elapsed-timeout both resolve to [`ApprovalChoice::Denied`].
+    /// Decisions for other tools in the same turn are buffered in a
+    /// pending map keyed by `tool_id` and consumed exactly once when that
+    /// tool is awaited. Duplicate buffered decisions are ignored with a
+    /// warning, keeping the first writer. Channel-closed or elapsed-timeout
+    /// both resolve to [`ApprovalChoice::Denied`] for the requested tool.
     pub async fn await_decision(&self, tool_id: &str) -> ApprovalChoice {
-        let mut rx = self.rx.lock().await;
+        let mut state = self.state.lock().await;
+
+        // If a decision for this tool was already buffered, consume it exactly once.
+        if let Some(choice) = state.pending.remove(tool_id) {
+            return choice;
+        }
+
         match tokio::time::timeout(self.timeout, async {
             loop {
-                match rx.recv().await {
+                match state.rx.recv().await {
                     Some(d) if d.tool_id == tool_id => return d.choice,
-                    Some(stale) => {
-                        warn!(
-                            stale_tool_id = stale.tool_id,
-                            expected = tool_id,
-                            "approval decision for unexpected tool_id; dropping"
-                        );
+                    Some(d) => {
+                        // Buffer decisions targeting other tools in this turn so that
+                        // sequential dispatch can consume them when it reaches each tool.
+                        match state.pending.entry(d.tool_id) {
+                            Entry::Occupied(_) => {
+                                warn!(
+                                    tool_id = %d.tool_id,
+                                    "duplicate approval decision; keeping first-writer-wins"
+                                );
+                            }
+                            Entry::Vacant(slot) => {
+                                slot.insert(d.choice);
+                            }
+                        }
                     }
                     None => return ApprovalChoice::Denied,
                 }
@@ -181,7 +213,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stale_decisions_dropped_until_match() {
+    async fn mismatched_decision_buffered_until_match() {
         let (tx, rx) = mpsc::channel(4);
         let gate = ApprovalGate::with_default_timeout(rx);
         tx.send(ApprovalDecision {
@@ -197,6 +229,50 @@ mod tests {
         .await
         .expect("send current");
         assert_eq!(gate.await_decision("current").await, ApprovalChoice::Denied);
+        // The earlier decision was buffered, not dropped, and is available later.
+        assert_eq!(gate.await_decision("old").await, ApprovalChoice::Approved);
+    }
+
+    #[tokio::test]
+    async fn future_decision_buffered_before_await() {
+        let (tx, rx) = mpsc::channel(4);
+        let gate = ApprovalGate::new(rx, Duration::from_millis(50));
+        tx.send(ApprovalDecision::new("future", ApprovalChoice::Approved))
+            .await
+            .expect("send future");
+        // Await a different tool; the future decision stays buffered.
+        assert_eq!(gate.await_decision("now").await, ApprovalChoice::Denied);
+        assert_eq!(gate.await_decision("future").await, ApprovalChoice::Approved);
+    }
+
+    #[tokio::test]
+    async fn two_tools_answered_out_of_order() {
+        let (tx, rx) = mpsc::channel(4);
+        let gate = ApprovalGate::new(rx, Duration::from_millis(50));
+        tx.send(ApprovalDecision::new("tool-2", ApprovalChoice::Approved))
+            .await
+            .expect("send tool-2");
+        tx.send(ApprovalDecision::new("tool-1", ApprovalChoice::Denied))
+            .await
+            .expect("send tool-1");
+        assert_eq!(gate.await_decision("tool-1").await, ApprovalChoice::Denied);
+        assert_eq!(gate.await_decision("tool-2").await, ApprovalChoice::Approved);
+    }
+
+    #[tokio::test]
+    async fn duplicate_future_decision_keeps_first_wins() {
+        let (tx, rx) = mpsc::channel(4);
+        let gate = ApprovalGate::new(rx, Duration::from_millis(50));
+        tx.send(ApprovalDecision::new("tool-2", ApprovalChoice::Approved))
+            .await
+            .expect("send first");
+        tx.send(ApprovalDecision::new("tool-2", ApprovalChoice::Denied))
+            .await
+            .expect("send duplicate");
+        // While awaiting tool-1, two decisions for tool-2 arrive.
+        assert_eq!(gate.await_decision("tool-1").await, ApprovalChoice::Denied);
+        // First-writer-wins: Approved, not the later Denied.
+        assert_eq!(gate.await_decision("tool-2").await, ApprovalChoice::Approved);
     }
 
     #[test]
