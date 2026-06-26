@@ -7,6 +7,8 @@
 use serde::Deserialize;
 use tracing::warn;
 
+use snafu::ResultExt as _;
+
 use crate::error::{ApiRequestSnafu, Error, MalformedToolArgumentsSnafu};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
@@ -335,19 +337,18 @@ pub(crate) fn parse_arguments(
     if arguments.is_empty() {
         Ok(serde_json::json!({}))
     } else {
-        serde_json::from_str(arguments).map_err(|e| {
-            warn!(
-                error = %e,
-                tool = %tool_name,
-                raw_arguments = %arguments,
-                "OpenAI tool arguments JSON parse failed; rejecting provider tool call"
-            );
-            MalformedToolArgumentsSnafu {
+        serde_json::from_str::<serde_json::Value>(arguments)
+            .inspect_err(|e| {
+                warn!(
+                    error = %e,
+                    tool = %tool_name,
+                    raw_arguments = %arguments,
+                    "OpenAI tool arguments JSON parse failed; rejecting provider tool call"
+                );
+            })
+            .context(MalformedToolArgumentsSnafu {
                 tool: tool_name.to_owned(),
-                source: e,
-            }
-            .build()
-        })
+            })
     }
 }
 

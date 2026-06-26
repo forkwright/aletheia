@@ -267,7 +267,7 @@ impl koina::error_class::Classifiable for Error {
                 backoff_base_ms: 2_000,
             },
             Error::ParseResponse { .. } => ErrorAction::Escalate,
-            Error::MalformedToolArguments { tool, source } => ErrorAction::Surface {
+            Error::MalformedToolArguments { tool, source, .. } => ErrorAction::Surface {
                 user_message: format!(
                     "Provider returned malformed tool arguments for '{tool}': {source}"
                 ),
@@ -524,11 +524,11 @@ mod tests {
         // request will reproduce the same malformed payload.
         let raw = "{not json";
         let source = serde_json::from_str::<serde_json::Value>(raw).unwrap_err();
-        let err = MalformedToolArgumentsSnafu {
+        let err = Error::MalformedToolArguments {
             tool: "test_tool".to_owned(),
             source,
-        }
-        .build();
+            location: snafu::location!(),
+        };
         assert!(
             !err.is_retryable(),
             "malformed tool arguments should not be retryable"

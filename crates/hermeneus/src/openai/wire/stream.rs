@@ -9,7 +9,7 @@ use reqwest::Response;
 use serde::Deserialize;
 
 use crate::anthropic::StreamEvent;
-use crate::error::{self, Error, Result};
+use crate::error::{self, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::response::{ResponsesResponse, TokenDetails, parse_arguments};
@@ -238,7 +238,7 @@ impl OpenAiStreamAccumulator {
     pub(crate) fn finish<F: FnMut(StreamEvent) + ?Sized>(
         self,
         on_event: &mut F,
-    ) -> Result<CompletionResponse, Error> {
+    ) -> Result<CompletionResponse> {
         let Self {
             id,
             model,
@@ -710,7 +710,7 @@ impl ResponsesStreamAccumulator {
     fn finish<F: FnMut(StreamEvent) + ?Sized>(
         self,
         on_event: &mut F,
-    ) -> Result<CompletionResponse, Error> {
+    ) -> Result<CompletionResponse> {
         let Self {
             id,
             model,
@@ -995,7 +995,7 @@ mod tests {
             .finish(&mut |e| events.push(e))
             .expect_err("malformed tool arguments should fail finish");
         assert!(
-            matches!(err, Error::MalformedToolArguments { .. }),
+            matches!(err, error::Error::MalformedToolArguments { .. }),
             "expected MalformedToolArguments, got {err:?}"
         );
     }
@@ -1406,7 +1406,7 @@ mod tests {
             .finish(&mut |e| events.push(e))
             .expect_err("malformed Responses function arguments should fail finish");
         assert!(
-            matches!(err, Error::MalformedToolArguments { .. }),
+            matches!(err, error::Error::MalformedToolArguments { .. }),
             "expected MalformedToolArguments, got {err:?}"
         );
     }

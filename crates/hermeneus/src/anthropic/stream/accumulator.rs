@@ -3,7 +3,9 @@
 use tracing::warn;
 
 use super::super::wire::{WireContentBlockStart, WireDelta, WireStreamEvent, WireUsage};
-use crate::error::{Error, MalformedToolArgumentsSnafu, Result};
+use snafu::ResultExt as _;
+
+use crate::error::{MalformedToolArgumentsSnafu, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::StreamEvent;
@@ -271,11 +273,7 @@ impl StreamAccumulator {
     /// Returns [`Error::MalformedToolArguments`] when a streamed tool's
     /// accumulated `input_json` is not valid JSON. This prevents malformed
     /// provider output from reaching Nous tool dispatch as a normal tool input.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "stream accumulator converts every supported Anthropic block variant"
-    )]
-    pub(crate) fn finish(self) -> Result<CompletionResponse, Error> {
+    pub(crate) fn finish(self) -> Result<CompletionResponse> {
         let mut content = Vec::with_capacity(self.blocks.len());
         for block in self.blocks {
             let converted = match block {
@@ -293,19 +291,16 @@ impl StreamAccumulator {
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
-                        serde_json::from_str(&input_json).map_err(|e| {
-                            warn!(
-                                error = %e,
-                                tool = %name,
-                                raw_json = %input_json,
-                                "tool input JSON parse failed; rejecting provider tool call"
-                            );
-                            MalformedToolArgumentsSnafu {
-                                tool: name.clone(),
-                                source: e,
-                            }
-                            .build()
-                        })?
+                        serde_json::from_str::<serde_json::Value>(&input_json)
+                            .inspect_err(|e| {
+                                warn!(
+                                    error = %e,
+                                    tool = %name,
+                                    raw_json = %input_json,
+                                    "tool input JSON parse failed; rejecting provider tool call"
+                                );
+                            })
+                            .context(MalformedToolArgumentsSnafu { tool: name.clone() })?
                     };
                     ContentBlock::ToolUse { id, name, input }
                 }
@@ -326,19 +321,16 @@ impl StreamAccumulator {
                     let input = if input_json.is_empty() {
                         serde_json::Value::Object(serde_json::Map::default())
                     } else {
-                        serde_json::from_str(&input_json).map_err(|e| {
-                            warn!(
-                                error = %e,
-                                tool = %name,
-                                raw_json = %input_json,
-                                "server tool input JSON parse failed; rejecting provider tool call"
-                            );
-                            MalformedToolArgumentsSnafu {
-                                tool: name.clone(),
-                                source: e,
-                            }
-                            .build()
-                        })?
+                        serde_json::from_str::<serde_json::Value>(&input_json)
+                            .inspect_err(|e| {
+                                warn!(
+                                    error = %e,
+                                    tool = %name,
+                                    raw_json = %input_json,
+                                    "server tool input JSON parse failed; rejecting provider tool call"
+                                );
+                            })
+                            .context(MalformedToolArgumentsSnafu { tool: name.clone() })?
                     };
                     ContentBlock::ServerToolUse { id, name, input }
                 }
@@ -388,6 +380,8 @@ impl StreamAccumulator {
     reason = "tests assert against known-length content vecs"
 )]
 mod tests {
+    use crate::error::Error;
+
     use super::super::super::wire::{
         WireContentBlockStart, WireDelta, WireMessageDeltaBody, WireMessageDeltaUsage,
         WireMessageStart, WireStreamEvent, WireUsage,
@@ -819,7 +813,7 @@ mod tests {
         )
         .expect("delta");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish should succeed");
         // start(50) + delta(10) = 60; start(100) + delta(5) = 105
         assert_eq!(response.usage.cache_write_tokens, 60);
         assert_eq!(response.usage.cache_read_tokens, 105);
