@@ -373,12 +373,13 @@ fn mcp_auth_to_diaporeia(auth: &ExternalToolAuth) -> diaporeia::client::McpAuth 
             name: name.clone(),
             value: value.clone(),
         },
-        ExternalToolAuth::EnvToken { header_name, env_var } => {
-            diaporeia::client::McpAuth::EnvToken {
-                header_name: header_name.clone(),
-                env_var: env_var.clone(),
-            }
-        }
+        ExternalToolAuth::EnvToken {
+            header_name,
+            env_var,
+        } => diaporeia::client::McpAuth::EnvToken {
+            header_name: header_name.clone(),
+            env_var: env_var.clone(),
+        },
     }
 }
 

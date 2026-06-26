@@ -592,7 +592,10 @@ fn rejects_mcp_tool_with_missing_env_token_field() {
         }
     });
     let result = validate_section("tools", &section);
-    assert!(result.is_err(), "env_token without env_var should be rejected");
+    assert!(
+        result.is_err(),
+        "env_token without env_var should be rejected"
+    );
 }
 
 #[test]
@@ -607,7 +610,10 @@ fn rejects_mcp_tool_with_missing_custom_header_value() {
         }
     });
     let result = validate_section("tools", &section);
-    assert!(result.is_err(), "header auth without value should be rejected");
+    assert!(
+        result.is_err(),
+        "header auth without value should be rejected"
+    );
 }
 
 #[test]

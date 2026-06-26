@@ -47,13 +47,19 @@ pub enum ExternalToolAuth {
 impl std::fmt::Debug for ExternalToolAuth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Bearer { .. } => f.debug_struct("Bearer").field("token", &"<redacted>").finish(),
+            Self::Bearer { .. } => f
+                .debug_struct("Bearer")
+                .field("token", &"<redacted>")
+                .finish(),
             Self::Header { name, .. } => f
                 .debug_struct("Header")
                 .field("name", name)
                 .field("value", &"<redacted>")
                 .finish(),
-            Self::EnvToken { header_name, env_var } => f
+            Self::EnvToken {
+                header_name,
+                env_var,
+            } => f
                 .debug_struct("EnvToken")
                 .field("header_name", header_name)
                 .field("env_var", env_var)
@@ -69,9 +75,10 @@ impl ExternalToolAuth {
         match self {
             Self::Bearer { token } => !token.is_empty(),
             Self::Header { name, value } => !name.is_empty() && !value.is_empty(),
-            Self::EnvToken { header_name, env_var } => {
-                !header_name.is_empty() && !env_var.is_empty()
-            }
+            Self::EnvToken {
+                header_name,
+                env_var,
+            } => !header_name.is_empty() && !env_var.is_empty(),
         }
     }
 }
@@ -227,10 +234,12 @@ mod tests {
 
     #[test]
     fn bearer_auth_validation_requires_non_empty_token() {
-        assert!(ExternalToolAuth::Bearer {
-            token: "token".to_owned(),
-        }
-        .validate());
+        assert!(
+            ExternalToolAuth::Bearer {
+                token: "token".to_owned(),
+            }
+            .validate()
+        );
         assert!(
             !ExternalToolAuth::Bearer {
                 token: String::new(),

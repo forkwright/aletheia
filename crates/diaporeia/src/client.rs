@@ -103,7 +103,10 @@ impl McpAuth {
         match self {
             Self::Bearer { token } => Ok(("Authorization".to_owned(), format!("Bearer {token}"))),
             Self::Header { name, value } => Ok((name.clone(), value.clone())),
-            Self::EnvToken { header_name, env_var } => {
+            Self::EnvToken {
+                header_name,
+                env_var,
+            } => {
                 let token = std::env::var(env_var).map_err(|e| {
                     TransportSnafu {
                         message: format!(
