@@ -29,6 +29,37 @@ use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 #[cfg(feature = "mneme-engine")]
 use snafu::ResultExt;
 
+/// Canonical labels stored in `graph_scores.score_type`.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GraphScoreType {
+    /// Normalized `PageRank` score.
+    PageRank,
+    /// Louvain community assignment.
+    LouvainCluster,
+    /// Raw maximum `PageRank` value used for normalization metadata.
+    PageRankMax,
+    /// Domain volatility score.
+    Volatility,
+}
+
+#[cfg(feature = "mneme-engine")]
+impl GraphScoreType {
+    /// Stable storage label for this graph score type.
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::PageRank => "pagerank",
+            Self::LouvainCluster => "cluster",
+            Self::PageRankMax => "pagerank_max",
+            Self::Volatility => "volatility",
+        }
+    }
+}
+
+/// Pre-#4678 Louvain score type accepted only by the cleanup migration.
+#[cfg(feature = "mneme-engine")]
+pub(crate) const LEGACY_LOUVAIN_CLUSTER_SCORE_TYPE: &str = "louvain";
+
 #[cfg(feature = "mneme-engine")]
 /// Wrapper for `(cost, node)` that implements `Ord` so it can live in a
 /// `BinaryHeap` for Dijkstra's algorithm.
@@ -187,7 +218,8 @@ pub(crate) fn score_access_with_evolution(base_access_score: f64, chain_length: 
 /// Reads the `relationships` relation, computes `PageRank` and `Louvain` communities,
 /// and stores results into `graph_scores`.
 ///
-/// Parameters: `$now` (ISO 8601 timestamp string).
+/// Parameters: `$now` (ISO 8601 timestamp string), plus canonical graph score
+/// type labels.
 #[cfg_attr(
     not(feature = "mneme-engine"),
     expect(
@@ -207,14 +239,14 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 
 ?[entity_id, score_type, score, cluster_id, updated_at] :=
     pr[entity_id, raw_score], pr_max[m], m > 0,
-    score = raw_score / m, score_type = 'pagerank', cluster_id = -1, updated_at = $now
+    score = raw_score / m, score_type = $pagerank_score_type, cluster_id = -1, updated_at = $now
 
 ?[entity_id, score_type, score, cluster_id, updated_at] :=
     comm[labels, entity_id], length(labels) > 0, cid = first(labels),
-    score_type = 'cluster', score = 0.0, cluster_id = cid, updated_at = $now
+    score_type = $cluster_score_type, score = 0.0, cluster_id = cid, updated_at = $now
 
 ?[entity_id, score_type, score, cluster_id, updated_at] :=
-    pr_max[m], m > 0, entity_id = '__meta__', score_type = 'pagerank_max',
+    pr_max[m], m > 0, entity_id = '__meta__', score_type = $pagerank_max_score_type,
     score = m, cluster_id = -1, updated_at = $now
 
 :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
@@ -388,15 +420,22 @@ impl crate::knowledge_store::KnowledgeStore {
                 );
             }
 
-            match score_type {
-                "pagerank" => {
-                    ctx.pageranks.insert(entity_id.to_owned(), score);
-                }
-                "cluster" => {
-                    ctx.clusters.insert(entity_id.to_owned(), cluster_id);
-                }
-                _ => {
-                    // NOTE: pagerank_max meta entry, normalization already done in Datalog
+            if score_type == GraphScoreType::PageRank.as_str() {
+                ctx.pageranks.insert(entity_id.to_owned(), score);
+            } else if score_type == GraphScoreType::LouvainCluster.as_str() {
+                ctx.clusters.insert(entity_id.to_owned(), cluster_id);
+            } else {
+                match score_type {
+                    s if s == GraphScoreType::PageRankMax.as_str()
+                        || s == GraphScoreType::Volatility.as_str() =>
+                    {
+                        // NOTE: pagerank_max is metadata and volatility is loaded
+                        // through succession; neither populates recall clusters.
+                    }
+                    _ => {
+                        // NOTE: unknown score types are ignored so forward-added
+                        // graph metrics do not break recall context loading.
+                    }
                 }
             }
         }
@@ -477,6 +516,18 @@ impl crate::knowledge_store::KnowledgeStore {
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = std::collections::BTreeMap::new();
         params.insert("now".to_owned(), crate::engine::DataValue::Str(now.into()));
+        params.insert(
+            "pagerank_score_type".to_owned(),
+            crate::engine::DataValue::Str(GraphScoreType::PageRank.as_str().into()),
+        );
+        params.insert(
+            "cluster_score_type".to_owned(),
+            crate::engine::DataValue::Str(GraphScoreType::LouvainCluster.as_str().into()),
+        );
+        params.insert(
+            "pagerank_max_score_type".to_owned(),
+            crate::engine::DataValue::Str(GraphScoreType::PageRankMax.as_str().into()),
+        );
         self.run_mut_query(RECOMPUTE_GRAPH_SCORES, params)?;
         Ok(())
     }
@@ -555,6 +606,10 @@ impl crate::knowledge_store::KnowledgeStore {
                 "now".to_owned(),
                 crate::engine::DataValue::Str(now.clone().into()),
             );
+            params.insert(
+                "volatility_score_type".to_owned(),
+                crate::engine::DataValue::Str(GraphScoreType::Volatility.as_str().into()),
+            );
             self.run_mut_query(crate::succession::STORE_VOLATILITY_SCORE, params)?;
         }
 
@@ -567,8 +622,15 @@ impl crate::knowledge_store::KnowledgeStore {
     /// that have stored volatility data.
     pub(crate) fn load_volatility_scores(&self) -> crate::error::Result<HashMap<String, f64>> {
         let result = self.run_query(
-            r"?[entity_id, score] := *graph_scores{entity_id, score_type, score}, score_type = 'volatility'",
-            std::collections::BTreeMap::new(),
+            r"?[entity_id, score] := *graph_scores{entity_id, score_type, score}, score_type == $volatility_score_type",
+            {
+                let mut params = std::collections::BTreeMap::new();
+                params.insert(
+                    "volatility_score_type".to_owned(),
+                    crate::engine::DataValue::Str(GraphScoreType::Volatility.as_str().into()),
+                );
+                params
+            },
         )?;
 
         let mut scores = HashMap::new();

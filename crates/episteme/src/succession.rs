@@ -179,7 +179,8 @@ avg_cl[eid, mean(cl)] := entity_facts[eid, _, cl]
 
 /// Datalog script to store volatility scores in `graph_scores`.
 ///
-/// Parameters: `$entity_id`, `$volatility`, `$now` (ISO 8601 string).
+/// Parameters: `$entity_id`, `$volatility`, `$volatility_score_type`,
+/// `$now` (ISO 8601 string).
 #[cfg_attr(
     not(feature = "mneme-engine"),
     expect(
@@ -190,7 +191,7 @@ avg_cl[eid, mean(cl)] := entity_facts[eid, _, cl]
 pub(crate) const STORE_VOLATILITY_SCORE: &str = r"
 ?[entity_id, score_type, score, cluster_id, updated_at] :=
     entity_id = $entity_id,
-    score_type = 'volatility',
+    score_type = $volatility_score_type,
     score = $volatility,
     cluster_id = -1,
     updated_at = $now

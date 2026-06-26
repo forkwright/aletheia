@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::consolidation::ConsolidationResult;
-use crate::test_fixtures::{make_entity, make_store};
+use crate::test_fixtures::{make_entity, make_fact, make_relationship, make_store};
 
 // kanon:ignore RUST/doc-promised-observability — doc comment describes data-flow invariants, not tracing
 /// Requirement #3634: consolidating N source facts into one Fact must
@@ -307,6 +307,85 @@ fn consolidation_mixed_project_ids_refused() {
     assert!(
         msg.contains("mixed project IDs"),
         "error should identify project conflict: {msg}"
+    );
+}
+
+/// Requirement #4678: graph recomputation writes Louvain community assignments
+/// using the same score type that consolidation reads for community overflow.
+#[test]
+fn graph_recompute_clusters_are_discovered_for_community_consolidation() {
+    let store = make_store();
+    for (id, name) in [("alice", "Alice"), ("bob", "Bob"), ("charlie", "Charlie")] {
+        store
+            .insert_entity(&make_entity(id, name, "person"))
+            .expect("insert entity");
+    }
+    for (src, dst) in [
+        ("alice", "bob"),
+        ("bob", "alice"),
+        ("alice", "charlie"),
+        ("charlie", "alice"),
+        ("bob", "charlie"),
+        ("charlie", "bob"),
+    ] {
+        store
+            .insert_relationship(&make_relationship(src, dst, "KNOWS", 0.9))
+            .expect("insert relationship");
+    }
+
+    let facts = [
+        (
+            "cluster-fact-alice",
+            "alice",
+            "alice coordinates the launch",
+        ),
+        ("cluster-fact-bob", "bob", "bob owns the rollout plan"),
+        (
+            "cluster-fact-charlie",
+            "charlie",
+            "charlie tracks launch risk",
+        ),
+    ];
+    for (fact_id, entity_id, content) in facts {
+        let fact = make_fact(fact_id, "alice", content);
+        let entity_id = EntityId::new(entity_id).expect("valid entity id");
+        store.insert_fact(&fact).expect("insert fact");
+        store
+            .insert_fact_entity(&fact.id, &entity_id)
+            .expect("link fact to entity");
+    }
+
+    store
+        .recompute_graph_scores()
+        .expect("graph recompute creates scores");
+    let ctx = store.load_graph_context().expect("load graph context");
+    assert!(
+        !ctx.clusters.is_empty(),
+        "graph recompute must write cluster assignments"
+    );
+
+    let config = ConsolidationConfig {
+        community_fact_threshold: 3,
+        ..ConsolidationConfig::default()
+    };
+    let candidates = store
+        .find_community_overflow_candidates("alice", &config)
+        .expect("find community candidates");
+    let candidate = candidates
+        .iter()
+        .find(|candidate| candidate.fact_ids.len() == 3)
+        .expect("consolidation must discover the recomputed graph cluster");
+
+    let mut fact_ids: Vec<&str> = candidate.fact_ids.iter().map(FactId::as_str).collect();
+    fact_ids.sort_unstable();
+    assert_eq!(
+        fact_ids,
+        vec![
+            "cluster-fact-alice",
+            "cluster-fact-bob",
+            "cluster-fact-charlie"
+        ],
+        "community candidate must gather the facts linked to the recomputed cluster"
     );
 }
 

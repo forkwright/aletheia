@@ -546,7 +546,7 @@ impl KnowledgeStore {
             let script = format!(
                 r"
                 ?[fact_id, content, nous_id, sensitivity, scope, project_id, visibility] :=
-                    *graph_scores{{entity_id, score_type: 'cluster', cluster_id: $cid}},
+                    *graph_scores{{entity_id, score_type: $cluster_score_type, cluster_id: $cid}},
                     *fact_entities{{fact_id: fid, entity_id}},
                     *facts{{id: fid, content, nous_id, is_forgotten, superseded_by,
                            sensitivity, scope, project_id, visibility}},
@@ -558,6 +558,14 @@ impl KnowledgeStore {
             );
             let mut params = std::collections::BTreeMap::new();
             params.insert("cid".to_owned(), crate::engine::DataValue::from(cluster_id));
+            params.insert(
+                "cluster_score_type".to_owned(),
+                crate::engine::DataValue::Str(
+                    crate::graph_intelligence::GraphScoreType::LouvainCluster
+                        .as_str()
+                        .into(),
+                ),
+            );
             params.insert(
                 "limit".to_owned(),
                 crate::engine::DataValue::from(i64::try_from(limit).unwrap_or(i64::MAX)),
@@ -709,7 +717,7 @@ impl KnowledgeStore {
                 r"
                 {visible}
                 ?[fact_id, content, nous_id, sensitivity, scope, project_id, visibility] :=
-                    *graph_scores{{entity_id, score_type: 'cluster', cluster_id: $cid}},
+                    *graph_scores{{entity_id, score_type: $cluster_score_type, cluster_id: $cid}},
                     *fact_entities{{fact_id: fid, entity_id}},
                     visible_fact[fid],
                     *facts{{id: fid, content, nous_id, is_forgotten, superseded_by,
@@ -723,6 +731,14 @@ impl KnowledgeStore {
             );
             let mut params = std::collections::BTreeMap::new();
             params.insert("cid".to_owned(), crate::engine::DataValue::from(cluster_id));
+            params.insert(
+                "cluster_score_type".to_owned(),
+                crate::engine::DataValue::Str(
+                    crate::graph_intelligence::GraphScoreType::LouvainCluster
+                        .as_str()
+                        .into(),
+                ),
+            );
             params.insert(
                 "limit".to_owned(),
                 crate::engine::DataValue::from(i64::try_from(limit).unwrap_or(i64::MAX)),

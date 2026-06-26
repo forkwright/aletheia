@@ -147,6 +147,14 @@ impl KnowledgeStore {
         let mut params = BTreeMap::new();
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert(
+            "cluster_score_type".to_owned(),
+            DataValue::Str(
+                crate::graph_intelligence::GraphScoreType::LouvainCluster
+                    .as_str()
+                    .into(),
+            ),
+        );
+        params.insert(
             "min_count".to_owned(),
             DataValue::from(i64::try_from(config.community_fact_threshold).unwrap_or(i64::MAX)),
         );
@@ -160,6 +168,10 @@ impl KnowledgeStore {
                 }
                 .build()
             })?;
+
+        if result.row_count() == 0 {
+            self.log_zero_community_candidates_with_cluster_state(nous_id, config);
+        }
 
         let mut candidates = Vec::new();
         for i in 0..result.row_count() {
@@ -221,9 +233,53 @@ impl KnowledgeStore {
         params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert("cluster_id".to_owned(), DataValue::from(cluster_id));
         params.insert("cutoff".to_owned(), DataValue::Str(cutoff.into()));
+        params.insert(
+            "cluster_score_type".to_owned(),
+            DataValue::Str(
+                crate::graph_intelligence::GraphScoreType::LouvainCluster
+                    .as_str()
+                    .into(),
+            ),
+        );
 
         let result = self.run_query(CLUSTER_FACTS_FOR_CONSOLIDATION, params)?;
         parse_fact_rows(&result.rows)
+    }
+
+    fn log_zero_community_candidates_with_cluster_state(
+        &self,
+        nous_id: &str,
+        config: &ConsolidationConfig,
+    ) {
+        let mut params = BTreeMap::new();
+        params.insert(
+            "cluster_score_type".to_owned(),
+            DataValue::Str(
+                crate::graph_intelligence::GraphScoreType::LouvainCluster
+                    .as_str()
+                    .into(),
+            ),
+        );
+        let Ok(result) = self.run_query(
+            r"?[count(entity_id)] := *graph_scores{entity_id, score_type}, score_type == $cluster_score_type",
+            params,
+        ) else {
+            return;
+        };
+        let cluster_row_count = result
+            .rows()
+            .first()
+            .and_then(|row| row.first())
+            .and_then(DataValue::get_int)
+            .unwrap_or(0);
+        if cluster_row_count > 0 {
+            tracing::info!(
+                nous_id,
+                cluster_row_count,
+                threshold = config.community_fact_threshold,
+                "community consolidation found zero overflow candidates despite nonempty graph cluster state"
+            );
+        }
     }
 
     /// Execute a consolidation: insert new facts, supersede originals, record audit.

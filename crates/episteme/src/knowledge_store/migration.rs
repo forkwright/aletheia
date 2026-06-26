@@ -83,6 +83,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
         target_version: 19,
         run: KnowledgeStore::migrate_v18_to_v19,
     },
+    MigrationStep {
+        target_version: 20,
+        run: KnowledgeStore::migrate_v19_to_v20,
+    },
 ];
 
 #[cfg(feature = "mneme-engine")]
@@ -1404,6 +1408,164 @@ impl KnowledgeStore {
         self.stamp_schema_version(19, "v18->v19")?;
 
         tracing::info!("knowledge schema migration v18 -> v19 complete");
+        Ok(())
+    }
+
+    /// Migrate v19 -> v20: normalize Louvain community score types (#4678).
+    ///
+    /// Historical consolidation queries looked for `score_type = 'louvain'`,
+    /// while graph recomputation wrote the same community assignments as
+    /// `score_type = 'cluster'`. The canonical label remains `cluster` because
+    /// it is already what graph recomputation, graph-context loading, and recall
+    /// expansion use. This migration carries forward any legacy-only `louvain`
+    /// rows, preserves existing canonical rows when both labels are present for
+    /// an entity, and removes the legacy rows.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "WHY(#4678): migration keeps read, copy, cleanup, and stamp in one auditable sequence"
+    )]
+    pub(super) fn migrate_v19_to_v20(&self) -> crate::error::Result<()> {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v19 -> v20");
+
+        if !self.relation_exists("graph_scores")? {
+            self.stamp_schema_version(20, "v19->v20")?;
+            tracing::info!("knowledge schema migration v19 -> v20 complete (no graph_scores)");
+            return Ok(());
+        }
+
+        let mut read_params = BTreeMap::new();
+        read_params.insert(
+            "legacy_score_type".to_owned(),
+            DataValue::Str(crate::graph_intelligence::LEGACY_LOUVAIN_CLUSTER_SCORE_TYPE.into()),
+        );
+        read_params.insert(
+            "cluster_score_type".to_owned(),
+            DataValue::Str(
+                crate::graph_intelligence::GraphScoreType::LouvainCluster
+                    .as_str()
+                    .into(),
+            ),
+        );
+
+        let legacy_rows = self
+            .db
+            .run(
+                r"?[entity_id, score, cluster_id, updated_at] :=
+                    *graph_scores{entity_id, score_type, score, cluster_id, updated_at},
+                    score_type == $legacy_score_type",
+                read_params.clone(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 read legacy louvain graph_scores: {e}"),
+                }
+                .build()
+            })?;
+
+        let canonical_rows = self
+            .db
+            .run(
+                r"?[entity_id] :=
+                    *graph_scores{entity_id, score_type},
+                    score_type == $cluster_score_type",
+                read_params.clone(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 read canonical cluster graph_scores: {e}"),
+                }
+                .build()
+            })?;
+
+        let canonical_entity_ids: BTreeSet<String> = canonical_rows
+            .rows
+            .iter()
+            .filter_map(|row| row.first().and_then(DataValue::get_str))
+            .map(str::to_owned)
+            .collect();
+
+        let mut copied = 0_usize;
+        for row in &legacy_rows.rows {
+            let (
+                Some(entity_id_value),
+                Some(score_value),
+                Some(cluster_id_value),
+                Some(updated_at_value),
+            ) = (row.first(), row.get(1), row.get(2), row.get(3))
+            else {
+                continue;
+            };
+            let Some(entity_id) = entity_id_value.get_str() else {
+                continue;
+            };
+            if canonical_entity_ids.contains(entity_id) {
+                continue;
+            }
+
+            let mut insert_params = BTreeMap::new();
+            insert_params.insert("entity_id".to_owned(), entity_id_value.clone());
+            insert_params.insert(
+                "score_type".to_owned(),
+                DataValue::Str(
+                    crate::graph_intelligence::GraphScoreType::LouvainCluster
+                        .as_str()
+                        .into(),
+                ),
+            );
+            insert_params.insert("score".to_owned(), score_value.clone());
+            insert_params.insert("cluster_id".to_owned(), cluster_id_value.clone());
+            insert_params.insert("updated_at".to_owned(), updated_at_value.clone());
+            self.db
+                .run(
+                    r"?[entity_id, score_type, score, cluster_id, updated_at] <- [[
+                        $entity_id, $score_type, $score, $cluster_id, $updated_at
+                    ]]
+                    :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }",
+                    insert_params,
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v19->v20 copy louvain graph_score for {entity_id}: {e}"),
+                    }
+                    .build()
+                })?;
+            copied += 1;
+        }
+
+        let mut remove_params = BTreeMap::new();
+        remove_params.insert(
+            "legacy_score_type".to_owned(),
+            DataValue::Str(crate::graph_intelligence::LEGACY_LOUVAIN_CLUSTER_SCORE_TYPE.into()),
+        );
+        self.db
+            .run(
+                r"?[entity_id, score_type] :=
+                    *graph_scores{entity_id, score_type},
+                    score_type == $legacy_score_type
+                  :rm graph_scores { entity_id, score_type }",
+                remove_params,
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 remove legacy louvain graph_scores: {e}"),
+                }
+                .build()
+            })?;
+
+        self.stamp_schema_version(20, "v19->v20")?;
+
+        tracing::info!(
+            legacy_rows = legacy_rows.rows.len(),
+            copied,
+            "knowledge schema migration v19 -> v20 complete"
+        );
         Ok(())
     }
 }

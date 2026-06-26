@@ -335,6 +335,93 @@ fn v18_migration_backfills_fact_entities_from_content() {
 }
 
 #[test]
+fn v20_migration_normalizes_legacy_louvain_graph_scores() {
+    use crate::engine::DataValue;
+
+    let store = make_store();
+    let mut params = std::collections::BTreeMap::new();
+    params.insert(
+        "legacy_score_type".to_owned(),
+        DataValue::Str(crate::graph_intelligence::LEGACY_LOUVAIN_CLUSTER_SCORE_TYPE.into()),
+    );
+    params.insert(
+        "cluster_score_type".to_owned(),
+        DataValue::Str(
+            crate::graph_intelligence::GraphScoreType::LouvainCluster
+                .as_str()
+                .into(),
+        ),
+    );
+    store
+        .run_mut_query(
+            r#"
+            ?[entity_id, score_type, score, cluster_id, updated_at] <- [
+                ["legacy-only", $legacy_score_type, 0.0, 7, "2026-06-01T00:00:00Z"],
+                ["both-labels", $legacy_score_type, 0.0, 99, "2026-06-01T00:00:00Z"],
+                ["both-labels", $cluster_score_type, 0.0, 42, "2026-06-02T00:00:00Z"]
+            ]
+            :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+            "#,
+            params,
+        )
+        .expect("seed mixed graph score labels");
+
+    store
+        .migrate_v19_to_v20()
+        .expect("v19->v20 graph score cleanup succeeds");
+
+    let mut query_params = std::collections::BTreeMap::new();
+    query_params.insert(
+        "legacy_score_type".to_owned(),
+        DataValue::Str(crate::graph_intelligence::LEGACY_LOUVAIN_CLUSTER_SCORE_TYPE.into()),
+    );
+    let legacy_rows = store
+        .run_query(
+            r"?[entity_id] :=
+                *graph_scores{entity_id, score_type},
+                score_type == $legacy_score_type",
+            query_params,
+        )
+        .expect("query legacy rows");
+    assert!(
+        legacy_rows.is_empty(),
+        "migration must remove legacy louvain score rows"
+    );
+
+    let mut query_params = std::collections::BTreeMap::new();
+    query_params.insert(
+        "cluster_score_type".to_owned(),
+        DataValue::Str(
+            crate::graph_intelligence::GraphScoreType::LouvainCluster
+                .as_str()
+                .into(),
+        ),
+    );
+    let canonical_rows = store
+        .run_query(
+            r"?[entity_id, cluster_id] :=
+                *graph_scores{entity_id, score_type, cluster_id},
+                score_type == $cluster_score_type
+             :sort entity_id",
+            query_params,
+        )
+        .expect("query canonical rows");
+    let observed: Vec<(String, i64)> = canonical_rows
+        .rows()
+        .iter()
+        .filter_map(|row| Some((row.first()?.get_str()?.to_owned(), row.get(1)?.get_int()?)))
+        .collect();
+    assert_eq!(
+        observed,
+        vec![
+            ("both-labels".to_owned(), 42),
+            ("legacy-only".to_owned(), 7)
+        ],
+        "migration must preserve existing canonical rows and copy legacy-only rows"
+    );
+}
+
+#[test]
 fn reembed_all_updates_embedding_meta() {
     let store = KnowledgeStore::open_mem_with_config(mock_config("old-model"))
         .expect("open in-memory knowledge store");
