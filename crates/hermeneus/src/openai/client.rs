@@ -620,6 +620,13 @@ fn record_nonstream_success(
         cost_usd,
         true,
     );
+    // WHY(#4658): OpenAI wire parsers populate cache_read_tokens; emit them so
+    // cost/efficiency dashboards see prompt-cache activity.
+    crate::metrics::record_cache_tokens(
+        provider_name,
+        response.usage.cache_read_tokens,
+        response.usage.cache_write_tokens,
+    );
     crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
 }
 
@@ -678,6 +685,14 @@ fn record_stream_success(
         response.usage.output_tokens,
         cost_usd,
         true,
+    );
+    // WHY(#4658): Streaming completions accumulate cached prompt tokens in
+    // usage.cache_read_tokens; record them for observability parity with
+    // non-streaming completions.
+    crate::metrics::record_cache_tokens(
+        provider_name,
+        response.usage.cache_read_tokens,
+        response.usage.cache_write_tokens,
     );
     crate::metrics::record_latency(&request.model, "ok", start.elapsed().as_secs_f64());
 }
