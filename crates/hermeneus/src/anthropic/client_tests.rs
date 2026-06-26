@@ -136,11 +136,39 @@ fn from_config_custom_models_claim_routing() {
         provider.match_specificity("kimi-for-coding"),
         Some(MatchKind::Exact)
     );
+    // WHY (#5874): operator-declared model list is a closed set — claude-*
+    // models NOT in the list must return None, not CatchAll.
     assert_eq!(
         provider.match_specificity(koina::models::names::opus()),
-        Some(MatchKind::CatchAll),
-        "custom-model instance catches claude-* at lower precedence"
+        None,
+        "operator-declared endpoint must not match unlisted claude-* models"
     );
+    assert!(!provider.supports_model(koina::models::names::opus()));
+}
+
+#[test]
+fn match_specificity_operator_refs_excludes_unlisted_claude_models() {
+    // Regression test for #5874: has_operator_model_refs && !contains must
+    // return None, never CatchAll.
+    let config = ProviderConfig {
+        // NOTE: test-only fixture value, not a real credential
+        api_key: Some(SecretString::from("sk-test-123")),
+        base_url: Some("https://compat.api.example.com".to_owned()),
+        name: Some("custom-endpoint".to_owned()),
+        models: vec!["custom-claude-v1".to_owned()],
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    // Declared model returns Exact.
+    assert_eq!(
+        provider.match_specificity("custom-claude-v1"),
+        Some(MatchKind::Exact)
+    );
+    // Undeclared claude-* model must return None — not CatchAll (#5874).
+    assert_eq!(provider.match_specificity("claude-opus-4-20250514"), None);
+    assert_eq!(provider.match_specificity("claude-future-unknown"), None);
+    // Unrelated models also return None.
+    assert_eq!(provider.match_specificity("gpt-4o"), None);
 }
 
 #[test]

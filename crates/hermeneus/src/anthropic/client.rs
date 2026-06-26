@@ -1098,10 +1098,18 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        // WHY (#4881): first-party Anthropic catalog models must be Exact
-        // matches so a broad catch-all provider registered earlier (e.g. the
-        // Claude Code subprocess provider) cannot intercept ordinary claude-*
-        // traffic. Unknown future claude-* aliases still fall back to CatchAll.
+        // WHY (#4881, #5874): when the operator has declared an explicit model
+        // list, only those models match — CatchAll must not spill to models the
+        // operator never declared, or we route to endpoints that cannot serve them.
+        if self.meta.has_operator_model_refs {
+            return if self.meta.models.iter().any(|m| m == model) {
+                Some(MatchKind::Exact)
+            } else {
+                None
+            };
+        }
+        // Default (catalog-backed) provider: catalog models are Exact; unknown
+        // claude-* aliases still catch-all so future models are served (#4881).
         if self.meta.models.iter().any(|m| m == model) {
             Some(MatchKind::Exact)
         } else if model.starts_with("claude-") {
