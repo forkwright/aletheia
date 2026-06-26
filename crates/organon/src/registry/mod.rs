@@ -20,7 +20,7 @@ use crate::surface::{
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallCapability, ToolCallCapabilityRule,
     ToolCallMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput,
-    ToolOutcome, ToolResult, ToolTag,
+    ToolOrigin, ToolOutcome, ToolResult, ToolTag,
 };
 
 /// Shared, mutable snapshot used by the `tool_schema` meta-tool.
@@ -95,6 +95,13 @@ struct RegisteredTool {
 pub struct ToolRegistry {
     // kanon:ignore RUST/pub-visibility
     tools: IndexMap<ToolName, RegisteredTool>,
+    /// Origin metadata for externally-provided tools, keyed by local name.
+    ///
+    /// WHY: Origin is stored separately from [`ToolDef`] so that existing
+    /// built-in tool definitions do not need to change, while MCP and HTTP
+    /// tool planes can still publish server/remote provenance for diagnostics
+    /// and approval display.
+    origins: HashMap<ToolName, ToolOrigin>,
     /// Snapshot state for the `tool_schema` meta-tool.  `None` until
     /// `tool_schema` is registered.
     tool_schema_snapshot: Option<ToolSchemaSnapshot>,
@@ -113,6 +120,7 @@ impl ToolRegistry {
         // kanon:ignore RUST/pub-visibility
         Self {
             tools: IndexMap::new(),
+            origins: HashMap::new(),
             tool_schema_snapshot: None,
         }
     }
@@ -215,6 +223,26 @@ impl ToolRegistry {
     pub fn get_def(&self, name: &ToolName) -> Option<&ToolDef> {
         // kanon:ignore RUST/pub-visibility
         self.tools.get(name).map(|t| &t.def)
+    }
+
+    /// Attach origin metadata to an already-registered tool.
+    ///
+    /// WHY: External tool planes register the executor separately from the
+    /// provenance metadata. This lets them publish server/remote names after
+    /// a successful registration without changing the [`ToolDef`] shape used
+    /// by every built-in tool.
+    pub fn set_origin(&mut self, name: ToolName, origin: ToolOrigin) {
+        // kanon:ignore RUST/pub-visibility
+        if self.tools.contains_key(&name) {
+            self.origins.insert(name, origin);
+        }
+    }
+
+    /// Look up the origin metadata for a tool by name.
+    #[must_use]
+    pub fn origin(&self, name: &ToolName) -> Option<&ToolOrigin> {
+        // kanon:ignore RUST/pub-visibility
+        self.origins.get(name)
     }
 
     /// Execute a tool by name.
@@ -340,6 +368,7 @@ impl ToolRegistry {
             self.tools.values().map(|tool| RegistrySurfaceTool {
                 def: &tool.def,
                 call_capability: tool.call_capability.as_ref(),
+                origin: self.origins.get(&tool.def.name),
             }),
             inputs,
         )
@@ -776,6 +805,7 @@ impl ToolRegistry {
             reversibility: t.def.reversibility,
             approval: ApprovalRequirement::from(t.def.reversibility),
             dry_run,
+            origin: self.origins.get(name).cloned(),
         })
     }
 
@@ -794,6 +824,7 @@ impl ToolRegistry {
             reversibility: call_capability.reversibility,
             approval: ApprovalRequirement::from(call_capability.reversibility),
             dry_run,
+            origin: self.origins.get(&input.name).cloned(),
         })
     }
 
