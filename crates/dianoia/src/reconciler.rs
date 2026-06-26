@@ -50,6 +50,8 @@ pub enum ReconciliationDirection {
     DbOnly,
     /// Project exists only on the filesystem.
     FilesOnly,
+    /// Neither source has a snapshot for the project.
+    NeitherExists,
 }
 
 impl std::fmt::Display for ReconciliationDirection {
@@ -60,6 +62,7 @@ impl std::fmt::Display for ReconciliationDirection {
             Self::InSync => f.write_str("in-sync"),
             Self::DbOnly => f.write_str("db-only"),
             Self::FilesOnly => f.write_str("files-only"),
+            Self::NeitherExists => f.write_str("neither-exists"),
         }
     }
 }
@@ -143,7 +146,7 @@ pub(crate) fn reconcile(
 
         (None, None) => ReconciliationResult {
             project_id: String::new(),
-            direction: ReconciliationDirection::InSync,
+            direction: ReconciliationDirection::NeitherExists,
             conflicts: Vec::new(),
             resolved: None,
             errors: vec!["no snapshots provided".to_owned()],
@@ -336,7 +339,7 @@ mod tests {
     fn no_snapshots_returns_error() {
         let result = reconcile(None, None, DEFAULT_TIMESTAMP_TOLERANCE_SECS);
 
-        assert_eq!(result.direction, ReconciliationDirection::InSync);
+        assert_eq!(result.direction, ReconciliationDirection::NeitherExists);
         assert!(!result.errors.is_empty());
         assert!(result.resolved.is_none());
     }
@@ -605,5 +608,9 @@ mod tests {
         assert_eq!(ReconciliationDirection::InSync.to_string(), "in-sync");
         assert_eq!(ReconciliationDirection::DbOnly.to_string(), "db-only");
         assert_eq!(ReconciliationDirection::FilesOnly.to_string(), "files-only");
+        assert_eq!(
+            ReconciliationDirection::NeitherExists.to_string(),
+            "neither-exists"
+        );
     }
 }
