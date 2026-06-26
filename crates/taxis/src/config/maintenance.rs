@@ -455,6 +455,15 @@ fn default_archive_before_delete() -> bool {
     true
 }
 
+// WHY(#5658): serde `default = "..."` requires the function return type to
+// match the field type exactly; `Option<u32>` allows `None` to disable archive
+// pruning. The function always returns `Some(90)` triggering
+// `unnecessary_wraps`, but changing the return type would break the serde
+// default wiring without a full custom `Deserialize` impl.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "WHY(#5658): serde default fn must return Option<u32> to match the field type"
+)]
 fn default_archive_ttl_days() -> Option<u32> {
     // WHY: 90 days bounds archive growth by default while keeping a reasonable
     // recovery window for recently deleted sessions (#5658).

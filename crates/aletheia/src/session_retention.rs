@@ -227,7 +227,7 @@ fn cleanup_closed_sessions(
         match session.status {
             SessionStatus::Archived | SessionStatus::Distilled => {
                 let archive_stats = if settings.archive_before_delete {
-                    Some(write_session_archive(store, &archive_dir, &session)?)
+                    Some(write_session_archive(store, archive_dir, &session)?)
                 } else {
                     None
                 };
@@ -287,7 +287,7 @@ fn enforce_session_cap(
             match session.status {
                 SessionStatus::Archived | SessionStatus::Distilled => {
                     let archive_stats = if settings.archive_before_delete {
-                        Some(write_session_archive(store, &archive_dir, session)?)
+                        Some(write_session_archive(store, archive_dir, session)?)
                     } else {
                         None
                     };
@@ -395,10 +395,10 @@ fn prune_session_archive_dir(
             continue;
         }
 
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !name.ends_with(".json") {
+        if !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
             continue;
         }
 
@@ -1124,7 +1124,7 @@ mod tests {
             .map_err(|e| retention_error(format!("write recent archive: {e}")))?;
 
         let stale_time = SystemTime::now()
-            .checked_sub(Duration::from_secs(5 * 86400))
+            .checked_sub(Duration::from_hours(120))
             .ok_or_else(|| retention_error("stale archive time overflow"))?;
         let file = OpenOptions::new()
             .write(true)
