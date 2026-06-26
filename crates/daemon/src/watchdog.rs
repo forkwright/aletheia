@@ -1,6 +1,6 @@
 //! Watchdog process monitor with heartbeat tracking and auto-recovery.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
@@ -22,6 +22,12 @@ const BACKOFF_BASE: Duration = Duration::from_secs(2);
 
 /// Maximum backoff delay cap (5 minutes).
 const BACKOFF_CAP: Duration = Duration::from_mins(5);
+
+/// Maximum number of restart events retained in memory.
+///
+/// WHY: a fixed cap prevents unbounded growth over daemon lifetime while
+/// preserving enough diagnostic history for the current restart window.
+const RESTART_LOG_CAP: usize = 100;
 
 /// Watchdog configuration.
 #[derive(Debug, Clone)]
@@ -173,7 +179,7 @@ pub(crate) struct Watchdog {
     processes: HashMap<String, WatchedProcess>,
     config: WatchdogConfig,
     shutdown: CancellationToken,
-    restart_log: Vec<RestartEvent>,
+    restart_log: VecDeque<RestartEvent>,
 }
 
 impl Watchdog {
@@ -183,7 +189,7 @@ impl Watchdog {
             processes: HashMap::new(),
             config,
             shutdown,
-            restart_log: Vec::new(),
+            restart_log: VecDeque::new(),
         }
     }
 
@@ -243,7 +249,7 @@ impl Watchdog {
     }
 
     /// Return the restart event log.
-    pub(crate) fn restart_log(&self) -> &[RestartEvent] {
+    pub(crate) fn restart_log(&self) -> &VecDeque<RestartEvent> {
         &self.restart_log
     }
 
@@ -428,12 +434,16 @@ impl Watchdog {
 
         crate::metrics::record_watchdog_restart(id);
 
-        self.restart_log.push(RestartEvent {
+        self.restart_log.push_back(RestartEvent {
             process_id: id.to_owned(),
             cause,
             attempt,
             timestamp: jiff::Timestamp::now().to_string(),
         });
+        // WHY: evict oldest entries once the cap is exceeded.
+        if self.restart_log.len() > RESTART_LOG_CAP {
+            self.restart_log.pop_front();
+        }
     }
 }
 

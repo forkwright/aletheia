@@ -10,6 +10,8 @@ use super::{KEY_PREFIX, generate, list, parse_key, revoke, time_from_unix, valid
 use crate::store::AuthStore;
 use crate::types::{ApiKeyRecord, Claims, Role, TokenKind};
 
+const TEST_ISSUER: &str = "aletheia";
+
 fn memory_store() -> AuthStore {
     AuthStore::open_in_memory().unwrap()
 }
@@ -19,13 +21,13 @@ fn memory_store() -> AuthStore {
 #[test]
 fn generate_and_validate_roundtrip() {
     let store = memory_store();
-    let (key, record) = generate(&store, "test", Role::Operator, None, None).unwrap();
+    let (key, record) = generate(&store, "test", Role::Operator, None, None, TEST_ISSUER).unwrap();
 
     assert!(key.starts_with("ale_test_"));
     assert_eq!(record.prefix, "test");
     assert_eq!(record.role, Role::Operator);
 
-    let claims = validate(&store, &key).unwrap();
+    let claims = validate(&store, &key, TEST_ISSUER).unwrap();
     assert_eq!(claims.sub, "apikey:test");
     assert_eq!(claims.role, Role::Operator);
 }
@@ -33,8 +35,8 @@ fn generate_and_validate_roundtrip() {
 #[test]
 fn generate_agent_key_with_nous_id() {
     let store = memory_store();
-    let (key, _) = generate(&store, "syn", Role::Agent, Some("syn"), None).unwrap();
-    let claims = validate(&store, &key).unwrap();
+    let (key, _) = generate(&store, "syn", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
+    let claims = validate(&store, &key, TEST_ISSUER).unwrap();
     assert_eq!(claims.role, Role::Agent);
     assert_eq!(claims.nous_id.as_deref(), Some("syn"));
 }
@@ -42,33 +44,33 @@ fn generate_agent_key_with_nous_id() {
 #[test]
 fn revoked_key_rejected() {
     let store = memory_store();
-    let (key, record) = generate(&store, "test", Role::Operator, None, None).unwrap();
+    let (key, record) = generate(&store, "test", Role::Operator, None, None, TEST_ISSUER).unwrap();
 
     revoke(&store, &record.id).unwrap();
-    let result = validate(&store, &key);
+    let result = validate(&store, &key, TEST_ISSUER);
     assert!(result.is_err());
 }
 
 #[test]
 fn malformed_key_rejected() {
     let store = memory_store();
-    assert!(validate(&store, "not-a-key").is_err());
-    assert!(validate(&store, "ale_").is_err());
-    assert!(validate(&store, "ale__secret").is_err());
-    assert!(validate(&store, "xyz_test_secret").is_err());
+    assert!(validate(&store, "not-a-key", TEST_ISSUER).is_err());
+    assert!(validate(&store, "ale_", TEST_ISSUER).is_err());
+    assert!(validate(&store, "ale__secret", TEST_ISSUER).is_err());
+    assert!(validate(&store, "xyz_test_secret", TEST_ISSUER).is_err());
 }
 
 #[test]
 fn nonexistent_key_rejected() {
     let store = memory_store();
-    assert!(validate(&store, "ale_test_nonexistent").is_err());
+    assert!(validate(&store, "ale_test_nonexistent", TEST_ISSUER).is_err());
 }
 
 #[test]
 fn list_returns_all_keys() {
     let store = memory_store();
-    generate(&store, "a", Role::Operator, None, None).unwrap();
-    generate(&store, "b", Role::Agent, Some("syn"), None).unwrap();
+    generate(&store, "a", Role::Operator, None, None, TEST_ISSUER).unwrap();
+    generate(&store, "b", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
 
     let keys = list(&store).unwrap();
     assert_eq!(keys.len(), 2);
@@ -85,7 +87,7 @@ fn parse_key_format() {
 #[test]
 fn key_secret_is_64_hex_chars() {
     let store = memory_store();
-    let (key, _) = generate(&store, "test", Role::Operator, None, None).unwrap();
+    let (key, _) = generate(&store, "test", Role::Operator, None, None, TEST_ISSUER).unwrap();
     let parts: Vec<&str> = key.splitn(3, '_').collect();
     assert_eq!(parts[2].len(), 64); // NOTE: 32 bytes * 2 hex chars
 }
@@ -98,7 +100,8 @@ fn key_secret_is_64_hex_chars() {
 #[test]
 fn generate_returns_well_formed_full_key_string() {
     let store = memory_store();
-    let (key, _record) = generate(&store, "holder", Role::Operator, None, None).unwrap();
+    let (key, _record) =
+        generate(&store, "holder", Role::Operator, None, None, TEST_ISSUER).unwrap();
 
     let parts: Vec<&str> = key.splitn(3, '_').collect();
     assert_eq!(parts.len(), 3);
@@ -120,7 +123,8 @@ fn generate_returns_well_formed_full_key_string() {
 #[test]
 fn generate_record_reflects_requested_role_and_nous_id() {
     let store = memory_store();
-    let (_k, record) = generate(&store, "syn", Role::Agent, Some("syn"), None).unwrap();
+    let (_k, record) =
+        generate(&store, "syn", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
 
     assert_eq!(record.prefix, "syn");
     assert_eq!(record.role, Role::Agent);
@@ -140,7 +144,7 @@ fn generate_record_reflects_requested_role_and_nous_id() {
 #[test]
 fn generate_without_expiry_leaves_expires_at_none() {
     let store = memory_store();
-    let (_k, record) = generate(&store, "noexp", Role::Readonly, None, None).unwrap();
+    let (_k, record) = generate(&store, "noexp", Role::Readonly, None, None, TEST_ISSUER).unwrap();
     assert!(record.expires_at.is_none());
 }
 
@@ -157,7 +161,15 @@ fn generate_with_expiry_sets_expires_at_near_requested() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let (_k, record) = generate(&store, "exp", Role::Operator, None, Some(expires_in)).unwrap();
+    let (_k, record) = generate(
+        &store,
+        "exp",
+        Role::Operator,
+        None,
+        Some(expires_in),
+        TEST_ISSUER,
+    )
+    .unwrap();
     let after = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -221,13 +233,14 @@ fn iso8601_to_unix_secs(s: &str) -> u64 {
 fn validate_with_stored_expiry(expires_at: &str) -> (crate::error::Result<Claims>, String) {
     let store = memory_store();
     // Generate a real key to get valid (raw_key, key_hash) pair.
-    let (raw_key, record) = generate(&store, "exp", Role::Agent, Some("syn"), None).unwrap();
+    let (raw_key, record) =
+        generate(&store, "exp", Role::Agent, Some("syn"), None, TEST_ISSUER).unwrap();
     let overridden = ApiKeyRecord {
         expires_at: Some(expires_at.to_owned()),
         ..record
     };
     store.store_api_key(&overridden).unwrap();
-    let result = validate(&store, &raw_key);
+    let result = validate(&store, &raw_key, TEST_ISSUER);
     (result, raw_key)
 }
 
@@ -280,8 +293,8 @@ fn validate_claims_round_trip_all_fields() {
 
     for &(role, nous_id, prefix) in cases {
         let store = memory_store();
-        let (key, record) = generate(&store, prefix, role, nous_id, None).unwrap();
-        let claims = validate(&store, &key).unwrap();
+        let (key, record) = generate(&store, prefix, role, nous_id, None, TEST_ISSUER).unwrap();
+        let claims = validate(&store, &key, TEST_ISSUER).unwrap();
 
         assert_eq!(claims.role, role, "role mismatch for prefix={prefix}");
         assert_eq!(
@@ -294,7 +307,7 @@ fn validate_claims_round_trip_all_fields() {
             format!("apikey:{prefix}"),
             "sub mismatch for prefix={prefix}"
         );
-        assert_eq!(claims.iss, "aletheia");
+        assert_eq!(claims.iss, TEST_ISSUER);
         assert_eq!(claims.jti, record.id);
         assert!(matches!(claims.kind, TokenKind::Access));
     }
@@ -305,10 +318,33 @@ fn validate_claims_round_trip_all_fields() {
 #[test]
 fn validate_returns_stored_jti() {
     let store = memory_store();
-    let (key, record) = generate(&store, "jti", Role::Operator, None, None).unwrap();
-    let claims = validate(&store, &key).unwrap();
+    let (key, record) = generate(&store, "jti", Role::Operator, None, None, TEST_ISSUER).unwrap();
+    let claims = validate(&store, &key, TEST_ISSUER).unwrap();
     assert!(!claims.jti.is_empty());
     assert_eq!(claims.jti, record.id);
+}
+
+/// Regression (#5479): `validate` must derive `iss` from the configured issuer,
+/// not from a hardcoded `"aletheia"` literal. A non-default issuer must appear
+/// in the returned `Claims`.
+#[test]
+fn validate_uses_configured_issuer() {
+    let store = memory_store();
+    let custom_issuer = "myorg-aletheia";
+    let (key, _record) = generate(
+        &store,
+        "custom-issuer",
+        Role::Operator,
+        None,
+        None,
+        custom_issuer,
+    )
+    .unwrap();
+
+    let claims = validate(&store, &key, custom_issuer).unwrap();
+    assert_eq!(claims.iss, custom_issuer);
+    assert_eq!(claims.sub, "apikey:custom-issuer");
+    assert_eq!(claims.role, Role::Operator);
 }
 
 // ── time_from_unix: exact formatting for known timestamps ────────────────────
