@@ -65,6 +65,62 @@ impl StdioMcpServerConfig {
     }
 }
 
+/// Authentication configuration for streamable HTTP MCP connections.
+///
+/// WHY(#4633): this is a transport-layer view of the auth declared in taxis
+/// config; env-var resolution happens here so missing env vars surface as
+/// transport errors rather than config parse errors.
+#[derive(Debug, Clone)]
+pub enum McpAuth {
+    /// Static bearer token sent as `Authorization: Bearer <token>`.
+    Bearer {
+        /// Bearer token value.
+        token: String,
+    },
+    /// Static custom header name and value.
+    Header {
+        /// HTTP header name.
+        name: String,
+        /// HTTP header value.
+        value: String,
+    },
+    /// Read a token from an environment variable at connection time.
+    EnvToken {
+        /// HTTP header name that will carry the token.
+        header_name: String,
+        /// Environment variable to read.
+        env_var: String,
+    },
+}
+
+impl McpAuth {
+    /// Resolve this auth config to a single `(header_name, header_value)` pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport error when an env-var is missing.
+    pub fn header(&self) -> Result<(String, String)> {
+        match self {
+            Self::Bearer { token } => Ok(("Authorization".to_owned(), format!("Bearer {token}"))),
+            Self::Header { name, value } => Ok((name.clone(), value.clone())),
+            Self::EnvToken {
+                header_name,
+                env_var,
+            } => {
+                let token = std::env::var(env_var).map_err(|e| {
+                    TransportSnafu {
+                        message: format!(
+                            "auth env_var '{env_var}' is not set for HTTP MCP endpoint: {e}"
+                        ),
+                    }
+                    .build()
+                })?;
+                Ok((header_name.clone(), token))
+            }
+        }
+    }
+}
+
 /// Running external MCP client connection.
 #[derive(Clone)]
 pub struct ExternalMcpClient {
@@ -139,7 +195,46 @@ impl ExternalMcpClient {
     ///
     /// Returns [`crate::error::Error::Transport`] when the MCP handshake fails.
     pub async fn connect_streamable_http(endpoint: &str) -> Result<Self> {
-        let transport = StreamableHttpClientTransport::from_uri(endpoint.to_owned());
+        Self::connect_streamable_http_with_auth(endpoint, None).await
+    }
+
+    /// Connect to a streamable HTTP MCP server with optional authentication.
+    ///
+    /// WHY(#4633): authenticated MCP servers need bearer tokens, static custom
+    /// headers, or env-var tokens without embedding secrets in the URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::Transport`] when the MCP handshake fails, a
+    /// header cannot be parsed, or an env-var token is missing.
+    pub async fn connect_streamable_http_with_auth(
+        endpoint: &str,
+        auth: Option<&McpAuth>,
+    ) -> Result<Self> {
+        use http::{HeaderName, HeaderValue};
+        use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+
+        let mut custom_headers = HashMap::new();
+        if let Some(auth) = auth {
+            let (name, value) = auth.header()?;
+            let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+                TransportSnafu {
+                    message: format!("invalid HTTP header name '{name}': {e}"),
+                }
+                .build()
+            })?;
+            let header_value = HeaderValue::from_str(&value).map_err(|e| {
+                TransportSnafu {
+                    message: format!("invalid HTTP header value for '{name}': {e}"),
+                }
+                .build()
+            })?;
+            custom_headers.insert(header_name, header_value);
+        }
+
+        let config = StreamableHttpClientTransportConfig::with_uri(endpoint.to_owned())
+            .custom_headers(custom_headers);
+        let transport = StreamableHttpClientTransport::from_config(config);
         let client_info = ClientInfo::new(
             ClientCapabilities::default(),
             Implementation::new("aletheia-diaporeia", env!("CARGO_PKG_VERSION")),

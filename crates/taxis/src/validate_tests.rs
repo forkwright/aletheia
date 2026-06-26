@@ -532,6 +532,91 @@ fn rejects_invalid_http_method() {
 }
 
 #[test]
+fn accepts_mcp_tool_with_valid_bearer_auth() {
+    let section = json!({
+        "required": {
+            "secure": {
+                "type": "mcp",
+                "endpoint": "https://mcp.example.com",
+                "auth": { "type": "bearer", "token": "secret-token" }
+            }
+        }
+    });
+    assert!(
+        validate_section("tools", &section).is_ok(),
+        "valid bearer auth should be accepted"
+    );
+}
+
+#[test]
+fn rejects_mcp_tool_with_empty_bearer_token() {
+    let section = json!({
+        "required": {
+            "secure": {
+                "type": "mcp",
+                "endpoint": "https://mcp.example.com",
+                "auth": { "type": "bearer", "token": "" }
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(result.is_err(), "empty bearer token should be rejected");
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("token"), "error should mention token: {err}");
+}
+
+#[test]
+fn rejects_mcp_tool_with_invalid_auth_type() {
+    let section = json!({
+        "required": {
+            "secure": {
+                "type": "mcp",
+                "endpoint": "https://mcp.example.com",
+                "auth": { "type": "hmac" }
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(result.is_err(), "invalid auth type should be rejected");
+}
+
+#[test]
+fn rejects_mcp_tool_with_missing_env_token_field() {
+    let section = json!({
+        "required": {
+            "secure": {
+                "type": "mcp",
+                "endpoint": "https://mcp.example.com",
+                "auth": { "type": "env_token", "header_name": "X-Api-Key" }
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "env_token without env_var should be rejected"
+    );
+}
+
+#[test]
+fn rejects_mcp_tool_with_missing_custom_header_value() {
+    let section = json!({
+        "required": {
+            "secure": {
+                "type": "mcp",
+                "endpoint": "https://mcp.example.com",
+                "auth": { "type": "header", "name": "X-Api-Key" }
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "header auth without value should be rejected"
+    );
+}
+
+#[test]
 fn rejects_invalid_tool_name() {
     let section = json!({
         "required": {

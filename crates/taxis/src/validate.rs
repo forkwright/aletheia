@@ -933,9 +933,72 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                         "tools.{group}.{name}.endpoint must use http:// or https://"
                     ));
                 }
+                if let Some(auth) = entry.get("auth") {
+                    validate_tool_auth(&format!("tools.{group}.{name}.auth"), auth, errors);
+                }
             }
             _ => {} // other tool types carry no additional endpoint constraints
         }
+    }
+}
+
+/// Validate an `auth` block inside a tool declaration.
+///
+/// Rejects empty tokens, header names/values, or env-var references so
+/// auth-required configs fail fast at validation time (#4633).
+fn validate_tool_auth(path: &str, value: &Value, errors: &mut Vec<String>) {
+    let Some(kind) = value.get("type").and_then(Value::as_str) else {
+        errors.push(format!("{path}.type is required"));
+        return;
+    };
+
+    match kind {
+        "bearer" => {
+            if value
+                .get("token")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                errors.push(format!("{path}.token is required and must not be empty"));
+            }
+        }
+        "header" => {
+            if value
+                .get("name")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                errors.push(format!("{path}.name is required and must not be empty"));
+            }
+            if value
+                .get("value")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                errors.push(format!("{path}.value is required and must not be empty"));
+            }
+        }
+        "env_token" => {
+            if value
+                .get("header_name")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                errors.push(format!(
+                    "{path}.header_name is required and must not be empty"
+                ));
+            }
+            if value
+                .get("env_var")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                errors.push(format!("{path}.env_var is required and must not be empty"));
+            }
+        }
+        other => errors.push(format!(
+            "{path}.type '{other}' is invalid; must be one of: bearer, header, env_token"
+        )),
     }
 }
 

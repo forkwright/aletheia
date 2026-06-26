@@ -628,6 +628,7 @@ mod tests {
                 env: std::collections::HashMap::new(),
                 description: None,
                 method: crate::config::ExternalToolMethod::Post,
+                auth: None,
             },
         );
         staged.agents.defaults.model_defaults.thinking_budget = 20_000;
