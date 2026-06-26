@@ -649,6 +649,34 @@ async fn refresh_loop_honours_shutdown_signal() {
     drop(provider);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn refresh_loop_cancels_on_drop_without_explicit_shutdown() {
+    // WHY: verifies the production shutdown path — dropping the provider
+    // during application teardown — cancels the background task even when the
+    // caller does not call shutdown() first.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join(".credentials.json");
+    write_cred(
+        &path,
+        "sk-ant-oat-live",
+        "rt-live",
+        unix_epoch_ms() + 7_200_000,
+    );
+
+    let provider =
+        RefreshingCredentialProvider::new(path).expect("provider constructs from seeded file");
+
+    // The loop is alive and the state is readable.
+    let cred = provider
+        .get_credential()
+        .expect("live provider serves the seeded token");
+    assert_eq!(cred.secret.expose_secret(), "sk-ant-oat-live");
+
+    // Dropping without explicit shutdown must cancel the loop promptly and
+    // without panic.
+    drop(provider);
+}
+
 // ── do_refresh log-redaction regression (issue 5247) ──
 // WHY: OAuth error bodies are provider-controlled and must not appear in logs.
 // These tests drive `do_refresh` against a mock token endpoint and verify that

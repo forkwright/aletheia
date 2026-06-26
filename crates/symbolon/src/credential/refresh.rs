@@ -189,13 +189,9 @@ impl RefreshingCredentialProvider {
     }
 
     /// Signal the background refresh task to stop.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "called from tests; will be wired from server shutdown path"
-        )
-    )]
+    ///
+    /// Called automatically by [`Drop`] so application shutdown cancels the
+    /// refresh loop eagerly; tests may also call it explicitly.
     pub(crate) fn shutdown(&self) {
         self.shutdown.cancel();
     }
@@ -224,8 +220,18 @@ impl CredentialProvider for RefreshingCredentialProvider {
     }
 }
 
-// NOTE: No Drop impl — cleanup is registered at setup time via CleanupRegistry.
-// The registry fires its callbacks (cancel token + abort task) on drop.
+impl Drop for RefreshingCredentialProvider {
+    fn drop(&mut self) {
+        // WHY: Eagerly cancel the background refresh loop when the provider is
+        // dropped during application shutdown (or any other scope exit), so
+        // in-flight OAuth requests are aborted before the runtime tears down.
+        self.shutdown();
+    }
+}
+
+// NOTE: Cleanup is also registered at setup time via CleanupRegistry as a
+// defence-in-depth measure: the registry aborts the background task on drop
+// even if construction is only partially completed in the caller.
 
 /// Track last-observed mtime for file change detection.
 struct FileMtimeTracker {
