@@ -294,14 +294,18 @@ pub async fn update_enabled(
 
     {
         let mut config = state.config.write().await;
-        let agent = ensure_agent_definition(&mut config, &runtime)?;
+        let mut staged = config.clone();
+        let agent = ensure_agent_definition(&mut staged, &runtime)?;
         agent.enabled = body.enabled;
-        let persisted = config.clone();
-        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
+
+        // WHY(#4582): Write the staged config before swapping the live config so
+        // a persistence failure leaves runtime state unchanged.
+        taxis::loader::write_config(&state.oikos, &staged).map_err(|e| ApiError::Internal {
             message: format!("failed to write config: {e}"),
             location: snafu::location!(),
         })?;
-        if let Err(e) = state.config_tx.send(persisted) {
+        *config = staged.clone();
+        if let Err(e) = state.config_tx.send(staged) {
             tracing::warn!(error = %e, "config broadcast has no receivers");
         }
     }
@@ -395,7 +399,8 @@ pub async fn update_tool(
 
     {
         let mut config = state.config.write().await;
-        let agent = ensure_agent_definition(&mut config, &runtime)?;
+        let mut staged = config.clone();
+        let agent = ensure_agent_definition(&mut staged, &runtime)?;
         let mut allowlist = agent
             .tool_allowlist
             .take()
@@ -416,12 +421,14 @@ pub async fn update_tool(
             Some(allowlist)
         };
 
-        let persisted = config.clone();
-        taxis::loader::write_config(&state.oikos, &persisted).map_err(|e| ApiError::Internal {
+        // WHY(#4582): Write the staged allowlist before swapping the live config so
+        // a persistence failure leaves runtime policy unchanged.
+        taxis::loader::write_config(&state.oikos, &staged).map_err(|e| ApiError::Internal {
             message: format!("failed to write config: {e}"),
             location: snafu::location!(),
         })?;
-        if let Err(e) = state.config_tx.send(persisted) {
+        *config = staged.clone();
+        if let Err(e) = state.config_tx.send(staged) {
             tracing::warn!(error = %e, "config broadcast has no receivers");
         }
     }

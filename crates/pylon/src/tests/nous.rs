@@ -2,6 +2,7 @@
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after asserting len or known structure"
 )]
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -332,4 +333,97 @@ async fn nous_recover_requires_auth() {
     let resp = app.oneshot(req).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+// Regression coverage for #4582: config mutations must be atomic with writes.
+
+/// Return a test state whose config directory is read-only. Permissions are
+/// restored by [`restore_config_dir_permissions`] so the temp directory can be
+/// cleaned up.
+async fn state_with_unwritable_config() -> (Arc<AppState>, tempfile::TempDir) {
+    let (state, dir) = test_state().await;
+    let config_dir = dir.path().join("config");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test helper sets permissions to simulate a failed config write"
+    )]
+    std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o555))
+        .expect("set config dir read-only");
+    (state, dir)
+}
+
+fn restore_config_dir_permissions(dir: &tempfile::TempDir) {
+    let config_dir = dir.path().join("config");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test helper restores permissions before tempdir cleanup"
+    )]
+    std::fs::set_permissions(&config_dir, std::fs::Permissions::from_mode(0o755))
+        .expect("restore config dir permissions");
+}
+
+#[tokio::test]
+async fn patch_nous_enabled_leaves_config_unchanged_on_write_failure() {
+    let (state, dir) = state_with_unwritable_config().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let before = {
+        let config = state.config.read().await;
+        config.agents.list.clone()
+    };
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn",
+        Some(serde_json::json!({ "enabled": false })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "internal_error");
+
+    let after = {
+        let config = state.config.read().await;
+        config.agents.list.clone()
+    };
+    assert_eq!(
+        after, before,
+        "live agent config must not change when persistence fails"
+    );
+
+    restore_config_dir_permissions(&dir);
+}
+
+#[tokio::test]
+async fn patch_nous_tools_leaves_config_unchanged_on_write_failure() {
+    let (state, dir) = state_with_unwritable_config().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let before = {
+        let config = state.config.read().await;
+        config.agents.list.clone()
+    };
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn/tools",
+        Some(serde_json::json!({ "tool": "read_file", "enabled": false })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "internal_error");
+
+    let after = {
+        let config = state.config.read().await;
+        config.agents.list.clone()
+    };
+    assert_eq!(
+        after, before,
+        "live agent config must not change when persistence fails"
+    );
+
+    restore_config_dir_permissions(&dir);
 }
