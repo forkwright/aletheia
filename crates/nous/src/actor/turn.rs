@@ -462,6 +462,10 @@ impl NousActor {
         let vector_search = self.stores.vector_search.clone();
         #[cfg(feature = "knowledge-store")]
         let text_search = self.stores.text_search.clone();
+        #[cfg(feature = "knowledge-store")]
+        let knowledge_store = self.stores.knowledge_store.clone();
+        #[cfg(not(feature = "knowledge-store"))]
+        let knowledge_store = None;
         let session_store = self.stores.session_store.clone();
         // WHY: share the bootstrap file cache across the spawned pipeline task
         // so cached workspace reads are reused turn-to-turn (#3388).
@@ -495,6 +499,7 @@ impl NousActor {
                                     embedding_provider.as_deref(),
                                     vector_search.as_deref(),
                                     text_search_ref,
+                                    knowledge_store,
                                     session_store.as_deref(),
                                     extra_bootstrap,
                                     Some(stx),
@@ -518,6 +523,7 @@ impl NousActor {
                                     embedding_provider.as_deref(),
                                     vector_search.as_deref(),
                                     text_search_ref,
+                                    knowledge_store,
                                     session_store.as_deref(),
                                     extra_bootstrap,
                                     None,

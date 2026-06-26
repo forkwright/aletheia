@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 use std::future::Future;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use jiff;
@@ -14,6 +15,7 @@ use tracing::{Instrument, info_span, instrument, warn};
 use hermeneus::provider::ProviderRegistry;
 use koina::event::EventEmitter;
 use mneme::embedding::EmbeddingProvider;
+use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
@@ -633,12 +635,30 @@ pub struct ReflectionResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ReflectionStatus {
-    /// Stage skipped because reflection is disabled.
+    /// Stage did not run because reflection is disabled.
+    Disabled,
+    /// Stage skipped because there were no eligible facts to reflect.
     Skipped,
     /// Stage skipped because no `KnowledgeStore` is available in the pipeline.
     NoStore,
     /// Reflection completed and facts were emitted.
     Completed,
+    /// Reflection attempted durable work and failed.
+    Failed,
+}
+
+impl ReflectionStatus {
+    /// Stable metric/log label for this status.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Skipped => "skipped",
+            Self::NoStore => "no_store",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+        }
+    }
 }
 
 impl ReflectionResult {
@@ -963,6 +983,7 @@ pub(crate) async fn run_pipeline(
     embedding_provider: Option<&dyn EmbeddingProvider>,
     vector_search: Option<&dyn crate::recall::VectorSearch>,
     text_search: Option<&dyn crate::recall::TextSearch>,
+    knowledge_store: Option<Arc<KnowledgeStore>>,
     session_store: Option<&Mutex<SessionStore>>,
     extra_bootstrap: Vec<BootstrapSection>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
@@ -1263,7 +1284,14 @@ pub(crate) async fn run_pipeline(
             "reflection",
             &mut time_budget,
             emitter,
-            run_reflection_stage(config, pipeline_config, &mut ctx, emitter),
+            run_reflection_stage(
+                config,
+                pipeline_config,
+                &mut ctx,
+                knowledge_store,
+                Some(&input.session.id),
+                emitter,
+            ),
         )
         .await?;
         stages_completed += 1;

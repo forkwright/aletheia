@@ -19,6 +19,12 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::event::EventEmitter;
 use koina::id::{NousId, SessionId, ToolName};
+use mneme::id::FactId;
+use mneme::knowledge::{
+    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
+    Visibility, far_future, parse_timestamp,
+};
+use mneme::knowledge_store::KnowledgeStore;
 use mneme::side_query::SideQueryRanker;
 use mneme::store::SessionStore;
 use organon::registry::{ToolExecutor, ToolRegistry};
@@ -31,7 +37,7 @@ use tokio::sync::{Mutex as TokioMutex, mpsc};
 use super::*;
 use crate::budget::{StageTimingStatus, TimeBudget};
 use crate::compact::CompactConfig;
-use crate::config::{NousConfig, PipelineConfig, StageBudget};
+use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::pipeline::{DegradedMode, PipelineContext, PipelineInput, ReflectionStatus};
 use crate::session::SessionState;
@@ -367,14 +373,14 @@ async fn reflection_stage_disabled_skips() {
     let mut ctx = PipelineContext::default();
     let emitter = EventEmitter::new();
 
-    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter)
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, None, None, &emitter)
         .await
         .expect("disabled reflection should not error");
 
     let result = ctx
         .reflection_result
         .expect("reflection_result should be set");
-    assert_eq!(result.status, ReflectionStatus::Skipped);
+    assert_eq!(result.status, ReflectionStatus::Disabled);
     assert_eq!(result.facts_emitted, 0);
 }
 
@@ -388,7 +394,7 @@ async fn reflection_stage_enabled_no_store() {
     let mut ctx = PipelineContext::default();
     let emitter = EventEmitter::new();
 
-    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter)
+    run_reflection_stage(&config, &pipeline_config, &mut ctx, None, None, &emitter)
         .await
         .expect("enabled reflection without store should not error");
 
@@ -400,29 +406,154 @@ async fn reflection_stage_enabled_no_store() {
 }
 
 #[tokio::test]
-async fn reflection_stage_timeout_path() {
+async fn reflection_stage_enabled_with_store_and_no_candidates_skips() {
     let config = NousConfig::default();
     let pipeline_config = PipelineConfig {
         reflection_enabled: true,
-        stage_budget: StageBudget {
-            reflection_secs: 1,
-            ..StageBudget::default()
-        },
         ..PipelineConfig::default()
     };
+    let store = KnowledgeStore::open_mem().expect("knowledge store");
     let mut ctx = PipelineContext::default();
     let emitter = EventEmitter::new();
 
-    // With the current no-op implementation the stage completes instantly.
-    // Per-stage timeout is enforced by `run_stage_with_timeout` in the pipeline.
-    run_reflection_stage(&config, &pipeline_config, &mut ctx, &emitter)
-        .await
-        .expect("no-op reflection should not time out");
+    let verified = reflection_test_fact(
+        "verified-fact",
+        config.id.as_ref(),
+        "Alice has verified account recovery enabled",
+        EpistemicTier::Verified,
+    );
+    store.insert_fact(&verified).expect("seed verified fact");
+
+    run_reflection_stage(
+        &config,
+        &pipeline_config,
+        &mut ctx,
+        Some(Arc::clone(&store)),
+        Some("session-reflect"),
+        &emitter,
+    )
+    .await
+    .expect("reflection with no candidates should not error");
 
     let result = ctx
         .reflection_result
         .expect("reflection_result should be set");
-    assert_eq!(result.status, ReflectionStatus::NoStore);
+    assert_eq!(result.status, ReflectionStatus::Skipped);
+    assert_eq!(result.facts_emitted, 0);
+}
+
+#[tokio::test]
+async fn reflection_stage_persists_reflected_facts_idempotently() {
+    let config = NousConfig::default();
+    let pipeline_config = PipelineConfig {
+        reflection_enabled: true,
+        ..PipelineConfig::default()
+    };
+    let store = KnowledgeStore::open_mem().expect("knowledge store");
+    let mut ctx = PipelineContext::default();
+    let emitter = EventEmitter::new();
+
+    let source = reflection_test_fact(
+        "source-fact",
+        config.id.as_ref(),
+        "Alice prefers concise daily planning notes",
+        EpistemicTier::Inferred,
+    );
+    store.insert_fact(&source).expect("seed source fact");
+
+    run_reflection_stage(
+        &config,
+        &pipeline_config,
+        &mut ctx,
+        Some(Arc::clone(&store)),
+        Some("session-reflect"),
+        &emitter,
+    )
+    .await
+    .expect("reflection should persist promoted fact");
+
+    let result = ctx
+        .reflection_result
+        .as_ref()
+        .expect("reflection_result should be set");
+    assert_eq!(result.status, ReflectionStatus::Completed);
+    assert_eq!(result.facts_emitted, 1);
+
+    let query_now = mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
+    let facts = store
+        .query_facts(config.id.as_ref(), &query_now, 10)
+        .expect("query reflected facts");
+    let reflected: Vec<_> = facts
+        .iter()
+        .filter(|fact| fact.provenance.tier == EpistemicTier::Reflected)
+        .collect();
+    assert_eq!(reflected.len(), 1, "one reflected fact should be persisted");
+    assert_eq!(reflected[0].content, source.content);
+    assert_eq!(
+        reflected[0].provenance.source_session_id.as_deref(),
+        Some("session-reflect")
+    );
+    assert_ne!(
+        reflected[0].id, source.id,
+        "reflection must not overwrite the source fact"
+    );
+
+    run_reflection_stage(
+        &config,
+        &pipeline_config,
+        &mut ctx,
+        Some(Arc::clone(&store)),
+        Some("session-reflect"),
+        &emitter,
+    )
+    .await
+    .expect("second reflection pass should upsert same reflected fact");
+
+    let facts_after_second_pass = store
+        .query_facts(config.id.as_ref(), &query_now, 10)
+        .expect("query after second reflection");
+    let reflected_after_second_pass = facts_after_second_pass
+        .iter()
+        .filter(|fact| fact.provenance.tier == EpistemicTier::Reflected)
+        .count();
+    assert_eq!(
+        reflected_after_second_pass, 1,
+        "reflection should be idempotent, not duplicate facts"
+    );
+}
+
+fn reflection_test_fact(id: &str, nous_id: &str, content: &str, tier: EpistemicTier) -> Fact {
+    Fact {
+        id: FactId::new(id).expect("valid test fact id"),
+        nous_id: nous_id.to_owned(),
+        fact_type: "preference".to_owned(),
+        content: content.to_owned(),
+        scope: None,
+        project_id: None,
+        sensitivity: FactSensitivity::Public,
+        visibility: Visibility::Private,
+        temporal: FactTemporal {
+            valid_from: parse_timestamp("2026-01-01T00:00:00Z").expect("valid timestamp"),
+            valid_to: far_future(),
+            recorded_at: parse_timestamp("2026-06-01T00:00:00Z").expect("valid timestamp"),
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier,
+            source_session_id: Some("seed-session".to_owned()),
+            stability_hours: 720.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+    }
 }
 
 #[test]

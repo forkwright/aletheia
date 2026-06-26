@@ -224,6 +224,49 @@ impl InternalEvent for StageSkipped {
     }
 }
 
+/// Reflection stage completed with a durable-state outcome.
+pub(crate) struct ReflectionOutcome {
+    /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    pub(crate) nous_id: String,
+    /// Reflection outcome status.
+    pub(crate) status: &'static str,
+    /// Number of reflected facts persisted.
+    pub(crate) facts_emitted: u32,
+}
+
+impl InternalEvent for ReflectionOutcome {
+    fn event_name(&self) -> &'static str {
+        "ReflectionOutcome"
+    }
+
+    fn log_level(&self) -> LogLevel {
+        match self.status {
+            "completed" => LogLevel::Info,
+            "failed" => LogLevel::Warn,
+            _ => LogLevel::Debug,
+        }
+    }
+
+    fn log_message(&self) -> String {
+        format!(
+            "reflection {} for {} (facts_emitted={})",
+            self.status, self.nous_id, self.facts_emitted
+        )
+    }
+
+    fn metric_labels(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("nous_id", self.nous_id.clone()),
+            ("status", self.status.to_owned()),
+        ]
+    }
+
+    fn metric_value(&self) -> f64 {
+        f64::from(self.facts_emitted)
+    }
+}
+
 /// A pipeline stage timed out.
 pub(crate) struct StageTimeout {
     /// Agent identifier.

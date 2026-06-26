@@ -486,10 +486,9 @@ async fn reflection_cycle_is_enabled_for_identity_continuity() {
 
 #[tokio::test]
 async fn reflection_stage_runs_without_error_even_when_store_unavailable() {
-    // NOTE: The reflection stage is currently a no-op because KnowledgeStore
-    // is not in the pipeline signature. It returns ReflectionStatus::NoStore.
-    // This test verifies the substrate boundary: enabling reflection does not
-    // crash the pipeline and the turn completes successfully.
+    // This test verifies the substrate boundary: enabling reflection without a
+    // knowledge store records an unavailable-store outcome, does not crash the
+    // pipeline, and the turn completes successfully.
     let provider =
         MockProvider::with_responses(vec![text_response("done")]).models(&["mock-model"]);
     let (dir, oikos) = temp_oikos("reflect-agent");
