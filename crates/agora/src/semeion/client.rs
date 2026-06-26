@@ -12,11 +12,11 @@ use super::envelope::SignalEnvelope;
 use super::error::{self, Result};
 
 /// Fallback default; runtime reads `MessagingConfig::rpc_timeout_secs`.
-pub(crate) const RPC_TIMEOUT: Duration = Duration::from_secs(10);
+pub const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 /// Fallback default; runtime reads `MessagingConfig::health_timeout_secs`.
-pub(crate) const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
+pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 /// Fallback default; runtime reads `MessagingConfig::receive_timeout_secs`.
-pub(crate) const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
+pub const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Serialize)]
 struct RpcRequest<'a> {

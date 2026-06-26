@@ -12,28 +12,27 @@ use serde::{Deserialize, Serialize};
 ///
 /// These are compile-time defaults. Callers should prefer the values from
 /// `taxis::config::KnowledgeConfig::skill_decay_*` fields when available.
-#[cfg(any(feature = "mneme-engine", test))]
-pub(crate) mod decay {
+pub mod decay {
     /// Skills below this score are flagged for review.
     ///
     /// Callers should prefer `taxis::config::KnowledgeConfig::skill_decay_needs_review_threshold`.
-    pub(crate) const NEEDS_REVIEW_THRESHOLD: f64 = 0.3;
+    pub const NEEDS_REVIEW_THRESHOLD: f64 = 0.3;
     /// Skills below this score are auto-retired.
     ///
     /// Callers should prefer `taxis::config::KnowledgeConfig::skill_decay_retire_threshold`.
-    pub(crate) const RETIRE_THRESHOLD: f64 = 0.08;
+    pub const RETIRE_THRESHOLD: f64 = 0.08;
     /// Default days of inactivity before decay reaches review threshold for low-usage skills.
     ///
     /// Callers should prefer `taxis::config::KnowledgeConfig::skill_decay_stale_days`.
-    pub(crate) const DEFAULT_STALE_DAYS: u32 = 28;
+    pub const DEFAULT_STALE_DAYS: u32 = 28;
     /// Usage count above which a skill is considered "high-usage" and decays 3× slower.
     ///
     /// Callers should prefer `taxis::config::KnowledgeConfig::skill_decay_high_usage_threshold`.
-    pub(crate) const HIGH_USAGE_THRESHOLD: u32 = 10;
+    pub const HIGH_USAGE_THRESHOLD: u32 = 10;
     /// Multiplier applied to decay half-life for high-usage skills.
     ///
     /// Callers should prefer `taxis::config::KnowledgeConfig::skill_decay_high_usage_factor`.
-    pub(crate) const HIGH_USAGE_DECAY_FACTOR: f64 = 3.0;
+    pub const HIGH_USAGE_DECAY_FACTOR: f64 = 3.0;
 }
 
 /// Compute a decay score for a skill fact.

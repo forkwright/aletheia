@@ -27,20 +27,20 @@ use crate::types::{
 use connection::{AccountState, ConnectionHealthReport, ConnectionState, reconnect_delay};
 
 /// Fallback default; runtime reads `MessagingConfig::poll_interval_ms`.
-pub(crate) const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
+pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Fallback default; runtime reads `MessagingConfig::buffer_capacity`.
-pub(crate) const DEFAULT_BUFFER_CAPACITY: usize = 100;
+pub const DEFAULT_BUFFER_CAPACITY: usize = 100;
 
 /// Consecutive poll failures before the circuit breaker trips and polling halts.
 /// WHY: lowered from 20 to 5 because signal-cli being down is the common case
 /// (`auto_start=false`, user hasn't started it), and 20 retries at exponential
 /// backoff = several minutes of warn-level log spam before halting (#3104).
 /// Fallback default; runtime reads `MessagingConfig::circuit_breaker_threshold`.
-pub(crate) const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
+pub const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
 
 /// Interval between health checks while the circuit breaker is open.
 /// Fallback default; runtime reads `MessagingConfig::halted_health_check_interval_secs`.
-pub(crate) const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_mins(1);
+pub const HALTED_HEALTH_CHECK_INTERVAL: Duration = Duration::from_mins(1);
 
 /// Parsed Signal message target.
 #[derive(Debug, Clone, PartialEq, Eq)]

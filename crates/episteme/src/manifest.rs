@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Limits the side-query prompt size and LLM processing cost.
 /// Matches CC's `MAX_MEMORY_FILES` constant.
-pub(crate) const MAX_MEMORY_ENTRIES: usize = 200;
+pub const MAX_MEMORY_ENTRIES: usize = 200;
 
 /// A lightweight header for a single memory entry.
 ///

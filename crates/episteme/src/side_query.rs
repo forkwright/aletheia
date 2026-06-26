@@ -26,17 +26,17 @@ use crate::manifest::MemoryManifest;
 /// Default maximum entries returned by a single side-query.
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::side_query_max_results`.
-pub(crate) const DEFAULT_MAX_RESULTS: usize = 5;
+pub const DEFAULT_MAX_RESULTS: usize = 5;
 
 /// Default cache time-to-live in seconds.
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::side_query_cache_ttl_secs`.
-pub(crate) const DEFAULT_CACHE_TTL_SECS: u64 = 300;
+pub const DEFAULT_CACHE_TTL_SECS: u64 = 300;
 
 /// Default maximum cache entries.
 ///
 /// Callers should prefer the value from `taxis::config::KnowledgeConfig::side_query_cache_capacity`.
-pub(crate) const DEFAULT_CACHE_CAPACITY: usize = 64;
+pub const DEFAULT_CACHE_CAPACITY: usize = 64;
 
 /// Errors from side-query operations.
 #[derive(Debug, Snafu)]

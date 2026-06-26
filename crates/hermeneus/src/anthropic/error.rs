@@ -109,9 +109,9 @@ fn extract_retry_after(response: &Response) -> Option<u64> {
 /// Default retry delay for SSE stream rate-limit and overload errors.
 ///
 /// Used as the fallback when `providerBehavior.sseDefaultRetryMs` is not
-/// configured. Exposed `pub(crate)` so `AnthropicProvider` can use it as the
-/// field default when constructing from config without a behavior override.
-pub(crate) const SSE_DEFAULT_RETRY_MS: u64 = 1000;
+/// configured. Exposed `pub` so `taxis::config::ProviderBehaviorConfig` can use
+/// it as the field default when constructing from config without a behavior override.
+pub const SSE_DEFAULT_RETRY_MS: u64 = 1000;
 
 /// Map an SSE stream error event to a hermeneus error.
 ///

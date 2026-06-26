@@ -31,10 +31,10 @@ const OUTCOME_SUCCESS: u8 = 1;
 const OUTCOME_OVERLOAD: u8 = 2;
 
 /// Default EWMA smoothing factor (higher = more weight on history).
-const DEFAULT_EWMA_ALPHA: f64 = 0.8;
+pub const DEFAULT_EWMA_ALPHA: f64 = 0.8;
 
 /// Default latency threshold in seconds.
-const DEFAULT_LATENCY_THRESHOLD_SECS: f64 = 30.0;
+pub const DEFAULT_LATENCY_THRESHOLD_SECS: f64 = 30.0;
 
 /// Outcome of a request that held a [`ConcurrencyPermit`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -19,10 +19,10 @@ use serde::{Deserialize, Serialize};
 pub use koina::models::ModelTier;
 
 /// Default threshold below which queries route to the fast tier.
-const DEFAULT_LOW_THRESHOLD: u32 = 30;
+pub const DEFAULT_LOW_THRESHOLD: u32 = 30;
 
 /// Default threshold above which queries route to the high-capability tier.
-const DEFAULT_HIGH_THRESHOLD: u32 = 70;
+pub const DEFAULT_HIGH_THRESHOLD: u32 = 70;
 
 /// Default threshold below which queries are eligible for a no-LLM fast path.
 const DEFAULT_NO_LLM_THRESHOLD: u32 = 5;

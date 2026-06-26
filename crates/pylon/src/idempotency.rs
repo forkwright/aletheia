@@ -14,10 +14,12 @@ use axum::http::StatusCode;
 use indexmap::IndexMap;
 
 /// Default TTL for cached idempotency entries.
-const DEFAULT_TTL: Duration = Duration::from_mins(5);
+/// Fallback default; runtime reads `ApiLimitsConfig::idempotency_ttl_secs`.
+pub const DEFAULT_TTL: Duration = Duration::from_mins(5);
 
 /// Maximum number of entries in the cache.
-const DEFAULT_CAPACITY: usize = 10_000;
+/// Fallback default; runtime reads `ApiLimitsConfig::idempotency_capacity`.
+pub const DEFAULT_CAPACITY: usize = 10_000;
 
 /// Default maximum allowed length for an idempotency key string (64).
 const DEFAULT_MAX_KEY_LENGTH: usize = 64;

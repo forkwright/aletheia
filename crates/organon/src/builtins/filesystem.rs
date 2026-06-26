@@ -46,11 +46,7 @@ fn canonicalize_and_revalidate(
 /// engine (`ReDoS`). Cap at 1000 chars which covers all legitimate search
 /// patterns.
 /// Fallback default; runtime reads `ctx.tool_config.max_pattern_length`.
-#[expect(
-    dead_code,
-    reason = "retained as documentation of the default value; runtime reads from ToolLimitsConfig"
-)]
-pub(crate) const MAX_PATTERN_LENGTH: usize = 1000;
+pub const MAX_PATTERN_LENGTH: usize = 1000;
 
 fn truncate_output(mut output: String) -> String {
     if output.len() > MAX_OUTPUT_BYTES {
@@ -86,7 +82,8 @@ fn limit_lines(output: &str, max_lines: usize) -> String {
 /// WHY: Subprocess commands (grep, find, ls) must not run indefinitely.
 /// A 60-second wall-clock timeout prevents hung processes from consuming
 /// resources. On timeout the shared runner kills and reaps the child.
-const SUBPROCESS_TIMEOUT: Duration = Duration::from_mins(1);
+/// Fallback default; runtime reads `ctx.tool_config.subprocess_timeout_secs`.
+pub const SUBPROCESS_TIMEOUT: Duration = Duration::from_mins(1);
 
 fn run_command(
     runner: &SubprocessRunner,

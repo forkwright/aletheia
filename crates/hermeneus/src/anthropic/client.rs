@@ -142,7 +142,7 @@ fn models_from_config(config: &ProviderConfig) -> Vec<String> {
 }
 
 /// Per-request timeout for non-streaming completions.
-const NON_STREAMING_TIMEOUT: Duration = Duration::from_mins(2);
+pub const NON_STREAMING_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// HTTP headers sent on every outbound Anthropic request to opt out of
 /// using operator traffic for model training (#3406).
