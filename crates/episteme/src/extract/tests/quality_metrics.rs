@@ -61,7 +61,11 @@ async fn extract_refined_records_extraction_quality_metrics() {
         .expect("extraction should succeed");
 
     // Sanity: only the three high-confidence non-self facts should survive.
-    assert_eq!(refined.extraction.facts.len(), 3, "expected three accepted facts");
+    assert_eq!(
+        refined.extraction.facts.len(),
+        3,
+        "expected three accepted facts"
+    );
 
     let out = encode(&registry);
 

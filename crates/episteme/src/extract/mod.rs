@@ -1,11 +1,11 @@
 //! Knowledge extraction pipeline: LLM-driven entity/relationship/fact extraction.
 
-/// Optional extraction precision/recall eval hooks for labeled fixtures.
-pub mod eval;
 /// Unified diff parser for structured change analysis.
 pub mod diff;
 /// Dispatch pattern detection and scoring for steward learning.
 pub mod dispatch;
+/// Optional extraction precision/recall eval hooks for labeled fixtures.
+pub mod eval;
 /// Post-merge lesson extraction from PR diffs.
 pub mod lesson;
 /// Observation parsing from PR body markdown.

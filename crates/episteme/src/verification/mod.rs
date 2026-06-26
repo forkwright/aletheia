@@ -76,7 +76,12 @@ pub fn detect_conflict(
 
             // WHY: surface conflict/contradiction counts at extraction time so
             // operators can alert on memory-quality spikes, not just throughput.
-            crate::metrics::record_extraction_conflict(nous_id, "detect_conflict", "unknown", "unknown");
+            crate::metrics::record_extraction_conflict(
+                nous_id,
+                "detect_conflict",
+                "unknown",
+                "unknown",
+            );
             if kind == ConflictKind::Contradiction {
                 crate::metrics::record_extraction_contradiction(
                     nous_id,

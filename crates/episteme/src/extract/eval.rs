@@ -5,7 +5,7 @@
 //! are intentionally simple string-overlap metrics over the extracted
 //! entities, relationships, and facts.
 
-use super::types::{Extraction, ExtractedEntity, ExtractedFact, ExtractedRelationship};
+use super::types::{ExtractedEntity, ExtractedFact, ExtractedRelationship, Extraction};
 
 /// Labeled fixture against which to score an extraction.
 #[derive(Debug, Clone, Default)]
@@ -93,8 +93,10 @@ pub fn score_extraction(extraction: &Extraction, fixture: &LabeledFixture) -> Ex
         .map(|s| canonicalize(s))
         .collect();
 
-    let extracted: Vec<String> = [extracted_facts, extracted_relationships, extracted_entities].concat();
-    let expected: Vec<String> = [expected_facts, expected_relationships, expected_entities].concat();
+    let extracted: Vec<String> =
+        [extracted_facts, extracted_relationships, extracted_entities].concat();
+    let expected: Vec<String> =
+        [expected_facts, expected_relationships, expected_entities].concat();
 
     let mut matched_expected = vec![false; expected.len()];
     let mut true_positives = 0usize;
@@ -111,20 +113,12 @@ pub fn score_extraction(extraction: &Extraction, fixture: &LabeledFixture) -> Ex
     let false_negatives = expected.len().saturating_sub(true_positives);
 
     let precision = if extracted.is_empty() {
-        if expected.is_empty() {
-            1.0
-        } else {
-            0.0
-        }
+        if expected.is_empty() { 1.0 } else { 0.0 }
     } else {
         true_positives as f64 / extracted.len() as f64
     };
     let recall = if expected.is_empty() {
-        if extracted.is_empty() {
-            1.0
-        } else {
-            0.0
-        }
+        if extracted.is_empty() { 1.0 } else { 0.0 }
     } else {
         true_positives as f64 / expected.len() as f64
     };
@@ -197,10 +191,7 @@ mod tests {
         };
         let fixture = LabeledFixture {
             expected_entities: vec![],
-            expected_facts: vec![
-                "Alice likes Rust".to_owned(),
-                "Bob likes Python".to_owned(),
-            ],
+            expected_facts: vec!["Alice likes Rust".to_owned(), "Bob likes Python".to_owned()],
             expected_relationships: vec![],
         };
         let scores = score_extraction(&extraction, &fixture);

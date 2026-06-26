@@ -127,8 +127,9 @@ static EXTRACTION_CONFLICTS_TOTAL: LazyLock<Family<ExtractionProducerLabels, Cou
 
 /// Count of facts admitted despite having a confidence below the low-confidence
 /// threshold.
-static KNOWLEDGE_LOW_CONFIDENCE_ADMISSION_TOTAL: LazyLock<Family<LowConfidenceAdmissionLabels, Counter>> =
-    LazyLock::new(Family::default);
+static KNOWLEDGE_LOW_CONFIDENCE_ADMISSION_TOTAL: LazyLock<
+    Family<LowConfidenceAdmissionLabels, Counter>,
+> = LazyLock::new(Family::default);
 
 fn recall_duration_histogram() -> Histogram {
     Histogram::new([0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0])
@@ -154,8 +155,7 @@ fn extraction_confidence_histogram() -> Histogram {
     Histogram::new([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
 }
 
-type ExtractionConfidenceFamily =
-    Family<ExtractionConfidenceLabels, Histogram, fn() -> Histogram>;
+type ExtractionConfidenceFamily = Family<ExtractionConfidenceLabels, Histogram, fn() -> Histogram>;
 
 static EXTRACTION_CONFIDENCE_HISTOGRAM: LazyLock<ExtractionConfidenceFamily> =
     LazyLock::new(|| Family::new_with_constructor(extraction_confidence_histogram));
@@ -354,12 +354,7 @@ pub fn record_extraction_confidence(
 }
 
 /// Record that an extraction batch had confidence inflation.
-pub fn record_confidence_inflation(
-    nous_id: &str,
-    producer: &str,
-    provider: &str,
-    model: &str,
-) {
+pub fn record_confidence_inflation(nous_id: &str, producer: &str, provider: &str, model: &str) {
     EXTRACTION_CONFIDENCE_INFLATION_TOTAL
         .get_or_create(&ExtractionProducerLabels {
             nous_id: nous_id.to_owned(),
@@ -371,12 +366,7 @@ pub fn record_confidence_inflation(
 }
 
 /// Record that a fact was flagged as a correction during extraction refinement.
-pub fn record_extraction_correction(
-    nous_id: &str,
-    producer: &str,
-    provider: &str,
-    model: &str,
-) {
+pub fn record_extraction_correction(nous_id: &str, producer: &str, provider: &str, model: &str) {
     EXTRACTION_CORRECTIONS_TOTAL
         .get_or_create(&ExtractionProducerLabels {
             nous_id: nous_id.to_owned(),
@@ -388,12 +378,7 @@ pub fn record_extraction_correction(
 }
 
 /// Record that a contradiction was detected during extraction-time verification.
-pub fn record_extraction_contradiction(
-    nous_id: &str,
-    producer: &str,
-    provider: &str,
-    model: &str,
-) {
+pub fn record_extraction_contradiction(nous_id: &str, producer: &str, provider: &str, model: &str) {
     EXTRACTION_CONTRADICTIONS_TOTAL
         .get_or_create(&ExtractionProducerLabels {
             nous_id: nous_id.to_owned(),
@@ -406,12 +391,7 @@ pub fn record_extraction_contradiction(
 
 /// Record that any conflict (contradiction or duplicate) was detected during
 /// extraction-time verification.
-pub fn record_extraction_conflict(
-    nous_id: &str,
-    producer: &str,
-    provider: &str,
-    model: &str,
-) {
+pub fn record_extraction_conflict(nous_id: &str, producer: &str, provider: &str, model: &str) {
     EXTRACTION_CONFLICTS_TOTAL
         .get_or_create(&ExtractionProducerLabels {
             nous_id: nous_id.to_owned(),
