@@ -1,8 +1,9 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
-use super::{EMBEDDING_META_DDL, KNOWLEDGE_DDL, KnowledgeStore, entities_ddl, fts_ddl};
+use super::{
+    CAUSAL_EDGES_DDL, DEFAULTS_DDL, DERIVED_FACTS_DDL, DERIVED_RULE_WATERMARKS_DDL,
+    DERIVED_SOURCE_REVISION_DDL, EMBEDDING_META_DDL, ENTITY_FLAGS_DDL, FACT_ENTITIES_DDL,
+    FACTS_DDL, KnowledgeStore, MERGE_AUDIT_DDL, PENDING_MERGES_DDL, PROVENANCE_DDL,
+    PUBLISHED_FACTS_DDL, TYPE_HIERARCHY_DDL, entities_ddl, fts_ddl,
+};
 
 pub(super) struct MigrationStep {
     pub(super) target_version: i64,
@@ -86,6 +87,22 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
+    /// Run a single DDL statement and wrap errors with `context`.
+    fn run_ddl(&self, ddl: &str, context: &str) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::ScriptMutability;
+        self.db
+            .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("{context}: {e}"),
+                }
+                .build()
+            })
+            .map(|_| ())
+    }
+
     pub(super) fn migrate_v1_to_v2(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
@@ -124,14 +141,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        self.db
-            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v1->v2 recreate facts: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(FACTS_DDL, "v1->v2 recreate facts")?;
 
         for row in &all_facts.rows {
             let script = r"
@@ -191,10 +201,6 @@ impl KnowledgeStore {
         Ok(())
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "migration is a single linear sequence"
-    )]
     pub(super) fn migrate_v2_to_v3(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
@@ -235,14 +241,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        self.db
-            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v2->v3 recreate facts: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(FACTS_DDL, "v2->v3 recreate facts")?;
 
         for row in &all_facts.rows {
             let script = r"
@@ -316,17 +315,11 @@ impl KnowledgeStore {
         use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v3 -> v4");
 
-        // WHY: bounded range [3..6) to avoid creating relations from later migrations (causal_edges = index 6).
-        for ddl in &KNOWLEDGE_DDL[3..6] {
-            self.db
-                .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v3->v4 relation DDL failed: {e}"),
-                    }
-                    .build()
-                })?;
-        }
+        // WHY: create exactly the three relations added in v4; named constants
+        // prevent later insertions from silently shifting slice indices.
+        self.run_ddl(FACT_ENTITIES_DDL, "v3->v4 create fact_entities")?;
+        self.run_ddl(MERGE_AUDIT_DDL, "v3->v4 create merge_audit")?;
+        self.run_ddl(PENDING_MERGES_DDL, "v3->v4 create pending_merges")?;
 
         self.db
             .run(
@@ -374,20 +367,9 @@ impl KnowledgeStore {
 
     /// Migrate v5 → v6: add `causal_edges` relation.
     pub(super) fn migrate_v5_to_v6(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v5 -> v6");
 
-        // KNOWLEDGE_DDL[6] is the causal_edges relation (index 6, zero-based).
-        self.db
-            .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v5->v6 causal_edges DDL failed: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(CAUSAL_EDGES_DDL, "v5->v6 create causal_edges")?;
 
         self.stamp_schema_version(6, "v5->v6")?;
 
@@ -430,14 +412,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        self.db
-            .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v6->v7 recreate causal_edges: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(CAUSAL_EDGES_DDL, "v6->v7 recreate causal_edges")?;
 
         for row in &all_edges.rows {
             let script = r"
@@ -516,22 +491,11 @@ impl KnowledgeStore {
     /// - `derived_facts` — materialized output of all rule sets
     /// - `defaults` — defeasible default assertions per entity+tag
     pub(super) fn migrate_v7_to_v8(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v7 -> v8");
 
-        // KNOWLEDGE_DDL[7] = type_hierarchy, [8] = derived_facts, [9] = defaults.
-        for ddl in &KNOWLEDGE_DDL[7..=9] {
-            self.db
-                .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v7->v8 relation DDL failed: {e}"),
-                    }
-                    .build()
-                })?;
-        }
+        self.run_ddl(TYPE_HIERARCHY_DDL, "v7->v8 create type_hierarchy")?;
+        self.run_ddl(DERIVED_FACTS_DDL, "v7->v8 create derived_facts")?;
+        self.run_ddl(DEFAULTS_DDL, "v7->v8 create defaults")?;
 
         self.stamp_schema_version(8, "v7->v8")?;
 
@@ -544,22 +508,10 @@ impl KnowledgeStore {
     /// R716 Phase 3 introduces multi-agent verification + provenance tracking.
     /// Both relations are additive; no existing data is migrated.
     pub(super) fn migrate_v9_to_v10(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v9 -> v10");
 
-        // KNOWLEDGE_DDL[10] = published_facts, [11] = provenance.
-        for ddl in &KNOWLEDGE_DDL[10..=11] {
-            self.db
-                .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v9->v10 relation DDL failed: {e}"),
-                    }
-                    .build()
-                })?;
-        }
+        self.run_ddl(PUBLISHED_FACTS_DDL, "v9->v10 create published_facts")?;
+        self.run_ddl(PROVENANCE_DDL, "v9->v10 create provenance")?;
 
         self.stamp_schema_version(10, "v9->v10")?;
 
@@ -619,14 +571,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        self.db
-            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v10->v11 recreate facts: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(FACTS_DDL, "v10->v11 recreate facts")?;
 
         for row in &all_facts.rows {
             let script = r"
@@ -750,14 +695,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        self.db
-            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v11->v12 recreate facts: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(FACTS_DDL, "v11->v12 recreate facts")?;
 
         for row in &all_facts.rows {
             let script = r"
@@ -983,14 +921,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        self.db
-            .run(KNOWLEDGE_DDL[0], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v13->v14 recreate facts: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(FACTS_DDL, "v13->v14 recreate facts")?;
 
         for row in &all_facts.rows {
             let script = r"
@@ -1073,9 +1004,6 @@ impl KnowledgeStore {
     /// guessing a provider name, forcing normal startup to ask the operator for
     /// a re-embed before recall uses unknown vectors.
     pub(super) fn migrate_v14_to_v15(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v14 -> v15");
 
         if !self
@@ -1083,18 +1011,7 @@ impl KnowledgeStore {
             .iter()
             .any(|name| name == "embedding_meta")
         {
-            self.db
-                .run(
-                    EMBEDDING_META_DDL,
-                    BTreeMap::new(),
-                    ScriptMutability::Mutable,
-                )
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v14->v15 create embedding_meta: {e}"),
-                    }
-                    .build()
-                })?;
+            self.run_ddl(EMBEDDING_META_DDL, "v14->v15 create embedding_meta")?;
         }
         self.replace_embedding_meta(Self::ASSUMED_EMBEDDING_MODEL, self.dim)?;
         self.stamp_schema_version(15, "v14->v15")?;
@@ -1105,9 +1022,6 @@ impl KnowledgeStore {
 
     /// Migrate v15 -> v16: add entity review flags relation.
     pub(super) fn migrate_v15_to_v16(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v15 -> v16");
 
         if !self
@@ -1115,24 +1029,7 @@ impl KnowledgeStore {
             .iter()
             .any(|name| name == "entity_flags")
         {
-            self.db
-                .run(
-                    r":create entity_flags {
-                        entity_id: String =>
-                        reason: String,
-                        severity: String,
-                        flagged_by: String,
-                        flagged_at: String
-                    }",
-                    BTreeMap::new(),
-                    ScriptMutability::Mutable,
-                )
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v15->v16 create entity_flags: {e}"),
-                    }
-                    .build()
-                })?;
+            self.run_ddl(ENTITY_FLAGS_DDL, "v15->v16 create entity_flags")?;
         }
         self.stamp_schema_version(16, "v15->v16")?;
 
@@ -1181,14 +1078,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-        self.db
-            .run(KNOWLEDGE_DDL[6], BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v16->v17 recreate causal_edges: {e}"),
-                }
-                .build()
-            })?;
+        self.run_ddl(CAUSAL_EDGES_DDL, "v16->v17 recreate causal_edges")?;
 
         for row in &all_edges.rows {
             let script = r"
@@ -1366,7 +1256,7 @@ impl KnowledgeStore {
         if !self.relation_exists("derived_source_revision")? {
             self.db
                 .run(
-                    crate::knowledge_store::derived_rules::DERIVED_SOURCE_REVISION_DDL,
+                    DERIVED_SOURCE_REVISION_DDL,
                     BTreeMap::new(),
                     ScriptMutability::Mutable,
                 )
@@ -1400,7 +1290,7 @@ impl KnowledgeStore {
         if !has_watermarks {
             self.db
                 .run(
-                    crate::knowledge_store::derived_rules::DERIVED_RULE_WATERMARKS_DDL,
+                    DERIVED_RULE_WATERMARKS_DDL,
                     BTreeMap::new(),
                     ScriptMutability::Mutable,
                 )

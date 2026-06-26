@@ -85,138 +85,140 @@ pub const EMBEDDING_META_DDL: &str = r":create embedding_meta {
     dim: Int
 }";
 
-/// Datalog DDL for initializing the knowledge schema.
-pub const KNOWLEDGE_DDL: &[&str] = &[
-    r":create facts {
-        id: String, valid_from: String =>
-        content: String,
-        nous_id: String,
-        confidence: Float,
-        tier: String,
-        valid_to: String,
-        superseded_by: String?,
-        source_session_id: String?,
-        recorded_at: String,
-        access_count: Int,
-        last_accessed_at: String,
-        stability_hours: Float,
-        fact_type: String,
-        is_forgotten: Bool default false,
-        forgotten_at: String?,
-        forget_reason: String?,
-        scope: String?,
-        project_id: String?,
-        visibility: String default 'private',
-        sensitivity: String default 'public'
-    }",
-    // WHY: index 1 is a sentinel - `init_schema` skips this entry and runs
-    // the dim-parameterized `entities_ddl(self.dim)` instead so the relation
-    // carries a `name_embedding: <F32; DIM>?` column for the dedup pipeline
-    // (#4165 Path A). The literal here documents the pre-v13 shape but is
-    // not executed against any database.
-    r":create entities {
-        id: String =>
-        name: String,
-        entity_type: String,
-        aliases: String,
-        created_at: String,
-        updated_at: String
-    }",
-    r":create relationships {
-        src: String, dst: String =>
-        relation: String,
-        weight: Float,
-        created_at: String
-    }",
-    r":create fact_entities {
-        fact_id: String, entity_id: String =>
-        created_at: String
-    }",
-    r":create merge_audit {
-        canonical_id: String, merged_id: String =>
-        merged_name: String,
-        merge_score: Float,
-        facts_transferred: Int,
-        relationships_redirected: Int,
-        merged_at: String
-    }",
-    r":create pending_merges {
-        entity_a: String, entity_b: String =>
-        name_a: String,
-        name_b: String,
-        name_similarity: Float,
-        embed_similarity: Float,
-        type_match: Bool,
-        alias_overlap: Bool,
-        merge_score: Float,
-        created_at: String
-    }",
-    r":create causal_edges {
-        cause: String, effect: String =>
-        id: String,
-        ordering: String,
-        relationship_type: String,
-        confidence: Float,
-        evidence_session_id: String?,
-        created_at: String
-    }",
-    // Index 7 - type_hierarchy (added in schema v8)
-    r":create type_hierarchy {
-        child_type: String, parent_type: String =>
-        created_at: String
-    }",
-    // Index 8 - derived_facts (added in schema v8)
-    r":create derived_facts {
-        entity_id: String, rule_id: String, derived_content: String =>
-        confidence: Float,
-        materialized_at: String
-    }",
-    // Index 9 - defaults (added in schema v8)
-    r":create defaults {
-        entity_id: String, tag: String =>
-        default_content: String,
-        confidence: Float,
-        created_at: String
-    }",
-    // Index 10 - published_facts (added in schema v10)
-    r":create published_facts {
-        id: String =>
-        original_fact_id: String,
-        published_by: String,
-        published_at: String,
-        verification_count: Int default 0,
-        contested_by: String,
-        contest_reason: String?
-    }",
-    // Index 11 - provenance (added in schema v10)
-    r":create provenance {
-        published_fact_id: String, contributor: String =>
-        contribution_type: String,
-        confidence: Float,
-        contributed_at: String
-    }",
-    EMBEDDING_META_DDL,
-    // Index 13 - entity_flags (added in schema v16)
-    r":create entity_flags {
-        entity_id: String =>
-        reason: String,
-        severity: String,
-        flagged_by: String,
-        flagged_at: String
-    }",
-    // Index 14 - derived_source_revision (added in schema v19, #4662)
-    r":create derived_source_revision {
-        key: String =>
-        revision: Int
-    }",
-    // Index 15 - derived_rule_watermarks (added in schema v19, #4662)
-    r":create derived_rule_watermarks {
-        rule_id: String =>
-        source_revision: Int,
-        materialized_at: String,
-        dirty: Bool
-    }",
-];
+/// Datalog DDL for the facts relation.
+pub const FACTS_DDL: &str = r":create facts {
+    id: String, valid_from: String =>
+    content: String,
+    nous_id: String,
+    confidence: Float,
+    tier: String,
+    valid_to: String,
+    superseded_by: String?,
+    source_session_id: String?,
+    recorded_at: String,
+    access_count: Int,
+    last_accessed_at: String,
+    stability_hours: Float,
+    fact_type: String,
+    is_forgotten: Bool default false,
+    forgotten_at: String?,
+    forget_reason: String?,
+    scope: String?,
+    project_id: String?,
+    visibility: String default 'private',
+    sensitivity: String default 'public'
+}";
+
+/// Datalog DDL for the relationships relation.
+pub const RELATIONSHIPS_DDL: &str = r":create relationships {
+    src: String, dst: String =>
+    relation: String,
+    weight: Float,
+    created_at: String
+}";
+
+/// Datalog DDL for the `fact_entities` relation.
+pub const FACT_ENTITIES_DDL: &str = r":create fact_entities {
+    fact_id: String, entity_id: String =>
+    created_at: String
+}";
+
+/// Datalog DDL for the `merge_audit` relation.
+pub const MERGE_AUDIT_DDL: &str = r":create merge_audit {
+    canonical_id: String, merged_id: String =>
+    merged_name: String,
+    merge_score: Float,
+    facts_transferred: Int,
+    relationships_redirected: Int,
+    merged_at: String
+}";
+
+/// Datalog DDL for the `pending_merges` relation.
+pub const PENDING_MERGES_DDL: &str = r":create pending_merges {
+    entity_a: String, entity_b: String =>
+    name_a: String,
+    name_b: String,
+    name_similarity: Float,
+    embed_similarity: Float,
+    type_match: Bool,
+    alias_overlap: Bool,
+    merge_score: Float,
+    created_at: String
+}";
+
+/// Datalog DDL for the `causal_edges` relation.
+pub const CAUSAL_EDGES_DDL: &str = r":create causal_edges {
+    cause: String, effect: String =>
+    id: String,
+    ordering: String,
+    relationship_type: String,
+    confidence: Float,
+    evidence_session_id: String?,
+    created_at: String
+}";
+
+/// Datalog DDL for the `type_hierarchy` relation (added in schema v8).
+pub const TYPE_HIERARCHY_DDL: &str = r":create type_hierarchy {
+    child_type: String, parent_type: String =>
+    created_at: String
+}";
+
+/// Datalog DDL for the `derived_facts` relation (added in schema v8).
+pub const DERIVED_FACTS_DDL: &str = r":create derived_facts {
+    entity_id: String, rule_id: String, derived_content: String =>
+    confidence: Float,
+    materialized_at: String
+}";
+
+/// Datalog DDL for the defaults relation (added in schema v8).
+pub const DEFAULTS_DDL: &str = r":create defaults {
+    entity_id: String, tag: String =>
+    default_content: String,
+    confidence: Float,
+    created_at: String
+}";
+
+/// Datalog DDL for the `published_facts` relation (added in schema v10).
+pub const PUBLISHED_FACTS_DDL: &str = r":create published_facts {
+    id: String =>
+    original_fact_id: String,
+    published_by: String,
+    published_at: String,
+    verification_count: Int default 0,
+    contested_by: String,
+    contest_reason: String?
+}";
+
+/// Datalog DDL for the provenance relation (added in schema v10).
+pub const PROVENANCE_DDL: &str = r":create provenance {
+    published_fact_id: String, contributor: String =>
+    contribution_type: String,
+    confidence: Float,
+    contributed_at: String
+}";
+
+/// Datalog DDL for the `entity_flags` relation (added in schema v16).
+pub const ENTITY_FLAGS_DDL: &str = r":create entity_flags {
+    entity_id: String =>
+    reason: String,
+    severity: String,
+    flagged_by: String,
+    flagged_at: String
+}";
+
+/// Datalog DDL for the `derived_source_revision` relation (added in schema v19, #4662).
+pub const DERIVED_SOURCE_REVISION_DDL: &str = r":create derived_source_revision {
+    key: String =>
+    revision: Int
+}";
+
+/// Datalog DDL for the `derived_rule_watermarks` relation (added in schema v19, #4662).
+pub const DERIVED_RULE_WATERMARKS_DDL: &str = r":create derived_rule_watermarks {
+    rule_id: String =>
+    source_revision: Int,
+    materialized_at: String,
+    dirty: Bool
+}";
 
 /// Datalog DDL for the entities relation. Dimension is parameterized so the
 /// `name_embedding` column can hold a fixed-size F32 vector matching the
@@ -829,23 +831,44 @@ impl KnowledgeStore {
             )));
         }
 
-        // WHY: skip KNOWLEDGE_DDL[1] — the entities relation needs a
-        // dim-parameterized `name_embedding` column for the dedup pipeline
-        // (#4165 Path A). It is created explicitly via `entities_ddl(self.dim)`
-        // below; the static literal at index 1 is documentation-only.
-        for (i, ddl) in KNOWLEDGE_DDL.iter().enumerate() {
-            if i == 1 {
-                continue;
-            }
+        // WHY: each relation has a named DDL constant so additions cannot
+        // silently shift positional indices. The `entities` relation is omitted
+        // here because it needs a dim-parameterized `name_embedding` column for
+        // the dedup pipeline (#4165 Path A) and is created explicitly via
+        // `entities_ddl(self.dim)` below.
+        let run_ddl = |ddl: &str, ctx: &str| -> crate::error::Result<()> {
             self.db
                 .run(ddl, BTreeMap::new(), ScriptMutability::Mutable)
                 .map_err(|e| {
                     crate::error::EngineQuerySnafu {
-                        message: e.to_string(),
+                        message: format!("{ctx}: {e}"),
                     }
                     .build()
-                })?;
-        }
+                })
+                .map(|_| ())
+        };
+
+        run_ddl(FACTS_DDL, "init_schema facts")?;
+        run_ddl(RELATIONSHIPS_DDL, "init_schema relationships")?;
+        run_ddl(FACT_ENTITIES_DDL, "init_schema fact_entities")?;
+        run_ddl(MERGE_AUDIT_DDL, "init_schema merge_audit")?;
+        run_ddl(PENDING_MERGES_DDL, "init_schema pending_merges")?;
+        run_ddl(CAUSAL_EDGES_DDL, "init_schema causal_edges")?;
+        run_ddl(TYPE_HIERARCHY_DDL, "init_schema type_hierarchy")?;
+        run_ddl(DERIVED_FACTS_DDL, "init_schema derived_facts")?;
+        run_ddl(DEFAULTS_DDL, "init_schema defaults")?;
+        run_ddl(PUBLISHED_FACTS_DDL, "init_schema published_facts")?;
+        run_ddl(PROVENANCE_DDL, "init_schema provenance")?;
+        run_ddl(EMBEDDING_META_DDL, "init_schema embedding_meta")?;
+        run_ddl(ENTITY_FLAGS_DDL, "init_schema entity_flags")?;
+        run_ddl(
+            DERIVED_SOURCE_REVISION_DDL,
+            "init_schema derived_source_revision",
+        )?;
+        run_ddl(
+            DERIVED_RULE_WATERMARKS_DDL,
+            "init_schema derived_rule_watermarks",
+        )?;
 
         let entities_script = entities_ddl(self.dim);
         self.db
