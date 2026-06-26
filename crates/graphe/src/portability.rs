@@ -309,7 +309,15 @@ mod tests {
             path: path.to_owned(),
             content: base64::engine::general_purpose::STANDARD.encode(bytes),
             size: bytes.len(),
-            sha256: format!("{:x}", Sha256::digest(bytes)),
+            sha256: {
+                use std::fmt::Write as _;
+                Sha256::digest(bytes)
+                    .iter()
+                    .fold(String::with_capacity(64), |mut s, b| {
+                        write!(s, "{b:02x}").expect("write to String is infallible");
+                        s
+                    })
+            },
         }
     }
 
