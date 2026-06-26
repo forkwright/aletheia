@@ -195,17 +195,24 @@ impl std::error::Error for FjallOpenError {
     }
 }
 
-/// ISO 8601 timestamp string for "now" using jiff.
+/// ISO 8601 UTC timestamp string for "now" using jiff.
 ///
 /// Shared across fjall-backed stores that need consistent timestamp formatting.
+///
+/// # Canonical format
+///
+/// The returned string is always UTC, with millisecond precision and a literal
+/// `Z` suffix: `YYYY-MM-DDTHH:MM:SS.sssZ`. Callers must NOT use local wall time
+/// with a literal `Z`, because that mislabels non-UTC timestamps as UTC and
+/// corrupts lexicographic ordering, TTL comparisons, and retention logic.
 pub fn now_iso() -> String {
-    jiff::Zoned::now()
+    jiff::Timestamp::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
         .to_string()
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -256,5 +263,41 @@ mod tests {
         assert!(ts.ends_with('Z'), "timestamp must end with Z: {ts}");
         assert!(ts.contains('T'), "timestamp must contain T separator: {ts}");
         assert_eq!(ts.len(), 24, "expected 24-char ISO timestamp: {ts}");
+    }
+
+    #[test]
+    #[expect(
+        unsafe_code,
+        reason = "WHY(#4742): single-threaded test; TZ env mutation is isolated by catch_unwind and unconditionally restored before the function returns"
+    )]
+    fn now_iso_is_utc_under_non_utc_timezone() {
+        // WHY(#4742): the helper must produce real UTC timestamps even when the
+        // host uses a non-UTC timezone. A local wall-time value labeled with a
+        // literal `Z` would shift ordering, TTL comparisons, and retention by
+        // hours on non-UTC hosts.
+        let original = std::env::var("TZ").ok();
+        // SAFETY: tests are single-threaded; env mutation is acceptable in test
+        // isolation. jiff reads TZ when resolving the local timezone.
+        unsafe { std::env::set_var("TZ", "Pacific/Auckland") };
+        let result = std::panic::catch_unwind(|| {
+            let ts = now_iso();
+            assert!(
+                ts.ends_with('Z'),
+                "timestamp must carry UTC indicator: {ts}"
+            );
+            let parsed = ts.parse::<jiff::Timestamp>().expect("valid ISO 8601");
+            let now = jiff::Timestamp::now();
+            let diff = parsed.duration_since(now);
+            assert!(
+                diff <= jiff::SignedDuration::from_secs(5)
+                    && diff >= jiff::SignedDuration::from_secs(-5),
+                "timestamp {ts} is not near UTC now"
+            );
+        });
+        match original {
+            Some(v) => unsafe { std::env::set_var("TZ", v) },
+            None => unsafe { std::env::remove_var("TZ") },
+        }
+        result.expect("test did not panic");
     }
 }

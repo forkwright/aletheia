@@ -16,6 +16,32 @@ fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value
     tx.commit().expect("raw value committed");
 }
 
+/// Run a closure with `TZ` temporarily set to `tz`, restoring the previous value
+/// afterwards even if the closure panics.
+///
+/// WHY: jiff resolves the local timezone from `TZ` on first use, so tests that
+/// exercise timezone-sensitive code must set the variable before opening the
+/// store and must restore it to avoid polluting other tests.
+#[expect(
+    unsafe_code,
+    reason = "WHY(#4742): single-threaded test helper; TZ env mutation is isolated by catch_unwind and unconditionally restored before return"
+)]
+fn with_tz<F, R>(tz: &str, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let original = std::env::var("TZ").ok();
+    // SAFETY: tests are single-threaded; env mutation is acceptable in test
+    // isolation.
+    unsafe { std::env::set_var("TZ", tz) };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    match original {
+        Some(v) => unsafe { std::env::set_var("TZ", v) },
+        None => unsafe { std::env::remove_var("TZ") },
+    }
+    result.expect("test did not panic")
+}
+
 #[test]
 fn create_and_find_session() {
     let store = test_store();
@@ -638,6 +664,71 @@ fn cleanup_expired_entries_removes_expired_blackboard_rows() {
             .expect("second cleanup after removal"),
         0
     );
+}
+
+#[test]
+fn blackboard_ttl_is_utc_under_non_utc_timezone() {
+    // WHY(#4742): a TTL written on a non-UTC host must expire at the correct
+    // absolute time. If the store used local wall time labeled as UTC, the
+    // expiry would shift by the timezone offset.
+    with_tz("Pacific/Auckland", || {
+        let store = test_store();
+        store
+            .blackboard_write("ttl-goal", "value", "syn", 1)
+            .expect("write");
+        let row = store
+            .blackboard_read("ttl-goal")
+            .expect("read")
+            .expect("row exists");
+
+        let created = row
+            .created_at
+            .parse::<jiff::Timestamp>()
+            .expect("created_at parses");
+        let expires = row
+            .expires_at
+            .expect("expires_at set")
+            .parse::<jiff::Timestamp>()
+            .expect("expires_at parses");
+        assert_eq!(
+            expires.duration_since(created),
+            jiff::SignedDuration::from_secs(1),
+            "TTL must equal exactly 1 second in UTC"
+        );
+
+        let now = jiff::Timestamp::now();
+        let diff = created.duration_since(now);
+        assert!(
+            diff <= jiff::SignedDuration::from_secs(5)
+                && diff >= jiff::SignedDuration::from_secs(-5),
+            "created_at must be near UTC now, not local wall time"
+        );
+    });
+}
+
+#[test]
+fn list_sessions_orders_by_updated_at_under_non_utc_timezone() {
+    // WHY(#4742): session ordering depends on lexicographic comparison of
+    // updated_at strings. The index must remain correct even when the host uses
+    // a non-UTC timezone.
+    with_tz("Pacific/Auckland", || {
+        let store = test_store();
+        store
+            .create_session("ses-1", "alice", "main", None, None)
+            .expect("create first");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        store
+            .create_session("ses-2", "alice", "secondary", None, None)
+            .expect("create second");
+
+        let listed = store.list_sessions(Some("alice")).expect("list");
+        assert_eq!(listed.len(), 2);
+        assert_eq!(
+            listed[0].id, "ses-2",
+            "most recently updated session must be first"
+        );
+        assert_eq!(listed[1].id, "ses-1");
+    });
 }
 
 #[test]

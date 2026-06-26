@@ -24,6 +24,14 @@
 //!
 //! Sequence numbers are zero-padded to 20 digits so lexicographic ordering
 //! matches numeric ordering — enabling range scans for `get_history`.
+//!
+//! # Timestamps
+//!
+//! All timestamps stored by this module are ISO 8601 UTC strings with
+//! millisecond precision and a literal `Z` suffix:
+//! `YYYY-MM-DDTHH:MM:SS.sssZ`. Using local wall time with a literal `Z` would
+//! mislabel non-UTC timestamps as UTC and corrupt session ordering, blackboard
+//! TTL comparisons, and retention sweeps (issue #4742).
 
 #![expect(
     clippy::cast_possible_wrap,
@@ -1730,7 +1738,7 @@ impl SessionStore {
         let now = now_iso();
         let expires_at = if ttl_secs > 0 {
             Some(
-                jiff::Zoned::now()
+                jiff::Timestamp::now()
                     .checked_add(
                         jiff::Span::new()
                             .try_seconds(ttl_secs)
