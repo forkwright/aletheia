@@ -593,27 +593,21 @@ fn binary_op(
         }
         (Scalar::Money { value: lv }, Scalar::Money { value: rv }) => match op_name {
             "+" => {
-                let summed = lv
-                    .micros()
-                    .checked_add(rv.micros())
-                    .ok_or_else(|| FactbaseError::BadDerived {
-                        detail: format!(
-                            "integer overflow in money {lhs_id} {op_name} {rhs_id}"
-                        ),
-                    })?;
+                let summed = lv.micros().checked_add(rv.micros()).ok_or_else(|| {
+                    FactbaseError::BadDerived {
+                        detail: format!("integer overflow in money {lhs_id} {op_name} {rhs_id}"),
+                    }
+                })?;
                 Ok(Scalar::Money {
                     value: Money::from_micros(summed),
                 })
             }
             "-" => {
-                let diff = lv
-                    .micros()
-                    .checked_sub(rv.micros())
-                    .ok_or_else(|| FactbaseError::BadDerived {
-                        detail: format!(
-                            "integer overflow in money {lhs_id} {op_name} {rhs_id}"
-                        ),
-                    })?;
+                let diff = lv.micros().checked_sub(rv.micros()).ok_or_else(|| {
+                    FactbaseError::BadDerived {
+                        detail: format!("integer overflow in money {lhs_id} {op_name} {rhs_id}"),
+                    }
+                })?;
                 Ok(Scalar::Money {
                     value: Money::from_micros(diff),
                 })
@@ -650,12 +644,12 @@ fn add_scalars(lhs: &Scalar, rhs: &Scalar) -> Result<Scalar, FactbaseError> {
             Ok(Scalar::Count { value: summed })
         }
         (Scalar::Money { value: lv }, Scalar::Money { value: rv }) => {
-            let summed = lv
-                .micros()
-                .checked_add(rv.micros())
-                .ok_or_else(|| FactbaseError::BadDerived {
-                    detail: "integer overflow in money sum".to_owned(),
-                })?;
+            let summed =
+                lv.micros()
+                    .checked_add(rv.micros())
+                    .ok_or_else(|| FactbaseError::BadDerived {
+                        detail: "integer overflow in money sum".to_owned(),
+                    })?;
             Ok(Scalar::Money {
                 value: Money::from_micros(summed),
             })
