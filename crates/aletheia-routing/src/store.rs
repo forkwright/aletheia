@@ -17,7 +17,7 @@
 //! decision in the next window will incorporate interactive-path outcomes
 //! that arrived since the last `refresh`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -32,6 +32,12 @@ const SECS_PER_DAY: u64 = 24 * 60 * 60;
 
 /// Default rolling window for routing success-rate statistics.
 pub const DEFAULT_ROUTING_WINDOW: Duration = Duration::from_secs(7 * SECS_PER_DAY);
+
+/// Maximum number of recent interactive outcomes kept for audit.
+///
+/// WHY: bounded so the in-memory store cannot grow without limit. The log is
+/// meant for short-term operational audit, not long-term archival.
+const MAX_AUDIT_LOG_SIZE: usize = 1000;
 
 /// Errors produced by [`AfterActionStore`] operations.
 #[derive(Debug, Snafu)]
@@ -127,6 +133,11 @@ pub struct AfterActionStore {
     cache: RwLock<HashMap<(ProviderId, TaskCategory), RollingStats>>,
     /// Direct interactive writes since the most recent disk refresh.
     interactive: RwLock<HashMap<(ProviderId, TaskCategory), RollingStats>>,
+    /// Recent interactive outcomes kept for operational audit.
+    ///
+    /// WHY: lets operators inspect *why* a turn was counted as a success or
+    /// failure without replaying the full JSONL archive.
+    audit_log: RwLock<VecDeque<TurnOutcome>>,
 }
 
 impl AfterActionStore {
@@ -147,6 +158,7 @@ impl AfterActionStore {
             window,
             cache: RwLock::new(HashMap::new()),
             interactive: RwLock::new(HashMap::new()),
+            audit_log: RwLock::new(VecDeque::new()),
         }
     }
 
@@ -160,6 +172,7 @@ impl AfterActionStore {
             window: DEFAULT_ROUTING_WINDOW,
             cache: RwLock::new(HashMap::new()),
             interactive: RwLock::new(HashMap::new()),
+            audit_log: RwLock::new(VecDeque::new()),
         }
     }
 
@@ -201,18 +214,40 @@ impl AfterActionStore {
     /// captures short-term signal and dispatch routing decisions in the same
     /// window benefit.
     ///
-    /// Returns `Ok(())` on success. Future implementations may perform I/O
-    /// (e.g. persisting outcomes), in which case an `AfterActionStoreError`
-    /// is returned and must be logged by the caller.
+    /// When `outcome.interactive_outcome` is present, the stored success value
+    /// is derived from the real outcome dimensions rather than the collapsed
+    /// `success` boolean. The outcome is also appended to the bounded audit log
+    /// so operators can inspect why a turn was counted as success or failure.
     pub async fn record_outcome(&self, outcome: &TurnOutcome) -> Result<(), AfterActionStoreError> {
+        let success = outcome
+            .interactive_outcome
+            .as_ref()
+            .map_or(outcome.success, |io| io.is_success());
         let key = (outcome.provider.clone(), outcome.task_category);
         let mut cache = self.cache.write().await;
-        record_stats(cache.entry(key.clone()).or_default(), outcome.success);
+        record_stats(cache.entry(key.clone()).or_default(), success);
         drop(cache);
 
         let mut interactive = self.interactive.write().await;
-        record_stats(interactive.entry(key).or_default(), outcome.success);
+        record_stats(interactive.entry(key).or_default(), success);
+        drop(interactive);
+
+        let mut audit_log = self.audit_log.write().await;
+        audit_log.push_back(outcome.clone());
+        if audit_log.len() > MAX_AUDIT_LOG_SIZE {
+            audit_log.pop_front();
+        }
         Ok(())
+    }
+
+    /// Return a clone of the most recently recorded interactive outcomes.
+    ///
+    /// WHY: exposes the audit trail used to derive success-rate statistics so
+    /// operators and tests can verify that poor interactive turns were not
+    /// counted as successes merely because the provider returned a response.
+    #[must_use]
+    pub async fn recent_outcomes(&self) -> Vec<TurnOutcome> {
+        self.audit_log.read().await.iter().cloned().collect()
     }
 
     /// Re-scan the JSONL log directory and rebuild the in-memory cache.
@@ -674,12 +709,12 @@ mod tests {
         // Simulate 5 interactive turns: 4 success, 1 failure
         let provider = ProviderId::new("claude");
         for i in 0..5u32 {
-            let outcome = TurnOutcome {
-                provider: provider.clone(),
-                task_category: TaskCategory::Feature,
-                success: i < 4,
-                is_interactive: true,
-            };
+            let outcome = TurnOutcome::new(
+                provider.clone(),
+                TaskCategory::Feature,
+                i < 4,
+                true,
+            );
             store.record_outcome(&outcome).await.unwrap();
         }
 
@@ -711,12 +746,12 @@ mod tests {
         // Interactive path: add 2 more outcomes directly
         let provider = ProviderId::new("shared-provider");
         for i in 0..2u32 {
-            let outcome = TurnOutcome {
-                provider: provider.clone(),
-                task_category: TaskCategory::Feature,
-                success: i == 0, // 1 success, 1 failure
-                is_interactive: true,
-            };
+            let outcome = TurnOutcome::new(
+                provider.clone(),
+                TaskCategory::Feature,
+                i == 0, // 1 success, 1 failure
+                true,
+            );
             store.record_outcome(&outcome).await.unwrap();
         }
 
@@ -746,5 +781,48 @@ mod tests {
         let store = AfterActionStore::in_memory();
         // Should not error even though there's no directory
         store.refresh().await.unwrap();
+    }
+
+    /// When `interactive_outcome` is present, the store must derive success
+    /// from the real outcome dimensions rather than the collapsed boolean.
+    #[tokio::test]
+    async fn record_outcome_derives_success_from_interactive_dimensions() {
+        use crate::types::InteractiveOutcome;
+
+        let store = AfterActionStore::in_memory();
+        let provider = ProviderId::new("claude");
+        // Construct with a stale/wrong collapsed `success = true`; the store
+        // must still use the interactive dimensions.
+        let outcome = TurnOutcome {
+            provider: provider.clone(),
+            model: None,
+            task_category: TaskCategory::Feature,
+            success: true,
+            is_interactive: true,
+            interactive_outcome: Some(InteractiveOutcome {
+                completed: true,
+                user_correction: false,
+                tool_error_rate: 1.0,
+                loop_guard_intervention: false,
+                mistake_brake_intervention: false,
+                budget_exceeded: false,
+                provider_failure: false,
+                explicit_user_rating: None,
+            }),
+        };
+        store.record_outcome(&outcome).await.unwrap();
+
+        let stats = store
+            .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(1))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stats.total, 1);
+        assert_eq!(stats.successes, 0);
+        assert_eq!(stats.failures, 1);
+
+        let audit = store.recent_outcomes().await;
+        assert_eq!(audit.len(), 1);
+        assert!(audit[0].interactive_outcome.is_some());
     }
 }
