@@ -164,6 +164,7 @@ impl MockEmbeddingProvider {
 mod candle_provider {
     use super::{
         EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnafu, LockPoisonedSnafu,
+        ModelProvenance,
     };
     use candle_core::{DType, Device, Tensor};
     use candle_nn::VarBuilder;

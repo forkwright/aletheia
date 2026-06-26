@@ -497,7 +497,9 @@ fn slice_recall_computed_per_slice() {
             ("carol studies distributed systems", [1.0, 0.0]),
         ],
     );
-    let metrics = evaluate_model(&provider, &ds, &simple_corpus(), 3)
+    // WHY: K=2 so bob (sim=0.0 to q2) is outside top-2; all 3 docs are in simple_corpus,
+    // so K=3 would always return every document and the tail miss would never fire.
+    let metrics = evaluate_model(&provider, &ds, &simple_corpus(), 2)
         .expect("sliced evaluation must succeed");
 
     assert_eq!(metrics.slice_recall_at_k.len(), 2, "two slices expected");
@@ -562,7 +564,10 @@ fn compare_same_provider_different_models_passes_when_metrics_equal() {
     );
     assert_ne!(
         run.baseline.model_name,
-        run.candidate.as_ref().unwrap().model_name,
+        run.candidate
+            .as_ref()
+            .expect("candidate metrics must be present")
+            .model_name,
         "test must exercise a model-name change within the same provider"
     );
 }
