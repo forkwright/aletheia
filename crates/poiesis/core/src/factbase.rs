@@ -20,8 +20,8 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{
-    BadDerivedSnafu, CycleSnafu, DerivedTypeMismatchSnafu, FactbaseError, MissingDataSourceSnafu,
-    UnknownFactSnafu,
+    BadDerivedSnafu, CycleSnafu, DerivedTypeMismatchSnafu, FactInputsMissingSnafu, FactbaseError,
+    MissingDataSourceSnafu, UnknownFactSnafu,
 };
 use crate::ids::{ClaimId, DataSourceId, FactId};
 use crate::scalar::{Money, Scalar, Tolerance, Unit};
@@ -282,7 +282,9 @@ impl Factbase {
     ///
     /// # Errors
     ///
-    /// Returns [`FactbaseError::UnknownFact`] for dangling references and
+    /// Returns [`FactbaseError::UnknownFact`] for dangling references,
+    /// [`FactbaseError::FactInputsMissing`] when a `Derived` formula references
+    /// a fact that exists but is omitted from `inputs`, and
     /// [`FactbaseError::Cycle`] for a cyclic dependency chain.
     pub fn validate(&self) -> Result<(), FactbaseError> {
         for claim in self.claims.values() {
@@ -305,14 +307,25 @@ impl Factbase {
                 }
             }
             // WHY: The formula is the canonical dependency set for a Derived
-            // fact; validating only `inputs` lets references that the evaluator
-            // will actually use slip through as `UnknownFact` at resolve time.
-            if let Source::Derived { formula, .. } = &fact.source {
+            // fact. `source_inputs` returns the declared `inputs`, so a formula
+            // reference that exists in the factbase but is omitted from `inputs`
+            // would pass the existence check and then fail at resolve time with
+            // an indistinguishable `UnknownFact`. Validate both existence and
+            // subset here so callers get a precise error at build time.
+            if let Source::Derived { formula, inputs } = &fact.source {
+                let input_set: HashSet<&FactId> = inputs.iter().collect();
                 for ref_id in expr_fact_ids(formula) {
                     if !self.facts.contains_key(ref_id) {
                         return UnknownFactSnafu {
                             id: ref_id.as_str(),
                             referenced_by: format!("formula of fact {}", fact.id),
+                        }
+                        .fail();
+                    }
+                    if !input_set.contains(ref_id) {
+                        return FactInputsMissingSnafu {
+                            id: ref_id.as_str(),
+                            derived_fact: fact.id.as_str(),
                         }
                         .fail();
                     }
@@ -341,6 +354,7 @@ impl Factbase {
     ) -> Result<BTreeMap<FactId, ResolvedFact>, FactbaseError> {
         self.validate()?;
         let order = self.topo_order();
+        let known_ids: BTreeSet<FactId> = self.facts.keys().cloned().collect();
         let mut resolved: BTreeMap<FactId, ResolvedFact> = BTreeMap::new();
         for id in order {
             let Some(entry) = self.facts.get(&id) else {
@@ -352,7 +366,9 @@ impl Factbase {
                     Some(r) => r.value.clone(),
                     None => entry.value.clone(),
                 },
-                Source::Derived { formula, .. } => evaluate_expr(formula, &resolved)?,
+                Source::Derived { formula, .. } => {
+                    evaluate_expr(formula, &resolved, &known_ids, &entry.id)?
+                }
                 Source::Sql {
                     data_source,
                     query,
@@ -528,14 +544,43 @@ enum Mark {
 fn evaluate_expr(
     expr: &Expr,
     resolved: &BTreeMap<FactId, ResolvedFact>,
+    known_ids: &BTreeSet<FactId>,
+    derived_fact_id: &FactId,
 ) -> Result<Scalar, FactbaseError> {
     match expr {
-        Expr::Add { a, b } => binary_op(a, b, resolved, "+", |x, y| x + y, i64::checked_add),
-        Expr::Sub { a, b } => binary_op(a, b, resolved, "-", |x, y| x - y, i64::checked_sub),
-        Expr::Mul { a, b } => binary_op(a, b, resolved, "*", |x, y| x * y, i64::checked_mul),
+        Expr::Add { a, b } => binary_op(
+            a,
+            b,
+            resolved,
+            known_ids,
+            derived_fact_id,
+            "+",
+            |x, y| x + y,
+            i64::checked_add,
+        ),
+        Expr::Sub { a, b } => binary_op(
+            a,
+            b,
+            resolved,
+            known_ids,
+            derived_fact_id,
+            "-",
+            |x, y| x - y,
+            i64::checked_sub,
+        ),
+        Expr::Mul { a, b } => binary_op(
+            a,
+            b,
+            resolved,
+            known_ids,
+            derived_fact_id,
+            "*",
+            |x, y| x * y,
+            i64::checked_mul,
+        ),
         Expr::Div { a, b } => {
-            let left = lookup(a, resolved)?;
-            let right = lookup(b, resolved)?;
+            let left = lookup(a, resolved, known_ids, derived_fact_id)?;
+            let right = lookup(b, resolved, known_ids, derived_fact_id)?;
             let lf = scalar_to_f64(&left.value)?;
             let rf = scalar_to_f64(&right.value)?;
             if rf == 0.0 {
@@ -553,10 +598,10 @@ fn evaluate_expr(
             let Some(head_id) = iter.next() else {
                 return Ok(Scalar::Count { value: 0 });
             };
-            let head = lookup(head_id, resolved)?;
+            let head = lookup(head_id, resolved, known_ids, derived_fact_id)?;
             let mut acc = head.value.clone();
             for term_id in iter {
-                let next = lookup(term_id, resolved)?;
+                let next = lookup(term_id, resolved, known_ids, derived_fact_id)?;
                 acc = add_scalars(&acc, &next.value)?;
             }
             Ok(acc)
@@ -567,23 +612,44 @@ fn evaluate_expr(
 fn lookup<'a>(
     id: &FactId,
     resolved: &'a BTreeMap<FactId, ResolvedFact>,
+    known_ids: &BTreeSet<FactId>,
+    derived_fact_id: &FactId,
 ) -> Result<&'a ResolvedFact, FactbaseError> {
-    resolved.get(id).ok_or_else(|| FactbaseError::UnknownFact {
-        id: id.as_str().to_owned(),
+    if let Some(fact) = resolved.get(id) {
+        return Ok(fact);
+    }
+    // WHY: A fact id can be absent from `resolved` for two reasons: it was
+    // never declared (unknown), or it exists in the factbase but was omitted
+    // from the derived fact's `inputs` and therefore not resolved before this
+    // expression. `validate()` normally catches the latter, but this branch
+    // keeps the runtime error precise if resolution is ever invoked without
+    // validation.
+    if known_ids.contains(id) {
+        return FactInputsMissingSnafu {
+            id: id.as_str(),
+            derived_fact: derived_fact_id.as_str(),
+        }
+        .fail();
+    }
+    UnknownFactSnafu {
+        id: id.as_str(),
         referenced_by: "derived expression".to_owned(),
-    })
+    }
+    .fail()
 }
 
 fn binary_op(
     lhs_id: &FactId,
     rhs_id: &FactId,
     resolved: &BTreeMap<FactId, ResolvedFact>,
+    known_ids: &BTreeSet<FactId>,
+    derived_fact_id: &FactId,
     op_name: &str,
     f_op: fn(f64, f64) -> f64,
     i_op: fn(i64, i64) -> Option<i64>,
 ) -> Result<Scalar, FactbaseError> {
-    let lhs = lookup(lhs_id, resolved)?;
-    let rhs = lookup(rhs_id, resolved)?;
+    let lhs = lookup(lhs_id, resolved, known_ids, derived_fact_id)?;
+    let rhs = lookup(rhs_id, resolved, known_ids, derived_fact_id)?;
     match (&lhs.value, &rhs.value) {
         (Scalar::Count { value: lv }, Scalar::Count { value: rv }) => {
             let summed = i_op(*lv, *rv).ok_or_else(|| FactbaseError::BadDerived {
