@@ -18,6 +18,7 @@ use crate::util::base64url_encode;
 
 use super::OAuthRequiredAction;
 use super::file_ops::CredentialFile;
+use super::oauth_types::{OAuthErrorResponse, OAuthTokenResponse};
 
 /// Errors from PKCE authentication flow.
 // kanon:ignore RUST/no-debug-derive-on-public-types -- WHY: error enum; Debug is required by std::error::Error and Result ergonomics. Every variant carries only OAuth error codes/descriptions, source errors, and a location — no secrets, tokens, or PKCE verifiers.
@@ -249,30 +250,6 @@ impl PkcePair {
             challenge,
         })
     }
-}
-
-/// OAuth token response from the token endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct TokenResponse {
-    access_token: SecretString,
-    #[serde(default)]
-    refresh_token: Option<SecretString>,
-    #[serde(default)]
-    expires_in: Option<u64>,
-    #[serde(default)]
-    scope: Option<String>,
-    /// Token type (typically "Bearer").
-    #[serde(default)]
-    #[expect(dead_code, reason = "field provided by OAuth but not currently used")]
-    token_type: String, // kanon:ignore RUST/plain-string-secret
-}
-
-/// OAuth error response from the token endpoint.
-#[derive(Debug, serde::Deserialize)]
-struct TokenErrorResponse {
-    error: String,
-    #[serde(default)]
-    error_description: Option<String>,
 }
 
 /// Callback data received from the OAuth redirect.
@@ -614,7 +591,7 @@ async fn exchange_code(
     code: &str,
     verifier: &SecretString,
     redirect_port: u16,
-) -> Result<TokenResponse> {
+) -> Result<OAuthTokenResponse> {
     let redirect_uri = provider
         .redirect_uri
         .clone()
@@ -644,7 +621,7 @@ async fn exchange_code(
     if !status.is_success() {
         // WHY: prefer the structured OAuth error body when it parses; fall back
         // to the raw HTTP status + body.
-        if let Ok(err) = serde_json::from_str::<TokenErrorResponse>(&body_text) {
+        if let Ok(err) = serde_json::from_str::<OAuthErrorResponse>(&body_text) {
             return Err(PkceError::OAuthError {
                 error: err.error,
                 error_description: err.error_description,
