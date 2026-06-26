@@ -22,21 +22,6 @@ use tracing::instrument;
 use super::KnowledgeStore;
 use crate::engine::{DataValue, ScriptMutability};
 
-/// Datalog DDL for the global derived-rule source-revision counter (#4662).
-///
-/// A single row with `key = 'global'` tracks a monotonic revision that is
-/// bumped whenever a base relation (`facts`, `entities`, `causal_edges`,
-/// `type_hierarchy`, `defaults`) changes. Rule watermarks compare against
-/// this counter to detect stale materializations.
-pub use super::DERIVED_SOURCE_REVISION_DDL;
-
-/// Datalog DDL for per-rule materialization watermarks (#4662).
-///
-/// Each rule family (`ontological`, `causal`, `defeasible`) stores the source
-/// revision it was materialized against, the materialization timestamp, and a
-/// dirty flag that base writes set to `true`.
-pub use super::DERIVED_RULE_WATERMARKS_DDL;
-
 /// A single row produced by a materialization pass.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DerivedFact {

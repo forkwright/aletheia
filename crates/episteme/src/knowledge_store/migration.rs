@@ -100,6 +100,7 @@ impl KnowledgeStore {
                 }
                 .build()
             })
+            .map(|_| ())
     }
 
     pub(super) fn migrate_v1_to_v2(&self) -> crate::error::Result<()> {
@@ -200,10 +201,6 @@ impl KnowledgeStore {
         Ok(())
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "migration is a single linear sequence"
-    )]
     pub(super) fn migrate_v2_to_v3(&self) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
