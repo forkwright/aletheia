@@ -239,6 +239,22 @@ mod tests {
     }
 
     #[test]
+    fn transition_density_resets_at_blank_line() {
+        let lines: Vec<(usize, &str)> = vec![
+            (1, "Furthermore, the analysis shows three cases."),
+            (2, ""),
+            (3, "Additionally, we see two more."),
+            (4, ""),
+            (5, "Moreover, results confirm the pattern."),
+        ];
+        let findings = check_structure(&lines);
+        assert!(
+            findings.is_empty(),
+            "transition paragraphs separated by blank lines must not accumulate into one run"
+        );
+    }
+
+    #[test]
     fn sections_both_present_passes() {
         let lines: Vec<(usize, &str)> = vec![
             (1, "## Summary"),
