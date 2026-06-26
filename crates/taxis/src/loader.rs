@@ -373,9 +373,12 @@ fn decrypt_toml_content(content: &str) -> Result<String> {
 /// ensuring callers never receive raw ciphertext in place of decrypted
 /// plaintext.
 fn serialize_decrypted_toml(value: &toml::Value) -> Result<String> {
-    toml::to_string(value).map_err(|e| SerializeTomlSnafu {
-        reason: e.to_string(),
-    }.build())
+    toml::to_string(value).map_err(|e| {
+        SerializeTomlSnafu {
+            reason: e.to_string(),
+        }
+        .build()
+    })
 }
 
 /// Read a standalone TOML file, apply env-var interpolation and decrypt
@@ -869,7 +872,10 @@ archiveBeforeDelete = true
             "non-serializable toml::Value must produce an error"
         );
         assert!(
-            matches!(result.unwrap_err(), crate::error::Error::SerializeToml { .. }),
+            matches!(
+                result.unwrap_err(),
+                crate::error::Error::SerializeToml { .. }
+            ),
             "serialization failure must be reported as SerializeToml, not swallowed"
         );
     }
