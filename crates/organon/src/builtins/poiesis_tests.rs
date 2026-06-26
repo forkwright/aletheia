@@ -106,6 +106,12 @@ async fn assert_generate_document_ok(ctx: &ToolContext, format: &str) {
         text.contains(&format!("Generated {} document", format.to_uppercase())),
         "unexpected summary for {format}: {text}"
     );
+    let expected_media_type = media_type_for_format(format);
+    let bytes = document_bytes(&result, expected_media_type);
+    assert!(
+        !bytes.is_empty(),
+        "{format} document block must contain bytes"
+    );
 }
 
 #[tokio::test]
@@ -475,6 +481,217 @@ async fn generate_document_epub_routes_via_pandoc() {
     let ctx = test_ctx(dir.path());
 
     assert_generate_document_ok(&ctx, "epub").await;
+}
+
+async fn assert_generate_document_out_path(ctx: &ToolContext, format: &str) {
+    let out_path = ctx.workspace.join(format!("output.{format}"));
+    let mut args = generate_document_args(format);
+    args["out_path"] = serde_json::json!(out_path.display().to_string());
+    let input = tool_input("generate_document", args);
+    let result = GenerateDocumentExecutor
+        .execute(&input, ctx)
+        .await
+        .expect("exec");
+    assert!(
+        !result.is_error,
+        "{format} out_path render must succeed: {result:?}"
+    );
+    let expected_media_type = media_type_for_format(format);
+    let block_bytes = document_bytes(&result, expected_media_type);
+    assert!(
+        !block_bytes.is_empty(),
+        "{format} returned document block must contain bytes"
+    );
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test inspects the sandbox path the executor wrote to"
+    )]
+    let file_bytes = std::fs::read(&out_path).expect("file must exist at out_path");
+    assert_eq!(
+        block_bytes, file_bytes,
+        "{format} out_path bytes must match returned document block"
+    );
+}
+
+#[tokio::test]
+async fn generate_document_odt_writes_out_path() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "odt").await;
+}
+
+#[tokio::test]
+async fn generate_document_pdf_writes_out_path() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "pdf").await;
+}
+
+#[tokio::test]
+async fn generate_document_xlsx_writes_out_path() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "xlsx").await;
+}
+
+#[tokio::test]
+async fn generate_document_docx_writes_out_path() {
+    if !pandoc_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "docx").await;
+}
+
+#[tokio::test]
+async fn generate_document_html_writes_out_path() {
+    if !pandoc_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "html").await;
+}
+
+#[tokio::test]
+async fn generate_document_md_writes_out_path() {
+    if !pandoc_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "md").await;
+}
+
+#[tokio::test]
+async fn generate_document_latex_writes_out_path() {
+    if !pandoc_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "latex").await;
+}
+
+#[tokio::test]
+async fn generate_document_epub_writes_out_path() {
+    if !pandoc_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+    assert_generate_document_out_path(&ctx, "epub").await;
+}
+
+#[tokio::test]
+async fn generate_document_rejects_out_path_escape() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    for out_path in ["/etc/aletheia-doc.odt", "../escape.odt"] {
+        let mut args = generate_document_args("odt");
+        args["out_path"] = serde_json::json!(out_path);
+        let input = tool_input("generate_document", args);
+        let result = GenerateDocumentExecutor
+            .execute(&input, &ctx)
+            .await
+            .expect("exec");
+        assert!(result.is_error, "{out_path} must be rejected");
+        assert!(
+            result.content.text_summary().contains("invalid out_path"),
+            "unexpected error: {:?}",
+            result.content
+        );
+    }
+}
+
+#[tokio::test]
+async fn generate_document_unsupported_format_includes_details() {
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let content = serde_json::json!([
+        {"type": "heading", "level": 1, "text": "Title"},
+        {"type": "paragraph", "text": "Body text."}
+    ])
+    .to_string();
+    let input = tool_input(
+        "generate_document",
+        serde_json::json!({
+            "format": "txt",
+            "content": content
+        }),
+    );
+    let result = GenerateDocumentExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(result.is_error, "unsupported format must error");
+    let text = result.content.text_summary();
+    assert!(
+        text.contains("unsupported format"),
+        "error must mention unsupported format: {text}"
+    );
+    assert!(
+        text.contains("txt"),
+        "error must mention the unsupported format name: {text}"
+    );
+}
+
+#[tokio::test]
+async fn generate_document_missing_pandoc_includes_dependency_details() {
+    if pandoc_present() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("tmpdir");
+    let ctx = test_ctx(dir.path());
+
+    let input = tool_input("generate_document", generate_document_args("docx"));
+    let result = GenerateDocumentExecutor
+        .execute(&input, &ctx)
+        .await
+        .expect("exec");
+    assert!(result.is_error, "missing pandoc must error");
+    let text = result.content.text_summary();
+    assert!(
+        text.to_lowercase().contains("pandoc"),
+        "error must mention missing Pandoc dependency: {text}"
+    );
+}
+
+#[test]
+fn generate_document_call_capability_requires_approval_when_out_path_present() {
+    let mut registry = ToolRegistry::new();
+    register(&mut registry).expect("register");
+
+    assert_eq!(
+        registry
+            .approval_requirement_for_input(&tool_input(
+                "generate_document",
+                serde_json::json!({
+                    "content": serde_json::json!([{"type": "paragraph", "text": "x"}]).to_string(),
+                }),
+            ))
+            .expect("approval"),
+        ApprovalRequirement::None,
+        "no out_path means no disk write"
+    );
+
+    assert_eq!(
+        registry
+            .approval_requirement_for_input(&tool_input(
+                "generate_document",
+                serde_json::json!({
+                    "content": serde_json::json!([{"type": "paragraph", "text": "x"}]).to_string(),
+                    "out_path": "/tmp/report.odt",
+                }),
+            ))
+            .expect("approval"),
+        ApprovalRequirement::Required,
+        "out_path present means disk write"
+    );
 }
 
 #[tokio::test]
