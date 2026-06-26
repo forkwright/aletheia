@@ -579,9 +579,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tmpdir");
         let stream_len = 256 * 1024;
         let max_output = 32 * 1024;
-        let cmd = format!(
-            "yes x | head -c {stream_len} & yes y | head -c {stream_len} >&2; wait"
-        );
+        let cmd = format!("yes x | head -c {stream_len} & yes y | head -c {stream_len} >&2; wait");
 
         let output = test_runner()
             .run(
