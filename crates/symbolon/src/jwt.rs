@@ -137,6 +137,12 @@ impl JwtManager {
         }
     }
 
+    /// Return the configured issuer claim value.
+    #[must_use]
+    pub(crate) fn issuer(&self) -> &str {
+        &self.config.issuer
+    }
+
     /// Issue an access token.
     ///
     /// # Errors

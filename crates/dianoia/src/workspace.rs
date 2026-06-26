@@ -28,7 +28,7 @@ pub(crate) struct WorkspaceLayout {
     pub project_file: PathBuf,
     /// Directory for phase-specific files.
     pub phases_dir: PathBuf,
-    /// Directory for blocker markdown files (under `.dianoia/`).
+    /// Directory for blocker JSON files (under `.dianoia/`).
     pub blockers_dir: PathBuf,
     /// Directory for execution artifacts and outputs.
     pub artifacts_dir: PathBuf,
@@ -111,12 +111,10 @@ impl ProjectWorkspace {
             path: &phase_blockers,
         })?;
 
-        let filename = format!("{}.md", blocker.plan_id);
+        let filename = format!("{}.json", blocker.plan_id);
         let path = phase_blockers.join(&filename);
-        let content = format!(
-            "# Blocker: `{}`\n\nPlan: `{}`\nDetected: {}\n\n{}\n",
-            blocker.plan_id, blocker.plan_id, blocker.detected_at, blocker.description
-        );
+        let content =
+            serde_json::to_string_pretty(blocker).context(error::WorkspaceSerializeSnafu)?;
         koina::fs::write_restricted(&path, content.as_bytes())
             .context(error::WorkspaceIoSnafu { path: &path })?;
         Ok(())
@@ -145,18 +143,12 @@ impl ProjectWorkspace {
                 path: &phase_blockers,
             })?;
             let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "md") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 let content = std::fs::read_to_string(&path)
                     .context(error::WorkspaceIoSnafu { path: &path })?;
-                let plan_id_str = path.file_stem().unwrap_or_default().to_string_lossy();
-
-                blockers.push(Blocker {
-                    description: content,
-                    plan_id: plan_id_str
-                        .parse::<koina::ulid::Ulid>()
-                        .unwrap_or_else(|_| koina::ulid::Ulid::new()),
-                    detected_at: jiff::Timestamp::now(),
-                });
+                let blocker: Blocker =
+                    serde_json::from_str(&content).context(error::WorkspaceDeserializeSnafu)?;
+                blockers.push(blocker);
             }
         }
 
@@ -216,16 +208,19 @@ mod tests {
         let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
 
         let plan_id = koina::ulid::Ulid::new();
+        let detected_at = jiff::Timestamp::from_second(1_700_000_000).unwrap();
         let blocker = Blocker {
             description: "blocked on API design".into(),
             plan_id,
-            detected_at: jiff::Timestamp::now(),
+            detected_at,
         };
 
         ws.write_blocker("phase-1", &blocker).unwrap();
         let blockers = ws.read_blockers("phase-1").unwrap();
         assert_eq!(blockers.len(), 1);
-        assert!(blockers[0].description.contains("blocked on API design"));
+        assert_eq!(blockers[0].description, "blocked on API design");
+        assert_eq!(blockers[0].plan_id, plan_id);
+        assert_eq!(blockers[0].detected_at, detected_at);
     }
 
     #[test]
@@ -266,19 +261,24 @@ mod tests {
         let first_blocker = Blocker {
             description: "first blocker".into(),
             plan_id: plan_id_1,
-            detected_at: jiff::Timestamp::now(),
+            detected_at: jiff::Timestamp::from_second(1_700_000_001).unwrap(),
         };
         let second_blocker = Blocker {
             description: "second blocker".into(),
             plan_id: plan_id_2,
-            detected_at: jiff::Timestamp::now(),
+            detected_at: jiff::Timestamp::from_second(1_700_000_002).unwrap(),
         };
 
         ws.write_blocker("phase-a", &first_blocker).unwrap();
         ws.write_blocker("phase-a", &second_blocker).unwrap();
 
-        let blockers = ws.read_blockers("phase-a").unwrap();
+        let mut blockers = ws.read_blockers("phase-a").unwrap();
         assert_eq!(blockers.len(), 2);
+        blockers.sort_by_key(|b| b.plan_id);
+        assert_eq!(blockers[0].description, "first blocker");
+        assert_eq!(blockers[0].detected_at, first_blocker.detected_at);
+        assert_eq!(blockers[1].description, "second blocker");
+        assert_eq!(blockers[1].detected_at, second_blocker.detected_at);
     }
 
     #[test]
