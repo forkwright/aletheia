@@ -1261,10 +1261,11 @@ mod tests {
             e,
             StreamEvent::ContentBlockStart { index: 1, block_type } if block_type == "tool_use"
         )));
-        assert!(events.iter().any(|e| matches!(
-            e,
-            StreamEvent::ContentBlockStop { index: 1 }
-        )));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::ContentBlockStop { index: 1 }))
+        );
     }
 
     #[test]
