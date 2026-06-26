@@ -89,6 +89,19 @@ pub enum ApiError {
         location: snafu::Location,
     },
 
+    /// Idempotency conflict with structured resumption metadata (409).
+    ///
+    /// Returned when a duplicate request arrives while the original turn is
+    /// still in flight. The response includes the canonical turn id and a
+    /// replay endpoint so the client can reconnect to the authoritative stream.
+    #[snafu(display("idempotency conflict: request already in flight for turn {turn_id}"))]
+    IdempotencyConflict {
+        turn_id: String,
+        replay_url: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Validation failed with field-level errors (422).
     #[snafu(display("validation failed"))]
     ValidationFailed {
@@ -140,6 +153,18 @@ impl IntoResponse for ApiError {
                 Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
             ),
             Self::Conflict { .. } => (StatusCode::CONFLICT, "conflict", None),
+            Self::IdempotencyConflict {
+                turn_id,
+                replay_url,
+                ..
+            } => (
+                StatusCode::CONFLICT,
+                "idempotency_conflict",
+                Some(serde_json::json!({
+                    "turn_id": turn_id,
+                    "replay_url": replay_url,
+                })),
+            ),
             Self::Forbidden { .. } => (StatusCode::FORBIDDEN, "forbidden", None),
             Self::ServiceUnavailable { .. } => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable", None)

@@ -301,7 +301,7 @@ fn idempotency_guard_releases_in_flight_on_drop() {
         assert!(
             matches!(
                 cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
-                LookupResult::Conflict
+                LookupResult::Conflict { .. }
             ),
             "key must still be in flight while the guard lives"
         );
@@ -334,6 +334,7 @@ fn idempotency_guard_preserves_completed_entry() {
         &key,
         &session_id,
         &body_fingerprint,
+        "turn-complete-key",
         axum::http::StatusCode::OK,
         r#"{"ok":true}"#.to_owned(),
     );
@@ -388,7 +389,7 @@ fn idempotency_guard_shared_completion_flag() {
     assert!(
         matches!(
             cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
-            LookupResult::Conflict
+            LookupResult::Conflict { .. }
         ),
         "shared completion flag must keep the in-flight entry intact"
     );

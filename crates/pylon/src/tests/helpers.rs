@@ -99,6 +99,16 @@ pub(super) async fn test_state_with_auth_mode(
     test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
 }
 
+/// Test helper: build state with a custom mock provider response.
+///
+/// WHY(#4865): idempotency replay tests need a provider that emits tool calls
+/// so the replay can be verified to preserve tool_use/tool_result events.
+pub(super) async fn test_state_with_mock_provider(
+    provider: hermeneus::test_utils::MockProvider,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_inner(Some(provider), false, "token").await
+}
+
 async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
     include_private_nous: bool,
@@ -113,13 +123,25 @@ async fn test_state_with_provider_private_and_auth_mode(
     .await
 }
 
+async fn test_state_with_provider_name_private_and_auth_mode(
+    with_provider: bool,
+    provider_name: Option<&str>,
+    include_private_nous: bool,
+    auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    let provider = with_provider.then(|| {
+        let name = provider_name.unwrap_or("Hello from mock!");
+        MockProvider::new(name).models(&["mock-model", "claude-opus-4-20250514"])
+    });
+    test_state_inner(provider, include_private_nous, auth_mode).await
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "WHY(#4872): test harness AppState construction with per-provider fixture setup is inherently long; inner expect(disallowed_methods) annotations inflate line count"
 )]
-async fn test_state_with_provider_name_private_and_auth_mode(
-    with_provider: bool,
-    provider_name: Option<&str>,
+async fn test_state_inner(
+    provider: Option<hermeneus::test_utils::MockProvider>,
     include_private_nous: bool,
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
@@ -201,11 +223,8 @@ bind = "localhost"
     let oikos = Arc::new(Oikos::from_root(root));
 
     let mut provider_registry = ProviderRegistry::new();
-    if with_provider {
-        let name = provider_name.unwrap_or("Hello from mock!");
-        provider_registry.register(Box::new(
-            MockProvider::new(name).models(&["mock-model", "claude-opus-4-20250514"]),
-        ));
+    if let Some(provider) = provider {
+        provider_registry.register(Box::new(provider));
     }
     let provider_registry = Arc::new(provider_registry);
     let tool_registry = Arc::new(ToolRegistry::new());

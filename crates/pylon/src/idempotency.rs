@@ -45,6 +45,11 @@ struct CacheInner {
 
 struct CacheEntry {
     context: RequestContext,
+    /// Canonical turn id bound to this idempotency key.
+    ///
+    /// Set when the turn is created so in-flight and completed lookups can
+    /// route the caller to the durable turn-event store.
+    turn_id: String,
     state: EntryState,
     created_at: Instant,
 }
@@ -77,9 +82,14 @@ pub(crate) enum LookupResult {
         )]
         status: StatusCode,
         body: String,
+        session_id: String,
+        turn_id: String,
     },
     /// A request with this key is still in progress.
-    Conflict,
+    Conflict {
+        session_id: String,
+        turn_id: String,
+    },
     /// This key was already bound to a different session or request body.
     Rejected { reason: RejectionReason },
 }
@@ -187,11 +197,15 @@ impl IdempotencyCache {
                     reason: RejectionReason::BodyMismatch,
                 };
             }
+            let session_id = entry.context.session_id.clone();
+            let turn_id = entry.turn_id.clone();
             return match &entry.state {
-                EntryState::InFlight => LookupResult::Conflict,
+                EntryState::InFlight => LookupResult::Conflict { session_id, turn_id },
                 EntryState::Completed { status, body } => LookupResult::Hit {
                     status: *status,
                     body: body.clone(),
+                    session_id,
+                    turn_id,
                 },
             };
         }
@@ -207,12 +221,41 @@ impl IdempotencyCache {
             composite,
             CacheEntry {
                 context,
+                // WHY: empty placeholder until the turn is created and
+                // `bind_turn_id` is called. A conflict/hit before binding
+                // returns an empty turn id, which the caller treats as
+                // "not yet associated".
+                turn_id: String::new(),
                 state: EntryState::InFlight,
                 created_at: Instant::now(),
             },
         );
 
         LookupResult::Miss
+    }
+
+    /// Bind a canonical turn id to an in-flight idempotency entry.
+    ///
+    /// WHY: the turn id is created after `check_or_insert` returns a miss;
+    /// this call stores it so subsequent conflicts/hits can route the caller
+    /// to the turn-event store.
+    pub(crate) fn bind_turn_id(
+        &self,
+        principal: &str,
+        key: &str,
+        session_id: &str,
+        body_fingerprint: &str,
+        turn_id: &str,
+    ) {
+        let composite = composite_key(principal, key);
+        let context = request_context(session_id, body_fingerprint);
+        let mut inner = self.lock_inner();
+        if let Some(entry) = inner.entries.get_mut(&composite)
+            && entry.context == context
+            && matches!(entry.state, EntryState::InFlight)
+        {
+            entry.turn_id = turn_id.to_owned();
+        }
     }
 
     /// Mark a (principal, key, session, body) tuple as completed with the given response.
@@ -222,6 +265,7 @@ impl IdempotencyCache {
         key: &str,
         session_id: &str,
         body_fingerprint: &str,
+        turn_id: &str,
         status: StatusCode,
         body: String,
     ) {
@@ -231,6 +275,7 @@ impl IdempotencyCache {
         if let Some(entry) = inner.entries.get_mut(&composite)
             && entry.context == context
         {
+            entry.turn_id = turn_id.to_owned();
             entry.state = EntryState::Completed { status, body };
         }
     }
@@ -307,7 +352,7 @@ mod tests {
 
         assert!(matches!(
             cache.check_or_insert(principal, key, session_id, body_fingerprint),
-            LookupResult::Conflict
+            LookupResult::Conflict { .. }
         ));
 
         cache.complete(
@@ -315,14 +360,16 @@ mod tests {
             key,
             session_id,
             body_fingerprint,
+            "turn-001",
             StatusCode::OK,
             r#"{"ok":true}"#.to_owned(),
         );
 
         match cache.check_or_insert(principal, key, session_id, body_fingerprint) {
-            LookupResult::Hit { status, body } => {
+            LookupResult::Hit { status, body, turn_id, .. } => {
                 assert_eq!(status, StatusCode::OK);
                 assert_eq!(body, r#"{"ok":true}"#);
+                assert_eq!(turn_id, "turn-001");
             }
             other => panic!("expected Hit, got {other:?}"),
         }
@@ -415,14 +462,16 @@ mod tests {
             key,
             session_id,
             body_fingerprint,
+            "turn-alice",
             StatusCode::OK,
             r#"{"user":"alice"}"#.to_owned(),
         );
 
         // Alice's replay returns her own cached response.
         match cache.check_or_insert("alice", key, session_id, body_fingerprint) {
-            LookupResult::Hit { body, .. } => {
+            LookupResult::Hit { body, turn_id, .. } => {
                 assert_eq!(body, r#"{"user":"alice"}"#);
+                assert_eq!(turn_id, "turn-alice");
             }
             other => panic!("expected Hit for alice, got {other:?}"),
         }
@@ -439,7 +488,7 @@ mod tests {
         // Bob's entry is in-flight until he completes; a second call from Bob is a Conflict.
         assert!(matches!(
             cache.check_or_insert("bob", key, session_id, body_fingerprint),
-            LookupResult::Conflict
+            LookupResult::Conflict { .. }
         ));
 
         // Bob completing his entry does not disturb Alice's cached entry.
@@ -448,6 +497,7 @@ mod tests {
             key,
             session_id,
             body_fingerprint,
+            "turn-bob",
             StatusCode::OK,
             r#"{"user":"bob"}"#.to_owned(),
         );
@@ -492,7 +542,7 @@ mod tests {
         assert!(
             matches!(
                 cache.check_or_insert("bob", key, session_id, body_fingerprint),
-                LookupResult::Conflict
+                LookupResult::Conflict { .. }
             ),
             "bob's in-flight entry must be unaffected"
         );
@@ -539,7 +589,7 @@ mod tests {
             match self {
                 Self::Miss => write!(f, "Miss"),
                 Self::Hit { status, .. } => write!(f, "Hit({status})"),
-                Self::Conflict => write!(f, "Conflict"),
+                Self::Conflict { .. } => write!(f, "Conflict"),
                 Self::Rejected { reason } => write!(f, "Rejected({reason:?})"),
             }
         }
