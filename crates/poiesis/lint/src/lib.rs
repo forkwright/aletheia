@@ -495,7 +495,9 @@ mod tests {
         let text = "Furthermore, X.\n\nAdditionally, Y.\n\nMoreover, Z.\n";
         let findings = linter.check(text);
         assert!(
-            findings.iter().all(|f| f.kind != FindingKind::StructuralPattern),
+            findings
+                .iter()
+                .all(|f| f.kind != FindingKind::StructuralPattern),
             "blank-line-separated transitions must not produce a structural finding: {findings:?}"
         );
     }
