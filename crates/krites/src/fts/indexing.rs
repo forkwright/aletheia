@@ -3,12 +3,10 @@
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::sync::Arc;
 
 use compact_str::CompactString;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use parking_lot::RwLock;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::data::expr::{Bytecode, eval_bytecode, eval_bytecode_pred};

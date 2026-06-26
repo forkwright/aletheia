@@ -6,7 +6,6 @@
 //! - **FTS**: full-text search with BM25 scoring
 //! - **LSH**: locality-sensitive hashing for fuzzy text matching
 #![expect(
-    clippy::default_trait_access,
     clippy::indexing_slicing,
     clippy::iter_not_returning_iterator,
     clippy::result_large_err,

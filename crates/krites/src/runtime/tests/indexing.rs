@@ -261,7 +261,7 @@ fn fts_bm25_cache_is_shared_across_run_script_calls_and_invalidated_on_write() {
     // First BM25 search populates the shared cache.
     let first = db
         .run_default(
-            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score}",
+            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score, score_kind: 'bm25'}",
         )
         .expect("first FTS search should succeed");
     assert!(
@@ -272,7 +272,7 @@ fn fts_bm25_cache_is_shared_across_run_script_calls_and_invalidated_on_write() {
     // A second run_script call should reuse the cached stats.
     let second = db
         .run_default(
-            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score}",
+            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score, score_kind: 'bm25'}",
         )
         .expect("second FTS search should succeed");
     assert_eq!(
@@ -292,7 +292,7 @@ fn fts_bm25_cache_is_shared_across_run_script_calls_and_invalidated_on_write() {
     // The next search recomputes and reflects the new document.
     let after_invalidate = db
         .run_default(
-            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score}",
+            r"?[id, score] := ~docs:fts{id, text | query: 'quick', k: 10, bind_score: score, score_kind: 'bm25'}",
         )
         .expect("FTS search after invalidation should succeed");
     assert!(
