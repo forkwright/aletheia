@@ -33,7 +33,6 @@
 //! `metadata` method is provided for replay provenance without breaking the
 //! existing trait contract.
 
-use std::io::Write as _;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -1479,8 +1478,8 @@ impl AuditStorage {
     /// Persist an audit report to disk.
     ///
     /// Returns the path of the written file on success.
-    pub fn persist(&self, report: &AuditReport) -> std::io::Result<PathBuf> {
-        std::fs::create_dir_all(&self.dir)?;
+    pub async fn persist(&self, report: &AuditReport) -> std::io::Result<PathBuf> {
+        tokio::fs::create_dir_all(&self.dir).await?;
 
         let ts = report.audited_at.replace([':', '.'], "-");
         let filename = format!("prosoche-audit-{ts}.json");
@@ -1489,10 +1488,9 @@ impl AuditStorage {
         let json = serde_json::to_string_pretty(report)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-        // WHY: std::fs::write is disallowed in daemon (daemon/clippy.toml).
-        // Use File::create + write_all which is also sync but allowed.
-        let mut file = std::fs::File::create(&path)?;
-        file.write_all(json.as_bytes())?;
+        // WHY: use tokio::fs so the audit JSON write does not block the
+        // executor thread; this replaces the previous sync two-step workaround.
+        tokio::fs::write(&path, json).await?;
 
         Ok(path)
     }
@@ -1746,7 +1744,7 @@ impl ProsocheAuditRunner {
 
         // WHY: a persist failure is logged but never fails the audit — the
         // report is still returned to the caller inside the outcome.
-        let (persisted_path, last_persist_error) = match self.storage.persist(&report) {
+        let (persisted_path, last_persist_error) = match self.storage.persist(&report).await {
             Ok(path) => {
                 tracing::info!(
                     nous_id = %state.nous_id,
