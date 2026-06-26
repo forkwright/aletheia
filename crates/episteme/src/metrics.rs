@@ -42,6 +42,49 @@ struct AdmissionLabels {
     reason: String,
 }
 
+/// Labels for per-fact extraction quality decisions.
+///
+/// `status` is `"accepted"` or `"rejected"`. For rejections, `reason` holds
+/// the rejection cause (e.g. `low_confidence`, `empty_field`). For admissions,
+/// `reason` is empty.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ExtractionQualityLabels {
+    nous_id: String,
+    producer: String,
+    provider: String,
+    model: String,
+    status: String,
+    reason: String,
+}
+
+/// Labels for the extracted-fact confidence distribution histogram.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ExtractionConfidenceLabels {
+    nous_id: String,
+    producer: String,
+    provider: String,
+    model: String,
+    status: String,
+}
+
+/// Labels for extraction-quality counters that are scoped by producer and
+/// provider/model but do not distinguish individual facts.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ExtractionProducerLabels {
+    nous_id: String,
+    producer: String,
+    provider: String,
+    model: String,
+}
+
+/// Labels for low-confidence admissions: facts that passed the admission gate
+/// despite a confidence score below the low-confidence threshold.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct LowConfidenceAdmissionLabels {
+    nous_id: String,
+    threshold: String,
+}
+
 // ── Metric families ─────────────────────────────────────────────────────────
 
 static KNOWLEDGE_FACTS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
@@ -58,6 +101,35 @@ static KNOWLEDGE_ADMISSION_TOTAL: LazyLock<Family<AdmissionLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static CONFLICT_UNCLASSIFIABLE_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
+
+/// Per-fact extraction quality: accepted/rejected by reason, labelled by
+/// producer path, provider, and model.
+static EXTRACTION_QUALITY_TOTAL: LazyLock<Family<ExtractionQualityLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// Count of extractions where >80% of facts have confidence >= 0.95.
+static EXTRACTION_CONFIDENCE_INFLATION_TOTAL: LazyLock<Family<ExtractionProducerLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// Count of facts flagged as corrections during extraction refinement.
+static EXTRACTION_CORRECTIONS_TOTAL: LazyLock<Family<ExtractionProducerLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// Count of contradictions detected between a newly extracted fact and the
+/// existing knowledge store.
+static EXTRACTION_CONTRADICTIONS_TOTAL: LazyLock<Family<ExtractionProducerLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// Count of all conflicts (contradictions and duplicates) detected during
+/// extraction-time verification.
+static EXTRACTION_CONFLICTS_TOTAL: LazyLock<Family<ExtractionProducerLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// Count of facts admitted despite having a confidence below the low-confidence
+/// threshold.
+static KNOWLEDGE_LOW_CONFIDENCE_ADMISSION_TOTAL: LazyLock<
+    Family<LowConfidenceAdmissionLabels, Counter>,
+> = LazyLock::new(Family::default);
 
 fn recall_duration_histogram() -> Histogram {
     Histogram::new([0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0])
@@ -76,6 +148,20 @@ type ProviderHistogramFamily = Family<ProviderLabels, Histogram, fn() -> Histogr
 
 static EMBEDDING_DURATION_SECONDS: LazyLock<ProviderHistogramFamily> =
     LazyLock::new(|| Family::new_with_constructor(embedding_duration_histogram));
+
+fn extraction_confidence_histogram() -> Histogram {
+    // WHY: eleven buckets across [0.05, 1.0] so operators can see calibration
+    // shape without label explosion. Values below 0.05 land in the first bucket.
+    Histogram::new([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+}
+
+type ExtractionConfidenceFamily = Family<ExtractionConfidenceLabels, Histogram, fn() -> Histogram>;
+
+static EXTRACTION_CONFIDENCE_HISTOGRAM: LazyLock<ExtractionConfidenceFamily> =
+    LazyLock::new(|| Family::new_with_constructor(extraction_confidence_histogram));
+
+/// Threshold below which an admitted fact is considered "low-confidence".
+pub(crate) const LOW_CONFIDENCE_ADMISSION_THRESHOLD: f64 = 0.5;
 
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
@@ -108,6 +194,41 @@ pub fn register(registry: &mut Registry) {
         "aletheia_conflict_unclassifiable",
         "Total unclassifiable conflict classifier responses; use rate() for unclassifiable-rate alerts",
         CONFLICT_UNCLASSIFIABLE_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_extraction_quality",
+        "Total extraction refinement decisions by producer, provider, model, status, and reason",
+        EXTRACTION_QUALITY_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_extraction_confidence",
+        "Distribution of extracted fact confidence scores by status",
+        EXTRACTION_CONFIDENCE_HISTOGRAM.clone(),
+    );
+    registry.register(
+        "aletheia_extraction_confidence_inflation",
+        "Extractions where >80% of facts have confidence >= 0.95",
+        EXTRACTION_CONFIDENCE_INFLATION_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_extraction_corrections",
+        "Facts flagged as corrections during extraction refinement",
+        EXTRACTION_CORRECTIONS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_extraction_contradictions",
+        "Contradictions detected during extraction-time verification",
+        EXTRACTION_CONTRADICTIONS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_extraction_conflicts",
+        "All conflicts (contradictions and duplicates) detected during extraction-time verification",
+        EXTRACTION_CONFLICTS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_knowledge_low_confidence_admissions",
+        "Facts admitted with confidence below the low-confidence threshold",
+        KNOWLEDGE_LOW_CONFIDENCE_ADMISSION_TOTAL.clone(),
     );
 }
 
@@ -183,6 +304,115 @@ pub(crate) fn record_admission_ok(nous_id: &str, fact_type: &str) {
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn record_conflict_unclassifiable() {
     CONFLICT_UNCLASSIFIABLE_TOTAL.inc();
+}
+
+/// Record an extraction refinement decision for a single fact.
+///
+/// `status` is `"accepted"` or `"rejected"`. `reason` is empty for accepted
+/// facts and holds the rejection cause for rejected facts.
+pub fn record_extraction_quality(
+    nous_id: &str,
+    producer: &str,
+    provider: &str,
+    model: &str,
+    status: &str,
+    reason: &str,
+) {
+    EXTRACTION_QUALITY_TOTAL
+        .get_or_create(&ExtractionQualityLabels {
+            nous_id: nous_id.to_owned(),
+            producer: producer.to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+            status: status.to_owned(),
+            reason: reason.to_owned(),
+        })
+        .inc();
+}
+
+/// Observe a fact confidence value into the extraction confidence histogram.
+///
+/// `status` is one of `"extracted"`, `"accepted"`, or `"rejected"` so the
+/// distribution can be compared before and after quality filtering.
+pub fn record_extraction_confidence(
+    nous_id: &str,
+    producer: &str,
+    provider: &str,
+    model: &str,
+    status: &str,
+    confidence: f64,
+) {
+    EXTRACTION_CONFIDENCE_HISTOGRAM
+        .get_or_create(&ExtractionConfidenceLabels {
+            nous_id: nous_id.to_owned(),
+            producer: producer.to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+            status: status.to_owned(),
+        })
+        .observe(confidence.clamp(0.0, 1.0));
+}
+
+/// Record that an extraction batch had confidence inflation.
+pub fn record_confidence_inflation(nous_id: &str, producer: &str, provider: &str, model: &str) {
+    EXTRACTION_CONFIDENCE_INFLATION_TOTAL
+        .get_or_create(&ExtractionProducerLabels {
+            nous_id: nous_id.to_owned(),
+            producer: producer.to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+        })
+        .inc();
+}
+
+/// Record that a fact was flagged as a correction during extraction refinement.
+pub fn record_extraction_correction(nous_id: &str, producer: &str, provider: &str, model: &str) {
+    EXTRACTION_CORRECTIONS_TOTAL
+        .get_or_create(&ExtractionProducerLabels {
+            nous_id: nous_id.to_owned(),
+            producer: producer.to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+        })
+        .inc();
+}
+
+/// Record that a contradiction was detected during extraction-time verification.
+pub fn record_extraction_contradiction(nous_id: &str, producer: &str, provider: &str, model: &str) {
+    EXTRACTION_CONTRADICTIONS_TOTAL
+        .get_or_create(&ExtractionProducerLabels {
+            nous_id: nous_id.to_owned(),
+            producer: producer.to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+        })
+        .inc();
+}
+
+/// Record that any conflict (contradiction or duplicate) was detected during
+/// extraction-time verification.
+pub fn record_extraction_conflict(nous_id: &str, producer: &str, provider: &str, model: &str) {
+    EXTRACTION_CONFLICTS_TOTAL
+        .get_or_create(&ExtractionProducerLabels {
+            nous_id: nous_id.to_owned(),
+            producer: producer.to_owned(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+        })
+        .inc();
+}
+
+/// Record that a fact was admitted despite having low source confidence.
+///
+/// The threshold is fixed at 0.5; the `threshold` label documents this so
+/// rate queries can be interpreted correctly even if the constant changes.
+pub(crate) fn record_low_confidence_admission(nous_id: &str) {
+    KNOWLEDGE_LOW_CONFIDENCE_ADMISSION_TOTAL
+        .get_or_create(&LowConfidenceAdmissionLabels {
+            nous_id: nous_id.to_owned(),
+            threshold: format!("{LOW_CONFIDENCE_ADMISSION_THRESHOLD}"),
+        })
+        .inc();
 }
 
 #[cfg(test)]
@@ -292,6 +522,147 @@ mod tests {
         let out = encode(&r);
         assert!(
             out.contains("aletheia_conflict_unclassifiable_total"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_extraction_quality() {
+        let r = fresh_registry();
+        record_extraction_quality(
+            "_test_nous_quality",
+            "test_producer",
+            "test_provider",
+            "test_model",
+            "rejected",
+            "low_confidence",
+        );
+        record_extraction_quality(
+            "_test_nous_quality",
+            "test_producer",
+            "test_provider",
+            "test_model",
+            "accepted",
+            "",
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_extraction_quality_total{nous_id=\"_test_nous_quality\",\
+                 producer=\"test_producer\",provider=\"test_provider\",model=\"test_model\",\
+                 status=\"rejected\",reason=\"low_confidence\"} 1"
+            ),
+            "rejected quality label set missing; got: {out}"
+        );
+        assert!(
+            out.contains(
+                "aletheia_extraction_quality_total{nous_id=\"_test_nous_quality\",\
+                 producer=\"test_producer\",provider=\"test_provider\",model=\"test_model\",\
+                 status=\"accepted\",reason=\"\"} 1"
+            ),
+            "accepted quality label set missing; got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_extraction_confidence() {
+        let r = fresh_registry();
+        record_extraction_confidence(
+            "_test_nous_conf",
+            "test_producer",
+            "test_provider",
+            "test_model",
+            "extracted",
+            0.85,
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_extraction_confidence_count{nous_id=\"_test_nous_conf\",\
+                 producer=\"test_producer\",provider=\"test_provider\",model=\"test_model\",\
+                 status=\"extracted\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_confidence_inflation() {
+        let r = fresh_registry();
+        record_confidence_inflation(
+            "_test_nous_inflation",
+            "test_producer",
+            "test_provider",
+            "test_model",
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_extraction_confidence_inflation_total{nous_id=\"_test_nous_inflation\",\
+                 producer=\"test_producer\",provider=\"test_provider\",model=\"test_model\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_extraction_correction() {
+        let r = fresh_registry();
+        record_extraction_correction(
+            "_test_nous_correction",
+            "test_producer",
+            "test_provider",
+            "test_model",
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_extraction_corrections_total"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_extraction_contradiction() {
+        let r = fresh_registry();
+        record_extraction_contradiction(
+            "_test_nous_contradiction",
+            "test_producer",
+            "test_provider",
+            "test_model",
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_extraction_contradictions_total"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_extraction_conflict() {
+        let r = fresh_registry();
+        record_extraction_conflict(
+            "_test_nous_conflict",
+            "test_producer",
+            "test_provider",
+            "test_model",
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_extraction_conflicts_total"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_low_confidence_admission() {
+        let r = fresh_registry();
+        record_low_confidence_admission("_test_nous_low_conf");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_knowledge_low_confidence_admissions_total{nous_id=\"_test_nous_low_conf\",\
+                 threshold=\"0.5\"} 1"
+            ),
             "got: {out}"
         );
     }

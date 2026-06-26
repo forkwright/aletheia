@@ -76,6 +76,16 @@ impl ExtractionProvider for HermeneusExtractionProvider {
                 })
         })
     }
+
+    fn provider_label(&self) -> String {
+        self.providers
+            .find_provider(&self.model)
+            .map_or_else(|| "no_provider".to_owned(), |p| p.name().to_owned())
+    }
+
+    fn model_label(&self) -> String {
+        self.model.clone()
+    }
 }
 
 /// Bridges hermeneus `ProviderRegistry` to mneme's [`SkillExtractionProvider`] trait.

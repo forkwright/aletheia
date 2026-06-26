@@ -233,7 +233,8 @@ Rules:
     ///
     /// Classifies the turn, applies per-type prompt instructions, detects
     /// corrections, classifies fact types, applies quality filters, and boosts
-    /// confidence where appropriate.
+    /// confidence where appropriate. Quality signals are recorded as metrics so
+    /// operators can track extraction precision, calibration, and drift.
     ///
     /// # Errors
     ///
@@ -247,6 +248,8 @@ Rules:
         &self,
         messages: &[ConversationMessage],
         provider: &dyn ExtractionProvider,
+        nous_id: &str,
+        producer: &str,
     ) -> Result<RefinedExtraction, ExtractionError> {
         let total_len: usize = messages
             .iter()
@@ -297,6 +300,8 @@ Rules:
         let correction = refinement::detect_correction(&combined);
         let boost = turn_type.confidence_boost() + correction.confidence_boost;
         let mut filtered_count = 0;
+        let provider_label = provider.provider_label();
+        let model_label = provider.model_label();
 
         // WHY: check for LLM confidence inflation before filtering individual facts,
         // so the warning fires even if some facts are later filtered for other reasons.
@@ -307,17 +312,49 @@ Rules:
                 total_facts = extraction.facts.len(),
                 "confidence inflation detected: >80% of extracted facts have confidence >= 0.95"
             );
+            crate::metrics::record_confidence_inflation(
+                nous_id,
+                producer,
+                &provider_label,
+                &model_label,
+            );
         }
 
         extraction.facts = extraction
             .facts
             .into_iter()
             .filter_map(|mut fact| {
+                let raw_confidence = fact.confidence;
+                crate::metrics::record_extraction_confidence(
+                    nous_id,
+                    producer,
+                    &provider_label,
+                    &model_label,
+                    "extracted",
+                    raw_confidence,
+                );
+
                 // WHY: reject facts with empty triple fields before any other processing —
                 // a fact with no subject, predicate, or object has zero semantic value.
                 if !refinement::validate_triple_fields(&fact.subject, &fact.predicate, &fact.object)
                 {
                     filtered_count += 1;
+                    crate::metrics::record_extraction_quality(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "rejected",
+                        "empty_field",
+                    );
+                    crate::metrics::record_extraction_confidence(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "rejected",
+                        raw_confidence,
+                    );
                     tracing::debug!(
                         subject = %fact.subject,
                         predicate = %fact.predicate,
@@ -329,6 +366,22 @@ Rules:
 
                 if !self.config.extract_self_facts && is_self_reference(&fact.subject) {
                     filtered_count += 1;
+                    crate::metrics::record_extraction_quality(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "rejected",
+                        "self_reference",
+                    );
+                    crate::metrics::record_extraction_confidence(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "rejected",
+                        raw_confidence,
+                    );
                     tracing::debug!(
                         subject = %fact.subject,
                         "fact filtered out: self-reference"
@@ -341,13 +394,55 @@ Rules:
                 fact.fact_type = Some(classified_type.as_str().to_owned());
                 if correction.is_correction {
                     fact.is_correction = true;
+                    crate::metrics::record_extraction_correction(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                    );
                 }
                 fact.confidence = refinement::boosted_confidence(fact.confidence, boost);
                 let filter = refinement::filter_fact(&fact_content, fact.confidence);
                 if filter.passed {
+                    crate::metrics::record_extraction_quality(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "accepted",
+                        "",
+                    );
+                    crate::metrics::record_extraction_confidence(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "accepted",
+                        fact.confidence,
+                    );
                     Some(fact)
                 } else {
                     filtered_count += 1;
+                    let reason = filter
+                        .reason
+                        .as_ref()
+                        .map_or_else(String::new, std::string::ToString::to_string);
+                    crate::metrics::record_extraction_quality(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "rejected",
+                        &reason,
+                    );
+                    crate::metrics::record_extraction_confidence(
+                        nous_id,
+                        producer,
+                        &provider_label,
+                        &model_label,
+                        "rejected",
+                        raw_confidence,
+                    );
                     tracing::debug!(
                         subject = %fact.subject,
                         reason = ?filter.reason,

@@ -15,4 +15,20 @@ pub trait ExtractionProvider: Send + Sync {
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
     >;
+
+    /// Human-readable provider label for observability (e.g. provider name).
+    ///
+    /// Defaults to `"unknown"`; bridge implementations should override this
+    /// with the actual provider identifier when it is safe to expose.
+    fn provider_label(&self) -> String {
+        "unknown".to_owned()
+    }
+
+    /// Human-readable model label for observability.
+    ///
+    /// Defaults to `"unknown"`; bridge implementations should override this
+    /// with the actual model identifier when it is safe to expose.
+    fn model_label(&self) -> String {
+        "unknown".to_owned()
+    }
 }

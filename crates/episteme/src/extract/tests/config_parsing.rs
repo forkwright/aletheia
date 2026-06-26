@@ -363,7 +363,7 @@ async fn extract_refined_filters_self_facts_when_disabled() {
     }];
 
     let result = engine
-        .extract_refined(&messages, &SelfFactProvider)
+        .extract_refined(&messages, &SelfFactProvider, "test-nous", "test")
         .await
         .expect("extraction should succeed");
     assert_eq!(
@@ -409,7 +409,7 @@ async fn extract_refined_allows_self_facts_when_enabled() {
     }];
 
     let result = engine
-        .extract_refined(&messages, &SelfFactProvider)
+        .extract_refined(&messages, &SelfFactProvider, "test-nous", "test")
         .await
         .expect("extraction should succeed");
     assert_eq!(
