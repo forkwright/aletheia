@@ -46,7 +46,10 @@ fn require_services(
 /// produces malformed requests. Authorization, Cookie, and X-Api-Key are
 /// credential-bearing; allowing agents to inject them without an explicit
 /// operator-approved surface enables credential exfiltration through
-/// arbitrary outbound HTTP requests.
+/// arbitrary outbound HTTP requests. Forwarding/hop-by-hop headers
+/// (X-Forwarded-For, Forwarded, Via, TE, etc.) are stripped for
+/// defense-in-depth -- agents should not be able to annotate outbound
+/// requests with origin-metadata, even to external public servers.
 const FORBIDDEN_REQUEST_HEADERS: &[&str] = &[
     "host",
     "content-length",
@@ -55,6 +58,21 @@ const FORBIDDEN_REQUEST_HEADERS: &[&str] = &[
     "cookie",
     "x-api-key",
     "x-auth-token",
+    // forwarding / hop-by-hop (defense-in-depth, #6004)
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "x-forwarded-port",
+    "x-real-ip",
+    "forwarded",
+    "via",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "connection",
+    "keep-alive",
+    "proxy-connection",
 ];
 
 /// Upper bound on response body size forwarded to the LLM.
@@ -535,5 +553,37 @@ mod tests {
         .expect_err("sixth redirect must be rejected");
 
         assert!(err.contains("redirect limit"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn extract_headers_rejects_forwarding_hop_by_hop_headers() {
+        // WHY: regression for #6004 -- defense-in-depth denylist must cover
+        // forwarding/hop-by-hop headers so agents cannot annotate outbound
+        // requests with origin-metadata.
+        let blocked = [
+            "X-Forwarded-For",
+            "X-Forwarded-Host",
+            "X-Forwarded-Proto",
+            "X-Forwarded-Port",
+            "X-Real-IP",
+            "Forwarded",
+            "Via",
+            "TE",
+            "Trailer",
+            "Transfer-Encoding",
+            "Upgrade",
+            "Connection",
+            "Keep-Alive",
+            "Proxy-Connection",
+        ];
+        for header in blocked {
+            let args = serde_json::json!({ "headers": { header: "injected" } });
+            let err =
+                extract_headers(&args).expect_err("forwarding/hop-by-hop header must be rejected");
+            assert!(
+                err.contains("not permitted"),
+                "header {header} must be rejected, got: {err}"
+            );
+        }
     }
 }
