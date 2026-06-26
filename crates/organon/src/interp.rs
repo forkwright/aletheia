@@ -213,27 +213,28 @@ fn resolve_file_ref(
         return PathTraversalSnafu { path: normalized }.fail();
     }
 
-    // NOTE: Resolve symlinks to prevent symlink-based escapes. If the path
-    // does not exist the check is skipped — FileNotFound surfaces next.
-    if normalized.exists() {
-        let canonical = normalized
-            .canonicalize()
-            .unwrap_or_else(|_| normalized.clone());
-        let canonical_root = normalized_root
-            .canonicalize()
-            .unwrap_or_else(|_| normalized_root.clone());
-        if !canonical.starts_with(&canonical_root) {
-            return PathTraversalSnafu { path: canonical }.fail();
-        }
-    }
-
     if !normalized.exists() {
         return FileNotFoundSnafu { path: normalized }.fail();
     }
 
-    let content = std::fs::read_to_string(&normalized).map_err(|e| {
+    // SAFETY: Resolve symlinks and read from the canonical path to close the
+    // TOCTOU window between the containment check and the read. canonicalize()
+    // requires the path to exist (verified above); reading the canonical path
+    // (not `normalized`) prevents a symlink swapped after the check from being
+    // followed at read time.
+    let canonical = normalized
+        .canonicalize()
+        .unwrap_or_else(|_| normalized.clone());
+    let canonical_root = normalized_root
+        .canonicalize()
+        .unwrap_or_else(|_| normalized_root.clone());
+    if !canonical.starts_with(&canonical_root) {
+        return PathTraversalSnafu { path: canonical }.fail();
+    }
+
+    let content = std::fs::read_to_string(&canonical).map_err(|e| {
         IoSnafu {
-            path: normalized.clone(),
+            path: canonical.clone(),
         }
         .into_error(e)
     })?;
