@@ -186,11 +186,10 @@ impl HandoffFile {
 
         let contents = std::fs::read_to_string(&json_path)
             .context(error::HandoffIoSnafu { path: &json_path })?;
-        let context: HandoffContext = serde_json::from_str(&contents).context(
-            error::HandoffDeserializeSnafu {
+        let context: HandoffContext =
+            serde_json::from_str(&contents).context(error::HandoffDeserializeSnafu {
                 path: json_path.clone(),
-            },
-        )?;
+            })?;
 
         Ok(Some(context))
     }

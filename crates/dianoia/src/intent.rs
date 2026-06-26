@@ -356,11 +356,10 @@ impl IntentStore {
         let contents = std::fs::read_to_string(&self.path).context(error::WorkspaceIoSnafu {
             path: self.path.clone(),
         })?;
-        let intents: Vec<Intent> = serde_json::from_str(&contents).context(
-            error::WorkspaceDeserializeSnafu {
+        let intents: Vec<Intent> =
+            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu {
                 path: self.path.clone(),
-            },
-        )?;
+            })?;
         Ok(intents)
     }
 

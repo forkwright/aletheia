@@ -94,11 +94,10 @@ impl ProjectWorkspace {
             std::fs::read_to_string(&layout.project_file).context(error::WorkspaceIoSnafu {
                 path: &layout.project_file,
             })?;
-        let project: Project = serde_json::from_str(&contents).context(
-            error::WorkspaceDeserializeSnafu {
+        let project: Project =
+            serde_json::from_str(&contents).context(error::WorkspaceDeserializeSnafu {
                 path: layout.project_file.clone(),
-            },
-        )?;
+            })?;
         Ok(project)
     }
 
@@ -149,9 +148,8 @@ impl ProjectWorkspace {
             if path.extension().is_some_and(|ext| ext == "json") {
                 let content = std::fs::read_to_string(&path)
                     .context(error::WorkspaceIoSnafu { path: &path })?;
-                let blocker: Blocker = serde_json::from_str(&content).context(
-                    error::WorkspaceDeserializeSnafu { path: path.clone() },
-                )?;
+                let blocker: Blocker = serde_json::from_str(&content)
+                    .context(error::WorkspaceDeserializeSnafu { path: path.clone() })?;
                 blockers.push(blocker);
             }
         }
@@ -371,7 +369,11 @@ mod tests {
     fn read_blockers_malformed_json_includes_path() {
         let dir = tempfile::tempdir().unwrap();
         let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
-        let blocker_path = ws.layout().blockers_dir.join("phase-1").join("blocker.json");
+        let blocker_path = ws
+            .layout()
+            .blockers_dir
+            .join("phase-1")
+            .join("blocker.json");
         std::fs::create_dir_all(blocker_path.parent().unwrap()).unwrap();
         std::fs::write(&blocker_path, "not valid json").unwrap();
 
