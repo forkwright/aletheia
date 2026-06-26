@@ -80,8 +80,7 @@ impl ExtractionProvider for HermeneusExtractionProvider {
     fn provider_label(&self) -> String {
         self.providers
             .find_provider(&self.model)
-            .map(|p| p.name().to_owned())
-            .unwrap_or_else(|| "no_provider".to_owned())
+            .map_or_else(|| "no_provider".to_owned(), |p| p.name().to_owned())
     }
 
     fn model_label(&self) -> String {

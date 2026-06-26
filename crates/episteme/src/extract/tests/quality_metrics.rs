@@ -38,6 +38,7 @@ fn encode(registry: &MetricsRegistry) -> String {
     buf
 }
 
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[tokio::test]
 async fn extract_refined_records_extraction_quality_metrics() {
     let registry = MetricsRegistry::new();

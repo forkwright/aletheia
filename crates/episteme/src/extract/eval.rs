@@ -101,26 +101,28 @@ pub fn score_extraction(extraction: &Extraction, fixture: &LabeledFixture) -> Ex
     let mut matched_expected = vec![false; expected.len()];
     let mut true_positives = 0usize;
     for item in &extracted {
-        if let Some(idx) = expected.iter().position(|exp| exp == item) {
-            if !matched_expected[idx] {
-                matched_expected[idx] = true;
-                true_positives += 1;
-            }
+        if let Some(idx) = expected.iter().position(|exp| exp == item)
+            && let Some(flag) = matched_expected.get_mut(idx)
+            && !*flag
+        {
+            *flag = true;
+            true_positives += 1;
         }
     }
 
     let false_positives = extracted.len().saturating_sub(true_positives);
     let false_negatives = expected.len().saturating_sub(true_positives);
 
+    let to_f64 = |n: usize| f64::from(u32::try_from(n).unwrap_or(u32::MAX));
     let precision = if extracted.is_empty() {
         if expected.is_empty() { 1.0 } else { 0.0 }
     } else {
-        true_positives as f64 / extracted.len() as f64
+        to_f64(true_positives) / to_f64(extracted.len())
     };
     let recall = if expected.is_empty() {
-        if extracted.is_empty() { 1.0 } else { 0.0 }
+        1.0
     } else {
-        true_positives as f64 / expected.len() as f64
+        to_f64(true_positives) / to_f64(expected.len())
     };
     let f1 = if precision + recall > 0.0 {
         2.0 * precision * recall / (precision + recall)
@@ -140,6 +142,8 @@ pub fn score_extraction(extraction: &Extraction, fixture: &LabeledFixture) -> Ex
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::float_cmp, reason = "test assertions on exact float values")]
+
     use super::*;
 
     fn fact(subject: &str, predicate: &str, object: &str) -> ExtractedFact {
