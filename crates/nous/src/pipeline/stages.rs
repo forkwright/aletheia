@@ -1,9 +1,12 @@
 // kanon:ignore RUST/file-too-long — pipeline stage implementations; per-stage module extraction planned
 //! Pipeline stage implementations.
 
+use std::cmp::Reverse;
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
+use sha2::{Digest as _, Sha256};
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
@@ -13,6 +16,9 @@ use hermeneus::provider::ProviderRegistry;
 use hermeneus::types::{CompletionRequest, Content, ContentBlock, Message, Role};
 use koina::event::EventEmitter;
 use mneme::embedding::EmbeddingProvider;
+use mneme::id::FactId;
+use mneme::knowledge::{EpistemicTier, Fact};
+use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use organon::registry::ToolRegistry;
 use organon::types::ToolContext;
@@ -27,7 +33,7 @@ use crate::hooks::registry::HookRegistry;
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
-use super::events::{StageCompleted, StageError, StageSkipped, StageTimeout};
+use super::events::{ReflectionOutcome, StageCompleted, StageError, StageSkipped, StageTimeout};
 use super::{
     GuardResult, PipelineContext, PipelineInput, PipelineMessage, ReflectionResult,
     ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
@@ -944,22 +950,20 @@ pub(super) async fn run_finalize_stage(
     outcome
 }
 
-/// Reflection stage: read recent facts and emit reflected ones.
+const REFLECTION_SOURCE_FACT_LIMIT: i64 = 64;
+const REFLECTION_EMIT_FACT_LIMIT: usize = 16;
+
+/// Reflection stage: read recent facts and emit durable reflected facts.
 ///
-/// NOTE(#PR5): This is a conservative no-op today because [`KnowledgeStore`]
-/// is not threaded through [`run_pipeline`].  When a store handle becomes
-/// available the stage should:
-///
-/// 1. Read recent session facts for this `nous_id`.
-/// 2. Emit promoted facts at [`mneme::knowledge::EpistemicTier::Reflected`].
-///
-/// Until then the stage records [`ReflectionStatus::Skipped`] when disabled
-/// or [`ReflectionStatus::NoStore`] when enabled, so observability can
-/// distinguish the two cases.
+/// The stage is intentionally conservative: it promotes existing current facts
+/// into deterministic `Reflected` facts without inventing new content. The
+/// deterministic ID makes repeated reflection passes idempotent.
 pub(super) async fn run_reflection_stage(
     config: &NousConfig,
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
+    knowledge_store: Option<Arc<KnowledgeStore>>,
+    source_session_id: Option<&str>,
     emitter: &EventEmitter,
 ) -> error::Result<()> {
     let span = info_span!(
@@ -978,68 +982,212 @@ pub(super) async fn run_reflection_stage(
             stage: "reflection",
             reason: "reflection disabled".to_owned(),
         });
-        ctx.reflection_result = Some(ReflectionResult::new(ReflectionStatus::Skipped, 0));
-        let duration_secs = start.elapsed().as_secs_f64();
-        record_stage_duration(&span, &start);
-        emitter.emit(&StageCompleted {
-            nous_id: config.id.to_string(),
-            stage: "reflection",
-            duration_secs,
-        });
+        record_reflection_outcome(config, ctx, emitter, ReflectionStatus::Disabled, 0);
+        complete_reflection_stage(config, emitter, &span, &start);
         return Ok(());
     }
 
-    let reflection_timeout_secs = pipeline_config.stage_budget.reflection_secs;
+    let Some(store) = knowledge_store else {
+        span.record("status", "no_store");
+        emitter.emit(&StageSkipped {
+            nous_id: config.id.to_string(),
+            stage: "reflection",
+            reason: "knowledge store unavailable".to_owned(),
+        });
+        record_reflection_outcome(config, ctx, emitter, ReflectionStatus::NoStore, 0);
+        complete_reflection_stage(config, emitter, &span, &start);
+        return Ok(());
+    };
 
-    let reflection_fut = async {
-        // WHY: no-op — KnowledgeStore is not in the pipeline signature today.
-        // Do not invent global state or fake facts.
-    }
-    .instrument(span.clone());
-
-    if reflection_timeout_secs > 0 {
-        match tokio::time::timeout(
-            Duration::from_secs(u64::from(reflection_timeout_secs)),
-            reflection_fut,
-        )
-        .await
-        {
-            Ok(()) => {}
-            Err(_elapsed) => {
-                span.record("status", "timeout");
-                emitter.emit(&StageTimeout {
+    let outcome =
+        persist_reflected_facts(config, store, source_session_id, jiff::Timestamp::now()).await;
+    match outcome.status {
+        ReflectionStatus::Failed => {
+            span.record("status", "failed");
+            if let Some(error_type) = outcome.error_type {
+                emitter.emit(&StageError {
                     nous_id: config.id.to_string(),
                     stage: "reflection",
-                    timeout_secs: reflection_timeout_secs,
+                    error_type: error_type.to_owned(),
                 });
-                ctx.reflection_result = Some(ReflectionResult::new(ReflectionStatus::NoStore, 0));
-                let duration_secs = start.elapsed().as_secs_f64();
-                record_stage_duration(&span, &start);
-                emitter.emit(&StageCompleted {
-                    nous_id: config.id.to_string(),
-                    stage: "reflection",
-                    duration_secs,
-                });
-                return Ok(());
             }
         }
-    } else {
-        reflection_fut.await;
+        ReflectionStatus::Skipped => {
+            span.record("status", "skipped");
+            emitter.emit(&StageSkipped {
+                nous_id: config.id.to_string(),
+                stage: "reflection",
+                reason: "no eligible facts".to_owned(),
+            });
+        }
+        ReflectionStatus::Completed => {
+            span.record("status", "ok");
+            span.record("facts_emitted", outcome.facts_emitted);
+        }
+        ReflectionStatus::Disabled | ReflectionStatus::NoStore => {}
+    }
+    record_reflection_outcome(config, ctx, emitter, outcome.status, outcome.facts_emitted);
+    complete_reflection_stage(config, emitter, &span, &start);
+    Ok(())
+}
+
+struct ReflectionWorkOutcome {
+    status: ReflectionStatus,
+    facts_emitted: u32,
+    error_type: Option<&'static str>,
+}
+
+impl ReflectionWorkOutcome {
+    const fn completed(facts_emitted: u32) -> Self {
+        Self {
+            status: ReflectionStatus::Completed,
+            facts_emitted,
+            error_type: None,
+        }
     }
 
-    // WHY: no-op — KnowledgeStore is not in the pipeline signature today.
-    // Do not invent global state or fake facts.
-    span.record("status", "no_store");
-    ctx.reflection_result = Some(ReflectionResult::new(ReflectionStatus::NoStore, 0));
+    const fn skipped() -> Self {
+        Self {
+            status: ReflectionStatus::Skipped,
+            facts_emitted: 0,
+            error_type: None,
+        }
+    }
 
+    const fn failed(error_type: &'static str, facts_emitted: u32) -> Self {
+        Self {
+            status: ReflectionStatus::Failed,
+            facts_emitted,
+            error_type: Some(error_type),
+        }
+    }
+}
+
+async fn persist_reflected_facts(
+    config: &NousConfig,
+    store: Arc<KnowledgeStore>,
+    source_session_id: Option<&str>,
+    recorded_at: jiff::Timestamp,
+) -> ReflectionWorkOutcome {
+    let now_str = mneme::knowledge::format_timestamp(&recorded_at);
+    let mut source_facts = match store
+        .query_facts_async(config.id.to_string(), now_str, REFLECTION_SOURCE_FACT_LIMIT)
+        .await
+    {
+        Ok(facts) => facts,
+        Err(err) => {
+            warn!(error = %err, "reflection query failed");
+            return ReflectionWorkOutcome::failed("query_failed", 0);
+        }
+    };
+
+    source_facts.sort_by_key(|fact| Reverse(fact.temporal.recorded_at));
+
+    let mut facts_persisted = 0_u32;
+    for source_fact in source_facts
+        .into_iter()
+        .filter(is_reflection_candidate)
+        .take(REFLECTION_EMIT_FACT_LIMIT)
+    {
+        let reflected = match reflected_fact(&source_fact, config, source_session_id, recorded_at) {
+            Ok(reflected) => reflected,
+            Err(err) => {
+                warn!(source_fact_id = %source_fact.id, error = %err, "reflection id build failed");
+                return ReflectionWorkOutcome::failed("id_build_failed", facts_persisted);
+            }
+        };
+        if let Err(err) = store.insert_fact_async(reflected).await {
+            warn!(source_fact_id = %source_fact.id, error = %err, "reflection write failed");
+            return ReflectionWorkOutcome::failed("persistence_failed", facts_persisted);
+        }
+        facts_persisted = facts_persisted.saturating_add(1);
+    }
+
+    if facts_persisted == 0 {
+        ReflectionWorkOutcome::skipped()
+    } else {
+        ReflectionWorkOutcome::completed(facts_persisted)
+    }
+}
+
+fn record_reflection_outcome(
+    config: &NousConfig,
+    ctx: &mut PipelineContext,
+    emitter: &EventEmitter,
+    status: ReflectionStatus,
+    facts_emitted: u32,
+) {
+    ctx.reflection_result = Some(ReflectionResult::new(status, facts_emitted));
+    emitter.emit(&ReflectionOutcome {
+        nous_id: config.id.to_string(),
+        status: status.as_str(),
+        facts_emitted,
+    });
+}
+
+fn complete_reflection_stage(
+    config: &NousConfig,
+    emitter: &EventEmitter,
+    span: &tracing::Span,
+    start: &Instant,
+) {
     let duration_secs = start.elapsed().as_secs_f64();
-    record_stage_duration(&span, &start);
+    record_stage_duration(span, start);
     emitter.emit(&StageCompleted {
         nous_id: config.id.to_string(),
         stage: "reflection",
         duration_secs,
     });
-    Ok(())
+}
+
+fn is_reflection_candidate(fact: &Fact) -> bool {
+    matches!(
+        fact.provenance.tier,
+        EpistemicTier::Inferred | EpistemicTier::Assumed
+    ) && !fact.id.as_str().starts_with("reflection-")
+}
+
+fn reflected_fact(
+    source: &Fact,
+    config: &NousConfig,
+    source_session_id: Option<&str>,
+    recorded_at: jiff::Timestamp,
+) -> Result<Fact, mneme::id::IdValidationError> {
+    let mut reflected = source.clone();
+    reflected.id = reflected_fact_id(source)?;
+    reflected.nous_id = config.id.to_string();
+    reflected.temporal.recorded_at = recorded_at;
+    reflected.provenance.tier = EpistemicTier::Reflected;
+    reflected.provenance.source_session_id = source_session_id.map(str::to_owned);
+    reflected.access.access_count = 0;
+    reflected.access.last_accessed_at = None;
+    reflected.lifecycle.superseded_by = None;
+    reflected.lifecycle.is_forgotten = false;
+    reflected.lifecycle.forgotten_at = None;
+    reflected.lifecycle.forget_reason = None;
+    Ok(reflected)
+}
+
+fn reflected_fact_id(source: &Fact) -> Result<FactId, mneme::id::IdValidationError> {
+    let mut hasher = Sha256::new();
+    hasher.update(source.nous_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(source.id.as_str().as_bytes());
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in &digest {
+        hex.push(hex_nibble(*byte >> 4));
+        hex.push(hex_nibble(*byte & 0x0f));
+    }
+    FactId::new(format!("reflection-{hex}"))
+}
+
+fn hex_nibble(nibble: u8) -> char {
+    match nibble {
+        0..=9 => char::from(b'0' + nibble),
+        10..=15 => char::from(b'a' + (nibble - 10)),
+        _ => '0',
+    }
 }
 
 /// Record elapsed duration on a pipeline stage span.
