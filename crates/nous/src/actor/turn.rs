@@ -540,6 +540,14 @@ impl NousActor {
         tokio::select! {
             result = &mut pipeline_task => result,
             () = turn_cancel.cancelled() => {
+                // WHY(#4713): request cancellation is a coarse signal, not a
+                // cooperative checkpoint inside the pipeline. Aborting the task
+                // reverts the in-memory turn counter, so persisted session
+                // history remains consistent (the turn is not finalized). Any
+                // LLM calls or tool side effects already in flight are
+                // best-effort and may complete after cancellation; callers
+                // receive `TurnCancelled` and must treat in-flight side effects
+                // as unobserved for this turn.
                 pipeline_task.abort();
                 let _ = pipeline_task.await;
                 // WHY: the turn counter was advanced before the pipeline task
