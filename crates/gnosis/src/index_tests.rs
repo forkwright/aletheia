@@ -61,6 +61,38 @@ fn index_simple_fn() {
 }
 
 #[test]
+fn index_nested_fn_is_excluded() {
+    let (store, _dir) = open_test_store();
+    let src = r"
+        pub fn outer() {
+            fn inner_helper() {}
+            inner_helper();
+        }
+    ";
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile");
+    std::fs::write(tmp.path(), src).expect("write");
+    let path_str = tmp.path().to_string_lossy().into_owned();
+
+    index_file(&store, "test_crate", &path_str, "").expect("index");
+
+    let symbols = store.symbols().expect("query");
+    let outer_count = symbols
+        .iter()
+        .filter(|symbol| symbol.symbol_name == "outer" && symbol.symbol_kind == "fn")
+        .count();
+    assert_eq!(outer_count, 1, "expected module-level outer fn");
+
+    let inner_count = symbols
+        .iter()
+        .filter(|symbol| symbol.symbol_name == "inner_helper")
+        .count();
+    assert_eq!(
+        inner_count, 0,
+        "nested function must not appear as a module-level symbol"
+    );
+}
+
+#[test]
 fn index_struct_and_impl_trait() {
     let (store, _dir) = open_test_store();
     let src = r"
