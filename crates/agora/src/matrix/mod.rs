@@ -428,6 +428,15 @@ async fn sync_once(
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
 
+    // WHY: advance the cursor immediately after the HTTP response returns,
+    // before any tx.send await points. If cancellation interrupts the sends
+    // below, we would rather lose the in-flight events than replay the whole
+    // batch on the next sync.
+    if let Some(next_batch) = response.next_batch {
+        let mut guard = since.lock().await;
+        *guard = Some(next_batch);
+    }
+
     for (room_id, room) in &response.rooms.join {
         for event in &room.timeline.events {
             if let Some(message) = extract_message(room_id, event, own_user_id)
@@ -438,11 +447,6 @@ async fn sync_once(
                 return error::ReceiverDroppedSnafu.fail();
             }
         }
-    }
-
-    if let Some(next_batch) = response.next_batch {
-        let mut guard = since.lock().await;
-        *guard = Some(next_batch);
     }
 
     Ok(())
@@ -519,7 +523,11 @@ fn hex_digit(nibble: u8) -> char {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
     use organon::testing::install_crypto_provider;
+    use tokio::sync::{Mutex, mpsc};
     use wiremock::matchers::{header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -702,5 +710,97 @@ mod tests {
         {
             let _ = result;
         }
+    }
+
+    #[tokio::test]
+    async fn sync_once_advances_since_before_sends_complete() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(header("authorization", "Bearer token-123"))
+            .and(query_param("timeout", "50"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:example.org": {
+                            "timeline": {
+                                "events": [
+                                    {
+                                        "type": "m.room.message",
+                                        "sender": "@alice:example.org",
+                                        "event_id": "$event1",
+                                        "origin_server_ts": 123,
+                                        "content": {
+                                            "msgtype": "m.text",
+                                            "body": "hello from Matrix"
+                                        }
+                                    },
+                                    {
+                                        "type": "m.room.message",
+                                        "sender": "@alice:example.org",
+                                        "event_id": "$event2",
+                                        "origin_server_ts": 124,
+                                        "content": {
+                                            "msgtype": "m.text",
+                                            "body": "second from Matrix"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = client::MatrixClient::with_timeouts(
+            &server.uri(),
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .expect("client");
+        let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        // WHY: capacity-1 bounded channel with two events and a non-polling receiver:
+        // the first tx.send fills the buffer, the second tx.send suspends (buffer full),
+        // and handle.abort() cancels the task at that await point.
+        let (tx, _rx) = mpsc::channel::<InboundMessage>(1);
+
+        let client_ref = client.clone();
+        let since_ref = Arc::clone(&since);
+        let tx_ref = tx.clone();
+        let own_user_id = "@bot:example.org".to_owned();
+        let handle = tokio::spawn(async move {
+            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id)).await
+        });
+
+        // WHY: wait until sync_once has advanced the cursor; that happens
+        // synchronously before the first tx.send await point, so reaching it
+        // means the task is suspended at (or past) the send where cancellation
+        // would previously have left a stale token.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while since.lock().await.is_none() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("sync_once should advance since before sending");
+
+        handle.abort();
+        assert!(
+            handle.await.expect_err("aborted task").is_cancelled(),
+            "task should have been cancelled while tx.send was suspended"
+        );
+
+        let guard = since.lock().await;
+        assert_eq!(
+            guard.as_deref(),
+            Some("s1"),
+            "next_batch should be persisted even when the future is cancelled mid-send"
+        );
     }
 }
