@@ -71,14 +71,14 @@ pub(crate) struct ViolationRecord {
 /// - an explicit `outcome` of "merged" or "fixed"; or
 /// - a before/after violation delta where `after_count < before_count`.
 fn has_fixed_outcome_evidence(record: &ViolationRecord) -> bool {
-    if matches!(record.outcome.as_deref(), Some("merged") | Some("fixed")) {
+    if matches!(record.outcome.as_deref(), Some("merged" | "fixed")) {
         return true;
     }
 
-    if let (Some(before), Some(after)) = (record.before_count, record.after_count) {
-        if after < before {
-            return true;
-        }
+    if let (Some(before), Some(after)) = (record.before_count, record.after_count)
+        && after < before
+    {
+        return true;
     }
 
     false
@@ -375,7 +375,7 @@ impl RuleBucket {
                     .unwrap_or_default();
                 let explicit_outcome = violations
                     .iter()
-                    .any(|v| matches!(v.outcome.as_deref(), Some("merged") | Some("fixed")));
+                    .any(|v| matches!(v.outcome.as_deref(), Some("merged" | "fixed")));
 
                 // WHY: explicit merged/fixed outcome is stronger evidence than a
                 // before/after delta alone.
