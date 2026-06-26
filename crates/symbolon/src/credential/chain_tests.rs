@@ -83,6 +83,11 @@ struct StaticProvider {
     name: &'static str,
 }
 
+struct ShutdownTrackingProvider {
+    name: &'static str,
+    shutdown_called: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
 impl CredentialProvider for StaticProvider {
     fn get_credential(&self) -> Option<Credential> {
         self.token.as_ref().map(|t| Credential {
@@ -90,6 +95,21 @@ impl CredentialProvider for StaticProvider {
             source: CredentialSource::Environment,
         })
     }
+    fn name(&self) -> &str {
+        self.name
+    }
+}
+
+impl CredentialProvider for ShutdownTrackingProvider {
+    fn shutdown(&self) {
+        self.shutdown_called
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn get_credential(&self) -> Option<Credential> {
+        None
+    }
+
     fn name(&self) -> &str {
         self.name
     }
@@ -150,4 +170,41 @@ fn chain_all_empty_returns_none() {
 fn chain_empty_providers_returns_none() {
     let chain = CredentialChain::new(vec![]);
     assert!(chain.get_credential().is_none());
+}
+
+#[test]
+fn chain_shutdown_propagates_to_all_providers() {
+    let first_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let second_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let first_flag_check = std::sync::Arc::clone(&first_flag);
+    let second_flag_check = std::sync::Arc::clone(&second_flag);
+
+    let chain = CredentialChain::new(vec![
+        Box::new(ShutdownTrackingProvider {
+            name: "first",
+            shutdown_called: first_flag,
+        }),
+        Box::new(ShutdownTrackingProvider {
+            name: "second",
+            shutdown_called: second_flag,
+        }),
+        Box::new(StaticProvider {
+            token: None,
+            name: "non-shutdown",
+        }),
+    ]);
+
+    // WHY: `CredentialProvider::shutdown` has a default no-op, but
+    // `CredentialChain` must explicitly forward the signal to every provider
+    // so stateful providers like `RefreshingCredentialProvider` receive it.
+    chain.shutdown();
+
+    assert!(
+        first_flag_check.load(std::sync::atomic::Ordering::SeqCst),
+        "first provider should receive shutdown"
+    );
+    assert!(
+        second_flag_check.load(std::sync::atomic::Ordering::SeqCst),
+        "second provider should receive shutdown"
+    );
 }

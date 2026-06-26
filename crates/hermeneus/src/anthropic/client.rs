@@ -1062,6 +1062,10 @@ impl AnthropicProvider {
 }
 
 impl LlmProvider for AnthropicProvider {
+    fn shutdown(&self) {
+        self.credential_provider.shutdown();
+    }
+
     fn complete<'a>(
         &'a self,
         request: &'a CompletionRequest,

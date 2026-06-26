@@ -250,6 +250,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
 
     info!("shutting down");
 
+    // WHY: cancel OAuth credential refresh background tasks before draining
+    // in-flight LLM requests so tokens are not refreshed after shutdown begins.
+    runtime.state.provider_registry.shutdown();
+
     let shutdown_timeout = std::time::Duration::from_secs(
         RealSystem
             .var("ALETHEIA_SHUTDOWN_TIMEOUT_SECS")

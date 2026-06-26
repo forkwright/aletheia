@@ -64,6 +64,13 @@ pub trait CredentialProvider: Send + Sync {
 
     /// Human-readable name for diagnostics logging.
     fn name(&self) -> &str;
+
+    /// Signal the provider to release any background resources.
+    ///
+    /// Called during server shutdown so providers can cancel background tasks
+    /// before the runtime begins draining in-flight requests. The default
+    /// implementation is a no-op for stateless providers.
+    fn shutdown(&self) {}
 }
 
 impl fmt::Debug for dyn CredentialProvider {

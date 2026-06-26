@@ -181,12 +181,16 @@ impl RefreshingCredentialProvider {
     ///
     /// Called automatically by [`Drop`] so application shutdown cancels the
     /// refresh loop eagerly; tests may also call it explicitly.
-    pub(crate) fn shutdown(&self) {
+    fn signal_shutdown(&self) {
         self.shutdown.cancel();
     }
 }
 
 impl CredentialProvider for RefreshingCredentialProvider {
+    fn shutdown(&self) {
+        self.signal_shutdown();
+    }
+
     fn get_credential(&self) -> Option<Credential> {
         if let Ok(guard) = self.state.read()
             && let Some(ref s) = *guard
