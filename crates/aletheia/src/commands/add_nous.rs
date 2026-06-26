@@ -142,8 +142,10 @@ fn ensure_initialized(oikos: &Oikos) -> Result<()> {
                 "instance at {} is not initialized (missing {} directory)\n  \
                  Run `aletheia init` first.",
                 root.display(),
-                dir.file_name()
-                    .map_or_else(|| dir.as_os_str().to_string_lossy(), |n| n.to_string_lossy())
+                dir.file_name().map_or_else(
+                    || dir.as_os_str().to_string_lossy(),
+                    |n| n.to_string_lossy()
+                )
             );
         }
     }
@@ -349,7 +351,9 @@ fn ensure_writable(path: &Path) -> Result<()> {
     // kanon:ignore RUST/no-silent-result-swallow — best-effort cleanup of transient test file
     let _ = std::fs::remove_file(&test_file);
 
-    result.with_whatever_context(|_| format!("config directory is not writable: {}", parent.display()))
+    result.with_whatever_context(|_| {
+        format!("config directory is not writable: {}", parent.display())
+    })
 }
 
 /// Check if the server is reachable by hitting its health endpoint.
@@ -709,7 +713,11 @@ mod tests {
             clippy::disallowed_methods,
             reason = "test setup writes a minimal initialized config"
         )]
-        std::fs::write(root.join("config/aletheia.toml"), "[gateway]\nport = 18789\n").unwrap();
+        std::fs::write(
+            root.join("config/aletheia.toml"),
+            "[gateway]\nport = 18789\n",
+        )
+        .unwrap();
         Oikos::from_root(root)
     }
 
