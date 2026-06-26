@@ -388,15 +388,16 @@ fn graph_recompute_cluster_is_discovered_by_consolidation() {
         let fact_id = format!("cluster-fact-{i:02}");
         let fact = make_fact(&fact_id, "nous-test", &format!("community fact {i}"));
         store.insert_fact(&fact).expect("insert fact");
-        let entity_id_obj =
-            crate::id::EntityId::new(entity_id).expect("valid test entity id");
+        let entity_id_obj = crate::id::EntityId::new(entity_id).expect("valid test entity id");
         store
             .insert_fact_entity(&fact.id, &entity_id_obj)
             .expect("link fact to entity");
         expected_fact_ids.insert(fact_id);
     }
 
-    store.recompute_graph_scores().expect("recompute graph scores");
+    store
+        .recompute_graph_scores()
+        .expect("recompute graph scores");
 
     let ctx = store.load_graph_context().expect("load graph context");
     assert!(
