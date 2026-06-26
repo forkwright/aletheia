@@ -42,6 +42,10 @@ fn nous_list_response_serializes_nous_array() {
             provider_readiness: vec![],
             status: "active".to_owned(),
             tools: vec![],
+            config_applied: None,
+            live_applied: None,
+            reload_required: None,
+            restart_required: None,
         }],
     };
     let json = serde_json::to_value(&resp).unwrap();
@@ -69,6 +73,10 @@ fn nous_summary_name_falls_back_to_id() {
         provider_readiness: vec![],
         status: "active".to_owned(),
         tools: vec![],
+        config_applied: None,
+        live_applied: None,
+        reload_required: None,
+        restart_required: None,
     };
     let json = serde_json::to_value(&summary).unwrap();
     assert_eq!(json["name"], "bob");
@@ -128,6 +136,10 @@ fn tools_response_serializes_tool_list() {
             category: "Builtin".to_owned(),
             auto_activate: true,
         }],
+        config_applied: None,
+        live_applied: None,
+        reload_required: None,
+        restart_required: None,
     };
     let json = serde_json::to_value(&resp).unwrap();
     assert_eq!(json["tools"][0]["name"], "read_file");

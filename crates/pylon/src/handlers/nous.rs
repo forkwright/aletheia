@@ -147,6 +147,10 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
                 provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
                 status: "active".to_owned(),
                 tools,
+                config_applied: None,
+                live_applied: None,
+                reload_required: None,
+                restart_required: None,
             }
         })
         .collect();
@@ -269,7 +273,13 @@ pub async fn tools(
     let config = state.config.read().await;
     let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
 
-    Ok(Json(ToolsResponse { tools }))
+    Ok(Json(ToolsResponse {
+        tools,
+        config_applied: None,
+        live_applied: None,
+        reload_required: None,
+        restart_required: None,
+    }))
 }
 
 /// PATCH /api/v1/nous/{id}: toggle an agent's enabled state.
@@ -332,13 +342,16 @@ pub async fn update_enabled(
         }
     }
 
-    if let Some(handle) = state.nous_manager.get(&id) {
+    let live_handle = state.nous_manager.get(&id);
+    let mut live_command_failed = live_handle.is_none();
+    if let Some(handle) = live_handle.as_ref() {
         let live_result = if body.enabled {
             handle.wake().await
         } else {
             handle.sleep().await
         };
         if let Err(e) = live_result {
+            live_command_failed = true;
             tracing::warn!(nous_id = %id, error = %e, "failed to update live agent lifecycle; config intent persisted");
         }
     }
@@ -347,13 +360,20 @@ pub async fn update_enabled(
     let enabled = agent_definition(&config, &id).is_none_or(|agent| agent.enabled);
     let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
     drop(config);
-    let status = match state.nous_manager.get(&id) {
+    let status = match live_handle.as_ref() {
         Some(handle) => handle
             .status()
             .await
             .map_or_else(|_| "unknown".to_owned(), |s| s.lifecycle.to_string()),
         None => "unknown".to_owned(),
     };
+    let live_applied = if body.enabled {
+        matches!(status.as_str(), "idle" | "active")
+    } else {
+        status == "dormant"
+    };
+    let restart_required =
+        !live_applied && (live_command_failed || matches!(status.as_str(), "unknown" | "degraded"));
 
     let mut summary_models = vec![runtime.generation.model.clone()];
     summary_models.extend(runtime.generation.fallback_models.clone());
@@ -370,6 +390,10 @@ pub async fn update_enabled(
         provider_readiness: resolve_model_readiness(&state.provider_registry, &summary_models),
         status,
         tools,
+        config_applied: Some(true),
+        live_applied: Some(live_applied),
+        reload_required: Some(false),
+        restart_required: Some(restart_required),
     }))
 }
 
@@ -467,7 +491,13 @@ pub async fn update_tool(
     let config = state.config.read().await;
     let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
 
-    Ok(Json(ToolsResponse { tools }))
+    Ok(Json(ToolsResponse {
+        tools,
+        config_applied: Some(true),
+        live_applied: Some(false),
+        reload_required: Some(true),
+        restart_required: Some(false),
+    }))
 }
 
 /// POST /api/v1/nous/{id}/recover: reset degraded actor to idle.
