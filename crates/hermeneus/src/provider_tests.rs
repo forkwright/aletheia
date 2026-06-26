@@ -1,4 +1,5 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "test: map key is asserted present by contains_key check above"
@@ -332,14 +333,17 @@ fn explicit_provider_route_reports_health_failure_directly() {
 
     let err = registry
         .resolve_provider("some-model", ProviderRoute::Explicit("named-provider"))
-        .expect_err("explicit route to a down provider must fail");
+        .err()
+        .expect("explicit route to a down provider must fail");
 
     match err {
         ProviderResolutionError::ProviderUnavailable { name, health } => {
             assert_eq!(name, "named-provider");
             assert!(matches!(health, ProviderHealth::Down { .. }));
         }
-        other => panic!("expected ProviderUnavailable, got {other}"),
+        other @ ProviderResolutionError::NoProvider { .. } => {
+            panic!("expected ProviderUnavailable, got {other}")
+        }
     }
 }
 

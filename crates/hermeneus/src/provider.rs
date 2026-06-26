@@ -61,9 +61,17 @@ pub enum ProviderRoute<'a> {
 pub enum ProviderResolutionError {
     /// No registered provider supports the requested model (model-only routing),
     /// or the explicitly named provider does not exist.
-    NoProvider { model: String },
+    NoProvider {
+        /// The model ID for which no provider was found.
+        model: String,
+    },
     /// The explicitly named provider exists but is not available.
-    ProviderUnavailable { name: String, health: ProviderHealth },
+    ProviderUnavailable {
+        /// The registered name of the unavailable provider.
+        name: String,
+        /// The current health state of the unavailable provider.
+        health: ProviderHealth,
+    },
 }
 
 impl std::fmt::Display for ProviderResolutionError {
@@ -499,10 +507,10 @@ impl ProviderRegistry {
         // are not used as fallbacks because they are not equivalent matches.
         let mut target_specificity: Option<MatchKind> = None;
         for entry in &self.providers {
-            if let Some(kind) = entry.provider.match_specificity(model) {
-                if target_specificity.as_ref().is_none_or(|prev| kind > *prev) {
-                    target_specificity = Some(kind);
-                }
+            if let Some(kind) = entry.provider.match_specificity(model)
+                && target_specificity.as_ref().is_none_or(|prev| kind > *prev)
+            {
+                target_specificity = Some(kind);
             }
         }
 
