@@ -45,6 +45,14 @@ pub enum DegradedMode {
         /// Human-readable status shown alongside the response.
         status_banner: String,
     },
+    /// The turn's wall-clock budget was exhausted at a safe boundary.
+    ///
+    /// Tool results observed before the deadline are preserved; the response
+    /// explains that the turn stopped early rather than dropping the future.
+    TurnBudgetExceeded {
+        /// Human-readable status shown alongside the response.
+        status_banner: String,
+    },
 }
 
 impl DegradedMode {
@@ -52,9 +60,9 @@ impl DegradedMode {
     #[must_use]
     pub fn status_banner(&self) -> &str {
         match self {
-            Self::DistillationCache { status_banner } | Self::Unavailable { status_banner } => {
-                status_banner
-            }
+            Self::DistillationCache { status_banner }
+            | Self::Unavailable { status_banner }
+            | Self::TurnBudgetExceeded { status_banner } => status_banner,
         }
     }
 }

@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use snafu::{IntoError, ResultExt};
+use snafu::ResultExt;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tracing::{Instrument, debug, error, info_span, warn};
@@ -685,18 +685,27 @@ pub(super) fn run_guard_stage(
     }
 }
 
-/// Execute stage: call LLM with optional timeout and streaming.
+/// Execute stage: call LLM with optional cooperative deadline and streaming.
 ///
-/// On transient LLM failures (rate limit, timeout, 5xx) this stage falls back
-/// to [`crate::degraded_mode::build_degraded_response`] instead of propagating
+/// On transient LLM failures (rate limit, 5xx) this stage falls back to
+/// [`crate::degraded_mode::build_degraded_response`] instead of propagating
 /// the error. The happy path is unchanged.
+///
+/// # Cooperative timeout
+///
+/// This stage no longer wraps the entire execute future in
+/// `tokio::time::timeout`. Instead, a deadline is passed into the execute
+/// loop and observed at safe boundaries (between LLM calls and after tool
+/// results have been processed) and around each LLM call. When the deadline
+/// expires, execute returns a [`DegradedMode::TurnBudgetExceeded`] result
+/// preserving any tool results already observed.
 #[expect(
     clippy::too_many_arguments,
     reason = "stage receives all pipeline dependencies"
 )]
 #[expect(
     clippy::too_many_lines,
-    reason = "execute stage orchestrates timeout, streaming, and degraded-mode fallback — splitting adds indirection"
+    reason = "execute stage orchestrates cooperative timeout, streaming, and degraded-mode fallback — splitting adds indirection"
 )]
 pub(super) async fn run_execute_stage(
     config: &NousConfig,
@@ -724,11 +733,11 @@ pub(super) async fn run_execute_stage(
     );
     let start = Instant::now();
 
-    let effective_execute_timeout = time_budget.stage_limit("execute");
+    let execute_deadline = time_budget.stage_deadline("execute");
 
     let execute_fut = async {
         if let Some(tx) = stream_tx {
-            crate::execute::execute_streaming(
+            crate::execute::execute_streaming_with_deadline(
                 ctx,
                 &input.session,
                 config,
@@ -738,59 +747,55 @@ pub(super) async fn run_execute_stage(
                 tx,
                 approval_gate,
                 hooks,
+                execute_deadline,
             )
             .await
         } else {
-            crate::execute::execute(
+            crate::execute::execute_with_deadline(
                 ctx,
                 &input.session,
                 config,
                 providers,
                 tools,
                 tool_ctx,
+                None,
+                approval_gate,
                 hooks,
+                execute_deadline,
             )
             .await
         }
     }
     .instrument(span.clone());
 
-    let mut timed_out = false;
-    let mut timeout_secs = 0u32;
+    let execute_result = execute_fut.await;
 
-    let execute_result = if let Some(timeout_dur) = effective_execute_timeout {
-        match tokio::time::timeout(timeout_dur, execute_fut).await {
-            Ok(res) => res,
-            Err(_elapsed) => {
-                timeout_secs = u32::try_from(timeout_dur.as_secs()).unwrap_or(u32::MAX);
-                span.record("status", "timeout");
-                emitter.emit(&StageTimeout {
-                    nous_id: config.id.to_string(),
-                    stage: "execute",
-                    timeout_secs,
-                });
-                timed_out = true;
-                let herm_err = hermeneus::error::ApiRequestSnafu {
-                    message: format!("execute stage timeout after {timeout_secs}s"),
-                }
-                .build();
-                Err(error::LlmSnafu.into_error(herm_err))
-            }
-        }
-    } else {
-        execute_fut.await
-    };
-
-    // WHY: transient LLM errors (rate limit, 5xx, timeout) must degrade gracefully to cached context or an
+    // WHY: transient LLM errors (rate limit, 5xx) must degrade gracefully to cached context or an
     // unavailable message; non-transient errors (auth, config, panic) propagate for operator action.
     let result = match execute_result {
+        Ok(turn_result)
+            if matches!(
+                turn_result.degraded,
+                Some(crate::pipeline::DegradedMode::TurnBudgetExceeded { .. })
+            ) =>
+        {
+            let elapsed_secs = u32::try_from(start.elapsed().as_secs()).unwrap_or(u32::MAX);
+            span.record("status", "turn_timeout");
+            emitter.emit(&StageTimeout {
+                nous_id: config.id.to_string(),
+                stage: "execute",
+                timeout_secs: elapsed_secs,
+            });
+            emitter.emit(&StageError {
+                nous_id: config.id.to_string(),
+                stage: "execute",
+                error_type: "turn_timeout".to_owned(),
+            });
+            time_budget.end_stage(crate::budget::StageTimingStatus::TimedOut);
+            return Ok(turn_result);
+        }
         Ok(turn_result) => turn_result,
         Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
-            // kanon:ignore RUST/commented-code — WHY explanatory text, not commented-out code
-            // WHY: a None distillation summary means the session has never been
-            // distilled — for a hard timeout we fail instead of serving a generic
-            // unavailable message, while other transient errors still degrade.
-            //
             // WHY(#4730, #5245): use a bounded wait instead of try_lock() so a
             // briefly-contended store does not silently produce a no-cache result.
             // 50ms is well under any LLM latency — contention at this point is transient.
@@ -823,28 +828,10 @@ pub(super) async fn run_execute_stage(
                 None
             };
 
-            if timed_out && recent_distillation.is_none() {
-                emitter.emit(&StageError {
-                    nous_id: config.id.to_string(),
-                    stage: "execute",
-                    error_type: "timeout".to_owned(),
-                });
-                time_budget.end_stage(crate::budget::StageTimingStatus::TimedOut);
-                return Err(error::PipelineTimeoutSnafu {
-                    stage: "execute".to_owned(),
-                    timeout_secs,
-                }
-                .build());
-            }
-
             emitter.emit(&StageError {
                 nous_id: config.id.to_string(),
                 stage: "execute",
-                error_type: if timed_out {
-                    "degraded_timeout".to_owned()
-                } else {
-                    "degraded_mode".to_owned()
-                },
+                error_type: "degraded_mode".to_owned(),
             });
 
             span.record("status", "degraded");
@@ -878,11 +865,7 @@ pub(super) async fn run_execute_stage(
         stage: "execute",
         duration_secs,
     });
-    time_budget.end_stage(if timed_out {
-        crate::budget::StageTimingStatus::TimedOut
-    } else {
-        crate::budget::StageTimingStatus::Completed
-    });
+    time_budget.end_stage(crate::budget::StageTimingStatus::Completed);
     Ok(result)
 }
 

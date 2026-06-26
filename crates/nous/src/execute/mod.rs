@@ -11,6 +11,7 @@ mod tests;
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 
 use snafu::ResultExt;
 use tokio::sync::mpsc;
@@ -39,12 +40,15 @@ use crate::config::NousConfig;
 use crate::error;
 use crate::hooks::registry::HookRegistry;
 use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResultRecord};
-use crate::pipeline::{LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage};
+use crate::pipeline::{
+    InteractionSignal, LoopDetector, PipelineContext, ToolCall, TurnResult, TurnUsage,
+};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 
 const STOP_REASON_MAX_TOOL_ITERATIONS: &str = "max_tool_iterations";
 const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
+const STOP_REASON_TURN_TIMEOUT: &str = "turn_timeout";
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -60,6 +64,11 @@ const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
 /// Not cancel-safe. If cancelled mid-loop, tool calls may have been
 /// dispatched but their results not processed, leaving the session
 /// in an inconsistent state. Do not use in `select!` branches.
+///
+/// The public entry point does not enforce a wall-clock deadline; see
+/// [`execute_with_deadline`] for cooperative budget handling.
+// WHY(#4713): test-only wrapper — stages call execute_with_deadline directly.
+#[cfg(test)]
 pub async fn execute(
     ctx: &PipelineContext,
     session: &SessionState,
@@ -69,8 +78,8 @@ pub async fn execute(
     tool_ctx: &ToolContext,
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
-    execute_with_dispatch(
-        ctx, session, config, providers, tools, tool_ctx, None, None, hooks,
+    execute_with_deadline(
+        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None,
     )
     .await
 }
@@ -84,7 +93,7 @@ pub async fn execute(
     reason = "shared execute core accepts optional streaming and approval adapters"
 )]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
-async fn execute_with_dispatch(
+pub(crate) async fn execute_with_deadline(
     ctx: &PipelineContext,
     session: &SessionState,
     config: &NousConfig,
@@ -94,6 +103,7 @@ async fn execute_with_dispatch(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
+    deadline: Option<Instant>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the turn model once — complexity routing pins a tier for
     // the whole turn so tool-iteration continuations don't oscillate between
@@ -125,6 +135,7 @@ async fn execute_with_dispatch(
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
     let mut tool_surface_hashes: HashSet<String> = HashSet::new();
+    let mut turn_budget_exceeded = false;
 
     let thinking = config
         .generation
@@ -156,6 +167,17 @@ async fn execute_with_dispatch(
 
         if iterations > config.limits.max_tool_iterations {
             warn!(iterations, "max tool iterations reached");
+            break;
+        }
+
+        // WHY(#4713): the execute loop is not cancel-safe, so we observe the
+        // cooperative turn deadline at safe boundaries (before each LLM call
+        // and after each set of tool results has been processed). We never
+        // drop the future while tool side effects may be in flight.
+        if deadline.is_some_and(|d| Instant::now() >= d) {
+            warn!(iterations, "turn time budget exhausted at safe boundary");
+            turn_budget_exceeded = true;
+            STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -205,12 +227,43 @@ async fn execute_with_dispatch(
             ..Default::default()
         };
 
-        let completion = if let Some(fallback_config) = &fallback_config {
-            model_fallback::complete_with_registry_fallback(providers, &request, fallback_config)
-                .await
-        } else {
-            let provider = resolve_provider_checked(providers, &turn_model)?;
-            provider.complete(&request).await
+        // WHY(#4713): enforce the cooperative deadline around the LLM call
+        // itself. The LLM future is cancel-safe (it has no in-flight tool side
+        // effects), so `tokio::time::timeout` here does not risk orphaning tool
+        // results.
+        let completion = {
+            // WHY(#4713): box both branches to a uniform Pin<Box<dyn Future>> so
+            // tokio::time::timeout accepts a single future type regardless of whether
+            // the fallback path (async fn → impl Future) or the direct path
+            // (provider.complete → Pin<Box<dyn Future>>) is taken.
+            let llm_fut: std::pin::Pin<Box<dyn std::future::Future<Output = _> + Send + '_>> =
+                if let Some(fallback_config) = &fallback_config {
+                    Box::pin(model_fallback::complete_with_registry_fallback(
+                        providers,
+                        &request,
+                        fallback_config,
+                    ))
+                } else {
+                    let provider = resolve_provider_checked(providers, &turn_model)?;
+                    provider.complete(&request)
+                };
+            if let Some(deadline) = deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    turn_budget_exceeded = true;
+                    STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
+                    break;
+                }
+                if let Ok(res) = tokio::time::timeout(remaining, llm_fut).await {
+                    res
+                } else {
+                    turn_budget_exceeded = true;
+                    STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
+                    break;
+                }
+            } else {
+                llm_fut.await
+            }
         };
 
         let response = match completion {
@@ -410,6 +463,17 @@ async fn execute_with_dispatch(
         });
     }
 
+    if turn_budget_exceeded {
+        return Ok(build_turn_budget_exceeded_result(
+            final_content,
+            all_tool_calls,
+            total_usage,
+            reasoning_parts.join("\n"),
+            turn_model,
+            tool_surface_hashes.into_iter().collect(),
+        ));
+    }
+
     info!(
         iterations,
         tool_calls = all_tool_calls.len(),
@@ -436,6 +500,38 @@ async fn execute_with_dispatch(
         model_used: turn_model,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
+}
+
+/// Build a [`TurnResult`] for a turn whose wall-clock budget expired at a safe
+/// boundary.
+///
+/// Tool results observed before the deadline are preserved so that unprocessed
+/// side effects are not orphaned, and the response is flagged as degraded so
+/// callers can render a warning banner.
+fn build_turn_budget_exceeded_result(
+    final_content: String,
+    tool_calls: Vec<ToolCall>,
+    usage: TurnUsage,
+    reasoning: String,
+    model_used: String,
+    tool_surface_hashes: Vec<String>,
+) -> TurnResult {
+    let banner =
+        "Turn time budget exhausted — returning partial results from the last safe boundary."
+            .to_owned();
+    TurnResult {
+        content: final_content,
+        tool_calls,
+        usage,
+        signals: vec![InteractionSignal::ErrorRecovery],
+        stop_reason: STOP_REASON_TURN_TIMEOUT.to_owned(),
+        degraded: Some(crate::pipeline::DegradedMode::TurnBudgetExceeded {
+            status_banner: banner,
+        }),
+        reasoning,
+        model_used,
+        tool_surface_hashes,
+    }
 }
 
 /// Record a failed `try_send` of an LLM streaming delta.
@@ -482,10 +578,11 @@ fn record_llm_stream_send_error(
 /// Not cancel-safe. Same as [`execute`]: if cancelled mid-loop, partial
 /// streaming events may have been sent but the final result is lost,
 /// leaving the session in an inconsistent state. Do not use in `select!` branches.
-#[expect(
-    clippy::too_many_lines,
-    reason = "streaming agent loop parallels execute() with provider callback — one cohesive operation"
-)]
+///
+/// The public entry point does not enforce a wall-clock deadline; see
+/// [`execute_streaming_with_deadline`] for cooperative budget handling.
+// WHY(#4713): test-only wrapper — stages call execute_streaming_with_deadline directly.
+#[cfg(test)]
 #[expect(
     clippy::too_many_arguments,
     reason = "streaming execute requires provider, tools, context, stream channel, and hooks"
@@ -502,6 +599,47 @@ pub async fn execute_streaming(
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
+    execute_streaming_with_deadline(
+        ctx,
+        session,
+        config,
+        providers,
+        tools,
+        tool_ctx,
+        stream_tx,
+        approval_gate,
+        hooks,
+        None,
+    )
+    .await
+}
+
+/// Streaming execute stage with a cooperative wall-clock deadline.
+///
+/// The deadline is observed at safe boundaries (between LLM calls and after
+/// tool results have been processed) and around the LLM call itself, so tool
+/// side effects are never orphaned by a timeout.
+#[expect(
+    clippy::too_many_lines,
+    reason = "streaming agent loop parallels execute() with provider callback — one cohesive operation"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "streaming execute requires provider, tools, context, stream channel, hooks, and deadline"
+)]
+#[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
+pub(crate) async fn execute_streaming_with_deadline(
+    ctx: &PipelineContext,
+    session: &SessionState,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    stream_tx: &mpsc::Sender<TurnStreamEvent>,
+    approval_gate: Option<&ApprovalGate>,
+    hooks: Option<&HookRegistry>,
+    deadline: Option<Instant>,
+) -> error::Result<TurnResult> {
     // WHY: resolve the streaming turn model once — same reasoning as execute().
     // Must come before find_streaming_provider so the streaming provider is
     // looked up for the actual model the turn will use.
@@ -512,7 +650,7 @@ pub async fn execute_streaming(
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
 
     let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
-        return execute_with_dispatch(
+        return execute_with_deadline(
             ctx,
             session,
             config,
@@ -522,6 +660,7 @@ pub async fn execute_streaming(
             Some(stream_tx),
             approval_gate,
             hooks,
+            deadline,
         )
         .await;
     };
@@ -546,6 +685,7 @@ pub async fn execute_streaming(
     let mut used_server_code_execution = false;
     let mut reasoning_parts: Vec<String> = Vec::new();
     let mut tool_surface_hashes: HashSet<String> = HashSet::new();
+    let mut turn_budget_exceeded = false;
 
     let thinking = config
         .generation
@@ -571,6 +711,15 @@ pub async fn execute_streaming(
         // channel is closed.  Continuing to call the LLM wastes compute and credits (#1721).
         if stream_tx.is_closed() {
             info!("client disconnected, stopping LLM turn");
+            break;
+        }
+
+        // WHY(#4713): observe the cooperative turn deadline at a safe boundary,
+        // never while tool side effects may be in flight.
+        if deadline.is_some_and(|d| Instant::now() >= d) {
+            warn!(iterations, "turn time budget exhausted at safe boundary");
+            turn_budget_exceeded = true;
+            STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
             break;
         }
 
@@ -611,16 +760,37 @@ pub async fn execute_streaming(
             ..Default::default()
         };
 
+        // WHY(#4713): the streaming LLM future has no in-flight tool side effects,
+        // so it is safe to drop on a deadline. Tool results are only observed after
+        // the future completes.
         let tx = stream_tx.clone();
         let nous_id = tool_ctx.nous_id.clone();
-        let response = match streaming_provider
-            .complete_streaming(&request, &mut |event| {
-                if let Err(e) = tx.try_send(TurnStreamEvent::LlmDelta(event.clone())) {
-                    record_llm_stream_send_error(nous_id.as_ref(), &event, &e);
-                }
-            })
-            .await
-        {
+        // WHY(#4713): extract the closure so the borrow of tx/nous_id outlives
+        // the streaming_fut (E0716 — temporary closure dropped while borrowed).
+        let mut on_event = |event: LlmStreamEvent| {
+            if let Err(e) = tx.try_send(TurnStreamEvent::LlmDelta(event.clone())) {
+                record_llm_stream_send_error(nous_id.as_ref(), &event, &e);
+            }
+        };
+        let streaming_fut = streaming_provider.complete_streaming(&request, &mut on_event);
+        let response = if let Some(deadline) = deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                turn_budget_exceeded = true;
+                STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
+                break;
+            }
+            if let Ok(resp) = tokio::time::timeout(remaining, streaming_fut).await {
+                resp
+            } else {
+                turn_budget_exceeded = true;
+                STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
+                break;
+            }
+        } else {
+            streaming_fut.await
+        };
+        let response = match response {
             Ok(resp) => {
                 providers.record_success(provider.name());
                 resp
@@ -802,6 +972,17 @@ pub async fn execute_streaming(
             content: Content::Blocks(blocks),
             cache_breakpoint: false,
         });
+    }
+
+    if turn_budget_exceeded {
+        return Ok(build_turn_budget_exceeded_result(
+            final_content,
+            all_tool_calls,
+            total_usage,
+            reasoning_parts.join("\n"),
+            turn_model,
+            tool_surface_hashes.into_iter().collect(),
+        ));
     }
 
     info!(

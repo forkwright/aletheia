@@ -276,6 +276,15 @@ impl TimeBudget {
         total.saturating_sub(self.pipeline_start.elapsed())
     }
 
+    /// Absolute deadline for the named stage, capped by total remaining time.
+    ///
+    /// Returns `None` if both the stage-specific and total budgets are unlimited.
+    #[must_use]
+    pub(crate) fn stage_deadline(&self, stage_name: &str) -> Option<Instant> {
+        self.stage_limit(stage_name)
+            .map(|limit| Instant::now() + limit)
+    }
+
     /// Maximum duration for the named stage, capped by total remaining time.
     ///
     /// Returns `None` if both the stage-specific and total budgets are unlimited.

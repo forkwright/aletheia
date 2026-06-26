@@ -1,5 +1,6 @@
 #![expect(
     clippy::expect_used,
+    clippy::indexing_slicing,
     clippy::type_complexity,
     clippy::unnecessary_literal_bound,
     reason = "test helpers and assertions may use concise panic-oriented shapes"
@@ -9,6 +10,7 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,11 +18,14 @@ use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use koina::event::EventEmitter;
-use koina::id::{NousId, SessionId};
+use koina::id::{NousId, SessionId, ToolName};
 use mneme::side_query::SideQueryRanker;
 use mneme::store::SessionStore;
-use organon::registry::ToolRegistry;
-use organon::types::ToolContext;
+use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::types::{
+    InputSchema, Reversibility, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput,
+    ToolResult,
+};
 use tokio::sync::{Mutex as TokioMutex, mpsc};
 
 use super::*;
@@ -28,9 +33,87 @@ use crate::budget::{StageTimingStatus, TimeBudget};
 use crate::compact::CompactConfig;
 use crate::config::{NousConfig, PipelineConfig, StageBudget};
 use crate::error;
-use crate::pipeline::{PipelineContext, PipelineInput, ReflectionStatus};
+use crate::pipeline::{DegradedMode, PipelineContext, PipelineInput, ReflectionStatus};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
+
+fn make_text_response(text: &str) -> CompletionResponse {
+    CompletionResponse {
+        id: "resp-text".to_owned(),
+        model: "test-model".to_owned(),
+        stop_reason: StopReason::EndTurn,
+        content: vec![ContentBlock::Text {
+            text: text.to_owned(),
+            citations: None,
+        }],
+        usage: Usage {
+            input_tokens: 10,
+            output_tokens: 5,
+            ..Usage::default()
+        },
+        cost_usd: None,
+        duration_ms: None,
+    }
+}
+
+fn make_tool_response(tool_name: &str, tool_id: &str) -> CompletionResponse {
+    CompletionResponse {
+        id: "resp-tool".to_owned(),
+        model: "test-model".to_owned(),
+        stop_reason: StopReason::ToolUse,
+        content: vec![ContentBlock::ToolUse {
+            id: tool_id.to_owned(),
+            name: tool_name.to_owned(),
+            input: serde_json::json!({}),
+        }],
+        usage: Usage {
+            input_tokens: 10,
+            output_tokens: 5,
+            ..Usage::default()
+        },
+        cost_usd: None,
+        duration_ms: None,
+    }
+}
+
+fn make_side_effect_tool_def(name: &str) -> ToolDef {
+    ToolDef {
+        name: ToolName::new(name).expect("valid"),
+        description: format!("Test tool: {name}"),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: indexmap::IndexMap::default(),
+            required: vec![],
+        },
+        category: ToolCategory::Workspace,
+        // WHY(#4713): PartiallyReversible maps to Required (auto-approved without a gate);
+        // Irreversible would map to Mandatory (auto-denied) and the tool would never execute.
+        reversibility: Reversibility::PartiallyReversible,
+        auto_activate: true,
+        groups: vec![ToolGroupId::Read],
+        tags: vec![],
+    }
+}
+
+struct CountingExecutor {
+    executions: Arc<AtomicUsize>,
+}
+
+impl ToolExecutor for CountingExecutor {
+    fn execute<'a>(
+        &'a self,
+        input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async move {
+            self.executions.fetch_add(1, Ordering::SeqCst);
+            Ok(ToolResult::text(format!(
+                "side effect recorded: {}",
+                input.name.as_str()
+            )))
+        })
+    }
+}
 
 fn make_msg(role: &str, content: &str) -> PipelineMessage {
     PipelineMessage {
@@ -612,14 +695,15 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
     assert!(
         matches!(
             result.degraded,
-            Some(crate::pipeline::DegradedMode::DistillationCache { .. })
+            Some(DegradedMode::TurnBudgetExceeded { .. })
         ),
-        "timeout with cache should return DistillationCache degraded mode, got {:?}",
+        "timeout should return TurnBudgetExceeded degraded mode, got {:?}",
         result.degraded
     );
     assert!(
-        result.content.contains("cached distillation summary"),
-        "degraded response should include cached distillation summary"
+        result.stop_reason == "turn_timeout",
+        "stop reason should indicate turn timeout, got {:?}",
+        result.stop_reason
     );
 
     let events = captured.lock().expect("metric lock");
@@ -628,8 +712,8 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
         "timeout metric should be emitted"
     );
     assert!(
-        has_metric_event(&events, "StageError", "degraded_timeout"),
-        "degraded_timeout metric should distinguish a cache-served timeout"
+        has_metric_event(&events, "StageError", "turn_timeout"),
+        "turn_timeout metric should distinguish a budget-exceeded result"
     );
 
     let summary = time_budget.summary();
@@ -660,7 +744,7 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
     let mut time_budget = execute_stage_time_budget(&pipeline_config);
     let (emitter, captured) = capturing_emitter();
 
-    let err = run_execute_stage(
+    let result = run_execute_stage(
         &config,
         &pipeline_config,
         &ctx,
@@ -676,11 +760,20 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
         Some(&TokioMutex::new(store)),
     )
     .await
-    .expect_err("timeout without cache should fail");
+    .expect("timeout without cache should return a degraded TurnResult");
 
     assert!(
-        matches!(err, error::Error::PipelineTimeout { ref stage, .. } if stage == "execute"),
-        "expected PipelineTimeout for execute stage, got {err:?}"
+        matches!(
+            result.degraded,
+            Some(DegradedMode::TurnBudgetExceeded { .. })
+        ),
+        "timeout should return TurnBudgetExceeded degraded mode, got {:?}",
+        result.degraded
+    );
+    assert!(
+        result.stop_reason == "turn_timeout",
+        "stop reason should indicate turn timeout, got {:?}",
+        result.stop_reason
     );
 
     let events = captured.lock().expect("metric lock");
@@ -689,8 +782,8 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
         "timeout metric should be emitted"
     );
     assert!(
-        has_metric_event(&events, "StageError", "timeout"),
-        "timeout error metric should distinguish a hard timeout failure"
+        has_metric_event(&events, "StageError", "turn_timeout"),
+        "turn_timeout metric should distinguish a budget-exceeded result"
     );
 
     let summary = time_budget.summary();
@@ -777,13 +870,138 @@ async fn execute_timeout_streaming_with_distillation_returns_degraded_response()
     assert!(
         matches!(
             result.degraded,
-            Some(crate::pipeline::DegradedMode::DistillationCache { .. })
+            Some(DegradedMode::TurnBudgetExceeded { .. })
         ),
-        "streaming timeout with cache should return DistillationCache degraded mode, got {:?}",
+        "streaming timeout should return TurnBudgetExceeded degraded mode, got {:?}",
         result.degraded
     );
     assert!(
-        result.content.contains("cached distillation summary"),
-        "streaming degraded response should include cached distillation summary"
+        result.stop_reason == "turn_timeout",
+        "stop reason should indicate turn timeout, got {:?}",
+        result.stop_reason
     );
+}
+
+/// Provider that returns a tool-use response on the first call, then sleeps.
+struct ToolThenSleepProvider {
+    sleep: Duration,
+    calls: AtomicUsize,
+}
+
+impl LlmProvider for ToolThenSleepProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        let sleep = self.sleep;
+        Box::pin(async move {
+            if call == 0 {
+                Ok(make_tool_response("side_effect_tool", "tu-1"))
+            } else {
+                tokio::time::sleep(sleep).await;
+                Ok(make_text_response("done"))
+            }
+        })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &str {
+        "tool-then-sleep"
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn execute_timeout_preserves_side_effecting_tool_results() {
+    let mut config = execute_stage_config();
+    config.tool_groups = organon::types::ToolGroupPolicy::AllowAll {
+        reason: "test policy".to_owned(),
+    };
+    let mut pipeline_config = PipelineConfig::default();
+    pipeline_config.stage_budget.execute_secs = 1;
+
+    let executions = Arc::new(AtomicUsize::new(0));
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(
+            make_side_effect_tool_def("side_effect_tool"),
+            Box::new(CountingExecutor {
+                executions: Arc::clone(&executions),
+            }),
+        )
+        .expect("register tool");
+
+    let session = SessionState::new("ses-side-effect".to_owned(), "main".to_owned(), &config);
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext::default();
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ToolThenSleepProvider {
+        sleep: Duration::from_secs(5),
+        calls: AtomicUsize::new(0),
+    }));
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, captured) = capturing_emitter();
+
+    let result = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        None,
+    )
+    .await
+    .expect("cooperative timeout should return a TurnResult");
+
+    assert!(
+        matches!(
+            result.degraded,
+            Some(DegradedMode::TurnBudgetExceeded { .. })
+        ),
+        "expected TurnBudgetExceeded, got {:?}",
+        result.degraded
+    );
+    assert_eq!(result.stop_reason, "turn_timeout");
+    assert_eq!(
+        result.tool_calls.len(),
+        1,
+        "the single tool result observed before the deadline must be preserved"
+    );
+    assert_eq!(result.tool_calls[0].name, "side_effect_tool");
+    assert!(
+        result.tool_calls[0]
+            .result
+            .as_deref()
+            .expect("tool result")
+            .contains("side effect recorded"),
+        "tool result must not be orphaned"
+    );
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        1,
+        "side-effecting tool must have executed exactly once"
+    );
+
+    let events = captured.lock().expect("metric lock");
+    assert!(has_metric_event(&events, "StageTimeout", "timeout"));
+    assert!(has_metric_event(&events, "StageError", "turn_timeout"));
+
+    let summary = time_budget.summary();
+    let execute_record = summary
+        .iter()
+        .find(|r| r.name == "execute")
+        .expect("execute timing record");
+    assert_eq!(execute_record.status, StageTimingStatus::TimedOut);
 }

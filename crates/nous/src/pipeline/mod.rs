@@ -779,7 +779,8 @@ pub async fn assemble_context(
 ///
 /// Not cancel-safe. Delegates to [`assemble_context_conditional`].
 /// If cancelled after partial context assembly, the `PipelineContext`
-/// may contain incomplete state.
+/// may contain incomplete state. The pipeline runs this stage to
+/// completion and checks the budget afterward.
 #[instrument(skip_all, fields(nous_id = %nous_config.id))]
 pub async fn assemble_context_with_extra(
     oikos: &Oikos,
@@ -815,6 +816,10 @@ pub async fn assemble_context_with_extra(
 /// Not cancel-safe. If cancelled after the bootstrap assembler has
 /// partially written to `ctx`, the context will be in an inconsistent
 /// state. Callers should not use this in `select!` branches.
+///
+/// The pipeline honors this by running the context stage to completion
+/// and checking the stage budget afterward; the future is never dropped
+/// mid-operation.
 #[instrument(skip_all, fields(nous_id = %nous_config.id, ?task_hint, turn_number))]
 pub async fn assemble_context_conditional(
     oikos: &Oikos,
@@ -1015,25 +1020,49 @@ pub(crate) async fn run_pipeline(
         let recipe =
             crate::bootstrap::LlmRecipe::from_task_hint(task_hint, input.session.turn == 1);
 
-        run_stage_with_timeout(
+        // WHY(#4713): context assembly is not cancel-safe, so we run it to
+        // completion and only check the stage budget afterward. The future is
+        // never dropped mid-operation.
+        time_budget.begin_stage("context");
+        run_context_stage(
+            oikos,
             config,
-            "context",
-            &mut time_budget,
+            pipeline_config,
+            &mut ctx,
+            extra_bootstrap,
+            task_hint,
+            input.session.turn,
+            recipe,
+            bootstrap_cache,
             emitter,
-            run_context_stage(
-                oikos,
-                config,
-                pipeline_config,
-                &mut ctx,
-                extra_bootstrap,
-                task_hint,
-                input.session.turn,
-                recipe,
-                bootstrap_cache,
-                emitter,
-            ),
         )
         .await?;
+        let context_status = if time_budget.stage_exceeded("context") {
+            let limit = time_budget
+                .stage_limit("context")
+                .unwrap_or_default();
+            let timeout_secs = u32::try_from(limit.as_secs()).unwrap_or(u32::MAX);
+            crate::metrics::record_error(&config.id, "context", "timeout");
+            emitter.emit(&events::StageTimeout {
+                nous_id: config.id.to_string(),
+                stage: "context",
+                timeout_secs,
+            });
+            crate::budget::StageTimingStatus::TimedOut
+        } else {
+            crate::budget::StageTimingStatus::Completed
+        };
+        let context_timed_out = context_status == crate::budget::StageTimingStatus::TimedOut;
+        time_budget.end_stage(context_status);
+        if context_timed_out {
+            return Err(error::PipelineTimeoutSnafu {
+                stage: "context",
+                timeout_secs: time_budget
+                    .stage_limit("context")
+                    .map_or(0, |d| u32::try_from(d.as_secs()).unwrap_or(u32::MAX)),
+            }
+            .build());
+        }
         stages_completed += 1;
 
         time_budget.begin_stage("triage");
