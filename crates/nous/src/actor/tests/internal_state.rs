@@ -11,6 +11,11 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+
+use aletheia_routing::types::{InterventionStatus, ProviderId, TaskCategory};
+use aletheia_routing::{AfterActionStore, RecordingRouter};
 
 use super::*;
 
@@ -629,4 +634,76 @@ fn evict_oldest_session_also_removes_drift_detector() {
         !actor.drift_detectors.contains_key(&oldest_key),
         "evicted session's drift detector must be removed"
     );
+}
+
+// ── turn_quality.rs: record_router_outcome ───────────────────────────────────
+
+/// Poor interactive outcomes (tool errors + guard intervention) must not be
+/// counted as routing successes just because the provider returned a response.
+#[tokio::test]
+async fn poor_interactive_outcome_does_not_increase_success_rate() {
+    let store = Arc::new(AfterActionStore::in_memory());
+    let router: Arc<dyn aletheia_routing::Router> =
+        Arc::new(RecordingRouter::new(Arc::clone(&store), "test-model"));
+
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.services.router = router;
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    // Good turn: no errors, no intervention, within budget.
+    let good = make_turn_result(50, vec![make_tool_call("read_file", false)]);
+    actor.record_router_outcome("s", "build a feature", &good);
+
+    // Poor turn: every tool call errored and the loop guard replaced content.
+    let mut bad = make_turn_result(
+        50,
+        vec![
+            make_tool_call("read_file", true),
+            make_tool_call("read_file", true),
+        ],
+    );
+    bad.content = "[System: Agent loop detected (repetition). \
+         The agent appears to be stuck in a repetitive pattern. \
+         Please provide guidance or clarification to continue.]"
+        .to_owned();
+    actor.sessions.get_mut("s").unwrap().brake_tripped = true;
+    actor.record_router_outcome("s", "build a feature", &bad);
+
+    let provider = ProviderId::new("test-model");
+    for _ in 0..20 {
+        if let Some(stats) = store
+            .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
+            .await
+            .expect("rolling stats query")
+        {
+            assert_eq!(
+                stats.successes, 1,
+                "only the clean turn should count as success"
+            );
+            assert_eq!(stats.failures, 1, "the poor turn should count as failure");
+            assert_eq!(stats.total, 2);
+
+            // WHY: the audit log must preserve provenance so operators can see
+            // why each turn was classified the way it was.
+            let outcomes = store.recent_outcomes().await;
+            assert_eq!(outcomes.len(), 2);
+            let poor = outcomes
+                .iter()
+                .find(|o| !o.success)
+                .expect("poor outcome in audit log");
+            let io = poor
+                .interactive_outcome
+                .as_ref()
+                .expect("interactive provenance recorded");
+            assert_eq!(io.loop_guard, InterventionStatus::Triggered);
+            assert!((io.tool_error_rate - 1.0).abs() < f64::EPSILON);
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    panic!("poor interactive turn was not recorded as a failure");
 }

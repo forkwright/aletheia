@@ -100,12 +100,11 @@ impl NousActor {
             self.record_drift_metrics(session_key, turn_result);
 
             // WHY: record the turn outcome in the empirical router so both the
-            // dispatch path (energeia) and the interactive path benefit from the
-            // same success-rate signal. The success heuristic is: the turn
-            // completed without degradation (i.e. the LLM was reachable and
-            // returned a result). A more precise signal (e.g. user acceptance)
-            // requires a future hook.
-            self.record_router_outcome(content, turn_result);
+            // dispatch path (energeia) and the interactive path benefit from
+            // real success-rate signals. Success is derived from interactive
+            // outcome dimensions (tool errors, guard/brake intervention,
+            // budget) rather than the coarse "non-degraded == success" proxy.
+            self.record_router_outcome(session_key, content, turn_result);
 
             self.maybe_spawn_extraction(
                 content,
