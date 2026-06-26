@@ -187,7 +187,7 @@ fn session_id_serde_roundtrip_is_quoted_uuid_string() {
         json.starts_with('"') && json.ends_with('"'),
         "SessionId must serialize to a quoted UUID string, got {json}"
     );
-    let inner = &json[1..json.len() - 1];
+    let inner = json.trim_matches('"');
     assert_eq!(inner, id.to_string());
     let back: SessionId = serde_json::from_str(&json).unwrap();
     assert_eq!(id, back);
