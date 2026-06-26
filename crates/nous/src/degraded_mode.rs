@@ -78,9 +78,8 @@ impl DegradedMode {
     #[must_use]
     pub fn status_banner(&self) -> &str {
         match self {
-            Self::DistillationCache { status_banner, .. } | Self::Unavailable { status_banner, .. } => {
-                status_banner
-            }
+            Self::DistillationCache { status_banner, .. }
+            | Self::Unavailable { status_banner, .. } => status_banner,
         }
     }
 
@@ -145,7 +144,10 @@ fn short_hash(bytes: &[u8]) -> String {
 fn error_class_name(class: ErrorClass) -> &'static str {
     // WHY: `ErrorClass` is `#[non_exhaustive]` in `koina`; the wildcard arm
     // prevents a downstream crate from failing to compile when a variant is added.
-    #[expect(clippy::wildcard_enum_match_arm, reason = "ErrorClass is non_exhaustive across crate boundary")]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "ErrorClass is non_exhaustive across crate boundary"
+    )]
     match class {
         ErrorClass::Transient => "transient",
         ErrorClass::Permanent => "permanent",
@@ -419,7 +421,14 @@ mod tests {
     #[test]
     fn degraded_with_cache_uses_distillation_cache_variant() {
         let err = llm_rate_limit_error();
-        let result = build_degraded_response("alice", "ses-1", &err, Some("User prefers brevity."), "test-model", None);
+        let result = build_degraded_response(
+            "alice",
+            "ses-1",
+            &err,
+            Some("User prefers brevity."),
+            "test-model",
+            None,
+        );
         assert!(
             matches!(
                 result.degraded,
@@ -450,8 +459,10 @@ mod tests {
     #[test]
     fn status_banner_non_empty() {
         let err = llm_rate_limit_error();
-        let with_cache = build_degraded_response("alice", "ses-1", &err, Some("ctx"), "test-model", None);
-        let without_cache = build_degraded_response("alice", "ses-1", &err, None, "test-model", None);
+        let with_cache =
+            build_degraded_response("alice", "ses-1", &err, Some("ctx"), "test-model", None);
+        let without_cache =
+            build_degraded_response("alice", "ses-1", &err, None, "test-model", None);
 
         assert!(
             !with_cache
@@ -491,15 +502,20 @@ mod tests {
         let degraded = result.degraded.expect("degraded");
         let provenance = degraded.provenance();
         assert_eq!(provenance.attempted_model, "test-model");
-        assert_eq!(provenance.routed_model_context.as_deref(), Some("routed-test-model"));
+        assert_eq!(
+            provenance.routed_model_context.as_deref(),
+            Some("routed-test-model")
+        );
         assert_eq!(provenance.error_class, "transient");
         assert!(!provenance.error_message_hash.is_empty());
         assert_eq!(provenance.source, "distillation_cache");
-        assert!(provenance
-            .distillation_id
-            .as_deref()
-            .expect("distillation_id")
-            .starts_with("ses-1:distillation:seq=0:"));
+        assert!(
+            provenance
+                .distillation_id
+                .as_deref()
+                .expect("distillation_id")
+                .starts_with("ses-1:distillation:seq=0:")
+        );
 
         // WHY: a degraded turn must not look like a zero-cost success.
         assert_eq!(result.model_used, "test-model");

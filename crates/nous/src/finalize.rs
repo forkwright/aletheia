@@ -392,10 +392,12 @@ mod tests {
     }
 
     fn degraded_result_with_cache() -> TurnResult {
-        let err = crate::error::LlmSnafu.into_error(hermeneus::error::RateLimitedSnafu {
-            retry_after_ms: 5000u64,
-        }
-        .build());
+        let err = crate::error::LlmSnafu.into_error(
+            hermeneus::error::RateLimitedSnafu {
+                retry_after_ms: 5000u64,
+            }
+            .build(),
+        );
         build_degraded_response(
             "test-nous",
             "ses-1",
@@ -407,10 +409,12 @@ mod tests {
     }
 
     fn degraded_result_without_cache() -> TurnResult {
-        let err = crate::error::LlmSnafu.into_error(hermeneus::error::RateLimitedSnafu {
-            retry_after_ms: 5000u64,
-        }
-        .build());
+        let err = crate::error::LlmSnafu.into_error(
+            hermeneus::error::RateLimitedSnafu {
+                retry_after_ms: 5000u64,
+            }
+            .build(),
+        );
         build_degraded_response("test-nous", "ses-1", &err, None, "test-model", None)
     }
 
@@ -753,11 +757,13 @@ mod tests {
             record.degradation_source.as_deref(),
             Some("distillation_cache")
         );
-        assert!(record
-            .distillation_id
-            .as_deref()
-            .expect("distillation_id")
-            .starts_with("ses-1:distillation:seq=0:"));
+        assert!(
+            record
+                .distillation_id
+                .as_deref()
+                .expect("distillation_id")
+                .starts_with("ses-1:distillation:seq=0:")
+        );
         assert_eq!(record.user_content_saved, Some(true));
 
         // WHY: degraded usage must distinguish synthetic output from provider-served output.
