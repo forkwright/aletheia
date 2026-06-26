@@ -606,7 +606,8 @@ async fn async_accepts_valid_symlink_within_scope() {
     let link = scope_dir.join("alias.md");
     std::os::unix::fs::symlink(&real_file, &link).expect("create symlink");
 
-    let result = validate_memory_path_async(Path::new("alias.md"), &root, MemoryScope::Project).await;
+    let result =
+        validate_memory_path_async(Path::new("alias.md"), &root, MemoryScope::Project).await;
     assert!(
         result.is_ok(),
         "async symlink within scope should be accepted: {:?}",
