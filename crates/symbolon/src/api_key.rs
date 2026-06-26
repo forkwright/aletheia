@@ -20,6 +20,8 @@ const KEY_PREFIX: &str = "ale";
 /// Generate a new API key. Returns `(full_key_string, metadata_record)`.
 ///
 /// The full key string is shown to the user exactly once. Only the hash is stored.
+/// `issuer` is threaded for consistency with [`validate`] but is not stored in
+/// `ApiKeyRecord`; API-key claims derive the issuer at validation time.
 #[instrument(skip(store))]
 pub(crate) fn generate(
     store: &AuthStore,
@@ -27,7 +29,11 @@ pub(crate) fn generate(
     role: Role,
     nous_id: Option<&str>,
     expires_in: Option<Duration>,
+    issuer: &str,
 ) -> Result<(String, ApiKeyRecord)> {
+    // NOTE: issuer is threaded for symmetry with validate; it is not persisted
+    // in ApiKeyRecord because the issuer claim is materialized when validating.
+    let _ = issuer;
     let secret_bytes: [u8; 32] = rand::rng().random();
     let secret_hex = hex::encode(&secret_bytes);
     let full_key = format!("{KEY_PREFIX}_{prefix}_{secret_hex}");
@@ -75,7 +81,7 @@ pub(crate) fn generate(
 ///
 /// Parses the key format, hashes with blake3, looks up in the store,
 /// checks revocation and expiry, and updates `last_used_at`.
-pub(crate) fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
+pub(crate) fn validate(store: &AuthStore, raw_key: &str, issuer: &str) -> Result<Claims> {
     let _parts = parse_key(raw_key)?;
     let key_hash = blake3::hash(raw_key.as_bytes()).to_hex().to_string();
 
@@ -100,7 +106,7 @@ pub(crate) fn validate(store: &AuthStore, raw_key: &str) -> Result<Claims> {
         sub: format!("apikey:{}", record.prefix),
         role: record.role,
         nous_id: record.nous_id,
-        iss: "aletheia".to_owned(),
+        iss: issuer.to_owned(),
         iat: 0,
         exp: 0,
         jti: record.id,
