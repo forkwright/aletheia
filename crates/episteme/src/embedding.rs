@@ -632,7 +632,8 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
                 dimension: dim,
             };
             Ok(Box::new(OpenAiEmbeddingProvider::with_provider(
-                "openai-compat", &cfg,
+                "openai-compat",
+                &cfg,
             )?))
         }
         #[cfg(feature = "openai-embed")]

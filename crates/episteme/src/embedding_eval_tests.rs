@@ -7,7 +7,9 @@
 use std::collections::HashMap;
 
 use super::*;
-use crate::embedding::{EmbeddingProvider, EmbeddingResult, MockEmbeddingProvider, ModelProvenance};
+use crate::embedding::{
+    EmbeddingProvider, EmbeddingResult, MockEmbeddingProvider, ModelProvenance,
+};
 
 const STATIC_DIM: usize = 2;
 
@@ -457,7 +459,6 @@ fn permissive_mode_continues_with_unknown_ids() {
     );
 }
 
-
 #[test]
 fn provenance_recorded_in_metrics() {
     let provider = StaticEmbeddingProvider::with_provider(
@@ -536,8 +537,14 @@ fn compare_same_provider_different_models_passes_when_metrics_equal() {
             ("bad document", [0.0, 1.0]),
         ],
     );
-    let run = compare_models(&baseline, Some(&candidate), &gate_dataset(), &gate_corpus(), 1)
-        .expect("same-provider comparison must succeed");
+    let run = compare_models(
+        &baseline,
+        Some(&candidate),
+        &gate_dataset(),
+        &gate_corpus(),
+        1,
+    )
+    .expect("same-provider comparison must succeed");
 
     assert!(run.passed, "identical metrics from same provider must pass");
     assert_eq!(
@@ -554,7 +561,8 @@ fn compare_same_provider_different_models_passes_when_metrics_equal() {
         "candidate provenance must record provider"
     );
     assert_ne!(
-        run.baseline.model_name, run.candidate.as_ref().unwrap().model_name,
+        run.baseline.model_name,
+        run.candidate.as_ref().unwrap().model_name,
         "test must exercise a model-name change within the same provider"
     );
 }
@@ -579,10 +587,19 @@ fn compare_same_provider_model_upgrade_regression_fails() {
             ("bad document", [0.0, 1.0]),
         ],
     );
-    let run = compare_models(&baseline, Some(&candidate), &gate_dataset(), &gate_corpus(), 1)
-        .expect("same-provider regression comparison must succeed");
+    let run = compare_models(
+        &baseline,
+        Some(&candidate),
+        &gate_dataset(),
+        &gate_corpus(),
+        1,
+    )
+    .expect("same-provider regression comparison must succeed");
 
-    assert!(!run.passed, "regressing candidate from same provider must fail");
+    assert!(
+        !run.passed,
+        "regressing candidate from same provider must fail"
+    );
     assert!(
         run.failure_reason
             .as_deref()
@@ -623,7 +640,10 @@ fn compare_bad_baseline_fails_absolute_floor() {
     )
     .expect("bad-baseline comparison must succeed");
 
-    assert!(!run.passed, "absolute floor must reject a bad baseline/candidate pair");
+    assert!(
+        !run.passed,
+        "absolute floor must reject a bad baseline/candidate pair"
+    );
     assert!(
         run.failure_reason
             .as_deref()

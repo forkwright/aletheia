@@ -15,7 +15,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use super::{EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnafu, ModelProvenance};
+use super::{
+    EmbedFailedSnafu, EmbeddingProvider, EmbeddingResult, InitFailedSnafu, ModelProvenance,
+};
 
 /// Configuration for an `OpenAI`-compatible embedding provider.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

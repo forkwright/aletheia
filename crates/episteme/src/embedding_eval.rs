@@ -909,9 +909,7 @@ fn gate_failure_reason(
     };
 
     match check_gate(candidate, baseline, gate_thresholds) {
-        Ok(()) => Some(
-            "embedding regression gate failed for an unspecified reason".to_owned(),
-        ),
+        Ok(()) => Some("embedding regression gate failed for an unspecified reason".to_owned()),
         Err(failures) => Some(failures.join("; ")),
     }
 }
