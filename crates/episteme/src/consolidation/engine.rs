@@ -188,6 +188,22 @@ impl KnowledgeStore {
                 cluster_id: Some(cluster_id),
             });
         }
+
+        // WHY (#4678): surface the mismatch when graph recomputation produced
+        // clusters but consolidation cannot see them, usually because the
+        // score_type literal diverged from the canonical `cluster` value.
+        if candidates.is_empty() {
+            if let Ok(cluster_rows) = self.count_graph_cluster_rows() {
+                if cluster_rows > 0 {
+                    tracing::warn!(
+                        nous_id,
+                        cluster_rows,
+                        "consolidation found zero community overflow candidates despite nonempty graph cluster state"
+                    );
+                }
+            }
+        }
+
         Ok(candidates)
     }
 

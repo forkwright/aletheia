@@ -74,6 +74,19 @@ pub(crate) const GRAPH_SCORES_DDL: &str = r":create graph_scores {
     score: Float default 0.0, cluster_id: Int default -1, updated_at: String
 }";
 
+/// Canonical score type for normalized `PageRank` importance in `graph_scores`.
+pub const GRAPH_SCORE_TYPE_PAGERANK: &str = "pagerank";
+
+/// Canonical score type for `Louvain` community (cluster) assignments in `graph_scores`.
+///
+/// WHY (#4678): consolidation previously looked for `score_type = 'louvain'` while
+/// recomputation stored `score_type = 'cluster'`. This constant is the single
+/// source of truth for the cluster/community score type.
+pub const GRAPH_SCORE_TYPE_CLUSTER: &str = "cluster";
+
+/// Canonical score type for the `PageRank` normalization meta-entry in `graph_scores`.
+pub const GRAPH_SCORE_TYPE_PAGERANK_MAX: &str = "pagerank_max";
+
 /// Per-query snapshot of graph intelligence data.
 ///
 /// Loaded once from the `graph_scores` relation at query entry. All fields
@@ -389,10 +402,10 @@ impl crate::knowledge_store::KnowledgeStore {
             }
 
             match score_type {
-                "pagerank" => {
+                GRAPH_SCORE_TYPE_PAGERANK => {
                     ctx.pageranks.insert(entity_id.to_owned(), score);
                 }
-                "cluster" => {
+                GRAPH_SCORE_TYPE_CLUSTER => {
                     ctx.clusters.insert(entity_id.to_owned(), cluster_id);
                 }
                 _ => {
@@ -402,6 +415,24 @@ impl crate::knowledge_store::KnowledgeStore {
         }
 
         Ok(ctx)
+    }
+
+    /// Count the number of `graph_scores` rows with the cluster score type.
+    ///
+    /// Used by consolidation to detect when community-overflow detection
+    /// returns no candidates despite stored cluster state (#4678).
+    pub(crate) fn count_graph_cluster_rows(&self) -> crate::error::Result<i64> {
+        let script = r"
+        cnt[count(entity_id)] :=
+            *graph_scores{entity_id, score_type, score, cluster_id, updated_at},
+            score_type == 'cluster'
+        ?[count] := cnt[count]
+        ";
+        let result = self.run_query(script, std::collections::BTreeMap::new())?;
+        if result.is_empty() {
+            return Ok(0);
+        }
+        Ok(result.get_i64(0, "count").unwrap_or(0))
     }
 
     /// Compute BFS proximity from seed entities up to [`BFS_PROXIMITY_MAX_HOPS`]

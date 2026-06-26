@@ -614,7 +614,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    pub(crate) const SCHEMA_VERSION: i64 = 19;
+    pub(crate) const SCHEMA_VERSION: i64 = 20;
     const MIN_SCHEMA_VERSION: i64 = 1;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 

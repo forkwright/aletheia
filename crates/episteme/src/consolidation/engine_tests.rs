@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::consolidation::ConsolidationResult;
-use crate::test_fixtures::{make_entity, make_store};
+use crate::test_fixtures::{make_entity, make_fact, make_relationship, make_store};
 
 // kanon:ignore RUST/doc-promised-observability — doc comment describes data-flow invariants, not tracing
 /// Requirement #3634: consolidating N source facts into one Fact must
@@ -354,6 +354,80 @@ fn run_llm_consolidation_empty_response_skips_supersession() {
         result.superseded_fact_ids.is_empty(),
         "empty LLM response must not supersede any source facts"
     );
+}
+
+/// Requirement #4678: graph recomputation stores Louvain communities under the
+/// canonical `cluster` score type, and consolidation queries the same type, so
+/// community overflow candidates are actually discovered.
+#[test]
+fn graph_recompute_cluster_is_discovered_by_consolidation() {
+    let store = make_store();
+
+    // Six densely-linked entities should be placed in a single Louvain community.
+    let entity_ids = ["c1-a", "c1-b", "c1-c", "c1-d", "c1-e", "c1-f"];
+    for id in entity_ids {
+        store
+            .insert_entity(&make_entity(id, id, "person"))
+            .expect("insert entity");
+    }
+    for (i, src) in entity_ids.iter().enumerate() {
+        for (j, dst) in entity_ids.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+            store
+                .insert_relationship(&make_relationship(src, dst, "LINKED", 0.9))
+                .expect("insert relationship");
+        }
+    }
+
+    // Thirty facts, five per entity, all older than the default age gate.
+    let mut expected_fact_ids = std::collections::HashSet::new();
+    for i in 0..30usize {
+        let entity_id = entity_ids[i % entity_ids.len()];
+        let fact_id = format!("cluster-fact-{i:02}");
+        let fact = make_fact(&fact_id, "nous-test", &format!("community fact {i}"));
+        store.insert_fact(&fact).expect("insert fact");
+        let entity_id_obj =
+            crate::id::EntityId::new(entity_id).expect("valid test entity id");
+        store
+            .insert_fact_entity(&fact.id, &entity_id_obj)
+            .expect("link fact to entity");
+        expected_fact_ids.insert(fact_id);
+    }
+
+    store.recompute_graph_scores().expect("recompute graph scores");
+
+    let ctx = store.load_graph_context().expect("load graph context");
+    assert!(
+        !ctx.clusters.is_empty(),
+        "graph recomputation should produce community clusters"
+    );
+
+    let config = ConsolidationConfig {
+        community_fact_threshold: 3,
+        ..Default::default()
+    };
+    let candidates = store
+        .find_community_overflow_candidates("nous-test", &config)
+        .expect("find community overflow candidates");
+
+    assert!(
+        !candidates.is_empty(),
+        "consolidation should discover at least one community overflow candidate after recompute; got {candidates:?}"
+    );
+
+    // The discovered candidate(s) must gather the facts linked to the cluster.
+    let gathered: std::collections::HashSet<&str> = candidates
+        .iter()
+        .flat_map(|c| c.fact_ids.iter().map(|f| f.as_str()))
+        .collect();
+    for expected in &expected_fact_ids {
+        assert!(
+            gathered.contains(expected.as_str()),
+            "cluster candidate should gather fact {expected}"
+        );
+    }
 }
 
 /// Requirement #5849: after `execute_consolidation` with an empty LLM response,

@@ -83,6 +83,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
         target_version: 19,
         run: KnowledgeStore::migrate_v18_to_v19,
     },
+    MigrationStep {
+        target_version: 20,
+        run: KnowledgeStore::migrate_v19_to_v20,
+    },
 ];
 
 #[cfg(feature = "mneme-engine")]
@@ -1404,6 +1408,63 @@ impl KnowledgeStore {
         self.stamp_schema_version(19, "v18->v19")?;
 
         tracing::info!("knowledge schema migration v18 -> v19 complete");
+        Ok(())
+    }
+
+    /// Migrate v19 → v20: normalize legacy `louvain` `graph_scores` rows to
+    /// the canonical `cluster` score type (#4678).
+    pub(super) fn migrate_v19_to_v20(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::ScriptMutability;
+        use crate::graph_intelligence::GRAPH_SCORE_TYPE_CLUSTER;
+        tracing::info!("migrating knowledge schema v19 -> v20");
+
+        if self.relation_exists("graph_scores")? {
+            // WHY (#4678): copy rows stored under the legacy `louvain` type to
+            // the canonical `cluster` type, but only for entities that do not
+            // already have a `cluster` row, so existing canonical data wins.
+            let copy_script = format!(
+                r"?[entity_id, score, cluster_id, updated_at] :=
+                    *graph_scores{{entity_id, score_type: 'louvain', score, cluster_id, updated_at}},
+                    not *graph_scores{{entity_id, score_type: '{cluster}', cluster_id: _, updated_at: _}}
+                  ?[entity_id, score_type, score, cluster_id, updated_at] <-
+                    [[entity_id, '{cluster}', score, cluster_id, updated_at]]
+                  :put graph_scores {{ entity_id, score_type => score, cluster_id, updated_at }}
+                ",
+                cluster = GRAPH_SCORE_TYPE_CLUSTER
+            );
+            self.db
+                .run(&copy_script, BTreeMap::new(), ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v19->v20 copy louvain to cluster: {e}"),
+                    }
+                    .build()
+                })?;
+
+            // Remove the legacy `louvain` rows now that they are either
+            // duplicated under `cluster` or superseded by an existing cluster row.
+            self.db
+                .run(
+                    r"?[entity_id, score_type] :=
+                        *graph_scores{entity_id, score_type, score, cluster_id, updated_at},
+                        score_type == 'louvain'
+                      :rm graph_scores {entity_id, score_type}",
+                    BTreeMap::new(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v19->v20 remove louvain rows: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        self.stamp_schema_version(20, "v19->v20")?;
+
+        tracing::info!("knowledge schema migration v19 -> v20 complete");
         Ok(())
     }
 }
