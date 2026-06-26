@@ -106,6 +106,7 @@ fn working_checkpoint_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -115,6 +116,7 @@ fn working_checkpoint_def() -> ToolDef {
                         description: "Scope of the checkpoint. 'session' only today.".to_owned(),
                         enum_values: Some(vec!["session".to_owned()]),
                         default: Some(serde_json::Value::String("session".to_owned())),
+                        ..Default::default(),
                     },
                 ),
             ]),

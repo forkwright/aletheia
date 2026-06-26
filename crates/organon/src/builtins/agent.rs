@@ -12,8 +12,9 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, SpawnContext, SpawnRequest, SpawnResult,
-    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
+    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, SpawnContext,
+    SpawnRequest, SpawnResult, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput,
+    ToolResult, ToolTag,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
@@ -296,6 +297,7 @@ fn sessions_spawn_def() -> ToolDef {
                             "runner".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -305,6 +307,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Task instruction for the sub-agent".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -314,6 +317,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Model override (default: role-based)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -323,6 +327,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Max execution time in seconds (default: 300)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(300)),
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -356,6 +361,59 @@ fn sessions_dispatch_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        items: Some(Box::new(PropertyDef {
+                            property_type: PropertyType::Object,
+                            description: "Task to dispatch to a sub-agent".to_owned(),
+                            properties: Some(IndexMap::from([
+                                (
+                                    "role".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::String,
+                                        description: "Sub-agent role".to_owned(),
+                                        enum_values: Some(vec![
+                                            "coder".to_owned(),
+                                            "reviewer".to_owned(),
+                                            "researcher".to_owned(),
+                                            "explorer".to_owned(),
+                                            "runner".to_owned(),
+                                        ]),
+                                        ..Default::default(),
+                                    },
+                                ),
+                                (
+                                    "task".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::String,
+                                        description: "Task instruction for the sub-agent"
+                                            .to_owned(),
+                                        ..Default::default(),
+                                    },
+                                ),
+                                (
+                                    "model".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::String,
+                                        description: "Model override (default: role-based)"
+                                            .to_owned(),
+                                        ..Default::default(),
+                                    },
+                                ),
+                                (
+                                    "timeoutSeconds".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::Number,
+                                        description: "Max execution time in seconds".to_owned(),
+                                        ..Default::default(),
+                                    },
+                                ),
+                            ])),
+                            required: Some(vec!["role".to_owned(), "task".to_owned()]),
+                            additional_properties: Some(AdditionalProperties::Bool(false)),
+                            ..Default::default(),
+                        })),
+                        min_items: Some(1),
+                        max_items: Some(10),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -365,6 +423,7 @@ fn sessions_dispatch_def() -> ToolDef {
                         description: "Default timeout for all tasks (default: 300)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(300)),
+                        ..Default::default(),
                     },
                 ),
             ]),

@@ -170,6 +170,51 @@ async fn execute_not_found() {
     );
 }
 
+#[tokio::test]
+async fn execute_rejects_invalid_input_before_dispatch() {
+    let mut reg = ToolRegistry::new();
+    let (exec, calls) = mock_executor("hello");
+    let def = ToolDef {
+        name: ToolName::new("typed").expect("valid test tool name"),
+        description: "Test tool with schema".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: IndexMap::from([(
+                "count".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::Integer,
+                    description: "Integer count".to_owned(),
+                    ..Default::default()
+                },
+            )]),
+            required: vec!["count".to_owned()],
+        },
+        category: ToolCategory::System,
+        reversibility: Reversibility::Irreversible,
+        auto_activate: false,
+        groups: vec![ToolGroupId::Read],
+        tags: vec![],
+    };
+    reg.register(def, exec).expect("register");
+
+    let input = ToolInput {
+        name: ToolName::from_static("typed"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({"count": "five"}),
+    };
+    let err = reg.execute(&input, &mock_ctx()).await.expect_err("invalid input");
+    assert!(
+        err.to_string().contains("expected integer, got string"),
+        "expected schema validation error, got: {err}"
+    );
+    #[expect(
+        clippy::expect_used,
+        reason = "test assertion: poisoned lock means a test bug"
+    )]
+    let call_count = calls.lock().expect("lock poisoned").len();
+    assert_eq!(call_count, 0, "expected executor not to be called");
+}
+
 #[test]
 fn category_filtering() {
     let mut reg = ToolRegistry::new();
@@ -223,6 +268,7 @@ fn to_hermeneus_tools_produces_valid_definitions() {
                     description: "File path".to_owned(),
                     enum_values: None,
                     default: None,
+                    ..Default::default(),
                 },
             )]),
             required: vec!["path".to_owned()],
@@ -471,6 +517,7 @@ fn schema_includes_required_fields() {
                     description: "File path".to_owned(),
                     enum_values: None,
                     default: None,
+                    ..Default::default(),
                 },
             )]),
             required: vec!["path".to_owned()],
@@ -506,6 +553,7 @@ fn schema_includes_enum_values() {
                     description: "Type filter".to_owned(),
                     enum_values: Some(vec!["f".to_owned(), "d".to_owned()]),
                     default: None,
+                    ..Default::default(),
                 },
             )]),
             required: vec![],
@@ -540,6 +588,7 @@ fn schema_includes_default_values() {
                     description: "Case sensitive".to_owned(),
                     enum_values: None,
                     default: Some(serde_json::json!(true)),
+                    ..Default::default(),
                 },
             )]),
             required: vec![],

@@ -40,6 +40,7 @@ pub(super) fn parateresis_def() -> ToolDef {
                         description: "Project slug for stored observations (owner/repo)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -50,6 +51,7 @@ pub(super) fn parateresis_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(7)),
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -148,6 +150,7 @@ pub(super) fn mathesis_def() -> ToolDef {
                             .to_owned(),
                         enum_values: Some(vec!["list".to_owned(), "record".to_owned()]),
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -162,6 +165,7 @@ pub(super) fn mathesis_def() -> ToolDef {
                             "steward".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -171,6 +175,7 @@ pub(super) fn mathesis_def() -> ToolDef {
                         description: "Lesson category for filtering or tagging".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -180,6 +185,7 @@ pub(super) fn mathesis_def() -> ToolDef {
                         description: "Scope lessons to a specific project (owner/repo)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -190,6 +196,7 @@ pub(super) fn mathesis_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
             ]),

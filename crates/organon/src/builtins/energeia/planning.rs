@@ -40,6 +40,7 @@ pub(super) fn prographe_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -51,6 +52,7 @@ pub(super) fn prographe_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -61,6 +63,7 @@ pub(super) fn prographe_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -71,6 +74,7 @@ pub(super) fn prographe_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -174,6 +178,7 @@ pub(super) fn schedion_def() -> ToolDef {
                         .to_owned(),
                     enum_values: None,
                     default: None,
+                    ..Default::default(),
                 },
             )]),
             required: vec!["project".to_owned()],

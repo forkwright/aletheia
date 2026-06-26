@@ -22,8 +22,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory,
+    ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 use super::workspace::{extract_opt_str, extract_opt_u64, extract_str};
@@ -354,6 +354,7 @@ fn http_request_def() -> ToolDef {
                         description: "Absolute http(s) URL".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -370,6 +371,7 @@ fn http_request_def() -> ToolDef {
                             "HEAD".to_owned(),
                         ]),
                         default: Some(serde_json::json!("GET")),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -379,6 +381,14 @@ fn http_request_def() -> ToolDef {
                         description: "Request headers as a string->string map".to_owned(),
                         enum_values: None,
                         default: None,
+                        additional_properties: Some(AdditionalProperties::Schema(Box::new(
+                            PropertyDef {
+                                property_type: PropertyType::String,
+                                description: "Header value".to_owned(),
+                                ..Default::default()
+                            },
+                        ))),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -388,6 +398,7 @@ fn http_request_def() -> ToolDef {
                         description: "Request body (sent verbatim)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -397,6 +408,7 @@ fn http_request_def() -> ToolDef {
                         description: "Request timeout in seconds (default 30)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(30)),
+                        ..Default::default(),
                     },
                 ),
             ]),

@@ -401,6 +401,7 @@ fn git_log_def() -> ToolDef {
                         description: "Maximum commits to list (default: 20)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(20)),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -411,6 +412,7 @@ fn git_log_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -439,6 +441,7 @@ fn git_diff_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -448,6 +451,7 @@ fn git_diff_def() -> ToolDef {
                         description: "Optional ref or revision range (e.g. main..HEAD)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -457,6 +461,7 @@ fn git_diff_def() -> ToolDef {
                         description: "Limit the diff to a single path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -503,6 +508,7 @@ fn git_checkout_def() -> ToolDef {
                         description: "Branch name to switch to".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -513,6 +519,7 @@ fn git_checkout_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default(),
                     },
                 ),
             ]),

@@ -132,31 +132,7 @@ impl InputSchema {
         // kanon:ignore RUST/pub-visibility
         let mut props = serde_json::Map::new();
         for (name, def) in &self.properties {
-            let mut prop = serde_json::Map::new();
-            prop.insert(
-                String::from("type"),
-                serde_json::to_value(def.property_type)
-                    .unwrap_or(serde_json::Value::String("string".to_owned())),
-            );
-            prop.insert(
-                String::from("description"),
-                serde_json::Value::String(def.description.clone()),
-            );
-            if let Some(ref enum_vals) = def.enum_values {
-                prop.insert(
-                    String::from("enum"),
-                    serde_json::Value::Array(
-                        enum_vals
-                            .iter()
-                            .map(|v| serde_json::Value::String(v.clone()))
-                            .collect(),
-                    ),
-                );
-            }
-            if let Some(ref default) = def.default {
-                prop.insert(String::from("default"), default.clone());
-            }
-            props.insert(name.clone(), serde_json::Value::Object(prop));
+            props.insert(name.clone(), def.to_json_schema());
         }
 
         serde_json::json!({
@@ -165,10 +141,50 @@ impl InputSchema {
             "required": self.required,
         })
     }
+
+    /// Validate tool arguments against this schema before dispatch.
+    ///
+    /// WHY: Catching schema violations before the executor runs gives callers
+    /// a clear, machine-readable error and prevents ad hoc parsing failures
+    /// deep in tool logic.
+    pub(crate) fn validate(
+        &self,
+        name: &ToolName,
+        arguments: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        let args = arguments.as_object().ok_or_else(|| {
+            crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!(
+                    "arguments must be a JSON object, got {}",
+                    json_value_type(arguments)
+                ),
+            }
+            .build()
+        })?;
+
+        for required in &self.required {
+            if !args.contains_key(required) {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("missing required argument: {required}"),
+                }
+                .build());
+            }
+        }
+
+        for (key, value) in args {
+            if let Some(def) = self.properties.get(key) {
+                def.validate(name, key, value)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// A single property in the input schema.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PropertyDef {
     /// The JSON Schema type.
     #[serde(rename = "type")]
@@ -181,14 +197,60 @@ pub struct PropertyDef {
     /// Default value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<serde_json::Value>,
+    /// Schema for array items.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items: Option<Box<PropertyDef>>,
+    /// Schemas for known object properties.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub properties: Option<IndexMap<String, PropertyDef>>,
+    /// Names of required properties when this property is an object schema.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required: Option<Vec<String>>,
+    /// Policy for object properties not declared in `properties`.
+    /// `false` forbids extra keys; `true` allows any value; a schema object
+    /// constrains the values of extra keys.
+    #[serde(rename = "additionalProperties", skip_serializing_if = "Option::is_none")]
+    pub additional_properties: Option<AdditionalProperties>,
+    /// Minimum numeric value (inclusive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum: Option<f64>,
+    /// Maximum numeric value (inclusive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maximum: Option<f64>,
+    /// Minimum string length (Unicode code points).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_length: Option<usize>,
+    /// Maximum string length (Unicode code points).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+    /// Regular expression pattern for string values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    /// Minimum number of array items.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_items: Option<usize>,
+    /// Maximum number of array items.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<usize>,
+}
+
+/// Policy for object properties not declared in `properties`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AdditionalProperties {
+    /// Extra properties are allowed or forbidden.
+    Bool(bool),
+    /// Extra properties must match this schema.
+    Schema(Box<PropertyDef>),
 }
 
 /// JSON Schema primitive types.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum PropertyType {
     /// JSON string type.
+    #[default]
     String,
     /// JSON number type (float or integer).
     Number,
@@ -212,6 +274,319 @@ impl std::fmt::Display for PropertyType {
             Self::Array => f.write_str("array"),
             Self::Object => f.write_str("object"),
         }
+    }
+}
+
+impl PropertyDef {
+    /// Serialize this property to a JSON Schema fragment.
+    #[must_use]
+    pub(crate) fn to_json_schema(&self) -> serde_json::Value {
+        let mut prop = serde_json::Map::new();
+        prop.insert(
+            String::from("type"),
+            serde_json::to_value(self.property_type)
+                .unwrap_or(serde_json::Value::String("string".to_owned())),
+        );
+        prop.insert(
+            String::from("description"),
+            serde_json::Value::String(self.description.clone()),
+        );
+        if let Some(ref enum_vals) = self.enum_values {
+            prop.insert(
+                String::from("enum"),
+                serde_json::Value::Array(
+                    enum_vals
+                        .iter()
+                        .map(|v| serde_json::Value::String(v.clone()))
+                        .collect(),
+                ),
+            );
+        }
+        if let Some(ref default) = self.default {
+            prop.insert(String::from("default"), default.clone());
+        }
+        if let Some(ref items) = self.items {
+            prop.insert(String::from("items"), items.to_json_schema());
+        }
+        if let Some(ref properties) = self.properties {
+            let mut props = serde_json::Map::new();
+            for (name, def) in properties {
+                props.insert(name.clone(), def.to_json_schema());
+            }
+            prop.insert(String::from("properties"), serde_json::Value::Object(props));
+        }
+        if let Some(ref required) = self.required {
+            prop.insert(String::from("required"), serde_json::json!(required));
+        }
+        if let Some(ref additional) = self.additional_properties {
+            let value = match additional {
+                AdditionalProperties::Bool(b) => serde_json::json!(b),
+                AdditionalProperties::Schema(schema) => schema.to_json_schema(),
+            };
+            prop.insert(String::from("additionalProperties"), value);
+        }
+        if let Some(min) = self.minimum {
+            prop.insert(String::from("minimum"), serde_json::json!(min));
+        }
+        if let Some(max) = self.maximum {
+            prop.insert(String::from("maximum"), serde_json::json!(max));
+        }
+        if let Some(min_len) = self.min_length {
+            prop.insert(String::from("minLength"), serde_json::json!(min_len));
+        }
+        if let Some(max_len) = self.max_length {
+            prop.insert(String::from("maxLength"), serde_json::json!(max_len));
+        }
+        if let Some(ref pattern) = self.pattern {
+            prop.insert(
+                String::from("pattern"),
+                serde_json::Value::String(pattern.clone()),
+            );
+        }
+        if let Some(min_items) = self.min_items {
+            prop.insert(String::from("minItems"), serde_json::json!(min_items));
+        }
+        if let Some(max_items) = self.max_items {
+            prop.insert(String::from("maxItems"), serde_json::json!(max_items));
+        }
+        serde_json::Value::Object(prop)
+    }
+
+    /// Validate a JSON value against this property schema.
+    pub(crate) fn validate(
+        &self,
+        name: &ToolName,
+        path: &str,
+        value: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        self.validate_type(name, path, value)?;
+        self.validate_enum(name, path, value)?;
+        self.validate_numeric(name, path, value)?;
+        self.validate_string(name, path, value)?;
+        self.validate_array(name, path, value)?;
+        self.validate_object(name, path, value)?;
+        Ok(())
+    }
+
+    fn validate_type(
+        &self,
+        name: &ToolName,
+        path: &str,
+        value: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        let valid = match self.property_type {
+            PropertyType::String => value.is_string(),
+            PropertyType::Number => value.is_number(),
+            PropertyType::Integer => value.is_i64() || value.is_u64(),
+            PropertyType::Boolean => value.is_boolean(),
+            PropertyType::Array => value.is_array(),
+            PropertyType::Object => value.is_object(),
+        };
+        if !valid {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!(
+                    "{path}: expected {}, got {}",
+                    self.property_type,
+                    json_value_type(value)
+                ),
+            }
+            .build());
+        }
+        Ok(())
+    }
+
+    fn validate_enum(
+        &self,
+        name: &ToolName,
+        path: &str,
+        value: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        let Some(ref enum_vals) = self.enum_values else {
+            return Ok(());
+        };
+        let s = value.as_str().ok_or_else(|| {
+            crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: enum constraint requires a string value"),
+            }
+            .build()
+        })?;
+        if !enum_vals.iter().any(|v| v == s) {
+            return Err(crate::error::InvalidInputSnafu {
+                name: name.clone(),
+                reason: format!("{path}: value {s:?} not in enum {enum_vals:?}"),
+            }
+            .build());
+        }
+        Ok(())
+    }
+
+    fn validate_numeric(
+        &self,
+        name: &ToolName,
+        path: &str,
+        value: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        let Some(num) = value.as_f64() else {
+            return Ok(());
+        };
+        if let Some(min) = self.minimum {
+            if num < min {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: value {num} is below minimum {min}"),
+                }
+                .build());
+            }
+        }
+        if let Some(max) = self.maximum {
+            if num > max {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: value {num} is above maximum {max}"),
+                }
+                .build());
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_string(
+        &self,
+        name: &ToolName,
+        path: &str,
+        value: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        let Some(s) = value.as_str() else {
+            return Ok(());
+        };
+        let len = s.chars().count();
+        if let Some(min) = self.min_length {
+            if len < min {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: string length {len} is below minimum {min}"),
+                }
+                .build());
+            }
+        }
+        if let Some(max) = self.max_length {
+            if len > max {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: string length {len} is above maximum {max}"),
+                }
+                .build());
+            }
+        }
+        if let Some(ref pattern) = self.pattern {
+            let re = regex::Regex::new(pattern).map_err(|e| {
+                crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: invalid pattern {pattern:?}: {e}"),
+                }
+                .build()
+            })?;
+            if !re.is_match(s) {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: value {s:?} does not match pattern {pattern:?}"),
+                }
+                .build());
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_array(
+        &self,
+        name: &ToolName,
+        path: &str,
+        value: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        let Some(arr) = value.as_array() else {
+            return Ok(());
+        };
+        if let Some(min) = self.min_items {
+            if arr.len() < min {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: array length {} is below minimum {min}", arr.len()),
+                }
+                .build());
+            }
+        }
+        if let Some(max) = self.max_items {
+            if arr.len() > max {
+                return Err(crate::error::InvalidInputSnafu {
+                    name: name.clone(),
+                    reason: format!("{path}: array length {} is above maximum {max}", arr.len()),
+                }
+                .build());
+            }
+        }
+        if let Some(ref items) = self.items {
+            for (i, item) in arr.iter().enumerate() {
+                items.validate(name, &format!("{path}[{i}]"), item)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_object(
+        &self,
+        name: &ToolName,
+        path: &str,
+        value: &serde_json::Value,
+    ) -> crate::error::Result<()> {
+        let Some(obj) = value.as_object() else {
+            return Ok(());
+        };
+        if let Some(ref required) = self.required {
+            for key in required {
+                if !obj.contains_key(key) {
+                    return Err(crate::error::InvalidInputSnafu {
+                        name: name.clone(),
+                        reason: format!("{path}: missing required property {key:?}"),
+                    }
+                    .build());
+                }
+            }
+        }
+        if let Some(ref properties) = self.properties {
+            for (key, val) in obj {
+                if let Some(prop_def) = properties.get(key) {
+                    prop_def.validate(name, &format!("{path}.{key}"), val)?;
+                } else if let Some(ref additional) = self.additional_properties {
+                    match additional {
+                        AdditionalProperties::Bool(false) => {
+                            return Err(crate::error::InvalidInputSnafu {
+                                name: name.clone(),
+                                reason: format!("{path}: extra property {key:?} is not allowed"),
+                            }
+                            .build());
+                        }
+                        AdditionalProperties::Bool(true) => {}
+                        AdditionalProperties::Schema(schema) => {
+                            schema.validate(name, &format!("{path}.{key}"), val)?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn json_value_type(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
     }
 }
 

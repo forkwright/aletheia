@@ -383,6 +383,7 @@ fn mkdir_def() -> ToolDef {
                         description: "Directory path to create".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -393,6 +394,7 @@ fn mkdir_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(true)),
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -420,6 +422,7 @@ fn mv_def() -> ToolDef {
                         description: "Source path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -429,6 +432,7 @@ fn mv_def() -> ToolDef {
                         description: "Destination path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -456,6 +460,7 @@ fn cp_def() -> ToolDef {
                         description: "Source path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -465,6 +470,7 @@ fn cp_def() -> ToolDef {
                         description: "Destination path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -474,6 +480,7 @@ fn cp_def() -> ToolDef {
                         description: "Required to copy a directory (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -501,6 +508,7 @@ fn rm_def() -> ToolDef {
                         description: "Path to remove".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -512,6 +520,7 @@ fn rm_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default(),
                     },
                 ),
             ]),

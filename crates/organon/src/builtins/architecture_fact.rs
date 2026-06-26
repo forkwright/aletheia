@@ -227,6 +227,7 @@ fn architecture_fact_def() -> ToolDef {
                             "search".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -237,6 +238,7 @@ fn architecture_fact_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -253,6 +255,7 @@ fn architecture_fact_def() -> ToolDef {
                             "boundary".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -264,6 +267,7 @@ fn architecture_fact_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -276,6 +280,7 @@ fn architecture_fact_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
             ]),

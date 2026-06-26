@@ -136,6 +136,7 @@ fn diff_report_def() -> crate::types::ToolDef {
                         description: "Document format: 'xlsx' or 'pptx'".to_owned(),
                         enum_values: Some(vec!["xlsx".to_owned(), "pptx".to_owned()]),
                         default: Some(serde_json::json!("xlsx")),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -145,6 +146,7 @@ fn diff_report_def() -> crate::types::ToolDef {
                         description: "Base64-encoded document (before state)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -154,6 +156,7 @@ fn diff_report_def() -> crate::types::ToolDef {
                         description: "Base64-encoded document (after state)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
             ]),

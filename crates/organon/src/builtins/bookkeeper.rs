@@ -78,6 +78,7 @@ fn tamias_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -87,6 +88,7 @@ fn tamias_def() -> ToolDef {
                         description: "Project slug for the future archive operation".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -96,6 +98,7 @@ fn tamias_def() -> ToolDef {
                         description: "Future batch mode flag (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -105,6 +108,7 @@ fn tamias_def() -> ToolDef {
                         description: "Future dry-run flag (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default(),
                     },
                 ),
             ]),
@@ -135,6 +139,7 @@ fn katharos_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -145,6 +150,7 @@ fn katharos_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(48)),
+                        ..Default::default(),
                     },
                 ),
                 (
@@ -156,6 +162,7 @@ fn katharos_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default(),
                     },
                 ),
             ]),
