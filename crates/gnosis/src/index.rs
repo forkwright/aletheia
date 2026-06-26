@@ -44,7 +44,7 @@ use proc_macro2::Span;
 use snafu::ResultExt;
 use syn::visit::Visit;
 
-use crate::error::{CargoMetadataSnafu, ParseSnafu, ReadSourceSnafu, Result};
+use crate::error::{CargoMetadataSnafu, ParseSnafu, Result};
 use crate::schema::Store;
 
 // ── SHA-256 helper ───────────────────────────────────────────────────────────
@@ -421,17 +421,21 @@ fn module_path_from_file_path(src_dir: &Path, file_path: &Path) -> String {
 
 // ── File-level indexer ───────────────────────────────────────────────────────
 
-/// Parse and index a single `.rs` file.
+/// Parse and index a single `.rs` file from pre-read content.
 ///
+/// `content` is the exact source bytes (as UTF-8) used for both hashing and
+/// parsing, eliminating the TOCTOU window between the two operations.
 /// Errors during parsing are logged at WARN and skipped — they do not abort
 /// the overall index build.
-#[tracing::instrument(skip(store), fields(crate_name, file = file_path))]
-fn index_file(store: &Store, crate_name: &str, file_path: &str, module_path: &str) -> Result<()> {
-    let content = std::fs::read_to_string(file_path).with_context(|_| ReadSourceSnafu {
-        path: PathBuf::from(file_path),
-    })?;
-
-    let file = syn::parse_file(&content).with_context(|_| ParseSnafu {
+#[tracing::instrument(skip(store, content), fields(crate_name, file = file_path))]
+fn index_file(
+    store: &Store,
+    crate_name: &str,
+    file_path: &str,
+    module_path: &str,
+    content: &str,
+) -> Result<()> {
+    let file = syn::parse_file(content).with_context(|_| ParseSnafu {
         path: PathBuf::from(file_path),
     })?;
 
@@ -553,7 +557,15 @@ pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
             }
 
             let module_path = module_path_from_file_path(&src_dir, &file_path);
-            if let Err(e) = index_file(store, crate_name, path_str, &module_path) {
+            let content_str = match std::str::from_utf8(&content) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(file = %path_str, error = %e, "gnosis: source file is not valid UTF-8, skipping");
+                    all_present_paths.push(present_path);
+                    continue;
+                }
+            };
+            if let Err(e) = index_file(store, crate_name, path_str, &module_path, content_str) {
                 tracing::warn!(file = %path_str, error = %e, "gnosis: parse error, skipping file");
                 all_present_paths.push(present_path);
                 continue;
