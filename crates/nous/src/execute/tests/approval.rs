@@ -42,6 +42,25 @@ fn make_registry_rev(name: &str, rev: Reversibility) -> ToolRegistry {
     registry
 }
 
+fn allow_active_for_tests(
+    registry: &ToolRegistry,
+    active: impl IntoIterator<Item = ToolName>,
+) -> ToolDispatchPolicy {
+    let active: std::collections::HashSet<ToolName> = active.into_iter().collect();
+    let policy = organon::types::ToolGroupPolicy::AllowAll {
+        reason: "execute test helper".to_owned(),
+    };
+    ToolDispatchPolicy::new(Arc::new(registry.effective_surface(
+        organon::surface::SurfaceInputs {
+            policy: &policy,
+            allowlist: None,
+            active: &active,
+            server_tools: &[],
+            server_tool_config: None,
+        },
+    )))
+}
+
 fn drain_events(rx: &mut mpsc::Receiver<TurnStreamEvent>) -> Vec<TurnStreamEvent> {
     let mut events = Vec::new();
     while let Ok(event) = rx.try_recv() {
@@ -295,6 +314,59 @@ async fn mandatory_without_gate_defaults_to_denial() {
         &events,
         &["approval_required", "approval_resolved", "tool_result"],
     );
+}
+
+#[tokio::test]
+async fn sessions_spawn_without_gate_defaults_to_denial() {
+    let mut tools = ToolRegistry::new();
+    organon::builtins::register_all(&mut tools).expect("register builtins");
+    let sessions_spawn = ToolName::from_static("sessions_spawn");
+    let (event_tx, mut event_rx) = mpsc::channel::<TurnStreamEvent>(64);
+
+    let tool_uses = vec![(
+        "tool-1".to_owned(),
+        sessions_spawn.as_str().to_owned(),
+        serde_json::json!({"role": "coder", "task": "touch the workspace"}),
+    )];
+    let mut loop_detector = LoopDetector::new(3);
+    let mut all_calls = Vec::new();
+    let policy = allow_active_for_tests(&tools, [sessions_spawn]);
+
+    let result = dispatch_tools(
+        &tool_uses,
+        &tools,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        Some(&event_tx),
+        None,
+        &policy,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("dispatch ok");
+
+    assert_eq!(result.blocks.len(), 1);
+    assert_eq!(all_calls.len(), 1);
+    assert!(
+        all_calls[0].is_error,
+        "sessions_spawn without gate must deny"
+    );
+
+    drop(event_tx);
+    let events = drain_events(&mut event_rx);
+    assert_event_kinds(
+        &events,
+        &["approval_required", "approval_resolved", "tool_result"],
+    );
+    if let TurnStreamEvent::ToolApprovalResolved { decision, .. } = &events[1] {
+        assert_eq!(decision, ApprovalChoice::Denied.as_wire_str());
+    } else {
+        panic!("expected ToolApprovalResolved at idx 1");
+    }
 }
 
 #[tokio::test]

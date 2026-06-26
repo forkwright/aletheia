@@ -329,7 +329,7 @@ fn sessions_spawn_def() -> ToolDef {
             required: vec!["role".to_owned(), "task".to_owned()],
         },
         category: ToolCategory::Agent,
-        reversibility: Reversibility::PartiallyReversible,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::SpawnSubtask],
         tags: vec![ToolTag::Spawn],
