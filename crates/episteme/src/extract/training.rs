@@ -5,9 +5,12 @@
 //! converts them to knowledge graph facts.
 //!
 //! Quality gates:
-//! - Only violations with `pr_number` and `sha` (i.e., from merged PRs) are
-//!   considered successful fix candidates.
-//! - Confidence scoring: verified fixes get 0.9, inferred patterns get 0.6.
+//! - Violations with `pr_number` and `sha` are only treated as successful fixes
+//!   when backed by explicit merged/fixed outcome metadata or by a before/after
+//!   violation delta that shows a decrease.
+//! - Confidence scoring: explicitly verified fixes get 0.9, delta-only fixes
+//!   get 0.75, inferred patterns get 0.6, and PR-linked but unresolved
+//!   observations get 0.5.
 //! - Deduplication by rule+file to avoid flooding the graph with duplicates.
 
 use std::collections::HashMap;
@@ -50,6 +53,35 @@ pub(crate) struct ViolationRecord {
     pub(crate) pr_number: Option<u32>,
     /// Git SHA if this violation was found in a PR context.
     pub(crate) sha: Option<String>,
+    /// Outcome of the PR that produced this violation (e.g. "merged", "fixed",
+    /// "introduced", "failed", "unmerged", or "unresolved").
+    #[serde(default)]
+    pub(crate) outcome: Option<String>,
+    /// Violation count for this rule before the PR.
+    #[serde(default)]
+    pub(crate) before_count: Option<u32>,
+    /// Violation count for this rule after the PR.
+    #[serde(default)]
+    pub(crate) after_count: Option<u32>,
+}
+
+/// Returns true when the record carries evidence that the violation was fixed.
+///
+/// Evidence takes one of two forms:
+/// - an explicit `outcome` of "merged" or "fixed"; or
+/// - a before/after violation delta where `after_count < before_count`.
+fn has_fixed_outcome_evidence(record: &ViolationRecord) -> bool {
+    if matches!(record.outcome.as_deref(), Some("merged") | Some("fixed")) {
+        return true;
+    }
+
+    if let (Some(before), Some(after)) = (record.before_count, record.after_count) {
+        if after < before {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Expected schema version for lint summary records.
@@ -144,8 +176,11 @@ pub struct ExtractionResult {
 ///
 /// # Quality gates
 ///
-/// - Violations with `pr_number` and `sha` are treated as fixed (merged PR).
-/// - Violations without PR context are treated as unfixed (recurring).
+/// - Violations with `pr_number` and `sha` are treated as fixed only when
+///   supported by explicit merged/fixed outcome metadata or a before/after
+///   violation delta that shows a decrease.
+/// - Violations without PR context, or PR-linked violations with missing or
+///   negative fixed-outcome evidence, are treated as unfixed (recurring).
 /// - Duplicate rule+file pairs are collapsed into a single lesson with
 ///   an occurrence count.
 ///
@@ -293,10 +328,12 @@ pub fn lessons_to_facts(lessons: &[TrainingLesson]) -> Vec<super::types::Extract
 /// Accumulator for violations grouped by rule.
 #[derive(Debug, Default)]
 struct RuleBucket {
-    /// Violations that came from merged PRs (have `pr_number` + `sha`).
+    /// Violations that came from merged PRs with fixed-outcome evidence.
     fixed: Vec<ViolationRecord>,
     /// Violations without PR context (unfixed/recurring).
     unfixed: Vec<ViolationRecord>,
+    /// Violations with PR context but missing or negative fixed-outcome evidence.
+    pr_linked_unresolved: Vec<ViolationRecord>,
     /// Distinct file paths seen.
     files: HashMap<String, u32>,
     /// Trend signal from lint summaries.
@@ -308,7 +345,11 @@ impl RuleBucket {
         *self.files.entry(record.file.clone()).or_default() += 1;
 
         if record.pr_number.is_some() && record.sha.is_some() {
-            self.fixed.push(record.clone());
+            if has_fixed_outcome_evidence(record) {
+                self.fixed.push(record.clone());
+            } else {
+                self.pr_linked_unresolved.push(record.clone());
+            }
         } else {
             self.unfixed.push(record.clone());
         }
@@ -332,13 +373,19 @@ impl RuleBucket {
                     .first()
                     .map(|v| v.snippet.clone())
                     .unwrap_or_default();
+                let explicit_outcome = violations.iter().any(|v| {
+                    matches!(v.outcome.as_deref(), Some("merged") | Some("fixed"))
+                });
+
+                // WHY: explicit merged/fixed outcome is stronger evidence than a
+                // before/after delta alone.
+                let confidence = if explicit_outcome { 0.9 } else { 0.75 };
 
                 lessons.push(TrainingLesson {
                     rule: rule.to_owned(),
                     outcome: LessonOutcome::FixedInPr,
                     description: format!("rule {rule} violation fixed: {sample_snippet}"),
-                    // WHY: PR-linked violations are verified fixes (high confidence).
-                    confidence: 0.9,
+                    confidence,
                     affected_files: pr_files,
                     occurrence_count: u32::try_from(violations.len()).unwrap_or(u32::MAX),
                     pr_number: Some(*pr_num),
@@ -366,6 +413,38 @@ impl RuleBucket {
                 occurrence_count: count,
                 pr_number: None,
             });
+        }
+
+        if !self.pr_linked_unresolved.is_empty() {
+            let mut by_pr: HashMap<u32, Vec<&ViolationRecord>> = HashMap::new();
+            for v in &self.pr_linked_unresolved {
+                if let Some(pr) = v.pr_number {
+                    by_pr.entry(pr).or_default().push(v);
+                }
+            }
+
+            for (pr_num, violations) in &by_pr {
+                let pr_files: Vec<String> = violations.iter().map(|v| v.file.clone()).collect();
+                let sample_snippet = violations
+                    .first()
+                    .map(|v| v.snippet.clone())
+                    .unwrap_or_default();
+
+                lessons.push(TrainingLesson {
+                    rule: rule.to_owned(),
+                    outcome: LessonOutcome::RecurringViolation,
+                    description: format!(
+                        "rule {rule} has unresolved PR-linked violations: {sample_snippet}"
+                    ),
+                    // WHY: PR-linked but unresolved observations are weaker than
+                    // verified fixes and weaker than ordinary recurring patterns
+                    // because the PR context is unverified.
+                    confidence: 0.5,
+                    affected_files: pr_files,
+                    occurrence_count: u32::try_from(violations.len()).unwrap_or(u32::MAX),
+                    pr_number: Some(*pr_num),
+                });
+            }
         }
 
         if let Some(trend) = &self.trend {
@@ -438,6 +517,18 @@ mod tests {
         let record: ViolationRecord = serde_json::from_str(json).unwrap();
         assert_eq!(record.pr_number, Some(42));
         assert_eq!(record.sha.as_deref(), Some("abc123"));
+        assert!(record.outcome.is_none());
+        assert!(record.before_count.is_none());
+        assert!(record.after_count.is_none());
+    }
+
+    #[test]
+    fn parse_violation_record_with_outcome_and_delta() {
+        let json = r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":10,"snippet":".expect(\"msg\")","project":"aletheia","pr_number":42,"sha":"abc123","outcome":"merged","before_count":5,"after_count":2}"#;
+        let record: ViolationRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.outcome.as_deref(), Some("merged"));
+        assert_eq!(record.before_count, Some(5));
+        assert_eq!(record.after_count, Some(2));
     }
 
     #[test]
@@ -463,6 +554,9 @@ mod tests {
             project: String::new(),
             pr_number: Some(42),
             sha: Some("abc123".to_owned()),
+            outcome: Some("merged".to_owned()),
+            before_count: None,
+            after_count: None,
         });
 
         bucket.add_violation(&ViolationRecord {
@@ -476,6 +570,9 @@ mod tests {
             project: String::new(),
             pr_number: None,
             sha: None,
+            outcome: None,
+            before_count: None,
+            after_count: None,
         });
 
         assert_eq!(bucket.fixed.len(), 1);
@@ -510,6 +607,9 @@ mod tests {
             project: String::new(),
             pr_number: Some(100),
             sha: Some("def456".to_owned()),
+            outcome: Some("merged".to_owned()),
+            before_count: None,
+            after_count: None,
         });
 
         let lessons = bucket.to_lessons("RUST/pub-visibility");
@@ -532,12 +632,260 @@ mod tests {
             project: String::new(),
             pr_number: None,
             sha: None,
+            outcome: None,
+            before_count: None,
+            after_count: None,
         });
 
         let lessons = bucket.to_lessons("RUST/expect");
         assert_eq!(lessons.len(), 1);
         assert_eq!(lessons[0].confidence, 0.6);
         assert!(lessons[0].pr_number.is_none());
+    }
+
+    #[test]
+    fn fixed_outcome_merged_emits_high_confidence_fixed_in_pr() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(7),
+            sha: Some("abc123".to_owned()),
+            outcome: Some("merged".to_owned()),
+            before_count: None,
+            after_count: None,
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::FixedInPr);
+        assert_eq!(lessons[0].confidence, 0.9);
+        assert_eq!(lessons[0].pr_number, Some(7));
+    }
+
+    #[test]
+    fn fixed_outcome_fixed_emits_high_confidence_fixed_in_pr() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(8),
+            sha: Some("def456".to_owned()),
+            outcome: Some("fixed".to_owned()),
+            before_count: None,
+            after_count: None,
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::FixedInPr);
+        assert_eq!(lessons[0].confidence, 0.9);
+    }
+
+    #[test]
+    fn delta_only_fix_emits_fixed_in_pr_with_reduced_confidence() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(9),
+            sha: Some("ghi789".to_owned()),
+            outcome: None,
+            before_count: Some(5),
+            after_count: Some(2),
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::FixedInPr);
+        assert_eq!(lessons[0].confidence, 0.75);
+    }
+
+    #[test]
+    fn pr_linked_without_outcome_is_unresolved() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(10),
+            sha: Some("jkl012".to_owned()),
+            outcome: None,
+            before_count: None,
+            after_count: None,
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::RecurringViolation);
+        assert_eq!(lessons[0].confidence, 0.5);
+        assert_eq!(lessons[0].pr_number, Some(10));
+    }
+
+    #[test]
+    fn pr_linked_introduced_is_unresolved() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(11),
+            sha: Some("mno345".to_owned()),
+            outcome: Some("introduced".to_owned()),
+            before_count: None,
+            after_count: None,
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::RecurringViolation);
+        assert_eq!(lessons[0].confidence, 0.5);
+        assert_eq!(lessons[0].pr_number, Some(11));
+    }
+
+    #[test]
+    fn pr_linked_failed_is_unresolved() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(12),
+            sha: Some("pqr678".to_owned()),
+            outcome: Some("failed".to_owned()),
+            before_count: None,
+            after_count: None,
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::RecurringViolation);
+        assert_eq!(lessons[0].confidence, 0.5);
+        assert_eq!(lessons[0].pr_number, Some(12));
+    }
+
+    #[test]
+    fn pr_linked_unmerged_is_unresolved() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(13),
+            sha: Some("stu901".to_owned()),
+            outcome: Some("unmerged".to_owned()),
+            before_count: None,
+            after_count: None,
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::RecurringViolation);
+        assert_eq!(lessons[0].confidence, 0.5);
+        assert_eq!(lessons[0].pr_number, Some(13));
+    }
+
+    #[test]
+    fn pr_linked_with_increasing_delta_is_unresolved() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: "RUST/expect".to_owned(),
+            file: "/src/lib.rs".to_owned(),
+            line: 1,
+            snippet: ".expect()".to_owned(),
+            project: String::new(),
+            pr_number: Some(14),
+            sha: Some("vwx234".to_owned()),
+            outcome: None,
+            before_count: Some(1),
+            after_count: Some(4),
+        });
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert_eq!(lessons.len(), 1);
+        assert_eq!(lessons[0].outcome, LessonOutcome::RecurringViolation);
+        assert_eq!(lessons[0].confidence, 0.5);
+        assert_eq!(lessons[0].pr_number, Some(14));
+    }
+
+    #[test]
+    fn extract_from_training_files_handles_unresolved_pr() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let violations = [
+            // Verified fix by explicit merged outcome.
+            r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123","outcome":"merged"}"#,
+            // PR-linked but unresolved: pr_number and sha present, no fixed evidence.
+            r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":43,"sha":"def456"}"#,
+            // PR-linked introduced: pr_number and sha present, negative outcome.
+            r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/unwrap","file":"/src/parse.rs","line":5,"snippet":".unwrap()","project":"","pr_number":44,"sha":"ghi789","outcome":"introduced"}"#,
+        ];
+        std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
+
+        let result = extract_from_training_data(dir.path()).unwrap();
+        assert_eq!(result.violations_read, 3);
+
+        let fixed = result
+            .lessons
+            .iter()
+            .filter(|l| l.outcome == LessonOutcome::FixedInPr)
+            .collect::<Vec<_>>();
+        assert_eq!(fixed.len(), 1);
+        assert_eq!(fixed[0].pr_number, Some(42));
+        assert_eq!(fixed[0].confidence, 0.9);
+
+        let unresolved = result
+            .lessons
+            .iter()
+            .filter(|l| {
+                l.outcome == LessonOutcome::RecurringViolation && l.pr_number.is_some()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(unresolved.len(), 2);
+        assert!(unresolved.iter().any(|l| l.pr_number == Some(43)));
+        assert!(unresolved.iter().any(|l| l.pr_number == Some(44)));
+        assert!(unresolved.iter().all(|l| l.confidence == 0.5));
     }
 
     #[test]
@@ -591,7 +939,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let violations = [
-            r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123"}"#,
+            r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123","outcome":"merged"}"#,
             r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":null,"sha":null}"#,
         ];
         std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
@@ -647,7 +995,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let violations = [
             r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"LOW/rule","file":"/a.rs","line":1,"snippet":"x","project":"","pr_number":null,"sha":null}"#,
-            r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"HIGH/rule","file":"/b.rs","line":1,"snippet":"y","project":"","pr_number":99,"sha":"abc"}"#,
+            r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"HIGH/rule","file":"/b.rs","line":1,"snippet":"y","project":"","pr_number":99,"sha":"abc","outcome":"merged"}"#,
         ];
         std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
 
