@@ -269,7 +269,9 @@ mod cache_metrics_tests {
     #[test]
     fn nonstream_success_records_cache_tokens() {
         let r = fresh_registry();
-        let start = Instant::now() - Duration::from_millis(10);
+        let start = Instant::now()
+            .checked_sub(Duration::from_millis(10))
+            .unwrap();
         let mut response = response_with_cache();
         record_nonstream_success(
             start,
@@ -298,7 +300,9 @@ mod cache_metrics_tests {
     #[test]
     fn stream_success_records_cache_tokens() {
         let r = fresh_registry();
-        let start = Instant::now() - Duration::from_millis(10);
+        let start = Instant::now()
+            .checked_sub(Duration::from_millis(10))
+            .unwrap();
         let mut response = response_with_cache();
         record_stream_success(
             start,
