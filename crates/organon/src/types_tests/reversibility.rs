@@ -127,6 +127,7 @@ fn tool_call_metadata_serde_roundtrip() {
         reversibility: Reversibility::PartiallyReversible,
         approval: ApprovalRequirement::Required,
         dry_run: true,
+        origin: None,
     };
     let json = serde_json::to_string(&meta).expect("serialize");
     let back: ToolCallMetadata = serde_json::from_str(&json).expect("deserialize");
