@@ -189,6 +189,56 @@ fn list_sessions_by_nous_id() {
 }
 
 #[test]
+fn session_count_tracks_creates_and_deletes() {
+    let store = test_store();
+    assert_eq!(store.session_count(), 0);
+
+    store
+        .create_session("ses-a", "nous-a", "main", None, None)
+        .expect("create a");
+    assert_eq!(store.session_count(), 1);
+
+    store
+        .create_session("ses-b", "nous-b", "main", None, None)
+        .expect("create b");
+    assert_eq!(store.session_count(), 2);
+
+    store.delete_session("ses-a").expect("delete a");
+    assert_eq!(store.session_count(), 1);
+
+    // Finding an existing session must not change the count.
+    store
+        .find_or_create_session("ses-b", "nous-b", "main", None, None)
+        .expect("find existing");
+    assert_eq!(store.session_count(), 1);
+
+    // Creating through find_or_create must increment the count.
+    store
+        .find_or_create_session("ses-c", "nous-c", "main", None, None)
+        .expect("create c");
+    assert_eq!(store.session_count(), 2);
+}
+
+#[test]
+fn import_session_adjusts_session_count() {
+    let store = test_store();
+    let session = store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    assert_eq!(store.session_count(), 1);
+
+    let mut imported = session.clone();
+    imported.id = "ses-2".to_owned();
+    imported.session_key = "secondary".to_owned();
+    store.import_session(&imported, false).expect("import new");
+    assert_eq!(store.session_count(), 2);
+
+    // Re-importing the same session with force must not change the count.
+    store.import_session(&imported, true).expect("re-import");
+    assert_eq!(store.session_count(), 2);
+}
+
+#[test]
 fn update_session_status() {
     let store = test_store();
     store
