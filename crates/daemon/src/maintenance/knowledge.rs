@@ -147,7 +147,7 @@ impl Default for DerivedRulesConfig {
 }
 
 /// Configuration for knowledge maintenance task scheduling.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct KnowledgeMaintenanceConfig {
     /// Whether knowledge maintenance tasks are enabled.
     pub enabled: bool,
@@ -157,6 +157,26 @@ pub struct KnowledgeMaintenanceConfig {
     pub serendipity: SerendipityMaintenanceConfig,
     /// Derived Datalog rule maintenance settings.
     pub derived_rules: DerivedRulesConfig,
+    /// Cadence for the gnosis code-graph index rebuild task.
+    ///
+    /// WHY: issue #5963 asks for an automatic gnosis rebuild trigger; this
+    /// interval drives the daemon `index-maintenance` task that re-indexes
+    /// the workspace source tree.
+    pub index_maintenance_interval: Duration,
+}
+
+impl Default for KnowledgeMaintenanceConfig {
+    fn default() -> Self {
+        // WHY: every hour keeps the code-graph index reasonably fresh without
+        // monopolizing I/O during active development. Operators can tune it.
+        Self {
+            enabled: false,
+            auto_dream: AutoDreamConfig::default(),
+            serendipity: SerendipityMaintenanceConfig::default(),
+            derived_rules: DerivedRulesConfig::default(),
+            index_maintenance_interval: Duration::from_secs(60 * 60),
+        }
+    }
 }
 
 /// Configuration for auto-dream memory consolidation.

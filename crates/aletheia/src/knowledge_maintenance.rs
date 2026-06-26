@@ -4,6 +4,7 @@
 //!
 //! Only tasks backed by concrete `KnowledgeStore` behavior report success.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use episteme::consolidation::{ConsolidationConfig, ConsolidationProvider};
@@ -315,12 +316,42 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     }
 
     fn maintain_indexes(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        Err(oikonomos::error::TaskFailedSnafu {
+        let start = std::time::Instant::now();
+
+        // WHY: reuse the same workspace-root resolution as the `code_graph_query`
+        // MCP tool so manual and scheduled rebuilds behave identically.
+        let workspace_root = std::env::var("GNOSIS_WORKSPACE_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+            });
+
+        let graph = gnosis::CodeGraph::open_default(&workspace_root).map_err(|e| {
+            oikonomos::error::TaskFailedSnafu {
+                task_id: "index-maintenance".to_owned(),
+                reason: format!("failed to open gnosis index: {e}"),
+            }
+            .build()
+        })?;
+
+        graph.rebuild().map_err(|e| oikonomos::error::TaskFailedSnafu {
             task_id: "index-maintenance".to_owned(),
-            reason: "index maintenance has no concrete store contract and is not scheduled"
-                .to_owned(),
-        }
-        .build())
+            reason: format!("gnosis rebuild failed: {e}"),
+        }.build())?;
+
+        let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        let detail = format!(
+            "gnosis index rebuilt for workspace {}",
+            workspace_root.display()
+        );
+
+        Ok(MaintenanceReport {
+            items_processed: 0,
+            items_modified: 0,
+            duration_ms,
+            detail: Some(detail),
+            ..Default::default()
+        })
     }
 
     fn health_check(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
@@ -854,5 +885,62 @@ mod tests {
                 .is_some_and(|detail| detail.contains("Knowledge consolidation")),
             "detail should summarize the consolidation pass"
         );
+    }
+
+    /// Verify that `maintain_indexes` opens gnosis against the workspace and
+    /// completes a rebuild.
+    ///
+    /// WHY: issue #5963 requires an automatic gnosis rebuild trigger; this test
+    /// exercises the real `KnowledgeMaintenanceAdapter::maintain_indexes` path
+    /// that the daemon `index-maintenance` task dispatches to.
+    #[test]
+    #[ignore = "runs cargo metadata over the full workspace — takes 3-8s"]
+    fn maintain_indexes_rebuilds_gnosis() {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR must be set by cargo");
+        let workspace_root = PathBuf::from(manifest_dir)
+            .parent()
+            .expect("crates/")
+            .parent()
+            .expect("workspace root")
+            .to_owned();
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = KnowledgeStore::open_fjall(
+            dir.path().join("knowledge"),
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .expect("open store");
+
+        // WHY: point gnosis at the real workspace and isolate the test cache.
+        std::env::set_var("GNOSIS_WORKSPACE_ROOT", &workspace_root);
+        std::env::set_var("GNOSIS_CACHE_PATH", dir.path().join("gnosis.fjall"));
+        let _guard = GnosisEnvGuard;
+
+        let adapter = KnowledgeMaintenanceAdapter::new(Arc::new(store));
+        let report = adapter
+            .maintain_indexes("system")
+            .expect("maintain_indexes should succeed");
+
+        assert_eq!(report.errors, 0, "rebuild should report zero errors");
+        assert!(
+            report
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("gnosis index rebuilt")),
+            "detail should confirm gnosis rebuild, got: {:?}",
+            report.detail
+        );
+    }
+
+    /// Restores gnosis environment overrides when the test ends so later tests
+    /// use the default workspace/cache resolution.
+    struct GnosisEnvGuard;
+
+    impl Drop for GnosisEnvGuard {
+        fn drop(&mut self) {
+            std::env::remove_var("GNOSIS_WORKSPACE_ROOT");
+            std::env::remove_var("GNOSIS_CACHE_PATH");
+        }
     }
 }

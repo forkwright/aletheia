@@ -98,6 +98,8 @@ pub enum ManualMaintenanceTask {
     SerendipityDiscovery,
     /// Consolidate overflowing facts into summarized knowledge.
     KnowledgeConsolidation,
+    /// Rebuild the gnosis code-graph index for the workspace.
+    IndexMaintenance,
 }
 
 /// Canonical metadata for one maintenance task.
@@ -266,6 +268,7 @@ enum ScheduleSource {
     FixedIntervalSecs(u64),
     InstanceBackupIntervalHours,
     DerivedRulesMaterializationInterval,
+    GnosisRebuildInterval,
     SerendipityCadence,
     CronEvolutionInterval,
     CronReflectionInterval,
@@ -286,6 +289,9 @@ impl ScheduleSource {
                     .derived_rules
                     .materialization_interval,
             ),
+            Self::GnosisRebuildInterval => {
+                Schedule::Interval(config.knowledge_maintenance.index_maintenance_interval)
+            }
             Self::SerendipityCadence => {
                 Schedule::Cron(config.knowledge_maintenance.serendipity.cadence.clone())
             }
@@ -733,13 +739,21 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Knowledge garbage collection",
         BuiltinTask::KnowledgeGc,
     ),
-    planned(
+    task(
         "index-maintenance",
-        "Knowledge index maintenance",
+        "Gnosis code-graph index rebuild",
         MaintenanceTaskOwner::KnowledgeGraph,
-        MaintenanceConfigSection::KnowledgeMaintenance,
-        "Knowledge index maintenance",
-        BuiltinTask::IndexMaintenance,
+        Some(MaintenanceConfigSection::KnowledgeMaintenance),
+        "Gnosis code-graph index rebuild",
+        MaintenanceTaskImplementationStatus::Implemented,
+        CRON_METRICS,
+        Some(ManualMaintenanceTask::IndexMaintenance),
+        scheduled(
+            BuiltinTask::IndexMaintenance,
+            ScheduleSource::GnosisRebuildInterval,
+            true,
+            RegistrationCondition::KnowledgeMaintenanceEnabledWithExecutor,
+        ),
     ),
     planned(
         "graph-health-check",
@@ -912,6 +926,35 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn index_maintenance_is_implemented_and_schedulable() {
+        let Some(definition) = maintenance_task_by_id("index-maintenance") else {
+            panic!("index-maintenance should be present in registry");
+        };
+        assert_eq!(definition.id(), "index-maintenance");
+        assert_eq!(
+            definition.implementation_status(),
+            MaintenanceTaskImplementationStatus::Implemented,
+            "index-maintenance must be implemented for #5963"
+        );
+        assert_eq!(
+            definition.manual_run(),
+            Some(ManualMaintenanceTask::IndexMaintenance)
+        );
+        assert_eq!(definition.builtin(), Some(BuiltinTask::IndexMaintenance));
+
+        let mut config = super::super::MaintenanceConfig::default();
+        config.knowledge_maintenance.enabled = true;
+        let capabilities = MaintenanceRuntimeCapabilities {
+            has_knowledge_executor: true,
+            ..MaintenanceRuntimeCapabilities::default()
+        };
+        let scheduled = definition
+            .scheduled_task(&config, capabilities)
+            .expect("index-maintenance should schedule when knowledge maintenance is enabled");
+        assert_eq!(scheduled.id, "index-maintenance");
     }
 
     #[test]

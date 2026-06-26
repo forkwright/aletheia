@@ -620,7 +620,8 @@ shows them as `planned`/`unavailable` (`crates/aletheia/src/commands/maintenance
 
 - `embedding-refresh` — requires an `EmbeddingProvider` bridge.
 - `knowledge-gc` / edge pruning — no concrete store contract.
-- `index-maintenance` — no concrete store contract.
+- `index-maintenance` — rebuilds the gnosis code-graph index on a fixed hourly
+  interval when `knowledge_maintenance.enabled = true`.
 - `graph-health-check` — no concrete diagnostic contract.
 
 Implemented knowledge-maintenance tasks also return `unavailable` when the
