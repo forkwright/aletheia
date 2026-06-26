@@ -96,6 +96,10 @@ fn nous_status_serializes_all_config_fields() {
         background_failure_latest_message: Some("indexer unreachable".to_owned()),
         background_failure_latest_kind: Some("indexer".to_owned()),
         background_health_degraded: true,
+        address_mask: AddressMaskStatus {
+            kind: "operator_only".to_owned(),
+            allowed_senders: vec![],
+        },
     };
     let json = serde_json::to_value(&status).unwrap();
     assert_eq!(json["id"], "syn");
@@ -110,6 +114,8 @@ fn nous_status_serializes_all_config_fields() {
     );
     assert_eq!(json["background_failure_latest_kind"], "indexer");
     assert_eq!(json["background_health_degraded"], true);
+    assert_eq!(json["address_mask"]["kind"], "operator_only");
+    assert!(json["address_mask"]["allowed_senders"].as_array().is_some());
 }
 
 #[test]

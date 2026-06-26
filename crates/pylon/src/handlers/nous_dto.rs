@@ -107,6 +107,17 @@ pub struct NousStatus {
     /// This does not change the actor lifecycle; it is an independent signal used by the
     /// detailed health endpoint to surface repeated background-work failures.
     pub background_health_degraded: bool,
+    /// Current cross-nous inbound address mask for this agent.
+    pub address_mask: AddressMaskStatus,
+}
+
+/// Diagnostic view of a cross-nous inbound address mask.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AddressMaskStatus {
+    /// Stable mask kind: `public`, `operator_only`, or `allow_list`.
+    pub kind: String,
+    /// Sender ids allowed by an `allow_list` mask.
+    pub allowed_senders: Vec<String>,
 }
 
 /// Response listing tools available to a nous agent.

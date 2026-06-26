@@ -5,6 +5,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use nous::config::NousConfig;
+use nous::cross::AddressMask;
 use symbolon::types::Role;
 use taxis::config::{AletheiaConfig, NousDefinition};
 
@@ -16,8 +17,8 @@ use crate::state::NousState;
 #[path = "nous_dto.rs"]
 mod nous_dto;
 pub use nous_dto::{
-    AgentDefinition, CreateAgentResponse, NousListResponse, NousStatus, NousSummary,
-    NousToggleRequest, RecoverResponse, ToolSummary, ToolToggleRequest, ToolsResponse,
+    AddressMaskStatus, AgentDefinition, CreateAgentResponse, NousListResponse, NousStatus,
+    NousSummary, NousToggleRequest, RecoverResponse, ToolSummary, ToolToggleRequest, ToolsResponse,
 };
 
 fn agent_definition<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a NousDefinition> {
@@ -88,6 +89,13 @@ fn tool_summaries_for_agent(state: &NousState, allowlist: Option<&[String]>) -> 
             }
         })
         .collect()
+}
+
+fn address_mask_status(mask: &AddressMask) -> AddressMaskStatus {
+    AddressMaskStatus {
+        kind: mask.diagnostic_kind().to_owned(),
+        allowed_senders: mask.allowed_senders().to_vec(),
+    }
 }
 
 fn nous_visible_to_claims(claims: &Claims, config: &NousConfig) -> bool {
@@ -197,6 +205,11 @@ pub async fn get_status(
 
     let mut status_models = vec![config.generation.model.clone()];
     status_models.extend(config.generation.fallback_models.clone());
+    let address_mask = if let Some(router) = state.nous_manager.router() {
+        router.address_mask(&id).await
+    } else {
+        AddressMask::Public
+    };
 
     Ok(Json(NousStatus {
         id: config.id.to_string(),
@@ -216,6 +229,7 @@ pub async fn get_status(
         background_failure_latest_message,
         background_failure_latest_kind,
         background_health_degraded,
+        address_mask: address_mask_status(&address_mask),
     }))
 }
 
