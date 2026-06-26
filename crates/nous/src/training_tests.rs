@@ -817,7 +817,11 @@ mod audit_separation_tests {
         for (label, stop_reason, has_tool_calls) in [
             ("max_tokens", CaptureStopReason::MaxTokens, false),
             ("degraded", CaptureStopReason::Degraded, false),
-            ("content_filtered", CaptureStopReason::ContentFiltered, false),
+            (
+                "content_filtered",
+                CaptureStopReason::ContentFiltered,
+                false,
+            ),
             ("tool_use_only", CaptureStopReason::ToolUse, true),
         ] {
             let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
@@ -831,7 +835,10 @@ mod audit_separation_tests {
                 },
                 ..good_input()
             });
-            assert!(!captured, "{label} must not be captured as training evidence");
+            assert!(
+                !captured,
+                "{label} must not be captured as training evidence"
+            );
         }
 
         // The training directory should contain no rows for any failure mode.
@@ -863,8 +870,8 @@ mod audit_separation_tests {
         }));
 
         let content = std::fs::read_to_string(capture.file_path()).expect("read");
-        let value: Value = serde_json::from_str(content.lines().next().expect("line"))
-            .expect("parse");
+        let value: Value =
+            serde_json::from_str(content.lines().next().expect("line")).expect("parse");
         assert_eq!(value["finalization_status"], "finalized");
         assert_eq!(value["turn_id"], "turn-final-001");
         assert_eq!(value["turn_seq"], 5);
@@ -880,7 +887,10 @@ mod audit_separation_tests {
             finalization_status: Some("pending"),
             ..good_input()
         });
-        assert!(!captured, "unfinalized turn must not enter the training corpus");
+        assert!(
+            !captured,
+            "unfinalized turn must not enter the training corpus"
+        );
     }
 
     #[test]

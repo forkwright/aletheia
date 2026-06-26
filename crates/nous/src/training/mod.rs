@@ -1011,8 +1011,7 @@ impl TrainingCapture {
             if self.captured_turn_ids.contains(turn_id) {
                 debug!(
                     session_id = input.session_id,
-                    turn_id,
-                    "training capture skipped: turn already captured"
+                    turn_id, "training capture skipped: turn already captured"
                 );
                 return false;
             }
@@ -1059,7 +1058,9 @@ impl TrainingCapture {
             base: &record,
             turn_id: input.turn_id,
             turn_seq: input.turn_seq,
-            capture_policy_ref: input.capture_policy_ref.unwrap_or("nous-training-capture-v1"),
+            capture_policy_ref: input
+                .capture_policy_ref
+                .unwrap_or("nous-training-capture-v1"),
             finalization_status: input.finalization_status.unwrap_or("unknown"),
         };
 
