@@ -1237,29 +1237,10 @@ pub(crate) async fn run_pipeline(
             emitter,
             hooks,
             session_store,
+            audit_log,
         )
         .await?;
         stages_completed += 1;
-
-        // WHY(#3411,#4717): write one prompt audit record per successful
-        // model-backed turn after execute so fallback/routing attribution uses
-        // the observed model. Audit failures are logged and never propagate:
-        // the log is observational and must not block a turn.
-        if let Some(log) = audit_log {
-            let record = crate::audit::build_audit_record(crate::audit::PromptAuditRecordInput {
-                ctx: &ctx,
-                session: &input.session,
-                config,
-                observed_model: &result.model_used,
-                providers,
-                tools,
-                tool_ctx,
-                options: log.record_options(),
-            });
-            if let Err(e) = log.log_request(&record) {
-                tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
-            }
-        }
 
         let finalize_outcome = run_stage_with_timeout(
             config,
