@@ -53,6 +53,8 @@ pub mod render_graph_audit;
 pub mod render_pptx_report;
 /// JSON-first XLSX report tool (`render_xlsx_report`).
 pub mod render_xlsx_report;
+/// Report runtime dependency doctor (Pandoc, LaTeX, Chromium, Typst).
+pub mod report_runtime_health;
 /// Web research tools (web_fetch).
 pub mod research;
 /// Scaffold report tool: generates a new report project from embedded templates.
@@ -235,6 +237,7 @@ pub(crate) fn register_domain_tools(
     #[cfg(feature = "bookkeeper")]
     bookkeeper::register(registry)?;
     poiesis::register(registry)?;
+    report_runtime_health::register(registry)?;
     intake_report::register(registry)?;
     scaffold_report::register(registry)?;
     render_docx_report::register(registry)?;
