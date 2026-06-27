@@ -418,7 +418,7 @@ async fn propose_rules_with_missing_data_dir_succeeds_with_fallback() {
     );
 }
 
-/// Error path: propose_rules reports failure when the data directory cannot be created.
+/// Error path: `propose_rules` reports failure when the data directory cannot be created.
 #[tokio::test]
 async fn propose_rules_reports_failure_when_write_blocked() {
     let tmp = tempfile::tempdir().expect("tempdir");
