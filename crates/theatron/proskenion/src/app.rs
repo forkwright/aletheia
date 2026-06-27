@@ -187,14 +187,21 @@ fn ConnectedApp() -> Element {
     {
         let cfg = config.read().clone();
         let mut agents: Signal<AgentStore> = use_context();
+        let mut connection_state: Signal<ConnectionState> = use_context();
         use_future(move || {
-            let server_url = cfg.server_url.clone();
+            let cfg = cfg.clone();
             async move {
-                let Ok(client) = skene::api::client::ApiClient::new(&server_url, None) else {
-                    return;
-                };
-                if let Ok(list) = client.agents().await {
-                    agents.write().load_from_api(list);
+                match crate::api::client::fetch_agent_roster(&cfg).await {
+                    Ok(list) => agents.write().load_from_api(list),
+                    Err(err) if err.is_auth_failure() => {
+                        tracing::warn!(error = %err, "startup agent roster authentication failed");
+                        connection_state.set(ConnectionState::Failed {
+                            reason: err.connection_failure_reason().to_string(),
+                        });
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to load startup agent roster");
+                    }
                 }
             }
         });
