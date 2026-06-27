@@ -122,11 +122,9 @@ const CHROMIUM_CANDIDATES: &[&str] = &[
 /// Mirrors the discovery logic in `printer-chromium` so the doctor surface
 /// reports the same binary the renderer would select.
 fn find_chromium() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("CHROMIUM_PATH") {
-        let pb = PathBuf::from(&path);
-        if pb.exists() {
-            return Some(pb);
-        }
+    if let Some(path) = std::env::var_os("CHROMIUM_PATH") {
+        let pb = PathBuf::from(path);
+        return pb.exists().then_some(pb);
     }
     for candidate in CHROMIUM_CANDIDATES {
         if let Ok(path) = which::which(candidate) {
