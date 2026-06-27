@@ -513,6 +513,9 @@ pub async fn send_message(
                 let _ = tx.send(recorded).await;
             }
 
+            // WHY(#4828): legacy message streaming has no approval endpoint wired.
+            // Shared dispatch therefore executes None/Advisory tools and
+            // policy-denies Required/Mandatory tools instead of silently approving.
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
             let turn_fut = handle.send_turn_with_cancel(
@@ -862,8 +865,8 @@ pub async fn stream_turn(
     // tool_approval_required events can register exact `(turn_id, tool_id)`
     // senders. The guard removes only this turn's pending keys when the
     // streaming task ends; the gate itself defaults-deny on timeout, so a
-    // dropped client connection denies pending Mandatory tool calls rather
-    // than letting them block the pipeline indefinitely.
+    // dropped client connection denies pending Required/Mandatory tool calls
+    // rather than letting them block the pipeline indefinitely.
     let (approval_tx, approval_rx) = mpsc::channel::<nous::approval::ApprovalDecision>(8);
     let approval_gate = Some(nous::approval::ApprovalGate::with_default_timeout(
         approval_rx,

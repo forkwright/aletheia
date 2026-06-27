@@ -375,10 +375,37 @@ async fn enable_tool_activation_persists_to_next_turn() {
         None,
     );
 
+    // WHY(#4828): enable_tool is approval-required. This test verifies that an
+    // operator-approved activation persists, not that no-gate turns may mutate
+    // the active tool surface.
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(64);
+    let (decision_tx, decision_rx) = tokio::sync::mpsc::channel(8);
+    let gate = crate::approval::ApprovalGate::new(decision_rx, std::time::Duration::from_secs(10));
+    let approver = tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            if let crate::stream::TurnStreamEvent::ToolApprovalRequired { tool_id, .. } = event {
+                let _ = decision_tx
+                    .send(crate::approval::ApprovalDecision {
+                        tool_id,
+                        choice: crate::approval::ApprovalChoice::Approved,
+                    })
+                    .await;
+            }
+        }
+    });
     let first = handle
-        .send_turn("main", "enable web fetch")
+        .send_turn_streaming_with_approval(
+            "main",
+            None,
+            "enable web fetch",
+            event_tx,
+            Some(gate),
+            std::time::Duration::from_secs(30),
+            CancellationToken::new(),
+        )
         .await
         .expect("first turn");
+    approver.abort();
     let activation = first.tool_calls.first().expect("enable_tool call");
     assert_eq!(activation.name, "enable_tool");
     assert!(
