@@ -168,6 +168,7 @@ fn computer_use_def() -> ToolDef {
                             "scroll".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -177,6 +178,7 @@ fn computer_use_def() -> ToolDef {
                         description: "X coordinate in pixels (for click and scroll)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -186,6 +188,7 @@ fn computer_use_def() -> ToolDef {
                         description: "Y coordinate in pixels (for click and scroll)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -196,6 +199,7 @@ fn computer_use_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(1)),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -205,6 +209,7 @@ fn computer_use_def() -> ToolDef {
                         description: "Text to type (for type_text action)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -215,6 +220,7 @@ fn computer_use_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -226,6 +232,7 @@ fn computer_use_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),

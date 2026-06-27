@@ -114,6 +114,7 @@ fn note_def() -> ToolDef {
                         description: "Action: 'add', 'list', 'delete'".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -123,6 +124,7 @@ fn note_def() -> ToolDef {
                         description: "Note content (required for 'add', max 500 chars)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -137,6 +139,7 @@ fn note_def() -> ToolDef {
                                 .collect(),
                         ),
                         default: Some(serde_json::json!("context")),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -146,6 +149,7 @@ fn note_def() -> ToolDef {
                         description: "Note ID (required for 'delete')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),

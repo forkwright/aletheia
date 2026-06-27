@@ -589,6 +589,7 @@ fn external_tool_schema() -> InputSchema {
             description: "Query or command to send to the external tool".to_owned(),
             enum_values: None,
             default: None,
+            ..Default::default()
         },
     );
     properties.insert(
@@ -598,6 +599,7 @@ fn external_tool_schema() -> InputSchema {
             description: "Additional parameters as a JSON object (tool-specific)".to_owned(),
             enum_values: None,
             default: None,
+            ..Default::default()
         },
     );
     InputSchema {

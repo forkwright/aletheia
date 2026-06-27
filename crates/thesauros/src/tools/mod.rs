@@ -357,6 +357,7 @@ fn convert_input_schema(
                 description: prop.description.clone(),
                 enum_values: prop.enum_values.clone(),
                 default: prop.default.clone(),
+                ..Default::default()
             },
         );
     }

@@ -27,6 +27,7 @@ pub(super) fn plan_create_def() -> ToolDef {
                         description: "Project name".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -36,6 +37,7 @@ pub(super) fn plan_create_def() -> ToolDef {
                         description: "What this project aims to accomplish".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -45,6 +47,7 @@ pub(super) fn plan_create_def() -> ToolDef {
                         description: "Optional scope constraint (e.g., 'crate X only')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -58,6 +61,7 @@ pub(super) fn plan_create_def() -> ToolDef {
                             "background".to_owned(),
                         ]),
                         default: Some(serde_json::json!("full")),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -67,6 +71,7 @@ pub(super) fn plan_create_def() -> ToolDef {
                         description: "Time budget in minutes (only for 'quick' mode)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -94,6 +99,7 @@ pub(super) fn plan_research_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -103,6 +109,7 @@ pub(super) fn plan_research_def() -> ToolDef {
                         description: "Skip research and go directly to scoping".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -130,6 +137,7 @@ pub(super) fn plan_requirements_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -139,6 +147,7 @@ pub(super) fn plan_requirements_def() -> ToolDef {
                         description: "Action to perform".to_owned(),
                         enum_values: Some(vec!["start_scoping".to_owned(), "complete".to_owned()]),
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -184,6 +193,7 @@ fn plan_roadmap_properties() -> IndexMap<String, PropertyDef> {
                     "start_execution".to_owned(),
                 ]),
                 default: None,
+                ..Default::default()
             },
         ),
         string_property("phase_name", "Phase name (required for add_phase)"),
@@ -209,6 +219,7 @@ fn plan_roadmap_properties() -> IndexMap<String, PropertyDef> {
                 description: "Plan IDs that must complete before this plan can run".to_owned(),
                 enum_values: None,
                 default: Some(serde_json::json!([])),
+                ..Default::default()
             },
         ),
         integer_property(
@@ -227,6 +238,7 @@ fn string_property(name: &str, description: &str) -> (String, PropertyDef) {
             description: description.to_owned(),
             enum_values: None,
             default: None,
+            ..Default::default()
         },
     )
 }
@@ -243,6 +255,7 @@ fn integer_property(
             description: description.to_owned(),
             enum_values: None,
             default,
+            ..Default::default()
         },
     )
 }
@@ -261,6 +274,7 @@ pub(super) fn plan_discuss_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -270,6 +284,7 @@ pub(super) fn plan_discuss_def() -> ToolDef {
                         description: "Action to perform".to_owned(),
                         enum_values: Some(vec!["complete".to_owned()]),
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -297,6 +312,7 @@ pub(super) fn plan_execute_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -312,6 +328,7 @@ pub(super) fn plan_execute_def() -> ToolDef {
                             "start_verification".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -339,6 +356,7 @@ pub(super) fn plan_verify_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -348,6 +366,7 @@ pub(super) fn plan_verify_def() -> ToolDef {
                         description: "Action to perform".to_owned(),
                         enum_values: Some(vec!["complete".to_owned(), "revert".to_owned()]),
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -362,6 +381,7 @@ pub(super) fn plan_verify_def() -> ToolDef {
                             "executing".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -388,6 +408,7 @@ pub(super) fn plan_status_def() -> ToolDef {
                     description: "Project ID".to_owned(),
                     enum_values: None,
                     default: None,
+                    ..Default::default()
                 },
             )]),
             required: vec!["project_id".to_owned()],
@@ -414,6 +435,7 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -423,6 +445,7 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
                         description: "Phase ID containing the plan".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -432,6 +455,7 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
                         description: "Plan ID to mark complete".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -441,6 +465,7 @@ pub(super) fn plan_step_complete_def() -> ToolDef {
                         description: "Description of what was accomplished".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -479,6 +504,7 @@ pub(super) fn plan_verify_criteria_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -488,6 +514,7 @@ pub(super) fn plan_verify_criteria_def() -> ToolDef {
                         description: "Phase ID to verify".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -501,6 +528,7 @@ pub(super) fn plan_verify_criteria_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -532,6 +560,7 @@ pub(super) fn plan_step_fail_def() -> ToolDef {
                         description: "Project ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -541,6 +570,7 @@ pub(super) fn plan_step_fail_def() -> ToolDef {
                         description: "Phase ID containing the plan".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -550,6 +580,7 @@ pub(super) fn plan_step_fail_def() -> ToolDef {
                         description: "Plan ID to mark failed".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -559,6 +590,7 @@ pub(super) fn plan_step_fail_def() -> ToolDef {
                         description: "Why the plan failed".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),

@@ -266,6 +266,13 @@ impl ToolRegistry {
         let mut expanded_input = input.clone();
         expanded_input.arguments = expanded_args;
 
+        // Validate expanded arguments against the tool's declared input schema.
+        // WHY: Catch malformed arguments before the executor runs so callers get
+        // consistent, schema-driven errors instead of internal parsing failures.
+        tool.def
+            .input_schema
+            .validate(&input.name, &expanded_input.arguments)?;
+
         let span = info_span!("tool_execute",
             tool.name = %input.name,
             tool.reversibility = %tool.def.reversibility,

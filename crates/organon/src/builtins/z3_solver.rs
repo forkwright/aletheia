@@ -135,6 +135,7 @@ fn z3_solver_def() -> ToolDef {
                         description: "SMT-LIB2 source string to evaluate".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -146,6 +147,7 @@ fn z3_solver_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(DEFAULT_TIMEOUT_MS)),
+                        ..Default::default()
                     },
                 ),
             ]),

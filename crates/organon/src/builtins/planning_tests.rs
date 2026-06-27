@@ -353,14 +353,13 @@ async fn unknown_action_returns_error() {
         tool_use_id: "tu_1".to_owned(),
         arguments: serde_json::json!({"project_id": "p1", "action": "invalid_action"}),
     };
-    let result = reg.execute(&input, &ctx).await.expect("execute");
+    let err = reg
+        .execute(&input, &ctx)
+        .await
+        .expect_err("schema should reject invalid action");
     assert!(
-        result.is_error,
-        "plan_requirements with an invalid action should return an error"
-    );
-    assert!(
-        result.content.text_summary().contains("unknown action"),
-        "error message should indicate the action was not recognized"
+        err.to_string().contains("not in enum"),
+        "schema error should indicate value not in enum: {err}"
     );
 }
 
@@ -453,14 +452,13 @@ async fn plan_discuss_unknown_action_returns_error() {
         tool_use_id: "tu_1".to_owned(),
         arguments: serde_json::json!({"project_id": "proj1", "action": "invalid"}),
     };
-    let result = reg.execute(&input, &ctx).await.expect("execute");
+    let err = reg
+        .execute(&input, &ctx)
+        .await
+        .expect_err("schema should reject invalid action");
     assert!(
-        result.is_error,
-        "plan_discuss with an invalid action should return an error"
-    );
-    assert!(
-        result.content.text_summary().contains("unknown action"),
-        "error message should indicate the action was not recognized"
+        err.to_string().contains("not in enum"),
+        "schema error should indicate value not in enum: {err}"
     );
 }
 
@@ -548,23 +546,49 @@ async fn plan_missing_service_returns_error_for_all_tools() {
     super::register(&mut reg).expect("register");
     let ctx = test_ctx();
 
-    for tool_name in [
-        "plan_research",
-        "plan_requirements",
-        "plan_roadmap",
-        "plan_discuss",
-        "plan_execute",
-        "plan_verify",
-        "plan_verify_criteria",
-        "plan_status",
-        "plan_step_complete",
-        "plan_step_fail",
-    ] {
-        let args = serde_json::json!({"project_id": "p1", "action": "start"});
+    // NOTE: each entry must satisfy the tool's schema constraints so validation
+    // does not short-circuit before the service-not-configured check.
+    let tool_inputs: &[(&str, serde_json::Value)] = &[
+        ("plan_research", serde_json::json!({"project_id": "p1"})),
+        (
+            "plan_requirements",
+            serde_json::json!({"project_id": "p1", "action": "start_scoping"}),
+        ),
+        (
+            "plan_roadmap",
+            serde_json::json!({"project_id": "p1", "action": "start_discussion"}),
+        ),
+        (
+            "plan_discuss",
+            serde_json::json!({"project_id": "p1", "action": "complete"}),
+        ),
+        (
+            "plan_execute",
+            serde_json::json!({"project_id": "p1", "action": "start"}),
+        ),
+        (
+            "plan_verify",
+            serde_json::json!({"project_id": "p1", "action": "complete"}),
+        ),
+        (
+            "plan_verify_criteria",
+            serde_json::json!({"project_id": "p1", "phase_id": "ph1", "criteria": "[]"}),
+        ),
+        ("plan_status", serde_json::json!({"project_id": "p1"})),
+        (
+            "plan_step_complete",
+            serde_json::json!({"project_id": "p1", "phase_id": "ph1", "plan_id": "pl1"}),
+        ),
+        (
+            "plan_step_fail",
+            serde_json::json!({"project_id": "p1", "phase_id": "ph1", "plan_id": "pl1", "reason": "test failure"}),
+        ),
+    ];
+    for (tool_name, args) in tool_inputs {
         let input = ToolInput {
-            name: ToolName::new(tool_name).expect("valid"),
+            name: ToolName::new(*tool_name).expect("valid"),
             tool_use_id: "tu_1".to_owned(),
-            arguments: args,
+            arguments: args.clone(),
         };
         let result = reg.execute(&input, &ctx).await.expect("execute");
         assert!(

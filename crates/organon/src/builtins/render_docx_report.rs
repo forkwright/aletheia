@@ -153,6 +153,7 @@ fn render_docx_report_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -165,6 +166,7 @@ fn render_docx_report_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
