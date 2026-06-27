@@ -6547,6 +6547,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "which 8.0.2",
  "z3",
  "zip 8.5.1",
 ]
