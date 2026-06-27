@@ -301,7 +301,8 @@ async fn run_task(
         | ManualMaintenanceTask::SkillDecay
         | ManualMaintenanceTask::DerivedFactsMaterialize
         | ManualMaintenanceTask::SerendipityDiscovery
-        | ManualMaintenanceTask::KnowledgeConsolidation => {
+        | ManualMaintenanceTask::KnowledgeConsolidation
+        | ManualMaintenanceTask::IndexMaintenance => {
             run_knowledge_task(definition, knowledge_executor).await?;
         }
         _ => whatever!("{}: not scheduled for manual run", definition.id()),
@@ -377,6 +378,9 @@ async fn run_knowledge_task(
             }
             oikonomos::schedule::BuiltinTask::KnowledgeConsolidation => {
                 executor.consolidate_knowledge(&nous_id)
+            }
+            oikonomos::schedule::BuiltinTask::IndexMaintenance => {
+                executor.maintain_indexes(&nous_id)
             }
             _ => Err(oikonomos::error::TaskFailedSnafu {
                 task_id,
@@ -646,6 +650,7 @@ pub(crate) fn build_config(
                 enabled: settings.knowledge_maintenance_serendipity.enabled,
                 cadence: settings.knowledge_maintenance_serendipity.cadence.clone(),
             },
+            index_maintenance_interval: std::time::Duration::from_hours(1),
         },
         instance_backup: InstanceBackupConfig {
             enabled: settings.backup.enabled,

@@ -362,7 +362,7 @@ fn knowledge_maintenance_registers_only_implemented_tasks() {
     assert!(ids.contains(&"skill-decay"));
     assert!(!ids.contains(&"embedding-refresh"));
     assert!(!ids.contains(&"knowledge-gc"));
-    assert!(!ids.contains(&"index-maintenance"));
+    assert!(ids.contains(&"index-maintenance"));
     assert!(!ids.contains(&"graph-health-check"));
 }
 

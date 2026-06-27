@@ -4,6 +4,7 @@
 //!
 //! Only tasks backed by concrete `KnowledgeStore` behavior report success.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use episteme::consolidation::{ConsolidationConfig, ConsolidationProvider};
@@ -315,12 +316,44 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
     }
 
     fn maintain_indexes(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        Err(oikonomos::error::TaskFailedSnafu {
-            task_id: "index-maintenance".to_owned(),
-            reason: "index maintenance has no concrete store contract and is not scheduled"
-                .to_owned(),
-        }
-        .build())
+        let start = std::time::Instant::now();
+
+        // WHY: reuse the same workspace-root resolution as the `code_graph_query`
+        // MCP tool so manual and scheduled rebuilds behave identically.
+        let workspace_root = std::env::var("GNOSIS_WORKSPACE_ROOT").map_or_else(
+            |_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            PathBuf::from,
+        );
+
+        let graph = gnosis::CodeGraph::open_default(&workspace_root).map_err(|e| {
+            oikonomos::error::TaskFailedSnafu {
+                task_id: "index-maintenance".to_owned(),
+                reason: format!("failed to open gnosis index: {e}"),
+            }
+            .build()
+        })?;
+
+        graph.rebuild().map_err(|e| {
+            oikonomos::error::TaskFailedSnafu {
+                task_id: "index-maintenance".to_owned(),
+                reason: format!("gnosis rebuild failed: {e}"),
+            }
+            .build()
+        })?;
+
+        let duration_ms = start.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        let detail = format!(
+            "gnosis index rebuilt for workspace {}",
+            workspace_root.display()
+        );
+
+        Ok(MaintenanceReport {
+            items_processed: 0,
+            items_modified: 0,
+            duration_ms,
+            detail: Some(detail),
+            ..Default::default()
+        })
     }
 
     fn health_check(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {

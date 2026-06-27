@@ -126,6 +126,7 @@ dependencies = [
  "energeia",
  "episteme",
  "fjall",
+ "gnosis",
  "hermeneus",
  "indexmap 2.14.0",
  "jiff",
