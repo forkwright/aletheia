@@ -394,11 +394,9 @@ fn cron_parse_out_of_range_hour_returns_error() {
     assert!(err_string.contains("out of range"));
 }
 
-/// Error path: missing config paths return errors in `propose_rules`.
+/// Success path: missing config data dir is created and rule proposals are written.
 #[tokio::test]
-async fn propose_rules_with_missing_data_dir_returns_error() {
-    // NOTE: propose_rules uses a temp directory if the default doesn't exist,
-    // so this test verifies the task runs without panic even with invalid paths
+async fn propose_rules_with_missing_data_dir_succeeds_with_fallback() {
     let result = execute_builtin(
         &BuiltinTask::ProposeRules,
         "test-nous",
@@ -410,6 +408,58 @@ async fn propose_rules_with_missing_data_dir_returns_error() {
     .await;
 
     assert!(result.is_ok());
+    let exec_result = result.unwrap();
+    assert!(exec_result.is_success());
+    assert!(
+        exec_result
+            .output
+            .unwrap_or_default()
+            .contains("rule proposals written")
+    );
+}
+
+/// Error path: `propose_rules` reports failure when the data directory cannot be created.
+#[tokio::test]
+async fn propose_rules_reports_failure_when_write_blocked() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let blocked = tmp.path().join("blocked_data_dir");
+    // WHY: create a file where propose_rules expects a directory so
+    // create_dir_all fails deterministically without relying on permissions.
+    tokio::fs::write(&blocked, b"")
+        .await
+        .expect("create blocking file");
+
+    let maintenance = crate::maintenance::MaintenanceConfig {
+        propose_rules: crate::maintenance::ProposeRulesConfig {
+            enabled: true,
+            data_dir: blocked,
+        },
+        ..crate::maintenance::MaintenanceConfig::default()
+    };
+
+    let result = execute_builtin(
+        &BuiltinTask::ProposeRules,
+        "test-nous",
+        None,
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "propose_rules should fail when data_dir cannot be created"
+    );
+    let err_string = result.unwrap_err().to_string();
+    assert!(
+        err_string.contains("propose-rules"),
+        "error should identify the task: {err_string}"
+    );
+    assert!(
+        err_string.contains("failed to create data directory"),
+        "error should describe the write failure: {err_string}"
+    );
 }
 
 /// Error path: task execution error includes `task_id` in error message.
