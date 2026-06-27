@@ -340,6 +340,8 @@ mod tests {
             content: "Done.".to_owned(),
             tool_calls: vec![ToolCall {
                 id: "tc-1".to_owned(),
+                completion_request_id: None,
+                loop_iteration: 0,
                 name: "read_file".to_owned(),
                 input: serde_json::json!({"path": "/tmp/test.txt"}),
                 result: Some("file contents here".to_owned()),

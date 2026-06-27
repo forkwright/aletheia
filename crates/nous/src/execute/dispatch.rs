@@ -32,6 +32,16 @@ pub(super) struct DispatchResult {
     pub loop_warning: Option<String>,
 }
 
+pub(super) struct ToolUseFilterContext<'a> {
+    pub tools: &'a ToolRegistry,
+    pub tool_ctx: &'a ToolContext,
+    pub stream_tx: Option<&'a mpsc::Sender<TurnStreamEvent>>,
+    pub all_tool_calls: &'a mut Vec<ToolCall>,
+    pub denied_blocks: &'a mut Vec<ContentBlock>,
+    pub completion_request_id: &'a str,
+    pub loop_iteration: u32,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct ToolDispatchPolicy {
     surface: Arc<EffectiveToolSurface>,
@@ -137,16 +147,12 @@ impl ToolDispatchPolicy {
     pub(super) fn filter_tool_uses(
         &self,
         tool_uses: Vec<(String, String, serde_json::Value)>,
-        tools: &ToolRegistry,
-        tool_ctx: &ToolContext,
-        stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
-        all_tool_calls: &mut Vec<ToolCall>,
-        denied_blocks: &mut Vec<ContentBlock>,
+        ctx: &mut ToolUseFilterContext<'_>,
     ) -> Vec<(String, String, serde_json::Value)> {
         let mut allowed = Vec::with_capacity(tool_uses.len());
         for (id, name, input) in tool_uses {
             let denial = self
-                .denial_for(tools, &id, &name, &input)
+                .denial_for(ctx.tools, &id, &name, &input)
                 .or_else(|| parse_error_denial(&input));
             if let Some(denial) = denial {
                 warn!(
@@ -156,14 +162,16 @@ impl ToolDispatchPolicy {
                     "tool call denied by dispatch policy"
                 );
                 record_denied_call(
-                    all_tool_calls,
-                    denied_blocks,
-                    stream_tx,
-                    tool_ctx,
+                    &mut *ctx.all_tool_calls,
+                    &mut *ctx.denied_blocks,
+                    ctx.stream_tx,
+                    ctx.tool_ctx,
                     DeniedToolCall {
                         id: &id,
                         name: &name,
                         input: &input,
+                        completion_request_id: ctx.completion_request_id,
+                        loop_iteration: ctx.loop_iteration,
                         message: denial.message(&name),
                     },
                 );
@@ -338,6 +346,8 @@ struct DeniedToolCall<'a> {
     id: &'a str,
     name: &'a str,
     input: &'a serde_json::Value,
+    completion_request_id: &'a str,
+    loop_iteration: u32,
     message: String,
 }
 
@@ -350,6 +360,8 @@ fn record_denied_call(
 ) {
     all_tool_calls.push(ToolCall {
         id: denied.id.to_owned(),
+        completion_request_id: Some(denied.completion_request_id.to_owned()),
+        loop_iteration: denied.loop_iteration,
         name: denied.name.to_owned(),
         input: denied.input.clone(),
         result: Some(denied.message.clone()),
@@ -669,6 +681,8 @@ struct SingleToolOutcome {
 async fn dispatch_single_tool(
     tool_id: &str,
     tool_name: &str,
+    completion_request_id: &str,
+    loop_iteration: u32,
     execution_input: &ToolInput,
     persisted_input: &serde_json::Value,
     tools: &ToolRegistry,
@@ -753,6 +767,8 @@ async fn dispatch_single_tool(
 
     let call = ToolCall {
         id: tool_id.to_owned(),
+        completion_request_id: Some(completion_request_id.to_owned()),
+        loop_iteration,
         name: tool_name.to_owned(),
         input: persisted_input.clone(),
         result: Some(content.text_summary()),
@@ -798,6 +814,7 @@ pub(super) async fn dispatch_tools(
     loop_detector: &mut LoopDetector,
     all_tool_calls: &mut Vec<ToolCall>,
     iterations: u32,
+    completion_request_id: &str,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     approval_gate: Option<&ApprovalGate>,
     policy: &ToolDispatchPolicy,
@@ -824,6 +841,8 @@ pub(super) async fn dispatch_tools(
                     id: tool_id,
                     name: tool_name,
                     input: tool_input,
+                    completion_request_id,
+                    loop_iteration: iterations,
                     message: denial.message(tool_name),
                 },
             );
@@ -851,6 +870,8 @@ pub(super) async fn dispatch_tools(
             let outcome = SingleToolOutcome {
                 call: ToolCall {
                     id: tool_id.clone(),
+                    completion_request_id: Some(completion_request_id.to_owned()),
+                    loop_iteration: iterations,
                     name: tool_name.clone(),
                     input: tool_input.clone(),
                     result: Some(msg.clone()),
@@ -909,6 +930,8 @@ pub(super) async fn dispatch_tools(
                         id: tool_id,
                         name: tool_name,
                         input: tool_input,
+                        completion_request_id,
+                        loop_iteration: iterations,
                         message: format!("tool_policy: Tool '{tool_name}' call rejected: {e}"),
                     },
                 );
@@ -960,6 +983,8 @@ pub(super) async fn dispatch_tools(
                             id: tool_id,
                             name: tool_name,
                             input: tool_input,
+                            completion_request_id,
+                            loop_iteration: iterations,
                             message: format!("Tool '{tool_name}' execution denied by user."),
                         },
                     );
@@ -973,6 +998,8 @@ pub(super) async fn dispatch_tools(
         let outcome = dispatch_single_tool(
             tool_id,
             tool_name,
+            completion_request_id,
+            iterations,
             &approval_input,
             tool_input,
             tools,

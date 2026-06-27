@@ -67,6 +67,7 @@ async fn cancelled_turn_reverts_in_memory_turn_counter() {
         .execute_turn_with_panic_boundary(
             "main",
             None,
+            None,
             "hello",
             tracing::info_span!("test-cancel"),
             cancel,
@@ -570,6 +571,7 @@ async fn cancelled_turn_reverts_turn_counter() {
         std::time::Duration::from_secs(2),
         actor.spawn_pipeline_task(
             session_key,
+            None,
             None,
             None,
             "hello",

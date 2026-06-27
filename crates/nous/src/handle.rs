@@ -77,6 +77,7 @@ impl NousHandle {
         let msg = NousMessage::Turn {
             session_key: session_key.into(),
             session_id,
+            request_id: None,
             content: content.into(),
             span: tracing::Span::current(),
             turn_cancel: CancellationToken::new(),
@@ -104,6 +105,36 @@ impl NousHandle {
         let msg = NousMessage::Turn {
             session_key: session_key.into(),
             session_id,
+            request_id: None,
+            content: content.into(),
+            span: tracing::Span::current(),
+            turn_cancel,
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a turn with an explicit request-scoped cancellation token and correlation id.
+    pub async fn send_turn_with_cancel_and_request_id(
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        request_id: Option<String>,
+        content: impl Into<String>,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::Turn {
+            session_key: session_key.into(),
+            session_id,
+            request_id,
             content: content.into(),
             span: tracing::Span::current(),
             turn_cancel,
@@ -193,6 +224,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: None,
+            request_id: None,
             content: content.into(),
             stream_tx,
             approval_gate: None,
@@ -224,6 +256,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: None,
+            request_id: None,
             content: content.into(),
             stream_tx,
             approval_gate: None,
@@ -269,6 +302,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: None,
+            request_id: None,
             content: content.into(),
             stream_tx,
             approval_gate,
@@ -314,6 +348,46 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: Some(turn_id),
+            request_id: None,
+            content: content.into(),
+            stream_tx,
+            approval_gate,
+            span: tracing::Span::current(),
+            turn_cancel,
+            reply: tx,
+        };
+        self.send_with_timeout(msg, timeout).await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a streaming turn with approval, canonical turn id, and request correlation id.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "gateway must supply stream, approval gate, canonical turn id, request id, timeout, and cancel token"
+    )]
+    pub async fn send_turn_streaming_with_approval_turn_id_and_request_id(
+        &self,
+        session_key: impl Into<String>,
+        session_id: Option<String>,
+        request_id: Option<String>,
+        content: impl Into<String>,
+        stream_tx: mpsc::Sender<TurnStreamEvent>,
+        approval_gate: Option<crate::approval::ApprovalGate>,
+        turn_id: koina::ulid::Ulid,
+        timeout: Duration,
+        turn_cancel: CancellationToken,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::StreamingTurn {
+            session_key: session_key.into(),
+            session_id,
+            turn_id: Some(turn_id),
+            request_id,
             content: content.into(),
             stream_tx,
             approval_gate,
@@ -655,6 +729,7 @@ mod tests {
                 .send(NousMessage::Turn {
                     session_key: "main".to_owned(),
                     session_id: None,
+                    request_id: None,
                     content: "hello".to_owned(),
                     span: tracing::Span::current(),
                     turn_cancel: CancellationToken::new(),

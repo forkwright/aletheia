@@ -383,6 +383,7 @@ impl NousActor {
                         NousMessage::Turn {
                             session_key,
                             session_id,
+                            request_id,
                             content,
                             span,
                             turn_cancel,
@@ -394,13 +395,23 @@ impl NousActor {
                                     panic_count: self.runtime.pipeline_panic_count,
                                 }.build()));
                             } else {
-                                self.handle_turn(session_key, session_id, content, span, turn_cancel, reply).await;
+                                self.handle_turn(turn::TurnRequest {
+                                    session_key,
+                                    session_id,
+                                    request_id,
+                                    content,
+                                    caller_span: span,
+                                    turn_cancel,
+                                    reply,
+                                })
+                                .await;
                             }
                         }
                         NousMessage::StreamingTurn {
                             session_key,
                             session_id,
                             turn_id,
+                            request_id,
                             content,
                             stream_tx,
                             approval_gate,
@@ -420,6 +431,7 @@ impl NousActor {
                                     session_key,
                                     session_id,
                                     turn_id,
+                                    request_id,
                                     content,
                                     stream_tx,
                                     approval_gate,
@@ -554,6 +566,7 @@ impl NousActor {
         let result = self
             .execute_turn_with_panic_boundary(
                 &session_key,
+                None,
                 None,
                 &content,
                 tracing::Span::current(),

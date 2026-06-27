@@ -644,6 +644,119 @@ async fn multi_tool_iteration() {
 }
 
 #[tokio::test]
+async fn prompt_audit_records_each_completion_request_in_tool_loop() {
+    let mut first = make_tool_response("exec", "toolu_1", serde_json::json!({"input": "first"}));
+    first.id = "resp-tool-1".to_owned();
+    let mut second = make_tool_response("exec", "toolu_2", serde_json::json!({"input": "second"}));
+    second.id = "resp-tool-2".to_owned();
+    let mut final_response = make_text_response("All done!");
+    final_response.id = "resp-final".to_owned();
+
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![first, second, final_response]).models(&["test-model"]),
+    ));
+
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(make_tool_def("exec"), Box::new(EchoExecutor))
+        .expect("register exec");
+    tools
+        .register(make_tool_def("blocked"), Box::new(EchoExecutor))
+        .expect("register blocked");
+
+    let mut config = test_config();
+    config.cache_enabled = true;
+    config.tool_allowlist = Some(vec!["exec".to_owned()]);
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_log = crate::audit::PromptAuditLog::new(dir.path().to_path_buf(), true);
+
+    let result = execute_with_deadline(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+        None,
+        None,
+        None,
+        Some(&audit_log),
+        Some("req-gateway-1"),
+    )
+    .await
+    .expect("execute");
+
+    assert_eq!(result.usage.llm_calls, 3);
+    assert_eq!(result.tool_calls.len(), 2);
+
+    let audit_path = std::fs::read_dir(dir.path())
+        .expect("audit dir")
+        .filter_map(std::result::Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "jsonl"))
+        .expect("audit jsonl");
+    let content = std::fs::read_to_string(audit_path).expect("read audit log");
+    let records: Vec<crate::audit::PromptAuditRecord> = content
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("audit record"))
+        .collect();
+
+    assert_eq!(records.len(), 3, "one audit row per LLM request");
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| record.loop_iteration)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3]
+    );
+    assert!(
+        records
+            .iter()
+            .all(|record| record.request_id.as_deref() == Some("req-gateway-1"))
+    );
+    assert_eq!(
+        records
+            .iter()
+            .map(|record| record.provider_response_id.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("resp-tool-1"), Some("resp-tool-2"), Some("resp-final")]
+    );
+    assert!(
+        records
+            .iter()
+            .all(|record| record.tool_names == vec!["exec".to_owned()])
+    );
+    assert_eq!(records[0].tool_result_ids, Vec::<String>::new());
+    assert_eq!(records[1].tool_result_ids, vec!["toolu_1"]);
+    assert_eq!(records[2].tool_result_ids, vec!["toolu_1", "toolu_2"]);
+    assert!(records.iter().all(|record| record.cache.cache_system));
+    assert!(records.iter().all(|record| record.cache.cache_tools));
+    assert!(records.iter().all(|record| !record.cache.cache_turns));
+    assert_eq!(
+        records[0].deferred_schemas,
+        cfg!(feature = "deferred-schemas")
+    );
+
+    assert_eq!(
+        result.tool_calls[0].completion_request_id,
+        Some(records[0].completion_request_id.clone())
+    );
+    assert_eq!(result.tool_calls[0].loop_iteration, 1);
+    assert_eq!(
+        result.tool_calls[1].completion_request_id,
+        Some(records[1].completion_request_id.clone())
+    );
+    assert_eq!(result.tool_calls[1].loop_iteration, 2);
+    assert_ne!(
+        records[0].completion_request_id, records[1].completion_request_id,
+        "each outbound request must have a distinct audit id"
+    );
+}
+
+#[tokio::test]
 async fn loop_detection_triggers() {
     let mut providers = ProviderRegistry::new();
     let response = make_tool_response("exec", "toolu_1", serde_json::json!({"input": "same"}));
@@ -807,6 +920,8 @@ fn signal_classification_conversation() {
 fn signal_classification_code() {
     let calls = vec![ToolCall {
         id: "1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "write".to_owned(),
         input: serde_json::json!({}),
         result: Some("ok".to_owned()),
@@ -829,6 +944,8 @@ fn signal_classification_code() {
 fn signal_classification_research() {
     let calls = vec![ToolCall {
         id: "1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "web_search".to_owned(),
         input: serde_json::json!({}),
         result: Some("results".to_owned()),
@@ -851,6 +968,8 @@ fn signal_classification_research() {
 fn signal_classification_error_recovery() {
     let calls = vec![ToolCall {
         id: "1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "exec".to_owned(),
         input: serde_json::json!({}),
         result: Some("failed".to_owned()),
@@ -1019,6 +1138,8 @@ fn classify_signals_conversation_when_no_tools() {
 fn classify_signals_includes_error_recovery() {
     let calls = vec![ToolCall {
         id: "1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "test".to_owned(),
         input: serde_json::json!({}),
         result: Some("failed".to_owned()),

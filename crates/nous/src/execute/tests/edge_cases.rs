@@ -356,6 +356,8 @@ fn simple_hash_different_for_different_inputs() {
 fn classify_signals_edit_is_code_generation() {
     let calls = vec![ToolCall {
         id: "1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "edit".to_owned(),
         input: serde_json::json!({}),
         result: Some("ok".to_owned()),
@@ -374,6 +376,8 @@ fn classify_signals_edit_is_code_generation() {
 fn classify_signals_web_fetch_is_research() {
     let calls = vec![ToolCall {
         id: "1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "web_fetch".to_owned(),
         input: serde_json::json!({}),
         result: Some("html".to_owned()),
@@ -393,6 +397,8 @@ fn classify_signals_multiple_flags() {
     let calls = vec![
         ToolCall {
             id: "1".to_owned(),
+            completion_request_id: None,
+            loop_iteration: 0,
             name: "write".to_owned(),
             input: serde_json::json!({}),
             result: Some("ok".to_owned()),
@@ -402,6 +408,8 @@ fn classify_signals_multiple_flags() {
         },
         ToolCall {
             id: "2".to_owned(),
+            completion_request_id: None,
+            loop_iteration: 0,
             name: "web_search".to_owned(),
             input: serde_json::json!({}),
             result: None,

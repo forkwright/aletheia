@@ -1,4 +1,4 @@
-//! Prompt audit log: operator-visible record of completed model-backed turns.
+//! Prompt audit log: operator-visible record of outbound model requests.
 //!
 //! Append-only JSONL log at `{instance}/logs/prompt-audit/YYYY-MM-DD.jsonl`.
 //! Rotated daily based on the UTC calendar date of the record timestamp.
@@ -9,14 +9,15 @@
 //! external LLM providers. To keep the audit surface small and avoid turning
 //! the log into a second copy of user content, the record schema only stores:
 //!
-//! - Identifiers (nous/session/turn/request)
+//! - Identifiers (nous/session/turn/request/LLM request)
 //! - Provider + model
+//! - Loop iteration and cache/schema mode
 //! - A **hash** of the system prompt (not the content)
 //! - The system prompt's byte length
 //! - Message count + token estimate
 //! - Fact IDs included via recall (not fact content)
 //! - Fact IDs filtered out by sensitivity policy
-//! - Tool names (not tool inputs)
+//! - Tool names and prior tool-result IDs (not tool inputs)
 //!
 //! Never logged: system prompt content, user message text, tool call
 //! arguments. The hash lets operators correlate audit records with a known
@@ -36,11 +37,12 @@ use std::sync::Mutex;
 
 use jiff::Timestamp;
 use jiff::civil::Date;
-use organon::surface::SurfaceInputs;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};
+
+use hermeneus::types::{CompletionRequest, Content, ContentBlock};
 
 /// Errors from prompt audit log operations.
 #[derive(Debug, Snafu)]
@@ -120,7 +122,21 @@ impl From<&taxis::config::PromptAuditSettings> for PromptAuditRecordOptions {
     }
 }
 
-/// One append-only audit record per completed model-backed turn.
+/// Provider-side cache controls applied to an outbound completion request.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PromptAuditCachePolicy {
+    /// Whether the request asked the provider to cache the system prompt.
+    #[serde(default)]
+    pub cache_system: bool,
+    /// Whether the request asked the provider to cache the tool declaration block.
+    #[serde(default)]
+    pub cache_tools: bool,
+    /// Whether the request asked the provider to cache recent conversation turns.
+    #[serde(default)]
+    pub cache_turns: bool,
+}
+
+/// One append-only audit record per outbound completion request.
 ///
 /// See module docs for the sovereignty contract on what is and is not logged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,12 +152,25 @@ pub struct PromptAuditRecord {
     /// Turn identifier (ULID). Stable across actor restarts for a given turn.
     // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub turn_id: String,
+    /// Gateway/request correlation identifier propagated from the caller.
+    #[serde(default)]
+    pub request_id: Option<String>,
+    /// Locally generated identifier for this outbound completion request.
+    #[serde(default)]
+    // kanon:ignore RUST/primitive-for-domain-id — serialization envelope; introducing a newtype would widen the public schema change
+    pub completion_request_id: String,
+    /// Execute-loop iteration that assembled this completion request.
+    #[serde(default)]
+    pub loop_iteration: u32,
     /// LLM provider name (`"anthropic"`, `"cc"`, etc.).
     pub provider: String,
     /// Deployment target (cloud/local/…). See [`DeploymentTarget`].
     pub deployment_target: DeploymentTarget,
     /// Selected model identifier that served the turn.
     pub model: String,
+    /// Provider response/message identifier, when the provider returned one.
+    #[serde(default)]
+    pub provider_response_id: Option<String>,
     /// SHA-256 of the system prompt (hex). Empty string when no system prompt.
     pub system_prompt_hash: String,
     /// Byte length of the system prompt.
@@ -157,12 +186,18 @@ pub struct PromptAuditRecord {
     pub fact_ids_filtered: Vec<FilteredFact>,
     /// Names of tools exposed to the model for this request.
     pub tool_names: Vec<String>,
+    /// Tool-call IDs whose results were present in this outbound request.
+    #[serde(default)]
+    pub tool_result_ids: Vec<String>,
     /// Opaque hash of the effective tool surface exposed to the model.
     #[serde(default)]
     pub tool_surface_hash: String,
-    /// Request identifier propagated from pylon middleware (#3384).
+    /// Provider-side cache controls applied to this completion request.
+    #[serde(default, flatten)]
+    pub cache: PromptAuditCachePolicy,
+    /// Whether provider tools were sent with deferred schema placeholders.
     #[serde(default)]
-    pub request_id: Option<String>,
+    pub deferred_schemas: bool,
 }
 
 /// Compute the SHA-256 hex digest of a system prompt.
@@ -329,35 +364,48 @@ pub(crate) struct PromptAuditRecordInput<'a> {
     pub(crate) session: &'a crate::session::SessionState,
     /// Agent config used for token-estimation settings.
     pub(crate) config: &'a crate::config::NousConfig,
+    /// Concrete completion request sent to the provider.
+    pub(crate) request: &'a CompletionRequest,
+    /// Gateway/request correlation id for the inbound turn, when available.
+    pub(crate) request_id: Option<&'a str>,
+    /// Locally generated id for this outbound completion request.
+    pub(crate) completion_request_id: &'a str,
+    /// Execute-loop iteration that assembled this request.
+    pub(crate) loop_iteration: u32,
     /// Selected model that successfully served the turn.
     pub(crate) observed_model: &'a str,
+    /// Provider response/message id, when the provider returned one.
+    pub(crate) provider_response_id: Option<&'a str>,
     /// Provider registry used to resolve provider/deployment metadata.
     pub(crate) providers: &'a hermeneus::provider::ProviderRegistry,
-    /// Tool registry used to compute the exposed tool surface.
-    pub(crate) tools: &'a organon::registry::ToolRegistry,
-    /// Tool context with active dynamic tools.
-    pub(crate) tool_ctx: &'a organon::types::ToolContext,
+    /// Opaque hash of the effective tool surface bound for this request.
+    pub(crate) tool_surface_hash: &'a str,
     /// Audit record options resolved from operator config.
     pub(crate) options: PromptAuditRecordOptions,
 }
 
-/// Build a [`PromptAuditRecord`] from the assembled pipeline context.
+/// Build a [`PromptAuditRecord`] from the assembled completion request.
 ///
-/// Called once per successful pipeline turn, after execute has reported the
-/// selected model. Never touches the system prompt content — the hash and
-/// length are the only signal that leave this function.
+/// Called at the completion-request call site after a provider response has
+/// reported the selected model. Never persists the system prompt content, user
+/// text, or tool arguments — only hashes, counts, tool names, and correlation
+/// identifiers leave this function.
 pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAuditRecord {
     let PromptAuditRecordInput {
         ctx,
         session,
         config,
+        request,
+        request_id,
+        completion_request_id,
+        loop_iteration,
         observed_model,
+        provider_response_id,
         providers,
-        tools,
-        tool_ctx,
+        tool_surface_hash,
         options,
     } = input;
-    let system_prompt = ctx.system_prompt.as_deref();
+    let system_prompt = request.system.as_deref();
     let system_prompt_bytes = system_prompt.map_or(0, str::len);
 
     // WHY: resolve provider from the observed model so the log reports the
@@ -372,31 +420,9 @@ pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAud
         .as_str()
         .to_owned();
 
-    let active_snapshot = tool_ctx
-        .active_tools
-        .read()
-        .map_or_else(|poisoned| poisoned.into_inner().clone(), |g| g.clone());
-    let surface = tools.effective_surface(SurfaceInputs {
-        policy: &config.tool_groups,
-        allowlist: config.tool_allowlist.as_deref(),
-        active: &active_snapshot,
-        server_tools: &config.server_tools,
-        server_tool_config: tool_ctx
-            .services
-            .as_deref()
-            .map(|services| &services.server_tool_config),
-    });
-    let mut tool_names: Vec<String> = surface
-        .provider_tools()
-        .into_iter()
-        .map(|td| td.name)
-        .collect();
-    tool_names.extend(
-        surface
-            .provider_server_tools()
-            .into_iter()
-            .map(|tool| tool.name),
-    );
+    let mut tool_names: Vec<String> = request.tools.iter().map(|tool| tool.name.clone()).collect();
+    tool_names.extend(request.server_tools.iter().map(|tool| tool.name.clone()));
+    let tool_result_ids = request_tool_result_ids(request);
 
     let fact_ids_included = ctx
         .recall_result
@@ -426,12 +452,8 @@ pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAud
     // are positive for practical turns; if an implausible value ever
     // overflowed u32 we prefer a saturated audit figure to a silent `as`
     // truncation.
-    let msg_tokens: u32 = ctx
-        .messages
-        .iter()
-        .map(|m| u32::try_from(m.token_estimate.max(0)).unwrap_or(u32::MAX))
-        .sum();
     let cpt = usize::try_from(config.generation.chars_per_token.max(1)).unwrap_or(4);
+    let msg_tokens = request_message_token_estimate(request, cpt);
     let sys_tokens = u32::try_from(system_prompt_bytes / cpt).unwrap_or(u32::MAX);
     let token_count_estimate = msg_tokens.saturating_add(sys_tokens);
 
@@ -440,21 +462,68 @@ pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAud
         nous_id: session.nous_id.clone(),
         session_id: session.id.clone(),
         turn_id: session.turn_id.to_string(),
+        request_id: request_id.map(ToOwned::to_owned),
+        completion_request_id: completion_request_id.to_owned(),
+        loop_iteration,
         provider: provider_name,
         deployment_target,
         model: observed_model.to_owned(),
+        provider_response_id: provider_response_id.map(ToOwned::to_owned),
         system_prompt_hash: hash_system_prompt(system_prompt),
         system_prompt_bytes,
-        message_count: ctx.messages.len(),
+        message_count: request.messages.len(),
         token_count_estimate,
         fact_ids_included,
         fact_ids_filtered,
         tool_names,
-        tool_surface_hash: surface.hash().as_str().to_owned(),
-        // TODO(#3384): thread request_id from pylon middleware
-        // through PipelineInput once the extraction path reaches nous.
-        request_id: None,
+        tool_result_ids,
+        tool_surface_hash: tool_surface_hash.to_owned(),
+        cache: PromptAuditCachePolicy {
+            cache_system: request.cache_system,
+            cache_tools: request.cache_tools,
+            cache_turns: request.cache_turns,
+        },
+        deferred_schemas: deferred_schemas_enabled(),
     }
+}
+
+fn request_tool_result_ids(request: &CompletionRequest) -> Vec<String> {
+    request
+        .messages
+        .iter()
+        .flat_map(|message| match &message.content {
+            Content::Blocks(blocks) => blocks.as_slice(),
+            _ => &[],
+        })
+        .filter_map(|block| match block {
+            ContentBlock::ToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn request_message_token_estimate(request: &CompletionRequest, chars_per_token: usize) -> u32 {
+    request.messages.iter().fold(0u32, |acc, message| {
+        let bytes = match &message.content {
+            Content::Text(text) => text.len(),
+            Content::Blocks(blocks) => blocks.iter().map(content_block_text_len).sum(),
+            _ => 0,
+        };
+        acc.saturating_add(u32::try_from(bytes / chars_per_token).unwrap_or(u32::MAX))
+    })
+}
+
+fn content_block_text_len(block: &ContentBlock) -> usize {
+    match block {
+        ContentBlock::Text { text, .. } => text.len(),
+        ContentBlock::Thinking { thinking, .. } => thinking.len(),
+        ContentBlock::ToolResult { content, .. } => content.text_summary().len(),
+        _ => 0,
+    }
+}
+
+const fn deferred_schemas_enabled() -> bool {
+    cfg!(feature = "deferred-schemas")
 }
 
 #[cfg(test)]

@@ -16,9 +16,13 @@ fn make_record(ts: Timestamp, id: &str) -> PromptAuditRecord {
         nous_id: "syn".to_owned(),
         session_id: "ses-1".to_owned(),
         turn_id: id.to_owned(),
+        request_id: Some("req-abc".to_owned()),
+        completion_request_id: "llm-req-1".to_owned(),
+        loop_iteration: 1,
         provider: "anthropic".to_owned(),
         deployment_target: "cloud".to_owned(),
         model: "claude-opus-4-20250514".to_owned(),
+        provider_response_id: Some("msg-abc".to_owned()),
         system_prompt_hash: hash_system_prompt(Some("hello system")),
         system_prompt_bytes: "hello system".len(),
         message_count: 2,
@@ -26,8 +30,14 @@ fn make_record(ts: Timestamp, id: &str) -> PromptAuditRecord {
         fact_ids_included: vec!["fact:1".to_owned(), "fact:2".to_owned()],
         fact_ids_filtered: vec![],
         tool_names: vec!["read".to_owned(), "write".to_owned()],
+        tool_result_ids: vec!["toolu-prev".to_owned()],
         tool_surface_hash: "ts1:test".to_owned(),
-        request_id: Some("req-abc".to_owned()),
+        cache: PromptAuditCachePolicy {
+            cache_system: true,
+            cache_tools: true,
+            cache_turns: false,
+        },
+        deferred_schemas: false,
     }
 }
 
@@ -53,12 +63,31 @@ fn record_serialization_roundtrip() {
     let ts = "2026-04-16T12:00:00Z".parse::<Timestamp>().unwrap();
     let record = make_record(ts, "turn-1");
     let json = serde_json::to_string(&record).expect("serialize");
+    let value: serde_json::Value = serde_json::from_str(&json).expect("decode value");
+    assert_eq!(
+        value.get("cache_system"),
+        Some(&serde_json::Value::Bool(true))
+    );
+    assert_eq!(
+        value.get("cache_tools"),
+        Some(&serde_json::Value::Bool(true))
+    );
+    assert_eq!(
+        value.get("cache_turns"),
+        Some(&serde_json::Value::Bool(false))
+    );
     let decoded: PromptAuditRecord = serde_json::from_str(&json).expect("decode");
     assert_eq!(decoded.nous_id, "syn");
     assert_eq!(decoded.fact_ids_included.len(), 2);
     assert_eq!(decoded.tool_names, vec!["read", "write"]);
+    assert_eq!(decoded.tool_result_ids, vec!["toolu-prev"]);
     assert_eq!(decoded.tool_surface_hash, "ts1:test");
     assert_eq!(decoded.request_id.as_deref(), Some("req-abc"));
+    assert_eq!(decoded.completion_request_id, "llm-req-1");
+    assert_eq!(decoded.loop_iteration, 1);
+    assert_eq!(decoded.provider_response_id.as_deref(), Some("msg-abc"));
+    assert!(decoded.cache.cache_system);
+    assert!(decoded.cache.cache_tools);
     assert_eq!(decoded.system_prompt_bytes, 12);
 }
 
@@ -82,26 +111,24 @@ fn build_audit_record_includes_filtered_recall_facts() {
         ..crate::pipeline::PipelineContext::default()
     };
     let providers = hermeneus::provider::ProviderRegistry::new();
-    let tools = organon::registry::ToolRegistry::new();
-    let tool_ctx = organon::types::ToolContext {
-        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
-        session_id: koina::id::SessionId::new(),
-        turn_number: 0,
-        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
-        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-        services: None,
-        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    let request = hermeneus::types::CompletionRequest {
+        model: config.generation.model.clone(),
+        system: ctx.system_prompt.clone(),
+        ..hermeneus::types::CompletionRequest::default()
     };
 
     let record = build_audit_record(PromptAuditRecordInput {
         ctx: &ctx,
         session: &session,
         config: &config,
+        request: &request,
+        request_id: Some("req-filtered"),
+        completion_request_id: "llm-filtered-1",
+        loop_iteration: 1,
         observed_model: &config.generation.model,
+        provider_response_id: Some("resp-filtered"),
         providers: &providers,
-        tools: &tools,
-        tool_ctx: &tool_ctx,
+        tool_surface_hash: "ts1:test",
         options: PromptAuditRecordOptions::default(),
     });
 
@@ -136,26 +163,24 @@ fn build_audit_record_omits_filtered_recall_facts_when_disabled() {
         ..crate::pipeline::PipelineContext::default()
     };
     let providers = hermeneus::provider::ProviderRegistry::new();
-    let tools = organon::registry::ToolRegistry::new();
-    let tool_ctx = organon::types::ToolContext {
-        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
-        session_id: koina::id::SessionId::new(),
-        turn_number: 0,
-        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
-        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-        services: None,
-        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    let request = hermeneus::types::CompletionRequest {
+        model: config.generation.model.clone(),
+        system: ctx.system_prompt.clone(),
+        ..hermeneus::types::CompletionRequest::default()
     };
 
     let record = build_audit_record(PromptAuditRecordInput {
         ctx: &ctx,
         session: &session,
         config: &config,
+        request: &request,
+        request_id: None,
+        completion_request_id: "llm-filtered-disabled-1",
+        loop_iteration: 1,
         observed_model: &config.generation.model,
+        provider_response_id: None,
         providers: &providers,
-        tools: &tools,
-        tool_ctx: &tool_ctx,
+        tool_surface_hash: "ts1:test",
         options: PromptAuditRecordOptions {
             include_filtered_ids: false,
         },
@@ -175,26 +200,23 @@ fn build_audit_record_uses_observed_model_for_provider_attribution() {
     providers.register(Box::new(
         hermeneus::test_utils::MockProvider::new("fallback answer").models(&["fallback-model"]),
     ));
-    let tools = organon::registry::ToolRegistry::new();
-    let tool_ctx = organon::types::ToolContext {
-        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
-        session_id: koina::id::SessionId::new(),
-        turn_number: 0,
-        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
-        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-        services: None,
-        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    let request = hermeneus::types::CompletionRequest {
+        model: "fallback-model".to_owned(),
+        ..hermeneus::types::CompletionRequest::default()
     };
 
     let record = build_audit_record(PromptAuditRecordInput {
         ctx: &ctx,
         session: &session,
         config: &config,
+        request: &request,
+        request_id: None,
+        completion_request_id: "llm-provider-1",
+        loop_iteration: 1,
         observed_model: "fallback-model",
+        provider_response_id: Some("resp-provider"),
         providers: &providers,
-        tools: &tools,
-        tool_ctx: &tool_ctx,
+        tool_surface_hash: "ts1:test",
         options: PromptAuditRecordOptions::default(),
     });
 

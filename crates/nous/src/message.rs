@@ -21,6 +21,8 @@ pub(crate) enum NousMessage {
         /// adopts this ID for the in-memory `SessionState` instead of generating
         /// a new one, preventing FK constraint failures in finalize and tools.
         session_id: Option<String>,
+        /// Inbound request correlation id, when supplied by the caller.
+        request_id: Option<String>,
         content: String,
         /// Caller's tracing span: propagated into the pipeline task for request correlation.
         span: tracing::Span,
@@ -35,6 +37,8 @@ pub(crate) enum NousMessage {
         session_id: Option<String>,
         /// Canonical turn ULID supplied by the gateway for idempotent streams.
         turn_id: Option<koina::ulid::Ulid>,
+        /// Inbound request correlation id, when supplied by the caller.
+        request_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         /// Operator approval gate for reversibility-class tool calls (#3958, ADR-005).

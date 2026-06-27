@@ -816,6 +816,8 @@ fn make_tool_call_with_result(
 ) -> crate::pipeline::ToolCall {
     crate::pipeline::ToolCall {
         id: "tc-1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: name.to_owned(),
         input: serde_json::Value::Null,
         result: result.map(str::to_owned),

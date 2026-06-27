@@ -699,6 +699,7 @@ fn execute_stage_pipeline_input(
     PipelineInput {
         content: "hello".to_owned(),
         session,
+        request_id: None,
         config: pipeline_config.clone(),
     }
 }
@@ -819,6 +820,7 @@ async fn execute_timeout_with_distillation_returns_degraded_response() {
         &emitter,
         None,
         Some(&TokioMutex::new(store)),
+        None,
     )
     .await
     .expect("degraded response should succeed");
@@ -889,6 +891,7 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
         &emitter,
         None,
         Some(&TokioMutex::new(store)),
+        None,
     )
     .await
     .expect("timeout without cache should return a degraded TurnResult");
@@ -994,6 +997,7 @@ async fn execute_timeout_streaming_with_distillation_returns_degraded_response()
         &emitter,
         None,
         Some(&TokioMutex::new(store)),
+        None,
     )
     .await
     .expect("streaming timeout should degrade");
@@ -1090,6 +1094,7 @@ async fn execute_timeout_preserves_side_effecting_tool_results() {
         None,
         &mut time_budget,
         &emitter,
+        None,
         None,
         None,
     )

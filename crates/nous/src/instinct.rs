@@ -109,6 +109,8 @@ mod tests {
     fn make_tool_call(name: &str, is_error: bool) -> ToolCall {
         ToolCall {
             id: format!("tc-{name}"),
+            completion_request_id: None,
+            loop_iteration: 0,
             name: name.to_owned(),
             input: serde_json::json!({"path": "/src/main.rs", "api_key": "test-key"}),
             result: if is_error {

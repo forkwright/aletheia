@@ -25,6 +25,7 @@ fn pipeline_input_from_session_and_config() {
         content: "hello".to_owned(),
         session: state,
         config: pipeline_config,
+        request_id: None,
     };
 
     assert_eq!(input.content, "hello");
@@ -68,6 +69,8 @@ fn turn_result_with_tool_calls() {
             input: serde_json::json!({"command": "ls"}),
             result: Some("file1.txt\nfile2.txt".to_owned()),
             is_error: false,
+            completion_request_id: None,
+            loop_iteration: 0,
             duration_ms: 42,
             receipt: None,
         }],

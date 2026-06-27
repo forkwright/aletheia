@@ -30,11 +30,23 @@ impl Drop for StreamSenderGuard {
     }
 }
 
+pub(super) struct TurnRequest {
+    // kanon:ignore RUST/plain-string-secret — session_key is a HashMap lookup identifier (not an auth secret)
+    pub session_key: String,
+    pub session_id: Option<String>,
+    pub request_id: Option<String>,
+    pub content: String,
+    pub caller_span: tracing::Span,
+    pub turn_cancel: CancellationToken,
+    pub reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
+}
+
 pub(super) struct StreamingTurnRequest {
     // kanon:ignore RUST/plain-string-secret — session_key is a HashMap lookup identifier (not an auth secret)
     pub session_key: String,
     pub session_id: Option<String>,
     pub turn_id: Option<Ulid>,
+    pub request_id: Option<String>,
     pub content: String,
     pub stream_tx: mpsc::Sender<TurnStreamEvent>,
     /// Operator approval gate for reversibility-class tool calls (#3958).
@@ -142,21 +154,23 @@ impl NousActor {
     /// The panic boundary in `execute_turn_with_panic_boundary` ensures
     /// that even if the pipeline panics, the actor remains in a consistent
     /// state and can process subsequent messages.
-    pub(super) async fn handle_turn(
-        &mut self,
-        session_key: String, // kanon:ignore RUST/plain-string-secret
-        session_id: Option<String>,
-        content: String,
-        caller_span: tracing::Span,
-        turn_cancel: CancellationToken,
-        reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
-    ) {
+    pub(super) async fn handle_turn(&mut self, request: TurnRequest) {
+        let TurnRequest {
+            session_key,
+            session_id,
+            request_id,
+            content,
+            caller_span,
+            turn_cancel,
+            reply,
+        } = request;
         self.mark_turn_active(&session_key);
 
         let mut result = self
             .execute_turn_with_panic_boundary(
                 &session_key,
                 session_id.as_deref(),
+                request_id.as_deref(),
                 &content,
                 caller_span,
                 turn_cancel,
@@ -183,6 +197,7 @@ impl NousActor {
             session_key,
             session_id,
             turn_id,
+            request_id,
             content,
             stream_tx,
             approval_gate,
@@ -202,6 +217,7 @@ impl NousActor {
                 &session_key,
                 session_id.as_deref(),
                 turn_id,
+                request_id.as_deref(),
                 &content,
                 &stream_tx,
                 approval_gate,
@@ -232,6 +248,7 @@ impl NousActor {
         &mut self,
         session_key: &str,
         session_id: Option<&str>,
+        request_id: Option<&str>,
         content: &str,
         caller_span: tracing::Span,
         turn_cancel: CancellationToken,
@@ -242,6 +259,7 @@ impl NousActor {
                 session_key,
                 session_id,
                 None,
+                request_id,
                 content,
                 None,
                 None,
@@ -262,6 +280,7 @@ impl NousActor {
         session_key: &str,
         session_id: Option<&str>,
         turn_id: Option<Ulid>,
+        request_id: Option<&str>,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -273,6 +292,7 @@ impl NousActor {
                 session_key,
                 session_id,
                 turn_id,
+                request_id,
                 content,
                 Some(stream_tx.clone()),
                 approval_gate,
@@ -308,6 +328,7 @@ impl NousActor {
         session_key: &str,
         db_session_id: Option<&str>,
         turn_id: Option<Ulid>,
+        request_id: Option<&str>,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -376,6 +397,7 @@ impl NousActor {
         let input = crate::pipeline::PipelineInput {
             content: content.to_owned(),
             session: session.clone(),
+            request_id: request_id.map(ToOwned::to_owned),
             config: self.pipeline_config.clone(),
         };
 

@@ -29,7 +29,8 @@ use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
 
 use self::dispatch::{
-    DispatchResult, ToolDispatchPolicy, build_messages, classify_signals, dispatch_tools,
+    DispatchResult, ToolDispatchPolicy, ToolUseFilterContext, build_messages, classify_signals,
+    dispatch_tools,
 };
 use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
@@ -84,7 +85,7 @@ pub async fn execute(
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     execute_with_deadline(
-        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None,
+        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None, None, None,
     )
     .await
 }
@@ -109,6 +110,8 @@ pub(crate) async fn execute_with_deadline(
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
     deadline: Option<Instant>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
+    request_id: Option<&str>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the turn model once — complexity routing pins a tier for
     // the whole turn so tool-iteration continuations don't oscillate between
@@ -202,7 +205,7 @@ pub(crate) async fn execute_with_deadline(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        tool_surface_hashes.insert(surface_hash);
+        tool_surface_hashes.insert(surface_hash.clone());
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
@@ -233,6 +236,7 @@ pub(crate) async fn execute_with_deadline(
             cache_turns: config.cache_enabled && has_cache_breakpoint,
             ..Default::default()
         };
+        let completion_request_id = koina::ulid::Ulid::new().to_string();
 
         // WHY(#4713): enforce the cooperative deadline around the LLM call
         // itself. The LLM future is cancel-safe (it has no in-flight tool side
@@ -244,10 +248,11 @@ pub(crate) async fn execute_with_deadline(
             // the fallback path (async fn → impl Future) or the direct path
             // (provider.complete → Pin<Box<dyn Future>>) is taken.
             let llm_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
+                let request_for_call = request.clone();
                 Box::pin(async move {
                     let completion = model_fallback::complete_with_registry_fallback(
                         providers,
-                        &request,
+                        &request_for_call,
                         fallback_config,
                     )
                     .await?;
@@ -256,8 +261,9 @@ pub(crate) async fn execute_with_deadline(
             } else {
                 let provider = resolve_provider_checked(providers, &turn_model)?;
                 let requested_model = turn_model.clone();
+                let request_for_call = request.clone();
                 Box::pin(async move {
-                    let response = provider.complete(&request).await?;
+                    let response = provider.complete(&request_for_call).await?;
                     Ok((response, requested_model))
                 })
             };
@@ -286,6 +292,20 @@ pub(crate) async fn execute_with_deadline(
                     let provider = resolve_provider_checked(providers, &turn_model)?;
                     providers.record_success(provider.name());
                 }
+                record_completion_audit(&CompletionAuditInput {
+                    audit_log,
+                    ctx,
+                    session,
+                    config,
+                    request: &request,
+                    request_id,
+                    completion_request_id: &completion_request_id,
+                    loop_iteration: iterations,
+                    observed_model: &observed,
+                    provider_response_id: Some(resp.id.as_str()),
+                    providers,
+                    tool_surface_hash: &surface_hash,
+                });
                 model_used = observed;
                 resp
             }
@@ -366,14 +386,17 @@ pub(crate) async fn execute_with_deadline(
             cache_breakpoint: false,
         });
 
-        let effective_tool_uses = dispatch_policy.filter_tool_uses(
-            extracted.tool_uses,
+        let mut filter_ctx = ToolUseFilterContext {
             tools,
             tool_ctx,
             stream_tx,
-            &mut all_tool_calls,
-            &mut denied_blocks,
-        );
+            all_tool_calls: &mut all_tool_calls,
+            denied_blocks: &mut denied_blocks,
+            completion_request_id: &completion_request_id,
+            loop_iteration: iterations,
+        };
+        let effective_tool_uses =
+            dispatch_policy.filter_tool_uses(extracted.tool_uses, &mut filter_ctx);
 
         // WHY: before_tool hooks run after allowlist filtering but before dispatch,
         // so hooks can deny individual tool calls based on budget/scope/policy.
@@ -416,6 +439,7 @@ pub(crate) async fn execute_with_deadline(
             &mut loop_detector,
             &mut all_tool_calls,
             iterations,
+            &completion_request_id,
             stream_tx,
             approval_gate,
             &dispatch_policy,
@@ -549,6 +573,46 @@ fn build_turn_budget_exceeded_result(
     }
 }
 
+struct CompletionAuditInput<'a> {
+    audit_log: Option<&'a crate::audit::PromptAuditLog>,
+    ctx: &'a PipelineContext,
+    session: &'a SessionState,
+    config: &'a NousConfig,
+    request: &'a CompletionRequest,
+    request_id: Option<&'a str>,
+    completion_request_id: &'a str,
+    loop_iteration: u32,
+    observed_model: &'a str,
+    provider_response_id: Option<&'a str>,
+    providers: &'a ProviderRegistry,
+    tool_surface_hash: &'a str,
+}
+
+fn record_completion_audit(input: &CompletionAuditInput<'_>) {
+    let Some(log) = input.audit_log else {
+        return;
+    };
+
+    let record = crate::audit::build_audit_record(crate::audit::PromptAuditRecordInput {
+        ctx: input.ctx,
+        session: input.session,
+        config: input.config,
+        request: input.request,
+        request_id: input.request_id,
+        completion_request_id: input.completion_request_id,
+        loop_iteration: input.loop_iteration,
+        observed_model: input.observed_model,
+        provider_response_id: input.provider_response_id,
+        providers: input.providers,
+        tool_surface_hash: input.tool_surface_hash,
+        options: log.record_options(),
+    });
+
+    if let Err(e) = log.log_request(&record) {
+        tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
+    }
+}
+
 /// Record a failed `try_send` of an LLM streaming delta.
 ///
 /// WHY(#4893): Dropped text/thinking deltas must be visible in the same metric
@@ -625,6 +689,8 @@ pub async fn execute_streaming(
         approval_gate,
         hooks,
         None,
+        None,
+        None,
     )
     .await
 }
@@ -654,6 +720,8 @@ pub(crate) async fn execute_streaming_with_deadline(
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
     deadline: Option<Instant>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
+    request_id: Option<&str>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the streaming turn model once — same reasoning as execute().
     // Must come before find_streaming_provider so the streaming provider is
@@ -677,6 +745,8 @@ pub(crate) async fn execute_streaming_with_deadline(
             approval_gate,
             hooks,
             deadline,
+            audit_log,
+            request_id,
         )
         .await;
     };
@@ -757,7 +827,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        tool_surface_hashes.insert(surface_hash);
+        tool_surface_hashes.insert(surface_hash.clone());
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
@@ -777,6 +847,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             cache_turns: config.cache_enabled,
             ..Default::default()
         };
+        let completion_request_id = koina::ulid::Ulid::new().to_string();
 
         // WHY(#4713): the streaming LLM future has no in-flight tool side effects,
         // so it is safe to drop on a deadline. Tool results are only observed after
@@ -812,6 +883,20 @@ pub(crate) async fn execute_streaming_with_deadline(
             Ok(resp) => {
                 providers.record_success(provider.name());
                 model_used = turn_model.clone();
+                record_completion_audit(&CompletionAuditInput {
+                    audit_log,
+                    ctx,
+                    session,
+                    config,
+                    request: &request,
+                    request_id,
+                    completion_request_id: &completion_request_id,
+                    loop_iteration: iterations,
+                    observed_model: &turn_model,
+                    provider_response_id: Some(resp.id.as_str()),
+                    providers,
+                    tool_surface_hash: &surface_hash,
+                });
                 resp
             }
             Err(e) => {
@@ -898,14 +983,17 @@ pub(crate) async fn execute_streaming_with_deadline(
             cache_breakpoint: false,
         });
 
-        let effective_tool_uses = dispatch_policy.filter_tool_uses(
-            extracted.tool_uses,
+        let mut filter_ctx = ToolUseFilterContext {
             tools,
             tool_ctx,
-            Some(stream_tx),
-            &mut all_tool_calls,
-            &mut denied_blocks,
-        );
+            stream_tx: Some(stream_tx),
+            all_tool_calls: &mut all_tool_calls,
+            denied_blocks: &mut denied_blocks,
+            completion_request_id: &completion_request_id,
+            loop_iteration: iterations,
+        };
+        let effective_tool_uses =
+            dispatch_policy.filter_tool_uses(extracted.tool_uses, &mut filter_ctx);
 
         // WHY: before_tool hooks filter tool calls before streaming dispatch
         let effective_tool_uses = if let Some(hook_registry) = hooks {
@@ -947,6 +1035,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             &mut loop_detector,
             &mut all_tool_calls,
             iterations,
+            &completion_request_id,
             Some(stream_tx),
             approval_gate,
             &dispatch_policy,

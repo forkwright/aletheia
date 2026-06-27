@@ -363,6 +363,7 @@ async fn run_pipeline_simple() {
     let input = PipelineInput {
         content: "Hello".to_owned(),
         session,
+        request_id: None,
         config: pipeline_config.clone(),
     };
 
@@ -456,6 +457,8 @@ fn pipeline_message_serde_roundtrip() {
 fn tool_call_serde_roundtrip() {
     let tc = ToolCall {
         id: "tc-1".to_owned(),
+        completion_request_id: Some("llm-1".to_owned()),
+        loop_iteration: 1,
         name: "exec".to_owned(),
         input: serde_json::json!({"cmd": "ls"}),
         result: Some("output".to_owned()),
@@ -477,6 +480,8 @@ fn tool_call_serde_roundtrip() {
 fn tool_call_with_error() {
     let tc = ToolCall {
         id: "tc-1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "exec".to_owned(),
         input: serde_json::json!({}),
         result: None,

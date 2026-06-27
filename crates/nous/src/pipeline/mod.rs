@@ -40,6 +40,8 @@ pub struct PipelineInput {
     pub content: String,
     /// Session state.
     pub session: SessionState,
+    /// Inbound request correlation id, when supplied by the caller.
+    pub request_id: Option<String>,
     /// Pipeline configuration.
     pub config: PipelineConfig,
 }
@@ -51,6 +53,7 @@ impl PipelineInput {
         Self {
             content,
             session,
+            request_id: None,
             config,
         }
     }
@@ -722,6 +725,13 @@ pub struct ToolCall {
     /// Tool call ID.
     // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub id: String,
+    /// Locally generated completion-request id whose response produced this tool call.
+    #[serde(default)]
+    // kanon:ignore RUST/primitive-for-domain-id — serialization envelope; introducing a newtype would widen the public schema change
+    pub completion_request_id: Option<String>,
+    /// Execute-loop iteration whose response produced this tool call.
+    #[serde(default)]
+    pub loop_iteration: u32,
     /// Tool name.
     pub name: String,
     /// Input parameters (JSON).
@@ -1237,29 +1247,10 @@ pub(crate) async fn run_pipeline(
             emitter,
             hooks,
             session_store,
+            audit_log,
         )
         .await?;
         stages_completed += 1;
-
-        // WHY(#3411,#4717): write one prompt audit record per successful
-        // model-backed turn after execute so fallback/routing attribution uses
-        // the observed model. Audit failures are logged and never propagate:
-        // the log is observational and must not block a turn.
-        if let Some(log) = audit_log {
-            let record = crate::audit::build_audit_record(crate::audit::PromptAuditRecordInput {
-                ctx: &ctx,
-                session: &input.session,
-                config,
-                observed_model: &result.model_used,
-                providers,
-                tools,
-                tool_ctx,
-                options: log.record_options(),
-            });
-            if let Err(e) = log.log_request(&record) {
-                tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
-            }
-        }
 
         let finalize_outcome = run_stage_with_timeout(
             config,

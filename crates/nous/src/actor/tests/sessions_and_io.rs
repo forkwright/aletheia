@@ -240,6 +240,8 @@ async fn maybe_spawn_extraction_spawns_with_tool_calls_and_reasoning() {
 
     let tool_calls = vec![crate::pipeline::ToolCall {
         id: "tc-1".to_owned(),
+        completion_request_id: None,
+        loop_iteration: 0,
         name: "read_file".to_owned(),
         input: serde_json::json!({"path": "/tmp/test.txt"}),
         result: Some("file contents".to_owned()),

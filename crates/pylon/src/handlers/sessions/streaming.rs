@@ -515,9 +515,10 @@ pub async fn send_message(
 
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
-            let turn_fut = handle.send_turn_with_cancel(
+            let turn_fut = handle.send_turn_with_cancel_and_request_id(
                 &session_key,
                 Some(sid.clone()),
+                Some(request_id_str.clone()),
                 &content,
                 nous::handle::DEFAULT_SEND_TIMEOUT,
                 turn_cancel_task.clone(),
@@ -1002,9 +1003,10 @@ pub async fn stream_turn(
             let _approval_guard = approval_guard;
             // WHY: cancel the in-flight turn when the server shuts down so Axum's graceful
             // shutdown can drain open SSE connections rather than hanging indefinitely (#1723).
-            let turn_fut = handle.send_turn_streaming_with_approval_and_turn_id(
+            let turn_fut = handle.send_turn_streaming_with_approval_turn_id_and_request_id(
                 &session_key,
                 Some(sid.clone()),
+                Some(stream_request_id.clone()),
                 &message,
                 nous_tx,
                 approval_gate,
