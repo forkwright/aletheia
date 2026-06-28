@@ -62,9 +62,8 @@ fn render_info_bar(app: &App, width: u16, theme: &Theme) -> Line<'static> {
         .focused_agent
         .as_ref()
         .and_then(|id| app.dashboard.agents.iter().find(|a| a.id == *id));
-    let is_distilling = focused_agent.is_some_and(|a| {
-        a.status == crate::state::AgentStatus::Compacting || a.distill_completed_at.is_some()
-    });
+    let is_distilling = focused_agent
+        .is_some_and(|a| a.compaction_stage.is_some() || a.distill_completed_at.is_some());
     if is_distilling {
         right_spans.extend(distillation_stage_spans(app, theme));
     } else {

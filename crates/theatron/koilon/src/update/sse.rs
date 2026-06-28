@@ -41,7 +41,7 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                         name,
                         name_lower,
                         emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-                        status: AgentStatus::Idle,
+                        status: AgentStatus::from(a.status),
                         active_tool: None,
                         sessions: Vec::new(),
                         model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
@@ -178,14 +178,13 @@ pub(crate) fn handle_sse_tool_failed(app: &mut App, nous_id: NousId) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %status))]
-pub(crate) fn handle_sse_status_update(app: &mut App, nous_id: NousId, status: String) {
+pub(crate) fn handle_sse_status_update(
+    app: &mut App,
+    nous_id: NousId,
+    status: koina::agent::AgentLifecycle,
+) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
-        agent.status = match status.as_str() {
-            "working" => AgentStatus::Working,
-            "streaming" => AgentStatus::Streaming,
-            "compacting" => AgentStatus::Compacting,
-            _ => AgentStatus::Idle,
-        };
+        agent.status = AgentStatus::from(status);
     }
 }
 
@@ -420,40 +419,38 @@ mod tests {
     }
 
     #[test]
-    fn sse_status_update_working() {
+    fn sse_status_update_active() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
 
-        handle_sse_status_update(&mut app, "syn".into(), "working".to_string());
+        handle_sse_status_update(&mut app, "syn".into(), koina::agent::AgentLifecycle::Active);
         assert_eq!(app.dashboard.agents[0].status, AgentStatus::Working);
     }
 
     #[test]
-    fn sse_status_update_streaming() {
+    fn sse_status_update_degraded() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
 
-        handle_sse_status_update(&mut app, "syn".into(), "streaming".to_string());
-        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Streaming);
+        handle_sse_status_update(
+            &mut app,
+            "syn".into(),
+            koina::agent::AgentLifecycle::Degraded,
+        );
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Degraded);
     }
 
     #[test]
-    fn sse_status_update_compacting() {
+    fn sse_status_update_disabled() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
 
-        handle_sse_status_update(&mut app, "syn".into(), "compacting".to_string());
-        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Compacting);
-    }
-
-    #[test]
-    fn sse_status_update_unknown_defaults_to_idle() {
-        let mut app = test_app();
-        app.dashboard.agents.push(test_agent("syn", "Syn"));
-        app.dashboard.agents[0].status = AgentStatus::Working;
-
-        handle_sse_status_update(&mut app, "syn".into(), "unknown_status".to_string());
-        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
+        handle_sse_status_update(
+            &mut app,
+            "syn".into(),
+            koina::agent::AgentLifecycle::Disabled,
+        );
+        assert_eq!(app.dashboard.agents[0].status, AgentStatus::Disabled);
     }
 
     #[test]

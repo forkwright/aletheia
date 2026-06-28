@@ -18,7 +18,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
                 name,
                 name_lower,
                 emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-                status: AgentStatus::Idle,
+                status: AgentStatus::from(a.status),
                 active_tool: None,
                 sessions: sanitize_sessions(Vec::new()),
                 model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
@@ -396,6 +396,7 @@ mod tests {
             name: Some("Syn".to_string()),
             model: Some("claude-opus-4-6".to_string()),
             emoji: Some("\u{1F9E0}".to_string()),
+            status: koina::agent::AgentLifecycle::Idle,
         }];
         handle_agents_loaded(&mut app, agents);
         assert_eq!(app.dashboard.agents.len(), 1);

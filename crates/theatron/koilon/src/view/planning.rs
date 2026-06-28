@@ -103,6 +103,17 @@ fn render_phases(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 crate::state::AgentStatus::Compacting => {
                     ("\u{25cf}", Style::default().fg(theme.status.compacting))
                 }
+                crate::state::AgentStatus::Disabled
+                | crate::state::AgentStatus::Dormant
+                | crate::state::AgentStatus::Archived => {
+                    ("\u{25cb}", Style::default().fg(theme.status.idle))
+                }
+                crate::state::AgentStatus::Degraded | crate::state::AgentStatus::Error => {
+                    ("\u{25cf}", Style::default().fg(theme.status.error))
+                }
+                crate::state::AgentStatus::Recovering => {
+                    ("\u{25cf}", Style::default().fg(theme.status.warning))
+                }
             };
 
             let session_count = agent.sessions.len();

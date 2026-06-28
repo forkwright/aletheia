@@ -7,6 +7,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use hermeneus::provider::LlmProvider;
+use hermeneus::test_utils::make_response;
+use hermeneus::types::{CompletionRequest, CompletionResponse};
 use koina::id::ToolName;
 use organon::error::Result;
 use organon::registry::{ToolExecutor, ToolRegistry};
@@ -25,6 +28,36 @@ impl ToolExecutor for ProbeExecutor {
         _ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async { Ok(ToolResult::text("ok")) })
+    }
+}
+
+struct BlockingProvider {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+impl LlmProvider for BlockingProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let started = Arc::clone(&self.started);
+        let release = Arc::clone(&self.release);
+        Box::pin(async move {
+            started.notify_waiters();
+            release.notified().await;
+            Ok(make_response("released"))
+        })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["mock-model"]
+    }
+
+    #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
+    fn name(&self) -> &str {
+        "blocking-mock"
     }
 }
 
@@ -279,7 +312,7 @@ async fn patch_nous_enabled_reports_persisted_config_when_live_apply_fails() {
     let body = body_json(resp).await;
     assert_eq!(body["id"], "syn");
     assert_eq!(body["enabled"], false);
-    assert_eq!(body["status"], "unknown");
+    assert_eq!(body["status"], "disabled");
     assert_eq!(body["config_applied"], true);
     assert_eq!(body["live_applied"], false);
     assert_eq!(body["reload_required"], false);
@@ -343,8 +376,118 @@ async fn nous_list_from_manager() {
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
     assert_eq!(agents[0]["model"], "mock-model");
-    assert_eq!(agents[0]["status"], "active");
+    assert_eq!(agents[0]["status"], "idle");
     assert_eq!(agents[0]["enabled"], true);
+}
+
+#[tokio::test]
+async fn nous_list_reports_disabled_from_operator_config() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn",
+        Some(serde_json::json!({ "enabled": false })),
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "disabled");
+
+    let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["nous"][0]["status"], "disabled");
+}
+
+#[tokio::test]
+async fn nous_list_reports_dormant_from_actor_state() {
+    let (state, _dir) = test_state().await;
+    state
+        .nous_manager
+        .get("syn")
+        .expect("actor handle")
+        .sleep()
+        .await
+        .expect("sleep actor");
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["nous"][0]["status"], "dormant");
+}
+
+#[tokio::test]
+async fn nous_list_reports_active_while_turn_is_running() {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let provider = BlockingProvider {
+        started: Arc::clone(&started),
+        release: Arc::clone(&release),
+    };
+    let (state, _dir) = test_state_with_llm_provider(Box::new(provider)).await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let handle = state.nous_manager.get("syn").expect("actor handle");
+
+    let turn = tokio::spawn(async move { handle.send_turn("main", "hold").await });
+    tokio::time::timeout(std::time::Duration::from_secs(1), started.notified())
+        .await
+        .expect("turn should reach provider");
+
+    let resp = router.oneshot(authed_get("/api/v1/nous")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["nous"][0]["status"], "active");
+
+    release.notify_waiters();
+    tokio::time::timeout(std::time::Duration::from_secs(2), turn)
+        .await
+        .expect("turn should finish")
+        .expect("turn task should join")
+        .expect("turn should succeed");
+}
+
+#[tokio::test]
+async fn nous_list_reports_recovering_during_manager_restart() {
+    let (state, _dir) = test_state().await;
+    stop_actor_until_channel_closes(&state, "syn").await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let manager = Arc::clone(&state.nous_manager);
+
+    let cycle = tokio::spawn(async move {
+        manager.health_cycle().await;
+        manager.health_cycle().await;
+        manager.health_cycle().await;
+    });
+
+    let mut observed_recovering = false;
+    for _ in 0..50 {
+        let resp = router
+            .clone()
+            .oneshot(authed_get("/api/v1/nous"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        if body["nous"][0]["status"] == "recovering" {
+            observed_recovering = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    cycle.abort();
+    let abort = cycle
+        .await
+        .expect_err("aborted health cycle should not complete normally");
+    assert!(abort.is_cancelled());
+    assert!(
+        observed_recovering,
+        "list endpoint should expose manager restart recovery"
+    );
 }
 
 #[tokio::test]

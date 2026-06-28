@@ -1,3 +1,4 @@
+use koina::agent::AgentLifecycle;
 use koina::secret::SecretString;
 
 use crate::api::types::*;
@@ -142,7 +143,7 @@ pub enum Msg {
     },
     SseStatusUpdate {
         nous_id: NousId,
-        status: String,
+        status: AgentLifecycle,
     },
     SseSessionCreated {
         nous_id: NousId,

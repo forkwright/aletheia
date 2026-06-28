@@ -8,6 +8,7 @@ pub use verification::{
 
 use serde::{Deserialize, Serialize};
 
+use koina::agent::AgentLifecycle;
 use koina::secret::SecretString;
 
 use crate::id::{GitSha, NousId, PlanId, SessionId, TurnId};
@@ -26,6 +27,9 @@ pub struct Agent {
     /// Emoji icon for the agent.
     #[serde(default)]
     pub emoji: Option<String>,
+    /// Canonical lifecycle status reported by the server.
+    #[serde(default)]
+    pub status: AgentLifecycle,
 }
 
 impl Agent {
@@ -307,7 +311,7 @@ pub enum SseEvent {
         /// Agent whose status changed.
         nous_id: NousId,
         /// New status value.
-        status: String,
+        status: AgentLifecycle,
     },
     /// A new session was created.
     SessionCreated {

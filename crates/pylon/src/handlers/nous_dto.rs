@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use koina::agent::AgentLifecycle;
+
 /// Payload for creating a new nous agent via `POST /api/v1/nous`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AgentDefinition {
@@ -61,8 +63,9 @@ pub struct NousSummary {
     pub fallback_models: Vec<String>,
     /// Per-model provider readiness for the agent's model chain.
     pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
-    /// Lifecycle status (e.g. `"active"`).
-    pub status: String,
+    /// Lifecycle status (e.g. `"idle"`).
+    #[schema(value_type = String, example = "idle")]
+    pub status: AgentLifecycle,
     /// Tool toggle summaries for the agent.
     pub tools: Vec<ToolSummary>,
     /// Whether the requested config change was persisted.
@@ -105,7 +108,8 @@ pub struct NousStatus {
     /// Maximum tool iterations per turn.
     pub max_tool_iterations: u32,
     /// Actor lifecycle status.
-    pub status: String,
+    #[schema(value_type = String, example = "idle")]
+    pub status: AgentLifecycle,
     /// Total number of background failures recorded since actor start.
     pub background_failure_total_count: u32,
     /// Number of background failures recorded in the recent window.

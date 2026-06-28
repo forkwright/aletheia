@@ -7,6 +7,7 @@ fn agent_display_name_uses_name_if_present() {
         name: Some("Syn".to_string()),
         model: None,
         emoji: None,
+        status: koina::agent::AgentLifecycle::Idle,
     };
     assert_eq!(agent.display_name(), "Syn");
 }
@@ -18,6 +19,7 @@ fn agent_display_name_falls_back_to_id() {
         name: None,
         model: None,
         emoji: None,
+        status: koina::agent::AgentLifecycle::Idle,
     };
     assert_eq!(agent.display_name(), "syn");
 }
@@ -29,6 +31,7 @@ fn agent_display_name_empty_string_uses_empty() {
         name: Some(String::new()),
         model: None,
         emoji: None,
+        status: koina::agent::AgentLifecycle::Idle,
     };
     // Empty string is still Some, so display_name returns it
     assert_eq!(agent.display_name(), "");
@@ -171,6 +174,13 @@ fn agents_response_accepts_both_keys() {
     let json_agents = r#"{"agents": [{"id": "a1"}]}"#;
     let resp: AgentsResponse = serde_json::from_str(json_agents).unwrap();
     assert_eq!(resp.nous.len(), 1);
+}
+
+#[test]
+fn agent_status_deserializes_canonical_lifecycle() {
+    let json = r#"{"id": "a1", "status": "degraded"}"#;
+    let agent: Agent = serde_json::from_str(json).unwrap();
+    assert_eq!(agent.status, koina::agent::AgentLifecycle::Degraded);
 }
 
 #[test]

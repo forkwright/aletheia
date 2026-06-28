@@ -247,7 +247,10 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         }),
         "status:update" => Some(SseEvent::StatusUpdate {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            status: str_field(&json, "status", event_type)?.to_string(),
+            status: koina::agent::AgentLifecycle::from_wire(str_field(
+                &json, "status", event_type,
+            )?)
+            .unwrap_or(koina::agent::AgentLifecycle::Error),
         }),
         "session:created" => Some(SseEvent::SessionCreated {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
@@ -420,6 +423,18 @@ mod tests {
             assert_eq!(raw_data, data);
         } else {
             panic!("expected UnknownEvent, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn parse_status_update_normalizes_legacy_activity_word() {
+        let data = r#"{"nousId":"syn","status":"streaming"}"#;
+        let result = parse_sse_event("status:update", data);
+        if let Some(SseEvent::StatusUpdate { nous_id, status }) = result {
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(status, koina::agent::AgentLifecycle::Active);
+        } else {
+            panic!("expected StatusUpdate, got {result:?}");
         }
     }
 

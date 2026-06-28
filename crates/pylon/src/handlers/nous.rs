@@ -4,6 +4,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use koina::agent::AgentLifecycle;
 use nous::config::NousConfig;
 use nous::cross::AddressMask;
 use symbolon::types::Role;
@@ -115,6 +116,27 @@ fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiE
     }
 }
 
+async fn lifecycle_for_agent(state: &NousState, id: &str, enabled: bool) -> AgentLifecycle {
+    if enabled {
+        state
+            .nous_manager
+            .lifecycle_status(id)
+            .await
+            .unwrap_or(AgentLifecycle::Error)
+    } else {
+        AgentLifecycle::Disabled
+    }
+}
+
+struct NousSummarySeed {
+    id: String,
+    name: String,
+    enabled: bool,
+    model: String,
+    fallback_models: Vec<String>,
+    tools: Vec<ToolSummary>,
+}
+
 /// GET /api/v1/nous: list registered nous agents.
 #[utoipa::path(
     get,
@@ -126,34 +148,51 @@ fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiE
     security(("bearer_auth" = []))
 )]
 pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
-    let config = state.config.read().await;
-    let nous: Vec<NousSummary> = state
-        .nous_manager
-        .configs()
-        .into_iter()
-        .filter(|c| nous_visible_to_claims(&claims, c))
-        .map(|c| {
-            let agent_id = c.id.as_ref();
-            let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
-            let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, agent_id));
-            let mut models = vec![c.generation.model.clone()];
-            models.extend(c.generation.fallback_models.clone());
-            NousSummary {
-                id: c.id.to_string(),
-                name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
-                enabled,
-                model: c.generation.model.clone(),
-                fallback_models: c.generation.fallback_models.clone(),
-                provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
-                status: "active".to_owned(),
-                tools,
-                config_applied: None,
-                live_applied: None,
-                reload_required: None,
-                restart_required: None,
-            }
-        })
-        .collect();
+    let seeds: Vec<NousSummarySeed> = {
+        let config = state.config.read().await;
+        state
+            .nous_manager
+            .configs()
+            .into_iter()
+            .filter(|c| nous_visible_to_claims(&claims, c))
+            .map(|c| {
+                let agent_id = c.id.as_ref();
+                let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
+                let tools =
+                    tool_summaries_for_agent(&state, allowlist_for_agent(&config, agent_id));
+                NousSummarySeed {
+                    id: c.id.to_string(),
+                    name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
+                    enabled,
+                    model: c.generation.model.clone(),
+                    fallback_models: c.generation.fallback_models.clone(),
+                    tools,
+                }
+            })
+            .collect()
+    };
+
+    let mut nous = Vec::with_capacity(seeds.len());
+    for seed in seeds {
+        let status = lifecycle_for_agent(&state, &seed.id, seed.enabled).await;
+        let mut models = vec![seed.model.clone()];
+        models.extend(seed.fallback_models.clone());
+        nous.push(NousSummary {
+            id: seed.id,
+            name: seed.name,
+            enabled: seed.enabled,
+            model: seed.model,
+            fallback_models: seed.fallback_models,
+            provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
+            status,
+            tools: seed.tools,
+            config_applied: None,
+            live_applied: None,
+            reload_required: None,
+            restart_required: None,
+        });
+    }
+
     Json(NousListResponse { nous })
 }
 
@@ -185,8 +224,13 @@ pub async fn get_status(
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?;
     require_visible_nous(&claims, config)?;
 
+    let enabled = {
+        let config = state.config.read().await;
+        agent_definition(&config, &id).is_none_or(|agent| agent.enabled)
+    };
+
+    let status = lifecycle_for_agent(&state, &id, enabled).await;
     let (
-        status,
         background_failure_total_count,
         background_failure_recent_count,
         background_failure_latest_message,
@@ -195,16 +239,15 @@ pub async fn get_status(
     ) = match state.nous_manager.get(&id) {
         Some(handle) => match handle.status().await {
             Ok(s) => (
-                s.lifecycle.to_string(),
                 s.background_failure_total_count,
                 s.background_failure_recent_count,
                 s.background_failure_latest_message,
                 s.background_failure_latest_kind,
                 s.background_health_degraded,
             ),
-            Err(_) => ("unknown".to_owned(), 0, 0, None, None, false),
+            Err(_) => (0, 0, None, None, false),
         },
-        None => ("unknown".to_owned(), 0, 0, None, None, false),
+        None => (0, 0, None, None, false),
     };
 
     let mut status_models = vec![config.generation.model.clone()];
@@ -360,20 +403,29 @@ pub async fn update_enabled(
     let enabled = agent_definition(&config, &id).is_none_or(|agent| agent.enabled);
     let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
     drop(config);
-    let status = match live_handle.as_ref() {
+    let live_status = match live_handle.as_ref() {
         Some(handle) => handle
             .status()
             .await
-            .map_or_else(|_| "unknown".to_owned(), |s| s.lifecycle.to_string()),
-        None => "unknown".to_owned(),
+            .map_or(AgentLifecycle::Error, |s| AgentLifecycle::from(s.lifecycle)),
+        None => AgentLifecycle::Error,
     };
     let live_applied = if body.enabled {
-        matches!(status.as_str(), "idle" | "active")
+        matches!(live_status, AgentLifecycle::Idle | AgentLifecycle::Active)
     } else {
-        status == "dormant"
+        live_status == AgentLifecycle::Dormant
     };
-    let restart_required =
-        !live_applied && (live_command_failed || matches!(status.as_str(), "unknown" | "degraded"));
+    let restart_required = !live_applied
+        && (live_command_failed
+            || matches!(
+                live_status,
+                AgentLifecycle::Error | AgentLifecycle::Degraded
+            ));
+    let status = if enabled {
+        live_status
+    } else {
+        AgentLifecycle::Disabled
+    };
 
     let mut summary_models = vec![runtime.generation.model.clone()];
     summary_models.extend(runtime.generation.fallback_models.clone());

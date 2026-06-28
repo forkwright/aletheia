@@ -3,6 +3,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use koina::agent::AgentLifecycle;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -89,6 +90,17 @@ impl fmt::Display for NousLifecycle {
             Self::Idle => write!(f, "idle"),
             Self::Dormant => write!(f, "dormant"),
             Self::Degraded => write!(f, "degraded"),
+        }
+    }
+}
+
+impl From<NousLifecycle> for AgentLifecycle {
+    fn from(value: NousLifecycle) -> Self {
+        match value {
+            NousLifecycle::Active => Self::Active,
+            NousLifecycle::Idle => Self::Idle,
+            NousLifecycle::Dormant => Self::Dormant,
+            NousLifecycle::Degraded => Self::Degraded,
         }
     }
 }

@@ -28,6 +28,7 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
         let is_focused = app.dashboard.focused_agent.as_ref() == Some(&agent.id);
 
         let status_icon = match agent.status {
+            AgentStatus::Disabled => Span::styled("×", Style::default().fg(theme.status.warning)),
             AgentStatus::Idle => Span::styled("○", theme.style_dim()),
             AgentStatus::Working => {
                 let ch = theme::spinner_frame(app.viewport.tick_count);
@@ -39,6 +40,15 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             AgentStatus::Compacting => {
                 Span::styled("◉", Style::default().fg(theme.status.compacting))
             }
+            AgentStatus::Dormant => Span::styled("◌", theme.style_dim()),
+            AgentStatus::Degraded | AgentStatus::Error => {
+                Span::styled("!", Style::default().fg(theme.status.error))
+            }
+            AgentStatus::Recovering => {
+                let ch = theme::spinner_frame(app.viewport.tick_count);
+                Span::styled(ch.to_string(), Style::default().fg(theme.status.warning))
+            }
+            AgentStatus::Archived => Span::styled("◇", theme.style_dim()),
         };
 
         let name_style = if is_focused {
@@ -109,7 +119,14 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                     ]));
                 }
             }
-            AgentStatus::Idle | AgentStatus::Compacting => {}
+            AgentStatus::Disabled
+            | AgentStatus::Idle
+            | AgentStatus::Compacting
+            | AgentStatus::Dormant
+            | AgentStatus::Degraded
+            | AgentStatus::Recovering
+            | AgentStatus::Archived
+            | AgentStatus::Error => {}
         }
 
         if let Some(ref stage) = agent.compaction_stage {

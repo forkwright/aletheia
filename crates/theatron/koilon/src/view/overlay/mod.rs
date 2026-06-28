@@ -367,6 +367,9 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
 
     for agent in &app.dashboard.agents {
         let status_str = match agent.status {
+            AgentStatus::Disabled => {
+                Span::styled("disabled", Style::default().fg(theme.status.warning))
+            }
             AgentStatus::Idle => Span::styled("idle", theme.style_dim()),
             AgentStatus::Working => {
                 Span::styled("working", Style::default().fg(theme.status.spinner))
@@ -381,6 +384,15 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
                     Style::default().fg(theme.status.compacting),
                 )
             }
+            AgentStatus::Dormant => Span::styled("dormant", theme.style_dim()),
+            AgentStatus::Degraded => {
+                Span::styled("degraded", Style::default().fg(theme.status.error))
+            }
+            AgentStatus::Recovering => {
+                Span::styled("recovering", Style::default().fg(theme.status.warning))
+            }
+            AgentStatus::Archived => Span::styled("archived", theme.style_dim()),
+            AgentStatus::Error => Span::styled("error", Style::default().fg(theme.status.error)),
         };
 
         let emoji = agent.emoji.as_deref().unwrap_or("");

@@ -16,6 +16,7 @@ use tracing::{Instrument, debug, error, info, warn};
 
 use aletheia_routing::Router;
 use hermeneus::provider::ProviderRegistry;
+use koina::agent::AgentLifecycle;
 use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
 use mneme::knowledge_store::KnowledgeStore;
@@ -70,6 +71,8 @@ struct ActorEntry {
     /// active longer than `stuck_turn_timeout_secs`. (#3254)
     /// Wrapped in `RwLock` so `restart_actor` can swap the Arc for a new actor.
     turn_started_at_ms: RwLock<Arc<AtomicU64>>,
+    /// True while the manager is actively replacing a failed actor.
+    recovering: AtomicBool,
 }
 
 impl ActorEntry {
@@ -131,6 +134,16 @@ impl ActorEntry {
                 e.into_inner()
             })
             .load(Ordering::Acquire)
+    }
+
+    /// Whether the manager is currently replacing this actor.
+    fn current_recovering(&self) -> bool {
+        self.recovering.load(Ordering::Acquire)
+    }
+
+    /// Mark whether this actor is in manager-driven recovery.
+    fn set_recovering(&self, recovering: bool) {
+        self.recovering.store(recovering, Ordering::Release);
     }
 
     /// Swap the `active_turn` Arc for a new actor's shared flag.
@@ -372,6 +385,7 @@ impl NousManager {
                 last_restart: Mutex::new(None),
                 active_turn: RwLock::new(active_turn),
                 turn_started_at_ms: RwLock::new(turn_started_at_ms),
+                recovering: AtomicBool::new(false),
             },
         );
         Ok(handle)
@@ -558,6 +572,39 @@ impl NousManager {
     #[must_use]
     pub fn configs(&self) -> Vec<&NousConfig> {
         self.actors.values().map(|e| &e.config).collect()
+    }
+
+    /// Return the canonical lifecycle status for one managed actor.
+    ///
+    /// This uses manager-owned state for transitions that may not be observable
+    /// through the actor inbox, especially active turns and in-progress restarts.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. The manager snapshot is read before awaiting the actor
+    /// status reply; cancellation loses only this status query.
+    pub async fn lifecycle_status(&self, nous_id: &str) -> Option<AgentLifecycle> {
+        let (handle, hint) = {
+            let entry = self.actors.get(nous_id)?;
+            let hint = if entry.current_recovering() {
+                Some(AgentLifecycle::Recovering)
+            } else if entry.current_active_turn() {
+                Some(AgentLifecycle::Active)
+            } else {
+                None
+            };
+            (entry.current_handle(), hint)
+        };
+
+        if let Some(status) = hint {
+            return Some(status);
+        }
+
+        let timeout = Duration::from_secs(self.nous_behavior.manager_ping_timeout_secs);
+        match tokio::time::timeout(timeout, handle.status()).await {
+            Ok(Ok(status)) => Some(status.lifecycle.into()),
+            Ok(Err(_)) | Err(_) => Some(AgentLifecycle::Error),
+        }
     }
 
     /// Apply hot-reloadable config snapshots to running actors.
@@ -834,6 +881,10 @@ impl NousManager {
             "restarting dead actor after backoff"
         );
 
+        if let Some(entry) = self.actors.get(id) {
+            entry.set_recovering(true);
+        }
+
         tokio::time::sleep(backoff).await;
 
         // kanon:ignore RUST/no-silent-result-swallow — best-effort shutdown before restart; error not actionable
@@ -862,6 +913,7 @@ impl NousManager {
                     entry.set_join(join_handle);
                     entry.replace_active_turn(active_turn);
                     entry.replace_turn_started_at_ms(turn_started_at_ms);
+                    entry.set_recovering(false);
                     entry.consecutive_misses.store(0, Ordering::SeqCst);
                     entry
                         .restart_count
@@ -883,6 +935,9 @@ impl NousManager {
                 );
             }
             Err(e) => {
+                if let Some(entry) = self.actors.get(id) {
+                    entry.set_recovering(false);
+                }
                 error!(
                     nous_id = %id,
                     error = %e,

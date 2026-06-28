@@ -394,7 +394,7 @@ impl App {
                     name,
                     name_lower,
                     emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-                    status: AgentStatus::Idle,
+                    status: AgentStatus::from(a.status),
                     active_tool: None,
                     sessions: Vec::new(),
                     model: a.model.map(|m| sanitize_for_display(&m).into_owned()),

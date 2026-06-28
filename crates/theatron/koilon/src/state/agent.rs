@@ -1,13 +1,36 @@
 use crate::api::types::Session;
 use crate::id::NousId;
+use koina::agent::AgentLifecycle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AgentStatus {
+    Disabled,
     Idle,
     Working,
     Streaming,
     Compacting,
+    Dormant,
+    Degraded,
+    Recovering,
+    Archived,
+    Error,
+}
+
+impl From<AgentLifecycle> for AgentStatus {
+    fn from(value: AgentLifecycle) -> Self {
+        match value {
+            AgentLifecycle::Disabled => Self::Disabled,
+            AgentLifecycle::Active => Self::Working,
+            AgentLifecycle::Idle => Self::Idle,
+            AgentLifecycle::Dormant => Self::Dormant,
+            AgentLifecycle::Degraded => Self::Degraded,
+            AgentLifecycle::Recovering => Self::Recovering,
+            AgentLifecycle::Archived => Self::Archived,
+            AgentLifecycle::Error => Self::Error,
+            _ => Self::Error,
+        }
+    }
 }
 
 /// The name and start time of a currently-running tool call, set and cleared atomically.
