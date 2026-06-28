@@ -1,6 +1,9 @@
 //! Discussion panel: gray-area questions, option cards, and answer flow.
 
 use dioxus::prelude::*;
+use skene::api::routes::planning::{
+    project_discussion_answer_url, project_discussion_reopen_url,
+};
 
 use crate::api::client::authenticated_client;
 use crate::components::option_card::OptionCard;
@@ -280,10 +283,7 @@ fn DiscussionCard(
 
         spawn(async move {
             let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/v1/planning/projects/{pid}/discussions/{did}/answer",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = project_discussion_answer_url(&cfg.server_url, &pid, &did);
             let req = DiscussionAnswerRequest {
                 option_id: opt_id,
                 free_text: ft,
@@ -315,11 +315,7 @@ fn DiscussionCard(
 
         spawn(async move {
             let client = authenticated_client(&cfg);
-            // WHY: reopen is POST to the same answer endpoint with empty body.
-            let url = format!(
-                "{}/api/v1/planning/projects/{pid}/discussions/{did}/reopen",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = project_discussion_reopen_url(&cfg.server_url, &pid, &did);
             match client.post(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     on_change.call(());

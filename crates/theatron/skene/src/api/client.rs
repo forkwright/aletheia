@@ -230,11 +230,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
-        let encoded = keryx::url::encode_path_segment(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/sessions?nous_id={encoded}"),
+                &super::routes::sessions::sessions_for_agent_path(nous_id),
             )
             .send()
             .await
@@ -264,7 +263,7 @@ impl ApiClient {
         &self,
         params: &ListSessionsRequest,
     ) -> Result<PaginatedSessionsResponse> {
-        let mut path = String::from("/api/v1/sessions");
+        let mut path = super::routes::sessions::sessions_path().to_string();
         let mut sep = '?';
 
         let mut push_param = |name: &str, value: &str| {
@@ -272,7 +271,7 @@ impl ApiClient {
             sep = '&';
             path.push_str(name);
             path.push('=');
-            path.extend(form_urlencoded::byte_serialize(value.as_bytes()));
+            path.push_str(&super::routes::encoding::query_value(value));
         };
 
         if let Some(nous_id) = &params.nous_id {
@@ -318,11 +317,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/sessions/{encoded}/history"),
+                &super::routes::sessions::session_history_path(session_id),
             )
             .send()
             .await
@@ -369,11 +367,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
-                &format!("/api/v1/sessions/{encoded}/archive"),
+                &super::routes::sessions::session_archive_path(session_id),
             )
             .send()
             .await
@@ -392,11 +389,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn unarchive_session(&self, session_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
-                &format!("/api/v1/sessions/{encoded}/unarchive"),
+                &super::routes::sessions::session_unarchive_path(session_id),
             )
             .send()
             .await
@@ -415,11 +411,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn rename_session(&self, session_id: &str, name: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::PUT,
-                &format!("/api/v1/sessions/{encoded}/name"),
+                &super::routes::sessions::session_name_path(session_id),
             )
             .json(&serde_json::json!({ "name": name }))
             .send()
@@ -492,11 +487,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn tools(&self, nous_id: &str) -> Result<Vec<NousTool>> {
-        let encoded = keryx::url::encode_path_segment(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/nous/{encoded}/tools"),
+                &super::routes::nous::agent_tools_path(nous_id),
             )
             .send()
             .await
@@ -548,9 +542,11 @@ impl ApiClient {
         section: &str,
         data: &serde_json::Value,
     ) -> Result<serde_json::Value> {
-        let encoded = keryx::url::encode_path_segment(section);
         let resp = self
-            .request(reqwest::Method::PUT, &format!("/api/v1/config/{encoded}"))
+            .request(
+                reqwest::Method::PUT,
+                &super::routes::config::section_path(section),
+            )
             .json(data)
             .send()
             .await

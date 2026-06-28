@@ -1,6 +1,9 @@
 //! Credential management panel: display, validate, rotate, add, and remove credentials.
 
 use dioxus::prelude::*;
+use skene::api::routes::system::{
+    credential_rotate_url, credential_url, credential_validate_url, credentials_url,
+};
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
@@ -8,25 +11,6 @@ use crate::state::credentials::{
     CredentialEntry, CredentialRole, CredentialStore, ValidationStatus, mask_key,
 };
 use crate::state::fetch::FetchState;
-
-const CREDENTIALS_PATH: &str = "/api/v1/system/credentials";
-
-fn credentials_url(base: &str) -> String {
-    format!("{}{}", base.trim_end_matches('/'), CREDENTIALS_PATH)
-}
-
-fn credential_url(base: &str, id: &str) -> String {
-    format!("{}/{id}", credentials_url(base))
-}
-
-fn credential_validate_url(base: &str, id: &str) -> String {
-    format!("{}/{id}/validate", credentials_url(base))
-}
-
-fn credential_rotate_url(base: &str, provider: &str) -> String {
-    let encoded = keryx::url::encode_path_segment(provider);
-    format!("{}/rotate?provider={encoded}", credentials_url(base))
-}
 
 // ── API types ──
 
@@ -786,15 +770,15 @@ mod tests {
         );
         assert_eq!(
             credential_url(base, "anthropic:backup"),
-            "http://localhost:8080/api/v1/system/credentials/anthropic:backup"
+            "http://localhost:8080/api/v1/system/credentials/anthropic%3Abackup"
         );
         assert_eq!(
             credential_validate_url(base, "anthropic:primary"),
-            "http://localhost:8080/api/v1/system/credentials/anthropic:primary/validate"
+            "http://localhost:8080/api/v1/system/credentials/anthropic%3Aprimary/validate"
         );
         assert_eq!(
-            credential_rotate_url(base, "open ai"),
-            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open%20ai"
+            credential_rotate_url(base, "open ai/a?b#c:100%"),
+            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open+ai%2Fa%3Fb%23c%3A100%25"
         );
     }
 }
