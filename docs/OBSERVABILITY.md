@@ -43,6 +43,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 | `aletheia_pipeline_errors_total` | Counter | `nous_id`, `stage`, `error_type` | Errors by pipeline stage |
 | `aletheia_tool_failures_total` | Counter | `nous_id`, `tool_name` | Tool execution failures |
 | `aletheia_stream_events_dropped_total` | Counter | `nous_id`, `reason` | Streaming events dropped (`full` or `disconnected`) |
+| `aletheia_nous_inbox_saturation_total` | Counter | `nous_id`, `reason` | Bounded actor inbox saturation (`send_timeout`) |
 | `aletheia_nous_background_task_failures_total` | Counter | `nous_id`, `task_type` | Background task failures (distillation, extraction, etc.) |
 | `aletheia_cache_read_tokens_total` | Counter | `nous_id` | Prompt cache hits |
 | `aletheia_cache_creation_tokens_total` | Counter | `nous_id` | Prompt cache writes |
@@ -113,6 +114,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 | HTTP 5xx rate | < 1% over 5 minutes | `aletheia_http_requests_total{status=~"5.."}` |
 | LLM p95 latency | < 30 seconds | `aletheia_llm_request_duration_seconds` |
 | LLM TTFT p95 | < 5 seconds | `aletheia_llm_ttft_seconds` |
+| Nous inbox saturation | 0 sustained events over 5 minutes | `increase(aletheia_nous_inbox_saturation_total[5m])` |
 | Backup freshness | Deployment-defined | `aletheia_backup_duration_seconds{status="ok"}` (recorded per completed whole-instance backup) |
 | Hung processes | 0 | `aletheia_watchdog_hung_processes` |
 | Extraction confidence inflation | < 5% of batches over 10 minutes | `rate(aletheia_extraction_confidence_inflation_total[10m]) / rate(aletheia_knowledge_extractions_total{status="ok"}[10m])` |
@@ -227,6 +229,19 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 2. If `full`, the consumer is slower than the producer. Check client read speed or network latency
 3. If `disconnected`, clients are dropping connections mid-stream. Check load balancer idle timeouts
 4. Review `aletheia_active_sessions` for a sudden spike in concurrent streams
+
+### NousInboxSaturation
+
+**What it means:** A send to a bounded nous actor inbox waited until the configured send timeout and returned `service_busy` to the caller. Alert on sustained saturation, for example `increase(aletheia_nous_inbox_saturation_total{reason="send_timeout"}[5m]) > 0` for user-facing agents.
+
+**Impact:** New turns cannot reach the actor promptly. Clients may see service-busy errors while existing turns, tool calls, or sub-agent work continue to occupy the actor.
+
+**Steps:**
+1. Identify the saturated actor from the `nous_id` label.
+2. Check whether a long turn or tool call is blocking progress: `journalctl --user -u aletheia --since "10 minutes ago" | grep <nous_id>`.
+3. Compare with provider latency and in-flight request metrics; slow LLM calls can keep actor work queued.
+4. Reduce concurrent client sends or sub-agent fan-out for that actor.
+5. If saturation persists after traffic drops, restart the service and inspect actor panic/degraded-state logs.
 
 ### ExtractionConfidenceInflation
 

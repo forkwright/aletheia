@@ -590,7 +590,7 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "timed out|panicked
 |---------|-------|-----|
 | `researcher timed out after {N}s` | Task too complex for the time budget | Increase `timeout_secs` in the spawn request |
 | `ask to '{id}' timed out after 30s` | Target agent not responding | Check target agent health; restart if stuck |
-| `actor '{id}' inbox full` | Sub-agent overloaded | Wait for the inbox to drain; reduce concurrent spawns |
+| `actor '{id}' inbox full` | Sub-agent overloaded | Check `aletheia_nous_inbox_saturation_total`; wait for the inbox to drain or reduce concurrent spawns |
 | `ask cycle detected: {chain}` | Circular sub-agent ask chain | Redesign the call graph to break the cycle |
 | `background task limit reached` | 8 concurrent tasks active | Wait for prior tasks to finish |
 

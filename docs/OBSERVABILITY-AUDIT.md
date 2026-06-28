@@ -38,7 +38,7 @@
 | Crate | Metrics file | Metrics registered |
 |-------|-------------|-------------------|
 | **pylon** | `src/metrics.rs` | `aletheia_http_requests_total` (counter, labels: method/path/status), `aletheia_http_request_duration_seconds` (histogram), `aletheia_active_sessions` (gauge), `aletheia_uptime_seconds` (gauge) |
-| **nous** | `src/metrics.rs` | `aletheia_pipeline_turns_total`, `aletheia_pipeline_stage_duration_seconds`, `aletheia_pipeline_errors_total`, `aletheia_cache_read_tokens_total`, `aletheia_cache_creation_tokens_total`, `aletheia_background_task_failures_total`, `aletheia_tool_failures_total`, `aletheia_stream_events_dropped_total` |
+| **nous** | `src/metrics.rs` | `aletheia_pipeline_turns_total`, `aletheia_pipeline_stage_duration_seconds`, `aletheia_pipeline_errors_total`, `aletheia_cache_read_tokens_total`, `aletheia_cache_creation_tokens_total`, `aletheia_background_task_failures_total`, `aletheia_tool_failures_total`, `aletheia_stream_events_dropped_total`, `aletheia_nous_inbox_saturation_total` |
 | **hermeneus** | `src/metrics.rs` | `aletheia_llm_tokens_total`, `aletheia_llm_cost_total`, `aletheia_llm_requests_total`, `aletheia_llm_cache_tokens_total`, `aletheia_llm_request_duration_seconds`, `aletheia_llm_ttft_seconds`, `aletheia_llm_circuit_breaker_transitions_total`, `aletheia_llm_concurrency_limit`, `aletheia_llm_concurrency_latency_ewma_seconds`, `aletheia_llm_concurrency_in_flight` |
 | **organon** | `src/metrics.rs` | `aletheia_tool_invocations_total` (counter, labels: tool_name/status), `aletheia_tool_duration_seconds` (histogram) |
 | daemon | `src/metrics.rs` | (not audited above - see §5) |
@@ -57,11 +57,12 @@
 | **Latency** | Yes | `aletheia_http_request_duration_seconds` (pylon), `aletheia_llm_request_duration_seconds` (hermeneus), `aletheia_pipeline_stage_duration_seconds` (nous), `aletheia_tool_duration_seconds` (organon) | End-to-end + per-subsystem |
 | **Error rate** | Yes (derivable) | `aletheia_http_requests_total[status]`, `aletheia_pipeline_errors_total`, `aletheia_llm_requests_total[status]`, `aletheia_tool_invocations_total[status]` | Error rate = `rate(counter{status="5xx"})` / `rate(counter)`. No dedicated error-rate gauge - that's correct for Prometheus. |
 | **Active sessions** | Yes | `aletheia_active_sessions` (pylon) | Updated via `update_system_gauges` |
+| **Queue saturation** | Yes | `aletheia_nous_inbox_saturation_total` (nous) | Counts bounded actor inbox send timeouts that become `InboxFull`/`service_busy` |
 | **Queue depth** | **No** | - | No metric tracks the NousActor inbox channel depth. `session_count` per actor is polled by the manager but not exposed as a Prometheus gauge. |
 
 ### Gaps
 
-**GAP-METRIC-1 (queue depth):** No `aletheia_nous_inbox_depth` gauge or histogram. If an actor's inbox fills, the symptom is silent latency increase with no alert surface. The `NousActor` run loop has the inbox capacity (a tokio unbounded channel) but its depth is not measured.
+**GAP-METRIC-1 (queue depth):** No `aletheia_nous_inbox_depth` gauge or histogram. Saturation that reaches a send timeout is visible through `aletheia_nous_inbox_saturation_total`, but exact queue depth is still not sampled from the bounded actor inbox.
 
 **GAP-METRIC-2 (nous init - `dead_code` note):** `nous/src/metrics.rs` `init()` is annotated `#[cfg_attr(not(test), expect(dead_code, ...))]` with the comment "startup pre-registration, not yet wired into server boot sequence." This means nous metrics are lazy-initialized on first use instead of pre-registered. For counters that works, but a freshly-started server that has never handled a turn will show nothing on the `/metrics` endpoint for nous metrics until the first event fires.
 
@@ -146,7 +147,7 @@ All critical LLM paths instrumented. The `AnthropicProvider::complete` and `comp
 |----|----------|-----|----------------|
 | GAP-SPAN-1 | Medium | `pylon/nous.rs` handlers missing `#[instrument]` | Add `#[instrument(skip(state, _claims))]` to `list`, `get_status`, `tools`, `recover` |
 | GAP-SPAN-2 | Medium | ~~organon/ToolRegistry::execute missing span~~ | Resolved: `tool_execute` span is created in `registry/mod.rs:174` |
-| GAP-METRIC-1 | High | No queue-depth metric for NousActor inboxes | Add `aletheia_nous_inbox_depth` gauge updated in actor run loop |
+| GAP-METRIC-1 | Medium | No queue-depth metric for NousActor inboxes | Add `aletheia_nous_inbox_depth` gauge if operators need pre-timeout depth alerting |
 | GAP-METRIC-2 | Low | `nous::metrics::init()` not wired to server boot | Call `nous::metrics::init()` alongside `pylon::metrics::init()` at server startup |
 | GAP-LOG-1 | Medium | `pylon/nous.rs` `recover` handler lacks structured error log | Add `error!(nous_id = %id, error = %e, "nous recovery failed")` on error path |
 
