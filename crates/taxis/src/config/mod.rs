@@ -337,12 +337,18 @@ fn default_session_pattern() -> String {
 #[serde(deny_unknown_fields)]
 #[rustfmt::skip]
 pub struct EmbeddingSettings {
-    /// Provider type: "mock", "candle".
+    /// Provider type: "candle", "openai-compat", "voyage".
     pub provider: String,
     /// Provider-specific model name.
     pub model: Option<String>,
     /// Output vector dimension (must match knowledge store HNSW index).
     pub dimension: usize,
+    /// OpenAI-compatible embedding endpoint base URL.
+    #[serde(alias = "baseurl")]
+    pub base_url: Option<String>,
+    /// Environment variable that stores the embedding provider API key.
+    #[serde(alias = "apikeyenv")]
+    pub api_key_env: Option<String>,
 }
 
 impl Default for EmbeddingSettings {
@@ -351,6 +357,32 @@ impl Default for EmbeddingSettings {
             provider: "candle".to_owned(),
             model: None,
             dimension: 384,
+            base_url: None,
+            api_key_env: None,
+        }
+    }
+}
+
+impl EmbeddingSettings {
+    /// Convert public TOML settings into the embedding provider config shape
+    /// without resolving secrets from the process environment.
+    #[must_use]
+    pub fn to_embedding_config(&self) -> episteme::embedding::EmbeddingConfig {
+        self.to_embedding_config_with_api_key(None)
+    }
+
+    /// Convert public TOML settings into the embedding provider config shape.
+    #[must_use]
+    pub fn to_embedding_config_with_api_key(
+        &self,
+        api_key: Option<koina::secret::SecretString>,
+    ) -> episteme::embedding::EmbeddingConfig {
+        episteme::embedding::EmbeddingConfig {
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            dimension: Some(self.dimension),
+            api_key,
+            base_url: self.base_url.clone(),
         }
     }
 }

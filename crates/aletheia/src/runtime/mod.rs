@@ -248,6 +248,8 @@ impl RuntimeBuilder {
                         .with_whatever_context(|_| format!("invalid config section '{section}'"))?;
                 }
             }
+            crate::embedding_config::validate_embedding_settings(&self.config.embedding)
+                .with_whatever_context(|error| format!("invalid embedding config: {error}"))?;
             info!("config validated");
 
             validate_startup(&self.config, &self.oikos)

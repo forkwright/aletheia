@@ -25,9 +25,7 @@ use hermeneus::provider::{
 };
 use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
-use mneme::embedding::{
-    DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
-};
+use mneme::embedding::{DegradedEmbeddingProvider, EmbeddingProvider, create_provider};
 use nous::manager::NousManager;
 use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
@@ -693,6 +691,10 @@ pub(crate) struct LazyEmbeddingProvider {
     dimension: usize,
 }
 
+fn degraded_embedding_provider(dimension: usize) -> Arc<dyn EmbeddingProvider> {
+    Arc::new(DegradedEmbeddingProvider::new(dimension))
+}
+
 impl LazyEmbeddingProvider {
     pub(crate) fn new(settings: EmbeddingSettings) -> Self {
         let dimension = settings.dimension;
@@ -711,13 +713,19 @@ impl LazyEmbeddingProvider {
     pub(crate) async fn get(&self) -> &Arc<dyn EmbeddingProvider> {
         self.inner
             .get_or_init(|| async {
-                let embedding_config = EmbeddingConfig {
-                    provider: self.settings.provider.clone(),
-                    model: self.settings.model.clone(),
-                    dimension: Some(self.settings.dimension),
-                    api_key: None,
-                    base_url: None,
-                };
+                let embedding_config =
+                    match crate::embedding_config::runtime_embedding_config(&self.settings) {
+                        Ok(config) => config,
+                        Err(error) => {
+                            warn!(
+                                error = %error,
+                                provider = %self.settings.provider,
+                                "embedding provider config invalid: degraded mode \
+                                 (recall and vector search unavailable)"
+                            );
+                            return degraded_embedding_provider(self.settings.dimension);
+                        }
+                    };
                 #[expect(
                     clippy::as_conversions,
                     reason = "coercion to dyn EmbeddingProvider trait object: required for OnceCell<Arc<dyn Trait>>"
@@ -871,13 +879,7 @@ pub(super) fn build_knowledge_config(
         // NOTE: Default and any future variants fall through to admit-all.
         _ => Box::new(mneme::admission::DefaultAdmissionPolicy),
     };
-    let embedding_config = EmbeddingConfig {
-        provider: embedding.provider.clone(),
-        model: embedding.model.clone(),
-        dimension: Some(embedding.dimension),
-        api_key: None,
-        base_url: None,
-    };
+    let embedding_config = embedding.to_embedding_config();
     mneme::knowledge_store::KnowledgeConfig {
         dim: embedding.dimension,
         embedding_model: embedding_config.effective_model_name(),

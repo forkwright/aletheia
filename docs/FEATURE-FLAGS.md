@@ -13,6 +13,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **aletheia** | `recall` | no | KnowledgeStore vector search + extraction persistence | `nous/knowledge-store`, `mneme/mneme-engine`, `mneme/storage-fjall`, `pylon/knowledge-store` |
 | **aletheia** | `storage-fjall` | no | fjall LSM-tree backend | `mneme/storage-fjall` |
 | **aletheia** | `embed-candle` | no | Local ML embeddings via candle | `mneme/embed-candle` |
+| **aletheia** | `openai-embed` | no | OpenAI-compatible and Voyage embedding providers | `mneme/openai-embed` |
 | **aletheia** | `online-tests` | no | Network-dependent candle tests (HuggingFace downloads at test time) | `mneme/online-tests` |
 | **aletheia** | `migrate-qdrant` | no | `dep:qdrant-client` | `mneme/mneme-engine`, `mneme/storage-fjall` |
 | **aletheia** | `tls` | no | TLS support | `pylon/tls` |
@@ -102,6 +103,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **mneme** | `nuextract` | no | NuExtract bookkeeping provider passthrough | `episteme/nuextract` |
 | **mneme** | `test-support` | no | `MockEmbeddingProvider` and test helpers | `episteme/test-support` |
 | **mneme** | `embed-candle` | no | Candle embedding provider | `episteme/embed-candle` |
+| **mneme** | `openai-embed` | no | OpenAI-compatible and Voyage embedding provider passthrough | `episteme/openai-embed` |
 | **mneme** | `online-tests` | no | Network-dependent candle tests passthrough | `episteme/online-tests` |
 | **mneme** | `mneme-engine` | no | Datalog knowledge engine | `dep:krites`, `graphe/mneme-engine`, `episteme/mneme-engine` |
 | **mneme** | `storage-fjall` | no | fjall knowledge storage | `mneme-engine`, `episteme/storage-fjall` |

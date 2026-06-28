@@ -291,13 +291,7 @@ fn knowledge_config_for_oikos(oikos: &Oikos) -> mneme::knowledge_store::Knowledg
     taxis::loader::load_config(oikos).ok().map_or_else(
         mneme::knowledge_store::KnowledgeConfig::default,
         |config| {
-            let embedding = mneme::embedding::EmbeddingConfig {
-                provider: config.embedding.provider.clone(),
-                model: config.embedding.model.clone(),
-                dimension: Some(config.embedding.dimension),
-                api_key: None,
-                base_url: None,
-            };
+            let embedding = config.embedding.to_embedding_config();
             mneme::knowledge_store::KnowledgeConfig {
                 dim: config.embedding.dimension,
                 embedding_model: embedding.effective_model_name(),
@@ -435,7 +429,7 @@ fn import_knowledge(
     nous_id: &str,
     knowledge: &mneme::portability::KnowledgeExport,
 ) -> Result<KnowledgeImportCounts> {
-    use mneme::embedding::{EmbeddingConfig, create_provider};
+    use mneme::embedding::create_provider;
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
     // WHY(#4741): load_config returns Ok(defaults) even when no config file
@@ -465,25 +459,27 @@ fn import_knowledge(
         .as_ref()
         .map_or_else(KnowledgeConfig::default, |config| KnowledgeConfig {
             dim: config.embedding.dimension,
-            embedding_model: EmbeddingConfig {
-                provider: config.embedding.provider.clone(),
-                model: config.embedding.model.clone(),
-                dimension: Some(config.embedding.dimension),
-                api_key: None,
-                base_url: None,
-            }
-            .effective_model_name(),
+            embedding_model: config
+                .embedding
+                .to_embedding_config()
+                .effective_model_name(),
             ..Default::default()
         });
 
     let embedding_provider = loaded_config.as_ref().and_then(|config| {
-        let embedding_config = EmbeddingConfig {
-            provider: config.embedding.provider.clone(),
-            model: config.embedding.model.clone(),
-            dimension: Some(config.embedding.dimension),
-            api_key: None,
-            base_url: None,
-        };
+        let embedding_config =
+            match crate::embedding_config::runtime_embedding_config(&config.embedding) {
+                Ok(config) => config,
+                Err(err) => {
+                    tracing::warn!(
+                        nous_id,
+                        provider = %config.embedding.provider,
+                        error = %err,
+                        "embedding config invalid; imported fact vectors will be skipped"
+                    );
+                    return None;
+                }
+            };
         match create_provider(&embedding_config) {
             Ok(provider) => Some(provider),
             Err(err) => {

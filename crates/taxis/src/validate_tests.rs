@@ -477,6 +477,68 @@ fn accepts_valid_embedding() {
 }
 
 #[test]
+fn rejects_unknown_embedding_provider() {
+    let section = json!({ "provider": "telepathy", "dimension": 384 });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "unknown embedding provider should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|error| error.contains("telepathy")),
+        "error should mention the unknown provider: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_openai_compat_without_base_url() {
+    let section = json!({ "provider": "openai-compat", "dimension": 384 });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "openai-compatible embedding config should require an endpoint"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|error| error.contains("baseUrl")),
+        "error should mention embedding.baseUrl: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_empty_embedding_api_key_env() {
+    let section = json!({
+        "provider": "voyage",
+        "apiKeyEnv": " ",
+        "dimension": 1024
+    });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "empty embedding apiKeyEnv should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|error| error.contains("apiKeyEnv")),
+        "error should mention embedding.apiKeyEnv: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_openai_compat_with_base_url() {
+    let section = json!({
+        "provider": "openai-compat",
+        "baseUrl": "http://127.0.0.1:5005/v1",
+        "dimension": 384
+    });
+    assert!(
+        validate_section("embedding", &section).is_ok(),
+        "openai-compatible embedding config with endpoint should be accepted structurally"
+    );
+}
+
+#[test]
 fn accepts_valid_external_http_tool() {
     let section = json!({
         "required": {

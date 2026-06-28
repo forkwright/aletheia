@@ -30,6 +30,8 @@ recall = ["nous/knowledge-store", "mneme/mneme-engine", "mneme/storage-fjall", "
 storage-fjall = ["mneme/storage-fjall"]
 # Local ML embeddings via candle.
 embed-candle = ["mneme/embed-candle"]
+# OpenAI-compatible and Voyage HTTP embedding providers.
+openai-embed = ["mneme/openai-embed"]
 # WHY: network-dependent candle tests that download HuggingFace model weights
 # at test time. Opt-in only (see #3683). Enable in scheduled or label-triggered
 # CI jobs — never part of the default PR gate.
