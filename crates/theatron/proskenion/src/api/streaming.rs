@@ -2,7 +2,9 @@
 //!
 //! Each call to `stream_turn` starts a new HTTP SSE request and returns
 //! a receiver that yields `StreamEvent`s. The stream is self-terminating:
-//! it closes after `TurnComplete`, `TurnAbort`, or `Error`.
+//! it closes after `TurnComplete` or `TurnAbort`. A stream `error` event is
+//! diagnostic; terminal failed turns are represented by `TurnComplete` with
+//! `outcome.stop_reason == Some("error")` and `outcome.error.is_some()`.
 //!
 //! # Abort support
 //!
@@ -197,9 +199,7 @@ fn stream_turn_with_read_timeout(
             if let Some(parsed) = parse_stream_event(&event.event, &event.data) {
                 let is_terminal = matches!(
                     &parsed,
-                    StreamEvent::TurnComplete { .. }
-                        | StreamEvent::TurnAbort { .. }
-                        | StreamEvent::Error(_)
+                    StreamEvent::TurnComplete { .. } | StreamEvent::TurnAbort { .. }
                 );
                 if tx.send(parsed).await.is_err() {
                     break;
@@ -461,6 +461,19 @@ mod tests {
         }
     }
 
+    struct ScriptedSseServer {
+        base_url: String,
+        handle: std::thread::JoinHandle<()>,
+    }
+
+    impl ScriptedSseServer {
+        fn finish(self) {
+            self.handle
+                .join()
+                .expect("scripted SSE server thread should finish");
+        }
+    }
+
     fn install_crypto() {
         // Another test may already have installed the process-wide provider.
         match rustls::crypto::ring::default_provider().install_default() {
@@ -507,6 +520,34 @@ mod tests {
             base_url: format!("http://{addr}"),
             ready_rx: Some(ready_rx),
             done_tx,
+            handle,
+        }
+    }
+
+    fn serve_sse_response_once(body: &'static str) -> ScriptedSseServer {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set request read timeout");
+            let mut buf = [0_u8; 2048];
+            let read = stream.read(&mut buf).expect("read stream request");
+            assert!(read > 0, "client should send an HTTP request");
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n",
+                )
+                .expect("write SSE response headers");
+            stream
+                .write_all(body.as_bytes())
+                .expect("write scripted SSE body");
+            stream.flush().expect("flush scripted SSE response");
+        });
+
+        ScriptedSseServer {
+            base_url: format!("http://{addr}"),
             handle,
         }
     }
@@ -759,6 +800,49 @@ mod tests {
                 .expect("stream should close after timeout")
                 .is_none()
         );
+        server.finish();
+    }
+
+    #[tokio::test]
+    async fn stream_turn_continues_after_error_until_message_complete() {
+        let server = serve_sse_response_once(concat!(
+            "event: error\n",
+            "data: {\"type\":\"error\",\"code\":\"provider_error\",\"message\":\"provider unavailable\",\"request_id\":\"req-1\"}\n\n",
+            "event: message_complete\n",
+            "data: {\"type\":\"message_complete\",\"outcome\":{\"text\":\"\",\"nous_id\":\"syn\",\"session_id\":\"s1\",\"model\":\"mock\",\"tool_calls\":0,\"input_tokens\":0,\"output_tokens\":0,\"cache_read_tokens\":0,\"cache_write_tokens\":0,\"stop_reason\":\"error\",\"error\":\"provider unavailable\"}}\n\n",
+        ));
+        let client = streaming_test_client();
+        let cancel = CancellationToken::new();
+        let mut rx = stream_turn_with_read_timeout(
+            client,
+            StreamTurnRequest {
+                base_url: &server.base_url,
+                nous_id: "syn",
+                session_key: "main",
+                message: "hello",
+                client_turn_id: "turn-error-complete",
+            },
+            cancel,
+            Duration::from_secs(2),
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("diagnostic error should arrive promptly")
+            .expect("diagnostic error should be delivered as a stream event");
+        assert!(
+            matches!(event, StreamEvent::Error(ref message) if message.contains("provider unavailable"))
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("message_complete should arrive after diagnostic error")
+            .expect("message_complete should be delivered as a stream event");
+        let StreamEvent::TurnComplete { outcome } = event else {
+            panic!("expected TurnComplete after diagnostic error");
+        };
+        assert_eq!(outcome.stop_reason.as_deref(), Some("error"));
+        assert_eq!(outcome.error.as_deref(), Some("provider unavailable"));
         server.finish();
     }
 

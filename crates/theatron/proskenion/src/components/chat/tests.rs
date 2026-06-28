@@ -11,6 +11,22 @@ fn make_manager() -> ChatStateManager {
     ChatStateManager::new()
 }
 
+fn make_outcome(text: &str) -> TurnOutcome {
+    TurnOutcome {
+        text: text.to_string(),
+        nous_id: NousId::from("syn"),
+        session_id: "s1".into(),
+        model: Some("claude-opus-4-6".to_string()),
+        tool_calls: 0,
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        stop_reason: None,
+        error: None,
+    }
+}
+
 #[test]
 fn turn_start_resets_streaming_state() {
     let mut state = make_state();
@@ -244,27 +260,66 @@ fn turn_complete_commits_message_to_history() {
 
     let _ = mgr.apply(
         StreamEvent::TurnComplete {
-            outcome: TurnOutcome {
-                text: "hello".to_string(),
-                nous_id: NousId::from("syn"),
-                session_id: "s1".into(),
-                model: Some("claude-opus-4-6".to_string()),
-                tool_calls: 0,
-                input_tokens: 100,
-                output_tokens: 50,
-                cache_read_tokens: 0,
-                cache_write_tokens: 0,
-                stop_reason: None,
-                error: None,
-            },
+            outcome: make_outcome("hello"),
         },
         &mut state,
     );
 
     assert_eq!(state.messages.len(), 1);
     assert_eq!(state.messages[0].role, MessageRole::Assistant);
-    assert_eq!(state.messages[0].content, "hello\n");
+    assert_eq!(state.messages[0].content, "hello");
     assert!(!state.streaming.is_streaming);
+}
+
+#[test]
+fn turn_complete_commits_outcome_text_without_deltas() {
+    let mut state = make_state();
+    let mut mgr = make_manager();
+
+    let _ = mgr.apply(
+        StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            turn_id: "t1".into(),
+        },
+        &mut state,
+    );
+    let _ = mgr.apply(
+        StreamEvent::TurnComplete {
+            outcome: make_outcome("authoritative final text"),
+        },
+        &mut state,
+    );
+
+    assert_eq!(state.messages.len(), 1);
+    assert_eq!(state.messages[0].content, "authoritative final text");
+    assert_eq!(state.messages[0].input_tokens, 100);
+    assert_eq!(state.messages[0].output_tokens, 50);
+}
+
+#[test]
+fn turn_complete_replaces_incomplete_delta_buffer() {
+    let mut state = make_state();
+    let mut mgr = make_manager();
+
+    let _ = mgr.apply(
+        StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            turn_id: "t1".into(),
+        },
+        &mut state,
+    );
+    let _ = mgr.apply(StreamEvent::TextDelta("partial".to_string()), &mut state);
+    let _ = mgr.apply(
+        StreamEvent::TurnComplete {
+            outcome: make_outcome("partial plus final token"),
+        },
+        &mut state,
+    );
+
+    assert_eq!(state.messages.len(), 1);
+    assert_eq!(state.messages[0].content, "partial plus final token");
 }
 
 #[test]
@@ -290,7 +345,10 @@ fn turn_abort_preserves_partial_text() {
     );
 
     assert_eq!(state.messages.len(), 1);
-    assert_eq!(state.messages[0].content, "partial\n");
+    assert_eq!(
+        state.messages[0].content,
+        "partial\n\n[turn aborted: cancelled]"
+    );
     assert!(!state.streaming.is_streaming);
     assert_eq!(
         state.streaming.error.as_deref(),
@@ -299,7 +357,7 @@ fn turn_abort_preserves_partial_text() {
 }
 
 #[test]
-fn turn_abort_with_no_text_adds_no_message() {
+fn turn_abort_with_no_text_commits_terminal_record() {
     let mut state = make_state();
     let mut mgr = make_manager();
 
@@ -318,11 +376,41 @@ fn turn_abort_with_no_text_adds_no_message() {
         &mut state,
     );
 
-    assert!(state.messages.is_empty());
+    assert_eq!(state.messages.len(), 1);
+    assert_eq!(state.messages[0].content, "[turn aborted: cancelled]");
     assert_eq!(
         state.streaming.error.as_deref(),
         Some("stream aborted: cancelled")
     );
+}
+
+#[test]
+fn turn_complete_error_with_no_text_commits_terminal_record() {
+    let mut state = make_state();
+    let mut mgr = make_manager();
+
+    let _ = mgr.apply(
+        StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            turn_id: "t1".into(),
+        },
+        &mut state,
+    );
+
+    let mut outcome = make_outcome("");
+    outcome.stop_reason = Some("error".to_string());
+    outcome.error = Some("provider unavailable".to_string());
+    let _ = mgr.apply(StreamEvent::TurnComplete { outcome }, &mut state);
+
+    assert_eq!(state.messages.len(), 1);
+    assert_eq!(
+        state.messages[0].content,
+        "[turn failed: error: provider unavailable]"
+    );
+    assert_eq!(state.messages[0].model.as_deref(), Some("claude-opus-4-6"));
+    assert_eq!(state.messages[0].input_tokens, 100);
+    assert_eq!(state.messages[0].output_tokens, 50);
 }
 
 #[test]
@@ -531,7 +619,7 @@ fn full_turn_lifecycle() {
     assert_eq!(state.messages.len(), 2);
     assert_eq!(state.messages[0].role, MessageRole::User);
     assert_eq!(state.messages[1].role, MessageRole::Assistant);
-    assert_eq!(state.messages[1].content, "Hi there!\nFound it.\n");
+    assert_eq!(state.messages[1].content, "Hi there! Found it.");
     assert_eq!(state.messages[1].tool_calls, 1);
     assert!(!state.streaming.is_streaming);
 }

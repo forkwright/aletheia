@@ -17,6 +17,116 @@ fn model_context_window(_model: &str) -> u32 {
     200_000
 }
 
+fn drain_streaming_text(app: &mut App) -> String {
+    if !app.connection.streaming_line_buffer.is_empty() {
+        let remaining = std::mem::take(&mut app.connection.streaming_line_buffer);
+        app.connection.streaming_text.push_str(&remaining);
+    }
+    std::mem::take(&mut app.connection.streaming_text)
+}
+
+fn reconciled_terminal_text(buffered_text: String, outcome: &TurnOutcome) -> String {
+    let mut text = if outcome.text.is_empty() {
+        buffered_text
+    } else {
+        let clean = sanitize_for_display(&outcome.text).into_owned();
+        if buffered_text != clean {
+            tracing::warn!(
+                nous_id = %outcome.nous_id,
+                session_id = %outcome.session_id,
+                buffered_len = buffered_text.len(),
+                outcome_len = clean.len(),
+                "streamed text differed from terminal outcome; committing terminal outcome text"
+            );
+        }
+        clean
+    };
+
+    if let Some(notice) =
+        terminal_failure_notice(outcome.stop_reason.as_deref(), outcome.error.as_deref())
+    {
+        text = append_terminal_notice(text, &notice);
+    }
+
+    text
+}
+
+fn terminal_failure_notice(stop_reason: Option<&str>, error: Option<&str>) -> Option<String> {
+    let failed = error.is_some() || stop_reason.is_some_and(|reason| reason == "error");
+    if !failed {
+        return None;
+    }
+
+    Some(match (stop_reason, error) {
+        (Some(reason), Some(message)) => {
+            let clean_message = sanitize_for_display(message);
+            format!("turn failed: {reason}: {clean_message}")
+        }
+        (Some(reason), None) => format!("turn failed: {reason}"),
+        (None, Some(message)) => {
+            let clean_message = sanitize_for_display(message);
+            format!("turn failed: {clean_message}")
+        }
+        (None, None) => "turn failed".to_string(),
+    })
+}
+
+fn append_terminal_notice(mut text: String, notice: &str) -> String {
+    if text.is_empty() {
+        format!("[{notice}]")
+    } else {
+        if text.ends_with("\n\n") {
+            text.push('[');
+        } else if text.ends_with('\n') {
+            text.push_str("\n[");
+        } else {
+            text.push_str("\n\n[");
+        }
+        text.push_str(notice);
+        text.push(']');
+        text
+    }
+}
+
+fn commit_assistant_message(
+    app: &mut App,
+    text: String,
+    model: Option<String>,
+    tool_calls: Vec<ToolCallInfo>,
+) {
+    if text.is_empty() {
+        return;
+    }
+
+    let text_lower = text.to_lowercase();
+    let width = app
+        .viewport
+        .render
+        .virtual_scroll
+        .cached_width()
+        .max(app.viewport.terminal_width.saturating_sub(2).max(1));
+    let h = estimate_message_height(text.len(), width);
+    app.dashboard.messages.push(ChatMessage {
+        role: "assistant".to_string(),
+        text,
+        text_lower,
+        timestamp: None,
+        model,
+        tool_calls,
+        kind: crate::state::MessageKind::default(),
+    });
+    app.viewport.render.virtual_scroll.push_item(h);
+    // WHY: Keep the viewport anchored when scrolled up by compensating the
+    // scroll offset for the new content added below the current position.
+    if !app.viewport.render.auto_scroll {
+        app.viewport.render.scroll_offset = app
+            .viewport
+            .render
+            .scroll_offset
+            .saturating_add(usize::from(h));
+    }
+}
+
 #[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
 pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
@@ -229,10 +339,7 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
 // model name from API is sanitized here.
 pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutcome) {
     app.connection.stream_phase = crate::state::StreamPhase::Done;
-    if !app.connection.streaming_line_buffer.is_empty() {
-        let remaining = std::mem::take(&mut app.connection.streaming_line_buffer);
-        app.connection.streaming_text.push_str(&remaining);
-    }
+    let terminal_text = reconciled_terminal_text(drain_streaming_text(app), &outcome);
     // WHY: Only commit the streamed message when the completing turn belongs to the
     // currently focused agent.  If the user switched agents mid-stream the message
     // belongs to the old agent's session; pushing it here would corrupt the new
@@ -244,39 +351,13 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         .as_ref()
         .is_some_and(|id| *id == outcome.nous_id);
 
-    if belongs_to_focused && !app.connection.streaming_text.is_empty() {
-        let text = app.connection.streaming_text.clone();
-        let text_lower = text.to_lowercase();
+    if belongs_to_focused {
         let tool_calls = std::mem::take(&mut app.connection.streaming_tool_calls);
-        let width = app
-            .viewport
-            .render
-            .virtual_scroll
-            .cached_width()
-            .max(app.viewport.terminal_width.saturating_sub(2).max(1));
-        let h = estimate_message_height(text.len(), width);
-        app.dashboard.messages.push(ChatMessage {
-            role: "assistant".to_string(),
-            text,
-            text_lower,
-            timestamp: None,
-            model: outcome
-                .model
-                .as_deref()
-                .map(|m| sanitize_for_display(m).into_owned()),
-            tool_calls,
-            kind: crate::state::MessageKind::default(),
-        });
-        app.viewport.render.virtual_scroll.push_item(h);
-        // WHY: Keep the viewport anchored when scrolled up by compensating the
-        // scroll offset for the new content added below the current position.
-        if !app.viewport.render.auto_scroll {
-            app.viewport.render.scroll_offset = app
-                .viewport
-                .render
-                .scroll_offset
-                .saturating_add(usize::from(h));
-        }
+        let model = outcome
+            .model
+            .as_deref()
+            .map(|m| sanitize_for_display(m).into_owned());
+        commit_assistant_message(app, terminal_text, model, tool_calls);
     }
     app.connection.streaming_text.clear();
     app.connection.streaming_thinking.clear();
@@ -328,10 +409,11 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
     app.connection.stream_phase = crate::state::StreamPhase::Idle;
-    app.connection.streaming_text.clear();
-    app.connection.streaming_line_buffer.clear();
+    let partial = drain_streaming_text(app);
+    let marker = append_terminal_notice(partial, &format!("turn aborted: {reason}"));
+    let tool_calls = std::mem::take(&mut app.connection.streaming_tool_calls);
+    commit_assistant_message(app, marker, None, tool_calls);
     app.connection.streaming_thinking.clear();
-    app.connection.streaming_tool_calls.clear();
     app.connection.stream_last_event_at = None;
     app.connection.stall_warned = false;
     app.connection.stall_message = None;
