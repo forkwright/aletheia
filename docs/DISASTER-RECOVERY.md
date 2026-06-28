@@ -73,10 +73,16 @@ aletheia backup verify "$BACKUP"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mv "$ROOT/data/knowledge.fjall" "$ROOT/data/knowledge.fjall.corrupt.$STAMP"
 mv "$ROOT/data/sessions.db"     "$ROOT/data/sessions.db.corrupt.$STAMP"
+mv "$ROOT/data/auth.fjall"      "$ROOT/data/auth.fjall.corrupt.$STAMP" 2>/dev/null || true
+mv "$ROOT/data/daemon-task-state" "$ROOT/data/daemon-task-state.corrupt.$STAMP" 2>/dev/null || true
+mv "$ROOT/data/cron-locks.fjall" "$ROOT/data/cron-locks.fjall.corrupt.$STAMP" 2>/dev/null || true
 
-# 6. Restore required stores from the backup set
+# 6. Restore required and present runtime stores from the backup set
 cp -a "$BACKUP/stores/knowledge.fjall" "$ROOT/data/knowledge.fjall"
 cp -a "$BACKUP/stores/sessions.db"     "$ROOT/data/sessions.db"
+cp -a "$BACKUP/stores/auth.fjall"      "$ROOT/data/auth.fjall" 2>/dev/null || true
+cp -a "$BACKUP/stores/daemon-task-state" "$ROOT/data/daemon-task-state" 2>/dev/null || true
+cp -a "$BACKUP/stores/cron-locks.fjall" "$ROOT/data/cron-locks.fjall" 2>/dev/null || true
 
 # 7. Restore config/workspace if corruption or an upgrade touched them
 cp -a "$BACKUP/config/." "$ROOT/config/" 2>/dev/null || true
@@ -233,6 +239,9 @@ aletheia backup verify "$BACKUP"
 mkdir -p "$TMP_INSTANCE/data"
 cp -a "$BACKUP/stores/knowledge.fjall" "$TMP_INSTANCE/data/knowledge.fjall"
 cp -a "$BACKUP/stores/sessions.db"     "$TMP_INSTANCE/data/sessions.db"
+cp -a "$BACKUP/stores/auth.fjall"      "$TMP_INSTANCE/data/auth.fjall" 2>/dev/null || true
+cp -a "$BACKUP/stores/daemon-task-state" "$TMP_INSTANCE/data/daemon-task-state" 2>/dev/null || true
+cp -a "$BACKUP/stores/cron-locks.fjall" "$TMP_INSTANCE/data/cron-locks.fjall" 2>/dev/null || true
 cp -a "$BACKUP/config/." "$TMP_INSTANCE/config/" 2>/dev/null || true
 cp -a "$BACKUP/workspace/." "$TMP_INSTANCE/" 2>/dev/null || true
 
