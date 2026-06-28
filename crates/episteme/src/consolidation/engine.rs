@@ -3,6 +3,8 @@
 //! Implements consolidation operations on `KnowledgeStore`: candidate
 //! identification, LLM-driven consolidation execution, and audit trail.
 use std::collections::BTreeMap;
+
+use eidos::workspace::ProjectId;
 use tracing::instrument;
 
 use super::{
@@ -21,7 +23,6 @@ use crate::knowledge::{
     MemoryScope, Visibility,
 };
 use crate::knowledge_store::KnowledgeStore;
-use eidos::workspace::ProjectId;
 
 fn datalog_string_literal(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_owned())
@@ -427,7 +428,10 @@ impl KnowledgeStore {
             return Ok(None);
         }
 
+        // kanon:ignore RUST/no-result-unwrap-or-default — empty default propagates as a
+        // serde_json parse error on the next line, giving a precise error message
         let source_fact_ids_json = result.get_string(0, "source_fact_ids").unwrap_or_default();
+        // kanon:ignore RUST/no-result-unwrap-or-default — same as above
         let source_session_ids_json = result
             .get_string(0, "source_session_ids")
             .unwrap_or_default();

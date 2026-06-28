@@ -1334,7 +1334,7 @@ impl KnowledgeStore {
                 })?;
             for row in &rows.rows {
                 if let Some(family) = row.first().and_then(DataValue::get_str) {
-                    let _ = existing_families.insert(family.to_owned());
+                    existing_families.insert(family.to_owned());
                 }
             }
         }

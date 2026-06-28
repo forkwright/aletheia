@@ -244,7 +244,10 @@ impl HttpReranker {
             .connect_timeout(timeouts.connect_timeout)
             .timeout(timeouts.request_timeout)
             .build()
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "failed to build reranker HTTP client; using default");
+                reqwest::Client::default()
+            });
 
         Self {
             client,

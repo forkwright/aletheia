@@ -131,8 +131,9 @@ fn non_consolidated_fact_has_no_multiplicity() {
 /// stored fact and its provenance side-index must retain those boundaries.
 #[test]
 fn consolidation_preserves_confidential_project_metadata() {
-    use crate::knowledge::{FactSensitivity, MemoryScope, Visibility};
     use eidos::workspace::ProjectId;
+
+    use crate::knowledge::{FactSensitivity, MemoryScope, Visibility};
 
     let store = make_store();
     let project_id = ProjectId::from_git_remote("https://github.com/forkwright/secret-project.git")
@@ -264,8 +265,9 @@ fn consolidation_mixed_sensitivity_takes_strictest() {
 /// single global fact, avoiding cross-project leakage.
 #[test]
 fn consolidation_mixed_project_ids_refused() {
-    use crate::knowledge::{FactSensitivity, Visibility};
     use eidos::workspace::ProjectId;
+
+    use crate::knowledge::{FactSensitivity, Visibility};
 
     let store = make_store();
     let project_a = ProjectId::from_git_remote("https://github.com/forkwright/project-a.git")

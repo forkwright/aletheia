@@ -143,6 +143,8 @@ impl KnowledgeStore {
         results.truncate(k as usize);
 
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        // kanon:ignore RUST/no-result-unwrap-or-default — GraphContext::default() is a no-op
+        // empty graph; store unavailability degrades gracefully to no graph enrichment
         let graph_ctx = self.load_graph_context().unwrap_or_default();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
@@ -219,6 +221,8 @@ impl KnowledgeStore {
         );
         let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        // kanon:ignore RUST/no-result-unwrap-or-default — GraphContext::default() is a no-op
+        // empty graph; store unavailability degrades gracefully to no graph enrichment
         let graph_ctx = self.load_graph_context().unwrap_or_default();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
@@ -299,6 +303,8 @@ impl KnowledgeStore {
         let rows = self.run_read(queries::BM25_RECALL, params)?;
         let mut results = rows_to_recall_results(rows)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        // kanon:ignore RUST/no-result-unwrap-or-default — GraphContext::default() is a no-op
+        // empty graph; store unavailability degrades gracefully to no graph enrichment
         let graph_ctx = self.load_graph_context().unwrap_or_default();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
@@ -363,6 +369,8 @@ impl KnowledgeStore {
         );
         let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
+        // kanon:ignore RUST/no-result-unwrap-or-default — GraphContext::default() is a no-op
+        // empty graph; store unavailability degrades gracefully to no graph enrichment
         let graph_ctx = self.load_graph_context().unwrap_or_default();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
@@ -1510,6 +1518,8 @@ impl KnowledgeStore {
                     let Some(neighbor_entity_id) = row.first().and_then(|v| v.get_str()) else {
                         continue;
                     };
+                    // kanon:ignore RUST/no-result-unwrap-or-default — cluster expansion is
+                    // best-effort; a store error for one neighbor skips it silently
                     for id in self
                         .visible_fact_ids_for_entity(neighbor_entity_id, requester_nous_id)
                         .unwrap_or_default()

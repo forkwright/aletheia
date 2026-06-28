@@ -37,6 +37,7 @@ fn ddl_templates_are_valid_strings() {
         "expected 16 non-sentinel DDL entries (entity DDL is dim-parameterized and created separately)"
     );
     for (ddl, name) in ddls {
+        // kanon:ignore RUST/format-sql — `:create` is CozoDB Datalog syntax, not SQL
         assert!(
             ddl.contains(&format!(":create {name}")),
             "DDL for {name} should declare its relation"

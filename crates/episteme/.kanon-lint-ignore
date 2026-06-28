@@ -175,3 +175,34 @@ RUST/as-cast:src/recall/mod.rs
 RUST/as-cast:src/skills/extract.rs
 RUST/as-cast:src/skills/heuristics.rs
 RUST/as-cast:src/skills/signature.rs
+
+# WHY: consolidation/engine.rs uses :put/:rm CozoDB Datalog script operations for
+# persisting consolidation provenance and multiplicity records. The transaction API
+# is CozoDB's db.run() with ScriptMutability::Mutable, which is already used.
+DATALOG/raw-mutation:src/consolidation/engine.rs
+
+# WHY: These files grew beyond 800 lines as part of episteme i5310 drain work
+# (index consolidation audit retention, batch recall enrichment, reranker latency
+# bounds, training evidence requirements). The logic in each file is cohesive and
+# a premature split would create thin sub-modules with shared state. Splitting is
+# tracked for a follow-up refactor once the drain stabilises.
+RUST/file-too-long:src/consolidation/engine.rs
+RUST/file-too-long:src/knowledge_store/search.rs
+RUST/file-too-long:src/extract/training.rs
+RUST/file-too-long:src/knowledge_store/tests/search.rs
+RUST/file-too-long:src/recall/mod.rs
+
+# WHY: These are data-transfer objects that cross crate boundaries as recall and
+# consolidation pipeline outputs. SourceFact, ConsolidationCandidate, and
+# ConsolidationResult are populated by the consolidation engine and consumed by
+# KnowledgeStore; ExtractionResult by extract/engine.rs; FactorScores by the 11-
+# factor RecallEngine. Adding smart constructors would force callers to change
+# construction sites without improving safety. Tracked for future API hardening.
+TOPOLOGY/shallow-struct:src/consolidation/mod.rs
+TOPOLOGY/shallow-struct:src/extract/training.rs
+TOPOLOGY/shallow-struct:src/recall/mod.rs
+
+# WHY: Reranker is an internal extension point for the recall pipeline and has no
+# consumer outside this crate. Moving the trait to the crate root would add a
+# needless pub re-export with no consuming crate to justify the indirection.
+ARCHITECTURE/trait-impl-colocation:src/recall/reranker.rs
