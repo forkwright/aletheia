@@ -135,9 +135,9 @@ impl HealthStatus {
     #[must_use]
     pub(crate) fn from_status(status: &str) -> Self {
         match status {
-            "healthy" | "pass" => Self::Healthy,
+            "healthy" | "pass" | "up" => Self::Healthy,
             "degraded" | "warn" => Self::Degraded,
-            "unhealthy" | "fail" | "timeout" => Self::Unhealthy,
+            "unhealthy" | "fail" | "timeout" | "down" => Self::Unhealthy,
             _ => Self::Unknown,
         }
     }
@@ -169,6 +169,7 @@ pub(crate) struct HealthCheckInfo {
     pub name: String,
     pub status: String,
     pub message: Option<String>,
+    pub details: Option<serde_json::Value>,
 }
 
 /// Aggregate service health data.
@@ -199,6 +200,7 @@ impl ServiceHealthStore {
                     name: c.name,
                     status: c.status,
                     message: c.message,
+                    details: c.details,
                 })
                 .collect(),
             error: None,
@@ -747,6 +749,7 @@ mod tests {
     fn health_status_from_string() {
         assert_eq!(HealthStatus::from_status("healthy"), HealthStatus::Healthy);
         assert_eq!(HealthStatus::from_status("pass"), HealthStatus::Healthy);
+        assert_eq!(HealthStatus::from_status("up"), HealthStatus::Healthy);
         assert_eq!(
             HealthStatus::from_status("degraded"),
             HealthStatus::Degraded
@@ -757,6 +760,8 @@ mod tests {
             HealthStatus::Unhealthy
         );
         assert_eq!(HealthStatus::from_status("fail"), HealthStatus::Unhealthy);
+        assert_eq!(HealthStatus::from_status("timeout"), HealthStatus::Unhealthy);
+        assert_eq!(HealthStatus::from_status("down"), HealthStatus::Unhealthy);
         assert_eq!(HealthStatus::from_status("unknown"), HealthStatus::Unknown);
     }
 
@@ -787,6 +792,16 @@ mod tests {
                 name: "providers".to_string(),
                 status: "warn".to_string(),
                 message: Some("no LLM providers registered".to_string()),
+                details: Some(serde_json::json!({
+                    "providers": [
+                        {
+                            "name": "alpha",
+                            "status": "up",
+                            "reason": null,
+                            "optional": false
+                        }
+                    ]
+                })),
             }],
             data_dir: "/tmp/data".to_string(),
         };
@@ -794,6 +809,7 @@ mod tests {
         assert_eq!(store.status, HealthStatus::Degraded);
         assert_eq!(store.checks.len(), 1);
         assert_eq!(store.checks[0].name, "providers");
+        assert!(store.checks[0].details.is_some());
         assert!(store.error.is_none());
     }
 

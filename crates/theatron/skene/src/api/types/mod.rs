@@ -645,6 +645,10 @@ pub struct HealthCheck {
     pub status: String,
     /// Diagnostic message when status is not `"pass"`.
     pub message: Option<String>,
+    /// Structured subsystem details. Provider reachability uses this for the
+    /// credential-free per-provider status list.
+    #[serde(default)]
+    pub details: Option<serde_json::Value>,
 }
 
 #[cfg(test)]

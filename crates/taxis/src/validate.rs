@@ -1226,6 +1226,11 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
                 "providers[{i}].apiFamily '{api_family}' is not recognized (expected one of: chat-completions, responses)"
             ));
         }
+        if let Some(optional) = entry.get("optional")
+            && !optional.is_boolean()
+        {
+            errors.push(format!("providers[{i}].optional must be a boolean"));
+        }
     }
 }
 

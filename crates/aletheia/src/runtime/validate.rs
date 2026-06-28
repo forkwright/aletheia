@@ -190,6 +190,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: DeploymentTarget::Cloud,
             models: Vec::new(),
         }

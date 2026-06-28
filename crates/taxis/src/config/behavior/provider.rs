@@ -199,6 +199,12 @@ pub struct LlmProviderConfig {
     /// Wall-clock timeout for subprocess provider calls, in seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_secs: Option<u64>,
+    /// Whether this provider is optional for aggregate health reporting.
+    ///
+    /// Optional providers are still reported in health details, but degraded or
+    /// down optional providers do not lower the whole service health.
+    #[serde(default)]
+    pub optional: bool,
     /// Where this provider's traffic terminates. Drives the
     /// factsensitivity filter (#3414) and air-gapped mode.
     #[serde(default)]
@@ -221,6 +227,7 @@ impl std::fmt::Debug for LlmProviderConfig {
             .field("binary", &self.binary)
             .field("workdir", &self.workdir)
             .field("timeout_secs", &self.timeout_secs)
+            .field("optional", &self.optional)
             .field("deployment_target", &self.deployment_target)
             .field("models", &self.models)
             .finish()

@@ -85,6 +85,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             clock_skew_leeway,
             expiry_warning_threshold,
             prosoche,
+            configured_providers,
             gateway_security_check,
             rate_limiting_check,
         ) = {
@@ -93,6 +94,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
                 config.api_limits.clock_skew_leeway_secs,
                 config.api_limits.expiry_warning_threshold_secs,
                 config.maintenance.prosoche.clone(),
+                provider_expectations_from_config(&config),
                 gateway_security_check(&config.gateway.auth.mode, &config.gateway.bind),
                 rate_limiting_check(
                     config.gateway.rate_limit.enabled,
@@ -130,7 +132,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             store_check,
             provider_check,
             actor_check,
-            check_provider_reachability(state),
+            check_provider_reachability(state, &configured_providers),
             config_check,
             gateway_security_check,
             rate_limiting_check,
@@ -428,52 +430,44 @@ async fn check_nous_actors(state: &HealthState) -> HealthCheck {
     }
 }
 
-/// Environment variable that lists provider names which are allowed to be
-/// degraded or down without lowering the overall service health status.
-///
-/// WHY: pylon does not own the provider config schema, so the optional flag
-/// is supplied as a comma-separated operator override at deployment time.
-/// Required providers are the default; only names listed here are exempt.
-const OPTIONAL_PROVIDERS_ENV: &str = "ALETHEIA_OPTIONAL_PROVIDERS";
-
-/// Parse the optional-provider override from the environment.
-///
-/// Comma-separated names are trimmed and empty entries are ignored so that
-/// `",,"` does not create an empty-name entry.
-fn optional_providers_from_env() -> HashSet<String> {
-    std::env::var(OPTIONAL_PROVIDERS_ENV)
-        .map(|raw| parse_optional_providers(&raw))
-        .unwrap_or_default()
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProviderExpectation {
+    name: String,
+    optional: bool,
 }
 
-/// Parse a comma-separated optional-provider override.
-///
-/// WHY: Split from the env reader so unit tests can exercise parsing without
-/// mutating global process state.
-fn parse_optional_providers(raw: &str) -> HashSet<String> {
-    raw.split(',')
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(String::from)
+fn provider_expectations_from_config(
+    config: &taxis::config::AletheiaConfig,
+) -> Vec<ProviderExpectation> {
+    config
+        .providers
+        .iter()
+        .map(|provider| ProviderExpectation {
+            name: provider.name.clone(),
+            optional: provider.optional,
+        })
         .collect()
 }
 
 /// Check LLM provider connectivity by querying the provider registry health.
-fn check_provider_reachability(state: &HealthState) -> HealthCheck {
-    provider_reachability_check(&state.provider_registry, &optional_providers_from_env())
+fn check_provider_reachability(
+    state: &HealthState,
+    configured_providers: &[ProviderExpectation],
+) -> HealthCheck {
+    provider_reachability_check(&state.provider_registry, configured_providers)
 }
 
 /// Core implementation of provider reachability, parameterized for testing.
 ///
-/// Returns a per-provider status list in `details` and fails/warns whenever any
-/// *required* configured provider is down or degraded. Optional providers are
-/// still reported but do not affect the aggregate status.
+/// Returns a per-provider status list in `details` and degrades whenever any
+/// required provider is down or degraded. Optional providers are still reported
+/// but do not affect the aggregate status.
 fn provider_reachability_check(
     registry: &hermeneus::provider::ProviderRegistry,
-    optional_names: &HashSet<String>,
+    configured_providers: &[ProviderExpectation],
 ) -> HealthCheck {
     let providers = registry.providers();
-    if providers.is_empty() {
+    if providers.is_empty() && configured_providers.is_empty() {
         return HealthCheck {
             name: "provider_reachability".to_owned(),
             status: "warn".to_owned(),
@@ -482,40 +476,31 @@ fn provider_reachability_check(
         };
     }
 
-    let provider_details: Vec<serde_json::Value> = providers
+    let provider_details = provider_reachability_details(registry, configured_providers);
+
+    let required_details: Vec<&serde_json::Value> = provider_details
         .iter()
-        .map(|provider| {
-            let name = provider.name();
-            let health = registry.provider_health(name).unwrap_or(ProviderHealth::Up);
-            provider_health_detail(name, &health)
-        })
+        .filter(|detail| !detail["optional"].as_bool().unwrap_or_default())
         .collect();
 
-    let required_detail = |detail: &&serde_json::Value| {
-        detail["name"]
-            .as_str()
-            .is_some_and(|name| !optional_names.contains(name))
-    };
-
-    let any_required_down = provider_details
+    let any_required_unhealthy = required_details
         .iter()
-        .filter(required_detail)
-        .any(|detail| detail["status"] == "down");
+        .any(|detail| !matches!(detail["status"].as_str(), Some("up")));
 
-    let any_required_degraded = provider_details
-        .iter()
-        .filter(required_detail)
-        .any(|detail| detail["status"] == "degraded");
+    let all_required_down = !required_details.is_empty()
+        && required_details
+            .iter()
+            .all(|detail| detail["status"] == "down");
 
-    let status = if any_required_down {
+    let status = if all_required_down {
         "fail"
-    } else if any_required_degraded {
+    } else if any_required_unhealthy {
         "warn"
     } else {
         "pass"
     };
 
-    let message = provider_reachability_message(status, &provider_details, optional_names);
+    let message = provider_reachability_message(status, &provider_details);
 
     HealthCheck {
         name: "provider_reachability".to_owned(),
@@ -525,32 +510,138 @@ fn provider_reachability_check(
     }
 }
 
+fn provider_reachability_details(
+    registry: &hermeneus::provider::ProviderRegistry,
+    configured_providers: &[ProviderExpectation],
+) -> Vec<serde_json::Value> {
+    let registered_providers = registry.providers();
+    if configured_providers.is_empty() {
+        return registered_providers
+            .iter()
+            .map(|provider| {
+                let name = provider.name();
+                let health = registry.provider_health(name).unwrap_or(ProviderHealth::Up);
+                provider_health_detail(name, &health, false)
+            })
+            .collect();
+    }
+
+    let mut seen_names = HashSet::new();
+    let mut details: Vec<serde_json::Value> = configured_providers
+        .iter()
+        .map(|provider| {
+            seen_names.insert(provider.name.clone());
+            match registry.provider_health(&provider.name) {
+                Some(health) => provider_health_detail(&provider.name, &health, provider.optional),
+                None => provider_down_detail(&provider.name, "not_registered", provider.optional),
+            }
+        })
+        .collect();
+
+    details.extend(registered_providers.iter().filter_map(|provider| {
+        let name = provider.name();
+        if !seen_names.insert(name.to_owned()) {
+            return None;
+        }
+        let health = registry.provider_health(name).unwrap_or(ProviderHealth::Up);
+        Some(provider_health_detail(name, &health, false))
+    }));
+
+    details
+}
+
+fn provider_down_detail(name: &str, reason: &str, optional: bool) -> serde_json::Value {
+    serde_json::json!({
+        "name": name,
+        "status": "down",
+        "reason": reason,
+        "optional": optional,
+        "required": !optional,
+    })
+}
+
+fn provider_status_detail(
+    name: &str,
+    status: &str,
+    reason: Option<&str>,
+    optional: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "name": name,
+        "status": status,
+        "reason": reason,
+        "optional": optional,
+        "required": !optional,
+    })
+}
+
+fn provider_status_detail_with_reason(
+    name: &str,
+    status: &str,
+    reason: impl AsRef<str>,
+    optional: bool,
+) -> serde_json::Value {
+    provider_status_detail(name, status, Some(reason.as_ref()), optional)
+}
+
+fn provider_up_detail(name: &str, optional: bool) -> serde_json::Value {
+    provider_status_detail(name, "up", None, optional)
+}
+
+fn provider_probing_detail(name: &str, reason: &DownReason, optional: bool) -> serde_json::Value {
+    provider_status_detail_with_reason(
+        name,
+        "degraded",
+        format!("probing_after_{}", down_reason_label(reason)),
+        optional,
+    )
+}
+
+fn provider_unknown_detail(name: &str, optional: bool) -> serde_json::Value {
+    provider_status_detail_with_reason(name, "unknown", "unknown", optional)
+}
+
+fn provider_degraded_detail(
+    name: &str,
+    consecutive_errors: u32,
+    optional: bool,
+) -> serde_json::Value {
+    provider_status_detail_with_reason(
+        name,
+        "degraded",
+        format!("recent_errors({consecutive_errors}_consecutive)"),
+        optional,
+    )
+}
+
+fn provider_down_health_detail(
+    name: &str,
+    reason: &DownReason,
+    optional: bool,
+) -> serde_json::Value {
+    provider_down_detail(name, &down_reason_label(reason), optional)
+}
+
+fn provider_is_required_unhealthy(detail: &serde_json::Value) -> bool {
+    !detail["optional"].as_bool().unwrap_or_default()
+        && !matches!(detail["status"].as_str(), Some("up"))
+}
+
 /// Build a human-readable summary that mirrors the structured `details` payload.
 ///
 /// WHY: Keep the top-level `message` short and credential-free; full per-provider
 /// state lives in `details` for the control-plane UI.
-fn provider_reachability_message(
-    status: &str,
-    details: &[serde_json::Value],
-    optional_names: &HashSet<String>,
-) -> Option<String> {
+fn provider_reachability_message(status: &str, details: &[serde_json::Value]) -> Option<String> {
     if status == "pass" {
         return None;
     }
 
     let affected: Vec<String> = details
         .iter()
-        .filter(|detail| {
-            detail["name"]
-                .as_str()
-                .is_some_and(|name| !optional_names.contains(name))
-        })
+        .filter(|detail| provider_is_required_unhealthy(detail))
         .filter_map(|detail| {
             let name = detail["name"].as_str()?;
             let health_status = detail["status"].as_str()?;
-            if health_status == "up" {
-                return None;
-            }
             detail["reason"]
                 .as_str()
                 .map(|reason| format!("{name} is {health_status} ({reason})"))
@@ -566,34 +657,21 @@ fn provider_reachability_message(
 
 /// Convert a provider health state into a credential-free detail object.
 ///
-/// Only the provider name, health status, and reason are exposed. No URLs,
-/// API keys, or model identifiers are included.
-fn provider_health_detail(name: &str, health: &ProviderHealth) -> serde_json::Value {
+/// Only the provider name, health status, reason, and optionality are exposed.
+/// No URLs, API keys, or model identifiers are included.
+fn provider_health_detail(
+    name: &str,
+    health: &ProviderHealth,
+    optional: bool,
+) -> serde_json::Value {
     match health {
-        ProviderHealth::Up => serde_json::json!({
-            "name": name,
-            "status": "up",
-            "checks": {
-                "consecutive_errors": 0,
-            },
-        }),
+        ProviderHealth::Up => provider_up_detail(name, optional),
         ProviderHealth::Degraded {
             consecutive_errors, ..
-        } => serde_json::json!({
-            "name": name,
-            "status": "degraded",
-            // WHY: "recent_errors" is a stable reason label for UI routing.
-            "reason": format!("recent_errors ({consecutive_errors} consecutive)"),
-        }),
-        ProviderHealth::Down { reason, .. } => serde_json::json!({
-            "name": name,
-            "status": "down",
-            "reason": down_reason_label(reason),
-        }),
-        _ => serde_json::json!({
-            "name": name,
-            "status": "unknown",
-        }),
+        } => provider_degraded_detail(name, *consecutive_errors, optional),
+        ProviderHealth::Down { reason, .. } => provider_down_health_detail(name, reason, optional),
+        ProviderHealth::Probing { reason, .. } => provider_probing_detail(name, reason, optional),
+        _ => provider_unknown_detail(name, optional),
     }
 }
 
@@ -1592,6 +1670,20 @@ mod tests {
         registry
     }
 
+    fn required_provider(name: &str) -> ProviderExpectation {
+        ProviderExpectation {
+            name: name.to_owned(),
+            optional: false,
+        }
+    }
+
+    fn optional_provider(name: &str) -> ProviderExpectation {
+        ProviderExpectation {
+            name: name.to_owned(),
+            optional: true,
+        }
+    }
+
     fn degrade_provider(registry: &ProviderRegistry, name: &str) {
         registry.record_error(name, &api_request_error());
     }
@@ -1621,18 +1713,30 @@ mod tests {
     #[test]
     fn provider_reachability_passes_when_all_providers_up() {
         let registry = make_registry_with_named_providers(&["alpha", "beta"]);
-        let check = provider_reachability_check(&registry, &HashSet::new());
+        let check = provider_reachability_check(&registry, &[]);
         assert_eq!(check.name, "provider_reachability");
         assert_eq!(check.status, "pass");
         assert!(check.message.is_none());
         assert_eq!(provider_detail_names(&check), vec!["alpha", "beta"]);
+        let Some(providers) = check
+            .details
+            .as_ref()
+            .and_then(|details| details["providers"].as_array())
+        else {
+            panic!("providers details missing");
+        };
+        assert!(
+            providers
+                .iter()
+                .all(|provider| provider.get("reason").is_some())
+        );
     }
 
     #[test]
     fn provider_reachability_warns_when_one_required_provider_degraded() {
         let registry = make_registry_with_named_providers(&["alpha", "beta"]);
         degrade_provider(&registry, "alpha");
-        let check = provider_reachability_check(&registry, &HashSet::new());
+        let check = provider_reachability_check(&registry, &[]);
         assert_eq!(check.status, "warn");
         assert!(
             check.message.is_some(),
@@ -1643,11 +1747,11 @@ mod tests {
     }
 
     #[test]
-    fn provider_reachability_fails_when_one_required_provider_down() {
+    fn provider_reachability_warns_when_one_required_provider_down() {
         let registry = make_registry_with_named_providers(&["alpha", "beta"]);
         down_provider(&registry, "alpha");
-        let check = provider_reachability_check(&registry, &HashSet::new());
-        assert_eq!(check.status, "fail");
+        let check = provider_reachability_check(&registry, &[]);
+        assert_eq!(check.status, "warn");
         assert!(
             check.message.is_some(),
             "message should describe down provider"
@@ -1657,11 +1761,11 @@ mod tests {
     }
 
     #[test]
-    fn provider_reachability_fails_when_one_down_even_another_is_up() {
+    fn provider_reachability_warns_when_one_down_even_another_is_up() {
         let registry = make_registry_with_named_providers(&["alpha", "beta"]);
         down_provider(&registry, "alpha");
-        let check = provider_reachability_check(&registry, &HashSet::new());
-        assert_eq!(check.status, "fail");
+        let check = provider_reachability_check(&registry, &[]);
+        assert_eq!(check.status, "warn");
     }
 
     #[test]
@@ -1669,7 +1773,7 @@ mod tests {
         let registry = make_registry_with_named_providers(&["alpha", "beta"]);
         degrade_provider(&registry, "alpha");
         degrade_provider(&registry, "beta");
-        let check = provider_reachability_check(&registry, &HashSet::new());
+        let check = provider_reachability_check(&registry, &[]);
         assert_eq!(check.status, "warn");
     }
 
@@ -1678,7 +1782,7 @@ mod tests {
         let registry = make_registry_with_named_providers(&["alpha", "beta"]);
         down_provider(&registry, "alpha");
         down_provider(&registry, "beta");
-        let check = provider_reachability_check(&registry, &HashSet::new());
+        let check = provider_reachability_check(&registry, &[]);
         assert_eq!(check.status, "fail");
     }
 
@@ -1686,8 +1790,8 @@ mod tests {
     fn provider_reachability_passes_when_only_optional_provider_is_down() {
         let registry = make_registry_with_named_providers(&["alpha", "beta"]);
         down_provider(&registry, "beta");
-        let optional = HashSet::from(["beta".to_owned()]);
-        let check = provider_reachability_check(&registry, &optional);
+        let configured = vec![required_provider("alpha"), optional_provider("beta")];
+        let check = provider_reachability_check(&registry, &configured);
         assert_eq!(check.status, "pass");
         assert!(check.message.is_none());
         assert!(check.details.is_some(), "details should list all providers");
@@ -1696,14 +1800,22 @@ mod tests {
         let beta = providers.iter().find(|entry| entry["name"] == "beta");
         assert!(beta.is_some(), "beta should be present");
         assert_eq!(beta.unwrap()["status"], "down");
+        assert_eq!(beta.unwrap()["optional"], true);
     }
 
     #[test]
-    fn provider_reachability_optional_list_parses_comma_separated_names() {
-        let names = parse_optional_providers(" alpha , beta,  gamma ");
-        assert!(names.contains("alpha"));
-        assert!(names.contains("beta"));
-        assert!(names.contains("gamma"));
-        assert!(!names.contains(""));
+    fn provider_reachability_warns_when_configured_provider_is_not_registered() {
+        let registry = make_registry_with_named_providers(&["alpha"]);
+        let configured = vec![required_provider("alpha"), required_provider("beta")];
+        let check = provider_reachability_check(&registry, &configured);
+        assert_eq!(check.status, "warn");
+        let Some(details) = check.details else {
+            panic!("details missing");
+        };
+        let providers = details["providers"].as_array().unwrap();
+        let beta = providers.iter().find(|entry| entry["name"] == "beta");
+        assert!(beta.is_some(), "configured beta should be present");
+        assert_eq!(beta.unwrap()["status"], "down");
+        assert_eq!(beta.unwrap()["reason"], "not_registered");
     }
 }

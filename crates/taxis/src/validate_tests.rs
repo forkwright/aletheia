@@ -241,6 +241,7 @@ fn accepts_provider_type_and_deployment_aliases() {
         {
             "name": "openai-cloud",
             "providerType": "openai",
+            "optional": true,
             "deploymentTarget": "cloud",
             "models": ["gpt-4.1"]
         },
@@ -282,6 +283,7 @@ fn provider_aliases_deserialize_to_typed_config() {
             {
                 "name": "openai-cloud",
                 "providerType": "openai",
+                "optional": true,
                 "deploymentTarget": "cloud",
                 "models": ["gpt-4.1"]
             },
@@ -315,6 +317,7 @@ fn provider_aliases_deserialize_to_typed_config() {
         config.providers[0].kind,
         crate::config::ProviderKind::OpenAi
     );
+    assert!(config.providers[0].optional);
     assert_eq!(
         config.providers[1].kind,
         crate::config::ProviderKind::OpenAiCompatible
@@ -355,7 +358,8 @@ fn rejects_invalid_subprocess_provider_fields() {
         {
             "name": "openai-cloud",
             "providerType": "openai",
-            "binary": "bin/openai"
+            "binary": "bin/openai",
+            "optional": "yes"
         }
     ]);
 
@@ -380,6 +384,10 @@ fn rejects_invalid_subprocess_provider_fields() {
     assert!(
         errors.contains("binary is only valid"),
         "subprocess-only fields should be rejected on HTTP providers: {errors}"
+    );
+    assert!(
+        errors.contains("optional must be a boolean"),
+        "provider optionality should be a boolean: {errors}"
     );
 }
 

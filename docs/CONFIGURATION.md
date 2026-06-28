@@ -439,6 +439,7 @@ claude_code_credentials = "~/.claude/.credentials.json"
 | `binary` | string | no | Subprocess provider CLI path (`claude` or `codex`). Omit to resolve from `PATH` and well-known user install directories. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
 | `workdir` | string | no | Subprocess working directory. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
 | `timeoutSecs` | integer | no | Subprocess wall-clock timeout, 5-3600 seconds. Only valid for `claude-code` and `codex-oauth`; defaults to 300 seconds. |
+| `optional` | bool | no | Defaults to `false`. When `true`, the provider is still reported in health details, but its degraded/down state does not degrade aggregate service health. |
 | `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
 | `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity matches use list order. |
 
@@ -463,6 +464,7 @@ name = "local-llama"
 providerType = "openai-compatible"
 baseUrl = "http://127.0.0.1:8088/v1"
 deploymentTarget = "embedded"
+optional = true
 models = ["llama3.1-70b"]
 
 [[providers]]

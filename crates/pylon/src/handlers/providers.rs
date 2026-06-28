@@ -367,6 +367,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: taxis::config::DeploymentTarget::Cloud,
             models: Vec::new(),
         };

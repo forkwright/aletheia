@@ -179,7 +179,7 @@ generated inventory is `_llm/L1-workspace.md`.
 `hermeneus` owns the provider trait and concrete provider clients. `taxis`
 owns the serialized `[[providers]]` config shape, including `providerType`,
 `baseUrl`, `apiKeyEnv`, subprocess `binary`/`workdir`/`timeoutSecs`, `models`,
-and `deploymentTarget`. The `aletheia` binary joins those layers in
+`deploymentTarget`, and health optionality. The `aletheia` binary joins those layers in
 `runtime/setup.rs` by building a provider plan and registering providers in list
 order.
 

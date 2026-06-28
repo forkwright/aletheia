@@ -1441,6 +1441,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: DeploymentTarget::Cloud,
             models: vec!["gpt-5".to_owned()],
         };
@@ -1469,6 +1470,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: DeploymentTarget::Embedded,
             models: vec![model.to_owned()],
         }
@@ -1489,6 +1491,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: DeploymentTarget::Cloud,
             models: vec![model.to_owned()],
         }
@@ -1506,6 +1509,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: DeploymentTarget::Cloud,
             models: vec![model.to_owned()],
         }
@@ -1529,6 +1533,7 @@ mod tests {
             binary: Some(binary),
             workdir: Some(workdir),
             timeout_secs: Some(30),
+            optional: false,
             deployment_target: DeploymentTarget::Cloud,
             models: vec![model.to_owned()],
         }
@@ -1717,6 +1722,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: DeploymentTarget::Cloud,
             models: vec!["kimi-for-coding".to_owned()],
         });
@@ -1749,6 +1755,7 @@ mod tests {
             binary: None,
             workdir: None,
             timeout_secs: None,
+            optional: false,
             deployment_target: DeploymentTarget::Cloud,
             models: Vec::new(),
         });

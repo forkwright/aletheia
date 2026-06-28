@@ -33,7 +33,8 @@ The agent model path starts under `agents.defaults.model` and can be overridden
 per `agents.list[]` entry. Provider backends live in `[[providers]]` tables.
 Each provider declares `name`, `providerType`, optional `baseUrl`, optional
 `apiKeyEnv`, subprocess-only `binary`/`workdir`/`timeoutSecs`,
-`deploymentTarget`, and the `models` it can serve.
+`deploymentTarget`, whether health aggregation treats it as `optional`, and the
+`models` it can serve.
 When this list is non-empty, it is the complete provider ordering surface:
 providers are registered in list order, and an `anthropic` entry without
 `apiKeyEnv` uses the top-level credential chain at that declared position.
