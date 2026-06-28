@@ -279,7 +279,7 @@ fn plan_complete_adds_completed_ops_entry() {
 }
 
 #[test]
-fn turn_abort_clears_state() {
+fn turn_abort_preserves_partial_text_with_terminal_reason() {
     let mut app = test_app();
     app.dashboard.agents.push(test_agent("syn", "Syn"));
     app.dashboard.focused_agent = Some("syn".into());
@@ -296,11 +296,32 @@ fn turn_abort_clears_state() {
 
     handle_stream_turn_abort(&mut app, "user cancelled".to_string());
 
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert_eq!(
+        app.dashboard.messages[0].text,
+        "partial\n\n[turn aborted: user cancelled]"
+    );
+    assert_eq!(app.dashboard.messages[0].tool_calls.len(), 1);
     assert!(app.connection.active_turn_id.is_none());
     assert!(app.connection.streaming_text.is_empty());
     assert!(app.connection.streaming_tool_calls.is_empty());
     assert!(app.connection.stream_rx.is_none());
     assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
+}
+
+#[test]
+fn turn_abort_without_text_commits_terminal_record() {
+    let mut app = test_app();
+    app.dashboard.agents.push(test_agent("syn", "Syn"));
+    app.dashboard.focused_agent = Some("syn".into());
+    app.connection.active_turn_id = Some("t1".into());
+
+    handle_stream_turn_abort(&mut app, "timeout".to_string());
+
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert_eq!(app.dashboard.messages[0].text, "[turn aborted: timeout]");
+    assert!(app.connection.active_turn_id.is_none());
+    assert!(app.connection.streaming_text.is_empty());
 }
 
 #[test]
@@ -402,6 +423,62 @@ async fn turn_complete_auto_scroll_stays_at_bottom() {
     handle_stream_turn_complete(&mut app, make_outcome()).await;
     assert!(app.viewport.render.auto_scroll);
     assert_eq!(app.viewport.render.scroll_offset, 0);
+}
+
+#[tokio::test]
+async fn turn_complete_commits_outcome_text_without_deltas() {
+    let mut app = test_app();
+    app.dashboard.agents.push(test_agent("syn", "Syn"));
+    app.dashboard.focused_agent = Some("syn".into());
+    let mut outcome = make_outcome();
+    outcome.text = "authoritative final text".to_string();
+
+    handle_stream_turn_complete(&mut app, outcome).await;
+
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert_eq!(app.dashboard.messages[0].text, "authoritative final text");
+}
+
+#[tokio::test]
+async fn turn_complete_replaces_incomplete_delta_buffer() {
+    let mut app = test_app();
+    app.dashboard.agents.push(test_agent("syn", "Syn"));
+    app.dashboard.focused_agent = Some("syn".into());
+    app.connection.streaming_text = "partial".to_string();
+    let mut outcome = make_outcome();
+    outcome.text = "partial plus final token".to_string();
+
+    handle_stream_turn_complete(&mut app, outcome).await;
+
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert_eq!(app.dashboard.messages[0].text, "partial plus final token");
+}
+
+#[tokio::test]
+async fn turn_complete_error_with_no_text_commits_terminal_record() {
+    let mut app = test_app();
+    app.dashboard.agents.push(test_agent("syn", "Syn"));
+    app.dashboard.focused_agent = Some("syn".into());
+    let mut outcome = make_outcome();
+    outcome.model = Some("claude-opus-4-6".to_string());
+    outcome.input_tokens = 11;
+    outcome.output_tokens = 7;
+    outcome.stop_reason = Some("error".to_string());
+    outcome.error = Some("provider unavailable".to_string());
+
+    handle_stream_turn_complete(&mut app, outcome).await;
+
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert_eq!(
+        app.dashboard.messages[0].text,
+        "[turn failed: error: provider unavailable]"
+    );
+    assert_eq!(
+        app.dashboard.messages[0].model.as_deref(),
+        Some("claude-opus-4-6")
+    );
+    assert_eq!(app.layout.metrics.total_input_tokens, 11);
+    assert_eq!(app.layout.metrics.total_output_tokens, 7);
 }
 
 #[tokio::test]
