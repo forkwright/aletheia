@@ -75,6 +75,8 @@ pub enum DenialReason {
     GroupPolicy,
     /// Denied by the agent's configured tool allowlist.
     Allowlist,
+    /// Denied because multiple tool planes expose the same bare name.
+    NameCollision,
 }
 
 impl DenialReason {
@@ -84,6 +86,7 @@ impl DenialReason {
         match self {
             Self::GroupPolicy => "group_policy",
             Self::Allowlist => "allowlist",
+            Self::NameCollision => "name_collision",
         }
     }
 }
@@ -193,6 +196,28 @@ impl SurfaceEntry {
         self.availability.is_callable()
     }
 
+    /// Compact diagnostic label that preserves source and provenance.
+    #[must_use]
+    pub fn diagnostic_label(&self) -> String {
+        let source = match self.kind {
+            SurfaceEntryKind::Registry => "local",
+            SurfaceEntryKind::Server => "provider_server",
+        };
+        let base = format!(
+            "{source}:{} (reversibility={}, approval={})",
+            self.name.as_str(),
+            self.reversibility,
+            self.approval
+        );
+        match &self.origin {
+            Some(origin) => format!(
+                "{base}, origin(local={}, server={}, remote={})",
+                origin.local_name, origin.server_name, origin.remote_name
+            ),
+            None => base,
+        }
+    }
+
     /// Return this entry as a provider local-tool definition.
     #[must_use]
     pub fn to_provider_tool(&self) -> Option<ToolDefinition> {
@@ -225,6 +250,13 @@ impl SurfaceEntry {
 /// Lookup result for a tool name.
 #[derive(Debug, Clone, Copy)]
 pub enum SurfaceLookup<'a> {
+    /// More than one source exposes this bare name.
+    Ambiguous {
+        /// First colliding candidate.
+        first: &'a SurfaceEntry,
+        /// Second colliding candidate.
+        second: &'a SurfaceEntry,
+    },
     /// Known and callable.
     Callable(&'a SurfaceEntry),
     /// Known but not active.
@@ -255,7 +287,13 @@ impl EffectiveToolSurface {
             entries.push(resolve_registry_entry(tool, &inputs));
         }
         entries.extend(resolve_server_entries(&inputs));
-        entries.sort_by(|left, right| left.name.as_str().cmp(right.name.as_str()));
+        reject_name_collisions(&mut entries);
+        entries.sort_by(|left, right| {
+            left.name
+                .as_str()
+                .cmp(right.name.as_str())
+                .then_with(|| left.kind.as_str().cmp(right.kind.as_str()))
+        });
 
         let mut server_tools = inputs.server_tools.to_vec();
         let entries_by_name: HashMap<&str, &SurfaceEntry> = entries
@@ -312,9 +350,16 @@ impl EffectiveToolSurface {
     /// Lookup one tool name in the surface.
     #[must_use]
     pub fn lookup(&self, name: &ToolName) -> SurfaceLookup<'_> {
-        let Some(entry) = self.entries.iter().find(|entry| entry.name == *name) else {
+        let mut matches = self.entries.iter().filter(|entry| entry.name == *name);
+        let Some(entry) = matches.next() else {
             return SurfaceLookup::Unknown;
         };
+        if let Some(second) = matches.next() {
+            return SurfaceLookup::Ambiguous {
+                first: entry,
+                second,
+            };
+        }
         match entry.availability {
             SurfaceAvailability::Callable => SurfaceLookup::Callable(entry),
             SurfaceAvailability::Inactive => SurfaceLookup::Inactive(entry),
@@ -459,6 +504,18 @@ fn resolve_server_entries(inputs: &SurfaceInputs<'_>) -> Vec<SurfaceEntry> {
     entries.into_values().collect()
 }
 
+fn reject_name_collisions(entries: &mut [SurfaceEntry]) {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for entry in entries.iter() {
+        *counts.entry(entry.name.as_str().to_owned()).or_default() += 1;
+    }
+    for entry in entries.iter_mut() {
+        if counts.get(entry.name.as_str()).copied().unwrap_or_default() > 1 {
+            entry.availability = SurfaceAvailability::Denied(DenialReason::NameCollision);
+        }
+    }
+}
+
 fn resolve_availability(
     name: &ToolName,
     groups: &[ToolGroupId],
@@ -585,7 +642,7 @@ fn stable_str_hash(value: &str) -> String {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
-    use crate::types::InputSchema;
+    use crate::types::{InputSchema, ToolOrigin};
 
     fn read_tool(name: &str, auto_activate: bool) -> ToolDef {
         ToolDef {
@@ -675,6 +732,65 @@ mod tests {
             SurfaceLookup::Callable(_)
         ));
         assert_ne!(inactive.hash().as_str(), callable.hash().as_str());
+    }
+
+    #[test]
+    fn local_and_provider_web_search_collision_is_denied_with_diagnostics() {
+        let local = read_tool("web_search", false);
+        let origin = ToolOrigin {
+            local_name: "web_search".to_owned(),
+            server_name: "external-search".to_owned(),
+            remote_name: "web_search".to_owned(),
+        };
+        let server_config = ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: Some(5),
+            code_execution: false,
+        };
+        let active = HashSet::new();
+        let policy = ToolGroupPolicy::AllowAll {
+            reason: "test".to_owned(),
+        };
+        let surface = EffectiveToolSurface::resolve(
+            [RegistrySurfaceTool {
+                def: &local,
+                call_capability: None,
+                origin: Some(&origin),
+            }],
+            SurfaceInputs {
+                policy: &policy,
+                allowlist: None,
+                active: &active,
+                server_tools: &[],
+                server_tool_config: Some(&server_config),
+            },
+        );
+
+        let entries = surface
+            .entries()
+            .iter()
+            .filter(|entry| entry.name.as_str() == "web_search")
+            .collect::<Vec<_>>();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|entry| {
+            entry.availability == SurfaceAvailability::Denied(DenialReason::NameCollision)
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry.kind == SurfaceEntryKind::Registry
+                && entry.reversibility == Reversibility::FullyReversible
+                && entry.origin.as_ref() == Some(&origin)
+        }));
+        assert!(entries.iter().any(|entry| {
+            entry.kind == SurfaceEntryKind::Server
+                && entry.reversibility == Reversibility::FullyReversible
+                && entry.origin.is_none()
+        }));
+        assert!(surface.provider_tools().is_empty());
+        assert!(surface.provider_server_tools().is_empty());
+        assert!(matches!(
+            surface.lookup(&ToolName::from_static("web_search")),
+            SurfaceLookup::Ambiguous { .. }
+        ));
     }
 
     #[test]

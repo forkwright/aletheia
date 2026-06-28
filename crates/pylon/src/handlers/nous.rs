@@ -149,6 +149,7 @@ fn denial_reason_label(reason: DenialReason) -> &'static str {
     match reason {
         DenialReason::GroupPolicy => "group_policy",
         DenialReason::Allowlist => "allowlist",
+        DenialReason::NameCollision => "name_collision",
     }
 }
 

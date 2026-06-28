@@ -72,6 +72,9 @@ impl ToolExecutor for ToolSchemaExecutor {
                     )));
                 };
                 return match surface.lookup(&tool_name) {
+                    SurfaceLookup::Ambiguous { .. } => Ok(ToolResult::text(
+                        unavailable_schema_response(tool_name_str, "name_collision"),
+                    )),
                     SurfaceLookup::Callable(entry) if entry.kind == SurfaceEntryKind::Registry => {
                         match entry.input_schema.as_ref() {
                             Some(schema) => Ok(ToolResult::text(format_json(schema))),
