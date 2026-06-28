@@ -126,6 +126,22 @@ pub(crate) struct KimiOutput {
     pub stream_deltas: Vec<String>,
 }
 
+impl KimiOutput {
+    pub(crate) fn new(
+        result_text: String,
+        usage: Option<KimiUsage>,
+        message_id: Option<String>,
+        stream_deltas: Vec<String>,
+    ) -> Self {
+        Self {
+            result_text,
+            usage,
+            message_id,
+            stream_deltas,
+        }
+    }
+}
+
 pub(crate) struct KimiProcessConfig<'a> {
     pub kimi_binary: &'a Path,
     pub cwd: &'a Path,
@@ -473,12 +489,12 @@ where
         "Kimi subprocess completed"
     );
 
-    Ok(KimiOutput {
+    Ok(KimiOutput::new(
         result_text,
-        usage: has_usage.then_some(usage),
+        has_usage.then_some(usage),
         message_id,
         stream_deltas,
-    })
+    ))
 }
 
 fn parse_json_message_text(line: &str) -> Result<Option<String>> {

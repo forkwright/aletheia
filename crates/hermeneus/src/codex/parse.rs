@@ -17,6 +17,12 @@ pub(crate) struct CodexParsedOutput {
     pub usage: Usage,
 }
 
+impl CodexParsedOutput {
+    pub(crate) fn new(text: String, usage: Usage) -> Self {
+        Self { text, usage }
+    }
+}
+
 /// Parse Codex JSONL output into assistant text and usage.
 pub(crate) fn parse_output(stdout: &str) -> Result<CodexParsedOutput> {
     let mut text = String::new();
@@ -61,7 +67,7 @@ pub(crate) fn parse_output(stdout: &str) -> Result<CodexParsedOutput> {
                     usage = parsed;
                 }
             }
-            _ => {}
+            _ => {} // unrecognized event type, skip
         }
     }
 
@@ -74,7 +80,7 @@ pub(crate) fn parse_output(stdout: &str) -> Result<CodexParsedOutput> {
         .build());
     }
 
-    Ok(CodexParsedOutput { text, usage })
+    Ok(CodexParsedOutput::new(text, usage))
 }
 
 fn parse_usage(value: Option<&Value>) -> Option<Usage> {

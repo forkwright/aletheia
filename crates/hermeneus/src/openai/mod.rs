@@ -43,6 +43,7 @@
 
 mod client;
 mod error;
+mod record;
 mod wire;
 
 pub use client::{OpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig};

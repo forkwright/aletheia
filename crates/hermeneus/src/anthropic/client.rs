@@ -1213,3 +1213,8 @@ impl std::fmt::Debug for AnthropicProvider {
 #[cfg(test)]
 #[path = "client_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[path = "client_pricing_tests.rs"]
+mod pricing_tests;

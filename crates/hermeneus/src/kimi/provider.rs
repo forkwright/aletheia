@@ -576,23 +576,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retries_fluke_spawn_failure_before_returning_error()
-    -> std::result::Result<(), Box<dyn std::error::Error>> {
+    async fn retries_fluke_spawn_failure_before_returning_error() {
         const SCRIPT: &str = r#"cat > /dev/null
 printf '{"role":"assistant","content":[{"type":"text","text":"retried ok"}]}\n'"#;
 
         let script_path = retry_test_script_path("spawn_retry");
-        write_executable_script(&script_path, SCRIPT)?;
+        write_executable_script(&script_path, SCRIPT).expect("write script");
         let provider = KimiProvider::new(&KimiProviderConfig {
             kimi_binary: Some(script_path.clone()),
             timeout: Duration::from_secs(5),
             ..KimiProviderConfig::default()
-        })?;
-        remove_if_exists(&script_path)?;
+        })
+        .expect("provider init");
+        remove_if_exists(&script_path).expect("remove script");
 
         let restore_path = script_path.clone();
         let restore = tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await; // kanon:ignore TESTING/sleep-in-test WHY: tests real subprocess retry timing; cannot use deterministic mock
             write_executable_script(&restore_path, SCRIPT)
         });
 
@@ -601,12 +601,14 @@ printf '{"role":"assistant","content":[{"type":"text","text":"retried ok"}]}\n'"
             koina::models::names::kimi()
         ));
         let result = provider.execute(&request).await;
-        restore.await??;
-        let response = result?;
+        restore
+            .await
+            .expect("restore task join")
+            .expect("restore script write");
+        let response = result.expect("provider execute");
 
         assert_text_response(&response, "retried ok");
-        remove_if_exists(&script_path)?;
-        Ok(())
+        remove_if_exists(&script_path).expect("cleanup");
     }
 
     #[test]

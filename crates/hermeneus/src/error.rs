@@ -8,6 +8,7 @@ use snafu::Snafu;
 
 /// Subprocess failure class for seat-bridged providers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SubprocessFailureKind {
     /// Provider subprocess could not be spawned.
     Spawn,
@@ -304,8 +305,9 @@ impl koina::error_class::Classifiable for Error {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use koina::error_class::Classifiable;
+
+    use super::*;
 
     #[test]
     fn api_error_context_empty_has_empty_fields() {

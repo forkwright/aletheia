@@ -27,6 +27,13 @@ pub struct FallbackCompletion {
     pub model: String,
 }
 
+impl FallbackCompletion {
+    /// Wrap a response and the model name that produced it.
+    pub fn new(response: CompletionResponse, model: String) -> Self {
+        Self { response, model }
+    }
+}
+
 /// Execute a completion request with model fallback on retryable errors.
 ///
 /// Tries the primary model (from `request.model`) up to `retries_before_fallback`
@@ -81,10 +88,7 @@ pub async fn complete_with_fallback_observed(
 
         match provider.complete(request).await {
             Ok(response) => {
-                return Ok(FallbackCompletion {
-                    model: primary.clone(),
-                    response,
-                });
+                return Ok(FallbackCompletion::new(response, primary.clone()));
             }
             Err(e) => {
                 if !e.is_retryable() {
@@ -127,10 +131,7 @@ pub async fn complete_with_fallback_observed(
 
             match provider.complete(&fallback_req).await {
                 Ok(response) => {
-                    return Ok(FallbackCompletion {
-                        model: fallback_model.clone(),
-                        response,
-                    });
+                    return Ok(FallbackCompletion::new(response, fallback_model.clone()));
                 }
                 Err(e) => {
                     if !e.is_retryable() {
