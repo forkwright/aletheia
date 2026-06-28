@@ -171,11 +171,12 @@ pub struct AletheiaConfig {
     /// resolution aggressiveness vary by deployment use case (research vs
     /// production, single-agent vs multi-agent).
     pub knowledge: KnowledgeConfig,
-    /// Hermeneus provider timeout, concurrency, and complexity routing thresholds.
+    /// Hermeneus provider timeout, concurrency, and complexity routing controls.
     ///
     /// WHY configurable: non-streaming timeouts and concurrency limits depend
-    /// on provider rate limits and latency characteristics. Complexity
-    /// thresholds control model routing (Haiku vs Opus) which affects cost.
+    /// on provider rate limits and latency characteristics. Complexity routing
+    /// controls let operators opt into score-based tier selection and tune
+    /// the cost/quality boundaries.
     pub provider_behavior: ProviderBehaviorConfig,
     /// Pylon request size and idempotency limits.
     ///

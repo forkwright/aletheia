@@ -2,9 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Hermeneus provider timeout, concurrency, and complexity routing thresholds.
+/// Hermeneus provider timeout, concurrency, and complexity routing controls.
 ///
-/// All defaults match the current hardcoded constants in the `hermeneus` crate.
+/// All defaults match the current public defaults in the `hermeneus` crate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
@@ -18,22 +18,26 @@ pub struct ProviderBehaviorConfig {
     pub concurrency_ewma_alpha: f64,
     /// Latency threshold in seconds above which concurrency limit is reduced.
     pub concurrency_latency_threshold_secs: f64,
-    /// Complexity score below which Haiku-class model is selected.
+    /// Whether per-turn complexity scoring may select a tier model.
+    pub complexity_routing_enabled: bool,
+    /// Complexity score at or below which Haiku-class model is selected when routing is enabled.
     pub complexity_low_threshold: u32,
-    /// Complexity score above which Opus-class model is selected.
+    /// Complexity score at or above which Opus-class model is selected when routing is enabled.
     pub complexity_high_threshold: u32,
 }
 
 impl Default for ProviderBehaviorConfig {
     fn default() -> Self {
+        let complexity = hermeneus::complexity::ComplexityConfig::default();
         Self {
             non_streaming_timeout_secs: hermeneus::anthropic::NON_STREAMING_TIMEOUT.as_secs(),
             sse_default_retry_ms: hermeneus::anthropic::SSE_DEFAULT_RETRY_MS,
             concurrency_ewma_alpha: hermeneus::concurrency::DEFAULT_EWMA_ALPHA,
             concurrency_latency_threshold_secs:
                 hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS,
-            complexity_low_threshold: hermeneus::complexity::DEFAULT_LOW_THRESHOLD,
-            complexity_high_threshold: hermeneus::complexity::DEFAULT_HIGH_THRESHOLD,
+            complexity_routing_enabled: complexity.enabled,
+            complexity_low_threshold: complexity.low_threshold,
+            complexity_high_threshold: complexity.high_threshold,
         }
     }
 }

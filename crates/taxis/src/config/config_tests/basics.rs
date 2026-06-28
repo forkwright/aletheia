@@ -1057,6 +1057,10 @@ fn mirrored_defaults_provider_behavior() {
         hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS
     );
     assert_eq!(
+        config.provider_behavior.complexity_routing_enabled,
+        hermeneus::complexity::ComplexityConfig::default().enabled
+    );
+    assert_eq!(
         config.provider_behavior.complexity_low_threshold,
         hermeneus::complexity::DEFAULT_LOW_THRESHOLD
     );

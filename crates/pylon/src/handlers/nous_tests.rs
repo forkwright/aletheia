@@ -92,6 +92,9 @@ fn nous_status_serializes_all_config_fields() {
         fallback_models: vec![],
         retries_before_fallback: 2,
         complexity_routing_enabled: false,
+        complexity_no_llm_threshold: 5,
+        complexity_low_threshold: 30,
+        complexity_high_threshold: 70,
         provider_readiness: vec![],
         context_window: 200_000,
         max_output_tokens: 4096,
@@ -112,6 +115,9 @@ fn nous_status_serializes_all_config_fields() {
     let json = serde_json::to_value(&status).unwrap();
     assert_eq!(json["id"], "syn");
     assert_eq!(json["context_window"], 200_000);
+    assert_eq!(json["complexity_no_llm_threshold"], 5);
+    assert_eq!(json["complexity_low_threshold"], 30);
+    assert_eq!(json["complexity_high_threshold"], 70);
     assert_eq!(json["thinking_enabled"], true);
     assert_eq!(json["max_tool_iterations"], 10);
     assert_eq!(json["background_failure_total_count"], 5);

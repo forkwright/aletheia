@@ -92,6 +92,12 @@ pub struct NousStatus {
     pub retries_before_fallback: u32,
     /// Whether complexity-based model routing is enabled.
     pub complexity_routing_enabled: bool,
+    /// Score below which deterministic no-LLM handling is eligible.
+    pub complexity_no_llm_threshold: u32,
+    /// Score at or below which Haiku-class routing is selected.
+    pub complexity_low_threshold: u32,
+    /// Score at or above which Opus-class routing is selected.
+    pub complexity_high_threshold: u32,
     /// Per-model provider readiness for the agent's model chain.
     pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Maximum context window in tokens.
