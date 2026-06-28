@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{ChildStderr, Command};
 use tracing::{debug, warn};
 
 use crate::error::{self, Result};
@@ -194,7 +194,9 @@ pub(crate) async fn run_completion(
     );
 
     let mut child = cmd.spawn().map_err(|e| {
-        error::ProviderInitSnafu {
+        error::SubprocessFailureSnafu {
+            provider: "cc".to_owned(),
+            kind: error::SubprocessFailureKind::Spawn,
             message: format!("failed to spawn claude CLI at {}: {e}", cc_binary.display()),
         }
         .build()
@@ -233,17 +235,12 @@ pub(crate) async fn run_completion(
             })?;
 
             if !status.success() && output.result_text.is_empty() {
-                // Read stderr for diagnostics.
-                let stderr_text = if let Some(mut stderr) = child.stderr.take() {
-                    let mut buf = String::new();
-                    let _ = tokio::io::AsyncReadExt::read_to_string(&mut stderr, &mut buf).await;
-                    buf
-                } else {
-                    String::new()
-                };
-                return Err(error::ApiRequestSnafu {
+                let stderr_text = read_stderr_text(child.stderr.take(), "cc").await;
+                return Err(error::SubprocessFailureSnafu {
+                    provider: "cc".to_owned(),
+                    kind: error::SubprocessFailureKind::Exit,
                     message: format!(
-                        "CC process exited with {status}: {}",
+                        "process exited with {status}: {}",
                         if stderr_text.is_empty() {
                             "(no stderr)"
                         } else {
@@ -268,12 +265,26 @@ pub(crate) async fn run_completion(
                 "CC subprocess timed out, killing"
             );
             let _ = child.kill().await;
-            Err(error::ApiRequestSnafu {
-                message: format!("CC subprocess timed out after {}s", timeout.as_secs()),
+            Err(error::SubprocessFailureSnafu {
+                provider: "cc".to_owned(),
+                kind: error::SubprocessFailureKind::Timeout,
+                message: format!("timed out after {}s", timeout.as_secs()),
             }
             .build())
         }
     }
+}
+
+async fn read_stderr_text(stderr: Option<ChildStderr>, stream: &'static str) -> String {
+    let Some(mut stderr) = stderr else {
+        return String::new();
+    };
+
+    let mut buf = String::new();
+    if let Err(e) = stderr.read_to_string(&mut buf).await {
+        debug!(error = %e, stream, "failed to read subprocess stderr");
+    }
+    buf
 }
 
 /// Synthesize a human-readable error message from an error-subtype result
@@ -417,7 +428,8 @@ where
 /// Returns the final `CcOutput` after the stream completes.
 #[expect(
     clippy::too_many_arguments,
-    reason = "WHY(#4889): streaming needs the same subprocess knobs as completion plus the delta callback"
+    clippy::too_many_lines,
+    reason = "WHY(#4889): streaming keeps subprocess setup, timeout, and output handling in protocol order"
 )]
 #[tracing::instrument(skip_all)]
 pub(crate) async fn run_streaming(
@@ -479,7 +491,9 @@ pub(crate) async fn run_streaming(
     );
 
     let mut child = cmd.spawn().map_err(|e| {
-        error::ProviderInitSnafu {
+        error::SubprocessFailureSnafu {
+            provider: "cc".to_owned(),
+            kind: error::SubprocessFailureKind::Spawn,
             message: format!("failed to spawn claude CLI at {}: {e}", cc_binary.display()),
         }
         .build()
@@ -507,7 +521,30 @@ pub(crate) async fn run_streaming(
 
     match result {
         Ok(Ok(output)) => {
-            let _ = child.wait().await;
+            let status = child.wait().await.map_err(|e| {
+                error::ApiRequestSnafu {
+                    message: format!("failed to wait for CC streaming process: {e}"),
+                }
+                .build()
+            })?;
+
+            if !status.success() && output.result_text.is_empty() {
+                let stderr_text = read_stderr_text(child.stderr.take(), "cc streaming").await;
+                return Err(error::SubprocessFailureSnafu {
+                    provider: "cc".to_owned(),
+                    kind: error::SubprocessFailureKind::Exit,
+                    message: format!(
+                        "process exited with {status}: {}",
+                        if stderr_text.is_empty() {
+                            "(no stderr)"
+                        } else {
+                            stderr_text.trim()
+                        }
+                    ),
+                }
+                .build());
+            }
+
             Ok(output)
         }
         Ok(Err(e)) => {
@@ -520,8 +557,10 @@ pub(crate) async fn run_streaming(
                 "CC streaming subprocess timed out, killing"
             );
             let _ = child.kill().await;
-            Err(error::ApiRequestSnafu {
-                message: format!("CC subprocess timed out after {}s", timeout.as_secs()),
+            Err(error::SubprocessFailureSnafu {
+                provider: "cc".to_owned(),
+                kind: error::SubprocessFailureKind::Timeout,
+                message: format!("timed out after {}s", timeout.as_secs()),
             }
             .build())
         }

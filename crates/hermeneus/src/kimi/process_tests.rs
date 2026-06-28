@@ -317,10 +317,48 @@ exit 7"#,
         .await
         .unwrap_err();
 
-    let err = err.to_string();
-    assert!(err.contains("Kimi process exited"));
-    assert!(err.contains("failed"));
+    let msg = err.to_string();
+    assert!(msg.contains("kimi subprocess exited unsuccessfully"));
+    assert!(msg.contains("failed"));
+    assert!(err.is_retryable());
 
+    fs::remove_file(&script).unwrap();
+}
+
+#[tokio::test]
+async fn run_completion_spawn_failure_is_retryable_subprocess_failure() {
+    let binary = PathBuf::from("/nonexistent/path/to/kimi-binary");
+    let cwd = std::env::temp_dir();
+    let config = process_config(&binary, &cwd);
+
+    let err = run_completion(&config, None, "prompt text", 0)
+        .await
+        .unwrap_err();
+    let msg = err.to_string();
+
+    assert!(msg.contains("/nonexistent/path/to/kimi-binary"));
+    assert!(msg.contains("kimi subprocess spawn failed"));
+    assert!(err.is_retryable());
+}
+
+#[tokio::test]
+async fn run_completion_timeout_is_retryable_subprocess_failure() {
+    let script = write_script("completion_timeout", "sleep 30");
+    let cwd = std::env::temp_dir();
+    let config = KimiProcessConfig {
+        kimi_binary: &script,
+        cwd: &cwd,
+        model: None,
+        timeout: Duration::from_millis(100),
+    };
+
+    let err = run_completion(&config, None, "prompt text", 0)
+        .await
+        .unwrap_err();
+    let msg = err.to_string();
+
+    assert!(msg.contains("kimi subprocess timed out"));
+    assert!(err.is_retryable());
     fs::remove_file(&script).unwrap();
 }
 

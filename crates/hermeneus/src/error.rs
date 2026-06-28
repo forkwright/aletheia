@@ -6,6 +6,31 @@
 
 use snafu::Snafu;
 
+/// Subprocess failure class for seat-bridged providers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubprocessFailureKind {
+    /// Provider subprocess could not be spawned.
+    Spawn,
+    /// Provider subprocess exited unsuccessfully.
+    Exit,
+    /// Provider subprocess exceeded its wall-clock timeout.
+    Timeout,
+    /// Provider subprocess completed without producing required output.
+    NoOutput,
+}
+
+impl std::fmt::Display for SubprocessFailureKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label = match self {
+            Self::Spawn => "spawn failed",
+            Self::Exit => "exited unsuccessfully",
+            Self::Timeout => "timed out",
+            Self::NoOutput => "produced no output",
+        };
+        f.write_str(label)
+    }
+}
+
 /// Diagnostic context carried by [`Error::ApiError`].
 ///
 /// Grouped into a separate struct so it can be boxed in the enum variant,
@@ -43,6 +68,16 @@ pub enum Error {
     /// Provider initialization failed.
     #[snafu(display("provider init failed: {message}"))]
     ProviderInit {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Seat-bridged provider subprocess failed in a retryable way.
+    #[snafu(display("{provider} subprocess {kind}: {message}"))]
+    SubprocessFailure {
+        provider: String,
+        kind: SubprocessFailureKind,
         message: String,
         #[snafu(implicit)]
         location: snafu::Location,
@@ -135,12 +170,13 @@ impl Error {
     pub fn is_retryable(&self) -> bool {
         // kanon:ignore RUST/pub-visibility
         match self {
-            // WHY: ProviderInit errors from subprocess providers (CC) indicate the
+            // WHY: ProviderInit errors from subprocess providers indicate the
             // provider binary is temporarily unavailable (crashed, auth expired,
             // deleted). This is a transient condition — the binary may come back —
             // so the execute stage should activate degraded-mode fallback instead
             // of surfacing a hard error.
             Error::ProviderInit { .. }
+            | Error::SubprocessFailure { .. }
             | Error::RateLimited { .. }
             | Error::ApiErrorBodyRead { .. }
             | Error::StreamIncomplete { .. }
@@ -154,8 +190,6 @@ impl Error {
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
-                    || msg.contains("cc process exited")
-                    || msg.contains("cc subprocess")
                     || msg.contains("is currently unavailable")
                     || msg.contains("circuit-breaker open")
             }
@@ -172,9 +206,10 @@ impl koina::error_class::Classifiable for Error {
         use koina::error_class::ErrorClass;
         match self {
             // Transient: safe to retry — rate limits, server errors (5xx),
-            // and provider init failures (CC binary crashed/disappeared).
+            // subprocess failures, and provider init failures.
             Error::RateLimited { .. }
             | Error::ProviderInit { .. }
+            | Error::SubprocessFailure { .. }
             | Error::ApiErrorBodyRead { .. }
             | Error::StreamIncomplete { .. }
             | Error::ApiError {
@@ -191,8 +226,6 @@ impl koina::error_class::Classifiable for Error {
                     || msg.contains("broken pipe")
                     || msg.contains("is currently unavailable")
                     || msg.contains("circuit-breaker open")
-                    || msg.contains("cc process exited")
-                    || msg.contains("cc subprocess")
                 {
                     ErrorClass::Transient
                 } else {
@@ -224,7 +257,9 @@ impl koina::error_class::Classifiable for Error {
                 max_attempts: 3,
                 backoff_base_ms: 1_000,
             },
-            Error::ApiErrorBodyRead { .. } | Error::StreamIncomplete { .. } => ErrorAction::Retry {
+            Error::ApiErrorBodyRead { .. }
+            | Error::StreamIncomplete { .. }
+            | Error::SubprocessFailure { .. } => ErrorAction::Retry {
                 max_attempts: 3,
                 backoff_base_ms: 500,
             },
@@ -237,8 +272,6 @@ impl koina::error_class::Classifiable for Error {
                     || msg.contains("broken pipe")
                     || msg.contains("is currently unavailable")
                     || msg.contains("circuit-breaker open")
-                    || msg.contains("cc process exited")
-                    || msg.contains("cc subprocess")
                 {
                     ErrorAction::Retry {
                         max_attempts: 3,
@@ -379,67 +412,84 @@ mod tests {
         );
     }
 
-    #[test]
-    fn api_request_cc_process_exit_is_retryable() {
-        // WHY: CC subprocess crash mid-turn produces an ApiRequest error with
-        // "CC process exited" in the message. Must be retryable so degraded
-        // mode activates instead of surfacing a hard 500.
-        let err = ApiRequestSnafu {
-            message: "CC process exited with exit status: 1: OAuth token rejected",
+    fn assert_subprocess_failure_retryable(provider: &str, kind: SubprocessFailureKind) {
+        let err = SubprocessFailureSnafu {
+            provider: provider.to_owned(),
+            kind,
+            message: "synthetic subprocess failure".to_owned(),
         }
         .build();
-        assert!(err.is_retryable(), "CC process exit should be retryable");
-    }
-
-    #[test]
-    fn api_request_cc_subprocess_timeout_is_retryable() {
-        let err = ApiRequestSnafu {
-            message: "CC subprocess timed out after 300s",
-        }
-        .build();
-        assert!(
-            err.is_retryable(),
-            "CC subprocess timeout should be retryable"
-        );
-    }
-
-    #[test]
-    fn api_request_cc_process_exit_action_is_retry() {
-        // WHY(#5455): action() must agree with is_retryable() so degraded-mode
-        // activates when the CC subprocess crashes mid-turn.
-        let err = ApiRequestSnafu {
-            message: "CC process exited with exit status: 1: OAuth token rejected".to_owned(),
-        }
-        .build();
-        assert!(
-            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
-            "CC process exit must action as Retry, not Escalate"
-        );
+        assert!(err.is_retryable(), "{provider} {kind} should be retryable");
         assert_eq!(
             err.class(),
             koina::error_class::ErrorClass::Transient,
-            "CC process exit must classify as Transient"
+            "{provider} {kind} should classify as transient"
+        );
+        assert!(
+            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+            "{provider} {kind} should action as retry"
         );
     }
 
-    #[test]
-    fn api_request_cc_subprocess_timeout_action_is_retry() {
-        // WHY(#5455): "timed out" != "timeout"; both must route to Retry so
-        // is_retryable() and action() agree for CC subprocess timeouts.
-        let err = ApiRequestSnafu {
-            message: "CC subprocess timed out after 300s".to_owned(),
-        }
-        .build();
-        assert!(
-            matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
-            "CC subprocess timed out must action as Retry, not Escalate"
-        );
-        assert_eq!(
-            err.class(),
-            koina::error_class::ErrorClass::Transient,
-            "CC subprocess timed out must classify as Transient"
-        );
+    macro_rules! subprocess_retryable_test {
+        ($name:ident, $provider:literal, $kind:expr) => {
+            #[test]
+            fn $name() {
+                assert_subprocess_failure_retryable($provider, $kind);
+            }
+        };
     }
+
+    subprocess_retryable_test!(
+        cc_spawn_failure_is_retryable,
+        "cc",
+        SubprocessFailureKind::Spawn
+    );
+    subprocess_retryable_test!(
+        cc_exit_failure_is_retryable,
+        "cc",
+        SubprocessFailureKind::Exit
+    );
+    subprocess_retryable_test!(
+        cc_timeout_failure_is_retryable,
+        "cc",
+        SubprocessFailureKind::Timeout
+    );
+    subprocess_retryable_test!(
+        kimi_spawn_failure_is_retryable,
+        "kimi",
+        SubprocessFailureKind::Spawn
+    );
+    subprocess_retryable_test!(
+        kimi_exit_failure_is_retryable,
+        "kimi",
+        SubprocessFailureKind::Exit
+    );
+    subprocess_retryable_test!(
+        kimi_timeout_failure_is_retryable,
+        "kimi",
+        SubprocessFailureKind::Timeout
+    );
+    subprocess_retryable_test!(
+        codex_spawn_failure_is_retryable,
+        "codex",
+        SubprocessFailureKind::Spawn
+    );
+    subprocess_retryable_test!(
+        codex_exit_failure_is_retryable,
+        "codex",
+        SubprocessFailureKind::Exit
+    );
+    subprocess_retryable_test!(
+        codex_timeout_failure_is_retryable,
+        "codex",
+        SubprocessFailureKind::Timeout
+    );
+    subprocess_retryable_test!(
+        codex_no_output_failure_is_retryable,
+        "codex",
+        SubprocessFailureKind::NoOutput
+    );
 
     #[test]
     fn api_request_provider_unavailable_is_transient_retry() {

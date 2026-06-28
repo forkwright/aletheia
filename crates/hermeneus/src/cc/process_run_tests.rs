@@ -92,9 +92,10 @@ async fn run_completion_spawn_failure_reports_binary_path() {
         "error must include the binary path, got: {msg}"
     );
     assert!(
-        msg.contains("provider init failed"),
-        "error must be ProviderInit variant, got: {msg}"
+        msg.contains("cc subprocess spawn failed"),
+        "error must be SubprocessFailure variant, got: {msg}"
     );
+    assert!(err.is_retryable());
 }
 
 #[tokio::test]
@@ -239,6 +240,7 @@ async fn run_completion_timeout_returns_error() {
         msg.contains("timed out"),
         "error must mention timeout, got: {msg}"
     );
+    assert!(err.is_retryable());
     let _ = fs::remove_file(&script);
 }
 
@@ -278,6 +280,11 @@ exit 1"#,
         msg.contains("OAuth token rejected"),
         "stderr must appear in error message, got: {msg}"
     );
+    assert!(
+        msg.contains("cc subprocess exited unsuccessfully"),
+        "error must be SubprocessFailure variant, got: {msg}"
+    );
+    assert!(err.is_retryable());
     let _ = fs::remove_file(&script);
 }
 
@@ -306,9 +313,10 @@ async fn run_streaming_spawn_failure_reports_binary_path() {
         "error must include binary path, got: {msg}"
     );
     assert!(
-        msg.contains("provider init failed"),
-        "error must be ProviderInit variant, got: {msg}"
+        msg.contains("cc subprocess spawn failed"),
+        "error must be SubprocessFailure variant, got: {msg}"
     );
+    assert!(err.is_retryable());
 }
 
 #[tokio::test]
@@ -410,6 +418,7 @@ async fn run_streaming_timeout_returns_error() {
         msg.contains("timed out"),
         "error must mention timeout, got: {msg}"
     );
+    assert!(err.is_retryable());
     let _ = fs::remove_file(&script);
 }
 

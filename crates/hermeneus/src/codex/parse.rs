@@ -66,8 +66,10 @@ pub(crate) fn parse_output(stdout: &str) -> Result<CodexParsedOutput> {
     }
 
     if text.is_empty() {
-        return Err(error::ApiRequestSnafu {
-            message: "Codex subprocess produced no text output".to_owned(),
+        return Err(error::SubprocessFailureSnafu {
+            provider: "codex".to_owned(),
+            kind: error::SubprocessFailureKind::NoOutput,
+            message: "subprocess produced no text output".to_owned(),
         }
         .build());
     }

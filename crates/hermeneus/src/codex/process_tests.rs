@@ -129,7 +129,8 @@ async fn run_completion_spawn_failure_reports_binary_path() {
 
     let msg = err.to_string();
     assert!(msg.contains("/nonexistent/path/to/codex-binary"));
-    assert!(msg.contains("provider init failed"));
+    assert!(msg.contains("codex subprocess spawn failed"));
+    assert!(err.is_retryable());
 }
 
 #[tokio::test]
@@ -208,6 +209,18 @@ fn parse_output_jsonl_fixture_captures_text_and_usage() {
     assert_eq!(parsed.usage.cache_write_tokens, 0);
 }
 
+#[test]
+fn parse_output_without_text_is_retryable_subprocess_failure() {
+    let err =
+        parse::parse_output(r#"{"type":"turn.completed","usage":{"input_tokens":1}}"#).unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("codex subprocess produced no output")
+    );
+    assert!(err.is_retryable());
+}
+
 #[tokio::test]
 async fn run_completion_with_system_prompt_feeds_stdin() {
     let script = write_script(
@@ -249,7 +262,9 @@ exit 1",
         .unwrap_err();
 
     let msg = err.to_string();
+    assert!(msg.contains("codex subprocess exited unsuccessfully"));
     assert!(msg.contains("not logged in"));
+    assert!(err.is_retryable());
     let _ = fs::remove_file(&script);
 }
 
@@ -262,6 +277,7 @@ async fn run_completion_timeout_returns_error() {
         .unwrap_err();
 
     assert!(err.to_string().contains("timed out"));
+    assert!(err.is_retryable());
     let _ = fs::remove_file(&script);
 }
 

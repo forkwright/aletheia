@@ -105,7 +105,9 @@ pub(crate) async fn run_completion(
     );
 
     let mut child = cmd.spawn().map_err(|e| {
-        error::ProviderInitSnafu {
+        error::SubprocessFailureSnafu {
+            provider: "codex".to_owned(),
+            kind: error::SubprocessFailureKind::Spawn,
             message: format!(
                 "failed to spawn codex CLI at {}: {e}",
                 codex_binary.display()
@@ -168,8 +170,10 @@ pub(crate) async fn run_completion(
                 "Codex subprocess timed out, killing"
             );
             let _ = child.kill().await; // kanon:ignore RUST/no-silent-result-swallow WHY: best-effort kill on timeout path; already returning an Err
-            Err(error::ApiRequestSnafu {
-                message: format!("Codex subprocess timed out after {}s", timeout.as_secs()),
+            Err(error::SubprocessFailureSnafu {
+                provider: "codex".to_owned(),
+                kind: error::SubprocessFailureKind::Timeout,
+                message: format!("timed out after {}s", timeout.as_secs()),
             }
             .build())
         }
@@ -186,9 +190,11 @@ fn finish_output(status: ExitStatus, stdout: Vec<u8>, stderr: &[u8]) -> Result<C
     let stderr_text = String::from_utf8_lossy(stderr);
 
     if !status.success() {
-        return Err(error::ApiRequestSnafu {
+        return Err(error::SubprocessFailureSnafu {
+            provider: "codex".to_owned(),
+            kind: error::SubprocessFailureKind::Exit,
             message: format!(
-                "Codex process exited with {status}: {}",
+                "process exited with {status}: {}",
                 if stderr_text.trim().is_empty() {
                     "(no stderr)"
                 } else {

@@ -178,9 +178,11 @@ pub(crate) async fn run_completion(
 
             if !status.success() {
                 let stderr_text = read_stderr(child.stderr.take()).await;
-                return Err(error::ApiRequestSnafu {
+                return Err(error::SubprocessFailureSnafu {
+                    provider: "kimi".to_owned(),
+                    kind: error::SubprocessFailureKind::Exit,
                     message: format!(
-                        "Kimi process exited with {status}: {}",
+                        "process exited with {status}: {}",
                         if stderr_text.is_empty() {
                             "(no stderr)"
                         } else {
@@ -203,11 +205,10 @@ pub(crate) async fn run_completion(
                 "Kimi subprocess timed out, killing"
             );
             kill_child(&mut child, "Kimi subprocess").await;
-            Err(error::ApiRequestSnafu {
-                message: format!(
-                    "Kimi subprocess timed out after {}s",
-                    config.timeout.as_secs()
-                ),
+            Err(error::SubprocessFailureSnafu {
+                provider: "kimi".to_owned(),
+                kind: error::SubprocessFailureKind::Timeout,
+                message: format!("timed out after {}s", config.timeout.as_secs()),
             }
             .build())
         }
@@ -258,9 +259,11 @@ pub(crate) async fn run_streaming(
             })?;
             if !status.success() {
                 let stderr_text = read_stderr(child.stderr.take()).await;
-                return Err(error::ApiRequestSnafu {
+                return Err(error::SubprocessFailureSnafu {
+                    provider: "kimi".to_owned(),
+                    kind: error::SubprocessFailureKind::Exit,
                     message: format!(
-                        "Kimi process exited with {status}: {}",
+                        "process exited with {status}: {}",
                         if stderr_text.is_empty() {
                             "(no stderr)"
                         } else {
@@ -282,11 +285,10 @@ pub(crate) async fn run_streaming(
                 "Kimi streaming subprocess timed out, killing"
             );
             kill_child(&mut child, "Kimi streaming subprocess").await;
-            Err(error::ApiRequestSnafu {
-                message: format!(
-                    "Kimi subprocess timed out after {}s",
-                    config.timeout.as_secs()
-                ),
+            Err(error::SubprocessFailureSnafu {
+                provider: "kimi".to_owned(),
+                kind: error::SubprocessFailureKind::Timeout,
+                message: format!("timed out after {}s", config.timeout.as_secs()),
             }
             .build())
         }
@@ -309,7 +311,9 @@ fn spawn_kimi(
     build_kimi_command(kimi_binary, cwd, model)
         .spawn()
         .map_err(|e| {
-            error::ProviderInitSnafu {
+            error::SubprocessFailureSnafu {
+                provider: "kimi".to_owned(),
+                kind: error::SubprocessFailureKind::Spawn,
                 message: format!("failed to spawn kimi CLI at {}: {e}", kimi_binary.display()),
             }
             .build()

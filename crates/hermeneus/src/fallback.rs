@@ -282,6 +282,18 @@ mod tests {
         .build())
     }
 
+    fn subprocess_failure(
+        provider: &str,
+        kind: error::SubprocessFailureKind,
+    ) -> Result<CompletionResponse> {
+        Err(error::SubprocessFailureSnafu {
+            provider: provider.to_owned(),
+            kind,
+            message: "synthetic subprocess failure".to_owned(),
+        }
+        .build())
+    }
+
     fn make_request(model: &str) -> CompletionRequest {
         CompletionRequest {
             model: model.to_owned(),
@@ -349,6 +361,56 @@ mod tests {
             .unwrap();
 
         assert_eq!(resp.model, "fallback-1");
+    }
+
+    #[tokio::test]
+    async fn retries_kimi_subprocess_failure_before_fallback() {
+        // WHY(#5456): Kimi subprocess failures must be retryable without
+        // matching provider-specific display strings.
+        let provider = MockFallbackProvider::new(vec![
+            subprocess_failure("kimi", error::SubprocessFailureKind::Timeout),
+            ok_response("primary-model"),
+        ]);
+        let config = FallbackConfig {
+            fallback_models: vec!["fallback-1".to_owned()],
+            retries_before_fallback: 2,
+        };
+
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
+            .await
+            .unwrap();
+
+        assert_eq!(resp.model, "primary-model");
+        assert_eq!(provider.call_count(), 2);
+        assert_eq!(
+            provider.called_models(),
+            vec!["primary-model", "primary-model"]
+        );
+    }
+
+    #[tokio::test]
+    async fn falls_back_on_codex_subprocess_failure() {
+        // WHY(#5456): Codex no-output subprocess failures previously looked like
+        // non-retryable generic ApiRequest errors and skipped fallback.
+        let provider = MockFallbackProvider::new(vec![
+            subprocess_failure("codex", error::SubprocessFailureKind::NoOutput),
+            ok_response("fallback-1"),
+        ]);
+        let config = FallbackConfig {
+            fallback_models: vec!["fallback-1".to_owned()],
+            retries_before_fallback: 1,
+        };
+
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
+            .await
+            .unwrap();
+
+        assert_eq!(resp.model, "fallback-1");
+        assert_eq!(provider.call_count(), 2);
+        assert_eq!(
+            provider.called_models(),
+            vec!["primary-model", "fallback-1"]
+        );
     }
 
     #[tokio::test]
