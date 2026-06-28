@@ -266,7 +266,11 @@ async fn list_reuses_cache_after_source_file_removed() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = FactStore::new(dir.path());
     store
-        .put(minimal_fact("test.cache.one", FactScope::Concept, "Cached."))
+        .put(minimal_fact(
+            "test.cache.one",
+            FactScope::Concept,
+            "Cached.",
+        ))
         .await
         .expect("put");
     let first = store.list(None).await.expect("list");
@@ -338,7 +342,11 @@ async fn search_matches_id_scope_and_claim_case_insensitively() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = FactStore::new(dir.path());
     store
-        .put(minimal_fact("test.cache.id", FactScope::Crate, "Claim text."))
+        .put(minimal_fact(
+            "test.cache.id",
+            FactScope::Crate,
+            "Claim text.",
+        ))
         .await
         .expect("put");
 
