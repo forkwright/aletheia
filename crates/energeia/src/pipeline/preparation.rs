@@ -146,15 +146,12 @@ impl PipelineStage for PreparationStage {
 
         #[cfg(feature = "storage-fjall")]
         {
-            ctx.store_dispatch_id = ctx.store.as_ref().and_then(|store| {
-                match store.create_dispatch(&ctx.spec.project, &ctx.spec) {
-                    Ok(id) => Some(id),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed to create dispatch record");
-                        None
-                    }
-                }
-            });
+            if let Some(store) = ctx.store.as_ref() {
+                let id = store
+                    .create_dispatch(&ctx.spec.project, &ctx.spec)
+                    .context(StageSnafu { stage: self.name() })?;
+                ctx.store_dispatch_id = Some(id);
+            }
         }
         #[cfg(not(feature = "storage-fjall"))]
         let () = ();
