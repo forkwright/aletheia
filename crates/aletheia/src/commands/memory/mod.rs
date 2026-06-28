@@ -603,13 +603,7 @@ fn knowledge_config_from_loaded(
             allow_assumed_embedding_meta,
         };
     };
-    let embedding_config = mneme::embedding::EmbeddingConfig {
-        provider: config.embedding.provider.clone(),
-        model: config.embedding.model.clone(),
-        dimension: Some(config.embedding.dimension),
-        api_key: None,
-        base_url: None,
-    };
+    let embedding_config = config.embedding.to_embedding_config();
     RecoveryKnowledgeConfig {
         dim: config.embedding.dimension,
         embedding_model: embedding_config.effective_model_name(),
@@ -649,13 +643,8 @@ fn run_reembed(
             whatever!("failed to load instance config for memory reembed: {err}");
         }
     };
-    let embedding_config = mneme::embedding::EmbeddingConfig {
-        provider: config.embedding.provider.clone(),
-        model: config.embedding.model.clone(),
-        dimension: Some(config.embedding.dimension),
-        api_key: None,
-        base_url: None,
-    };
+    let embedding_config = crate::embedding_config::runtime_embedding_config(&config.embedding)
+        .with_whatever_context(|error| format!("invalid embedding config: {error}"))?;
     let provider = mneme::embedding::create_provider(&embedding_config)
         .whatever_context("failed to create configured embedding provider")?;
 

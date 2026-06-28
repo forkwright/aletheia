@@ -92,6 +92,27 @@ fn load_config_env_var_overrides_toml_value() {
 }
 
 #[test]
+fn load_config_env_var_overrides_embedding_cloud_fields() {
+    let mut jail = EnvJail::new();
+    let root = seed_instance(&jail).to_path_buf();
+    jail.set_env("ALETHEIA_EMBEDDING__PROVIDER", "openai-compat");
+    jail.set_env("ALETHEIA_EMBEDDING__BASEURL", "http://127.0.0.1:5005/v1");
+    jail.set_env("ALETHEIA_EMBEDDING__APIKEYENV", "ALETHEIA_EMBEDDING_KEY");
+
+    let oikos = Oikos::from_root(&root);
+    let config = load_config(&oikos).unwrap();
+    assert_eq!(config.embedding.provider, "openai-compat");
+    assert_eq!(
+        config.embedding.base_url,
+        Some("http://127.0.0.1:5005/v1".to_owned())
+    );
+    assert_eq!(
+        config.embedding.api_key_env,
+        Some("ALETHEIA_EMBEDDING_KEY".to_owned())
+    );
+}
+
+#[test]
 fn load_config_env_var_preserves_numeric_looking_string_leaf() {
     let mut jail = EnvJail::new();
     let root = seed_instance(&jail).to_path_buf();

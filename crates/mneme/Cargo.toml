@@ -34,6 +34,7 @@ nuextract = ["episteme/nuextract"]
 # Gates MockEmbeddingProvider and other test helpers. No test code in release binaries.
 test-support = ["episteme/test-support"]
 embed-candle = ["episteme/embed-candle"]
+openai-embed = ["episteme/openai-embed"]
 # Passthrough for the network-dependent candle tests (see episteme #3683).
 online-tests = ["episteme/online-tests"]
 mneme-engine = ["dep:krites", "graphe/mneme-engine", "episteme/mneme-engine"]

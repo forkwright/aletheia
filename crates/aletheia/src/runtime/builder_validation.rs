@@ -78,6 +78,14 @@ impl RuntimeBuilder {
             }
         }
 
+        match crate::embedding_config::validate_embedding_settings(&self.config.embedding) {
+            Ok(()) => print_line(format_args!("  [pass] embedding.provider runtime")),
+            Err(error) => {
+                print_line(format_args!("  [FAIL] embedding.provider runtime: {error}"));
+                all_ok = false;
+            }
+        }
+
         for agent in &self.config.agents.list {
             match self.oikos.validate_workspace_path(&agent.workspace) {
                 Ok(()) => print_line(format_args!("  [pass] agent '{}' workspace", agent.id)),

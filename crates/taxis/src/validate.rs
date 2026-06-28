@@ -468,10 +468,36 @@ fn validate_data(value: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_embedding(value: &Value, errors: &mut Vec<String>) {
-    if let Some(provider) = value.get("provider").and_then(Value::as_str)
-        && provider.is_empty()
+    if let Some(provider) = value.get("provider").and_then(Value::as_str) {
+        if provider.is_empty() {
+            errors.push("embedding.provider must not be empty".to_owned());
+        } else if !matches!(provider, "mock" | "candle" | "openai-compat" | "voyage") {
+            errors.push(format!(
+                "embedding.provider must be one of: candle, openai-compat, voyage (mock is test-only); got '{provider}'"
+            ));
+        } else if provider == "openai-compat"
+            && value
+                .get("baseUrl")
+                .and_then(Value::as_str)
+                .is_none_or(|base_url| base_url.trim().is_empty())
+        {
+            errors.push(
+                "embedding.baseUrl is required when embedding.provider = \"openai-compat\""
+                    .to_owned(),
+            );
+        }
+    }
+
+    if let Some(base_url) = value.get("baseUrl").and_then(Value::as_str)
+        && base_url.trim().is_empty()
     {
-        errors.push("embedding.provider must not be empty".to_owned());
+        errors.push("embedding.baseUrl must not be empty".to_owned());
+    }
+
+    if let Some(api_key_env) = value.get("apiKeyEnv").and_then(Value::as_str)
+        && api_key_env.trim().is_empty()
+    {
+        errors.push("embedding.apiKeyEnv must not be empty".to_owned());
     }
 
     check_positive_u64(value, "dimension", errors);

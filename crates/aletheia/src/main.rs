@@ -8,6 +8,7 @@ mod cli;
 mod commands;
 mod daemon_bridge;
 mod dispatch;
+mod embedding_config;
 mod error;
 mod external_tools;
 mod init;

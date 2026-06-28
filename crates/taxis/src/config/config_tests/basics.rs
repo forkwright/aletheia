@@ -722,7 +722,9 @@ fn embedding_override_from_json() {
         "embedding": {
             "provider": "candle",
             "model": "BAAI/bge-small-en-v1.5",
-            "dimension": 512
+            "dimension": 512,
+            "baseUrl": "http://127.0.0.1:5005/v1",
+            "apiKeyEnv": "ALETHEIA_EMBEDDING_KEY"
         }
     }"#;
     let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
@@ -738,6 +740,39 @@ fn embedding_override_from_json() {
     assert_eq!(
         config.embedding.dimension, 512,
         "embedding dimension override should be parsed from json"
+    );
+    assert_eq!(
+        config.embedding.base_url,
+        Some("http://127.0.0.1:5005/v1".to_owned()),
+        "embedding baseUrl should be parsed from json"
+    );
+    assert_eq!(
+        config.embedding.api_key_env,
+        Some("ALETHEIA_EMBEDDING_KEY".to_owned()),
+        "embedding apiKeyEnv should be parsed from json"
+    );
+}
+
+#[test]
+fn embedding_env_overlay_alias_keys_deserialize() {
+    let json = r#"{
+        "embedding": {
+            "provider": "openai-compat",
+            "dimension": 512,
+            "baseurl": "http://127.0.0.1:5005/v1",
+            "apikeyenv": "ALETHEIA_EMBEDDING_KEY"
+        }
+    }"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding aliases");
+    assert_eq!(
+        config.embedding.base_url,
+        Some("http://127.0.0.1:5005/v1".to_owned()),
+        "lowercase baseurl alias should parse for env overlay"
+    );
+    assert_eq!(
+        config.embedding.api_key_env,
+        Some("ALETHEIA_EMBEDDING_KEY".to_owned()),
+        "lowercase apikeyenv alias should parse for env overlay"
     );
 }
 

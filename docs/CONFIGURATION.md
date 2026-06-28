@@ -358,9 +358,11 @@ Embedding provider for the recall pipeline (vector search over knowledge).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | string | `"mock"` | Provider type: `"mock"`, `"candle"`, `"openai-compat"`, `"voyage"` |
+| `provider` | string | `"candle"` | Provider type: `"candle"`, `"openai-compat"`, `"voyage"` |
 | `model` | string | -- | Provider-specific model name |
 | `dimension` | usize | `384` | Output vector dimension (must match HNSW index) |
+| `baseUrl` | string | -- | Required for `"openai-compat"`; optional override for `"voyage"` |
+| `apiKeyEnv` | string | -- | Environment variable containing the provider API key |
 
 ```toml
 [embedding]
@@ -369,7 +371,13 @@ model = "BAAI/bge-small-en-v1.5"
 dimension = 384
 ```
 
-The `mock` provider returns zero vectors, useful for development without loading ML models.
+`openai-compat` and `voyage` require a binary built with the `openai-embed`
+feature. `openai-compat` also requires `baseUrl`, for example
+`"http://127.0.0.1:5005/v1"`. `voyage` requires a credential from `apiKeyEnv`
+or `VOYAGE_API_KEY`; its endpoint defaults to `https://api.voyageai.com/v1`.
+
+The internal `mock` provider is compiled only for test-support builds. Normal
+runtime binaries reject `provider = "mock"` with an actionable config error.
 
 ---
 
@@ -871,7 +879,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `SEMANTIC_SCHOLAR_API_KEY` | `shared/bin/scholar` | Optional Semantic Scholar API key for higher rate limits. |
 | `ANTHROPIC_API_KEY` | credential provider chain | Anthropic API key. May live in `config/env` or the process environment. |
 | `ANTHROPIC_AUTH_TOKEN` | credential provider chain | Anthropic OAuth token, usually maintained by credential tooling. |
-| `VOYAGE_API_KEY` | embedding provider | Optional remote embedding provider credential. Local candle embeddings do not need it. |
+| `VOYAGE_API_KEY` | embedding provider | Voyage embedding credential when `embedding.apiKeyEnv` is unset. Local candle embeddings do not need it. |
 | `BRAVE_SEARCH_API_KEY` | shared research tools | Optional Brave Search credential for `web_search` and operator-installed tools. |
 | `PERPLEXITY_API_KEY` | shared research tools | Optional Perplexity credential for `shared/bin/pplx`. |
 | `RESEARCH_EMAIL` | shared research tools | Contact email used in scholarly API user agents. |
@@ -889,6 +897,8 @@ prefix and double underscores for nesting:
 | `gateway.port` | `ALETHEIA_GATEWAY__PORT` |
 | `gateway.bind` | `ALETHEIA_GATEWAY__BIND` |
 | `embedding.provider` | `ALETHEIA_EMBEDDING__PROVIDER` |
+| `embedding.baseUrl` | `ALETHEIA_EMBEDDING__BASEURL` |
+| `embedding.apiKeyEnv` | `ALETHEIA_EMBEDDING__APIKEYENV` |
 | `channels.signal.enabled` | `ALETHEIA_CHANNELS__SIGNAL__ENABLED` |
 
 Provider credentials such as `ANTHROPIC_API_KEY` are read by the credential
