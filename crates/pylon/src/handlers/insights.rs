@@ -636,7 +636,13 @@ fn build_token_metrics_at(
             models.entry(model).or_default().add_session();
         }
 
-        let bucket = bucket_date(&session.created_at, query.granularity.as_deref());
+        let Some(bucket) = bucket_date(&session.created_at, query.granularity.as_deref()) else {
+            warn!(
+                created_at = %session.created_at,
+                "skipping session with unparseable timestamp from metrics series"
+            );
+            continue;
+        };
         series
             .entry(bucket)
             .or_default()
@@ -763,16 +769,22 @@ fn date_in_range(timestamp: &str, query: &MetricsQuery) -> bool {
     true
 }
 
-fn bucket_date(timestamp: &str, granularity: Option<&str>) -> String {
-    let date = timestamp.get(..10).unwrap_or("1970-01-01");
+/// Bucket a timestamp string into a series key.
+///
+/// Parses the leading `YYYY-MM-DD` prefix so weekly and monthly keys are
+/// computed from real calendar dates instead of string slicing. Returns `None`
+/// for malformed timestamps so callers can skip them with diagnostics rather
+/// than silently falling back to `1970-01-01`.
+fn bucket_date(timestamp: &str, granularity: Option<&str>) -> Option<String> {
+    let date_prefix = timestamp.get(..10)?;
+    let date = date_prefix.parse::<jiff::civil::Date>().ok()?;
     match granularity {
-        Some("monthly") => date.get(..7).unwrap_or(date).to_owned(),
+        Some("monthly") => Some(format!("{:04}-{:02}", date.year(), date.month())),
         Some("weekly") => {
-            let year = date.get(..4).unwrap_or("1970");
-            let month_day = date.get(5..10).unwrap_or("01-01");
-            format!("{year}-W{month_day}")
+            let iso = date.iso_week_date();
+            Some(format!("{:04}-W{:02}", iso.year(), iso.week()))
         }
-        _ => date.to_owned(),
+        _ => Some(format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day())),
     }
 }
 
@@ -1193,6 +1205,84 @@ mod tests {
                 .data_unavailable
                 .iter()
                 .any(|u| u.metric == "journal")
+        );
+    }
+
+    #[test]
+    fn bucket_date_daily_parses_calendar_date() {
+        assert_eq!(
+            bucket_date("2026-06-12T14:30:00Z", Some("daily")),
+            Some("2026-06-12".to_owned())
+        );
+    }
+
+    #[test]
+    fn bucket_date_weekly_groups_same_iso_week() {
+        // 2026-06-08 is Monday and 2026-06-14 is Sunday of ISO week 24.
+        let monday = bucket_date("2026-06-08T10:00:00Z", Some("weekly"));
+        let wednesday = bucket_date("2026-06-10T10:00:00Z", Some("weekly"));
+        let sunday = bucket_date("2026-06-14T10:00:00Z", Some("weekly"));
+        assert_eq!(monday, Some("2026-W24".to_owned()));
+        assert_eq!(wednesday, Some("2026-W24".to_owned()));
+        assert_eq!(sunday, Some("2026-W24".to_owned()));
+    }
+
+    #[test]
+    fn bucket_date_weekly_separates_adjacent_weeks() {
+        // 2026-06-14 is Sunday W24; 2026-06-15 is Monday W25.
+        assert_eq!(
+            bucket_date("2026-06-14T10:00:00Z", Some("weekly")),
+            Some("2026-W24".to_owned())
+        );
+        assert_eq!(
+            bucket_date("2026-06-15T10:00:00Z", Some("weekly")),
+            Some("2026-W25".to_owned())
+        );
+    }
+
+    #[test]
+    fn bucket_date_weekly_handles_year_boundary() {
+        // 2025-12-29 is Monday of ISO week 1 of 2026.
+        assert_eq!(
+            bucket_date("2025-12-29T10:00:00Z", Some("weekly")),
+            Some("2026-W01".to_owned())
+        );
+        // 2026-01-04 is Sunday of the same ISO week.
+        assert_eq!(
+            bucket_date("2026-01-04T10:00:00Z", Some("weekly")),
+            Some("2026-W01".to_owned())
+        );
+    }
+
+    #[test]
+    fn bucket_date_weekly_handles_leap_year() {
+        assert_eq!(
+            bucket_date("2024-02-29T10:00:00Z", Some("weekly")),
+            Some("2024-W09".to_owned())
+        );
+    }
+
+    #[test]
+    fn bucket_date_monthly_groups_by_year_month() {
+        assert_eq!(
+            bucket_date("2026-06-12T10:00:00Z", Some("monthly")),
+            Some("2026-06".to_owned())
+        );
+    }
+
+    #[test]
+    fn bucket_date_returns_none_for_malformed_timestamps() {
+        assert!(bucket_date("not-a-date", Some("daily")).is_none());
+        assert!(bucket_date("2026-13-45T10:00:00Z", Some("weekly")).is_none());
+        assert!(bucket_date("2026-02-30T10:00:00Z", Some("monthly")).is_none());
+        assert!(bucket_date("", Some("daily")).is_none());
+    }
+
+    #[test]
+    fn bucket_date_defaults_to_daily_for_missing_granularity() {
+        assert_eq!(
+            bucket_date("2026-06-12T10:00:00Z", None),
+            Some("2026-06-12".to_owned())
         );
     }
 

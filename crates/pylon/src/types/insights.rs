@@ -108,6 +108,11 @@ pub struct QualityMetricsResponse {
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct MetricsQuery {
     /// Series granularity: daily, weekly, or monthly.
+    ///
+    /// * `daily` buckets each session by its calendar date (`YYYY-MM-DD`).
+    /// * `weekly` buckets by ISO week (`YYYY-Www`), so every date in the same
+    ///   ISO week maps to the same key (including across year boundaries).
+    /// * `monthly` buckets by calendar month (`YYYY-MM`).
     #[serde(default)]
     pub granularity: Option<String>,
     /// Inclusive start date (`YYYY-MM-DD`).
