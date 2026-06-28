@@ -19,21 +19,28 @@
 #[cfg(feature = "pptx")]
 pub mod pptx;
 
+#[cfg(feature = "pptx")]
 mod error;
 
 #[cfg(feature = "pptx")]
 pub use pptx::PptxRenderer;
 
+#[cfg(feature = "pptx")]
 pub use error::Error;
 
+#[cfg(feature = "pptx")]
 use poiesis_core::{Block, Document, ListItem, Metadata, Renderer, RichText, Span};
+#[cfg(feature = "pptx")]
 use serde_json::Value;
+#[cfg(feature = "pptx")]
 use tracing::instrument;
 
 /// Result alias for poiesis-slides operations.
+#[cfg(feature = "pptx")]
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Summary of a single slide extracted from an existing PPTX file.
+#[cfg(feature = "pptx")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct SlideSummary {
@@ -44,6 +51,7 @@ pub struct SlideSummary {
 }
 
 /// Summary of a complete presentation extracted from PPTX bytes.
+#[cfg(feature = "pptx")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct PresentationSummary {
@@ -80,6 +88,7 @@ pub struct PresentationSummary {
 ///
 /// Returns [`Error::InvalidJson`] if the JSON does not conform to the
 /// expected schema, or [`Error::Render`] if the hand-rolled emitter fails.
+#[cfg(feature = "pptx")]
 #[instrument(skip_all)]
 pub fn render_pptx(data: &Value) -> Result<Vec<u8>> {
     let slides = data
@@ -155,6 +164,7 @@ pub fn render_pptx(data: &Value) -> Result<Vec<u8>> {
 ///
 /// Returns [`Error::ZipRead`] if the bytes are not a valid ZIP archive, or
 /// [`Error::XmlParse`] if a slide XML part cannot be parsed.
+#[cfg(feature = "pptx")]
 #[instrument(skip_all, fields(bytes_len = bytes.len()))]
 pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
     let cursor = std::io::Cursor::new(bytes);
@@ -217,18 +227,21 @@ pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
 
 // ── Helpers ──
 
+#[cfg(feature = "pptx")]
 fn plain(s: &str) -> RichText {
     RichText {
         spans: vec![Span::Plain(s.to_owned())],
     }
 }
 
+#[cfg(feature = "pptx")]
 fn extract_slide_number(name: &str) -> Option<usize> {
     let stem = name.strip_prefix("ppt/slides/slide")?;
     let num_str = stem.strip_suffix(".xml")?;
     num_str.parse().ok()
 }
 
+#[cfg(feature = "pptx")]
 fn extract_text_runs(xml: &str) -> Result<Vec<String>> {
     use quick_xml::escape::unescape;
     use quick_xml::events::Event;
@@ -274,7 +287,7 @@ fn extract_text_runs(xml: &str) -> Result<Vec<String>> {
     Ok(texts)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "pptx"))]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;

@@ -33,4 +33,4 @@ poiesis-theme = { path = "../theme", optional = true }
 default = ["xlsx", "ods", "workbook"]
 xlsx = ["dep:rust_xlsxwriter", "dep:calamine"]
 ods = ["dep:spreadsheet-ods"]
-workbook = ["dep:poiesis-theme", "dep:rust_xlsxwriter", "dep:calamine"]
+workbook = ["xlsx", "dep:poiesis-theme"]

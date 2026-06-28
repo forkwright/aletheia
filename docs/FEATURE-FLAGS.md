@@ -153,7 +153,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **poiesis-sheet** | `default` | **yes** | `xlsx`, `ods`, `workbook` | - |
 | **poiesis-sheet** | `xlsx` | no | XLSX backend | `dep:rust_xlsxwriter`, `dep:calamine` |
 | **poiesis-sheet** | `ods` | no | ODS backend | `dep:spreadsheet-ods` |
-| **poiesis-sheet** | `workbook` | no | Themed workbook assembly | `dep:poiesis-theme`, `dep:rust_xlsxwriter`, `dep:calamine` |
+| **poiesis-sheet** | `workbook` | no | Themed workbook assembly | `xlsx`, `dep:poiesis-theme` |
 | **poiesis-slides** | `default` | **yes** | `pptx` | - |
 | **poiesis-slides** | `pptx` | no | PPTX backend (hand-rolled OOXML; `quick-xml` and `zip` are unconditional deps) | - |
 | **poiesis-text** | `default` | **yes** | `pdf`, `odt` | - |
