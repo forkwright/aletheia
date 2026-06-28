@@ -1,103 +1,9 @@
-//! Platform integration state: tray, hotkeys, window persistence, quick input.
+//! Platform integration state: window persistence and quick input.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use skene::id::NousId;
-
-use super::agents::AgentStatus;
-use super::connection::ConnectionState;
-
-/// Aggregate agent status for the system tray icon.
-///
-/// Priority ordering: Disconnected > Error > Active > Degraded > Normal. The
-/// tray icon reflects the most urgent status across all agents and the
-/// underlying server connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[non_exhaustive]
-pub enum TrayIconStatus {
-    /// All agents healthy, none processing.
-    #[default]
-    Normal,
-    /// At least one agent is actively processing a turn.
-    Active,
-    /// At least one agent is in an error state.
-    Error,
-    /// Connected, but server reports degraded/unhealthy readiness.
-    Degraded,
-    /// Disconnected from the pylon server.
-    Disconnected,
-}
-
-impl TrayIconStatus {
-    /// Derive aggregate status from individual agent statuses and connection state.
-    #[must_use]
-    pub(crate) fn from_agents(
-        statuses: &[AgentStatus],
-        connection_state: &ConnectionState,
-    ) -> Self {
-        if connection_state.needs_connect_view() {
-            return Self::Disconnected;
-        }
-        if statuses.iter().any(|s| matches!(s, AgentStatus::Error)) {
-            return Self::Error;
-        }
-        if statuses.iter().any(|s| matches!(s, AgentStatus::Active)) {
-            return Self::Active;
-        }
-        if matches!(connection_state, ConnectionState::ConnectedDegraded { .. }) {
-            return Self::Degraded;
-        }
-        Self::Normal
-    }
-}
-
-/// Reactive state for the system tray.
-#[derive(Debug, Clone, Default)]
-pub struct TrayState {
-    /// Aggregate icon status derived from all agent states.
-    pub icon_status: TrayIconStatus,
-    /// Total agent count for tooltip.
-    pub agent_count: usize,
-    /// Number of agents currently processing a turn.
-    pub processing_count: usize,
-    /// Whether the main window is currently visible.
-    pub window_visible: bool,
-}
-
-/// Registration status for a global hotkey.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum HotkeyRegistration {
-    /// Hotkey registered and active.
-    Registered,
-    /// Registration failed (key combination taken by another app, or platform limitation).
-    Failed {
-        /// Human-readable failure reason.
-        reason: String,
-    },
-    /// Platform does not support global hotkeys (e.g. Wayland without portal).
-    Unavailable,
-}
-
-/// Identifiers for the registered global hotkeys.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum HotkeyAction {
-    /// Toggle window visibility (summon/dismiss).
-    SummonWindow,
-    /// Open the quick input overlay.
-    QuickInput,
-    /// Abort all active streaming responses.
-    AbortStreaming,
-}
-
-/// Reactive state for global hotkey registration.
-#[derive(Debug, Clone, Default)]
-pub struct HotkeyState {
-    /// Registration status for each hotkey action.
-    pub registrations: Vec<(HotkeyAction, HotkeyRegistration)>,
-}
 
 /// Persisted window geometry and UI state.
 ///
@@ -172,6 +78,9 @@ impl Default for WindowState {
 }
 
 /// Reactive state for the quick input overlay.
+///
+/// The current desktop build does not register native global hotkeys or a tray
+/// menu launcher. Components may show this overlay only through in-window state.
 #[derive(Debug, Clone, Default)]
 pub struct QuickInputState {
     /// Whether the overlay is currently visible.
@@ -208,117 +117,10 @@ impl QuickInputState {
     }
 }
 
-/// Close behavior when the user clicks the window close button.
-///
-/// The Dioxus-level `WindowCloseBehaviour::WindowCloses` config enforces clean
-/// exit at the framework layer. `CloseBehavior` is the application-level
-/// mirror used by state/signal code. Both are set to `Quit`/`WindowCloses` so
-/// they stay in sync and the app never lingers as an invisible background process.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum CloseBehavior {
-    /// Minimize to system tray instead of quitting.
-    MinimizeToTray,
-    /// Quit the application cleanly (disconnect SSE, persist state, exit).
-    #[default]
-    Quit,
-}
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
-
-    // ── TrayIconStatus ──
-
-    #[test]
-    fn tray_icon_all_idle_connected() {
-        let statuses = vec![AgentStatus::Idle, AgentStatus::Idle];
-        assert_eq!(
-            TrayIconStatus::from_agents(&statuses, &ConnectionState::Connected),
-            TrayIconStatus::Normal
-        );
-    }
-
-    #[test]
-    fn tray_icon_any_active() {
-        let statuses = vec![AgentStatus::Idle, AgentStatus::Active];
-        assert_eq!(
-            TrayIconStatus::from_agents(&statuses, &ConnectionState::Connected),
-            TrayIconStatus::Active
-        );
-    }
-
-    #[test]
-    fn tray_icon_error_takes_priority_over_active() {
-        let statuses = vec![AgentStatus::Active, AgentStatus::Error];
-        assert_eq!(
-            TrayIconStatus::from_agents(&statuses, &ConnectionState::Connected),
-            TrayIconStatus::Error
-        );
-    }
-
-    #[test]
-    fn tray_icon_disconnected_takes_highest_priority() {
-        let statuses = vec![AgentStatus::Error, AgentStatus::Active];
-        assert_eq!(
-            TrayIconStatus::from_agents(&statuses, &ConnectionState::Disconnected),
-            TrayIconStatus::Disconnected
-        );
-    }
-
-    #[test]
-    fn tray_icon_empty_agents_connected() {
-        assert_eq!(
-            TrayIconStatus::from_agents(&[], &ConnectionState::Connected),
-            TrayIconStatus::Normal
-        );
-    }
-
-    #[test]
-    fn tray_icon_degraded_when_connection_degraded() {
-        let statuses = vec![AgentStatus::Idle];
-        assert_eq!(
-            TrayIconStatus::from_agents(
-                &statuses,
-                &ConnectionState::ConnectedDegraded {
-                    status: "unhealthy".to_string()
-                }
-            ),
-            TrayIconStatus::Degraded
-        );
-    }
-
-    #[test]
-    fn tray_icon_active_takes_priority_over_degraded() {
-        let statuses = vec![AgentStatus::Active];
-        assert_eq!(
-            TrayIconStatus::from_agents(
-                &statuses,
-                &ConnectionState::ConnectedDegraded {
-                    status: "unhealthy".to_string()
-                }
-            ),
-            TrayIconStatus::Active
-        );
-    }
-
-    #[test]
-    fn tray_icon_error_takes_priority_over_degraded() {
-        let statuses = vec![AgentStatus::Error];
-        assert_eq!(
-            TrayIconStatus::from_agents(
-                &statuses,
-                &ConnectionState::ConnectedDegraded {
-                    status: "unhealthy".to_string()
-                }
-            ),
-            TrayIconStatus::Error
-        );
-    }
-
-    // ── WindowState ──
 
     #[test]
     fn window_state_default() {
@@ -363,33 +165,19 @@ mod tests {
         assert_eq!(state.height, 800);
     }
 
-    // ── CloseBehavior ──
-
     #[test]
-    fn close_behavior_default_is_quit() {
-        assert_eq!(CloseBehavior::default(), CloseBehavior::Quit);
-    }
+    fn platform_state_excludes_unsupported_native_shell_surfaces() {
+        let source = include_str!("platform.rs");
 
-    #[test]
-    fn close_behavior_round_trip_toml() {
-        // WHY: TOML requires table structure -- bare enums can't be top-level.
-        #[derive(Serialize, Deserialize)]
-        struct Wrapper {
-            close: CloseBehavior,
+        for unsupported in [
+            concat!("Tray", "State"),
+            concat!("Hotkey", "State"),
+            concat!("Minimize", "To", "Tray"),
+        ] {
+            assert!(
+                !source.contains(unsupported),
+                "{unsupported} must stay out of persisted/reactive state until the runtime implements it"
+            );
         }
-
-        let wrapper = Wrapper {
-            close: CloseBehavior::Quit,
-        };
-        let serialized = toml::to_string(&wrapper).unwrap();
-        assert!(serialized.contains("quit"));
-        let deserialized: Wrapper = toml::from_str(&serialized).unwrap();
-        assert_eq!(deserialized.close, CloseBehavior::Quit);
-
-        let wrapper_minimize = Wrapper {
-            close: CloseBehavior::MinimizeToTray,
-        };
-        let serialized = toml::to_string(&wrapper_minimize).unwrap();
-        assert!(serialized.contains("minimize_to_tray"));
     }
 }

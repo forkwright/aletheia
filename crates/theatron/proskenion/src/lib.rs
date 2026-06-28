@@ -11,7 +11,7 @@
 pub mod api;
 /// Dioxus UI components for the desktop app.
 pub mod components;
-/// Platform integration: system tray, global hotkeys, native menus, window state, notifications.
+/// Platform integration: window state and notifications.
 pub(crate) mod platform;
 /// Background services: SSE connection, stream management, and state sync.
 pub mod services;
@@ -98,8 +98,8 @@ pub fn run(verbose: bool) {
         .with_maximized(window_state.maximized);
 
     // WHY: Passing `None` removes the default OS menu bar (Window/Edit/Help)
-    // that Dioxus injects via `MenuBuilderState::Unset`. The app's intentional
-    // menu structure lives in `platform::menus` and will be wired in separately.
+    // that Dioxus injects via `MenuBuilderState::Unset`. Proskenion currently
+    // uses in-window navigation and does not expose a native application menu.
     //
     // WHY: `WindowCloseBehaviour::WindowCloses` ensures that clicking the close
     // button exits the process cleanly. The app must not linger as a background
