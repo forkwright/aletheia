@@ -65,9 +65,12 @@ impl CredentialApiEntry {
             CredentialRole::Backup
         };
         let status = match self.status.as_str() {
-            "valid" => ValidationStatus::Valid,
+            "provider_accepted" => ValidationStatus::ProviderAccepted,
+            "provider_rejected" => ValidationStatus::ProviderRejected,
             "expired" => ValidationStatus::Expired,
-            _ => ValidationStatus::Untested,
+            "malformed" => ValidationStatus::Malformed,
+            "provider_unreachable" => ValidationStatus::ProviderUnreachable,
+            _ => ValidationStatus::Unknown,
         };
         // SAFETY: mask any full key value before it enters reactive state.
         let masked = if self.masked_key.starts_with("...") {
@@ -561,8 +564,16 @@ fn CredentialCard(
                 let url = credential_validate_url(&cfg.server_url, &id_v);
                 match client.post(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
-                        is_validating.set(false);
-                        on_change.call(());
+                        match resp.json::<CredentialApiEntry>().await {
+                            Ok(_updated) => {
+                                is_validating.set(false);
+                                on_change.call(());
+                            }
+                            Err(e) => {
+                                is_validating.set(false);
+                                card_error.set(Some(format!("Parse error: {e}")));
+                            }
+                        }
                     }
                     Ok(resp) => {
                         let status = resp.status();

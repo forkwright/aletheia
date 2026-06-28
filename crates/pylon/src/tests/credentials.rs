@@ -1,5 +1,6 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use hermeneus::provider::ProviderCredentialValidation;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use symbolon::types::Role;
 use tower::ServiceExt;
@@ -59,7 +60,7 @@ async fn credentials_list_redacts_secret_material() {
 
 #[tokio::test]
 async fn credentials_validate_redacts_secret_material() {
-    let (app, _dir) = app().await;
+    let (app, _dir) = app_with_credential_validation(ProviderCredentialValidation::Accepted).await;
 
     let resp = app
         .oneshot(authed_request(
@@ -72,10 +73,224 @@ async fn credentials_validate_redacts_secret_material() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains(r#""status":"valid""#));
+    assert!(body.contains(r#""status":"provider_accepted""#));
     assert!(body.contains("last_validated"));
     assert!(!body.contains("sk-ant-test-key-for-health-checks"));
     assert!(!body.contains("health-checks"));
+}
+
+#[tokio::test]
+async fn credentials_validate_persists_provider_accepted_status_for_list_refresh() {
+    let (app, _dir) = app_with_credential_validation(ProviderCredentialValidation::Accepted).await;
+
+    let validate = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(validate.status(), StatusCode::OK);
+    let validated = body_json(validate).await;
+    assert_eq!(
+        validated.get("status").and_then(|v| v.as_str()),
+        Some("provider_accepted")
+    );
+    let validated_at = validated
+        .get("last_validated")
+        .and_then(|v| v.as_str())
+        .expect("validation timestamp")
+        .to_owned();
+
+    let list = app
+        .oneshot(authed_get("/api/v1/system/credentials"))
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let listed = body_json(list).await;
+    let credential = listed
+        .get("credentials")
+        .and_then(|v| v.as_array())
+        .and_then(|credentials| {
+            credentials
+                .iter()
+                .find(|entry| entry.get("id").and_then(|v| v.as_str()) == Some("anthropic:primary"))
+        })
+        .expect("listed credential");
+    assert_eq!(
+        credential.get("status").and_then(|v| v.as_str()),
+        Some("provider_accepted")
+    );
+    assert_eq!(
+        credential.get("last_validated").and_then(|v| v.as_str()),
+        Some(validated_at.as_str())
+    );
+}
+
+#[tokio::test]
+async fn credentials_validate_rejected_key_is_not_reported_valid() {
+    let (app, _dir) = app_with_credential_validation(ProviderCredentialValidation::Rejected).await;
+
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body.get("status").and_then(|v| v.as_str()),
+        Some("provider_rejected")
+    );
+    assert_ne!(body.get("status").and_then(|v| v.as_str()), Some("valid"));
+    assert!(
+        body.get("last_validated")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn credentials_validate_expired_key_reports_expired() {
+    let (app, _dir) = app_with_credential_validation(ProviderCredentialValidation::Expired).await;
+
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("expired"));
+    assert!(
+        body.get("last_validated")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn credentials_validate_local_expired_key_reports_expired() {
+    let (app, dir) = app_with_credential_validation(ProviderCredentialValidation::Accepted).await;
+    tokio::fs::write(
+        dir.path().join("config/credentials/anthropic.json"),
+        r#"{"token":"sk-ant-expired","expiresAt":1}"#,
+    )
+    .await
+    .unwrap();
+
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body.get("status").and_then(|v| v.as_str()), Some("expired"));
+    assert!(
+        body.get("last_validated")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn credentials_validate_malformed_key_reports_malformed() {
+    let (app, _dir) = app_with_credential_validation(ProviderCredentialValidation::Malformed).await;
+
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body.get("status").and_then(|v| v.as_str()),
+        Some("malformed")
+    );
+    assert!(
+        body.get("last_validated")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn credentials_validate_local_malformed_key_reports_malformed() {
+    let (app, dir) = app_with_credential_validation(ProviderCredentialValidation::Accepted).await;
+    tokio::fs::write(
+        dir.path().join("config/credentials/anthropic.json"),
+        r#"{"token":""}"#,
+    )
+    .await
+    .unwrap();
+
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body.get("status").and_then(|v| v.as_str()),
+        Some("malformed")
+    );
+    assert!(
+        body.get("last_validated")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn credentials_validate_unreachable_provider_reports_unreachable() {
+    let (app, _dir) =
+        app_with_credential_validation(ProviderCredentialValidation::Unreachable).await;
+
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body.get("status").and_then(|v| v.as_str()),
+        Some("provider_unreachable")
+    );
+    assert!(
+        body.get("last_validated")
+            .and_then(|v| v.as_str())
+            .is_some()
+    );
 }
 
 #[tokio::test]

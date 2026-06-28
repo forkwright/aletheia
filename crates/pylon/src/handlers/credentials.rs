@@ -46,8 +46,8 @@ pub struct CredentialResponse {
     /// Redacted preview of the credential, never raw secret material.
     #[serde(rename = "masked_key")]
     pub redacted_preview: String,
-    /// Local validation status.
-    pub status: String,
+    /// Credential validation state.
+    pub status: CredentialValidationState,
     /// Last validation timestamp when produced by a validation call.
     pub last_validated: Option<String>,
     /// Whether per-credential usage counters are backed by authoritative
@@ -66,6 +66,25 @@ pub struct CredentialResponse {
     /// provider chain will use the new state without restart (#4872).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_effect: Option<CredentialMutationEffect>,
+}
+
+/// Credential validation states returned by the credentials API.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialValidationState {
+    /// Provider accepted the credential during the last validation attempt.
+    ProviderAccepted,
+    /// Provider rejected the credential during the last validation attempt.
+    ProviderRejected,
+    /// Credential is expired locally and was not sent to the provider.
+    Expired,
+    /// Credential is malformed locally and was not sent to the provider.
+    Malformed,
+    /// Provider could not be reached during the last validation attempt.
+    ProviderUnreachable,
+    /// Acceptance is unknown because no provider validation has run or the
+    /// provider cannot validate arbitrary secrets.
+    Unknown,
 }
 
 /// Response body for a credential removal.
@@ -198,10 +217,10 @@ pub async fn add_credential(
     params(("id" = String, Path, description = "Credential id in provider:role form")),
     responses(
         (status = 200, description = "Credential validation result", body = CredentialResponse),
-        (status = 400, description = "Invalid credential id"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "Credential not found"),
+        (status = 400, description = "Invalid credential id or unsupported provider", body = crate::error::ErrorResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 404, description = "Credential not found", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -219,9 +238,24 @@ pub async fn validate_credential(
             .map_err(map_runtime_error)?;
     }
     let root = state.oikos.credentials();
+    let candidate = state
+        .auth_facade
+        .credential_validation_candidate(&root, &id)
+        .map_err(map_symbolon_error)?;
+    let status = match candidate.local_status {
+        ManagedCredentialStatus::Expired | ManagedCredentialStatus::Malformed => {
+            candidate.local_status
+        }
+        _ => {
+            state
+                .credential_runtime
+                .validate_credential(&candidate.credential.provider, &candidate.token)
+                .await
+        }
+    };
     let credential = state
         .auth_facade
-        .validate_credential(&root, &id)
+        .record_credential_validation(&root, &id, status)
         .map_err(map_symbolon_error)?;
     Ok(Json(CredentialResponse::from_managed(credential, None)))
 }
@@ -393,7 +427,7 @@ impl CredentialResponse {
             provider: credential.provider,
             role: credential.role.as_str().to_owned(),
             redacted_preview: credential.redacted_preview,
-            status: status_str(credential.status).to_owned(),
+            status: CredentialValidationState::from_status(credential.status),
             last_validated: credential.last_validated,
             // WHY: no authoritative provider/session telemetry exists yet, so
             // omit the counters entirely rather than return hardcoded zeros.
@@ -404,11 +438,16 @@ impl CredentialResponse {
     }
 }
 
-fn status_str(status: ManagedCredentialStatus) -> &'static str {
-    match status {
-        ManagedCredentialStatus::Valid => "valid",
-        ManagedCredentialStatus::Expired => "expired",
-        _ => "untested",
+impl CredentialValidationState {
+    fn from_status(status: ManagedCredentialStatus) -> Self {
+        match status {
+            ManagedCredentialStatus::ProviderAccepted => Self::ProviderAccepted,
+            ManagedCredentialStatus::ProviderRejected => Self::ProviderRejected,
+            ManagedCredentialStatus::Expired => Self::Expired,
+            ManagedCredentialStatus::Malformed => Self::Malformed,
+            ManagedCredentialStatus::ProviderUnreachable => Self::ProviderUnreachable,
+            _ => Self::Unknown,
+        }
     }
 }
 

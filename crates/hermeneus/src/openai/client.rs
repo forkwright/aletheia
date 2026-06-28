@@ -22,7 +22,9 @@ use crate::anthropic::StreamEvent;
 use crate::anthropic::pricing::estimate_cost;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
-use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ModelPricing};
+use crate::provider::{
+    DeploymentTarget, LlmProvider, MatchKind, ModelPricing, ProviderCredentialValidation,
+};
 use crate::retry::backoff_delay;
 use crate::types::{CompletionRequest, CompletionResponse};
 
@@ -761,6 +763,52 @@ impl LlmProvider for OpenAiProvider {
         on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.execute_streaming(request, on_event))
+    }
+
+    fn validate_credential<'a>(
+        &'a self,
+        credential: &'a SecretString,
+    ) -> Pin<Box<dyn Future<Output = ProviderCredentialValidation> + Send + 'a>> {
+        Box::pin(async move {
+            let secret = credential.expose_secret();
+            if secret.is_empty() {
+                return ProviderCredentialValidation::Malformed;
+            }
+
+            let authorization = match HeaderValue::from_str(&format!("Bearer {secret}")) {
+                Ok(value) => value,
+                Err(_err) => return ProviderCredentialValidation::Malformed,
+            };
+
+            let mut headers = HeaderMap::new();
+            headers.insert(reqwest::header::AUTHORIZATION, authorization);
+            headers.insert(
+                reqwest::header::ACCEPT,
+                HeaderValue::from_static("application/json"),
+            );
+
+            let response = self
+                .client
+                .get(format!(
+                    "{}/models",
+                    self.config.base_url.trim_end_matches('/')
+                ))
+                .headers(headers)
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await;
+
+            let Ok(response) = response else {
+                return ProviderCredentialValidation::Unreachable;
+            };
+
+            match response.status().as_u16() {
+                200..=299 => ProviderCredentialValidation::Accepted,
+                401 | 403 => ProviderCredentialValidation::Rejected,
+                429 | 500..=599 => ProviderCredentialValidation::Unreachable,
+                _ => ProviderCredentialValidation::Unknown,
+            }
+        })
     }
 }
 

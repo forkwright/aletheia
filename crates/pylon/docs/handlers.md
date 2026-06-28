@@ -889,9 +889,16 @@ Remove a credential by ID.
 
 ### `POST /api/v1/system/credentials/{id}/validate`
 
-Validate a stored credential by making a lightweight probe to the target service.
+Validate a stored credential by making a lightweight provider probe when the
+runtime provider supports one. Local expiry or malformed secrets are reported
+without contacting the provider.
 
-**Response `200 OK`** - `{ "valid": true }` or `{ "valid": false, "error": "..." }`
+**Response `200 OK`** - Secret-safe `CredentialResponse` with `status` set to
+one of `provider_accepted`, `provider_rejected`, `expired`, `malformed`,
+`provider_unreachable`, or `unknown`.
+
+**Error responses** use the standard API error envelope for invalid ids,
+unsupported providers, authorization failures, and missing credentials.
 
 ---
 

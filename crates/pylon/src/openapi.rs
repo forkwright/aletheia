@@ -132,6 +132,7 @@ use crate::state::AppState;
         crate::handlers::ops::LiveInvocationEntry,
         crate::handlers::credentials::CredentialsListResponse,
         crate::handlers::credentials::CredentialResponse,
+        crate::handlers::credentials::CredentialValidationState,
         crate::handlers::credentials::CredentialRemoveResponse,
         crate::handlers::credentials::AddCredentialRequest,
         crate::handlers::credentials::RotateCredentialQuery,

@@ -10,9 +10,11 @@ use std::time::Instant;
 
 use tokio::sync::Mutex;
 
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{ProviderCredentialValidation, ProviderRegistry};
+use koina::secret::SecretString;
 use serde::Serialize;
 use snafu::Snafu;
+use symbolon::types::ManagedCredentialStatus;
 use utoipa::ToSchema;
 
 /// Effect of a credential-management mutation on the running harness.
@@ -129,6 +131,49 @@ impl CredentialRuntimeManager {
                 supported: self.supported_providers(),
             }
             .fail()
+        }
+    }
+
+    /// Validate a supplied credential secret against the matching runtime
+    /// provider, when the provider can test arbitrary secrets.
+    ///
+    /// Canonical managed providers remain supported even when no matching
+    /// provider is registered, but their validation status is `Unknown` because
+    /// pylon cannot prove provider acceptance without a provider hook.
+    pub async fn validate_credential(
+        &self,
+        provider: &str,
+        credential: &SecretString,
+    ) -> ManagedCredentialStatus {
+        let normalized = provider.trim().to_ascii_lowercase();
+        let providers = self.provider_registry.providers();
+        let selected = providers
+            .iter()
+            .copied()
+            .find(|candidate| candidate.name().to_ascii_lowercase() == normalized)
+            .or_else(|| {
+                if Self::is_managed_provider_name(&normalized) {
+                    providers.iter().copied().find(|candidate| {
+                        Self::is_managed_provider_name(&candidate.name().to_ascii_lowercase())
+                    })
+                } else {
+                    None
+                }
+            });
+
+        let Some(provider) = selected else {
+            return ManagedCredentialStatus::Unknown;
+        };
+
+        match provider.validate_credential(credential).await {
+            ProviderCredentialValidation::Accepted => ManagedCredentialStatus::ProviderAccepted,
+            ProviderCredentialValidation::Rejected => ManagedCredentialStatus::ProviderRejected,
+            ProviderCredentialValidation::Expired => ManagedCredentialStatus::Expired,
+            ProviderCredentialValidation::Malformed => ManagedCredentialStatus::Malformed,
+            ProviderCredentialValidation::Unreachable => {
+                ManagedCredentialStatus::ProviderUnreachable
+            }
+            _ => ManagedCredentialStatus::Unknown,
         }
     }
 

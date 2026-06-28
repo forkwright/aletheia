@@ -23,28 +23,38 @@ impl CredentialRole {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) enum ValidationStatus {
-    /// Credential tested and accepted by provider.
-    Valid,
-    /// Credential tested and rejected by provider.
+    /// Provider accepted the credential during the last validation attempt.
+    ProviderAccepted,
+    /// Provider rejected the credential during the last validation attempt.
+    ProviderRejected,
+    /// Credential is expired locally.
     Expired,
-    /// Credential has not been tested.
-    Untested,
+    /// Credential is malformed locally.
+    Malformed,
+    /// Provider could not be reached during the last validation attempt.
+    ProviderUnreachable,
+    /// Provider acceptance has not been established.
+    Unknown,
 }
 
 impl ValidationStatus {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::Valid => "Valid",
+            Self::ProviderAccepted => "Provider accepted",
+            Self::ProviderRejected => "Provider rejected",
             Self::Expired => "Expired",
-            Self::Untested => "Untested",
+            Self::Malformed => "Malformed",
+            Self::ProviderUnreachable => "Provider unreachable",
+            Self::Unknown => "Unknown",
         }
     }
 
     pub(crate) fn color(self) -> &'static str {
         match self {
-            Self::Valid => "var(--status-success)",
-            Self::Expired => "var(--status-error)",
-            Self::Untested => "var(--text-secondary)",
+            Self::ProviderAccepted => "var(--status-success)",
+            Self::ProviderRejected | Self::Expired | Self::Malformed => "var(--status-error)",
+            Self::ProviderUnreachable => "var(--status-warning)",
+            Self::Unknown => "var(--text-secondary)",
         }
     }
 }
@@ -144,7 +154,7 @@ mod tests {
             provider: provider.to_string(),
             role,
             masked_key: "...ab12".to_string(),
-            status: ValidationStatus::Untested,
+            status: ValidationStatus::Unknown,
             last_validated: None,
             requests_today: 0,
             tokens_today: 0,

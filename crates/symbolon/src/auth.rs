@@ -14,8 +14,8 @@ use crate::jwt::{JwtConfig, JwtManager};
 use crate::password;
 use crate::store::AuthStore;
 use crate::types::{
-    Action, ApiKeyRecord, Claims, ManagedCredential, ManagedCredentialRole, Role, TokenKind,
-    TokenPair,
+    Action, ApiKeyRecord, Claims, ManagedCredential, ManagedCredentialRole,
+    ManagedCredentialStatus, ManagedCredentialValidationCandidate, Role, TokenKind, TokenPair,
 };
 use crate::util::days_to_date;
 
@@ -279,6 +279,31 @@ impl AuthService {
     /// The response never contains raw secret material.
     pub fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
         crate::credential::admin::validate(root, id)
+    }
+
+    /// Load a managed credential for provider-aware validation.
+    ///
+    /// The returned candidate contains the raw secret and must never be
+    /// serialized or logged. Use [`Self::record_credential_validation`] to
+    /// persist the validation outcome.
+    pub fn credential_validation_candidate(
+        &self,
+        root: &Path,
+        id: &str,
+    ) -> Result<ManagedCredentialValidationCandidate> {
+        crate::credential::admin::validation_candidate(root, id)
+    }
+
+    /// Persist a validation outcome for a managed provider credential.
+    ///
+    /// The response never contains raw secret material.
+    pub fn record_credential_validation(
+        &self,
+        root: &Path,
+        id: &str,
+        status: ManagedCredentialStatus,
+    ) -> Result<ManagedCredential> {
+        crate::credential::admin::record_validation(root, id, status)
     }
 
     /// Swap a provider's primary and backup credentials.

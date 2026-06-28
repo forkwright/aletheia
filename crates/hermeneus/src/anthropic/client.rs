@@ -18,6 +18,7 @@ use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{
     DeploymentTarget, LlmProvider, MatchKind, ModelPricing, PromptCacheMode, ProviderConfig,
+    ProviderCredentialValidation,
 };
 use crate::types::{CompletionRequest, CompletionResponse};
 
@@ -1071,6 +1072,57 @@ impl LlmProvider for AnthropicProvider {
         request: &'a CompletionRequest,
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.execute_with_retry(request))
+    }
+
+    fn validate_credential<'a>(
+        &'a self,
+        credential: &'a SecretString,
+    ) -> Pin<Box<dyn Future<Output = ProviderCredentialValidation> + Send + 'a>> {
+        Box::pin(async move {
+            let secret = credential.expose_secret();
+            if secret.is_empty() {
+                return ProviderCredentialValidation::Malformed;
+            }
+
+            let api_key = match HeaderValue::from_str(secret) {
+                Ok(value) => value,
+                Err(_err) => return ProviderCredentialValidation::Malformed,
+            };
+            let api_version = match HeaderValue::from_str(&self.endpoint.api_version) {
+                Ok(value) => value,
+                Err(_err) => return ProviderCredentialValidation::Unknown,
+            };
+
+            let mut headers = HeaderMap::new();
+            headers.insert("x-api-key", api_key);
+            headers.insert("anthropic-version", api_version);
+            headers.insert(
+                reqwest::header::ACCEPT,
+                HeaderValue::from_static("application/json"),
+            );
+            for name in ANTHROPIC_TRAINING_OPTOUT_HEADERS {
+                headers.insert(*name, HeaderValue::from_static("true"));
+            }
+
+            let response = self
+                .client
+                .get(format!("{}/v1/models", self.endpoint.base_url))
+                .headers(headers)
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await;
+
+            let Ok(response) = response else {
+                return ProviderCredentialValidation::Unreachable;
+            };
+
+            match response.status().as_u16() {
+                200..=299 => ProviderCredentialValidation::Accepted,
+                401 | 403 => ProviderCredentialValidation::Rejected,
+                429 | 500..=599 => ProviderCredentialValidation::Unreachable,
+                _ => ProviderCredentialValidation::Unknown,
+            }
+        })
     }
 
     fn supported_models(&self) -> &[&str] {

@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{ProviderCredentialValidation, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
@@ -346,6 +346,17 @@ pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::Te
         "token",
     )
     .await;
+    (build_router(state, &test_security_config()), dir)
+}
+
+pub(super) async fn app_with_credential_validation(
+    result: ProviderCredentialValidation,
+) -> (axum::Router, tempfile::TempDir) {
+    let provider = MockProvider::new("Hello from mock!")
+        .models(&["mock-model", "claude-opus-4-20250514"])
+        .named("anthropic")
+        .with_credential_validation(result);
+    let (state, dir) = test_state_with_mock_provider(Some(provider), false, "token").await;
     (build_router(state, &test_security_config()), dir)
 }
 

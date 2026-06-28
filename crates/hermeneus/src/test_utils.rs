@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 
 use crate::error::{self, Result};
-use crate::provider::{LlmProvider, MatchKind};
+use crate::provider::{LlmProvider, MatchKind, ProviderCredentialValidation};
 use crate::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 
 /// Build a [`CompletionResponse`] with a single text block.
@@ -62,6 +62,7 @@ pub struct MockProvider {
     requests: Mutex<Vec<CompletionRequest>>,
     /// Override for `match_specificity`. `None` = use the default exact-match logic.
     match_kind_override: Option<MatchKind>,
+    credential_validation: ProviderCredentialValidation,
 }
 
 impl MockProvider {
@@ -76,6 +77,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            credential_validation: ProviderCredentialValidation::Unknown,
         }
     }
 
@@ -92,6 +94,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            credential_validation: ProviderCredentialValidation::Unknown,
         }
     }
 
@@ -111,6 +114,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            credential_validation: ProviderCredentialValidation::Unknown,
         }
     }
 
@@ -138,6 +142,14 @@ impl MockProvider {
     pub fn with_match_kind(mut self, kind: MatchKind) -> Self {
         // kanon:ignore RUST/pub-visibility
         self.match_kind_override = Some(kind);
+        self
+    }
+
+    /// Set the credential validation result returned by this mock.
+    #[must_use]
+    pub fn with_credential_validation(mut self, result: ProviderCredentialValidation) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        self.credential_validation = result;
         self
     }
 
@@ -212,5 +224,12 @@ impl LlmProvider for MockProvider {
 
     fn name(&self) -> &str {
         self.provider_name
+    }
+
+    fn validate_credential<'a>(
+        &'a self,
+        _credential: &'a koina::secret::SecretString,
+    ) -> Pin<Box<dyn Future<Output = ProviderCredentialValidation> + Send + 'a>> {
+        Box::pin(async move { self.credential_validation })
     }
 }

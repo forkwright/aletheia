@@ -174,17 +174,24 @@ impl std::str::FromStr for ManagedCredentialRole {
     }
 }
 
-/// Credential usability status reported to operators.
+/// Credential validation status reported to operators.
 // kanon:ignore RUST/no-debug-derive-on-public-types — status enum contains no secret data; Debug is safe
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ManagedCredentialStatus {
-    /// Credential loaded and has not expired locally.
-    Valid,
-    /// Credential is expired or locally unusable.
+    /// Provider accepted the credential during the last validation attempt.
+    ProviderAccepted,
+    /// Provider rejected the credential during the last validation attempt.
+    ProviderRejected,
+    /// Credential is expired locally.
     Expired,
-    /// Credential has not been tested.
-    Untested,
+    /// Credential is malformed locally.
+    Malformed,
+    /// Provider could not be reached during the last validation attempt.
+    ProviderUnreachable,
+    /// Credential has not been provider-validated, or the provider cannot
+    /// report acceptance for this credential type.
+    Unknown,
 }
 
 impl ManagedCredentialStatus {
@@ -192,9 +199,12 @@ impl ManagedCredentialStatus {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Valid => "valid",
+            Self::ProviderAccepted => "provider_accepted",
+            Self::ProviderRejected => "provider_rejected",
             Self::Expired => "expired",
-            Self::Untested => "untested",
+            Self::Malformed => "malformed",
+            Self::ProviderUnreachable => "provider_unreachable",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -211,10 +221,26 @@ pub struct ManagedCredential {
     pub role: ManagedCredentialRole,
     /// Redacted key preview, never raw credential material.
     pub redacted_preview: String,
-    /// Local validation status.
+    /// Validation status. Provider acceptance is reported only after a
+    /// provider-aware validation call.
     pub status: ManagedCredentialStatus,
-    /// Last validation timestamp, when this response was produced by validation.
+    /// Last validation timestamp, when a validation result has been recorded.
     pub last_validated: Option<String>,
+}
+
+/// Secret-bearing credential candidate used only for validation.
+///
+/// Returned by server-side validation code so a provider can test the stored
+/// secret. This type must never be serialized or logged with the raw token.
+// kanon:ignore RUST/no-debug-derive-on-public-types — SecretString redacts token material in Debug
+#[derive(Debug, Clone)]
+pub struct ManagedCredentialValidationCandidate {
+    /// Secret-safe credential metadata.
+    pub credential: ManagedCredential,
+    /// Raw credential secret to pass to the provider validation hook.
+    pub token: SecretString,
+    /// Local status derived from the credential file before provider validation.
+    pub local_status: ManagedCredentialStatus,
 }
 
 /// Stored user record.

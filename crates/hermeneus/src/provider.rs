@@ -87,6 +87,24 @@ impl std::fmt::Display for ProviderResolutionError {
 
 impl std::error::Error for ProviderResolutionError {}
 
+/// Provider result for validating a supplied credential secret.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ProviderCredentialValidation {
+    /// Provider accepted the credential.
+    Accepted,
+    /// Provider rejected the credential.
+    Rejected,
+    /// Provider reported the credential is expired.
+    Expired,
+    /// Credential cannot be sent to the provider because it is malformed.
+    Malformed,
+    /// Provider could not be reached or returned an indeterminate transient error.
+    Unreachable,
+    /// This provider cannot report credential acceptance for the supplied secret.
+    Unknown,
+}
+
 /// Trait for LLM providers.
 ///
 /// Implementations handle authentication, request formatting, response parsing,
@@ -184,6 +202,18 @@ pub trait LlmProvider: Send + Sync {
         _on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         self.complete(request)
+    }
+
+    /// Validate whether this provider accepts a supplied credential secret.
+    ///
+    /// Implementations should use a cheap, side-effect-free provider endpoint
+    /// when one exists. The default is `Unknown` so providers that cannot test
+    /// arbitrary secrets never report false acceptance.
+    fn validate_credential<'a>(
+        &'a self,
+        _credential: &'a SecretString,
+    ) -> Pin<Box<dyn Future<Output = ProviderCredentialValidation> + Send + 'a>> {
+        Box::pin(async { ProviderCredentialValidation::Unknown })
     }
 
     /// Signal the provider to release any background resources.

@@ -3,10 +3,14 @@
 use std::path::{Path, PathBuf};
 
 use koina::secret::SecretString;
+use serde::{Deserialize, Serialize};
 use snafu::IntoError;
 
 use crate::error::{self, Result};
-use crate::types::{ManagedCredential, ManagedCredentialRole, ManagedCredentialStatus};
+use crate::types::{
+    ManagedCredential, ManagedCredentialRole, ManagedCredentialStatus,
+    ManagedCredentialValidationCandidate,
+};
 
 use super::CredentialFile;
 use super::file_ops::CredentialFileLock;
@@ -14,6 +18,13 @@ use super::file_ops::CredentialFileLock;
 const BACKUP_SUFFIX: &str = ".backup";
 const JSON_EXT: &str = "json";
 const ROTATE_JOURNAL_SUFFIX: &str = ".rotate.journal";
+const VALIDATION_SUFFIX: &str = ".validation";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CredentialValidationMetadata {
+    status: String,
+    last_validated: String,
+}
 
 pub(crate) fn list(root: &Path) -> Result<Vec<ManagedCredential>> {
     if !root.exists() {
@@ -31,7 +42,7 @@ pub(crate) fn list(root: &Path) -> Result<Vec<ManagedCredential>> {
         let Some((provider, role)) = parse_path_role(&path) else {
             continue;
         };
-        if let Some(credential) = metadata_from_path(root, &provider, role, None)? {
+        if let Some(credential) = metadata_from_path(root, &provider, role)? {
             credentials.push(credential);
         }
     }
@@ -100,7 +111,7 @@ pub(crate) fn add(
         return Err(io_error(&path, source));
     }
 
-    metadata_from_path(root, provider, role, None)?.ok_or_else(|| {
+    metadata_from_path(root, provider, role)?.ok_or_else(|| {
         error::NotFoundSnafu {
             entity: "credential".to_owned(),
             id: credential_id(provider, role),
@@ -110,10 +121,59 @@ pub(crate) fn add(
 }
 
 pub(crate) fn validate(root: &Path, id: &str) -> Result<ManagedCredential> {
+    record_validation(root, id, ManagedCredentialStatus::Unknown)
+}
+
+pub(crate) fn validation_candidate(
+    root: &Path,
+    id: &str,
+) -> Result<ManagedCredentialValidationCandidate> {
     let (provider, role) = parse_id(id)?;
     recover_provider_rotation(root, &provider)?;
-    let validated_at = jiff::Timestamp::now().to_string();
-    metadata_from_path(root, &provider, role, Some(validated_at))?.ok_or_else(|| {
+    let path = credential_path(root, &provider, role)?;
+    let file = CredentialFile::load(&path).ok_or_else(|| {
+        error::NotFoundSnafu {
+            entity: "credential".to_owned(),
+            id: id.to_owned(),
+        }
+        .build()
+    })?;
+    let local_status = local_credential_status(&file);
+    let credential = metadata_from_file(root, &provider, role, &file)?;
+    Ok(ManagedCredentialValidationCandidate {
+        credential,
+        token: file.token,
+        local_status,
+    })
+}
+
+pub(crate) fn record_validation(
+    root: &Path,
+    id: &str,
+    status: ManagedCredentialStatus,
+) -> Result<ManagedCredential> {
+    let (provider, role) = parse_id(id)?;
+    recover_provider_rotation(root, &provider)?;
+    let path = credential_path(root, &provider, role)?;
+    if CredentialFile::load(&path).is_none() {
+        return Err(error::NotFoundSnafu {
+            entity: "credential".to_owned(),
+            id: id.to_owned(),
+        }
+        .build());
+    }
+
+    let metadata = CredentialValidationMetadata {
+        status: status.as_str().to_owned(),
+        last_validated: jiff::Timestamp::now().to_string(),
+    };
+    let validation_path = validation_metadata_path(root, &provider, role)?;
+    let bytes = serde_json::to_vec_pretty(&metadata)
+        .map_err(|source| io_error(&validation_path, std::io::Error::other(source)))?;
+    write_restricted(&validation_path, &bytes)
+        .map_err(|source| io_error(&validation_path, source))?;
+
+    metadata_from_path(root, &provider, role)?.ok_or_else(|| {
         error::NotFoundSnafu {
             entity: "credential".to_owned(),
             id: id.to_owned(),
@@ -161,11 +221,13 @@ pub(crate) fn rotate(root: &Path, provider: &str) -> Result<Vec<ManagedCredentia
     commit_rotation_from_journal(&files)?;
 
     let mut entries = Vec::new();
-    if let Some(primary) = metadata_from_path(root, provider, ManagedCredentialRole::Primary, None)?
-    {
+    remove_validation_metadata(root, provider, ManagedCredentialRole::Primary)?;
+    remove_validation_metadata(root, provider, ManagedCredentialRole::Backup)?;
+
+    if let Some(primary) = metadata_from_path(root, provider, ManagedCredentialRole::Primary)? {
         entries.push(primary);
     }
-    if let Some(backup) = metadata_from_path(root, provider, ManagedCredentialRole::Backup, None)? {
+    if let Some(backup) = metadata_from_path(root, provider, ManagedCredentialRole::Backup)? {
         entries.push(backup);
     }
     Ok(entries)
@@ -210,7 +272,8 @@ pub(crate) fn remove(root: &Path, id: &str) -> Result<()> {
 
     remove_file_if_exists(&path)?;
     remove_file_if_exists(&path.with_extension("json.key"))?;
-    remove_file_if_exists(&path.with_extension("json.lock"))
+    remove_file_if_exists(&path.with_extension("json.lock"))?;
+    remove_validation_metadata(root, &provider, role)
 }
 
 fn provider_lock_path(root: &Path, provider: &str) -> PathBuf {
@@ -431,26 +494,52 @@ fn metadata_from_path(
     root: &Path,
     provider: &str,
     role: ManagedCredentialRole,
-    last_validated: Option<String>,
 ) -> Result<Option<ManagedCredential>> {
     let path = credential_path(root, provider, role)?;
     let Some(file) = CredentialFile::load(&path) else {
         return Ok(None);
     };
-    let status = credential_status(&file);
-    Ok(Some(ManagedCredential {
+    metadata_from_file(root, provider, role, &file).map(Some)
+}
+
+fn metadata_from_file(
+    root: &Path,
+    provider: &str,
+    role: ManagedCredentialRole,
+    file: &CredentialFile,
+) -> Result<ManagedCredential> {
+    let local_status = local_credential_status(file);
+    let persisted = validation_metadata(root, provider, role)?;
+    let (status, last_validated) = if matches!(
+        local_status,
+        ManagedCredentialStatus::Expired | ManagedCredentialStatus::Malformed
+    ) {
+        (
+            local_status,
+            persisted.map(|metadata| metadata.last_validated),
+        )
+    } else if let Some(metadata) = persisted {
+        (
+            status_from_str(&metadata.status).unwrap_or(ManagedCredentialStatus::Unknown),
+            Some(metadata.last_validated),
+        )
+    } else {
+        (ManagedCredentialStatus::Unknown, None)
+    };
+
+    Ok(ManagedCredential {
         id: credential_id(provider, role),
         provider: provider.to_owned(),
         role,
         redacted_preview: redact_secret(file.token.expose_secret()),
         status,
         last_validated,
-    }))
+    })
 }
 
-fn credential_status(file: &CredentialFile) -> ManagedCredentialStatus {
+fn local_credential_status(file: &CredentialFile) -> ManagedCredentialStatus {
     if file.token.expose_secret().is_empty() {
-        return ManagedCredentialStatus::Expired;
+        return ManagedCredentialStatus::Malformed;
     }
     if file
         .seconds_remaining()
@@ -458,7 +547,56 @@ fn credential_status(file: &CredentialFile) -> ManagedCredentialStatus {
     {
         return ManagedCredentialStatus::Expired;
     }
-    ManagedCredentialStatus::Valid
+    ManagedCredentialStatus::Unknown
+}
+
+fn status_from_str(status: &str) -> Option<ManagedCredentialStatus> {
+    match status {
+        "provider_accepted" => Some(ManagedCredentialStatus::ProviderAccepted),
+        "provider_rejected" => Some(ManagedCredentialStatus::ProviderRejected),
+        "expired" => Some(ManagedCredentialStatus::Expired),
+        "malformed" => Some(ManagedCredentialStatus::Malformed),
+        "provider_unreachable" => Some(ManagedCredentialStatus::ProviderUnreachable),
+        "unknown" => Some(ManagedCredentialStatus::Unknown),
+        _ => None,
+    }
+}
+
+fn validation_metadata(
+    root: &Path,
+    provider: &str,
+    role: ManagedCredentialRole,
+) -> Result<Option<CredentialValidationMetadata>> {
+    let path = validation_metadata_path(root, provider, role)?;
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => {
+            let metadata = serde_json::from_str(&contents)
+                .map_err(|source| io_error(&path, std::io::Error::other(source)))?;
+            Ok(Some(metadata))
+        }
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(io_error(&path, source)),
+    }
+}
+
+fn validation_metadata_path(
+    root: &Path,
+    provider: &str,
+    role: ManagedCredentialRole,
+) -> Result<PathBuf> {
+    validate_provider(provider)?;
+    std::fs::create_dir_all(root).map_err(|source| io_error(root, source))?;
+    let path = root.join(format!("{provider}.{}{VALIDATION_SUFFIX}", role.as_str()));
+    koina::fs::validate_within_root(&path, root).map_err(|source| io_error(&path, source))
+}
+
+fn remove_validation_metadata(
+    root: &Path,
+    provider: &str,
+    role: ManagedCredentialRole,
+) -> Result<()> {
+    let path = validation_metadata_path(root, provider, role)?;
+    remove_file_if_exists(&path)
 }
 
 fn credential_path(root: &Path, provider: &str, role: ManagedCredentialRole) -> Result<PathBuf> {
@@ -561,8 +699,14 @@ mod tests {
         assert_eq!(listed.first().unwrap().redacted_preview, "...cret");
 
         let validated = validate(&root, "anthropic:backup").unwrap();
-        assert_eq!(validated.status, ManagedCredentialStatus::Valid);
+        assert_eq!(validated.status, ManagedCredentialStatus::Unknown);
         assert!(validated.last_validated.is_some());
+
+        let listed_after_validation = list(&root).unwrap();
+        assert_eq!(
+            listed_after_validation.first().unwrap().last_validated,
+            validated.last_validated
+        );
 
         remove(&root, "anthropic:backup").unwrap();
         assert!(list(&root).unwrap().is_empty());
