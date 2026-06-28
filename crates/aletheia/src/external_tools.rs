@@ -25,10 +25,14 @@ use tracing::{info, warn};
 
 use koina::id::ToolName;
 use organon::registry::{ToolExecutor, ToolRegistry};
+#[cfg(feature = "mcp")]
+use organon::types::ToolOrigin;
 use organon::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
+#[cfg(feature = "mcp")]
+use taxis::config::ExternalToolAuth;
 pub(crate) use taxis::config::{
     ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
 };
@@ -401,11 +405,11 @@ async fn connect_mcp_server(
 fn mcp_auth_to_diaporeia(auth: &ExternalToolAuth) -> diaporeia::client::McpAuth {
     match auth {
         ExternalToolAuth::Bearer { token } => diaporeia::client::McpAuth::Bearer {
-            token: token.clone(),
+            token: token.expose_secret().to_owned(),
         },
         ExternalToolAuth::Header { name, value } => diaporeia::client::McpAuth::Header {
             name: name.clone(),
-            value: value.clone(),
+            value: value.expose_secret().to_owned(),
         },
         ExternalToolAuth::EnvToken {
             header_name,
@@ -536,6 +540,7 @@ fn property_def_from_json(value: &serde_json::Value) -> PropertyDef {
         description,
         enum_values,
         default,
+        ..Default::default()
     }
 }
 
