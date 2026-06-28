@@ -1,0 +1,16 @@
+# WHY: StatusDashboard, CronStatus, CronTaskFireStatus, RecentOutcome, and
+# ProjectSummary are data-transfer types for metrics snapshots. Their public
+# fields are intentional API surface; the compute_status_dashboard* functions
+# serve as the smart constructors that enforce consistency.
+TOPOLOGY/shallow-struct:src/metrics/status.rs
+
+# WHY: after_action_records_outcome_through_owned_worker polls a background mpsc
+# worker draining an owned channel; tokio::time::pause() cannot reorder tokio
+# task scheduling, so a bounded polling loop with real sleep is the only correct
+# coordination mechanism here.
+TESTING/sleep-in-test:src/routing/empirical.rs
+
+# WHY: store_is_send_sync is a compile-time type assertion via const fn; a
+# missing Send or Sync impl causes a compile error, not a runtime failure, so
+# no runtime assertion signal is possible.
+TESTING/tautological-test:src/store/fjall_store_tests.rs
