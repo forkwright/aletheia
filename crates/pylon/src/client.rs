@@ -16,7 +16,11 @@ use koina::http::BEARER_PREFIX;
 use koina::secret::SecretString;
 
 use crate::handlers::health::{HealthResponse, LivenessResponse};
-use crate::handlers::sessions::types::{HistoryResponse, ListSessionsResponse};
+use crate::handlers::sessions::types::ListSessionsResponse;
+pub use crate::handlers::sessions::types::{
+    HistoryResponse, ReplayMessage, ReplaySession, ReplayToolAuditRecord, ReplayTurnAttempt,
+    ReplayUsageRecord, SessionReplayResponse, SessionResponse,
+};
 
 // WHY: 30 seconds matches the skene/desktop client connect timeout and is long
 // enough for local-loopback discovery but short enough to surface a dead server.
@@ -352,6 +356,44 @@ impl GatewayClient {
         resp.json().await.context(DecodeSnafu)
     }
 
+    /// Fetch metadata for a single session.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    pub async fn session(&self, session_id: &str) -> Result<SessionResponse, Error> {
+        let resp = self
+            .client
+            .get(self.url(&routes::session(session_id)))
+            .send()
+            .await
+            .context(RequestSnafu {
+                operation: "session details",
+            })?;
+        let resp = Self::check_status(resp, "session details").await?;
+        resp.json().await.context(DecodeSnafu)
+    }
+
+    /// Fetch the replay-faithful export for a session.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    pub async fn session_replay(&self, session_id: &str) -> Result<SessionReplayResponse, Error> {
+        let resp = self
+            .client
+            .get(self.url(&routes::session_replay(session_id)))
+            .send()
+            .await
+            .context(RequestSnafu {
+                operation: "session replay export",
+            })?;
+        let resp = Self::check_status(resp, "session replay export").await?;
+        resp.json().await.context(DecodeSnafu)
+    }
+
     async fn check_status(resp: Response, operation: &str) -> Result<Response, Error> {
         let status = resp.status();
         if status.is_success() {
@@ -427,6 +469,12 @@ mod tests {
         assert!(path.contains("%3F"), "? must be encoded: {path}");
         assert!(path.contains("%23"), "# must be encoded: {path}");
         assert!(path.ends_with("/history"));
+    }
+
+    #[test]
+    fn route_session_replay_id_is_encoded() {
+        let path = routes::session_replay("a/b c?d#e");
+        assert_eq!(path, "/api/v1/sessions/a%2Fb%20c%3Fd%23e/replay");
     }
 
     #[test]

@@ -391,6 +391,68 @@ Retrieve conversation history.
 
 ---
 
+### `GET /api/v1/sessions/{id}/replay`
+
+Export a replay-faithful session record for audit, migration, and run review.
+Unlike history, this endpoint reads raw message rows and includes distilled
+messages, usage records, structured tool audit records, and turn lifecycle
+records.
+
+**Path:** `id` - session ID. Path segments must be percent-encoded by clients.
+
+**Response `200 OK`** - `SessionReplayResponse`:
+
+```json
+{
+  "version": 1,
+  "exportType": "sessionReplay",
+  "exportedAt": "2026-06-28T00:00:00Z",
+  "session": {
+    "id": "01HXYZ...",
+    "nousId": "pronoea",
+    "sessionKey": "main",
+    "status": "active",
+    "sessionType": "primary",
+    "messageCount": 4
+  },
+  "messages": [
+    {
+      "seq": 2,
+      "role": "tool_result",
+      "toolCallId": "toolu_123",
+      "toolName": "read_file"
+    }
+  ],
+  "usageRecords": [
+    {
+      "turnSeq": 42,
+      "inputTokens": 120,
+      "outputTokens": 35,
+      "model": "claude-opus"
+    }
+  ],
+  "toolAuditRecords": [
+    {
+      "turnSeq": 42,
+      "toolCallId": "toolu_123",
+      "toolName": "read_file",
+      "isError": false,
+      "outcome": "success"
+    }
+  ],
+  "turnAttempts": [
+    {
+      "turnId": "01JTEST...",
+      "status": "completed"
+    }
+  ]
+}
+```
+
+**Response `404 Not Found`** - session not found.
+
+---
+
 ### `POST /api/v1/sessions/stream`
 
 Turn stream protocol. Creates or retrieves a session by `(nous_id, session_key)` and
