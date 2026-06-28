@@ -173,7 +173,16 @@ async fn get_ops_tools_returns_registry_and_metrics() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     let catalog = body["catalog"].as_array().expect("catalog array");
-    assert!(catalog.iter().any(|tool| tool["id"] == "probe_tool"));
+    let probe_catalog = catalog
+        .iter()
+        .find(|tool| tool["id"] == "probe_tool")
+        .expect("probe_tool catalog entry");
+    assert_eq!(probe_catalog["category"], "workspace");
+    assert_eq!(probe_catalog["reversibility"], "fully_reversible");
+    assert_eq!(probe_catalog["approval"], "none");
+    assert_eq!(probe_catalog["groups"][0], "read");
+    assert_eq!(probe_catalog["source_plane"], "organon_builtin");
+    assert_eq!(probe_catalog["metadata_verified"], true);
     assert!(
         body["live_invocations"].as_array().is_some(),
         "live invocation list must be present"

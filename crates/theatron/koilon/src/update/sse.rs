@@ -57,6 +57,9 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
         // the optimistic user message and streaming state must not be clobbered
         // by a full history fetch triggered by SSE reconnection.
         if !app.connection.is_stream_busy() {
+            if let Some(agent_id) = app.dashboard.focused_agent.clone() {
+                app.load_tools_for_agent(&agent_id).await;
+            }
             app.load_focused_session().await;
         }
     }

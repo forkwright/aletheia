@@ -159,6 +159,10 @@ pub struct ToolsResponse {
 
 /// Brief description of a registered tool.
 #[derive(Debug, Serialize, ToSchema)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "WHY(#4919): public wire DTO keeps independent metadata booleans flat for Skene/desktop backward-compatible decoding"
+)]
 pub struct ToolSummary {
     /// Tool name as sent to the LLM.
     pub name: String,
@@ -166,8 +170,27 @@ pub struct ToolSummary {
     pub enabled: bool,
     /// Human-readable description.
     pub description: String,
-    /// Tool category (e.g. `"Builtin"`, `"Pack"`).
+    /// Semantic tool category (e.g. `"workspace"`, `"memory"`, `"research"`).
     pub category: String,
+    /// Reversibility metadata used to derive approval policy.
+    pub reversibility: String,
+    /// Approval requirement derived from reversibility/capability metadata.
+    pub approval: String,
+    /// Whether the tool's default metadata requires an operator approval prompt.
+    pub requires_approval: bool,
+    /// Whether the tool's default metadata marks it as side-effecting or destructive.
+    pub destructive: bool,
+    /// Tool groups used by policy resolution.
+    pub groups: Vec<String>,
+    /// Tool source plane, e.g. `"organon_builtin"` or `"runtime_bridged_mcp"`.
+    pub source_plane: String,
+    /// Effective policy state for this agent: `"callable"`, `"inactive"`, or `"denied"`.
+    pub policy_state: String,
+    /// Reason the tool is unavailable under the current agent policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+    /// Whether metadata came from the server-owned tool surface rather than client heuristics.
+    pub metadata_verified: bool,
     /// Whether the tool activates automatically without explicit configuration.
     ///
     /// When `false` the tool is lazy and must be activated via `enable_tool`

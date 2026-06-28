@@ -28,6 +28,7 @@ use crate::state::MarkdownCache;
 use crate::state::MetricsState;
 use crate::state::SavedScrollState;
 use crate::state::TabBar;
+use crate::state::ops::{unverified_tool_metadata, verified_tool_metadata};
 use crate::state::virtual_scroll::VirtualScroll;
 #[expect(
     unused_imports,
@@ -212,6 +213,51 @@ pub struct App {
     /// Background fire-and-forget tasks (API calls, etc.) tracked so they can
     /// be awaited on shutdown instead of being silently dropped.
     pub(crate) background_tasks: JoinSet<Msg>,
+}
+
+fn tool_summary_from_api(tool: crate::api::types::NousTool) -> ToolSummary {
+    let name = sanitize_for_display(&tool.name).into_owned();
+    let metadata = if tool.metadata_verified {
+        let category = tool
+            .category
+            .as_ref()
+            .map(|value| sanitize_for_display(value).into_owned());
+        let reversibility = tool
+            .reversibility
+            .as_ref()
+            .map(|value| sanitize_for_display(value).into_owned());
+        let approval = tool
+            .approval
+            .as_ref()
+            .map(|value| sanitize_for_display(value).into_owned());
+        let source_plane = tool
+            .source_plane
+            .map(|value| sanitize_for_display(&value).into_owned());
+        let policy_state = tool
+            .policy_state
+            .map(|value| sanitize_for_display(&value).into_owned());
+        let unavailable_reason = tool
+            .unavailable_reason
+            .map(|value| sanitize_for_display(&value).into_owned());
+        verified_tool_metadata(
+            category.as_deref(),
+            reversibility.as_deref(),
+            approval.as_deref(),
+            tool.requires_approval,
+            tool.destructive,
+            source_plane,
+            policy_state,
+            unavailable_reason,
+        )
+    } else {
+        unverified_tool_metadata(&name)
+    };
+
+    ToolSummary {
+        name,
+        enabled: tool.enabled,
+        metadata,
+    }
 }
 
 impl App {
@@ -426,17 +472,7 @@ impl App {
             }
             self.load_focused_session().await;
 
-            if let Ok(tools) = self.client.tools(&agent_id).await
-                && let Some(agent) = self.dashboard.agents.iter_mut().find(|a| a.id == agent_id)
-            {
-                agent.tools = tools
-                    .into_iter()
-                    .map(|t| ToolSummary {
-                        name: sanitize_for_display(&t.name).into_owned(),
-                        enabled: t.enabled,
-                    })
-                    .collect();
-            }
+            self.load_tools_for_agent(&agent_id).await;
 
             let agent_name = self
                 .dashboard
@@ -582,6 +618,33 @@ impl App {
                     tracing::error!("failed to load history: {e}");
                 }
             }
+        }
+    }
+
+    #[tracing::instrument(skip(self), fields(%agent_id))]
+    pub(crate) async fn load_tools_for_agent(&mut self, agent_id: &NousId) {
+        let tools = match self.client.tools(agent_id).await {
+            Ok(tools) => tools,
+            Err(_) => {
+                if self.dashboard.focused_agent.as_ref() == Some(agent_id) {
+                    self.layout.ops.replace_tool_metadata(HashMap::new());
+                }
+                return;
+            }
+        };
+        let tools = tools
+            .into_iter()
+            .map(tool_summary_from_api)
+            .collect::<Vec<_>>();
+        let metadata = tools
+            .iter()
+            .map(|tool| (tool.name.clone(), tool.metadata.clone()))
+            .collect();
+        if let Some(agent) = self.dashboard.agents.iter_mut().find(|a| a.id == *agent_id) {
+            agent.tools = tools;
+        }
+        if self.dashboard.focused_agent.as_ref() == Some(agent_id) {
+            self.layout.ops.replace_tool_metadata(metadata);
         }
     }
 

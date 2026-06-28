@@ -5,9 +5,10 @@ mod state_impl;
 mod summary;
 mod types;
 
+pub(crate) use helpers::{unverified_tool_metadata, verified_tool_metadata};
 pub use state_impl::OpsState;
 pub use types::{FocusedPane, OpsToolStatus};
-pub(crate) use types::{OpsDiffEntry, OpsThinkingBlock, OpsToolCall, ToolCategory};
+pub(crate) use types::{OpsDiffEntry, OpsThinkingBlock, OpsToolCall, ToolCategory, ToolMetadata};
 
 #[cfg(test)]
 pub(crate) use helpers::{
@@ -79,6 +80,7 @@ mod tests {
     fn clear_turn_resets_data() {
         let mut state = OpsState::default();
         state.thinking.text = "some thinking".to_string();
+        let metadata = unverified_tool_metadata("test");
         state.tool_calls.push(OpsToolCall {
             name: "test".to_string(),
             tool_id: None,
@@ -89,7 +91,9 @@ mod tests {
             expanded: false,
             primary_arg: None,
             error_message: None,
-            category: ToolCategory::Other,
+            category: metadata.category,
+            risk: metadata.risk,
+            metadata,
             started_at: std::time::Instant::now(),
         });
         state.scroll_offset = 10;
@@ -246,6 +250,58 @@ mod tests {
         assert_eq!(state.tool_calls[0].name, "grep");
         assert_eq!(state.tool_calls[0].status, OpsToolStatus::Running);
         assert!(state.tool_calls[0].input_json.is_some());
+        assert!(!state.tool_calls[0].metadata.verified);
+    }
+
+    #[test]
+    fn push_tool_start_uses_verified_metadata_for_misleading_names() {
+        let mut state = OpsState::default();
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert(
+            "read_but_irreversible".to_string(),
+            verified_tool_metadata(
+                Some("communication"),
+                Some("irreversible"),
+                Some("mandatory"),
+                true,
+                true,
+                Some("organon_builtin".to_string()),
+                Some("callable".to_string()),
+                None,
+            ),
+        );
+        metadata.insert(
+            "write_but_reversible".to_string(),
+            verified_tool_metadata(
+                Some("research"),
+                Some("fully_reversible"),
+                Some("none"),
+                false,
+                false,
+                Some("organon_builtin".to_string()),
+                Some("callable".to_string()),
+                None,
+            ),
+        );
+        state.replace_tool_metadata(metadata);
+
+        state.push_tool_start("read_but_irreversible".to_string(), None);
+        state.push_tool_start("write_but_reversible".to_string(), None);
+
+        assert_eq!(state.tool_calls[0].category, ToolCategory::Communication);
+        assert!(state.tool_calls[0].metadata.verified);
+        assert!(state.tool_calls[0].risk.is_destructive());
+        assert_eq!(
+            state.tool_calls[0].metadata.approval.as_deref(),
+            Some("mandatory")
+        );
+        assert_eq!(state.tool_calls[1].category, ToolCategory::Research);
+        assert!(state.tool_calls[1].metadata.verified);
+        assert!(!state.tool_calls[1].risk.is_destructive());
+        assert_eq!(
+            state.tool_calls[1].metadata.approval.as_deref(),
+            Some("none")
+        );
     }
 
     #[test]
