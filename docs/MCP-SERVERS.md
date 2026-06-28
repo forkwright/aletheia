@@ -14,6 +14,12 @@ These servers run as **operator-side tooling**, not as part of the aletheia bina
 
 Any new MCP integration must state which plane it lives on before claiming tool availability in the `nous` loop, the Diaporeia server surface, or operator-local agent tooling.
 
+Runtime-bridged MCP tool annotations are untrusted by default. A discovered
+tool's `readOnlyHint` does not lower approval requirements unless the
+operator sets `trustAnnotations = true` on that specific `[tools.required.*]`
+or `[tools.optional.*]` MCP server entry. Use that opt-in only for servers
+inside the deployment's trust boundary.
+
 ## Index
 
 | Server | Purpose | Transport | Install |

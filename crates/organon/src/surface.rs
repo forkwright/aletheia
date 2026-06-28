@@ -550,6 +550,7 @@ fn compute_surface_hash(
                     "local_name": o.local_name,
                     "server_name": o.server_name,
                     "remote_name": o.remote_name,
+                    "mcp_annotations_trusted": o.mcp_annotations_trusted,
                 })),
             })
         })

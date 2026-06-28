@@ -85,6 +85,12 @@ pub(crate) struct ToolManifestEntry {
     pub server_name: Option<String>,
     /// Remote tool name on the MCP server, if any.
     pub remote_name: Option<String>,
+    /// Whether MCP annotations were trusted for this entry, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_annotations_trusted: Option<bool>,
+    /// Effective reversibility registered for this tool, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_reversibility: Option<Reversibility>,
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
@@ -139,18 +145,16 @@ async fn register_single_tool(
     // NOTE: builtin entries are markers -- the tool is already registered by
     // organon::builtins. We record them in the manifest for completeness.
     if entry.kind == ExternalToolKind::Builtin {
-        let available = ToolName::new(name)
+        let existing_reversibility = ToolName::new(name)
             .ok()
-            .and_then(|tn| registry.get_def(&tn))
-            .is_some();
-        return vec![ToolManifestEntry {
-            name: name.to_owned(),
-            kind: entry.kind,
-            available,
+            .and_then(|tn| registry.get_def(&tn).map(|def| def.reversibility));
+        return vec![local_manifest_entry(
+            name,
+            entry.kind,
+            existing_reversibility.is_some(),
             description,
-            server_name: None,
-            remote_name: None,
-        }];
+            existing_reversibility,
+        )];
     }
 
     if entry.kind == ExternalToolKind::Mcp {
@@ -162,28 +166,26 @@ async fn register_single_tool(
 
     let Some(endpoint) = entry.endpoint.clone() else {
         warn!(tool = name, "external tool has no endpoint configured");
-        return vec![ToolManifestEntry {
-            name: name.to_owned(),
-            kind: entry.kind,
-            available: false,
+        return vec![local_manifest_entry(
+            name,
+            entry.kind,
+            false,
             description,
-            server_name: None,
-            remote_name: None,
-        }];
+            None,
+        )];
     };
 
     let tool_name = match ToolName::new(name) {
         Ok(tn) => tn,
         Err(e) => {
             warn!(tool = name, error = %e, "invalid external tool name");
-            return vec![ToolManifestEntry {
-                name: name.to_owned(),
-                kind: entry.kind,
-                available: false,
+            return vec![local_manifest_entry(
+                name,
+                entry.kind,
+                false,
                 description,
-                server_name: None,
-                remote_name: None,
-            }];
+                None,
+            )];
         }
     };
 
@@ -210,26 +212,43 @@ async fn register_single_tool(
     match registry.register(tool_def, Box::new(executor)) {
         Ok(()) => {
             info!(tool = name, kind = ?entry.kind, "external tool registered");
-            vec![ToolManifestEntry {
-                name: name.to_owned(),
-                kind: entry.kind,
-                available: true,
+            vec![local_manifest_entry(
+                name,
+                entry.kind,
+                true,
                 description,
-                server_name: None,
-                remote_name: None,
-            }]
+                Some(Reversibility::FullyReversible),
+            )]
         }
         Err(e) => {
             warn!(tool = name, error = %e, "failed to register external tool");
-            vec![ToolManifestEntry {
-                name: name.to_owned(),
-                kind: entry.kind,
-                available: false,
+            vec![local_manifest_entry(
+                name,
+                entry.kind,
+                false,
                 description,
-                server_name: None,
-                remote_name: None,
-            }]
+                Some(Reversibility::FullyReversible),
+            )]
         }
+    }
+}
+
+fn local_manifest_entry(
+    name: &str,
+    kind: ExternalToolKind,
+    available: bool,
+    description: String,
+    effective_reversibility: Option<Reversibility>,
+) -> ToolManifestEntry {
+    ToolManifestEntry {
+        name: name.to_owned(),
+        kind,
+        available,
+        description,
+        server_name: None,
+        remote_name: None,
+        mcp_annotations_trusted: None,
+        effective_reversibility,
     }
 }
 
@@ -255,6 +274,8 @@ async fn register_mcp_server(
                 description,
                 server_name: Some(server_name.to_owned()),
                 remote_name: None,
+                mcp_annotations_trusted: Some(entry.trust_annotations),
+                effective_reversibility: None,
             }];
         }
     };
@@ -271,6 +292,8 @@ async fn register_mcp_server(
                 description,
                 server_name: Some(server_name.to_owned()),
                 remote_name: None,
+                mcp_annotations_trusted: Some(entry.trust_annotations),
+                effective_reversibility: None,
             }];
         }
     };
@@ -285,12 +308,24 @@ async fn register_mcp_server(
             description,
             server_name: Some(server_name.to_owned()),
             remote_name: None,
+            mcp_annotations_trusted: Some(entry.trust_annotations),
+            effective_reversibility: None,
         }];
     }
 
     let mut entries = Vec::new();
     for remote_tool in remote_tools {
         let remote_name = remote_tool.name.to_string();
+        let mcp_annotations_trusted = entry.trust_annotations;
+        let effective_reversibility = reversibility_from_mcp(&remote_tool, mcp_annotations_trusted);
+        let effective_tags = tags_from_mcp(&remote_tool, mcp_annotations_trusted);
+        if !mcp_annotations_trusted && mcp_read_only_hint(&remote_tool) == Some(true) {
+            warn!(
+                server = server_name,
+                remote_tool = %remote_name,
+                "ignoring untrusted MCP readOnlyHint; approval remains mandatory"
+            );
+        }
         let Some(tool_name) = allocate_mcp_tool_name(server_name, &remote_name, registry) else {
             warn!(
                 server = server_name,
@@ -304,6 +339,8 @@ async fn register_mcp_server(
                 description: description.clone(),
                 server_name: Some(server_name.to_owned()),
                 remote_name: Some(remote_name),
+                mcp_annotations_trusted: Some(mcp_annotations_trusted),
+                effective_reversibility: Some(effective_reversibility),
             });
             continue;
         };
@@ -321,10 +358,10 @@ async fn register_mcp_server(
             )),
             input_schema: input_schema_from_mcp(&remote_tool),
             category: ToolCategory::Research,
-            reversibility: reversibility_from_mcp(&remote_tool),
+            reversibility: effective_reversibility,
             auto_activate: false,
             groups: vec![ToolGroupId::Mcp],
-            tags: tags_from_mcp(&remote_tool),
+            tags: effective_tags,
         };
         let executor = ExternalMcpToolExecutor {
             server_name: server_name.to_owned(),
@@ -346,6 +383,8 @@ async fn register_mcp_server(
                     description: tool_description,
                     server_name: Some(server_name.to_owned()),
                     remote_name: Some(remote_name.clone()),
+                    mcp_annotations_trusted: Some(mcp_annotations_trusted),
+                    effective_reversibility: Some(effective_reversibility),
                 });
                 registry.set_origin(
                     tool_name.clone(),
@@ -353,6 +392,7 @@ async fn register_mcp_server(
                         local_name: tool_name.as_str().to_owned(),
                         server_name: server_name.to_owned(),
                         remote_name: remote_name.clone(),
+                        mcp_annotations_trusted,
                     },
                 );
             }
@@ -370,6 +410,8 @@ async fn register_mcp_server(
                     description: tool_description,
                     server_name: Some(server_name.to_owned()),
                     remote_name: Some(remote_name.clone()),
+                    mcp_annotations_trusted: Some(mcp_annotations_trusted),
+                    effective_reversibility: Some(effective_reversibility),
                 });
             }
         }
@@ -440,6 +482,8 @@ fn register_mcp_server(
         description,
         server_name: Some(server_name.to_owned()),
         remote_name: None,
+        mcp_annotations_trusted: Some(entry.trust_annotations),
+        effective_reversibility: None,
     }]
 }
 
@@ -557,25 +601,27 @@ fn property_type_from_str(value: &str) -> PropertyType {
 }
 
 #[cfg(feature = "mcp")]
-fn reversibility_from_mcp(tool: &rmcp::model::Tool) -> Reversibility {
-    match tool
-        .annotations
-        .as_ref()
-        .and_then(|annotations| annotations.read_only_hint)
-    {
+fn reversibility_from_mcp(tool: &rmcp::model::Tool, trust_annotations: bool) -> Reversibility {
+    if !trust_annotations {
+        return Reversibility::Irreversible;
+    }
+
+    match mcp_read_only_hint(tool) {
         Some(true) => Reversibility::FullyReversible,
         _ => Reversibility::Irreversible,
     }
 }
 
 #[cfg(feature = "mcp")]
-fn tags_from_mcp(tool: &rmcp::model::Tool) -> Vec<ToolTag> {
-    if tool
-        .annotations
+fn mcp_read_only_hint(tool: &rmcp::model::Tool) -> Option<bool> {
+    tool.annotations
         .as_ref()
         .and_then(|annotations| annotations.read_only_hint)
-        == Some(true)
-    {
+}
+
+#[cfg(feature = "mcp")]
+fn tags_from_mcp(tool: &rmcp::model::Tool, trust_annotations: bool) -> Vec<ToolTag> {
+    if trust_annotations && mcp_read_only_hint(tool) == Some(true) {
         vec![ToolTag::Fetch]
     } else {
         vec![ToolTag::Fetch, ToolTag::Execute]
@@ -776,6 +822,7 @@ mod tests {
             description: description.map(ToOwned::to_owned),
             method: ExternalToolMethod::default(),
             auth: None,
+            trust_annotations: false,
         }
     }
 
@@ -885,6 +932,8 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
                     description: "shell".to_owned(),
                     server_name: None,
                     remote_name: None,
+                    mcp_annotations_trusted: None,
+                    effective_reversibility: Some(Reversibility::FullyReversible),
                 },
                 ToolManifestEntry {
                     name: "missing".to_owned(),
@@ -893,6 +942,8 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
                     description: "missing".to_owned(),
                     server_name: Some("missing_server".to_owned()),
                     remote_name: Some("missing".to_owned()),
+                    mcp_annotations_trusted: Some(false),
+                    effective_reversibility: None,
                 },
             ],
             optional: vec![ToolManifestEntry {
@@ -902,6 +953,8 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
                 description: "scholar".to_owned(),
                 server_name: Some("scholar_server".to_owned()),
                 remote_name: Some("scholar".to_owned()),
+                mcp_annotations_trusted: Some(true),
+                effective_reversibility: Some(Reversibility::FullyReversible),
             }],
         };
         assert_eq!(manifest.available_count(), 2);
@@ -1007,24 +1060,33 @@ done
         let result =
             register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
         assert_eq!(result.len(), 1);
-        assert!(result.first().is_some_and(|e| e.available));
+        let manifest_entry = result.first().expect("manifest entry");
+        assert!(manifest_entry.available);
+        assert_eq!(manifest_entry.name.as_str(), "mcp_fake_echo");
+        assert_eq!(manifest_entry.server_name.as_deref(), Some("fake"));
+        assert_eq!(manifest_entry.remote_name.as_deref(), Some("echo"));
+        assert_eq!(manifest_entry.mcp_annotations_trusted, Some(false));
         assert_eq!(
-            result.first().map(|e| e.name.as_str()),
-            Some("mcp_fake_echo")
-        );
-        assert_eq!(
-            result.first().and_then(|e| e.server_name.as_deref()),
-            Some("fake")
-        );
-        assert_eq!(
-            result.first().and_then(|e| e.remote_name.as_deref()),
-            Some("echo")
+            manifest_entry.effective_reversibility,
+            Some(Reversibility::Irreversible)
         );
 
         let tool_name = ToolName::new("mcp_fake_echo").expect("tool name");
         let def = registry.get_def(&tool_name).expect("tool def");
         assert_eq!(def.groups, vec![ToolGroupId::Mcp]);
         assert!(def.tags.contains(&ToolTag::Fetch));
+        assert!(def.tags.contains(&ToolTag::Execute));
+        assert_eq!(def.reversibility, Reversibility::Irreversible);
+        assert_eq!(
+            registry.approval_requirement(&tool_name),
+            Some(organon::types::ApprovalRequirement::Mandatory)
+        );
+        assert_eq!(
+            registry
+                .origin(&tool_name)
+                .map(|origin| origin.mcp_annotations_trusted),
+            Some(false)
+        );
 
         let input = ToolInput {
             name: tool_name,
@@ -1040,6 +1102,44 @@ done
             panic!("expected text tool result");
         };
         assert_eq!(text, "mcp-response");
+    }
+
+    #[cfg(feature = "mcp")]
+    #[tokio::test]
+    async fn trusted_mcp_server_can_downgrade_read_only_hint() {
+        ensure_crypto_provider();
+        let (_dir, script) = fake_mcp_server_script();
+        let mut registry = ToolRegistry::new();
+        let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
+        entry.command = Some(script.display().to_string());
+        entry.trust_annotations = true;
+
+        let result =
+            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        assert_eq!(result.len(), 1);
+        let manifest_entry = result.first().expect("manifest entry");
+        assert!(manifest_entry.available);
+        assert_eq!(manifest_entry.mcp_annotations_trusted, Some(true));
+        assert_eq!(
+            manifest_entry.effective_reversibility,
+            Some(Reversibility::FullyReversible)
+        );
+
+        let tool_name = ToolName::new("mcp_fake_echo").expect("tool name");
+        let def = registry.get_def(&tool_name).expect("tool def");
+        assert_eq!(def.reversibility, Reversibility::FullyReversible);
+        assert!(def.tags.contains(&ToolTag::Fetch));
+        assert!(!def.tags.contains(&ToolTag::Execute));
+        assert_eq!(
+            registry.approval_requirement(&tool_name),
+            Some(organon::types::ApprovalRequirement::None)
+        );
+        assert_eq!(
+            registry
+                .origin(&tool_name)
+                .map(|origin| origin.mcp_annotations_trusted),
+            Some(true)
+        );
     }
 
     #[cfg(feature = "mcp")]

@@ -129,6 +129,12 @@ pub struct ExternalToolEntry {
     /// Optional authentication configuration for HTTP-based tools and MCP servers.
     #[serde(default)]
     pub auth: Option<ExternalToolAuth>,
+    /// Whether to trust MCP tool annotations such as `readOnlyHint`.
+    ///
+    /// Defaults to false so remote servers cannot lower approval requirements
+    /// without an explicit operator trust decision (#4631).
+    #[serde(default)]
+    pub trust_annotations: bool,
 }
 
 impl Default for ExternalToolEntry {
@@ -143,6 +149,7 @@ impl Default for ExternalToolEntry {
             description: None,
             method: ExternalToolMethod::default(),
             auth: None,
+            trust_annotations: false,
         }
     }
 }

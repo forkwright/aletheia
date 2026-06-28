@@ -683,6 +683,9 @@ pub struct ToolOrigin {
     pub server_name: String,
     /// Tool name as exposed by the external server.
     pub remote_name: String,
+    /// Whether remote MCP annotations were trusted when deriving tool metadata.
+    #[serde(default)]
+    pub mcp_annotations_trusted: bool,
 }
 
 /// Metadata recorded per tool call for session audit trails.

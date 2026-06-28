@@ -441,6 +441,7 @@ method = "get"
 type = "mcp"
 command = "local-mcp"
 args = ["--stdio"]
+trustAnnotations = true
 "#;
     let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
 
@@ -460,6 +461,26 @@ args = ["--stdio"]
     assert_eq!(local_mcp.kind, ExternalToolKind::Mcp);
     assert_eq!(local_mcp.command.as_deref(), Some("local-mcp"));
     assert_eq!(local_mcp.args, vec!["--stdio"]);
+    assert!(local_mcp.trust_annotations);
+}
+
+#[test]
+fn mcp_tool_annotation_trust_defaults_to_false() {
+    let toml = r#"
+[tools.optional.local_mcp]
+type = "mcp"
+command = "local-mcp"
+"#;
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
+    let local_mcp = config
+        .tools
+        .optional
+        .get("local_mcp")
+        .expect("local MCP tool");
+    assert!(
+        !local_mcp.trust_annotations,
+        "MCP annotations must be untrusted unless the operator opts in"
+    );
 }
 
 #[test]

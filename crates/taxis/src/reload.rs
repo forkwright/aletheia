@@ -650,6 +650,7 @@ mod tests {
                 description: None,
                 method: crate::config::ExternalToolMethod::Post,
                 auth: None,
+                trust_annotations: false,
             },
         );
         staged.agents.defaults.model_defaults.thinking_budget = 20_000;

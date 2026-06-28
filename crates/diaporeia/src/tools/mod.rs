@@ -1026,6 +1026,14 @@ impl DiaporeiaServer {
                     SurfaceAvailability::Denied(reason) => Some(reason.as_str()),
                     SurfaceAvailability::Callable | SurfaceAvailability::Inactive => None,
                 };
+                let origin = entry.origin.as_ref().map(|origin| {
+                    serde_json::json!({
+                        "local_name": origin.local_name,
+                        "server_name": origin.server_name,
+                        "remote_name": origin.remote_name,
+                        "mcp_annotations_trusted": origin.mcp_annotations_trusted,
+                    })
+                });
                 serde_json::json!({
                     "name": entry.name.as_str(),
                     "description": entry.description,
@@ -1037,6 +1045,7 @@ impl DiaporeiaServer {
                     "availability": entry.availability.as_str(),
                     "denial_reason": denial_reason,
                     "kind": entry.kind.as_str(),
+                    "origin": origin,
                 })
             })
             .collect();
