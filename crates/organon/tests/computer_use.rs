@@ -62,10 +62,10 @@ fn registers_computer_use_tool() {
     assert!(props.get("button").is_some(), "schema should have button");
 }
 
-/// The tool should return an error result (not panic) for unknown actions.
+/// Unknown actions should be rejected by schema validation before dispatch.
 #[tokio::test]
 #[expect(clippy::expect_used, reason = "test assertions")]
-async fn unknown_action_returns_error() {
+async fn unknown_action_returns_validation_error() {
     let mut registry = ToolRegistry::new();
     organon::builtins::computer_use::register(&mut registry, &SandboxConfig::default())
         .expect("register");
@@ -76,18 +76,14 @@ async fn unknown_action_returns_error() {
         arguments: serde_json::json!({"action": "fly"}),
     };
 
-    let result = registry
+    let err = registry
         .execute(&input, &test_ctx())
         .await
-        .expect("execute should not error");
+        .expect_err("schema validation should reject unknown action");
 
     assert!(
-        result.is_error,
-        "unknown action should produce error result"
-    );
-    assert!(
-        result.content.text_summary().contains("unknown action"),
-        "error should mention unknown action"
+        err.to_string().contains("not in enum"),
+        "error should mention enum validation: {err}"
     );
 }
 
