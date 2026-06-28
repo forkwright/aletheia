@@ -207,6 +207,7 @@ pub(super) fn build_nous_runtime_config(
     if let Some(model) = nous_config.generation.extraction_model.as_deref() {
         model.clone_into(&mut extraction_cfg.model);
     }
+    extraction_cfg.project_id.clone_from(&project_id);
     (
         nous_config,
         PipelineConfig {

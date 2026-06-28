@@ -26,7 +26,7 @@ use eidos::workspace::ProjectId;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use crate::knowledge::{EpistemicTier, FactType, Visibility};
+use crate::knowledge::{EpistemicTier, FactType, MemoryScope, Visibility};
 
 #[cfg(feature = "reranker")]
 pub mod reranker;
@@ -903,9 +903,10 @@ pub enum ProjectRecallScope {
 
 /// Filter recall candidates by project partition.
 ///
-/// Project-scoped reads retain global rows (`project_id = None`) so promoted
-/// cross-project facts remain visible. Facts tied to a different project are
-/// excluded unless the caller explicitly selects [`ProjectRecallScope::Global`].
+/// Project-scoped reads retain true global rows (`project_id = None` and
+/// `scope != Project`) so promoted cross-project facts remain visible. Rows
+/// marked `scope = Project` without a `project_id` are malformed legacy rows
+/// and are excluded from project-scoped reads instead of being treated as global.
 ///
 /// # Complexity
 ///
@@ -919,7 +920,10 @@ pub fn filter_by_project_scope(
         ProjectRecallScope::Global => candidates,
         ProjectRecallScope::Project(project_id) => candidates
             .into_iter()
-            .filter(|c| c.project_id.as_ref().is_none_or(|id| id == project_id))
+            .filter(|c| match c.project_id.as_ref() {
+                Some(id) => id == project_id,
+                None => c.scope != Some(MemoryScope::Project),
+            })
             .collect(),
     }
 }

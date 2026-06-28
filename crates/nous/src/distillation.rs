@@ -350,13 +350,20 @@ pub fn commit_memory_flush(
     nous_id: &str,
     result: &DistillResult,
     history: &[mneme::types::Message],
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<usize> {
     if result.memory_flush.is_empty() {
         return Ok(0);
     }
 
     verify_memory_flush(&result.memory_flush, history)?;
-    persist_memory_flush_items(knowledge_store, &result.memory_flush, session_id, nous_id)
+    persist_memory_flush_items(
+        knowledge_store,
+        &result.memory_flush,
+        session_id,
+        nous_id,
+        project_id,
+    )
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -365,17 +372,18 @@ pub(crate) fn persist_memory_flush_items(
     flush: &MemoryFlush,
     session_id: &str,
     nous_id: &str,
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<usize> {
     let mut inserted = 0usize;
     for (kind, item) in flush_items(flush) {
-        let fact = fact_from_flush_item(kind, item, session_id, nous_id)?;
+        let fact = fact_from_flush_item(kind, item, session_id, nous_id, project_id)?;
         knowledge_store
             .insert_fact(&fact)
             .context(error::KnowledgeStoreSnafu)?;
         inserted = inserted.saturating_add(1);
     }
     if let Some(task_state) = flush.task_state.as_deref() {
-        let fact = fact_from_content("task_state", task_state, session_id, nous_id)?;
+        let fact = fact_from_content("task_state", task_state, session_id, nous_id, project_id)?;
         knowledge_store
             .insert_fact(&fact)
             .context(error::KnowledgeStoreSnafu)?;
@@ -420,8 +428,9 @@ fn fact_from_flush_item(
     item: &FlushItem,
     session_id: &str,
     nous_id: &str,
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<mneme::knowledge::Fact> {
-    fact_from_content(kind, &item.content, session_id, nous_id)
+    fact_from_content(kind, &item.content, session_id, nous_id, project_id)
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -430,6 +439,7 @@ fn fact_from_content(
     content: &str,
     session_id: &str,
     nous_id: &str,
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<mneme::knowledge::Fact> {
     use mneme::id::FactId;
     use mneme::knowledge::{
@@ -450,8 +460,8 @@ fn fact_from_content(
         nous_id: nous_id.to_owned(),
         fact_type: fact_type.clone(),
         content: content.to_owned(),
-        scope: Some(MemoryScope::Project),
-        project_id: None,
+        scope: project_id.map(|_| MemoryScope::Project),
+        project_id: project_id.cloned(),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: Visibility::Private,
         temporal: FactTemporal {
@@ -787,9 +797,13 @@ mod tests {
         let history = vec![mneme_message(
             "alice chose rust for the substrate. bob owns the deployment checklist.",
         )];
+        let project =
+            mneme::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+                .expect("valid project");
 
         let inserted =
-            commit_memory_flush(&store, "ses-1", "nous-1", &result, &history).expect("commit");
+            commit_memory_flush(&store, "ses-1", "nous-1", &result, &history, Some(&project))
+                .expect("commit");
 
         assert_eq!(inserted, 3);
         let facts = store.list_all_facts(10).expect("list facts");
@@ -799,6 +813,12 @@ mod tests {
                 .iter()
                 .all(|fact| fact.scope == Some(mneme::knowledge::MemoryScope::Project)),
             "memory flush facts must preserve project scope"
+        );
+        assert!(
+            facts
+                .iter()
+                .all(|fact| fact.project_id.as_ref() == Some(&project)),
+            "project-scoped memory flush facts must carry the current project ID"
         );
         assert!(
             facts.iter().any(|fact| fact.fact_type == "task_state"
@@ -820,7 +840,7 @@ mod tests {
         let result = distill_result_with_flush(flush);
         let history = vec![mneme_message("alice chose rust for the substrate")];
 
-        let err = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history)
+        let err = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history, None)
             .expect_err("probe must reject ungrounded flush");
 
         assert!(
