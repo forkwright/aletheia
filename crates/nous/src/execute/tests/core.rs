@@ -812,6 +812,7 @@ fn signal_classification_code() {
         result: Some("ok".to_owned()),
         is_error: false,
         duration_ms: 10,
+        approval: None,
         receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
@@ -834,6 +835,7 @@ fn signal_classification_research() {
         result: Some("results".to_owned()),
         is_error: false,
         duration_ms: 10,
+        approval: None,
         receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
@@ -856,6 +858,7 @@ fn signal_classification_error_recovery() {
         result: Some("failed".to_owned()),
         is_error: true,
         duration_ms: 10,
+        approval: None,
         receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
@@ -1024,6 +1027,7 @@ fn classify_signals_includes_error_recovery() {
         result: Some("failed".to_owned()),
         is_error: true,
         duration_ms: 5,
+        approval: None,
         receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);

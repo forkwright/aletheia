@@ -240,12 +240,15 @@ impl FromRef<Arc<AppState>> for MetricsState {
 pub struct OpsState {
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Persistent session and message storage.
+    pub session_store: Arc<Mutex<SessionStore>>,
 }
 
 impl FromRef<Arc<AppState>> for OpsState {
     fn from_ref(state: &Arc<AppState>) -> Self {
         Self {
             tool_registry: Arc::clone(&state.tool_registry),
+            session_store: Arc::clone(&state.session_store),
         }
     }
 }

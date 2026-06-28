@@ -165,6 +165,7 @@ impl ToolDispatchPolicy {
                         name: &name,
                         input: &input,
                         message: denial.message(&name),
+                        approval: Some(APPROVAL_OUTCOME_POLICY_DENIED),
                     },
                 );
             } else {
@@ -261,6 +262,7 @@ fn approval_reason(tool_name: &str, approval: ApprovalRequirement) -> String {
 const APPROVAL_OUTCOME_AUTO_APPROVED: &str = "auto_approved";
 const APPROVAL_OUTCOME_ADVISORY_AUTO: &str = "advisory_auto";
 const APPROVAL_OUTCOME_NO_GATE_DENIED: &str = "no_gate_denied";
+const APPROVAL_OUTCOME_POLICY_DENIED: &str = "policy_denied";
 
 fn record_approval_policy_outcome(
     tool_id: &str,
@@ -360,6 +362,7 @@ struct DeniedToolCall<'a> {
     name: &'a str,
     input: &'a serde_json::Value,
     message: String,
+    approval: Option<&'a str>,
 }
 
 fn record_denied_call(
@@ -376,6 +379,7 @@ fn record_denied_call(
         result: Some(denied.message.clone()),
         is_error: true,
         duration_ms: 0,
+        approval: denied.approval.map(str::to_owned),
         receipt: None,
     });
     tool_results.push(ContentBlock::ToolResult {
@@ -779,6 +783,7 @@ async fn dispatch_single_tool(
         result: Some(content.text_summary()),
         is_error,
         duration_ms,
+        approval: None,
         receipt,
     };
 
@@ -846,6 +851,7 @@ pub(super) async fn dispatch_tools(
                     name: tool_name,
                     input: tool_input,
                     message: denial.message(tool_name),
+                    approval: Some(APPROVAL_OUTCOME_POLICY_DENIED),
                 },
             );
             continue;
@@ -877,6 +883,7 @@ pub(super) async fn dispatch_tools(
                     result: Some(msg.clone()),
                     is_error: true,
                     duration_ms: 0,
+                    approval: None,
                     receipt: None,
                 },
                 result_block: ContentBlock::ToolResult {
@@ -931,6 +938,7 @@ pub(super) async fn dispatch_tools(
                         name: tool_name,
                         input: tool_input,
                         message: format!("tool_policy: Tool '{tool_name}' call rejected: {e}"),
+                        approval: Some(APPROVAL_OUTCOME_POLICY_DENIED),
                     },
                 );
                 continue;
@@ -939,7 +947,7 @@ pub(super) async fn dispatch_tools(
 
         // WHY(#3958, ADR-005): one decision boundary protects streaming,
         // fallback, and batch dispatch. Unknown future requirements block.
-        match approval {
+        let approval_outcome = match approval {
             ApprovalRequirement::None => {
                 record_approval_policy_outcome(
                     tool_id,
@@ -955,6 +963,7 @@ pub(super) async fn dispatch_tools(
                     tool_name,
                     APPROVAL_OUTCOME_AUTO_APPROVED,
                 );
+                APPROVAL_OUTCOME_AUTO_APPROVED
             }
             ApprovalRequirement::Advisory => {
                 record_approval_policy_outcome(
@@ -971,6 +980,7 @@ pub(super) async fn dispatch_tools(
                     tool_name,
                     APPROVAL_OUTCOME_ADVISORY_AUTO,
                 );
+                APPROVAL_OUTCOME_ADVISORY_AUTO
             }
             ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
                 emit_approval_required(
@@ -1015,16 +1025,18 @@ pub(super) async fn dispatch_tools(
                             name: tool_name,
                             input: tool_input,
                             message,
+                            approval: Some(outcome),
                         },
                     );
                     continue;
                 }
+                outcome
             }
-        }
+        };
 
         emit_tool_start(stream_tx, tool_ctx, tool_id, tool_name, tool_input);
 
-        let outcome = dispatch_single_tool(
+        let mut outcome = dispatch_single_tool(
             tool_id,
             tool_name,
             &approval_input,
@@ -1036,6 +1048,7 @@ pub(super) async fn dispatch_tools(
             receipt_ledger,
         )
         .await?;
+        outcome.call.approval = Some(approval_outcome.to_owned());
 
         let is_error = record_tool_outcome(
             all_tool_calls,

@@ -69,6 +69,7 @@ fn turn_result_with_tool_calls() {
             result: Some("file1.txt\nfile2.txt".to_owned()),
             is_error: false,
             duration_ms: 42,
+            approval: None,
             receipt: None,
         }],
         usage: TurnUsage {

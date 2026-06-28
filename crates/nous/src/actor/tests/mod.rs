@@ -848,6 +848,7 @@ fn make_tool_call_with_result(
         result: result.map(str::to_owned),
         is_error,
         duration_ms: 10,
+        approval: None,
         receipt: None,
     }
 }

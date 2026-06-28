@@ -461,6 +461,7 @@ fn tool_call_serde_roundtrip() {
         result: Some("output".to_owned()),
         is_error: false,
         duration_ms: 42,
+        approval: None,
         receipt: None,
     };
     let json = serde_json::to_string(&tc).expect("serialize tool call");
@@ -482,6 +483,7 @@ fn tool_call_with_error() {
         result: None,
         is_error: true,
         duration_ms: 0,
+        approval: None,
         receipt: None,
     };
     assert!(tc.is_error, "error tool call should have is_error=true");

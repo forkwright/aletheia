@@ -6,7 +6,8 @@
 )]
 
 use super::{
-    FinalizeMessage, FinalizeNote, FinalizeTurnRequest, test_finalize_failure, test_persist_counter,
+    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
+    test_finalize_failure, test_persist_counter,
 };
 use crate::error::Error;
 use crate::test_fixtures::test_store;
@@ -662,6 +663,30 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
     store
         .add_note("ses-x", "alice", "task", "remember this")
         .expect("add note");
+    let audit_records = vec![FinalizeToolAuditRecord {
+        turn_seq: 1,
+        tool_call_id: "toolu-delete",
+        tool_name: "read_file",
+        duration_ms: 10,
+        is_error: false,
+        outcome: "success",
+        result: Some("ok"),
+        approval: Some("auto_approved"),
+        receipt: Some("receipt-delete"),
+    }];
+    store
+        .finalize_turn(&FinalizeTurnRequest {
+            session_id: "ses-x",
+            nous_id: "alice",
+            session_key: "main",
+            model: None,
+            parent_session_id: None,
+            messages: &[],
+            usage: None,
+            tool_audit_records: &audit_records,
+            completion_note: None,
+        })
+        .expect("record tool audit");
 
     assert!(
         !store
@@ -669,6 +694,14 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
             .expect("usage")
             .is_empty(),
         "usage row should exist before delete"
+    );
+    assert!(
+        store
+            .recent_tool_audit_records(10)
+            .expect("tool audit")
+            .iter()
+            .any(|record| record.session_id == "ses-x"),
+        "tool audit row should exist before delete"
     );
     assert!(
         !store.get_notes("ses-x").expect("notes").is_empty(),
@@ -695,6 +728,14 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
     assert!(
         store.get_notes("ses-x").expect("notes").is_empty(),
         "note rows must be removed"
+    );
+    assert!(
+        store
+            .recent_tool_audit_records(10)
+            .expect("tool audit")
+            .iter()
+            .all(|record| record.session_id != "ses-x"),
+        "tool audit rows must be removed"
     );
     assert!(
         store.find_session_by_id("ses-x").expect("lookup").is_none(),
@@ -931,6 +972,7 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
         parent_session_id: None,
         messages: &messages,
         usage: Some(&usage),
+        tool_audit_records: &[],
         completion_note: Some(FinalizeNote {
             category: "context",
             content: r#"{"status":"completed"}"#,
@@ -963,6 +1005,69 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
     assert_eq!(notes.len(), 1);
     assert_eq!(notes[0].category, "context");
     assert_eq!(notes[0].content, r#"{"status":"completed"}"#);
+}
+
+#[test]
+fn finalize_turn_persists_structured_tool_audit_records() {
+    let store = test_store();
+    let session_id = "ses-finalize-audit";
+    let usage = UsageRecord {
+        session_id: session_id.to_owned(),
+        turn_seq: 9,
+        input_tokens: 3,
+        output_tokens: 5,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        model: Some("test-model".to_owned()),
+    };
+    let messages = vec![FinalizeMessage {
+        role: Role::Assistant,
+        content: "done",
+        tool_call_id: None,
+        tool_name: None,
+        token_estimate: 1,
+    }];
+    let audits = vec![FinalizeToolAuditRecord {
+        turn_seq: 9,
+        tool_call_id: "toolu_audit_1",
+        tool_name: "read_file",
+        duration_ms: 37,
+        is_error: false,
+        outcome: "success",
+        result: Some("file contents"),
+        approval: Some("approved"),
+        receipt: Some("receipt-token"),
+    }];
+    let request = FinalizeTurnRequest {
+        session_id,
+        nous_id: "syn",
+        session_key: "main",
+        model: Some("test-model"),
+        parent_session_id: None,
+        messages: &messages,
+        usage: Some(&usage),
+        tool_audit_records: &audits,
+        completion_note: None,
+    };
+
+    let result = store.finalize_turn(&request).expect("finalize turn");
+    assert_eq!(result.tool_audit_records_persisted, 1);
+
+    let recent = store
+        .recent_tool_audit_records(10)
+        .expect("recent tool audit records");
+    assert_eq!(recent.len(), 1);
+    assert_eq!(recent[0].session_id, session_id);
+    assert_eq!(recent[0].nous_id, "syn");
+    assert_eq!(recent[0].turn_seq, 9);
+    assert_eq!(recent[0].tool_call_id, "toolu_audit_1");
+    assert_eq!(recent[0].tool_name, "read_file");
+    assert_eq!(recent[0].duration_ms, 37);
+    assert!(!recent[0].is_error);
+    assert_eq!(recent[0].outcome, "success");
+    assert_eq!(recent[0].result.as_deref(), Some("file contents"));
+    assert_eq!(recent[0].approval.as_deref(), Some("approved"));
+    assert_eq!(recent[0].receipt.as_deref(), Some("receipt-token"));
 }
 
 #[test]
@@ -1003,6 +1108,7 @@ fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
         parent_session_id: None,
         messages: &messages,
         usage: Some(&usage),
+        tool_audit_records: &[],
         completion_note: Some(FinalizeNote {
             category: "context",
             content: r#"{"status":"completed"}"#,

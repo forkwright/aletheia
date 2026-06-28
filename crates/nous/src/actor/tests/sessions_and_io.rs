@@ -245,6 +245,7 @@ async fn maybe_spawn_extraction_spawns_with_tool_calls_and_reasoning() {
         result: Some("file contents".to_owned()),
         is_error: false,
         duration_ms: 42,
+        approval: None,
         receipt: None,
     }];
 
