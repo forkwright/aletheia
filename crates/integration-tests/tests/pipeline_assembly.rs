@@ -112,12 +112,7 @@ fn session_state_flows_through_pipeline() {
 
 #[test]
 fn pipeline_message_serde() {
-    let msg = PipelineMessage {
-        role: "user".to_owned(),
-        content: "hello".to_owned(),
-        token_estimate: 5,
-        cache_breakpoint: false,
-    };
+    let msg = PipelineMessage::text("user", "hello", 5);
     let json = serde_json::to_string(&msg).expect("PipelineMessage serializes to JSON");
     let back: PipelineMessage =
         serde_json::from_str(&json).expect("PipelineMessage deserializes from JSON");

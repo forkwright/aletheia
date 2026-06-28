@@ -83,12 +83,11 @@ pub(crate) fn load_history(
         .saturating_sub(current_tokens);
 
     if available <= 0 {
-        let messages = vec![PipelineMessage {
-            role: "user".to_owned(),
-            content: current_message.to_owned(),
-            token_estimate: current_tokens,
-            cache_breakpoint: false,
-        }];
+        let messages = vec![PipelineMessage::text(
+            "user",
+            current_message,
+            current_tokens,
+        )];
         return Ok((
             messages,
             HistoryResult {
@@ -107,14 +106,13 @@ pub(crate) fn load_history(
     let raw = store
         .get_history_with_budget(session_id, available)
         .context(error::StoreSnafu)?;
+    let tool_audit_by_call_id = tool_audit_by_call_id(store, session_id, &raw)?;
 
     // Count eligible messages within the budgeted window so the `truncated`
     // flag correctly reflects whether the count cap was the limiting factor.
     let total_eligible_in_window = raw
         .iter()
-        .filter(|m| {
-            m.role != Role::System && (config.include_tool_messages || m.role != Role::ToolResult)
-        })
+        .filter(|m| m.role != Role::System && should_include_message(m, config))
         .count();
 
     let mut collected: Vec<PipelineMessage> = Vec::new();
@@ -128,32 +126,13 @@ pub(crate) fn load_history(
 
         match msg.role {
             Role::System => continue,
-            Role::ToolResult if !config.include_tool_messages => continue,
+            _ if !should_include_message(msg, config) => continue,
             _ => {} // kanon:ignore RUST/empty-match-arm — all other roles proceed to message inclusion below
         }
 
-        let role = match msg.role {
-            Role::Assistant => "assistant",
-            // WHY: System messages are filtered by `continue` above, but if one
-            // slips through (e.g., non_exhaustive variant change), skip it rather
-            // than panicking the pipeline.
-            Role::System => continue,
-            // WHY: non_exhaustive fallback -- unknown roles mapped to user
-            Role::User | Role::ToolResult | _ => "user",
-        };
-
-        // WHY(#3781): Mark distillation summaries as cache breakpoints so
-        // subsequent turns can reuse the cached prefix. Detect by content marker
-        // that was added by apply_compaction().
-        let is_distillation_summary = msg
-            .content
-            .starts_with("[Conversation summary FROM compaction]");
-        collected.push(PipelineMessage {
-            role: role.to_owned(),
-            content: msg.content.clone(),
-            token_estimate: msg.token_estimate,
-            cache_breakpoint: is_distillation_summary,
-        });
+        let mut pipeline_message = pipeline_message_from_history(msg);
+        apply_tool_audit(&mut pipeline_message, msg, &tool_audit_by_call_id);
+        collected.push(pipeline_message);
         tokens_consumed += msg.token_estimate;
         loaded_count += 1;
     }
@@ -166,12 +145,11 @@ pub(crate) fn load_history(
     // via `tokens_consumed` relative to `budget_tokens_available` in the log.
     let truncated = total_eligible_in_window > loaded_count;
 
-    collected.push(PipelineMessage {
-        role: "user".to_owned(),
-        content: current_message.to_owned(),
-        token_estimate: current_tokens,
-        cache_breakpoint: false,
-    });
+    collected.push(PipelineMessage::text(
+        "user",
+        current_message,
+        current_tokens,
+    ));
 
     let result = HistoryResult {
         messages_loaded: loaded_count,
@@ -187,6 +165,80 @@ pub(crate) fn load_history(
         "history loaded"
     );
     Ok((collected, result))
+}
+
+fn should_include_message(msg: &mneme::types::Message, config: &HistoryConfig) -> bool {
+    config.include_tool_messages || !is_tool_history_message(msg)
+}
+
+fn is_tool_history_message(msg: &mneme::types::Message) -> bool {
+    msg.role == Role::ToolResult || (msg.role == Role::Assistant && msg.tool_call_id.is_some())
+}
+
+fn pipeline_message_from_history(msg: &mneme::types::Message) -> PipelineMessage {
+    let mut message = match msg.role {
+        Role::Assistant => match (&msg.tool_call_id, &msg.tool_name) {
+            (Some(tool_call_id), Some(tool_name)) => PipelineMessage::tool_use(
+                msg.content.clone(),
+                msg.token_estimate,
+                tool_call_id.clone(),
+                tool_name.clone(),
+            ),
+            _ => PipelineMessage::text("assistant", msg.content.clone(), msg.token_estimate),
+        },
+        Role::ToolResult => match (&msg.tool_call_id, &msg.tool_name) {
+            (Some(tool_call_id), Some(tool_name)) => PipelineMessage::tool_result(
+                msg.content.clone(),
+                msg.token_estimate,
+                tool_call_id.clone(),
+                tool_name.clone(),
+            ),
+            _ => PipelineMessage::text("tool_result", msg.content.clone(), msg.token_estimate),
+        },
+        // WHY: non_exhaustive fallback -- unknown roles mapped to user.
+        _ => PipelineMessage::text("user", msg.content.clone(), msg.token_estimate),
+    };
+
+    // WHY(#3781): Mark distillation summaries as cache breakpoints so
+    // subsequent turns can reuse the cached prefix. Detect by content marker
+    // that was added by apply_compaction().
+    message.cache_breakpoint = msg
+        .content
+        .starts_with("[Conversation summary FROM compaction]");
+    message
+}
+
+fn apply_tool_audit(
+    message: &mut PipelineMessage,
+    history_message: &mneme::types::Message,
+    audit_by_call_id: &std::collections::HashMap<String, mneme::types::ToolAuditRecord>,
+) {
+    if let Some(tool_call_id) = &history_message.tool_call_id
+        && let Some(audit) = audit_by_call_id.get(tool_call_id)
+    {
+        message.tool_is_error = Some(audit.is_error);
+        message.tool_duration_ms = Some(audit.duration_ms);
+        message.tool_approval.clone_from(&audit.approval);
+        message.tool_receipt.clone_from(&audit.receipt);
+    }
+}
+
+fn tool_audit_by_call_id(
+    store: &SessionStore,
+    session_id: &str,
+    messages: &[mneme::types::Message],
+) -> error::Result<std::collections::HashMap<String, mneme::types::ToolAuditRecord>> {
+    if !messages.iter().any(|msg| msg.tool_call_id.is_some()) {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let records = store
+        .tool_audit_records_for_session(session_id)
+        .context(error::StoreSnafu)?;
+    Ok(records
+        .into_iter()
+        .map(|record| (record.tool_call_id.clone(), record))
+        .collect())
 }
 
 #[expect(
@@ -266,8 +318,26 @@ mod tests {
     fn history_filters_tool_messages() {
         let store = setup_store();
         append(&store, Role::User, "use a tool", 50);
-        append(&store, Role::Assistant, "calling tool", 50);
-        append(&store, Role::ToolResult, "tool output", 50);
+        store
+            .append_message(
+                "ses-1",
+                Role::Assistant,
+                r#"{"path":"README.md"}"#,
+                Some("tc-1"),
+                Some("read_file"),
+                50,
+            )
+            .expect("append tool call");
+        store
+            .append_message(
+                "ses-1",
+                Role::ToolResult,
+                "tool output",
+                Some("tc-1"),
+                Some("read_file"),
+                50,
+            )
+            .expect("append tool result");
         append(&store, Role::Assistant, "here's the result", 50);
 
         let config = HistoryConfig {
@@ -280,7 +350,13 @@ mod tests {
 
         let roles: Vec<&str> = messages.iter().map(|m| m.role.as_str()).collect();
         assert!(!roles.contains(&"tool_result"));
-        assert_eq!(result.messages_loaded, 3);
+        assert!(
+            !messages
+                .iter()
+                .any(|message| message.tool_call_id.as_deref() == Some("tc-1")),
+            "tool-use rows should be filtered with their tool-result rows"
+        );
+        assert_eq!(result.messages_loaded, 2);
     }
 
     #[test]
@@ -389,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_result_mapped_to_user_role() {
+    fn tool_result_keeps_distinct_pipeline_role() {
         let store = setup_store();
         append(&store, Role::ToolResult, "file contents", 100);
 
@@ -398,7 +474,7 @@ mod tests {
             load_history(&store, "ses-1", 100_000, &config, "next").expect("load");
 
         assert_eq!(result.messages_loaded, 1);
-        assert_eq!(messages[0].role, "user");
+        assert_eq!(messages[0].role, "tool_result");
         assert_eq!(messages[0].content, "file contents");
     }
 

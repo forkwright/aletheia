@@ -121,6 +121,85 @@ pub struct PipelineMessage {
     /// Typically set on the distilled summary message after compaction.
     #[serde(default)]
     pub cache_breakpoint: bool,
+    /// Provider-assigned tool-use identifier, when this message represents a
+    /// tool call or tool result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    /// Registered tool name for a tool call or result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    /// Whether the associated tool execution failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_is_error: Option<bool>,
+    /// Tool execution duration in milliseconds, when known from audit history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_duration_ms: Option<u64>,
+    /// Tool approval outcome, when known from audit history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_approval: Option<String>,
+    /// Tool receipt token, when one was emitted with the result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_receipt: Option<String>,
+}
+
+impl PipelineMessage {
+    /// Construct a plain text pipeline message.
+    #[must_use]
+    pub fn text(role: impl Into<String>, content: impl Into<String>, token_estimate: i64) -> Self {
+        Self {
+            role: role.into(),
+            content: content.into(),
+            token_estimate,
+            cache_breakpoint: false,
+            tool_call_id: None,
+            tool_name: None,
+            tool_is_error: None,
+            tool_duration_ms: None,
+            tool_approval: None,
+            tool_receipt: None,
+        }
+    }
+
+    /// Mark this message as a prompt-cache breakpoint.
+    #[must_use]
+    pub fn with_cache_breakpoint(mut self, cache_breakpoint: bool) -> Self {
+        self.cache_breakpoint = cache_breakpoint;
+        self
+    }
+
+    /// Construct a historical assistant tool-use message.
+    #[must_use]
+    pub fn tool_use(
+        content: impl Into<String>,
+        token_estimate: i64,
+        tool_call_id: impl Into<String>,
+        tool_name: impl Into<String>,
+    ) -> Self {
+        let mut message = Self::text("assistant", content, token_estimate);
+        message.tool_call_id = Some(tool_call_id.into());
+        message.tool_name = Some(tool_name.into());
+        message
+    }
+
+    /// Construct a historical user tool-result message.
+    #[must_use]
+    pub fn tool_result(
+        content: impl Into<String>,
+        token_estimate: i64,
+        tool_call_id: impl Into<String>,
+        tool_name: impl Into<String>,
+    ) -> Self {
+        let mut message = Self::text("tool_result", content, token_estimate);
+        message.tool_call_id = Some(tool_call_id.into());
+        message.tool_name = Some(tool_name.into());
+        message
+    }
+
+    /// Whether this pipeline message represents a tool result.
+    #[must_use]
+    pub fn is_tool_result(&self) -> bool {
+        self.role == "tool_result" || (self.role == "user" && self.content.starts_with("[tool:"))
+    }
 }
 
 /// Guard stage result.
@@ -198,9 +277,12 @@ pub fn assemble_steps(messages: &[PipelineMessage]) -> Vec<crate::memory::step::
                 }
                 current_note = Some(msg.content.clone());
             }
-            "user" if msg.content.starts_with("[tool:") => {
-                let source = extract_tool_name(&msg.content)
-                    .map_or_else(|| "unknown".to_owned(), std::borrow::ToOwned::to_owned);
+            "tool_result" | "user" if msg.is_tool_result() => {
+                let source = msg
+                    .tool_name
+                    .clone()
+                    .or_else(|| extract_tool_name(&msg.content).map(std::borrow::ToOwned::to_owned))
+                    .unwrap_or_else(|| "unknown".to_owned());
                 let obs = Observation::new(source, msg.content.clone());
                 if current_note.is_some() {
                     current_obs.push(obs);
