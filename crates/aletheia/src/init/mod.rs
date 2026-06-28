@@ -7,6 +7,8 @@ use snafu::{ResultExt, Snafu};
 use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
 
+use crate::provider_config::{CliProvider, unsupported_provider_message};
+
 #[derive(Debug, Snafu)]
 pub(crate) enum InitError {
     #[snafu(display("interactive prompt failed"))]
@@ -60,6 +62,12 @@ pub(crate) enum InitError {
     ))]
     NonInteractiveMissingFlag {
         missing: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+    #[snafu(display("{message}"))]
+    UnsupportedProvider {
+        message: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -117,7 +125,15 @@ fn build_non_interactive_answers(
     api_provider: Option<String>,
     model: Option<String>,
     auth_mode: Option<String>,
-) -> Answers {
+) -> Result<Answers, InitError> {
+    let api_provider = api_provider.unwrap_or_else(|| "anthropic".to_owned());
+    let provider = CliProvider::parse(&api_provider).ok_or_else(|| {
+        UnsupportedProviderSnafu {
+            message: unsupported_provider_message(&api_provider),
+        }
+        .build()
+    })?;
+
     // WHY: explicit API key was provided; pin source to "api-key" so the
     // server loads the written credential file rather than falling through
     // the "auto" chain which may pick up a different credential.
@@ -130,15 +146,15 @@ fn build_non_interactive_answers(
         "auto".to_owned()
     };
 
-    Answers {
+    Ok(Answers {
         root,
         api_key,
-        api_provider: api_provider.unwrap_or_else(|| "anthropic".to_owned()),
+        api_provider: provider.name().to_owned(),
         model: model.unwrap_or_else(|| koina::defaults::DEFAULT_MODEL.to_owned()),
         auth_mode: auth_mode.unwrap_or_else(|| "none".to_owned()),
         credential_source,
         ..Answers::default()
-    }
+    })
 }
 
 fn print_success_outro(root: &std::path::Path) -> Result<(), InitError> {
@@ -186,11 +202,11 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
             }
             .build()
         })?;
-        build_non_interactive_answers(root, api_key, api_provider, model, auth_mode)
+        build_non_interactive_answers(root, api_key, api_provider, model, auth_mode)?
     } else if yes {
         // NOTE: lenient non-interactive: skip prompts, apply defaults for missing values
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
-        build_non_interactive_answers(root, api_key, api_provider, model, auth_mode)
+        build_non_interactive_answers(root, api_key, api_provider, model, auth_mode)?
     } else {
         let root = root.unwrap_or_else(|| PathBuf::from("./instance"));
 
@@ -215,7 +231,7 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
                     return Ok(());
                 }
             }
-            let answers = wizard_answers_to_answers(&wa);
+            let answers = wizard_answers_to_answers(&wa)?;
             scaffold(&answers)?;
             write_user_profile_from_wizard(&wa)?;
             print_success_outro(&root_path)?;
@@ -227,6 +243,17 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
             api_key,
             ..Answers::default()
         })?
+    };
+
+    let provider = CliProvider::parse(&answers.api_provider).ok_or_else(|| {
+        UnsupportedProviderSnafu {
+            message: unsupported_provider_message(&answers.api_provider),
+        }
+        .build()
+    })?;
+    let answers = Answers {
+        api_provider: provider.name().to_owned(),
+        ..answers
     };
 
     let config_path = answers.root.join(koina::defaults::DEFAULT_CONFIG_PATH);
@@ -380,11 +407,18 @@ use helpers::{capitalize, detect_timezone};
 use scaffold::scaffold;
 
 #[cfg(feature = "tui")]
-fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Answers {
-    Answers {
+fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Result<Answers, InitError> {
+    let provider = CliProvider::parse(&wa.api_provider).ok_or_else(|| {
+        UnsupportedProviderSnafu {
+            message: unsupported_provider_message(&wa.api_provider),
+        }
+        .build()
+    })?;
+
+    Ok(Answers {
         root: wa.root.clone(),
         api_key: wa.api_key.clone(),
-        api_provider: wa.api_provider.clone(),
+        api_provider: provider.name().to_owned(),
         model: wa.model.clone(),
         agent_id: wa.agent_id.clone(),
         agent_name: wa.agent_name.clone(),
@@ -392,7 +426,7 @@ fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Answers {
         auth_mode: wa.auth_mode.clone(),
         timezone: wa.timezone.clone(),
         credential_source: wa.credential_source.clone(),
-    }
+    })
 }
 
 /// Write operator profile data collected by the TUI wizard into USER.md.

@@ -251,6 +251,66 @@ mod tests {
     }
 
     #[test]
+    fn non_interactive_openai_writes_provider_registry_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = run(RunArgs {
+            root: Some(dir.path().to_path_buf()),
+            yes: false,
+            non_interactive: true,
+            api_key: Some(SecretString::from("sk-openai-test-key")),
+            auth_mode: None,
+            api_provider: Some("openai".to_owned()),
+            model: Some("gpt-5".to_owned()),
+        });
+        assert!(
+            result.is_ok(),
+            "non-interactive OpenAI init should succeed: {result:?}"
+        );
+
+        let config_str = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        let config: taxis::config::AletheiaConfig =
+            toml::from_str(&config_str).expect("rendered config should match schema");
+        assert_eq!(config.providers.len(), 1);
+        assert_eq!(
+            config.providers[0].kind,
+            taxis::config::ProviderKind::OpenAi
+        );
+        assert_eq!(
+            config.providers[0].api_key_env.as_deref(),
+            Some("OPENAI_API_KEY")
+        );
+        assert_eq!(config.providers[0].models, ["gpt-5"]);
+
+        let cred: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("config/credentials/openai.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cred["token"].as_str(), Some("sk-openai-test-key"));
+    }
+
+    #[test]
+    fn non_interactive_rejects_unknown_provider_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = run(RunArgs {
+            root: Some(dir.path().to_path_buf()),
+            yes: false,
+            non_interactive: true,
+            api_key: None,
+            auth_mode: None,
+            api_provider: Some("google".to_owned()),
+            model: Some("gemini-test".to_owned()),
+        });
+
+        assert!(result.is_err(), "unknown provider must fail");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("unsupported provider: google"), "got: {msg}");
+        assert!(
+            !dir.path().join("config/aletheia.toml").exists(),
+            "invalid provider must not write config"
+        );
+    }
+
+    #[test]
     fn non_interactive_without_instance_path_returns_error() {
         // WHY: call run_inner with env_root=None so ALETHEIA_ROOT in the ambient
         // environment cannot mask the missing-flag error this test asserts on;

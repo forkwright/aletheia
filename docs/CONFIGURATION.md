@@ -446,7 +446,7 @@ models = ["llama3.1-70b"]
 | Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); declare this provider in `[[providers]]` to place it in the routing order. |
 | Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); declare this provider in `[[providers]]` to place it in the routing order. |
 
-The `aletheia add-nous` scaffolding command validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
+The `aletheia add-nous` scaffolding command supports `anthropic` and `openai` provider strings. It checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` and creates or updates the matching `[[providers]]` entry when the generated agent needs declarative provider routing. Other provider kinds must be configured manually in `aletheia.toml`.
 
 ---
 

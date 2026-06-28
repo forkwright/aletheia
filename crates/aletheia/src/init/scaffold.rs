@@ -6,6 +6,7 @@ use snafu::ResultExt;
 
 use super::helpers::set_permissions;
 use super::{Answers, CreateDirSnafu, InitError, SerializeJsonSnafu, WriteFileSnafu};
+use crate::provider_config::{CliProvider, init_provider_section};
 
 pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
     let root = &answers.root;
@@ -190,12 +191,19 @@ mod pronoea_template {
         include_str!("../../../../instance.example/nous/_default/WORKFLOWS.md");
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "WHY(#4626): init renders one contiguous commented TOML template; splitting would obscure the generated file order"
+)]
 pub(super) fn render_config(a: &Answers) -> String {
     // WHY: workspace is stored relative to the instance root so the config
     // works regardless of where the instance directory is placed on disk.
     // Oikos::validate_workspace_path resolves relative paths against the root.
     let workspace = format!("nous/{}", a.agent_id);
     let pricing_key = toml_edit::Key::new(&a.model).to_string();
+    let provider_section = CliProvider::parse(&a.api_provider)
+        .and_then(|provider| init_provider_section(provider, &a.model))
+        .unwrap_or_default();
     let mut config = format!(
         r#"# Aletheia Instance Configuration
 # Config cascade: compiled defaults -> this file -> ALETHEIA_* env vars
@@ -250,6 +258,7 @@ id = "{agent_id}"
 name = "{agent_name}"
 default = true
 workspace = "{workspace}"
+{provider_section}
 
 # --- Channels ---
 # [[channels.signal.accounts]]
@@ -302,6 +311,7 @@ source = "{credential_source}"
         agent_id = a.agent_id,
         agent_name = a.agent_name,
         workspace = workspace,
+        provider_section = provider_section,
         credential_source = a.credential_source,
     );
     // WHY: single-agent init always produces a single-agent config.

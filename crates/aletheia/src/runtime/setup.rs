@@ -117,6 +117,7 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
     register_provider_plan(
         &mut registry,
         &provider_plan,
+        oikos,
         &credential_chain,
         resolved_source.is_some(),
         &provider_config,
@@ -259,6 +260,7 @@ fn build_provider_plan<'a>(
 fn register_provider_plan(
     registry: &mut ProviderRegistry,
     plan: &[ProviderPlanEntry<'_>],
+    oikos: &Oikos,
     credential_chain: &Arc<dyn CredentialProvider>,
     has_credential: bool,
     provider_config: &ProviderConfig,
@@ -269,6 +271,7 @@ fn register_provider_plan(
             ProviderPlanEntry::Declared(entry) => register_declared_provider(
                 registry,
                 entry,
+                oikos,
                 credential_chain,
                 has_credential,
                 provider_config,
@@ -346,6 +349,7 @@ fn configured_openai_api_family(
 fn register_declared_provider(
     registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
+    oikos: &Oikos,
     credential_chain: &Arc<dyn CredentialProvider>,
     has_credential: bool,
     provider_config: &ProviderConfig,
@@ -355,7 +359,7 @@ fn register_declared_provider(
 
     match entry.kind {
         ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
-            register_declared_openai(registry, entry);
+            register_declared_openai(registry, entry, oikos);
         }
         ProviderKind::Anthropic => register_declared_anthropic(
             registry,
@@ -382,6 +386,7 @@ fn register_declared_provider(
 fn register_declared_openai(
     registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
+    oikos: &Oikos,
 ) {
     use taxis::config::ProviderKind;
 
@@ -400,24 +405,7 @@ fn register_declared_openai(
         );
         return;
     };
-    let api_key = entry
-        .api_key_env
-        .as_deref()
-        .and_then(|name| match std::env::var(name) {
-            Ok(v) if !v.is_empty() => Some(SecretString::from(v)),
-            Ok(_) => None,
-            Err(_) => {
-                // WHY: missing env var is expected for loopback
-                // llama.cpp / ollama (no auth required). Log at
-                // debug, not warn.
-                tracing::debug!(
-                    provider = %entry.name,
-                    env = name,
-                    "api_key_env unset for OpenAI-compatible provider"
-                );
-                None
-            }
-        });
+    let api_key = openai_api_key(entry, oikos);
     let cfg = OpenAiProviderConfig {
         name: entry.name.clone(),
         base_url,
@@ -451,6 +439,36 @@ fn register_declared_openai(
             "failed to init OpenAI-compatible provider"
         ),
     }
+}
+
+fn openai_api_key(entry: &taxis::config::LlmProviderConfig, oikos: &Oikos) -> Option<SecretString> {
+    use taxis::config::ProviderKind;
+
+    if let Some(env_name) = entry.api_key_env.as_deref() {
+        match std::env::var(env_name) {
+            Ok(v) if !v.is_empty() => return Some(SecretString::from(v)),
+            Ok(_) => {}
+            Err(_) => {
+                // WHY: missing env var is expected for loopback
+                // llama.cpp / ollama (no auth required). Log at
+                // debug, not warn.
+                tracing::debug!(
+                    provider = %entry.name,
+                    env = env_name,
+                    "api_key_env unset for OpenAI-compatible provider"
+                );
+            }
+        }
+    }
+
+    if entry.kind != ProviderKind::OpenAi {
+        return None;
+    }
+
+    let cred_path = oikos.credentials().join("openai.json");
+    FileCredentialProvider::new(cred_path)
+        .get_credential()
+        .map(|credential| credential.secret)
 }
 
 /// Register a declarative Anthropic-protocol provider entry at list position.
@@ -1417,6 +1435,20 @@ mod tests {
         }
     }
 
+    fn cloud_openai_provider(name: &str, model: &str) -> taxis::config::LlmProviderConfig {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, ProviderKind};
+
+        LlmProviderConfig {
+            name: name.to_owned(),
+            kind: ProviderKind::OpenAi,
+            base_url: None,
+            api_key_env: Some("ALETHEIA_TEST_OPENAI_API_KEY".to_owned()),
+            api_family: Some(OpenAiApiFamily::Responses),
+            deployment_target: DeploymentTarget::Cloud,
+            models: vec![model.to_owned()],
+        }
+    }
+
     fn build_test_provider_registry(config: &AletheiaConfig) -> ProviderRegistry {
         let oikos_dir = tempfile::tempdir().expect("create temp oikos");
         let oikos = Oikos::from_root(oikos_dir.path());
@@ -1483,6 +1515,37 @@ mod tests {
             .expect("declared local provider should register without Anthropic credentials");
 
         assert_eq!(provider.name(), "local-only");
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes a synthetic OpenAI credential file under a temp instance"
+    )]
+    #[test]
+    fn declared_openai_uses_provider_credential_file() {
+        let _env = EnvVarGuard::remove("ALETHEIA_TEST_OPENAI_API_KEY");
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let credential_dir = oikos_dir.path().join("config/credentials");
+        std::fs::create_dir_all(&credential_dir).expect("create credential dir");
+        std::fs::write(
+            credential_dir.join("openai.json"),
+            r#"{"token":"sk-openai-test"}"#,
+        )
+        .expect("write OpenAI credential");
+
+        let model = "gpt-5";
+        let config = AletheiaConfig {
+            providers: vec![cloud_openai_provider("openai-cloud", model)],
+            ..AletheiaConfig::default()
+        };
+        let oikos = Oikos::from_root(oikos_dir.path());
+
+        let registry = build_provider_registry(&config, &oikos);
+        let provider = registry
+            .find_provider(model)
+            .expect("OpenAI provider should register from config/credentials/openai.json");
+
+        assert_eq!(provider.name(), "openai-cloud");
     }
 
     #[expect(
