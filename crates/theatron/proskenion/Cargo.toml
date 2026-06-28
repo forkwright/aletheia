@@ -132,6 +132,8 @@ pulldown-cmark = { version = "0.13", features = ["simd"] }
 # Config persistence
 dirs = "6"
 toml = "1.0"
+aes-gcm = "0.10"
+keyring = "3"
 
 # Desktop notifications (freedesktop.org D-Bus on Linux)
 notify-rust = "4"

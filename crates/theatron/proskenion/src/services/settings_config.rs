@@ -13,8 +13,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 
+use crate::services::secret_store::{self, SecretStoreError};
 use crate::state::settings::{
     AppearanceSettings, KeyCombo, KeybindingStore, ServerConfigStore, ServerEntry, UiDensity,
+    server_token_ref,
 };
 
 /// Errors from settings config I/O.
@@ -44,6 +46,13 @@ pub(crate) enum SettingsConfigError {
     /// TOML serialization failed.
     #[snafu(display("failed to serialize settings: {source}"))]
     TomlSerialize { source: toml::ser::Error },
+
+    /// Secret storage failed.
+    #[snafu(display("failed to store desktop auth token: {source}"))]
+    SecretStore {
+        /// Underlying secret-store error.
+        source: SecretStoreError,
+    },
 }
 
 // --- Serializable intermediate types ---
@@ -120,19 +129,27 @@ struct SerializedServer {
     id: String,
     name: String,
     url: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Legacy plaintext token input. Never serialized.
+    #[serde(default, skip_serializing)]
     auth_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auth_token_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     last_connected: Option<String>,
 }
 
 impl From<&ServerEntry> for SerializedServer {
     fn from(e: &ServerEntry) -> Self {
+        let auth_token_ref = e
+            .auth_token_ref
+            .clone()
+            .or_else(|| e.auth_token.as_ref().map(|_| server_token_ref(&e.id)));
         Self {
             id: e.id.clone(),
             name: e.name.clone(),
             url: e.url.clone(),
             auth_token: e.auth_token.clone(),
+            auth_token_ref,
             last_connected: e.last_connected.clone(),
         }
     }
@@ -144,6 +161,7 @@ impl From<SerializedServer> for ServerEntry {
             id: s.id,
             name: s.name,
             url: s.url,
+            auth_token_ref: s.auth_token_ref,
             auth_token: s.auth_token,
             last_connected: s.last_connected,
         }
@@ -300,7 +318,12 @@ pub(crate) fn load() -> Result<SettingsConfig, SettingsConfigError> {
 pub(crate) fn load_in(base: &Path) -> Result<SettingsConfig, SettingsConfigError> {
     let path = settings_path_from(base);
     let contents = std::fs::read_to_string(&path).context(ReadFileSnafu)?;
-    toml::from_str(&contents).context(TomlParseSnafu)
+    let mut config: SettingsConfig = toml::from_str(&contents).context(TomlParseSnafu)?;
+    let migrated = resolve_server_tokens(base, &mut config)?;
+    if migrated {
+        save_in(&config, base)?;
+    }
+    Ok(config)
 }
 
 /// Save settings to disk. Creates parent directory if needed.
@@ -318,7 +341,9 @@ pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), Settin
     let path = settings_path_from(base);
     let parent = path.parent().ok_or(SettingsConfigError::NoConfigDir)?;
     std::fs::create_dir_all(parent).context(CreateDirSnafu)?;
-    let contents = toml::to_string_pretty(config).context(TomlSerializeSnafu)?;
+    let mut persisted = config.clone();
+    persist_server_tokens(base, &mut persisted)?;
+    let contents = toml::to_string_pretty(&persisted).context(TomlSerializeSnafu)?;
 
     // WHY: Restrict settings.toml to owner-only on Unix. Windows uses the
     // default ACLs inside the user's config directory.
@@ -340,6 +365,52 @@ pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), Settin
     tmp.persist(&path)
         .map_err(|e| e.error)
         .context(WriteFileSnafu)?;
+    Ok(())
+}
+
+fn resolve_server_tokens(
+    base: &Path,
+    config: &mut SettingsConfig,
+) -> Result<bool, SettingsConfigError> {
+    let mut migrated_plaintext = false;
+    for server in &mut config.servers {
+        if let Some(token) = server.auth_token.clone() {
+            let token_ref = server
+                .auth_token_ref
+                .clone()
+                .unwrap_or_else(|| server_token_ref(&server.id));
+            secret_store::store_token(base, &token_ref, &token).context(SecretStoreSnafu)?;
+            server.auth_token_ref = Some(token_ref);
+            migrated_plaintext = true;
+            continue;
+        }
+
+        if let Some(token_ref) = server.auth_token_ref.as_deref() {
+            server.auth_token =
+                secret_store::load_token(base, token_ref).context(SecretStoreSnafu)?;
+        }
+    }
+    Ok(migrated_plaintext)
+}
+
+fn persist_server_tokens(
+    base: &Path,
+    config: &mut SettingsConfig,
+) -> Result<(), SettingsConfigError> {
+    for server in &mut config.servers {
+        if let Some(token) = server.auth_token.as_deref() {
+            let token_ref = server
+                .auth_token_ref
+                .clone()
+                .unwrap_or_else(|| server_token_ref(&server.id));
+            secret_store::store_token(base, &token_ref, token).context(SecretStoreSnafu)?;
+            server.auth_token_ref = Some(token_ref);
+        } else if server.auth_token_ref.is_none() {
+            let token_ref = server_token_ref(&server.id);
+            secret_store::delete_token(base, &token_ref).context(SecretStoreSnafu)?;
+        }
+        server.auth_token = None;
+    }
     Ok(())
 }
 
@@ -412,15 +483,18 @@ pub(crate) fn upsert_active_server_in(
 
     if let Some(id) = existing_id {
         if let Some(entry) = store.servers.iter_mut().find(|s| s.id == id) {
+            entry.auth_token_ref = auth_token.as_ref().map(|_| server_token_ref(&id));
             entry.auth_token = auth_token;
         }
         store.set_active(&id);
     } else {
         let id = unique_server_id(&store);
+        let auth_token_ref = auth_token.as_ref().map(|_| server_token_ref(&id));
         store.servers.push(ServerEntry {
             id: id.clone(),
             name: "My Aletheia".to_string(),
             url: server_url,
+            auth_token_ref,
             auth_token,
             last_connected: None,
         });
@@ -499,6 +573,33 @@ mod tests {
         assert_eq!(restored.servers.len(), 1);
         assert_eq!(restored.servers[0].name, "Test");
         assert_eq!(restored.servers[0].auth_token.as_deref(), Some("tok"));
+        let expected_ref = server_token_ref(&id);
+        assert_eq!(
+            restored.servers[0].auth_token_ref.as_deref(),
+            Some(expected_ref.as_str())
+        );
+    }
+
+    #[test]
+    fn settings_config_serialization_omits_raw_bearer_token() {
+        let raw_token = "raw-bearer-token-4491";
+        let mut store = ServerConfigStore::default();
+        store.add(
+            "Secure".to_string(),
+            "http://secure:3000".to_string(),
+            Some(raw_token.to_string()),
+        );
+        let config = SettingsConfig::from_state(
+            &store,
+            &AppearanceSettings::default(),
+            &KeybindingStore::default(),
+        );
+
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+
+        assert!(!toml_str.contains(raw_token));
+        assert!(!toml_str.contains("auth_token ="));
+        assert!(toml_str.contains("auth_token_ref"));
     }
 
     #[test]
@@ -600,43 +701,88 @@ mod tests {
     #[test]
     fn upsert_active_server_creates_settings() {
         let (_dir, base) = temp_base();
+        let raw_token = "tok-4491";
         upsert_active_server_in(
             &base,
             "http://remote.example.com:18789".to_string(),
-            Some("tok".to_string()),
+            Some(raw_token.to_string()),
         )
         .unwrap();
+
+        let raw_settings = std::fs::read_to_string(settings_path_from(&base)).unwrap();
+        assert!(!raw_settings.contains(raw_token));
+        assert!(!raw_settings.contains("auth_token ="));
+        assert!(raw_settings.contains("auth_token_ref"));
 
         let config = load_in(&base).unwrap();
         let store = config.server_store();
         let active = store.active().expect("active server after upsert");
         assert_eq!(active.url, "http://remote.example.com:18789");
-        assert_eq!(active.auth_token.as_deref(), Some("tok"));
+        assert_eq!(active.auth_token.as_deref(), Some(raw_token));
     }
 
     #[test]
     fn upsert_existing_url_updates_token_and_makes_active() {
         let (_dir, base) = temp_base();
+        let first_token = "first-4491";
+        let second_token = "second-4491";
         upsert_active_server_in(
             &base,
             "http://same:3000".to_string(),
-            Some("first".to_string()),
+            Some(first_token.to_string()),
         )
         .unwrap();
         upsert_active_server_in(
             &base,
             "http://same:3000".to_string(),
-            Some("second".to_string()),
+            Some(second_token.to_string()),
         )
         .unwrap();
+
+        let raw_settings = std::fs::read_to_string(settings_path_from(&base)).unwrap();
+        assert!(!raw_settings.contains(first_token));
+        assert!(!raw_settings.contains(second_token));
 
         let config = load_in(&base).unwrap();
         let store = config.server_store();
         assert_eq!(store.servers.len(), 1);
         assert_eq!(
             store.active().unwrap().auth_token.as_deref(),
-            Some("second")
+            Some(second_token)
         );
+    }
+
+    #[test]
+    fn legacy_plaintext_settings_token_migrates_out_of_toml_on_load() {
+        let (_dir, base) = temp_base();
+        let settings = settings_path_from(&base);
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        let raw_token = "legacy-settings-token-4491";
+        std::fs::write(
+            &settings,
+            format!(
+                r#"
+active_server = "srv_legacy"
+
+[[servers]]
+id = "srv_legacy"
+name = "Legacy"
+url = "http://legacy:3000"
+auth_token = "{raw_token}"
+"#
+            ),
+        )
+        .unwrap();
+
+        let config = load_in(&base).unwrap();
+        let store = config.server_store();
+        let active = store.active().unwrap();
+
+        assert_eq!(active.auth_token.as_deref(), Some(raw_token));
+        let migrated = std::fs::read_to_string(&settings).unwrap();
+        assert!(!migrated.contains(raw_token));
+        assert!(!migrated.contains("auth_token ="));
+        assert!(migrated.contains("auth_token_ref"));
     }
 
     #[test]
