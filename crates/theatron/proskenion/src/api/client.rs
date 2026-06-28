@@ -6,6 +6,7 @@ use reqwest::Client;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use snafu::{ResultExt, Snafu};
 
+use crate::state::commands::ServerCommandDescriptor;
 use crate::state::connection::ConnectionConfig;
 
 use skene::api::types::{Agent, AgentsResponse};
@@ -128,6 +129,114 @@ pub(crate) async fn fetch_agent_roster(
 
     let wrapper: AgentsResponse = resp.json().await.context(DecodeSnafu)?;
     Ok(wrapper.nous)
+}
+
+/// Fetch server-discovered command descriptors from the agent capability
+/// payload.
+///
+/// WHY(#4869): Proskenion command presentation must be backed by an explicit
+/// server discovery contract. Pylon already publishes per-agent tool
+/// capabilities on `/api/v1/nous`; this function maps that wire contract into
+/// command descriptors instead of inventing unsupported slash commands.
+pub(crate) async fn fetch_server_command_descriptors(
+    config: &ConnectionConfig,
+) -> Result<Vec<ServerCommandDescriptor>, AgentRosterFetchError> {
+    let client = authenticated_client(config);
+    let base = config.server_url.trim_end_matches('/');
+    let url = format!("{base}/api/v1/nous");
+
+    let resp = client.get(&url).send().await.context(RequestSnafu)?;
+    let status = resp.status();
+
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return AuthSnafu.fail();
+    }
+
+    if !status.is_success() {
+        let status_code = status.as_u16();
+        let detail = match resp.text().await {
+            Ok(text) => text,
+            Err(err) => err.to_string(),
+        };
+        let message = skene::api::error::parse_pylon_error_body(&detail).map_or_else(
+            || {
+                let trimmed = detail.trim();
+                if trimmed.is_empty() {
+                    status.to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            },
+            |detail| detail.message,
+        );
+        return ServerSnafu {
+            status: status_code,
+            message,
+        }
+        .fail();
+    }
+
+    let wrapper: CommandDiscoveryResponse = resp.json().await.context(DecodeSnafu)?;
+    Ok(wrapper.into_descriptors())
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CommandDiscoveryResponse {
+    #[serde(default, alias = "agents")]
+    nous: Vec<CommandDiscoveryAgent>,
+}
+
+impl CommandDiscoveryResponse {
+    fn into_descriptors(self) -> Vec<ServerCommandDescriptor> {
+        self.nous
+            .into_iter()
+            .filter(|agent| !agent.id.trim().is_empty())
+            .flat_map(|agent| {
+                let agent_id: skene::id::NousId = agent.id.as_str().into();
+                let agent_name = agent
+                    .name
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or(agent.id);
+                agent.tools.into_iter().filter_map(move |tool| {
+                    let tool_name = tool.name.trim().to_string();
+                    if tool_name.is_empty() {
+                        return None;
+                    }
+                    let description = tool
+                        .description
+                        .filter(|desc| !desc.trim().is_empty())
+                        .unwrap_or_else(|| format!("{tool_name} server tool"));
+                    Some(ServerCommandDescriptor {
+                        agent_id: agent_id.clone(),
+                        agent_name: agent_name.clone(),
+                        tool_name,
+                        description,
+                        enabled: tool.enabled,
+                    })
+                })
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CommandDiscoveryAgent {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    tools: Vec<CommandDiscoveryTool>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CommandDiscoveryTool {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    description: Option<String>,
 }
 
 /// Persist `content` to the workspace file at `path` (relative to the vault

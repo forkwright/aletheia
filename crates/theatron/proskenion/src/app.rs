@@ -183,6 +183,7 @@ fn ConnectedApp() -> Element {
         let cfg = config.read().clone();
         let mut agents: Signal<AgentStore> = use_context();
         let mut connection_state: Signal<ConnectionState> = use_context();
+        let mut commands: Signal<CommandStore> = use_context();
         use_future(move || {
             let cfg = cfg.clone();
             async move {
@@ -196,6 +197,15 @@ fn ConnectedApp() -> Element {
                     }
                     Err(err) => {
                         tracing::warn!(error = %err, "failed to load startup agent roster");
+                    }
+                }
+
+                match crate::api::client::fetch_server_command_descriptors(&cfg).await {
+                    Ok(descriptors) => {
+                        commands.write().replace_server_commands(descriptors);
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to load command discovery payload");
                     }
                 }
             }

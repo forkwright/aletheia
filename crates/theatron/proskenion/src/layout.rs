@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use crate::app::Route;
 use crate::components::help_overlay::HelpOverlay;
 use crate::components::topbar::TopBar;
+use crate::state::commands::{CommandStore, CommandUiState};
 use crate::state::navigation::NavAction;
 use crate::state::pipeline::RoutingState;
 use crate::state::view_preservation::ViewPreservationStore;
@@ -62,17 +63,17 @@ pub(crate) fn Layout() -> Element {
     // in the chat view. Updated by the SSE event processing pipeline.
     use_context_provider(|| Signal::new(Option::<RoutingState>::None));
 
-    // Command palette open state -- shared with the keyboard handler.
-    let palette_open = use_signal(|| false);
+    // Command UI state -- shared with the keyboard handler and chat view.
+    let mut command_ui = use_signal(CommandUiState::default);
+    use_context_provider(|| command_ui);
     // Sidebar collapsed state -- default to expanded for better first impression.
     let sidebar_collapsed = use_signal(|| false);
-    // Help overlay visibility -- toggled by F1.
-    let help_visible = use_signal(|| false);
 
+    let command_store = use_context::<Signal<CommandStore>>();
     let keyboard_handler = crate::services::keybindings::use_global_keyboard(
-        palette_open,
+        command_ui,
+        command_store,
         sidebar_collapsed,
-        help_visible,
     );
 
     let sidebar_width = if *sidebar_collapsed.read() {
@@ -151,8 +152,13 @@ pub(crate) fn Layout() -> Element {
                 }
             }
 
-            // Help overlay (F1)
-            HelpOverlay { visible: help_visible }
+            // Help overlay (F1 or /help)
+            HelpOverlay {
+                visible: command_ui.read().help_visible,
+                on_close: move |()| {
+                    command_ui.write().help_visible = false;
+                },
+            }
         }
     }
 }
