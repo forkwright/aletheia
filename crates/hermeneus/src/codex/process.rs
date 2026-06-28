@@ -4,7 +4,7 @@
 //! --skip-git-repo-check --color never -` and manages stdin feeding,
 //! bounded output collection, timeout, and cleanup.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
@@ -69,6 +69,7 @@ fn compose_stdin(system_prompt: Option<&str>, prompt: &str) -> Result<String> {
 #[tracing::instrument(skip_all)]
 pub(crate) async fn run_completion(
     codex_binary: &PathBuf,
+    working_directory: Option<&Path>,
     system_prompt: Option<&str>,
     prompt: &str,
     timeout: Duration,
@@ -93,7 +94,15 @@ pub(crate) async fn run_completion(
 
     scrub_codex_auth_env(&mut cmd);
 
-    debug!(binary = %codex_binary.display(), "spawning Codex subprocess");
+    if let Some(cwd) = working_directory {
+        cmd.current_dir(cwd);
+    }
+
+    debug!(
+        binary = %codex_binary.display(),
+        cwd = ?working_directory.map(|path| path.display().to_string()),
+        "spawning Codex subprocess"
+    );
 
     let mut child = cmd.spawn().map_err(|e| {
         error::ProviderInitSnafu {

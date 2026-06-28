@@ -1,5 +1,7 @@
 //! Hermeneus provider behavior configuration.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 /// Hermeneus provider timeout, concurrency, and complexity routing controls.
@@ -186,6 +188,17 @@ pub struct LlmProviderConfig {
     /// subprocess adapters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_family: Option<OpenAiApiFamily>,
+    /// Path to the CLI binary for subprocess providers. Omit to resolve from
+    /// PATH and well-known user install directories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<PathBuf>,
+    /// Working directory for subprocess providers. Relative paths are resolved
+    /// against the instance root by the runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workdir: Option<PathBuf>,
+    /// Wall-clock timeout for subprocess provider calls, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
     /// Where this provider's traffic terminates. Drives the
     /// factsensitivity filter (#3414) and air-gapped mode.
     #[serde(default)]
@@ -205,6 +218,9 @@ impl std::fmt::Debug for LlmProviderConfig {
             .field("base_url", &self.base_url)
             .field("api_key_env", &self.api_key_env)
             .field("api_family", &self.api_family)
+            .field("binary", &self.binary)
+            .field("workdir", &self.workdir)
+            .field("timeout_secs", &self.timeout_secs)
             .field("deployment_target", &self.deployment_target)
             .field("models", &self.models)
             .finish()

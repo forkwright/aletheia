@@ -241,6 +241,7 @@ impl RuntimeBuilder {
                 "channels",
                 "bindings",
                 "credential",
+                "providers",
                 "tools",
             ] {
                 if let Some(section_value) = config_value.get(section) {
@@ -254,6 +255,13 @@ impl RuntimeBuilder {
 
             validate_startup(&self.config, &self.oikos)
                 .whatever_context("startup validation failed")?;
+            let provider_errors = validate::provider_runtime_errors(&self.config, &self.oikos);
+            if !provider_errors.is_empty() {
+                snafu::whatever!(
+                    "provider runtime validation failed:\n  - {}",
+                    provider_errors.join("\n  - ")
+                );
+            }
             info!("startup validation passed");
         }
 

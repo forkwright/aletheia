@@ -364,6 +364,9 @@ mod tests {
             base_url: None,
             api_key_env: Some("OPENAI_API_KEY".to_owned()),
             api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
             deployment_target: taxis::config::DeploymentTarget::Cloud,
             models: Vec::new(),
         };

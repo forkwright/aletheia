@@ -591,6 +591,7 @@ fn cc_provider_with_dummy_binary() -> CcProvider {
         cc_binary: Some(path.clone()),
         default_model: crate::models::names::opus().to_owned(),
         timeout: std::time::Duration::from_secs(1),
+        ..CcProviderConfig::default()
     };
     let provider = CcProvider::new(&config).unwrap();
 

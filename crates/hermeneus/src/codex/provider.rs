@@ -5,7 +5,7 @@
 //! subprocess, and wraps plain-text output in Hermeneus response types.
 
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -27,20 +27,32 @@ pub(crate) const CODEX_MODEL_PREFIX: &str = "codex/";
 /// Configuration for the Codex subprocess provider.
 #[derive(Debug, Clone)]
 pub struct CodexProviderConfig {
+    /// Provider instance name used for routing diagnostics and metrics.
+    pub name: String,
     /// Path to the `codex` binary. If `None`, resolved from `PATH`.
     pub codex_binary: Option<PathBuf>,
+    /// Working directory for the subprocess. If `None`, inherits the parent cwd.
+    pub working_directory: Option<PathBuf>,
+    /// Model IDs this provider advertises for exact routing.
+    pub models: Vec<String>,
     /// Default model when the request doesn't specify one.
     pub default_model: String,
     /// Subprocess timeout (wall-clock).
     pub timeout: Duration,
+    /// Where the provider's model traffic terminates for recall filtering.
+    pub deployment_target: DeploymentTarget,
 }
 
 impl Default for CodexProviderConfig {
     fn default() -> Self {
         Self {
+            name: "codex".to_owned(),
             codex_binary: None,
+            working_directory: None,
+            models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_mins(5),
+            deployment_target: DeploymentTarget::Cloud,
         }
     }
 }
@@ -48,9 +60,13 @@ impl Default for CodexProviderConfig {
 /// Codex subprocess LLM provider.
 pub struct CodexProvider {
     // kanon:ignore RUST/pub-visibility
+    name: String,
     codex_binary: PathBuf,
+    working_directory: Option<PathBuf>,
+    models: Vec<String>,
     default_model: String,
     timeout: Duration,
+    deployment_target: DeploymentTarget,
 }
 
 impl CodexProvider {
@@ -77,17 +93,26 @@ impl CodexProvider {
             find_codex_binary()?
         };
 
+        let working_directory = validate_working_directory(config.working_directory.as_deref())?;
+
         info!(
+            provider = %config.name,
             binary = %codex_binary.display(),
+            cwd = ?working_directory.as_ref().map(|path| path.display().to_string()),
+            models = ?config.models,
             default_model = %config.default_model,
             timeout_secs = config.timeout.as_secs(),
             "Codex subprocess provider initialized"
         );
 
         Ok(Self {
+            name: config.name.clone(),
             codex_binary,
+            working_directory,
+            models: config.models.clone(),
             default_model: config.default_model.clone(),
             timeout: config.timeout,
+            deployment_target: config.deployment_target,
         })
     }
 
@@ -164,6 +189,7 @@ impl CodexProvider {
 
         let output = Box::pin(process::run_completion(
             &self.codex_binary,
+            self.working_directory.as_deref(),
             request.system.as_deref(),
             &prompt,
             self.timeout,
@@ -199,6 +225,7 @@ impl CodexProvider {
 
         let output = Box::pin(process::run_completion(
             &self.codex_binary,
+            self.working_directory.as_deref(),
             request.system.as_deref(),
             &prompt,
             self.timeout,
@@ -267,9 +294,13 @@ fn extract_text_content(content: &Content) -> String {
 impl std::fmt::Debug for CodexProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CodexProvider")
+            .field("name", &self.name)
             .field("codex_binary", &self.codex_binary)
+            .field("working_directory", &self.working_directory)
+            .field("models", &self.models)
             .field("default_model", &self.default_model)
             .field("timeout_secs", &self.timeout.as_secs())
+            .field("deployment_target", &self.deployment_target)
             .finish_non_exhaustive()
     }
 }
@@ -283,7 +314,22 @@ impl LlmProvider for CodexProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        koina::models::provider_models(koina::models::ModelProvider::Codex)
+        if self.models.is_empty() {
+            koina::models::provider_models(koina::models::ModelProvider::Codex)
+        } else {
+            &[]
+        }
+    }
+
+    fn supported_model_list(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        if self.models.is_empty() {
+            self.supported_models()
+                .iter()
+                .map(|&model| std::borrow::Cow::Borrowed(model))
+                .collect()
+        } else {
+            crate::provider::owned_model_list(&self.models)
+        }
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -291,21 +337,23 @@ impl LlmProvider for CodexProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        if model.starts_with(CODEX_MODEL_PREFIX) {
+        if self.models.iter().any(|m| m == model) {
+            Some(MatchKind::Exact)
+        } else if model.starts_with(CODEX_MODEL_PREFIX) {
             Some(MatchKind::Prefix)
-        } else if self.supported_models().contains(&model) {
+        } else if self.models.is_empty() && self.supported_models().contains(&model) {
             Some(MatchKind::Exact)
         } else {
             None
         }
     }
 
-    fn name(&self) -> &'static str {
-        "codex"
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn deployment_target(&self) -> DeploymentTarget {
-        DeploymentTarget::Cloud
+        self.deployment_target
     }
 
     fn supports_streaming(&self) -> bool {
@@ -332,6 +380,20 @@ impl SeatBridgedProvider for CodexProvider {
 
     fn cli_product_name(&self) -> &'static str {
         "codex"
+    }
+}
+
+fn validate_working_directory(path: Option<&Path>) -> Result<Option<PathBuf>> {
+    match path {
+        Some(path) if path.is_dir() => Ok(Some(path.to_path_buf())),
+        Some(path) => Err(error::ProviderInitSnafu {
+            message: format!(
+                "configured codex working directory does not exist: {}",
+                path.display()
+            ),
+        }
+        .build()),
+        None => Ok(None),
     }
 }
 
@@ -506,9 +568,13 @@ mod tests {
     #[test]
     fn resolve_model_strips_prefix() {
         let provider = CodexProvider {
+            name: "codex".to_owned(),
             codex_binary: PathBuf::from("codex"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(
             provider.resolve_model(&format!(
@@ -523,9 +589,13 @@ mod tests {
     #[test]
     fn supports_model_with_prefix() {
         let provider = CodexProvider {
+            name: "codex".to_owned(),
             codex_binary: PathBuf::from("codex"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert!(provider.supports_model(&format!(
             "{CODEX_MODEL_PREFIX}{}",
@@ -538,9 +608,13 @@ mod tests {
     #[test]
     fn match_specificity_prefers_prefix_and_exact() {
         let provider = CodexProvider {
+            name: "codex".to_owned(),
             codex_binary: PathBuf::from("codex"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(
             provider.match_specificity(&format!(
@@ -557,11 +631,42 @@ mod tests {
     }
 
     #[test]
+    fn configured_models_are_exact_claims() {
+        let provider = CodexProvider {
+            name: "codex-seat".to_owned(),
+            codex_binary: PathBuf::from("codex"),
+            working_directory: None,
+            models: vec!["team-codex".to_owned()],
+            default_model: "team-codex".to_owned(),
+            timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
+        };
+
+        assert_eq!(
+            provider.match_specificity("team-codex"),
+            Some(MatchKind::Exact)
+        );
+        assert_eq!(
+            provider.match_specificity("codex/gpt-5-codex"),
+            Some(MatchKind::Prefix)
+        );
+        assert_eq!(
+            provider.match_specificity(koina::models::names::codex()),
+            None
+        );
+        assert_eq!(provider.name(), "codex-seat");
+    }
+
+    #[test]
     fn codex_provider_reports_cloud_deployment_target() {
         let provider = CodexProvider {
+            name: "codex".to_owned(),
             codex_binary: PathBuf::from("codex"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
     }
@@ -569,9 +674,13 @@ mod tests {
     #[test]
     fn codex_provider_supports_streaming() {
         let provider = CodexProvider {
+            name: "codex".to_owned(),
             codex_binary: PathBuf::from("codex"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert!(
             provider.supports_streaming(),
@@ -582,9 +691,13 @@ mod tests {
     #[test]
     fn seat_bridged_fields() {
         let provider = CodexProvider {
+            name: "codex".to_owned(),
             codex_binary: PathBuf::from("/usr/local/bin/codex"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(300),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(
             provider.cli_binary(),

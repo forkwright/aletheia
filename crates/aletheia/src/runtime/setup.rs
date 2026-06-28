@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
@@ -369,8 +370,8 @@ fn register_declared_provider(
             provider_config,
             behavior,
         ),
-        ProviderKind::ClaudeCode => register_declared_claude_code(registry, entry),
-        ProviderKind::CodexOauth => register_declared_codex(registry, entry),
+        ProviderKind::ClaudeCode => register_declared_claude_code(registry, entry, oikos),
+        ProviderKind::CodexOauth => register_declared_codex(registry, entry, oikos),
         // WHY: ProviderKind is #[non_exhaustive] so future additions
         // never accidentally break the build. Unknown variants fall
         // through to a clear operator warning.
@@ -592,14 +593,51 @@ fn register_auto_claude_code(registry: &mut ProviderRegistry) {
     }
 }
 
+#[cfg(any(feature = "cc-provider", feature = "codex-provider"))]
+fn configured_subprocess_path(oikos: &Oikos, path: Option<&Path>) -> Option<PathBuf> {
+    path.map(|path| {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            oikos.root().join(path)
+        }
+    })
+}
+
+#[cfg(any(feature = "cc-provider", feature = "codex-provider"))]
+fn configured_subprocess_timeout(
+    entry: &taxis::config::LlmProviderConfig,
+    default: Duration,
+) -> Duration {
+    entry.timeout_secs.map_or(default, Duration::from_secs)
+}
+
+#[cfg(any(feature = "cc-provider", feature = "codex-provider"))]
+fn default_model_for_entry(
+    entry: &taxis::config::LlmProviderConfig,
+    default_model: String,
+) -> String {
+    entry.models.first().cloned().unwrap_or(default_model)
+}
+
 #[cfg(feature = "cc-provider")]
 fn register_declared_claude_code(
     registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
+    oikos: &Oikos,
 ) {
     use hermeneus::cc::{CcProvider, CcProviderConfig};
 
-    let cc_config = CcProviderConfig::default();
+    let defaults = CcProviderConfig::default();
+    let cc_config = CcProviderConfig {
+        name: entry.name.clone(),
+        cc_binary: configured_subprocess_path(oikos, entry.binary.as_deref()),
+        working_directory: configured_subprocess_path(oikos, entry.workdir.as_deref()),
+        models: entry.models.clone(),
+        default_model: default_model_for_entry(entry, defaults.default_model),
+        timeout: configured_subprocess_timeout(entry, defaults.timeout),
+        deployment_target: map_deployment_target(entry.deployment_target),
+    };
     match CcProvider::new(&cc_config) {
         Ok(provider) => {
             registry.register(Box::new(provider));
@@ -607,7 +645,7 @@ fn register_declared_claude_code(
             info!(provider = %entry.name, "CC subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
         }
         Err(e) => {
-            tracing::debug!(
+            warn!(
                 provider = %entry.name,
                 error = %e,
                 "CC provider unavailable"
@@ -620,6 +658,7 @@ fn register_declared_claude_code(
 fn register_declared_claude_code(
     _registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
+    _oikos: &Oikos,
 ) {
     warn!(
         provider = %entry.name,
@@ -647,17 +686,27 @@ fn register_auto_codex(registry: &mut ProviderRegistry) {
 fn register_declared_codex(
     registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
+    oikos: &Oikos,
 ) {
     use hermeneus::codex::{CodexProvider, CodexProviderConfig};
 
-    let codex_config = CodexProviderConfig::default();
+    let defaults = CodexProviderConfig::default();
+    let codex_config = CodexProviderConfig {
+        name: entry.name.clone(),
+        codex_binary: configured_subprocess_path(oikos, entry.binary.as_deref()),
+        working_directory: configured_subprocess_path(oikos, entry.workdir.as_deref()),
+        models: entry.models.clone(),
+        default_model: default_model_for_entry(entry, defaults.default_model),
+        timeout: configured_subprocess_timeout(entry, defaults.timeout),
+        deployment_target: map_deployment_target(entry.deployment_target),
+    };
     match CodexProvider::new(&codex_config) {
         Ok(provider) => {
             registry.register(Box::new(provider));
             info!(provider = %entry.name, "Codex subprocess provider registered");
         }
         Err(e) => {
-            tracing::debug!(
+            warn!(
                 provider = %entry.name,
                 error = %e,
                 "Codex provider unavailable"
@@ -670,6 +719,7 @@ fn register_declared_codex(
 fn register_declared_codex(
     _registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
+    _oikos: &Oikos,
 ) {
     warn!(
         provider = %entry.name,
@@ -1388,6 +1438,9 @@ mod tests {
             base_url: None,
             api_key_env: None,
             api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             models: vec!["gpt-5".to_owned()],
         };
@@ -1413,6 +1466,9 @@ mod tests {
             base_url: Some("http://127.0.0.1:8088/v1".to_owned()),
             api_key_env: None,
             api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
             deployment_target: DeploymentTarget::Embedded,
             models: vec![model.to_owned()],
         }
@@ -1430,6 +1486,9 @@ mod tests {
             base_url: None,
             api_key_env: None,
             api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             models: vec![model.to_owned()],
         }
@@ -1444,6 +1503,32 @@ mod tests {
             base_url: None,
             api_key_env: Some("ALETHEIA_TEST_OPENAI_API_KEY".to_owned()),
             api_family: Some(OpenAiApiFamily::Responses),
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
+            deployment_target: DeploymentTarget::Cloud,
+            models: vec![model.to_owned()],
+        }
+    }
+
+    #[cfg(feature = "cc-provider")]
+    fn claude_code_provider(
+        name: &str,
+        model: &str,
+        binary: PathBuf,
+        workdir: PathBuf,
+    ) -> taxis::config::LlmProviderConfig {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+        LlmProviderConfig {
+            name: name.to_owned(),
+            kind: ProviderKind::ClaudeCode,
+            base_url: None,
+            api_key_env: None,
+            api_family: None,
+            binary: Some(binary),
+            workdir: Some(workdir),
+            timeout_secs: Some(30),
             deployment_target: DeploymentTarget::Cloud,
             models: vec![model.to_owned()],
         }
@@ -1515,6 +1600,41 @@ mod tests {
             .expect("declared local provider should register without Anthropic credentials");
 
         assert_eq!(provider.name(), "local-only");
+    }
+
+    #[cfg(feature = "cc-provider")]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "WHY(#4889): test fixture writes a fake Claude Code CLI binary under a temp dir"
+    )]
+    #[test]
+    fn declared_claude_code_routes_configured_model_with_declared_identity() {
+        let fixture = tempfile::tempdir().expect("create fake subprocess fixture");
+        let binary = fixture.path().join("claude");
+        std::fs::write(&binary, "#!/bin/sh\n").expect("write fake Claude Code binary");
+        let model = "team-claude";
+        let config = AletheiaConfig {
+            providers: vec![claude_code_provider(
+                "cc-seat",
+                model,
+                binary,
+                fixture.path().to_path_buf(),
+            )],
+            ..AletheiaConfig::default()
+        };
+
+        let registry = build_test_provider_registry(&config);
+        let provider = registry
+            .find_provider(model)
+            .expect("declared Claude Code provider should claim its configured model");
+
+        assert_eq!(provider.name(), "cc-seat");
+        assert!(
+            registry
+                .find_provider("claude-future-family-model")
+                .is_none(),
+            "declared subprocess models should not silently become broad claude-* catchalls"
+        );
     }
 
     #[expect(
@@ -1594,6 +1714,9 @@ mod tests {
             base_url: Some("https://compat.api.example.com".to_owned()),
             api_key_env: Some("TEST_DECL_ANTHROPIC_KEY".to_owned()),
             api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             models: vec!["kimi-for-coding".to_owned()],
         });
@@ -1623,6 +1746,9 @@ mod tests {
             base_url: None,
             api_key_env: None,
             api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             models: Vec::new(),
         });

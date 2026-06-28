@@ -57,12 +57,26 @@ fn write_script(name: &str, body: &str) -> PathBuf {
     final_path
 }
 
+fn make_temp_dir(name: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NONCE: AtomicU64 = AtomicU64::new(0);
+    let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "hermeneus_test_{name}_{}_{nonce}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&path);
+    fs::create_dir_all(&path).unwrap();
+    path
+}
+
 #[tokio::test]
 async fn run_completion_spawn_failure_reports_binary_path() {
     // WHY: a missing or non-executable binary must name the bad path.
     let binary = PathBuf::from("/nonexistent/path/to/claude-binary");
     let err = run_completion(
         &binary,
+        None,
         "claude-test-model",
         None,
         "hello",
@@ -95,6 +109,7 @@ printf '{"type":"result","subtype":"success","result":"ok","is_error":false}\n'"
 
     let output = run_completion(
         &script,
+        None,
         "claude-test-model",
         None,
         "hello",
@@ -124,6 +139,7 @@ printf '{"type":"result","subtype":"success","result":"hello world","is_error":f
 
     let output = run_completion(
         &script,
+        None,
         "claude-test-model",
         None,
         "prompt text",
@@ -143,6 +159,37 @@ printf '{"type":"result","subtype":"success","result":"hello world","is_error":f
 }
 
 #[tokio::test]
+async fn run_completion_uses_configured_working_directory() {
+    let workdir = make_temp_dir("completion_cwd");
+    let expected = std::fs::canonicalize(&workdir)
+        .unwrap()
+        .display()
+        .to_string();
+    let script = write_script(
+        "completion_cwd",
+        r#"cat > /dev/null
+cwd="$(pwd -P)"
+printf '{"type":"result","subtype":"success","result":"%s","is_error":false}\n' "$cwd""#,
+    );
+
+    let output = run_completion(
+        &script,
+        Some(&workdir),
+        "claude-test-model",
+        None,
+        "prompt text",
+        0,
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(output.result_text, expected);
+    let _ = fs::remove_file(&script);
+    let _ = fs::remove_dir_all(&workdir);
+}
+
+#[tokio::test]
 async fn run_completion_with_system_prompt_succeeds() {
     // WHY: Verifies the --system-prompt branch executes without error.
     // The actual arg passing is structural (cmd.arg) and not visible from
@@ -155,6 +202,7 @@ printf '{"type":"result","subtype":"success","result":"sys ok","is_error":false}
 
     let output = run_completion(
         &script,
+        None,
         "claude-test-model",
         Some("You are a helpful assistant."),
         "prompt",
@@ -176,6 +224,7 @@ async fn run_completion_timeout_returns_error() {
 
     let err = run_completion(
         &script,
+        None,
         "claude-test-model",
         None,
         "prompt",
@@ -214,6 +263,7 @@ exit 1"#,
 
     let err = run_completion(
         &script,
+        None,
         "claude-test-model",
         None,
         "prompt",
@@ -239,6 +289,7 @@ async fn run_streaming_spawn_failure_reports_binary_path() {
     let mut on_delta = |_: &str| {};
     let err = run_streaming(
         &binary,
+        None,
         "claude-test-model",
         None,
         "hello",
@@ -277,6 +328,7 @@ printf '{"type":"result","subtype":"success","result":"hi","is_error":false}\n'"
 
     let output = run_streaming(
         &script,
+        None,
         "claude-test-model",
         None,
         "hello",
@@ -312,6 +364,7 @@ printf '{"type":"result","subtype":"success","result":"chunk1chunk2chunk3","is_e
 
     let output = run_streaming(
         &script,
+        None,
         "claude-test-model",
         None,
         "prompt",
@@ -341,6 +394,7 @@ async fn run_streaming_timeout_returns_error() {
     let mut on_delta = |_: &str| {};
     let err = run_streaming(
         &script,
+        None,
         "claude-test-model",
         None,
         "prompt",
@@ -367,6 +421,7 @@ async fn run_completion_rejects_oversized_system_prompt() {
     let binary = PathBuf::from("/bin/echo"); // won't be reached
     let err = run_completion(
         &binary,
+        None,
         "test-model",
         Some(&big_prompt),
         "hello",
@@ -390,6 +445,7 @@ async fn run_streaming_rejects_oversized_system_prompt() {
     let mut on_delta = |_: &str| {};
     let err = run_streaming(
         &binary,
+        None,
         "test-model",
         Some(&big_prompt),
         "hello",
@@ -435,6 +491,7 @@ async fn run_completion_subprocess_killed_on_future_drop() {
     let handle = tokio::spawn(async move {
         run_completion(
             &binary,
+            None,
             "test-model",
             None,
             "prompt",
@@ -497,6 +554,7 @@ async fn run_streaming_subprocess_killed_on_future_drop() {
         let mut on_delta = |_: &str| {};
         run_streaming(
             &binary,
+            None,
             "test-model",
             None,
             "prompt",

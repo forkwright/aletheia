@@ -3,7 +3,7 @@
 //! Spawns `claude -p --output-format stream-json` and manages the child
 //! process lifecycle: stdin feeding, stdout reading, timeout, and cleanup.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -116,6 +116,7 @@ pub(crate) struct CcOutput {
 ///
 /// # Arguments
 /// - `cc_binary`: path to the `claude` executable
+/// - `working_directory`: optional subprocess cwd
 /// - `model`: model identifier to pass via `--model`
 /// - `system_prompt`: optional system prompt (passed via `--system-prompt`)
 /// - `prompt`: the user prompt text (piped via stdin)
@@ -131,6 +132,7 @@ pub(crate) struct CcOutput {
 #[tracing::instrument(skip_all)]
 pub(crate) async fn run_completion(
     cc_binary: &PathBuf,
+    working_directory: Option<&Path>,
     model: &str,
     system_prompt: Option<&str>,
     prompt: &str,
@@ -180,8 +182,13 @@ pub(crate) async fn run_completion(
         cmd.arg("--system-prompt").arg(sys);
     }
 
+    if let Some(cwd) = working_directory {
+        cmd.current_dir(cwd);
+    }
+
     debug!(
         binary = %cc_binary.display(),
+        cwd = ?working_directory.map(|path| path.display().to_string()),
         model = %model,
         "spawning CC subprocess"
     );
@@ -408,9 +415,14 @@ where
 /// Spawn CC for streaming, calling `on_event` for each assistant delta.
 ///
 /// Returns the final `CcOutput` after the stream completes.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "WHY(#4889): streaming needs the same subprocess knobs as completion plus the delta callback"
+)]
 #[tracing::instrument(skip_all)]
 pub(crate) async fn run_streaming(
     cc_binary: &PathBuf,
+    working_directory: Option<&Path>,
     model: &str,
     system_prompt: Option<&str>,
     prompt: &str,
@@ -455,8 +467,13 @@ pub(crate) async fn run_streaming(
         cmd.arg("--system-prompt").arg(sys);
     }
 
+    if let Some(cwd) = working_directory {
+        cmd.current_dir(cwd);
+    }
+
     debug!(
         binary = %cc_binary.display(),
+        cwd = ?working_directory.map(|path| path.display().to_string()),
         model = %model,
         "spawning CC subprocess (streaming)"
     );
