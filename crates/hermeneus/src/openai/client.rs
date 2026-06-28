@@ -21,6 +21,7 @@ use koina::secret::SecretString;
 use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::anthropic::pricing::estimate_cost;
+use crate::circuit_breaker::CircuitBreaker;
 use crate::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
@@ -187,6 +188,7 @@ pub struct OpenAiProvider {
     client: Client,
     config: OpenAiProviderConfig,
     health: Arc<ProviderHealthTracker>,
+    circuit_breaker: Arc<CircuitBreaker>,
     concurrency: Arc<AdaptiveConcurrencyLimiter>,
     /// Merged pricing table (config-supplied; empty = unpriced local model).
     pricing: HashMap<String, ModelPricing>,
@@ -235,6 +237,7 @@ impl OpenAiProvider {
         );
 
         let pricing = config.pricing.clone();
+        let provider_name = config.name.clone();
         Ok(Self {
             client,
             concurrency: Arc::new(AdaptiveConcurrencyLimiter::new(
@@ -243,6 +246,7 @@ impl OpenAiProvider {
             )),
             config,
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            circuit_breaker: Arc::new(CircuitBreaker::with_defaults(provider_name)),
             pricing,
         })
     }
@@ -274,6 +278,32 @@ impl OpenAiProvider {
         }
     }
 
+    fn check_circuit_breaker(&self) -> Result<()> {
+        if self.circuit_breaker.is_allowed() {
+            return Ok(());
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: format!(
+                "provider circuit-breaker open: {:?}",
+                self.circuit_breaker.state()
+            ),
+        }
+        .build())
+    }
+
+    fn record_provider_success(&self) {
+        self.health.record_success();
+        self.circuit_breaker.on_success();
+    }
+
+    fn record_provider_error(&self, err: &error::Error) {
+        self.health.record_error(err);
+        if err.is_retryable() {
+            self.circuit_breaker.on_failure();
+        }
+    }
+
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
             llm.provider = %self.config.name,
@@ -302,6 +332,7 @@ impl OpenAiProvider {
     }
 
     async fn execute_inner(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        self.check_circuit_breaker()?;
         if let Err(health) = self.health.check_available() {
             return Err(error::ApiRequestSnafu {
                 message: format!("provider circuit-breaker open: {health:?}"),
@@ -335,7 +366,7 @@ impl OpenAiProvider {
                 Ok(r) => r,
                 Err(e) => {
                     let err = map_request_error(&e);
-                    self.health.record_error(&err);
+                    self.record_provider_error(&err);
                     if !err.is_retryable() {
                         return Err(err);
                     }
@@ -353,7 +384,7 @@ impl OpenAiProvider {
                     .build()
                 })?;
                 let mut resp = self.parse_response_body(&text)?;
-                self.health.record_success();
+                self.record_provider_success();
                 let cost_usd = estimate_cost(
                     &self.pricing,
                     &request.model,
@@ -373,7 +404,7 @@ impl OpenAiProvider {
             }
 
             let err = map_error_response(response, &request.model, self.credential_source()).await;
-            self.health.record_error(&err);
+            self.record_provider_error(&err);
             if !err.is_retryable() {
                 tracing::Span::current().record("llm.retries", attempt);
                 tracing::Span::current().record(
@@ -442,6 +473,7 @@ impl OpenAiProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        self.check_circuit_breaker()?;
         if let Err(health) = self.health.check_available() {
             return Err(error::ApiRequestSnafu {
                 message: format!("provider circuit-breaker open: {health:?}"),
@@ -466,7 +498,7 @@ impl OpenAiProvider {
             let mut response = match self.send_streaming_request(&url, &body).await {
                 Ok(r) => r,
                 Err(err) => {
-                    self.health.record_error(&err);
+                    self.record_provider_error(&err);
                     if !err.is_retryable() {
                         record_stream_failure(start, attempt, &self.config.name, request);
                         return Err(err);
@@ -480,7 +512,7 @@ impl OpenAiProvider {
             if !response.status().is_success() {
                 let err =
                     map_error_response(response, &request.model, self.credential_source()).await;
-                self.health.record_error(&err);
+                self.record_provider_error(&err);
                 if !err.is_retryable() {
                     record_stream_http_failure(start, attempt, &self.config.name, request, status);
                     return Err(err);
@@ -506,7 +538,7 @@ impl OpenAiProvider {
 
             match resp {
                 Ok(mut resp) => {
-                    self.health.record_success();
+                    self.record_provider_success();
                     let cost_usd = estimate_cost(
                         &self.pricing,
                         &request.model,
@@ -524,7 +556,7 @@ impl OpenAiProvider {
                     return Ok(resp);
                 }
                 Err(err) => {
-                    self.health.record_error(&err);
+                    self.record_provider_error(&err);
                     if content_started {
                         // WHY(#4887): content already delivered; retry would duplicate output.
                         tracing::error!("SSE error after content started streaming; cannot retry");

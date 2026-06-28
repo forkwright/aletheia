@@ -18,6 +18,7 @@ use koina::system::{Environment, RealSystem};
 use tracing::{debug, info, warn};
 
 use crate::anthropic::StreamEvent;
+use crate::circuit_breaker::CircuitBreaker;
 use crate::error::{self, Result};
 use crate::provider::{LlmProvider, MatchKind};
 use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
@@ -61,6 +62,7 @@ pub struct KimiProvider {
     working_directory: PathBuf,
     default_model: String,
     timeout: Duration,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl KimiProvider {
@@ -121,6 +123,7 @@ impl KimiProvider {
             working_directory,
             default_model: config.default_model.clone(),
             timeout: config.timeout,
+            circuit_breaker: CircuitBreaker::with_defaults("kimi"),
         })
     }
 
@@ -188,6 +191,26 @@ impl KimiProvider {
         warned
     }
 
+    fn check_circuit_breaker(&self) -> Result<()> {
+        if self.circuit_breaker.is_allowed() {
+            return Ok(());
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: format!(
+                "provider circuit-breaker open: {:?}",
+                self.circuit_breaker.state()
+            ),
+        }
+        .build())
+    }
+
+    fn record_subprocess_error(&self, err: &error::Error) {
+        if err.is_retryable() {
+            self.circuit_breaker.on_failure();
+        }
+    }
+
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let retry_policy = crate::retry::subprocess_retry_policy();
         let mut last_error = None;
@@ -202,9 +225,14 @@ impl KimiProvider {
                 tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
+            self.check_circuit_breaker()?;
             match self.execute_once(request).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    self.circuit_breaker.on_success();
+                    return Ok(response);
+                }
                 Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    self.record_subprocess_error(&err);
                     warn!(
                         attempt,
                         error = %err,
@@ -212,7 +240,10 @@ impl KimiProvider {
                     );
                     last_error = Some(err);
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    self.record_subprocess_error(&err);
+                    return Err(err);
+                }
             }
         }
 
@@ -273,9 +304,14 @@ impl KimiProvider {
                 tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
+            self.check_circuit_breaker()?;
             match self.execute_streaming_once(request, on_event).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    self.circuit_breaker.on_success();
+                    return Ok(response);
+                }
                 Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    self.record_subprocess_error(&err);
                     warn!(
                         attempt,
                         error = %err,
@@ -283,7 +319,10 @@ impl KimiProvider {
                     );
                     last_error = Some(err);
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    self.record_subprocess_error(&err);
+                    return Err(err);
+                }
             }
         }
 
@@ -523,6 +562,7 @@ mod tests {
             working_directory: PathBuf::from("."),
             default_model: koina::models::names::kimi().to_owned(),
             timeout: Duration::from_secs(1),
+            circuit_breaker: CircuitBreaker::with_defaults("kimi"),
         };
         assert_eq!(
             provider.match_specificity("kimi/experimental"),

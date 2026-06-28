@@ -14,6 +14,7 @@ use koina::system::{Environment, RealSystem};
 use tracing::{debug, info, warn};
 
 use crate::anthropic::StreamEvent;
+use crate::circuit_breaker::CircuitBreaker;
 use crate::error::{self, Result};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind};
 use crate::seat_bridged::SeatBridgedProvider;
@@ -67,6 +68,7 @@ pub struct CodexProvider {
     default_model: String,
     timeout: Duration,
     deployment_target: DeploymentTarget,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl CodexProvider {
@@ -113,6 +115,7 @@ impl CodexProvider {
             default_model: config.default_model.clone(),
             timeout: config.timeout,
             deployment_target: config.deployment_target,
+            circuit_breaker: CircuitBreaker::with_defaults(config.name.clone()),
         })
     }
 
@@ -182,6 +185,26 @@ impl CodexProvider {
         warned
     }
 
+    fn check_circuit_breaker(&self) -> Result<()> {
+        if self.circuit_breaker.is_allowed() {
+            return Ok(());
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: format!(
+                "provider circuit-breaker open: {:?}",
+                self.circuit_breaker.state()
+            ),
+        }
+        .build())
+    }
+
+    fn record_subprocess_error(&self, err: &error::Error) {
+        if err.is_retryable() {
+            self.circuit_breaker.on_failure();
+        }
+    }
+
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let retry_policy = crate::retry::subprocess_retry_policy();
         let mut last_error = None;
@@ -197,9 +220,14 @@ impl CodexProvider {
                 tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
+            self.check_circuit_breaker()?;
             match self.execute_once(request).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    self.circuit_breaker.on_success();
+                    return Ok(response);
+                }
                 Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    self.record_subprocess_error(&err);
                     warn!(
                         provider = %self.name,
                         attempt,
@@ -208,7 +236,10 @@ impl CodexProvider {
                     );
                     last_error = Some(err);
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    self.record_subprocess_error(&err);
+                    return Err(err);
+                }
             }
         }
 
@@ -269,9 +300,14 @@ impl CodexProvider {
                 tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
+            self.check_circuit_breaker()?;
             match self.execute_streaming_once(request, on_event).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    self.circuit_breaker.on_success();
+                    return Ok(response);
+                }
                 Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    self.record_subprocess_error(&err);
                     warn!(
                         provider = %self.name,
                         attempt,
@@ -280,7 +316,10 @@ impl CodexProvider {
                     );
                     last_error = Some(err);
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    self.record_subprocess_error(&err);
+                    return Err(err);
+                }
             }
         }
 
@@ -703,6 +742,7 @@ mod tests {
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("codex"),
         };
         assert_eq!(
             provider.resolve_model(&format!(
@@ -724,6 +764,7 @@ mod tests {
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("codex"),
         };
         assert!(provider.supports_model(&format!(
             "{CODEX_MODEL_PREFIX}{}",
@@ -743,6 +784,7 @@ mod tests {
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("codex"),
         };
         assert_eq!(
             provider.match_specificity(&format!(
@@ -768,6 +810,7 @@ mod tests {
             default_model: "team-codex".to_owned(),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("codex-seat"),
         };
 
         assert_eq!(
@@ -795,6 +838,7 @@ mod tests {
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("codex"),
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
     }
@@ -809,6 +853,7 @@ mod tests {
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("codex"),
         };
         assert!(
             provider.supports_streaming(),
@@ -859,14 +904,15 @@ printf '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}\n
             working_directory: None,
             models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
-            timeout: Duration::from_secs(300),
+            timeout: Duration::from_mins(5),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("codex"),
         };
         assert_eq!(
             provider.cli_binary(),
             &PathBuf::from("/usr/local/bin/codex")
         );
-        assert_eq!(provider.subprocess_timeout(), Duration::from_secs(300));
+        assert_eq!(provider.subprocess_timeout(), Duration::from_mins(5));
         assert_eq!(provider.cli_product_name(), "codex");
     }
 

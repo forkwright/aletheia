@@ -18,6 +18,7 @@ use koina::system::{Environment, RealSystem};
 use tracing::{debug, info, warn};
 
 use crate::anthropic::StreamEvent;
+use crate::circuit_breaker::CircuitBreaker;
 use crate::error::{self, Result};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind};
 use crate::seat_bridged::SeatBridgedProvider;
@@ -76,6 +77,7 @@ pub struct CcProvider {
     default_model: String,
     timeout: Duration,
     deployment_target: DeploymentTarget,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl CcProvider {
@@ -122,6 +124,7 @@ impl CcProvider {
             default_model: config.default_model.clone(),
             timeout: config.timeout,
             deployment_target: config.deployment_target,
+            circuit_breaker: CircuitBreaker::with_defaults(config.name.clone()),
         })
     }
 
@@ -191,6 +194,26 @@ impl CcProvider {
         warned
     }
 
+    fn check_circuit_breaker(&self) -> Result<()> {
+        if self.circuit_breaker.is_allowed() {
+            return Ok(());
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: format!(
+                "provider circuit-breaker open: {:?}",
+                self.circuit_breaker.state()
+            ),
+        }
+        .build())
+    }
+
+    fn record_subprocess_error(&self, err: &error::Error) {
+        if err.is_retryable() {
+            self.circuit_breaker.on_failure();
+        }
+    }
+
     /// Execute a non-streaming completion via CC subprocess.
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let retry_policy = crate::retry::subprocess_retry_policy();
@@ -207,9 +230,14 @@ impl CcProvider {
                 tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
+            self.check_circuit_breaker()?;
             match self.execute_once(request).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    self.circuit_breaker.on_success();
+                    return Ok(response);
+                }
                 Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    self.record_subprocess_error(&err);
                     warn!(
                         provider = %self.name,
                         attempt,
@@ -218,7 +246,10 @@ impl CcProvider {
                     );
                     last_error = Some(err);
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    self.record_subprocess_error(&err);
+                    return Err(err);
+                }
             }
         }
 
@@ -282,9 +313,14 @@ impl CcProvider {
                 tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
+            self.check_circuit_breaker()?;
             match self.execute_streaming_once(request, on_event).await {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    self.circuit_breaker.on_success();
+                    return Ok(response);
+                }
                 Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    self.record_subprocess_error(&err);
                     warn!(
                         provider = %self.name,
                         attempt,
@@ -293,7 +329,10 @@ impl CcProvider {
                     );
                     last_error = Some(err);
                 }
-                Err(err) => return Err(err),
+                Err(err) => {
+                    self.record_subprocess_error(&err);
+                    return Err(err);
+                }
             }
         }
 
@@ -651,6 +690,7 @@ mod tests {
             default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("cc"),
         };
         assert!(provider.supports_model(crate::models::names::sonnet()));
         assert!(provider.supports_model("claude-future-family-model"));
@@ -667,6 +707,7 @@ mod tests {
             default_model: "team-claude".to_owned(),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("cc-seat"),
         };
 
         assert_eq!(
@@ -694,6 +735,7 @@ mod tests {
             default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_secs(1),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("cc"),
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
     }
@@ -708,6 +750,7 @@ mod tests {
             default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_mins(5),
             deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::with_defaults("cc"),
         };
         assert_eq!(
             provider.cli_binary(),
@@ -755,6 +798,52 @@ printf '{"type":"result","subtype":"success","result":"retried ok","is_error":fa
 
         assert_text_response(&response, "retried ok");
         remove_if_exists(&script_path)?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn live_provider_failure_records_circuit_transition_metric()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        use koina::metrics::MetricsRegistry;
+
+        use crate::circuit_breaker::CircuitBreakerConfig;
+        use crate::metrics::register;
+
+        let registry = MetricsRegistry::new();
+        registry.with_registry(register);
+        let provider = CcProvider {
+            name: "cc-circuit-test".to_owned(),
+            cc_binary: retry_test_script_path("missing_binary"),
+            working_directory: None,
+            models: Vec::new(),
+            default_model: crate::models::names::opus().to_owned(),
+            timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
+            circuit_breaker: CircuitBreaker::new(
+                "cc-circuit-test",
+                CircuitBreakerConfig {
+                    failure_threshold: 1,
+                    ..CircuitBreakerConfig::default()
+                },
+            ),
+        };
+        let request = one_message_request(format!(
+            "{CC_MODEL_PREFIX}{}",
+            crate::models::names::sonnet()
+        ));
+
+        let result = provider.execute(&request).await;
+        assert!(
+            result.is_err(),
+            "missing binary should fail the provider call"
+        );
+
+        let mut buf = String::new();
+        registry.encode(&mut buf)?;
+        assert!(
+            buf.contains("aletheia_llm_circuit_breaker_transitions_total{provider=\"cc-circuit-test\",from=\"closed\",to=\"open\"} 1"),
+            "missing circuit transition metric: {buf}"
+        );
         Ok(())
     }
 

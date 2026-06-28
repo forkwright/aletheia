@@ -16,6 +16,7 @@ use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
 
 use crate::RetryPolicy;
+use crate::circuit_breaker::CircuitBreaker;
 use crate::concurrency::{AdaptiveConcurrencyLimiter, RequestOutcome};
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
@@ -88,6 +89,7 @@ pub struct AnthropicProvider {
     concurrency: Arc<AdaptiveConcurrencyLimiter>,
     pricing: HashMap<String, ModelPricing>,
     health: Arc<ProviderHealthTracker>,
+    circuit_breaker: Arc<CircuitBreaker>,
     /// CC profile for request mimicry. `Some` when using OAuth credentials.
     cc_profile: Option<super::cc_profile::CcProfile>,
     /// Runtime behavior overrides (timeouts, retry delays).
@@ -243,6 +245,7 @@ impl AnthropicProvider {
             )),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            circuit_breaker: Arc::new(CircuitBreaker::with_defaults(name.clone())),
             cc_profile: None, // API key mode — no mimicry needed
             behavior: ProviderBehavior::new(
                 NON_STREAMING_TIMEOUT,
@@ -312,6 +315,7 @@ impl AnthropicProvider {
             )),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            circuit_breaker: Arc::new(CircuitBreaker::with_defaults(name.clone())),
             cc_profile,
             behavior: ProviderBehavior::new(
                 NON_STREAMING_TIMEOUT,
@@ -410,6 +414,7 @@ impl AnthropicProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        self.check_circuit_breaker()?;
         if let Err(health) = self.health.check_available() {
             tracing::warn!(?health, "circuit-breaker open; streaming request rejected");
             return Err(error::ApiRequestSnafu {
@@ -455,7 +460,7 @@ impl AnthropicProvider {
                 Ok(r) => r,
                 Err(e) => {
                     let err = super::error::map_request_error(&e);
-                    self.health.record_error(&err);
+                    self.record_provider_error(&err);
                     last_error = Some(err);
                     continue;
                 }
@@ -466,7 +471,7 @@ impl AnthropicProvider {
                 let err =
                     super::error::map_error_response(response, &request.model, &credential_source)
                         .await;
-                self.health.record_error(&err);
+                self.record_provider_error(&err);
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
                         clippy::cast_possible_truncation,
@@ -520,7 +525,7 @@ impl AnthropicProvider {
 
             match stream_result {
                 Ok(mut resp) => {
-                    self.health.record_success();
+                    self.record_provider_success();
                     let duration_ms =
                         u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     #[expect(
@@ -573,7 +578,7 @@ impl AnthropicProvider {
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
-                        self.health.record_error(&e);
+                        self.record_provider_error(&e);
                         #[expect(
                             clippy::cast_possible_truncation,
                             clippy::as_conversions,
@@ -594,11 +599,11 @@ impl AnthropicProvider {
                     }
                     if e.is_retryable() {
                         tracing::warn!("SSE stream returned retryable error before content");
-                        self.health.record_error(&e);
+                        self.record_provider_error(&e);
                         last_error = Some(e);
                         continue;
                     }
-                    self.health.record_error(&e);
+                    self.record_provider_error(&e);
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::as_conversions,
@@ -663,6 +668,32 @@ impl AnthropicProvider {
         match self.credential_provider.get_credential() {
             Some(cred) => cred.source.to_string(),
             None => String::new(),
+        }
+    }
+
+    fn check_circuit_breaker(&self) -> Result<()> {
+        if self.circuit_breaker.is_allowed() {
+            return Ok(());
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: format!(
+                "provider circuit-breaker open: {:?}",
+                self.circuit_breaker.state()
+            ),
+        }
+        .build())
+    }
+
+    fn record_provider_success(&self) {
+        self.health.record_success();
+        self.circuit_breaker.on_success();
+    }
+
+    fn record_provider_error(&self, err: &error::Error) {
+        self.health.record_error(err);
+        if err.is_retryable() {
+            self.circuit_breaker.on_failure();
         }
     }
 
@@ -896,6 +927,7 @@ impl AnthropicProvider {
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionResponse> {
+        self.check_circuit_breaker()?;
         if let Err(health) = self.health.check_available() {
             tracing::warn!(
                 ?health,
@@ -953,7 +985,7 @@ impl AnthropicProvider {
                 Ok(r) => r,
                 Err(e) => {
                     let err = super::error::map_request_error(&e);
-                    self.health.record_error(&err);
+                    self.record_provider_error(&err);
                     last_error = Some(err);
                     continue;
                 }
@@ -974,7 +1006,7 @@ impl AnthropicProvider {
                             .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
                     });
                 if let Ok(mut resp) = parsed {
-                    self.health.record_success();
+                    self.record_provider_success();
                     let duration_ms =
                         u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     #[expect(
@@ -1025,7 +1057,7 @@ impl AnthropicProvider {
             let err =
                 super::error::map_error_response(response, &request.model, &credential_source)
                     .await;
-            self.health.record_error(&err);
+            self.record_provider_error(&err);
 
             if status == 401 || (400..500).contains(&status) {
                 #[expect(

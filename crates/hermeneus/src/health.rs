@@ -212,12 +212,14 @@ impl ProviderHealthTracker {
                     },
                 };
             }
-            // WHY: ProviderInit errors (e.g. CC binary disappeared, spawn failed)
+            // WHY: ProviderInit/SubprocessFailure errors (e.g. CLI binary
+            // disappeared, spawn failed, or timed out)
             // indicate the provider process is unavailable. They must follow the
             // same degradation path as ApiRequest errors so the health tracker
             // transitions to Degraded/Down and subsequent requests get a clear
             // 503 instead of repeated spawn failures.
             Error::ProviderInit { .. }
+            | Error::SubprocessFailure { .. }
             | Error::ApiRequest { .. }
             | Error::ApiError {
                 status: 500..=599, ..
