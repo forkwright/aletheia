@@ -373,9 +373,9 @@ impl RuleBucket {
                     .first()
                     .map(|v| v.snippet.clone())
                     .unwrap_or_default();
-                let explicit_outcome = violations.iter().any(|v| {
-                    matches!(v.outcome.as_deref(), Some("merged") | Some("fixed"))
-                });
+                let explicit_outcome = violations
+                    .iter()
+                    .any(|v| matches!(v.outcome.as_deref(), Some("merged") | Some("fixed")));
 
                 // WHY: explicit merged/fixed outcome is stronger evidence than a
                 // before/after delta alone.
@@ -878,9 +878,7 @@ mod tests {
         let unresolved = result
             .lessons
             .iter()
-            .filter(|l| {
-                l.outcome == LessonOutcome::RecurringViolation && l.pr_number.is_some()
-            })
+            .filter(|l| l.outcome == LessonOutcome::RecurringViolation && l.pr_number.is_some())
             .collect::<Vec<_>>();
         assert_eq!(unresolved.len(), 2);
         assert!(unresolved.iter().any(|l| l.pr_number == Some(43)));
