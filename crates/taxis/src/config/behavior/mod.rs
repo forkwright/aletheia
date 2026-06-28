@@ -26,6 +26,9 @@ pub use provider::{
     AnthropicConfig, DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, PromptCacheMode,
     ProviderBehaviorConfig, ProviderKind,
 };
-pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
+pub use timeouts::{
+    CapacityConfig, DEFAULT_APPROVAL_TIMEOUT_SECS, MAX_APPROVAL_TIMEOUT_SECS,
+    MIN_APPROVAL_TIMEOUT_SECS, RetrySettings, TimeoutsConfig,
+};
 pub use tools::ToolLimitsConfig;
 pub use tuning::TuningConfig;

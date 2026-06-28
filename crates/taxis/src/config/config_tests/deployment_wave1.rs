@@ -16,6 +16,14 @@ fn timeouts_default_matches_koina_const() {
         config.timeouts.llm_call_secs, 300,
         "default llm_call_secs must be 300 seconds"
     );
+    assert_eq!(
+        config.timeouts.approval_secs, DEFAULT_APPROVAL_TIMEOUT_SECS,
+        "default approval_secs must equal the owned approval timeout default"
+    );
+    assert_eq!(
+        config.timeouts.approval_secs, 120,
+        "default approval_secs must be 120 seconds"
+    );
 }
 
 #[test]
@@ -55,11 +63,15 @@ fn retry_defaults_are_sensible() {
 
 #[test]
 fn timeouts_override_from_json() {
-    let json = r#"{"timeouts": {"llmCallSecs": 600}}"#;
+    let json = r#"{"timeouts": {"llmCallSecs": 600, "approvalSecs": 45}}"#;
     let config: AletheiaConfig = serde_json::from_str(json).expect("parse timeouts override");
     assert_eq!(
         config.timeouts.llm_call_secs, 600,
         "llm_call_secs override from json should take effect"
+    );
+    assert_eq!(
+        config.timeouts.approval_secs, 45,
+        "approval_secs override from json should take effect"
     );
     assert_eq!(
         config.gateway.port, 18789,
@@ -99,6 +111,7 @@ fn retry_override_from_json() {
 fn new_sections_survive_serde_roundtrip() {
     let mut config = AletheiaConfig::default();
     config.timeouts.llm_call_secs = 120;
+    config.timeouts.approval_secs = 45;
     config.capacity.max_tool_output_bytes = 8192;
     config.retry.max_attempts = 1;
     config.retry.backoff_base_ms = 500;
@@ -110,6 +123,10 @@ fn new_sections_survive_serde_roundtrip() {
     assert_eq!(
         back.timeouts.llm_call_secs, 120,
         "llm_call_secs should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.timeouts.approval_secs, 45,
+        "approval_secs should survive serde roundtrip"
     );
     assert_eq!(
         back.capacity.max_tool_output_bytes, 8192,

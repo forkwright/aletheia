@@ -73,6 +73,19 @@ async fn gateway_keepalive(
         .text(text)
 }
 
+#[must_use]
+fn approval_timeout(config: &AletheiaConfig) -> Duration {
+    Duration::from_secs(u64::from(config.timeouts.approval_secs))
+}
+
+#[must_use]
+fn approval_gate_from_config(
+    rx: mpsc::Receiver<nous::approval::ApprovalDecision>,
+    config: &AletheiaConfig,
+) -> nous::approval::ApprovalGate {
+    nous::approval::ApprovalGate::new(rx, approval_timeout(config))
+}
+
 fn turn_complete_event_payload(
     session_id: &str,
     nous_id: &str,
@@ -822,10 +835,17 @@ pub async fn stream_turn(
     // streaming task ends; the gate itself defaults-deny on timeout, so a
     // dropped client connection denies pending Required/Mandatory tool calls
     // rather than letting them block the pipeline indefinitely.
+    let approval_default_decision = nous::approval::ApprovalChoice::Denied
+        .as_wire_str()
+        .to_owned();
     let (approval_tx, approval_rx) = mpsc::channel::<nous::approval::ApprovalDecision>(8);
-    let approval_gate = Some(nous::approval::ApprovalGate::with_default_timeout(
-        approval_rx,
-    ));
+    let (approval_timeout_secs, approval_gate) = {
+        let config = state.config.read().await;
+        (
+            config.timeouts.approval_secs,
+            Some(approval_gate_from_config(approval_rx, &config)),
+        )
+    };
     let approval_guard = state
         .approval_registry
         .register_turn(session_id.clone(), turn_id.clone());
@@ -911,6 +931,8 @@ pub async fn stream_turn(
                         input,
                         risk,
                         reason,
+                        timeout_secs: approval_timeout_secs,
+                        default_decision: approval_default_decision.clone(),
                     },
                     TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
                         PylonTurnStreamEvent::ToolApprovalResolved { tool_id, decision }

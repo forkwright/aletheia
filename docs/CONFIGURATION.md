@@ -533,6 +533,23 @@ The effective thresholds for a running agent are exposed by
 
 ---
 
+## timeouts
+
+Deployment-wide timeout thresholds. Tool approvals default-deny when the
+approval channel disconnects or the configured approval lifetime elapses.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `llmCallSecs` | u32 | `300` | Maximum wall-clock seconds for a single LLM API call. |
+| `approvalSecs` | u32 | `120` | Maximum seconds to wait for an operator tool-approval decision before default-deny. Valid range: 1-3600. |
+
+```toml
+[timeouts]
+approvalSecs = 180
+```
+
+---
+
 ## data
 
 ### data.retention

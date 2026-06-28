@@ -446,6 +446,8 @@ impl ChatStateManager {
                 input,
                 risk,
                 reason,
+                timeout_secs,
+                default_decision,
             } => {
                 state.streaming.approvals.push(ToolApprovalState {
                     turn_id,
@@ -454,6 +456,8 @@ impl ChatStateManager {
                     input,
                     risk: RiskLevel::from_str_lossy(&risk),
                     reason,
+                    timeout_secs,
+                    default_decision,
                     resolved: false,
                 });
                 true

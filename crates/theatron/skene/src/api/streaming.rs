@@ -13,7 +13,9 @@ use tracing::Instrument;
 
 use koina::http::CONTENT_TYPE_EVENT_STREAM;
 
-use crate::events::{StreamEnvelope, StreamEvent};
+use crate::events::{
+    LEGACY_APPROVAL_DEFAULT_DECISION, LEGACY_APPROVAL_TIMEOUT_SECS, StreamEnvelope, StreamEvent,
+};
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 use crate::sse::SseStream;
 
@@ -209,6 +211,19 @@ fn u64_any_field(json: &serde_json::Value, fields: &[&str], event_type: &str) ->
         })
 }
 
+fn optional_u32_any_field(json: &serde_json::Value, fields: &[&str]) -> Option<u32> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(serde_json::Value::as_u64))
+        .and_then(|value| u32::try_from(value).ok())
+}
+
+fn optional_str_any_field<'a>(json: &'a serde_json::Value, fields: &[&str]) -> Option<&'a str> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(serde_json::Value::as_str))
+}
+
 /// Parse a raw SSE event into a `StreamEnvelope`.
 ///
 /// Returns `None` only for intentionally-silent events (e.g.
@@ -298,6 +313,14 @@ fn parse_stream_event_envelope(
                 .unwrap_or(serde_json::Value::Null),
             risk: str_field(&json, "risk", event_type)?.to_string(),
             reason: str_field(&json, "reason", event_type)?.to_string(),
+            timeout_secs: optional_u32_any_field(&json, &["timeout_secs", "timeoutSecs"])
+                .unwrap_or(LEGACY_APPROVAL_TIMEOUT_SECS),
+            default_decision: optional_str_any_field(
+                &json,
+                &["default_decision", "defaultDecision"],
+            )
+            .unwrap_or(LEGACY_APPROVAL_DEFAULT_DECISION)
+            .to_string(),
         }),
         "tool_approval_resolved" => wrap(StreamEvent::ToolApprovalResolved {
             tool_id: ToolId::from(

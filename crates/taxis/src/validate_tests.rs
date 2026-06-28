@@ -88,6 +88,40 @@ fn accepts_valid_agents() {
 }
 
 #[test]
+fn validates_tool_approval_timeout_range() {
+    assert!(
+        validate_section("timeouts", &json!({ "approvalSecs": 1 })).is_ok(),
+        "minimum approval timeout should be accepted"
+    );
+    assert!(
+        validate_section("timeouts", &json!({ "approvalSecs": 3600 })).is_ok(),
+        "maximum approval timeout should be accepted"
+    );
+
+    let zero = validate_section("timeouts", &json!({ "approvalSecs": 0 }));
+    assert!(zero.is_err(), "zero approval timeout should be rejected");
+    let zero_err = zero.unwrap_err();
+    assert!(
+        zero_err.errors.iter().any(|e| e.contains("approvalSecs")),
+        "error should mention approvalSecs: {zero_err:?}"
+    );
+
+    let excessive = validate_section("timeouts", &json!({ "approvalSecs": 3601 }));
+    assert!(
+        excessive.is_err(),
+        "excessive approval timeout should be rejected"
+    );
+    let excessive_err = excessive.unwrap_err();
+    assert!(
+        excessive_err
+            .errors
+            .iter()
+            .any(|e| e.contains("approvalSecs")),
+        "error should mention approvalSecs: {excessive_err:?}"
+    );
+}
+
+#[test]
 fn accepts_valid_gateway() {
     let section = json!({ "port": 8080, "cors": { "maxAgeSecs": 3600 } });
     assert!(

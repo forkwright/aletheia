@@ -146,6 +146,7 @@ fn registry_exposes_validated_behavior_fields() {
         "messaging.receiveTimeoutSecs",
         "messaging.agentDispatchTimeoutSecs",
         "messaging.maxConcurrentHandlers",
+        "timeouts.approvalSecs",
         "apiLimits.maxSessionNameLen",
         "apiLimits.maxIdentifierBytes",
         "apiLimits.maxFactsLimit",

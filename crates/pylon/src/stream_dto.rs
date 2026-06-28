@@ -155,6 +155,10 @@ pub(crate) enum TurnStreamEvent {
         input: serde_json::Value,
         risk: String,
         reason: String,
+        /// Seconds before the pending approval resolves to `default_decision`.
+        timeout_secs: u32,
+        /// Decision applied if the timeout elapses or the client disconnects.
+        default_decision: String,
     },
     /// Tool approval decision resolved.
     #[serde(rename = "tool_approval_resolved")]

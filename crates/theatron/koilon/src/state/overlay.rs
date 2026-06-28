@@ -136,6 +136,8 @@ pub struct ToolApprovalOverlay {
     pub input: serde_json::Value,
     pub risk: String,
     pub reason: String,
+    pub timeout_secs: u32,
+    pub default_decision: String,
     pub status: ControlMutationStatus,
 }
 
@@ -275,10 +277,13 @@ mod tests {
             input: serde_json::json!({"path": "/tmp/test"}),
             risk: "high".to_string(),
             reason: "writes files".to_string(),
+            timeout_secs: 120,
+            default_decision: "denied".to_string(),
             status: ControlMutationStatus::Idle,
         };
         assert_eq!(overlay.tool_name, "write_file");
         assert_eq!(overlay.risk, "high");
+        assert_eq!(overlay.timeout_secs, 120);
     }
 
     #[test]

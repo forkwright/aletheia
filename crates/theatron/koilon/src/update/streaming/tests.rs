@@ -163,18 +163,23 @@ fn tool_approval_opens_overlay() {
 
     handle_stream_tool_approval_required(
         &mut app,
-        "t1".into(),
-        "dangerous_tool".to_string(),
-        "tool1".into(),
-        serde_json::json!({"path": "/etc/passwd"}),
-        "high".to_string(),
-        "writes to system files".to_string(),
+        super::StreamToolApprovalRequest {
+            turn_id: "t1".into(),
+            tool_name: "dangerous_tool".to_string(),
+            tool_id: "tool1".into(),
+            input: serde_json::json!({"path": "/etc/passwd"}),
+            risk: "high".to_string(),
+            reason: "writes to system files".to_string(),
+            timeout_secs: 45,
+            default_decision: "denied".to_string(),
+        },
     );
 
     assert!(matches!(app.layout.overlay, Some(Overlay::ToolApproval(_))));
     if let Some(Overlay::ToolApproval(ref approval)) = app.layout.overlay {
         assert_eq!(approval.tool_name, "dangerous_tool");
         assert_eq!(approval.risk, "high");
+        assert_eq!(approval.timeout_secs, 45);
     }
 }
 
@@ -188,6 +193,8 @@ fn tool_approval_resolved_closes_overlay() {
         input: serde_json::Value::Null,
         risk: "low".to_string(),
         reason: "test".to_string(),
+        timeout_secs: 120,
+        default_decision: "denied".to_string(),
         status: crate::state::ControlMutationStatus::Idle,
     }));
 

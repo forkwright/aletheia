@@ -152,6 +152,25 @@ fn tui_event_tool_use_type() {
 }
 
 #[test]
+fn tui_event_tool_approval_required_includes_policy() {
+    let event = crate::stream::TurnStreamEvent::ToolApprovalRequired {
+        turn_id: "turn-1".to_owned(),
+        tool_name: "exec".to_owned(),
+        tool_id: "tool-1".to_owned(),
+        input: serde_json::json!({"cmd": "true"}),
+        risk: "high".to_owned(),
+        reason: "requires operator approval".to_owned(),
+        timeout_secs: 45,
+        default_decision: "denied".to_owned(),
+    };
+    assert_eq!(event.event_type(), "tool_approval_required");
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "tool_approval_required");
+    assert_eq!(json["timeout_secs"], 45);
+    assert_eq!(json["default_decision"], "denied");
+}
+
+#[test]
 fn tui_event_tool_result_type() {
     let event = crate::stream::TurnStreamEvent::ToolResult {
         tool_name: "search".to_owned(),

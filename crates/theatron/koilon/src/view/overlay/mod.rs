@@ -219,6 +219,16 @@ fn render_tool_approval(
             Span::styled("  Reason: ", theme.style_muted()),
             Span::styled(&approval.reason, theme.style_fg()),
         ]),
+        Line::from(vec![
+            Span::styled("  Policy: ", theme.style_muted()),
+            Span::styled(
+                format!(
+                    "Default: {} after {}s",
+                    approval.default_decision, approval.timeout_secs
+                ),
+                theme.style_dim(),
+            ),
+        ]),
         Line::raw(""),
         Line::from(Span::styled(
             "  Input:",

@@ -9,6 +9,17 @@ use crate::state::{
     ToolApprovalOverlay, ToolCallInfo,
 };
 
+pub(crate) struct StreamToolApprovalRequest {
+    pub(crate) turn_id: TurnId,
+    pub(crate) tool_name: String,
+    pub(crate) tool_id: ToolId,
+    pub(crate) input: serde_json::Value,
+    pub(crate) risk: String,
+    pub(crate) reason: String,
+    pub(crate) timeout_secs: u32,
+    pub(crate) default_decision: String,
+}
+
 /// Context window size in tokens for the given model.
 /// All current Claude models use 200K context.
 fn model_context_window(_model: &str) -> u32 {
@@ -242,16 +253,11 @@ pub(crate) fn handle_stream_tool_result(
     }
 }
 
-#[tracing::instrument(skip_all, fields(%tool_name, %risk))]
+#[tracing::instrument(skip_all, fields(tool_name = %request.tool_name, risk = %request.risk))]
 // SAFETY: sanitized at ingestion: tool approval data from stream API.
 pub(crate) fn handle_stream_tool_approval_required(
     app: &mut App,
-    turn_id: TurnId,
-    tool_name: String,
-    tool_id: ToolId,
-    input: serde_json::Value,
-    risk: String,
-    reason: String,
+    request: StreamToolApprovalRequest,
 ) {
     app.connection.stream_phase = crate::state::StreamPhase::Waiting;
     // WHY: If the user previously chose "always allow" for this tool, auto-approve
@@ -259,19 +265,26 @@ pub(crate) fn handle_stream_tool_approval_required(
     if app
         .interaction
         .always_allowed_tools
-        .contains(tool_name.as_str())
+        .contains(request.tool_name.as_str())
     {
-        super::overlay::start_auto_tool_approval(app, turn_id, tool_id, tool_name);
+        super::overlay::start_auto_tool_approval(
+            app,
+            request.turn_id,
+            request.tool_id,
+            request.tool_name,
+        );
         return;
     }
 
     app.layout.overlay = Some(Overlay::ToolApproval(ToolApprovalOverlay {
-        turn_id,
-        tool_id,
-        tool_name: sanitize_for_display(&tool_name).into_owned(),
-        input,
-        risk: sanitize_for_display(&risk).into_owned(),
-        reason: sanitize_for_display(&reason).into_owned(),
+        turn_id: request.turn_id,
+        tool_id: request.tool_id,
+        tool_name: sanitize_for_display(&request.tool_name).into_owned(),
+        input: request.input,
+        risk: sanitize_for_display(&request.risk).into_owned(),
+        reason: sanitize_for_display(&request.reason).into_owned(),
+        timeout_secs: request.timeout_secs,
+        default_decision: sanitize_for_display(&request.default_decision).into_owned(),
         status: crate::state::ControlMutationStatus::Idle,
     }));
 }

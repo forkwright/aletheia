@@ -490,6 +490,8 @@ mod tests {
             input: serde_json::json!({"path": "/tmp/test"}),
             risk: "high".to_string(),
             reason: "writes files".to_string(),
+            timeout_secs: 120,
+            default_decision: "denied".to_string(),
             status: ControlMutationStatus::Idle,
         })
     }

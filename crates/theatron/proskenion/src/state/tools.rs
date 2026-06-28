@@ -105,6 +105,10 @@ pub struct ToolApprovalState {
     pub risk: RiskLevel,
     /// Human-readable reason for requiring approval.
     pub reason: String,
+    /// Seconds before the server applies `default_decision`.
+    pub timeout_secs: u32,
+    /// Decision applied if the approval times out or disconnects.
+    pub default_decision: String,
     /// Whether the approval has been resolved (approved or denied).
     pub resolved: bool,
 }

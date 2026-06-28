@@ -254,8 +254,20 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             input,
             risk,
             reason,
+            timeout_secs,
+            default_decision,
         } => streaming::handle_stream_tool_approval_required(
-            app, turn_id, tool_name, tool_id, input, risk, reason,
+            app,
+            streaming::StreamToolApprovalRequest {
+                turn_id,
+                tool_name,
+                tool_id,
+                input,
+                risk,
+                reason,
+                timeout_secs,
+                default_decision,
+            },
         ),
         Msg::StreamToolApprovalResolved { .. } => {
             streaming::handle_stream_tool_approval_resolved(app)

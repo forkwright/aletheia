@@ -167,6 +167,8 @@ impl App {
                 input,
                 risk,
                 reason,
+                timeout_secs,
+                default_decision,
             } => Msg::StreamToolApprovalRequired {
                 turn_id,
                 tool_name,
@@ -174,6 +176,8 @@ impl App {
                 input,
                 risk,
                 reason,
+                timeout_secs,
+                default_decision,
             },
             StreamEvent::ToolApprovalResolved { tool_id, decision } => {
                 Msg::StreamToolApprovalResolved { tool_id, decision }

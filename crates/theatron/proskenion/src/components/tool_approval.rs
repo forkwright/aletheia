@@ -101,6 +101,10 @@ pub(crate) fn ToolApproval(
     let risk_label = approval.risk.label();
     let input_text = serde_json::to_string_pretty(&approval.input)
         .unwrap_or_else(|_| approval.input.to_string());
+    let policy_text = format!(
+        "Default: {} after {}s",
+        approval.default_decision, approval.timeout_secs
+    );
 
     rsx! {
         div {
@@ -111,6 +115,7 @@ pub(crate) fn ToolApproval(
                 span { style: "{badge_style}", "{risk_label}" }
             }
             div { style: "{REASON_STYLE}", "{approval.reason}" }
+            div { style: "{REASON_STYLE}", "{policy_text}" }
             div {
                 style: "{INPUT_PREVIEW_STYLE}",
                 "{input_text}"

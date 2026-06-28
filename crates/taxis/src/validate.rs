@@ -7,7 +7,7 @@ use koina::id::ToolName;
 use serde_json::Value;
 use snafu::Snafu;
 
-use crate::config::AletheiaConfig;
+use crate::config::{AletheiaConfig, MAX_APPROVAL_TIMEOUT_SECS, MIN_APPROVAL_TIMEOUT_SECS};
 use crate::oikos::Oikos;
 use crate::workspace_schema::validate_agent_workspaces;
 
@@ -649,6 +649,14 @@ fn validate_timeouts(value: &Value, errors: &mut Vec<String>) {
         if val > 3600 {
             errors.push("timeouts.llmCallSecs must not exceed 3600 seconds".to_owned());
         }
+    }
+    if let Some(val) = value.get("approvalSecs").and_then(Value::as_u64)
+        && !(u64::from(MIN_APPROVAL_TIMEOUT_SECS)..=u64::from(MAX_APPROVAL_TIMEOUT_SECS))
+            .contains(&val)
+    {
+        errors.push(format!(
+            "timeouts.approvalSecs must be between {MIN_APPROVAL_TIMEOUT_SECS} and {MAX_APPROVAL_TIMEOUT_SECS} seconds, got {val}"
+        ));
     }
 }
 

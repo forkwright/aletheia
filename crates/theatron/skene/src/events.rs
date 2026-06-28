@@ -3,6 +3,12 @@
 use crate::api::types::{Plan, TurnOutcome};
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
+/// Approval timeout used by legacy servers that do not send policy metadata.
+pub const LEGACY_APPROVAL_TIMEOUT_SECS: u32 = 120;
+
+/// Approval fallback used by legacy servers that do not send policy metadata.
+pub const LEGACY_APPROVAL_DEFAULT_DECISION: &str = "denied";
+
 /// Parsed events from a `POST /api/v1/sessions/stream` response.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -56,6 +62,10 @@ pub enum StreamEvent {
         risk: String,
         /// Human-readable reason for requiring approval.
         reason: String,
+        /// Seconds before the server applies `default_decision`.
+        timeout_secs: u32,
+        /// Decision applied if the approval times out or disconnects.
+        default_decision: String,
     },
     /// A tool approval decision has been resolved.
     ToolApprovalResolved {

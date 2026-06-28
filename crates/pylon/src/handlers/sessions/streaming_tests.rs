@@ -132,6 +132,35 @@ pub(super) fn parse_sse_data_events(body: &str) -> Vec<serde_json::Value> {
         .collect()
 }
 
+#[tokio::test]
+async fn configured_approval_timeout_default_denies_after_custom_lifetime() {
+    let mut config = taxis::config::AletheiaConfig::default();
+    config.timeouts.approval_secs = 1;
+    let (_tx, rx) = tokio::sync::mpsc::channel(1);
+    let gate = approval_gate_from_config(rx, &config);
+
+    let choice = tokio::time::timeout(Duration::from_secs(2), gate.await_decision("tool-5011"))
+        .await
+        .expect("configured approval timeout should elapse before outer guard");
+
+    assert_eq!(choice, nous::approval::ApprovalChoice::Denied);
+}
+
+#[tokio::test]
+async fn configured_approval_gate_default_denies_on_disconnect() {
+    let mut config = taxis::config::AletheiaConfig::default();
+    config.timeouts.approval_secs = 30;
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let gate = approval_gate_from_config(rx, &config);
+    drop(tx);
+
+    let choice = tokio::time::timeout(Duration::from_millis(100), gate.await_decision("tool-5011"))
+        .await
+        .expect("closed approval channel should resolve promptly");
+
+    assert_eq!(choice, nous::approval::ApprovalChoice::Denied);
+}
+
 // ── extract_idempotency_key ──
 
 #[test]

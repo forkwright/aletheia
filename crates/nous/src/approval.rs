@@ -14,11 +14,10 @@ use tokio::sync::{Mutex, mpsc};
 use tracing::warn;
 
 /// Default timeout for awaiting a user decision on a Required/Mandatory tool call.
-///
-/// 120s matches the desktop daily-driver UX: long enough to read the
-/// overlay, short enough that a dropped client connection denies the
-/// irreversible action rather than letting it hang the pipeline.
-pub const DEFAULT_APPROVAL_TIMEOUT: Duration = Duration::from_mins(2);
+#[must_use]
+pub fn default_approval_timeout() -> Duration {
+    Duration::from_secs(u64::from(taxis::config::DEFAULT_APPROVAL_TIMEOUT_SECS))
+}
 
 /// A user's decision on a single tool approval request.
 #[derive(Debug, Clone)]
@@ -104,10 +103,10 @@ impl ApprovalGate {
         }
     }
 
-    /// Wrap a receiver with [`DEFAULT_APPROVAL_TIMEOUT`].
+    /// Wrap a receiver with [`default_approval_timeout`].
     #[must_use]
     pub fn with_default_timeout(rx: mpsc::Receiver<ApprovalDecision>) -> Self {
-        Self::new(rx, DEFAULT_APPROVAL_TIMEOUT)
+        Self::new(rx, default_approval_timeout())
     }
 
     /// Block until a decision targeted at `tool_id` arrives.

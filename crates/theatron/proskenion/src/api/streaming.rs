@@ -45,7 +45,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use skene::api::error::{format_error_fields_for_display, format_http_error_body};
-use skene::events::StreamEvent;
+use skene::events::{
+    LEGACY_APPROVAL_DEFAULT_DECISION, LEGACY_APPROVAL_TIMEOUT_SECS, StreamEvent,
+};
 use skene::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
 struct StreamTurnRequest<'a> {
@@ -259,6 +261,19 @@ fn u32_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<
         })
 }
 
+fn optional_u32_any_field(json: &serde_json::Value, fields: &[&str]) -> Option<u32> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(serde_json::Value::as_u64))
+        .and_then(|value| u32::try_from(value).ok())
+}
+
+fn optional_str_any_field<'a>(json: &'a serde_json::Value, fields: &[&str]) -> Option<&'a str> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(serde_json::Value::as_str))
+}
+
 fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
@@ -347,6 +362,14 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                 .unwrap_or(serde_json::Value::Null),
             risk: str_field(&json, "risk", event_type)?.to_string(),
             reason: str_field(&json, "reason", event_type)?.to_string(),
+            timeout_secs: optional_u32_any_field(&json, &["timeout_secs", "timeoutSecs"])
+                .unwrap_or(LEGACY_APPROVAL_TIMEOUT_SECS),
+            default_decision: optional_str_any_field(
+                &json,
+                &["default_decision", "defaultDecision"],
+            )
+            .unwrap_or(LEGACY_APPROVAL_DEFAULT_DECISION)
+            .to_string(),
         }),
         "tool_approval_resolved" => Some(StreamEvent::ToolApprovalResolved {
             tool_id: ToolId::from(
@@ -891,19 +914,25 @@ mod tests {
             "toolId": "tool-1",
             "input": {"command": "rm -rf /"},
             "risk": "high",
-            "reason": "destructive command"
+            "reason": "destructive command",
+            "timeoutSecs": 45,
+            "defaultDecision": "denied"
         }"#;
         let result = parse_stream_event("tool_approval_required", data);
         if let Some(StreamEvent::ToolApprovalRequired {
             tool_name,
             risk,
             reason,
+            timeout_secs,
+            default_decision,
             ..
         }) = result
         {
             assert_eq!(tool_name, "exec");
             assert_eq!(risk, "high");
             assert_eq!(reason, "destructive command");
+            assert_eq!(timeout_secs, 45);
+            assert_eq!(default_decision, "denied");
         } else {
             panic!("expected ToolApprovalRequired");
         }

@@ -237,6 +237,8 @@ pub enum Msg {
         input: serde_json::Value,
         risk: String,
         reason: String,
+        timeout_secs: u32,
+        default_decision: String,
     },
     StreamToolApprovalResolved {
         #[expect(dead_code, reason = "planned TUI feature")]

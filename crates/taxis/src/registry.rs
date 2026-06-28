@@ -7,6 +7,10 @@
 
 use std::sync::LazyLock;
 
+use crate::config::{
+    DEFAULT_APPROVAL_TIMEOUT_SECS, MAX_APPROVAL_TIMEOUT_SECS, MIN_APPROVAL_TIMEOUT_SECS,
+};
+
 /// Classification of who should tune a parameter and when.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
@@ -882,6 +886,22 @@ fn build_registry() -> Vec<ParameterSpec> {
             affects: "llm_latency",
             outcome_signal: "llm_timeout_rate",
             evidence_required: "LLM call duration distribution",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "timeouts.approvalSecs",
+            section: "timeouts",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(u64::from(DEFAULT_APPROVAL_TIMEOUT_SECS)),
+            bounds: Some((
+                f64::from(MIN_APPROVAL_TIMEOUT_SECS),
+                f64::from(MAX_APPROVAL_TIMEOUT_SECS),
+            )),
+            hot_reloadable: true,
+            description: "Maximum seconds to wait for operator tool approval before default-deny",
+            affects: "tool_approval_safety",
+            outcome_signal: "tool_approval_timeout_rate",
+            evidence_required: "Operator approval response-time distribution",
             direction_hint: TuningDirection::Contextual,
         },
         ParameterSpec {

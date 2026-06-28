@@ -2,9 +2,18 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default seconds a tool approval waits for an operator decision.
+pub const DEFAULT_APPROVAL_TIMEOUT_SECS: u32 = 120;
+
+/// Minimum seconds a tool approval may wait for an operator decision.
+pub const MIN_APPROVAL_TIMEOUT_SECS: u32 = 1;
+
+/// Maximum seconds a tool approval may wait for an operator decision.
+pub const MAX_APPROVAL_TIMEOUT_SECS: u32 = 3600;
+
 /// Deployment-tunable timeout thresholds.
 ///
-/// Controls wall-clock timeout budgets for LLM and provider calls.
+/// Controls wall-clock timeout budgets for LLM, provider, and approval calls.
 /// Defaults match the hardcoded constants in `koina::defaults` so that
 /// omitting this section from `aletheia.toml` produces identical behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,12 +26,18 @@ pub struct TimeoutsConfig {
     /// Requests exceeding this limit are cancelled and may trigger a retry.
     /// Valid range: 30–3600. Default: 300.
     pub llm_call_secs: u32,
+    /// Maximum wall-clock seconds to wait for an operator tool-approval decision.
+    ///
+    /// Required/Mandatory tool calls default-deny when this lifetime elapses
+    /// or the approval channel disconnects. Valid range: 1–3600. Default: 120.
+    pub approval_secs: u32,
 }
 
 impl Default for TimeoutsConfig {
     fn default() -> Self {
         Self {
             llm_call_secs: koina::defaults::TIMEOUT_SECONDS,
+            approval_secs: DEFAULT_APPROVAL_TIMEOUT_SECS,
         }
     }
 }
