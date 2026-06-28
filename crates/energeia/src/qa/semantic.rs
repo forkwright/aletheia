@@ -261,7 +261,8 @@ fn map_json_results(
                 criterion: text.clone(),
                 classification: *classification,
                 passed: false,
-                evidence: "criterion not evaluated by LLM".to_owned(),
+                evidence: "criterion not evaluated by LLM (provenance: qa/llm-response-omitted)"
+                    .to_owned(),
             });
         }
     }
@@ -334,7 +335,8 @@ fn parse_legacy_format(
                 criterion: text.clone(),
                 classification: *classification,
                 passed: false,
-                evidence: "criterion not evaluated by LLM".to_owned(),
+                evidence: "criterion not evaluated by LLM (provenance: qa/llm-response-omitted)"
+                    .to_owned(),
             });
         }
     }

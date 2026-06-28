@@ -72,8 +72,12 @@ pub fn make_merge_decision(
         },
         MergeTier::Tier3Hold => MergeDecision {
             pr_number,
-            action: MergeAction::HoldForArchitect("QA PARTIAL or hold flag".to_string()),
-            reason: "tier-3: QA PARTIAL or hold flag -- held for architect review".to_string(),
+            action: MergeAction::HoldForArchitect(
+                "QA PARTIAL, missing QA verdict, or hold flag".to_string(),
+            ),
+            reason:
+                "tier-3: QA PARTIAL, missing QA verdict, or hold flag -- held for architect review"
+                    .to_string(),
         },
         MergeTier::Tier4PublicApi => MergeDecision {
             pr_number,
@@ -121,6 +125,10 @@ pub fn make_merge_decision(
 /// - Tier 5: Block (QA FAIL)
 #[must_use]
 pub fn classify_merge_tier(classified: &ClassifiedPr, diff: Option<&str>) -> MergeTier {
+    if classified.qa_verdict.is_none() || classified.qa_verdict == Some(QaVerdictStatus::Unknown) {
+        return MergeTier::Tier3Hold;
+    }
+
     if classified.qa_verdict == Some(QaVerdictStatus::Fail) {
         return MergeTier::Tier5Block;
     }
@@ -400,16 +408,25 @@ mod tests {
     }
 
     #[test]
-    fn decision_unknown_qa_verdict_auto_merges() {
-        // WHY: When QA verdict is unknown (no QA data), default to auto-merge
-        // for backward compatibility. The steward should not block all PRs
-        // just because QA wasn't run.
+    fn decision_missing_qa_verdict_holds() {
+        // WHY: Missing QA data is an unknown quality state, so automated merge
+        // must hold for review instead of treating absence as success.
         let mut pr = make_classified(1, true, true);
         pr.qa_verdict = None;
         let opts = MergeOptions::default();
         let decision = make_merge_decision(&pr, &opts, None);
 
-        assert!(matches!(decision.action, MergeAction::Merge(_)));
+        assert!(matches!(decision.action, MergeAction::HoldForArchitect(_)));
+    }
+
+    #[test]
+    fn decision_unknown_qa_verdict_holds() {
+        let mut pr = make_classified(1, true, true);
+        pr.qa_verdict = Some(QaVerdictStatus::Unknown);
+        let opts = MergeOptions::default();
+        let decision = make_merge_decision(&pr, &opts, None);
+
+        assert!(matches!(decision.action, MergeAction::HoldForArchitect(_)));
     }
 
     #[test]

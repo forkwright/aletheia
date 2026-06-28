@@ -11,7 +11,7 @@ use crate::types::{CriterionResult, MechanicalIssue, QaVerdict};
 /// - All criteria pass → [`QaVerdict::Pass`]
 /// - Some fail + some pass → [`QaVerdict::Partial`]
 /// - All fail → [`QaVerdict::Fail`]
-/// - No results and no issues → [`QaVerdict::Pass`] (vacuously true)
+/// - No results and no issues → [`QaVerdict::Partial`] (unknown quality state)
 #[must_use]
 pub fn determine_verdict(
     criteria: &[CriterionResult],
@@ -24,7 +24,7 @@ pub fn determine_verdict(
     }
 
     if criteria.is_empty() {
-        return QaVerdict::Pass;
+        return QaVerdict::Partial;
     }
 
     let fail_count = criteria.iter().filter(|r| !r.passed).count();
@@ -106,8 +106,8 @@ mod tests {
     }
 
     #[test]
-    fn verdict_empty_results_is_pass() {
-        assert_eq!(determine_verdict(&[], &[]), QaVerdict::Pass);
+    fn verdict_empty_results_needs_review() {
+        assert_eq!(determine_verdict(&[], &[]), QaVerdict::Partial);
     }
 
     #[test]

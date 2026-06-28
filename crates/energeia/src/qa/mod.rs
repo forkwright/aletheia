@@ -125,6 +125,58 @@ impl PromptSpec {
     }
 }
 
+fn waiver_provenance(criterion: &str) -> Option<&str> {
+    let trimmed = criterion.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    for prefix in ["qa-waiver:", "waiver:"] {
+        if lower.starts_with(prefix) {
+            return trimmed.get(prefix.len()..).map(str::trim);
+        }
+    }
+    None
+}
+
+fn split_waivers(criteria: &[String]) -> (Vec<String>, Vec<CriterionResult>, bool) {
+    let mut evaluable = Vec::new();
+    let mut waiver_results = Vec::new();
+    let mut has_valid_waiver = false;
+
+    for criterion in criteria {
+        if let Some(provenance) = waiver_provenance(criterion) {
+            if provenance.is_empty() {
+                waiver_results.push(CriterionResult {
+                    criterion: "QA waiver".to_owned(),
+                    classification: CriterionType::Mechanical,
+                    passed: false,
+                    evidence: "qa-waiver requires non-empty provenance".to_owned(),
+                });
+            } else {
+                has_valid_waiver = true;
+                waiver_results.push(CriterionResult {
+                    criterion: "QA waiver".to_owned(),
+                    classification: CriterionType::Mechanical,
+                    passed: true,
+                    evidence: format!("waived with provenance: {provenance}"),
+                });
+            }
+        } else if !criterion.trim().is_empty() {
+            evaluable.push(criterion.clone());
+        }
+    }
+
+    if evaluable.is_empty() && !has_valid_waiver {
+        waiver_results.push(CriterionResult {
+            criterion: "acceptance criteria".to_owned(),
+            classification: CriterionType::Semantic,
+            passed: false,
+            evidence: "missing acceptance criteria; attach qa-waiver: <provenance> to waive"
+                .to_owned(),
+        });
+    }
+
+    (evaluable, waiver_results, has_valid_waiver)
+}
+
 /// Run a full QA evaluation on a PR diff.
 ///
 /// Orchestrates the complete flow: mechanical pre-screening, criteria
@@ -165,7 +217,10 @@ pub async fn run_qa(
         tracing::warn!(count = mechanical_issues.len(), "mechanical issues found");
     }
 
-    let classified = semantic::classify_criteria(&prompt.acceptance_criteria);
+    let (criteria_to_evaluate, waiver_results, has_valid_waiver) =
+        split_waivers(&prompt.acceptance_criteria);
+    let missing_acceptance_gate = criteria_to_evaluate.is_empty() && !has_valid_waiver;
+    let classified = semantic::classify_criteria(&criteria_to_evaluate);
 
     let no_mechanical_issues = mechanical_issues.is_empty();
 
@@ -200,10 +255,14 @@ pub async fn run_qa(
     )
     .await;
 
-    let mut all_results = mechanical_results;
+    let mut all_results = waiver_results;
+    all_results.extend(mechanical_results);
     all_results.extend(semantic_results);
 
-    let qa_verdict = verdict::determine_verdict(&all_results, &mechanical_issues);
+    let mut qa_verdict = verdict::determine_verdict(&all_results, &mechanical_issues);
+    if missing_acceptance_gate && mechanical_issues.is_empty() {
+        qa_verdict = crate::types::QaVerdict::Partial;
+    }
 
     let reasons = build_reasons(&all_results, &mechanical_issues);
 
@@ -247,7 +306,9 @@ async fn evaluate_semantic_criteria(
                 criterion: text.clone(),
                 classification: *ct,
                 passed: false,
-                evidence: "skipped: critical mechanical issues prevent evaluation".to_owned(),
+                evidence:
+                    "skipped: critical mechanical issues prevent evaluation (provenance: mechanical pre-screen)"
+                        .to_owned(),
             })
             .collect();
         return (results, 0.0, false);
@@ -265,7 +326,9 @@ async fn evaluate_semantic_criteria(
                 criterion: text.clone(),
                 classification: *ct,
                 passed: false,
-                evidence: "no LLM provider available — semantic evaluation skipped".to_owned(),
+                evidence:
+                    "no LLM provider available; semantic evaluation skipped (provenance: qa/no-llm-provider)"
+                        .to_owned(),
             })
             .collect();
         return (results, 0.0, false);
@@ -309,7 +372,7 @@ async fn evaluate_semantic_criteria(
                     criterion: text.clone(),
                     classification: *ct,
                     passed: false,
-                    evidence: format!("LLM evaluation failed: {e}"),
+                    evidence: format!("LLM evaluation failed (provenance: qa/llm-error): {e}"),
                 })
                 .collect();
             (results, 0.0, false)
@@ -480,6 +543,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_qa_empty_acceptance_criteria_needs_review() {
+        let prompt = PromptSpec::new(1, "test".to_owned());
+        let diff = "+++ b/src/lib.rs\n@@ -1 +1,2 @@\n+pub fn foo() {}\n";
+
+        let result = run_qa(diff, &prompt, 42, None).await;
+
+        assert_eq!(result.verdict, QaVerdict::Partial);
+        assert!(result.reasons.iter().any(|reason| {
+            reason.contains("missing acceptance criteria")
+                && reason.contains("qa-waiver: <provenance>")
+        }));
+    }
+
+    #[tokio::test]
+    async fn run_qa_valid_criteria_waiver_passes_with_provenance() {
+        let mut prompt = PromptSpec::new(1, "test".to_owned());
+        prompt.acceptance_criteria = vec!["qa-waiver: approved by alice in issue #123".to_owned()];
+        let diff = "+++ b/src/lib.rs\n@@ -1 +1,2 @@\n+pub fn foo() {}\n";
+
+        let result = run_qa(diff, &prompt, 42, None).await;
+
+        assert_eq!(result.verdict, QaVerdict::Pass);
+        assert!(result.criteria_results.iter().any(|criterion| {
+            criterion.passed
+                && criterion
+                    .evidence
+                    .contains("approved by alice in issue #123")
+        }));
+    }
+
+    #[tokio::test]
+    async fn run_qa_waiver_without_provenance_needs_review() {
+        let mut prompt = PromptSpec::new(1, "test".to_owned());
+        prompt.acceptance_criteria = vec!["qa-waiver:".to_owned()];
+        let diff = "+++ b/src/lib.rs\n@@ -1 +1,2 @@\n+pub fn foo() {}\n";
+
+        let result = run_qa(diff, &prompt, 42, None).await;
+
+        assert_eq!(result.verdict, QaVerdict::Partial);
+        assert!(
+            result
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("requires non-empty provenance"))
+        );
+    }
+
+    #[tokio::test]
     async fn run_qa_skips_llm_on_mechanical_failure() {
         let prompt = PromptSpec {
             prompt_number: 1,
@@ -498,6 +609,7 @@ mod tests {
         assert!(result.criteria_results.iter().any(|cr| {
             cr.evidence
                 .contains("critical mechanical issues prevent evaluation")
+                && cr.evidence.contains("provenance: mechanical pre-screen")
         }));
     }
 
@@ -515,11 +627,9 @@ mod tests {
 
         // WHY: No LLM provider -> semantic criteria fail with clear evidence.
         assert!(!result.semantic_evaluated);
-        assert!(
-            result
-                .criteria_results
-                .iter()
-                .any(|cr| { cr.evidence.contains("no LLM provider available") })
-        );
+        assert!(result.criteria_results.iter().any(|cr| {
+            cr.evidence.contains("no LLM provider available")
+                && cr.evidence.contains("provenance: qa/no-llm-provider")
+        }));
     }
 }
