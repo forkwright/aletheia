@@ -547,13 +547,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_error_event_preserves_request_id_and_details() {
-        let data = r#"{"message":"provider unavailable","request_id":"req-stream","details":{"provider":"synthetic"}}"#;
+    fn parse_error_event_preserves_code_request_id_and_details() {
+        let data = r#"{"code":"provider_unavailable","message":"provider unavailable","request_id":"req-stream","details":{"provider":"synthetic"}}"#;
         let result = parse_stream_event("error", data);
         let Some(StreamEvent::Error(message)) = result else {
             panic!("expected Error");
         };
         assert!(message.contains("provider unavailable"));
+        assert!(message.contains("code provider_unavailable"));
         assert!(message.contains("request_id req-stream"));
         assert!(message.contains(r#""provider":"synthetic""#));
     }

@@ -210,16 +210,19 @@ async fn sse_send_message_with_invalid_json_body_returns_client_error() {
 }
 
 /// Error event: the fallback serialization-error data string is valid JSON
-/// with a `message` field: not empty data. This verifies that the SSE error
-/// fallback path produces a well-formed JSON payload per the stream contract.
+/// with `code` and `message` fields. This verifies that the SSE error fallback
+/// path produces a well-formed JSON payload per the stream contract.
 #[test]
-fn sse_serialization_fallback_data_is_valid_json_with_message_field() {
+fn sse_serialization_fallback_data_is_valid_json_with_code_and_message_fields() {
     // WHY: sse_event_to_axum (and the stream_turn equivalent) fall back to
     // this literal string when serde_json::to_string fails. Verify the string
-    // is valid JSON with a non-empty message field: not an empty data line.
-    let fallback_data = r#"{"message":"serialization failed"}"#;
+    // is valid JSON with a non-empty code and message: not an empty data line.
+    let fallback_data =
+        r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#;
     let parsed: serde_json::Value =
         serde_json::from_str(fallback_data).expect("fallback data must be valid JSON");
+    assert_eq!(parsed["type"], "error");
+    assert_eq!(parsed["code"], "serialization_error");
     assert!(
         parsed["message"].is_string(),
         "fallback error must have a string message field"
@@ -562,6 +565,35 @@ async fn stream_turn_oversized_session_key_returns_422() {
             .iter()
             .any(|e| e["field"] == "session_key" && e["code"] == "too_long")
     );
+}
+
+#[tokio::test]
+async fn stream_turn_provider_failure_error_event_preserves_code() {
+    let (state, _dir) = test_state_with_error_provider("simulated provider failure").await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router
+        .oneshot(stream_turn_req(
+            "stream-error-code",
+            "trigger provider failure",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAY",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_string(resp).await;
+    let events = collect_sse_data_events(&body);
+    let error = find_sse_event(&events, "error")
+        .unwrap_or_else(|| panic!("stream must emit diagnostic error event; body={body}"));
+    assert_eq!(error["code"], "provider_unavailable");
+    assert!(error["message"].is_string());
+    assert!(error["request_id"].is_string());
+
+    let complete = find_sse_event(&events, "message_complete")
+        .unwrap_or_else(|| panic!("stream must still emit message_complete; body={body}"));
+    assert_eq!(complete["outcome"]["stop_reason"], "error");
+    assert!(complete["outcome"]["error"].is_string());
 }
 
 #[tokio::test]
