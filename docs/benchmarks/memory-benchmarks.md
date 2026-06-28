@@ -54,7 +54,9 @@ of being silently ignored. Other per-question errors are logged and scored
 as zero - a network hiccup does not abort the entire run. The runner
 produces a `BenchmarkReport` tagged with `eval_run_id` and per-question
 `id`, plus `exact_match_rate()`, `mean_f1()`, and a `per_category()`
-breakdown.
+breakdown. CLI-generated reports also attach bootstrap confidence intervals
+and a `publishability` assessment so archived output is explicit about whether
+it is suitable for publication.
 
 ### Test coverage (already passing)
 
@@ -190,6 +192,23 @@ cargo run -p aletheia -- benchmark longmemeval \
     --judge-endpoint https://api.openai.com/v1/chat/completions \
     --judge-model gpt-4o \
     --judge-api-key $OPENAI_API_KEY
+
+# Strict publication gate: fails unless statistics and provenance are complete
+cargo run -p aletheia -- benchmark longmemeval \
+    --dataset benchmark-data/longmemeval.json \
+    --url http://localhost:8080 \
+    --nous-id benchmark \
+    --publishable \
+    --output results/longmemeval-publishable.json
+
+# Compare a candidate run against a prior full BenchmarkReport JSON
+cargo run -p aletheia -- benchmark longmemeval \
+    --dataset benchmark-data/longmemeval.json \
+    --url http://localhost:8080 \
+    --nous-id benchmark \
+    --baseline-report results/longmemeval-baseline.json \
+    --publishable \
+    --output results/longmemeval-candidate.json
 ```
 
 Or use the reproducibility script:
@@ -211,6 +230,34 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `close_between_questions` | true | `true` = `OfficialParity` (fresh session per question); `false` = `ContinuousMemory` (shared session). See [Execution modes](#execution-modes). |
 | `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
 | `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
+
+### Publishable reports
+
+Use `--publishable` for results intended for publication or long-term
+archival. This mode fails closed unless the full report includes:
+
+- At least two scored questions, so bootstrap confidence intervals are valid
+- 95% bootstrap CIs for exact match and F1
+- Run provenance with redacted CLI args, config hash, target identity, and
+  dataset hash
+- Benchmark metadata with dataset hash and validation diagnostics
+- Complete baseline/candidate comparison statistics when `--baseline-report`
+  is supplied
+
+Insufficient samples are represented explicitly in JSON as
+`publishability.publishable = false` with reasons, instead of silently omitting
+statistics. Human output prints the same CI and publishability fields. The
+`render_eval_report` / `eval-report` Typst PDF path accepts the full
+`BenchmarkReport` JSON and renders the statistical summary, publishability
+status, and comparison statistics.
+
+Use `--baseline-report <path>` with a prior full `BenchmarkReport` JSON to add
+candidate-vs-baseline comparison blocks. Comparisons are matched by scored
+question id and report F1 plus exact-match comparisons with sample sizes, 95%
+bootstrap CIs, Cohen's d, raw p-values, and Benjamini-Hochberg FDR-adjusted
+p-values. The older `--baseline-in` / `--baseline-out` compact summaries remain
+for reward-surface loading and do not contain enough per-question data for
+statistical significance tests.
 
 ### Execution modes
 
@@ -255,6 +302,10 @@ Record the following for each run and add to the Results table:
 | `mean_f1` | Average token-level F1 across all questions |
 | Per-category EM | EM rate broken down by `question_type` / `category` |
 | Per-category F1 | F1 broken down by `question_type` / `category` |
+| EM 95% CI | Bootstrap confidence interval from `BenchmarkReport.statistics` |
+| F1 95% CI | Bootstrap confidence interval from `BenchmarkReport.statistics` |
+| Publishability | `publishability.publishable` plus reasons when false |
+| Baseline/candidate p-values | Raw and FDR-adjusted p-values from `comparisons[]` when `--baseline-report` is used |
 | Runtime | Wall time for the full run |
 | Timeout rate | Fraction of questions that hit `question_timeout` |
 | Error rate | Fraction of questions logged as `"scored as no-answer"` |

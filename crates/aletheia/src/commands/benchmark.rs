@@ -10,8 +10,9 @@ use serde::Serialize;
 use snafu::prelude::*;
 
 use dokimion::benchmarks::{
-    BenchmarkMetadata, BenchmarkReport, BenchmarkRunner, BenchmarkRunnerConfig,
-    BenchmarkValidationOptions, BenchmarkValidationReport, EvalClient, MemoryBenchmark,
+    BenchmarkComparisonReport, BenchmarkComparisonStatus, BenchmarkMetadata, BenchmarkReport,
+    BenchmarkRunner, BenchmarkRunnerConfig, BenchmarkValidationOptions, BenchmarkValidationReport,
+    EvalClient, MemoryBenchmark,
 };
 use episteme::rl::{LongMemEvalReward, MemoryOutcome, RewardFn};
 
@@ -68,6 +69,12 @@ pub(crate) struct RunArgs {
     /// Compare the run against a saved compact baseline summary and surface the reward
     #[arg(long)]
     pub baseline_in: Option<PathBuf>,
+    /// Compare against a prior full `BenchmarkReport` JSON as baseline/candidate statistics
+    #[arg(long)]
+    pub baseline_report: Option<PathBuf>,
+    /// Require publishable statistical context and complete provenance
+    #[arg(long)]
+    pub publishable: bool,
     /// Query the knowledge store after ingestion and compute Recall@k / NDCG@k
     #[arg(long)]
     pub retrieval_k: Option<usize>,
@@ -169,7 +176,7 @@ async fn run_benchmark(
     // Collect system metadata before running.
     let metadata = collect_metadata(&client, benchmark, args, validation).await;
     let config_hash = dokimion::provenance::sha256_hex_str(&format!(
-        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
+        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\nbaseline_report={:?}\npublishable={}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
         benchmark.name(),
         args.dataset.display(),
         args.url,
@@ -179,6 +186,8 @@ async fn run_benchmark(
         args.json,
         args.retrieval_k,
         args.best_effort_dataset,
+        args.baseline_report.as_deref(),
+        args.publishable,
         args.judge_endpoint.is_some(),
         args.judge_model,
         args.judge_api_key.is_some(),
@@ -189,7 +198,12 @@ async fn run_benchmark(
         args.url.clone(),
     )
     .with_redacted_args(&cli_args)
-    .with_config_hash(config_hash);
+    .with_config_hash(config_hash)
+    .with_target_identity(metadata.aletheia_version.clone())
+    .with_audit_refs(Some(metadata.model.clone()), None, None, None, None);
+    if let Some(git_sha) = metadata.git_sha.clone() {
+        provenance = provenance.with_git_sha(git_sha);
+    }
     if let Some(dataset_hash) = metadata.dataset_hash.clone() {
         provenance = provenance.with_scenario_suite_hash(dataset_hash);
     }
@@ -222,6 +236,12 @@ async fn run_benchmark(
         .await
         .whatever_context("benchmark run failed")?;
     report.metadata = Some(metadata);
+    report = report.with_standard_statistics();
+
+    if let Some(ref path) = args.baseline_report {
+        let baseline_report = load_benchmark_report(path).await?;
+        report = report.with_comparisons_against(&baseline_report, "baseline_vs_candidate");
+    }
 
     // Write to file if --output was provided.
     if let Some(ref path) = args.output {
@@ -231,6 +251,10 @@ async fn run_benchmark(
             .await
             .whatever_context("failed to write report file")?;
         println!("Report written to {}", path.display());
+    }
+
+    if args.publishable {
+        require_publishable_report(&report)?;
     }
 
     if let Some(ref path) = args.baseline_out {
@@ -256,6 +280,28 @@ async fn run_benchmark(
     }
 
     Ok(())
+}
+
+async fn load_benchmark_report(path: &Path) -> Result<BenchmarkReport> {
+    let json = tokio::fs::read_to_string(path)
+        .await
+        .whatever_context("failed to read baseline benchmark report")?;
+    serde_json::from_str(&json).whatever_context("failed to parse baseline benchmark report")
+}
+
+fn require_publishable_report(report: &BenchmarkReport) -> Result<()> {
+    let assessment = report
+        .publishability
+        .clone()
+        .unwrap_or_else(|| report.assess_publishability());
+    if assessment.publishable {
+        return Ok(());
+    }
+
+    whatever!(
+        "--publishable requires statistical summaries and complete provenance; report is not publishable:\n- {}",
+        assessment.reasons.join("\n- ")
+    );
 }
 
 #[derive(Debug, Serialize)]
@@ -358,10 +404,30 @@ async fn collect_metadata(
         evaluated_questions: args.max_questions.unwrap_or(benchmark.len()),
         timeout_secs: args.timeout,
         dataset_hash: dataset_hash(&args.dataset).await,
-        git_sha: option_env!("GITHUB_SHA").map(str::to_owned),
+        git_sha: current_git_sha(),
         dataset_best_effort: args.best_effort_dataset,
         dataset_validation: Some(validation),
     }
+}
+
+fn current_git_sha() -> Option<String> {
+    option_env!("GITHUB_SHA")
+        .map(str::trim)
+        .filter(|sha| !sha.is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            let output = std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .ok()?;
+            if !output.status.success() {
+                return None;
+            }
+            String::from_utf8(output.stdout)
+                .ok()
+                .map(|sha| sha.trim().to_owned())
+                .filter(|sha| !sha.is_empty())
+        })
 }
 
 async fn dataset_hash(path: &Path) -> Option<String> {
@@ -460,6 +526,10 @@ fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSu
         );
     }
 
+    print_statistics(report);
+    print_publishability(report);
+    print_comparisons(report);
+
     // Optional retrieval metrics
     if let Some(recall) = report.mean_recall_at_k() {
         let ndcg = report.mean_ndcg_at_k().unwrap_or(0.0);
@@ -485,6 +555,103 @@ fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSu
 
     // Peer baseline comparison
     print_baselines(report, use_color);
+}
+
+fn print_statistics(report: &BenchmarkReport) {
+    if let Some(statistics) = &report.statistics {
+        println!(
+            "\nStatistics (95% bootstrap CI, {} resamples):",
+            statistics.n_resamples
+        );
+        println!(
+            "  EM: {:.1}% [{:.1}, {:.1}]",
+            report.exact_match_rate() * 100.0,
+            statistics.em_ci_low * 100.0,
+            statistics.em_ci_high * 100.0
+        );
+        println!(
+            "  F1: {:.1}% [{:.1}, {:.1}]",
+            report.mean_f1() * 100.0,
+            statistics.f1_ci_low * 100.0,
+            statistics.f1_ci_high * 100.0
+        );
+        println!("  Method: {}", statistics.method);
+    } else {
+        println!(
+            "\nStatistics: unavailable (requires at least {} scored questions)",
+            dokimion::benchmarks::MIN_PUBLISHABLE_SCORED_QUESTIONS
+        );
+    }
+}
+
+fn print_publishability(report: &BenchmarkReport) {
+    let Some(assessment) = &report.publishability else {
+        return;
+    };
+    if assessment.publishable {
+        println!("\nPublishability: publishable");
+        return;
+    }
+
+    println!("\nPublishability: not publishable");
+    for reason in &assessment.reasons {
+        println!("  - {reason}");
+    }
+}
+
+fn print_comparisons(report: &BenchmarkReport) {
+    if report.comparisons.is_empty() {
+        return;
+    }
+
+    println!("\nBaseline/candidate statistics:");
+    for comparison in &report.comparisons {
+        print_comparison(comparison);
+    }
+}
+
+fn print_comparison(comparison: &BenchmarkComparisonReport) {
+    if let (BenchmarkComparisonStatus::Complete, Some(statistics)) =
+        (&comparison.status, &comparison.statistics)
+    {
+        println!(
+            "  {}: baseline {:.3}, candidate {:.3}, d={} ({})",
+            comparison.metric,
+            statistics.mean_a,
+            statistics.mean_b,
+            format_float(statistics.effect.d),
+            statistics.effect.interpretation
+        );
+        println!(
+            "      baseline CI [{}, {}] | candidate CI [{}, {}] | p_raw={} | p_fdr={}",
+            format_float(statistics.ci_a.ci_low),
+            format_float(statistics.ci_a.ci_high),
+            format_float(statistics.ci_b.ci_low),
+            format_float(statistics.ci_b.ci_high),
+            format_float(statistics.p_raw),
+            statistics
+                .p_adjusted
+                .map_or_else(|| "n/a".to_owned(), format_float)
+        );
+    } else {
+        let reason = comparison
+            .reason
+            .as_deref()
+            .unwrap_or("comparison statistics are incomplete");
+        println!("  {}: {} ({reason})", comparison.metric, comparison.status);
+    }
+}
+
+fn format_float(value: f64) -> String {
+    if value.is_finite() {
+        format!("{value:.4}")
+    } else if value.is_nan() {
+        "n/a".to_owned()
+    } else if value.is_sign_positive() {
+        "inf".to_owned()
+    } else {
+        "-inf".to_owned()
+    }
 }
 
 fn args_retrieval_k(report: &BenchmarkReport) -> usize {
@@ -559,6 +726,8 @@ mod tests {
             output: None,
             baseline_out: None,
             baseline_in: None,
+            baseline_report: None,
+            publishable: false,
             retrieval_k: None,
             best_effort_dataset: false,
             judge_endpoint: None,
@@ -702,6 +871,18 @@ mod tests {
         assert_eq!(
             format_reward_surface(&surface),
             "Reward vs baseline: +0.150 (EM 50.0% vs baseline 35.0%)"
+        );
+    }
+
+    #[test]
+    fn publishable_mode_rejects_point_estimate_only_report() {
+        let report = sample_report();
+        let err = require_publishable_report(&report).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("missing bootstrap confidence intervals"),
+            "got: {err}"
         );
     }
 }

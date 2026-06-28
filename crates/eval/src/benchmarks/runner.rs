@@ -172,7 +172,8 @@ impl BenchmarkRunner {
         }
 
         let report = BenchmarkReport::new(benchmark.name(), results)
-            .with_provenance(self.config.provenance.clone().finished());
+            .with_provenance(self.config.provenance.clone().finished())
+            .with_standard_statistics();
         info!(
             total = report.total,
             em_rate = report.exact_match_rate(),

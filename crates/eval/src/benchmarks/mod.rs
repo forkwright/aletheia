@@ -54,6 +54,7 @@ pub use self::runner::{BenchmarkMode, BenchmarkRunner, BenchmarkRunnerConfig};
 /// runner. The rest of the client API surface is not stable.
 pub type EvalClient = crate::client::EvalClient;
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -64,6 +65,12 @@ pub use self::metrics::{BenchmarkScore, score_answer};
 pub use self::validation::{
     BenchmarkValidationIssue, BenchmarkValidationOptions, BenchmarkValidationReport,
 };
+
+/// Default bootstrap resample count used by benchmark report generation.
+pub const BENCHMARK_STAT_RESAMPLES: usize = 2000;
+
+/// Minimum scored question count required for publishable bootstrap CIs.
+pub const MIN_PUBLISHABLE_SCORED_QUESTIONS: usize = 2;
 
 /// A single question/answer pair backed by prior conversation context.
 #[derive(Debug, Clone)]
@@ -289,6 +296,12 @@ pub struct BenchmarkReport {
     /// Absent in reports produced without statistical analysis.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub statistics: Option<BenchmarkStatistics>,
+    /// Baseline/candidate statistical comparisons, when requested.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub comparisons: Vec<BenchmarkComparisonReport>,
+    /// Explicit assessment of whether this report is publishable.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub publishability: Option<BenchmarkPublishability>,
 }
 
 /// Aggregate denominator semantics for LLM-as-judge scoring.
@@ -323,6 +336,136 @@ pub struct BenchmarkStatistics {
     pub n_resamples: usize,
     /// Tool + version string for provenance.
     pub method: String,
+}
+
+/// Publishability assessment for a benchmark report.
+///
+/// This is intentionally serialized next to point estimates so archived JSON
+/// can distinguish "publishable with statistical context" from "exploratory
+/// point estimates only".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkPublishability {
+    /// Whether the report meets the benchmark publication requirements.
+    pub publishable: bool,
+    /// Minimum scored question count required for bootstrap CIs.
+    pub minimum_scored_questions: usize,
+    /// Reasons the report is not publishable. Empty when `publishable` is true.
+    pub reasons: Vec<String>,
+}
+
+/// Metric used in a baseline/candidate benchmark comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BenchmarkComparisonMetric {
+    /// Exact-match rate represented as per-question 0/1 scores.
+    ExactMatch,
+    /// Token-level F1 score.
+    F1,
+}
+
+impl std::fmt::Display for BenchmarkComparisonMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ExactMatch => write!(f, "exact_match"),
+            Self::F1 => write!(f, "f1"),
+        }
+    }
+}
+
+impl BenchmarkComparisonMetric {
+    fn score(self, question: &QuestionResult) -> f64 {
+        match self {
+            Self::ExactMatch => {
+                if question.score.exact_match {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Self::F1 => question.score.f1,
+        }
+    }
+}
+
+/// Completeness status for a baseline/candidate statistical comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BenchmarkComparisonStatus {
+    /// Comparison contains CI, effect size, raw p-value, and FDR-adjusted p-value.
+    Complete,
+    /// Fewer than two matched scored questions were available.
+    InsufficientSamples,
+    /// Reports could not be compared, for example because benchmark names differ.
+    Incomparable,
+    /// Statistical calculation failed even though inputs looked comparable.
+    Error,
+}
+
+impl std::fmt::Display for BenchmarkComparisonStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Complete => write!(f, "complete"),
+            Self::InsufficientSamples => write!(f, "insufficient_samples"),
+            Self::Incomparable => write!(f, "incomparable"),
+            Self::Error => write!(f, "error"),
+        }
+    }
+}
+
+/// Baseline/candidate comparison for one benchmark metric.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkComparisonReport {
+    /// Metric being compared.
+    pub metric: BenchmarkComparisonMetric,
+    /// Human-readable comparison label.
+    pub label: String,
+    /// Whether the comparison is statistically complete.
+    pub status: BenchmarkComparisonStatus,
+    /// Number of scored question ids present in both reports.
+    pub matched_questions: usize,
+    /// Full statistical comparison when available.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub statistics: Option<crate::stats::ComparisonReport>,
+    /// Reason a complete comparison could not be produced.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub reason: Option<String>,
+}
+
+impl BenchmarkComparisonReport {
+    fn unavailable(
+        metric: BenchmarkComparisonMetric,
+        label: String,
+        status: BenchmarkComparisonStatus,
+        matched_questions: usize,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            metric,
+            label,
+            status,
+            matched_questions,
+            statistics: None,
+            reason: Some(reason.into()),
+        }
+    }
+
+    fn complete(
+        metric: BenchmarkComparisonMetric,
+        label: String,
+        matched_questions: usize,
+        statistics: crate::stats::ComparisonReport,
+    ) -> Self {
+        Self {
+            metric,
+            label,
+            status: BenchmarkComparisonStatus::Complete,
+            matched_questions,
+            statistics: Some(statistics),
+            reason: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -388,6 +531,8 @@ impl BenchmarkReport {
             provenance: None,
             metadata: None,
             statistics: None,
+            comparisons: Vec::new(),
+            publishability: None,
         }
     }
 
@@ -411,6 +556,8 @@ impl BenchmarkReport {
             provenance: None,
             metadata: Some(metadata),
             statistics: None,
+            comparisons: Vec::new(),
+            publishability: None,
         }
     }
 
@@ -478,11 +625,245 @@ impl BenchmarkReport {
         self
     }
 
+    /// Attach the standard benchmark statistical summary and publishability assessment.
+    #[must_use]
+    pub fn with_standard_statistics(self) -> Self {
+        self.with_statistics(BENCHMARK_STAT_RESAMPLES)
+            .with_publishability_assessment()
+    }
+
+    /// Attach baseline/candidate comparisons against a prior full benchmark report.
+    ///
+    /// The current report is treated as the candidate and `baseline` as the
+    /// baseline. Comparisons are matched by question id and include FDR
+    /// correction across the F1 and exact-match metric comparisons.
+    #[must_use]
+    pub fn with_comparisons_against(mut self, baseline: &Self, label: impl Into<String>) -> Self {
+        self.comparisons = self.comparison_reports_against(baseline, label);
+        self.with_publishability_assessment()
+    }
+
+    /// Build baseline/candidate statistical comparisons without mutating the report.
+    #[must_use]
+    pub fn comparison_reports_against(
+        &self,
+        baseline: &Self,
+        label: impl Into<String>,
+    ) -> Vec<BenchmarkComparisonReport> {
+        let label = label.into();
+        if self.benchmark != baseline.benchmark {
+            return [
+                BenchmarkComparisonMetric::F1,
+                BenchmarkComparisonMetric::ExactMatch,
+            ]
+            .into_iter()
+            .map(|metric| {
+                BenchmarkComparisonReport::unavailable(
+                    metric,
+                    format!("{label} {metric}"),
+                    BenchmarkComparisonStatus::Incomparable,
+                    0,
+                    format!(
+                        "benchmark mismatch: baseline={} candidate={}",
+                        baseline.benchmark, self.benchmark
+                    ),
+                )
+            })
+            .collect();
+        }
+
+        let mut comparisons = [
+            BenchmarkComparisonMetric::F1,
+            BenchmarkComparisonMetric::ExactMatch,
+        ]
+        .into_iter()
+        .map(|metric| self.comparison_for_metric(baseline, metric, &label))
+        .collect::<Vec<_>>();
+
+        let raw_p_values = comparisons
+            .iter()
+            .filter_map(|comparison| comparison.statistics.as_ref())
+            .map(|statistics| statistics.p_raw)
+            .filter(|p| p.is_finite())
+            .collect::<Vec<_>>();
+
+        if let Ok(adjusted) =
+            crate::stats::fdr_correct(&raw_p_values, crate::stats::FdrMethod::BenjaminiHochberg)
+        {
+            let mut adjusted_iter = adjusted.into_iter();
+            for comparison in &mut comparisons {
+                if let Some(statistics) = comparison.statistics.as_mut()
+                    && statistics.p_raw.is_finite()
+                    && let Some(adjusted_p) = adjusted_iter.next()
+                {
+                    statistics.set_adjusted_p(adjusted_p);
+                }
+            }
+        }
+
+        comparisons
+    }
+
+    /// Attach an explicit publishability assessment.
+    #[must_use]
+    pub fn with_publishability_assessment(mut self) -> Self {
+        self.publishability = Some(self.assess_publishability());
+        self
+    }
+
+    /// Assess whether this report has enough statistical context for publication.
+    #[must_use]
+    pub fn assess_publishability(&self) -> BenchmarkPublishability {
+        let mut reasons = Vec::new();
+        if self.scored < MIN_PUBLISHABLE_SCORED_QUESTIONS {
+            reasons.push(format!(
+                "requires at least {MIN_PUBLISHABLE_SCORED_QUESTIONS} scored questions for bootstrap CIs; got {}",
+                self.scored
+            ));
+        }
+        if self.statistics.is_none() {
+            reasons.push("missing bootstrap confidence intervals for EM and F1".to_owned());
+        }
+
+        match &self.provenance {
+            Some(provenance) => {
+                if provenance.config_hash.is_none() {
+                    reasons.push("missing benchmark configuration hash".to_owned());
+                }
+                if provenance.scenario_suite_hash.is_none() {
+                    reasons.push("missing dataset hash in provenance".to_owned());
+                }
+                if provenance.redacted_args.is_empty() {
+                    reasons.push("missing redacted CLI provenance".to_owned());
+                }
+            }
+            None => reasons.push("missing eval provenance".to_owned()),
+        }
+
+        match &self.metadata {
+            Some(metadata) => {
+                if metadata.dataset_hash.is_none() {
+                    reasons.push("missing dataset hash in benchmark metadata".to_owned());
+                }
+                if let Some(validation) = &metadata.dataset_validation
+                    && !validation.errors.is_empty()
+                {
+                    reasons.push(format!(
+                        "dataset validation has {} error(s)",
+                        validation.errors.len()
+                    ));
+                }
+            }
+            None => reasons.push("missing benchmark metadata".to_owned()),
+        }
+
+        for comparison in &self.comparisons {
+            if comparison.status != BenchmarkComparisonStatus::Complete {
+                let reason = comparison
+                    .reason
+                    .as_deref()
+                    .unwrap_or("comparison statistics are incomplete");
+                reasons.push(format!(
+                    "{} comparison is not publishable: {reason}",
+                    comparison.metric
+                ));
+            } else if comparison
+                .statistics
+                .as_ref()
+                .and_then(|statistics| statistics.p_adjusted)
+                .is_none()
+            {
+                reasons.push(format!(
+                    "{} comparison is missing FDR-adjusted p-value",
+                    comparison.metric
+                ));
+            }
+        }
+
+        BenchmarkPublishability {
+            publishable: reasons.is_empty(),
+            minimum_scored_questions: MIN_PUBLISHABLE_SCORED_QUESTIONS,
+            reasons,
+        }
+    }
+
     fn scored_questions(&self) -> Vec<&QuestionResult> {
         self.questions
             .iter()
             .filter(|q| q.status.is_scored())
             .collect()
+    }
+
+    fn scored_questions_by_id(&self) -> BTreeMap<&str, &QuestionResult> {
+        self.questions
+            .iter()
+            .filter(|q| q.status.is_scored())
+            .map(|q| (q.id.as_str(), q))
+            .collect()
+    }
+
+    fn comparison_for_metric(
+        &self,
+        baseline: &Self,
+        metric: BenchmarkComparisonMetric,
+        label: &str,
+    ) -> BenchmarkComparisonReport {
+        let (baseline_scores, candidate_scores) = self.paired_scores(baseline, metric);
+        let matched_questions = baseline_scores.len();
+        let comparison_label = format!("{label} {metric}");
+
+        if matched_questions < MIN_PUBLISHABLE_SCORED_QUESTIONS {
+            return BenchmarkComparisonReport::unavailable(
+                metric,
+                comparison_label,
+                BenchmarkComparisonStatus::InsufficientSamples,
+                matched_questions,
+                format!(
+                    "requires at least {MIN_PUBLISHABLE_SCORED_QUESTIONS} matched scored questions; got {matched_questions}"
+                ),
+            );
+        }
+
+        match crate::stats::comparison_report(
+            &baseline_scores,
+            &candidate_scores,
+            comparison_label.clone(),
+            None,
+        ) {
+            Ok(statistics) => BenchmarkComparisonReport::complete(
+                metric,
+                comparison_label,
+                matched_questions,
+                statistics,
+            ),
+            Err(error) => BenchmarkComparisonReport::unavailable(
+                metric,
+                comparison_label,
+                BenchmarkComparisonStatus::Error,
+                matched_questions,
+                error.to_string(),
+            ),
+        }
+    }
+
+    fn paired_scores(
+        &self,
+        baseline: &Self,
+        metric: BenchmarkComparisonMetric,
+    ) -> (Vec<f64>, Vec<f64>) {
+        let baseline_by_id = baseline.scored_questions_by_id();
+        let candidate_by_id = self.scored_questions_by_id();
+        let mut baseline_scores = Vec::new();
+        let mut candidate_scores = Vec::new();
+
+        for (id, candidate) in candidate_by_id {
+            if let Some(baseline_question) = baseline_by_id.get(id) {
+                baseline_scores.push(metric.score(baseline_question));
+                candidate_scores.push(metric.score(candidate));
+            }
+        }
+
+        (baseline_scores, candidate_scores)
     }
 
     /// Fraction of questions with exact-match score >= 1.0.
@@ -865,6 +1246,133 @@ mod tests {
         assert_eq!(report.timeouts, 1);
         assert!((report.exact_match_rate() - 1.0).abs() < f64::EPSILON);
         assert!((report.mean_f1() - 1.0).abs() < f64::EPSILON);
+    }
+
+    fn publishable_metadata() -> BenchmarkMetadata {
+        BenchmarkMetadata {
+            timestamp: "2026-04-17T12:00:00Z".to_owned(),
+            aletheia_version: "1.0.0".to_owned(),
+            nous_id: "benchmark".to_owned(),
+            model: "claude-opus-4".to_owned(),
+            benchmark: "Test".to_owned(),
+            total_questions: 2,
+            evaluated_questions: 2,
+            timeout_secs: 120,
+            dataset_hash: Some("sha256:dataset".to_owned()),
+            git_sha: Some("abc123".to_owned()),
+            dataset_best_effort: false,
+            dataset_validation: Some(BenchmarkValidationReport {
+                dataset: "Test".to_owned(),
+                dataset_path: Some("/tmp/dataset.json".to_owned()),
+                best_effort: false,
+                require_retrieval_evidence: false,
+                errors: Vec::new(),
+                warnings: Vec::new(),
+            }),
+        }
+    }
+
+    fn publishable_provenance() -> EvalProvenance {
+        let args = vec![
+            "aletheia".to_owned(),
+            "benchmark".to_owned(),
+            "longmemeval".to_owned(),
+        ];
+        EvalProvenance::new("er-test", "http://localhost")
+            .with_redacted_args(&args)
+            .with_config_hash("sha256:config")
+            .with_scenario_suite_hash("sha256:dataset")
+            .finished()
+    }
+
+    #[test]
+    fn standard_statistics_populates_ci_and_publishability() {
+        let questions = vec![
+            result("q1", "factual", "blue", &["blue"]),
+            result("q2", "factual", "green", &["red"]),
+        ];
+        let report = BenchmarkReport::with_metadata("Test", questions, publishable_metadata())
+            .with_provenance(publishable_provenance())
+            .with_standard_statistics();
+
+        let statistics = report.statistics.expect("statistics populated");
+        assert_eq!(statistics.n_resamples, BENCHMARK_STAT_RESAMPLES);
+        let publishability = report.publishability.expect("publishability populated");
+        assert!(
+            publishability.publishable,
+            "expected publishable report, got reasons: {:?}",
+            publishability.reasons
+        );
+    }
+
+    #[test]
+    fn insufficient_samples_are_explicitly_non_publishable() {
+        let report = BenchmarkReport::new("Test", vec![result("q1", "factual", "blue", &["blue"])])
+            .with_standard_statistics();
+
+        assert!(report.statistics.is_none());
+        let publishability = report.publishability.expect("publishability populated");
+        assert!(!publishability.publishable);
+        assert!(
+            publishability
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("requires at least 2 scored questions")),
+            "got reasons: {:?}",
+            publishability.reasons
+        );
+    }
+
+    #[test]
+    fn baseline_candidate_comparisons_include_fdr_adjusted_p_values() {
+        let baseline = BenchmarkReport::new(
+            "Test",
+            vec![
+                result("q1", "factual", "wrong", &["blue"]),
+                result("q2", "factual", "wrong", &["red"]),
+                result("q3", "factual", "wrong", &["green"]),
+            ],
+        );
+        let candidate = BenchmarkReport::new(
+            "Test",
+            vec![
+                result("q1", "factual", "blue", &["blue"]),
+                result("q2", "factual", "red", &["red"]),
+                result("q3", "factual", "green", &["green"]),
+            ],
+        )
+        .with_comparisons_against(&baseline, "baseline_vs_candidate");
+
+        assert_eq!(candidate.comparisons.len(), 2);
+        for comparison in &candidate.comparisons {
+            assert_eq!(comparison.status, BenchmarkComparisonStatus::Complete);
+            let statistics = comparison.statistics.as_ref().expect("statistics");
+            assert_eq!(statistics.n_a, 3);
+            assert_eq!(statistics.n_b, 3);
+            assert!(
+                statistics.p_adjusted.is_some(),
+                "FDR-adjusted p-value must be present"
+            );
+        }
+    }
+
+    #[test]
+    fn comparison_reports_insufficient_matches_explicitly() {
+        let baseline =
+            BenchmarkReport::new("Test", vec![result("q1", "factual", "wrong", &["blue"])]);
+        let candidate =
+            BenchmarkReport::new("Test", vec![result("q1", "factual", "blue", &["blue"])])
+                .with_comparisons_against(&baseline, "baseline_vs_candidate");
+
+        assert_eq!(candidate.comparisons.len(), 2);
+        for comparison in &candidate.comparisons {
+            assert_eq!(
+                comparison.status,
+                BenchmarkComparisonStatus::InsufficientSamples
+            );
+            assert_eq!(comparison.matched_questions, 1);
+            assert!(comparison.reason.is_some());
+        }
     }
 
     #[test]
