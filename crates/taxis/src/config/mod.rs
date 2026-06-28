@@ -37,7 +37,8 @@ pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,
 };
 pub use tools::{
-    ExternalToolAuth, ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
+    ExternalToolAuth, ExternalToolEntry, ExternalToolGroupId, ExternalToolKind, ExternalToolMethod,
+    ExternalToolReversibility, ExternalToolsConfig,
 };
 
 use std::collections::HashMap;

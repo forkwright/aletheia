@@ -28,13 +28,14 @@ use organon::registry::{ToolExecutor, ToolRegistry};
 #[cfg(feature = "mcp")]
 use organon::types::ToolOrigin;
 use organon::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    ApprovalRequirement, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory,
+    ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 #[cfg(feature = "mcp")]
 use taxis::config::ExternalToolAuth;
 pub(crate) use taxis::config::{
-    ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
+    ExternalToolEntry, ExternalToolGroupId, ExternalToolKind, ExternalToolMethod,
+    ExternalToolReversibility, ExternalToolsConfig,
 };
 
 // ── Tool manifest ───────────────────────────────────────────────────────────
@@ -172,6 +173,17 @@ async fn register_single_tool(
         }];
     };
 
+    register_http_tool(name, entry, registry, http_client, description, endpoint)
+}
+
+fn register_http_tool(
+    name: &str,
+    entry: &ExternalToolEntry,
+    registry: &mut ToolRegistry,
+    http_client: &reqwest::Client,
+    description: String,
+    endpoint: String,
+) -> Vec<ToolManifestEntry> {
     let tool_name = match ToolName::new(name) {
         Ok(tn) => tn,
         Err(e) => {
@@ -187,16 +199,19 @@ async fn register_single_tool(
         }
     };
 
+    let groups = effective_http_groups(entry);
+    let reversibility = effective_http_reversibility(entry);
+    let approval = ApprovalRequirement::from(reversibility);
     let tool_def = ToolDef {
         name: tool_name.clone(),
         description: description.clone(),
         extended_description: None,
         input_schema: external_tool_schema(),
         category: ToolCategory::Research,
-        reversibility: Reversibility::FullyReversible,
+        reversibility,
         auto_activate: false,
-        groups: vec![ToolGroupId::Mcp],
-        tags: vec![ToolTag::Fetch],
+        groups: groups.clone(),
+        tags: tags_from_http_policy(reversibility),
     };
 
     let executor = ExternalToolExecutor {
@@ -209,7 +224,16 @@ async fn register_single_tool(
 
     match registry.register(tool_def, Box::new(executor)) {
         Ok(()) => {
-            info!(tool = name, kind = ?entry.kind, "external tool registered");
+            info!(
+                tool = name,
+                kind = ?entry.kind,
+                groups = %format_tool_groups(&groups),
+                groups_source = if entry.groups.is_some() { "explicit" } else { "default" },
+                reversibility = %reversibility,
+                reversibility_source = if entry.reversibility.is_some() { "explicit" } else { "default" },
+                approval = %approval,
+                "external HTTP tool registered"
+            );
             vec![ToolManifestEntry {
                 name: name.to_owned(),
                 kind: entry.kind,
@@ -582,6 +606,56 @@ fn tags_from_mcp(tool: &rmcp::model::Tool) -> Vec<ToolTag> {
     }
 }
 
+fn effective_http_groups(entry: &ExternalToolEntry) -> Vec<ToolGroupId> {
+    entry.groups.as_deref().map_or_else(
+        || vec![ToolGroupId::Mcp],
+        |groups| groups.iter().copied().map(tool_group_from_config).collect(),
+    )
+}
+
+fn tool_group_from_config(group: ExternalToolGroupId) -> ToolGroupId {
+    match group {
+        ExternalToolGroupId::Read => ToolGroupId::Read,
+        ExternalToolGroupId::Edit => ToolGroupId::Edit,
+        ExternalToolGroupId::Command => ToolGroupId::Command,
+        ExternalToolGroupId::SpawnSubtask => ToolGroupId::SpawnSubtask,
+        ExternalToolGroupId::Plan => ToolGroupId::Plan,
+        ExternalToolGroupId::Verify => ToolGroupId::Verify,
+        _ => ToolGroupId::Mcp,
+    }
+}
+
+fn effective_http_reversibility(entry: &ExternalToolEntry) -> Reversibility {
+    entry
+        .reversibility
+        .map_or(Reversibility::Irreversible, reversibility_from_config)
+}
+
+fn reversibility_from_config(reversibility: ExternalToolReversibility) -> Reversibility {
+    match reversibility {
+        ExternalToolReversibility::FullyReversible => Reversibility::FullyReversible,
+        ExternalToolReversibility::Reversible => Reversibility::Reversible,
+        ExternalToolReversibility::PartiallyReversible => Reversibility::PartiallyReversible,
+        _ => Reversibility::Irreversible,
+    }
+}
+
+fn tags_from_http_policy(reversibility: Reversibility) -> Vec<ToolTag> {
+    if reversibility == Reversibility::FullyReversible {
+        vec![ToolTag::Fetch]
+    } else {
+        vec![ToolTag::Fetch, ToolTag::Execute]
+    }
+}
+
+fn format_tool_groups(groups: &[ToolGroupId]) -> String {
+    groups
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 /// Input schema for external tools.
 ///
 /// Accepts a freeform `query` string and an optional JSON `params` object.
@@ -775,6 +849,8 @@ mod tests {
             env: std::collections::HashMap::new(),
             description: description.map(ToOwned::to_owned),
             method: ExternalToolMethod::default(),
+            groups: None,
+            reversibility: None,
             auth: None,
         }
     }
@@ -871,7 +947,43 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         let tool_name = ToolName::new("semantic_scholar").expect("valid name");
         let def = registry.get_def(&tool_name).expect("tool def");
         assert_eq!(def.groups, vec![ToolGroupId::Mcp]);
+        assert_eq!(def.reversibility, Reversibility::Irreversible);
+        assert_eq!(
+            ApprovalRequirement::from(def.reversibility),
+            ApprovalRequirement::Mandatory
+        );
         assert!(def.tags.contains(&ToolTag::Fetch));
+        assert!(def.tags.contains(&ToolTag::Execute));
+    }
+
+    #[tokio::test]
+    async fn register_http_tool_uses_explicit_safety_policy() {
+        ensure_crypto_provider();
+        let mut registry = ToolRegistry::new();
+        let mut entry = entry(
+            ExternalToolKind::Http,
+            Some("http://localhost:3100"),
+            Some("Read-only search"),
+        );
+        entry.method = ExternalToolMethod::Get;
+        entry.groups = Some(vec![ExternalToolGroupId::Read]);
+        entry.reversibility = Some(ExternalToolReversibility::FullyReversible);
+
+        let result =
+            register_single_tool("search", &entry, &mut registry, &reqwest::Client::new()).await;
+        assert_eq!(result.len(), 1);
+        assert!(result.first().is_some_and(|entry| entry.available));
+
+        let tool_name = ToolName::new("search").expect("valid name");
+        let def = registry.get_def(&tool_name).expect("tool def");
+        assert_eq!(def.groups, vec![ToolGroupId::Read]);
+        assert_eq!(def.reversibility, Reversibility::FullyReversible);
+        assert_eq!(
+            ApprovalRequirement::from(def.reversibility),
+            ApprovalRequirement::None
+        );
+        assert!(def.tags.contains(&ToolTag::Fetch));
+        assert!(!def.tags.contains(&ToolTag::Execute));
     }
 
     #[test]
