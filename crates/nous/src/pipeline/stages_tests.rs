@@ -783,6 +783,169 @@ fn sleeping_providers(sleep: Duration) -> ProviderRegistry {
     providers
 }
 
+struct RateLimitedProvider;
+
+impl LlmProvider for RateLimitedProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            Err(hermeneus::error::RateLimitedSnafu {
+                retry_after_ms: 5000u64,
+            }
+            .build())
+        })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &str {
+        "rate-limited"
+    }
+}
+
+fn rate_limited_providers() -> ProviderRegistry {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(RateLimitedProvider));
+    providers
+}
+
+#[tokio::test]
+async fn execute_transient_error_with_distillation_returns_degraded_provenance() {
+    let config = execute_stage_config();
+    let pipeline_config = PipelineConfig::default();
+
+    let store = SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .create_session("ses-provider-down", "test-agent", "main", None, None)
+        .expect("create session");
+    store
+        .insert_distillation_summary("ses-provider-down", "cached distillation summary")
+        .expect("insert summary");
+    let session = SessionState::new("ses-provider-down".to_owned(), "main".to_owned(), &config);
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext {
+        messages: vec![make_msg("user", "hello")],
+        ..PipelineContext::default()
+    };
+    let providers = rate_limited_providers();
+    let tools = ToolRegistry::new();
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, _captured) = capturing_emitter();
+
+    let result = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        Some(&TokioMutex::new(store)),
+        None,
+    )
+    .await
+    .expect("degraded response should succeed");
+
+    let provenance = match &result.degraded {
+        Some(DegradedMode::DistillationCache { provenance, .. }) => provenance,
+        other => panic!("expected DistillationCache, got {other:?}"),
+    };
+    assert_eq!(result.stop_reason, "degraded");
+    assert_eq!(result.model_used, "test-model");
+    assert_eq!(result.usage.llm_calls, 0);
+    assert_eq!(
+        provenance.attempted_provider.as_deref(),
+        Some("rate-limited")
+    );
+    assert_eq!(provenance.attempted_model, "test-model");
+    assert_eq!(provenance.configured_model, "test-model");
+    assert_eq!(provenance.routed_model, "test-model");
+    assert_eq!(
+        provenance.degradation_source,
+        crate::degraded_mode::DegradationSource::DistillationCache
+    );
+    assert!(
+        provenance
+            .source_id
+            .as_deref()
+            .is_some_and(|source_id| source_id.starts_with("message:ses-provider-down:")),
+        "cache source id should point at the distillation message: {:?}",
+        provenance.source_id
+    );
+    assert_eq!(provenance.original_error_class, "transient");
+    assert!(provenance.synthetic_response);
+    assert!(!provenance.provider_usage_recorded);
+}
+
+#[tokio::test]
+async fn execute_transient_error_without_distillation_returns_unavailable_provenance() {
+    let config = execute_stage_config();
+    let pipeline_config = PipelineConfig::default();
+
+    let store = SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .create_session("ses-no-cache", "test-agent", "main", None, None)
+        .expect("create session");
+    let session = SessionState::new("ses-no-cache".to_owned(), "main".to_owned(), &config);
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext {
+        messages: vec![make_msg("user", "hello")],
+        ..PipelineContext::default()
+    };
+    let providers = rate_limited_providers();
+    let tools = ToolRegistry::new();
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, _captured) = capturing_emitter();
+
+    let result = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        Some(&TokioMutex::new(store)),
+        None,
+    )
+    .await
+    .expect("degraded response should succeed");
+
+    let provenance = match &result.degraded {
+        Some(DegradedMode::Unavailable { provenance, .. }) => provenance,
+        other => panic!("expected Unavailable, got {other:?}"),
+    };
+    assert_eq!(result.stop_reason, "degraded");
+    assert_eq!(result.model_used, "test-model");
+    assert_eq!(
+        provenance.attempted_provider.as_deref(),
+        Some("rate-limited")
+    );
+    assert_eq!(
+        provenance.degradation_source,
+        crate::degraded_mode::DegradationSource::Unavailable
+    );
+    assert!(provenance.source_id.is_none());
+    assert!(!provenance.provider_usage_recorded);
+}
+
 #[tokio::test(start_paused = true)]
 async fn execute_timeout_with_distillation_returns_degraded_response() {
     let config = execute_stage_config();

@@ -39,6 +39,11 @@ use super::{
     ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
 };
 
+struct CachedDistillation {
+    summary: String,
+    source_id: Option<String>,
+}
+
 struct ProviderRecallBridge<'a> {
     providers: &'a ProviderRegistry,
     model: &'a str,
@@ -129,6 +134,32 @@ impl mneme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
             .take(max_results)
             .collect())
     }
+}
+
+fn provider_name_for_model(providers: &ProviderRegistry, model: &str) -> Option<String> {
+    providers
+        .providers()
+        .into_iter()
+        .find(|provider| provider.match_specificity(model).is_some())
+        .map(|provider| provider.name().to_owned())
+}
+
+fn cached_distillation_for_session(
+    store: &SessionStore,
+    session_id: &str,
+) -> Result<Option<CachedDistillation>, mneme::error::Error> {
+    let Some(message) = store
+        .get_history_filtered(session_id, Some(1), Some(1))?
+        .into_iter()
+        .find(|message| message.seq == 0 && !message.is_distilled)
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(CachedDistillation {
+        source_id: Some(format!("message:{}:{}", message.session_id, message.id)),
+        summary: message.content,
+    }))
 }
 
 #[expect(
@@ -812,7 +843,7 @@ pub(super) async fn run_execute_stage(
                 match tokio::time::timeout(std::time::Duration::from_millis(50), store_mutex.lock())
                     .await
                 {
-                    Ok(store) => match store.get_distillation_summary(&input.session.id) {
+                    Ok(store) => match cached_distillation_for_session(&store, &input.session.id) {
                         Ok(summary) => summary,
                         Err(e) => {
                             // WHY(#5245): a store read error is distinct from a genuine
@@ -844,11 +875,23 @@ pub(super) async fn run_execute_stage(
             });
 
             span.record("status", "degraded");
-            crate::degraded_mode::build_degraded_response(
+            let routed_model = crate::execute::routed_model_for_turn(ctx, config, providers, tools);
+            let attempt = crate::degraded_mode::DegradedAttemptContext {
+                attempted_provider: provider_name_for_model(providers, &routed_model),
+                configured_model: config.generation.model.clone(),
+                routed_model,
+                source_id: recent_distillation
+                    .as_ref()
+                    .and_then(|distillation| distillation.source_id.clone()),
+            };
+            crate::degraded_mode::build_degraded_response_with_provenance(
                 &config.id,
                 &input.session.id,
                 err,
-                recent_distillation.as_deref(),
+                recent_distillation
+                    .as_ref()
+                    .map(|distillation| distillation.summary.as_str()),
+                attempt,
             )
         }
         Err(err) => {
