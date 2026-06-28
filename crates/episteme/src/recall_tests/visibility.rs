@@ -5,7 +5,7 @@
 )]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use crate::knowledge::Visibility;
+use crate::knowledge::{MemoryScope, Visibility};
 use crate::recall::{FactorScores, ProjectRecallScope, ScoredResult};
 use crate::recall::{filter_by_cohort_visibility, filter_by_project_scope, filter_by_visibility};
 
@@ -27,6 +27,20 @@ fn make_scored_with_visibility(nous_id: &str, visibility: Visibility) -> ScoredR
 fn make_scored_with_project(project_id: Option<eidos::workspace::ProjectId>) -> ScoredResult {
     ScoredResult {
         project_id,
+        ..make_scored_with_visibility("alice", Visibility::Private)
+    }
+}
+
+fn make_scored_with_project_scope(
+    source_id: &str,
+    project_id: Option<eidos::workspace::ProjectId>,
+    scope: Option<MemoryScope>,
+) -> ScoredResult {
+    ScoredResult {
+        source_id: source_id.to_owned(),
+        content: source_id.to_owned(),
+        project_id,
+        scope,
         ..make_scored_with_visibility("alice", Visibility::Private)
     }
 }
@@ -203,6 +217,43 @@ fn project_scope_keeps_current_project_and_global_results() {
             .as_ref()
             .is_none_or(|id| id == &project_alpha)),
         "other project facts should be excluded"
+    );
+}
+
+#[test]
+fn project_scope_excludes_other_project_and_malformed_project_rows() {
+    let project_alpha =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+            .expect("valid remote");
+    let project_beta =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/beta.git")
+            .expect("valid remote");
+
+    let candidates = vec![
+        make_scored_with_project_scope(
+            "project-alpha",
+            Some(project_alpha),
+            Some(MemoryScope::Project),
+        ),
+        make_scored_with_project_scope(
+            "project-beta",
+            Some(project_beta.clone()),
+            Some(MemoryScope::Project),
+        ),
+        make_scored_with_project_scope("global", None, None),
+        make_scored_with_project_scope("malformed-project", None, Some(MemoryScope::Project)),
+    ];
+
+    let filtered = filter_by_project_scope(candidates, &ProjectRecallScope::Project(project_beta));
+
+    let source_ids: Vec<&str> = filtered
+        .iter()
+        .map(|result| result.source_id.as_str())
+        .collect();
+    assert_eq!(
+        source_ids,
+        vec!["project-beta", "global"],
+        "project B recall should keep project B and intentionally global rows only"
     );
 }
 

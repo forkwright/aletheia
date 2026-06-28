@@ -124,6 +124,11 @@ impl NousActor {
         let mut config = extraction_config.clone();
         #[cfg(not(feature = "gliner"))]
         let mut config = extraction_config.clone();
+        if config.project_id.is_none() {
+            config
+                .project_id
+                .clone_from(&self.pipeline_config.project_id);
+        }
         config.provider = match self.config.behavior.knowledge_extraction_provider {
             taxis::config::BookkeepingProviderKind::Llm => {
                 mneme::extract::BookkeepingProviderKind::Llm
@@ -373,6 +378,7 @@ impl NousActor {
         let providers = Arc::clone(&self.services.providers);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.as_ref().map(Arc::clone);
+        let project_id = self.pipeline_config.project_id.clone();
         let nous_id = self.id.clone();
         let span =
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
@@ -401,6 +407,7 @@ impl NousActor {
                         session_id,
                         nous_id.clone(),
                         config,
+                        project_id,
                     ) => {}
                 }
                 // NOTE: guard Drop handles flag.store(false) for both normal and panic paths
@@ -460,9 +467,11 @@ impl NousActor {
         let source: Arc<dyn melete::dream::TranscriptSource> = Arc::new(
             SessionStoreTranscriptSource::new(Arc::clone(session_store), self.id.clone()),
         );
-        let target: Arc<dyn melete::dream::ConsolidationTarget> = Arc::new(
-            KnowledgeStoreConsolidationTarget::new(Arc::clone(knowledge_store)),
-        );
+        let target: Arc<dyn melete::dream::ConsolidationTarget> =
+            Arc::new(KnowledgeStoreConsolidationTarget::new(
+                Arc::clone(knowledge_store),
+                self.pipeline_config.project_id.clone(),
+            ));
         engine.on_turn_complete(&source, &target, &provider).await;
     }
 }
@@ -535,12 +544,13 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
 #[cfg(feature = "knowledge-store")]
 struct KnowledgeStoreConsolidationTarget {
     store: Arc<KnowledgeStore>,
+    project_id: Option<mneme::workspace::ProjectId>,
 }
 
 #[cfg(feature = "knowledge-store")]
 impl KnowledgeStoreConsolidationTarget {
-    fn new(store: Arc<KnowledgeStore>) -> Self {
-        Self { store }
+    fn new(store: Arc<KnowledgeStore>, project_id: Option<mneme::workspace::ProjectId>) -> Self {
+        Self { store, project_id }
     }
 }
 
@@ -556,6 +566,7 @@ impl melete::dream::ConsolidationTarget for KnowledgeStoreConsolidationTarget {
             flush,
             "auto-dream",
             nous_id,
+            self.project_id.as_ref(),
         )
         .map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(melete::dream::MergeReport {
@@ -959,6 +970,7 @@ async fn run_background_distillation(
     session_id: String,
     nous_id: String,
     config: crate::distillation::DistillTriggerConfig,
+    project_id: Option<mneme::workspace::ProjectId>,
 ) {
     let Some(provider) = providers.find_provider(&config.model) else {
         warn!(
@@ -1028,6 +1040,7 @@ async fn run_background_distillation(
             &nous_id,
             &result,
             &history,
+            project_id.as_ref(),
         )
     {
         warn!(nous_id = %nous_id, session_id = %session_id, error = %e, "failed to commit distillation memory flush");

@@ -494,7 +494,10 @@ Rules:
             store,
             source,
             nous_id,
-            Some(crate::knowledge::MemoryScope::Project),
+            self.config
+                .project_id
+                .as_ref()
+                .map(|_| crate::knowledge::MemoryScope::Project),
         )
     }
 
@@ -524,12 +527,26 @@ Rules:
         scope: Option<crate::knowledge::MemoryScope>,
     ) -> Result<PersistResult, ExtractionError> {
         use crate::knowledge::{
-            Entity, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, Relationship,
-            far_future,
+            Entity, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, MemoryScope,
+            Relationship, far_future,
         };
 
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
+        let (scope, project_id) = match (scope, self.config.project_id.as_ref()) {
+            (Some(MemoryScope::Project), Some(project_id)) => {
+                (Some(MemoryScope::Project), Some(project_id.clone()))
+            }
+            (Some(MemoryScope::Project), None) => {
+                tracing::warn!(
+                    source = %source,
+                    nous_id = %nous_id,
+                    "project-scoped extraction persist missing project_id; degrading fact scope to global"
+                );
+                (None, None)
+            }
+            (other_scope, _) => (other_scope, None),
+        };
 
         if extraction.entities.len() > self.config.max_entities {
             tracing::warn!(
@@ -729,7 +746,7 @@ Rules:
                 content,
                 fact_type: classified_type.as_str().to_owned(),
                 scope,
-                project_id: None,
+                project_id: project_id.clone(),
                 temporal: FactTemporal {
                     valid_from: now,
                     valid_to: far_future(),
