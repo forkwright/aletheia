@@ -1,5 +1,6 @@
 //! Anthropic Messages API provider.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -420,8 +421,8 @@ impl AnthropicProvider {
         let start = Instant::now();
         let mut ttft: Option<std::time::Duration> = None;
 
-        let scrubbed = self.apply_prompt_cache_policy(request);
-        let request = &self.maybe_prepend_oauth_identity(&scrubbed);
+        let prepared = self.prepare_request(request);
+        let request = prepared.as_ref();
         let attribution = self.compute_attribution(request);
         let wire = WireRequest::from_request(request, Some(true), attribution.as_deref())
             .context(error::ParseResponseSnafu)?;
@@ -665,49 +666,58 @@ impl AnthropicProvider {
         }
     }
 
-    /// Prepend the Claude Code system prompt identity when using OAuth.
+    /// Prepare a request for serialization, cloning only when mutation is required.
     ///
-    /// Anthropic gates Sonnet/Opus access on OAuth tokens behind a server-side
-    /// system prompt check. The Messages API inspects the system field and only
-    /// allows higher-tier models when the prompt begins with the CC identity.
-    /// Haiku works without this. This matches Claude Code's own behavior.
+    /// Applies the operator prompt-cache policy and the OAuth Claude Code
+    /// identity rewrite in one pass. The common API-key + cache-disabled path
+    /// with already-clear cache flags returns the original borrowed request.
     ///
-    /// // WHY: Anthropic requires the EXACT CC identity as the system field for
-    /// // OAuth tokens to access Sonnet/Opus. Any additional content in the system
-    /// // field causes 400. The actual bootstrap prompt moves into messages as
-    /// // the first User-role message with a [System context] label.
-    fn maybe_prepend_oauth_identity(&self, request: &CompletionRequest) -> CompletionRequest {
+    /// WHY: Anthropic requires the EXACT CC identity as the system field for
+    /// OAuth tokens to access Sonnet/Opus. Any additional content in the system
+    /// field causes 400. The actual bootstrap prompt moves into messages as
+    /// the first User-role message with a [System context] label.
+    fn prepare_request<'a>(&self, request: &'a CompletionRequest) -> Cow<'a, CompletionRequest> {
         let credential = self.credential_provider.get_credential();
-        let Some(cred) = credential else {
-            return request.clone();
-        };
-        if cred.source != CredentialSource::OAuth {
-            return request.clone();
+        let use_oauth_identity = credential
+            .as_ref()
+            .is_some_and(|cred| cred.source == CredentialSource::OAuth);
+        let scrub_cache = matches!(self.prompt_cache_mode, PromptCacheMode::Disabled)
+            && (request.cache_system || request.cache_tools || request.cache_turns);
+
+        if !use_oauth_identity && !scrub_cache {
+            return Cow::Borrowed(request);
         }
 
-        // WHY: Anthropic requires the EXACT CC identity as the system field for
-        // OAuth tokens to access Sonnet/Opus. Any additional content in the system
-        // field causes 400. The actual bootstrap prompt moves into messages as
-        // the first System-role message. This matches how CC itself works.
         let mut req = request.clone();
-        if let Some(existing_system) = req.system.take() {
-            // Insert bootstrap as a User message with system context label,
-            // since System-role messages get extracted back into the system field
-            // by the wire layer. The LLM treats the first User message as context.
-            req.messages.insert(
-                0,
-                crate::types::Message {
-                    role: crate::types::Role::User,
-                    content: crate::types::Content::Text(format!(
-                        "[System context]\n\n{existing_system}"
-                    )),
-                    cache_breakpoint: false,
-                },
-            );
+
+        if matches!(self.prompt_cache_mode, PromptCacheMode::Disabled) {
+            req.cache_system = false;
+            req.cache_tools = false;
+            req.cache_turns = false;
         }
-        req.system = Some("You are Claude Code, Anthropic's official CLI for Claude.".to_owned());
-        req.cache_system = false;
-        req
+
+        if use_oauth_identity {
+            if let Some(existing_system) = req.system.take() {
+                // WHY: System-role messages get extracted back into the system
+                // field by the wire layer; the bootstrap prompt must become a
+                // User message so Anthropic sees only the CC identity in system.
+                req.messages.insert(
+                    0,
+                    crate::types::Message {
+                        role: crate::types::Role::User,
+                        content: crate::types::Content::Text(format!(
+                            "[System context]\n\n{existing_system}"
+                        )),
+                        cache_breakpoint: false,
+                    },
+                );
+            }
+            req.system =
+                Some("You are Claude Code, Anthropic's official CLI for Claude.".to_owned());
+            req.cache_system = false;
+        }
+
+        Cow::Owned(req)
     }
 
     /// Compute the CC attribution string for system prompt injection.
@@ -719,7 +729,7 @@ impl AnthropicProvider {
     /// // WHY: Attribution is part of Anthropic's OAuth-specific request
     /// // fingerprinting. Sending it for API-key requests produces a misleading
     /// // telemetry fingerprint (request body claims CC-OAuth while HTTP headers
-    /// // use x-api-key). Gate here mirrors `maybe_prepend_oauth_identity`.
+    /// // use x-api-key). Gate here mirrors `prepare_request`.
     fn compute_attribution(&self, request: &CompletionRequest) -> Option<String> {
         let profile = self.cc_profile.as_ref()?;
         let cred = self.credential_provider.get_credential()?;
@@ -851,25 +861,6 @@ impl AnthropicProvider {
         Ok(headers)
     }
 
-    /// Apply the operator's prompt cache policy (#3410).
-    ///
-    /// When [`PromptCacheMode::Disabled`] (the sovereignty default), every
-    /// `cache_*` flag is zeroed before the wire request is built so the
-    /// serializer in [`super::wire::WireRequest::from_request`] emits no
-    /// `cache_control` markers. Operators who opt in to `Ephemeral` or
-    /// `Extended` keep the caller-provided flags untouched.
-    fn apply_prompt_cache_policy(&self, request: &CompletionRequest) -> CompletionRequest {
-        if matches!(self.prompt_cache_mode, PromptCacheMode::Disabled) {
-            let mut scrubbed = request.clone();
-            scrubbed.cache_system = false;
-            scrubbed.cache_tools = false;
-            scrubbed.cache_turns = false;
-            scrubbed
-        } else {
-            request.clone()
-        }
-    }
-
     async fn execute_with_retry(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let span = info_span!("llm_call",
             llm.provider = %self.meta.name,
@@ -921,8 +912,8 @@ impl AnthropicProvider {
         // WHY: Anthropic gates Sonnet/Opus access on OAuth tokens behind a system
         // prompt identity check. Without the CC identity prefix, only Haiku-tier
         // models are available. This matches what Claude Code itself sends.
-        let scrubbed = self.apply_prompt_cache_policy(request);
-        let request = &self.maybe_prepend_oauth_identity(&scrubbed);
+        let prepared = self.prepare_request(request);
+        let request = prepared.as_ref();
         let attribution = self.compute_attribution(request);
         let wire = WireRequest::from_request(request, None, attribution.as_deref())
             .context(error::ParseResponseSnafu)?;

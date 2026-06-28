@@ -467,6 +467,110 @@ async fn ephemeral_prompt_cache_preserves_cache_control_markers() {
     provider.complete(&req).await.expect("complete ok");
 }
 
+#[test]
+fn prepare_request_borrows_when_no_mutation_is_required() {
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("test-key")),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    let req = test_request();
+
+    let prepared = provider.prepare_request(&req);
+    let Cow::Borrowed(_prepared) = prepared else {
+        panic!("default API-key request with clear cache flags should be borrowed");
+    };
+}
+
+#[test]
+fn prepare_request_clones_only_to_scrub_cache_flags() {
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("test-key")),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    let mut req = test_request();
+    req.cache_system = true;
+    req.cache_tools = true;
+    req.cache_turns = true;
+
+    let prepared = provider.prepare_request(&req);
+    let Cow::Owned(prepared) = prepared else {
+        panic!("cache flag scrub requires an owned prepared request");
+    };
+
+    assert!(!prepared.cache_system);
+    assert!(!prepared.cache_tools);
+    assert!(!prepared.cache_turns);
+    assert!(req.cache_system);
+    assert!(req.cache_tools);
+    assert!(req.cache_turns);
+}
+
+#[test]
+fn prepare_request_oauth_identity_and_cache_policy_share_one_owned_pass() {
+    use std::sync::Arc;
+
+    use koina::credential::{Credential, CredentialProvider, CredentialSource};
+
+    struct OAuthProvider;
+
+    impl CredentialProvider for OAuthProvider {
+        fn get_credential(&self) -> Option<Credential> {
+            Some(Credential {
+                secret: SecretString::from("oauth-access-token"),
+                source: CredentialSource::OAuth,
+            })
+        }
+
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
+        fn name(&self) -> &str {
+            "oauth"
+        }
+    }
+
+    let config = ProviderConfig {
+        base_url: Some("https://api.anthropic.com".to_owned()),
+        cc_mimicry: Some(true),
+        prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::with_credential_provider(Arc::new(OAuthProvider), &config)
+        .expect("valid config");
+    let mut req = test_request();
+    req.system = Some("operator bootstrap".to_owned());
+    req.cache_system = true;
+    req.cache_tools = true;
+    req.cache_turns = true;
+
+    let prepared = provider.prepare_request(&req);
+    let Cow::Owned(prepared) = prepared else {
+        panic!("OAuth identity rewrite should require one owned prepared request");
+    };
+
+    assert_eq!(
+        prepared.system.as_deref(),
+        Some("You are Claude Code, Anthropic's official CLI for Claude.")
+    );
+    let first = prepared
+        .messages
+        .first()
+        .expect("system context should be inserted before user messages");
+    assert_eq!(first.role, Role::User);
+    assert!(first.content.text().contains("[System context]"));
+    assert!(first.content.text().contains("operator bootstrap"));
+    assert!(!prepared.cache_system);
+    assert!(!prepared.cache_tools);
+    assert!(!prepared.cache_turns);
+    assert_eq!(req.system.as_deref(), Some("operator bootstrap"));
+    assert!(req.cache_system);
+    assert!(req.cache_tools);
+    assert!(req.cache_turns);
+}
+
 #[tokio::test]
 async fn complete_auth_failure_not_retried() {
     let server = MockServer::start().await;
