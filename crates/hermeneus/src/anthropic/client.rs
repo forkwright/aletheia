@@ -159,12 +159,12 @@ const ANTHROPIC_TRAINING_OPTOUT_HEADERS: &[&str] =
 /// that overrides the shorter client-level default.
 const STREAMING_TIMEOUT: Duration = Duration::from_mins(10);
 
-/// Returns true when the URL is safe to use without TLS.
+/// Returns true when the URL uses TLS or is safe to use without TLS.
 ///
-/// Localhost addresses never leave the machine, so cleartext is acceptable
-/// for local dev servers and test mocks.
-fn is_loopback_url(url: &str) -> bool {
-    url.starts_with("http://localhost") || url.starts_with("http://127.0.0.1")
+/// WHY(#5055): delegate to the parsed shared policy so Anthropic-compatible
+/// providers cannot whitelist suffix-spoofed loopback-looking hosts.
+fn has_allowed_transport(url: &str) -> bool {
+    koina::http::is_secure_or_plaintext_loopback_url(url)
 }
 
 fn build_http_client() -> Result<Client> {
@@ -248,13 +248,11 @@ impl AnthropicProvider {
             },
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.endpoint.base_url.starts_with("https://")
-            && !is_loopback_url(&provider.endpoint.base_url)
-        {
+        if !has_allowed_transport(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
-                    provider.endpoint.base_url
+                    koina::http::transport_url_for_diagnostic(&provider.endpoint.base_url)
                 ),
             }
             .build());
@@ -314,13 +312,11 @@ impl AnthropicProvider {
             },
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.endpoint.base_url.starts_with("https://")
-            && !is_loopback_url(&provider.endpoint.base_url)
-        {
+        if !has_allowed_transport(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
-                    provider.endpoint.base_url
+                    koina::http::transport_url_for_diagnostic(&provider.endpoint.base_url)
                 ),
             }
             .build());
@@ -911,7 +907,7 @@ impl AnthropicProvider {
 
             // CodeQL: cleartext-transmission false positive. Both constructors
             // (`from_config` and `with_credential_provider`) reject non-HTTPS base
-            // URLs unless the target is loopback (localhost / 127.0.0.1). The
+            // URLs unless the parsed host is loopback. The
             // `endpoint.base_url` is immutable after construction, so by the time
             // we reach this request the scheme has already been validated.
             let response = match self

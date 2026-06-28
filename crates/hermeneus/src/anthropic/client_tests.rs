@@ -91,6 +91,62 @@ fn from_config_empty_api_key() {
 }
 
 #[test]
+fn from_config_rejects_spoofed_loopback_without_leaking_credentials() {
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("sk-secret-5055")),
+        base_url: Some("http://operator:url-secret@127.0.0.1.evil.example/v1".to_owned()),
+        ..ProviderConfig::default()
+    };
+    let err = AnthropicProvider::from_config(&config).expect_err("spoofed host must fail");
+    let message = err.to_string();
+
+    assert!(message.contains("HTTPS"), "unexpected error: {message}");
+    assert!(
+        message.contains("127.0.0.1.evil.example"),
+        "diagnostic should keep the rejected host: {message}"
+    );
+    assert!(
+        !message.contains("url-secret"),
+        "diagnostic must redact URL userinfo: {message}"
+    );
+    assert!(
+        !message.contains("sk-secret-5055"),
+        "diagnostic must not include API keys: {message}"
+    );
+}
+
+#[test]
+fn with_credential_provider_rejects_spoofed_loopback_without_leaking_credentials() {
+    use std::sync::Arc;
+
+    let config = ProviderConfig {
+        base_url: Some("http://operator:url-secret@localhost.evil.example/v1".to_owned()),
+        ..ProviderConfig::default()
+    };
+    let credential_provider = Arc::new(StaticCredentialProvider {
+        key: SecretString::from("dynamic-secret-5055"),
+    });
+
+    let err = AnthropicProvider::with_credential_provider(credential_provider, &config)
+        .expect_err("spoofed host must fail");
+    let message = err.to_string();
+
+    assert!(message.contains("HTTPS"), "unexpected error: {message}");
+    assert!(
+        message.contains("localhost.evil.example"),
+        "diagnostic should keep the rejected host: {message}"
+    );
+    assert!(
+        !message.contains("url-secret"),
+        "diagnostic must redact URL userinfo: {message}"
+    );
+    assert!(
+        !message.contains("dynamic-secret-5055"),
+        "diagnostic must not include credential provider secrets: {message}"
+    );
+}
+
+#[test]
 fn from_config_valid() {
     let config = ProviderConfig {
         // NOTE: test-only fixture value, not a real credential

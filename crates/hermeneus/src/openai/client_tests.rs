@@ -18,6 +18,31 @@ fn rejects_plain_http_to_non_loopback() {
 }
 
 #[test]
+fn rejects_spoofed_loopback_http_without_leaking_credentials() {
+    let config = OpenAiProviderConfig {
+        base_url: "http://operator:url-secret@localhost.evil.example/v1".to_owned(),
+        api_key: Some(SecretString::from("sk-secret-5055")),
+        ..Default::default()
+    };
+    let err = OpenAiProvider::new(config).unwrap_err();
+    let message = err.to_string();
+
+    assert!(message.contains("HTTPS"), "unexpected error: {message}");
+    assert!(
+        message.contains("localhost.evil.example"),
+        "diagnostic should keep the rejected host: {message}"
+    );
+    assert!(
+        !message.contains("url-secret"),
+        "diagnostic must redact URL userinfo: {message}"
+    );
+    assert!(
+        !message.contains("sk-secret-5055"),
+        "diagnostic must not include API keys: {message}"
+    );
+}
+
+#[test]
 fn accepts_loopback_http() {
     let config = OpenAiProviderConfig {
         name: "local".to_owned(),
