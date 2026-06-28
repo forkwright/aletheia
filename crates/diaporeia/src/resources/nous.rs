@@ -89,7 +89,7 @@ fn read_resource_content(oikos: &Oikos, uri: &str) -> Result<String, rmcp::Error
         .map_err(rmcp::ErrorData::from)
 }
 
-fn parse_resource_uri(uri: &str) -> Result<(NousId, &'static str), rmcp::ErrorData> {
+pub(crate) fn parse_resource_uri(uri: &str) -> Result<(NousId, &'static str), rmcp::ErrorData> {
     let path = uri
         .strip_prefix("aletheia://nous/")
         .ok_or_else(|| rmcp::ErrorData::invalid_params("invalid nous resource URI", None))?;

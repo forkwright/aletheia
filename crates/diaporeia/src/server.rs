@@ -21,6 +21,15 @@ use crate::rate_limit::{RateLimiter, Tier};
 use crate::resources;
 use crate::state::DiaporeiaState;
 
+/// Verified caller identity used for MCP resource authorization.
+#[derive(Debug, Clone)]
+struct ResourceCaller {
+    /// Authorization role governing MCP resource access.
+    role: Role,
+    /// Optional nous scope: when set, restricts access to a single agent.
+    nous_id: Option<String>,
+}
+
 /// The MCP server for Aletheia.
 ///
 /// Holds shared state and a tool router. Implements `ServerHandler` to serve
@@ -57,18 +66,18 @@ impl DiaporeiaServer {
     ///
     /// Extracts the role from auth state: uses the configured `none_role` in
     /// auth-disabled mode, otherwise validates through the shared auth facade.
-    async fn require_resource_role(
+    fn require_resource_role(
         &self,
         context: &rmcp::service::RequestContext<rmcp::RoleServer>,
         minimum: Role,
         operation: &str,
-    ) -> Result<(), rmcp::ErrorData> {
-        let role = self.resolve_caller_role(context).await;
-        match role {
-            Some(r) if r >= minimum => Ok(()),
-            Some(r) => {
+    ) -> Result<ResourceCaller, rmcp::ErrorData> {
+        let caller = self.resolve_resource_caller(context);
+        match caller {
+            Some(caller) if caller.role >= minimum => Ok(caller),
+            Some(caller) => {
                 tracing::warn!(
-                    caller_role = %r,
+                    caller_role = %caller.role,
                     required_role = %minimum,
                     operation,
                     "MCP resource RBAC denied",
@@ -90,25 +99,27 @@ impl DiaporeiaServer {
         }
     }
 
-    /// Resolve the caller's role from the request context.
+    /// Resolve the caller's verified claims from the request context.
     ///
-    /// Logic mirrors `tools::extract_role` but lives on the server struct
-    /// so resource handlers can use it without depending on the tools module.
+    /// Logic mirrors tool caller extraction but lives on the server struct
+    /// so resource handlers can enforce role and nous-scope policy without
+    /// depending on the tools module.
     /// Malformed anonymous-role config falls back to `Readonly`.
-    async fn resolve_caller_role(
+    fn resolve_resource_caller(
         &self,
         context: &rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Option<Role> {
-        let config = self.state.config.read().await;
-
-        if config.gateway.auth.mode == "none" {
-            return config
-                .gateway
-                .auth
+    ) -> Option<ResourceCaller> {
+        if self.state.auth_mode == "none" {
+            let role = self
+                .state
                 .none_role
                 .parse::<Role>()
                 .ok()
-                .or(Some(Role::Readonly));
+                .unwrap_or(Role::Readonly);
+            return Some(ResourceCaller {
+                role,
+                nous_id: None,
+            });
         }
 
         let parts = context.extensions.get::<http::request::Parts>()?;
@@ -122,10 +133,37 @@ impl DiaporeiaServer {
             return auth_facade
                 .validate_token(token)
                 .ok()
-                .map(|claims| claims.role);
+                .map(|claims| ResourceCaller {
+                    role: claims.role,
+                    nous_id: claims.nous_id,
+                });
         }
 
         None
+    }
+
+    /// Reject scoped resource access to a different target agent.
+    fn require_resource_nous_access(
+        caller: &ResourceCaller,
+        target_nous_id: &str,
+        operation: &str,
+    ) -> Result<(), rmcp::ErrorData> {
+        if let Some(ref scoped) = caller.nous_id
+            && scoped != target_nous_id
+        {
+            tracing::warn!(
+                caller_scope = %scoped,
+                target_nous_id,
+                operation,
+                "MCP resource scoped access denied",
+            );
+            return Err(UnauthorizedSnafu {
+                message: "access denied for this agent".to_owned(),
+            }
+            .build()
+            .into());
+        }
+        Ok(())
     }
 }
 
@@ -160,8 +198,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         // WHY(#3337): resource templates reveal what internal state is
         // accessible. Restrict to Operator+ so Readonly users cannot
         // discover agent workspace files or config structure.
-        self.require_resource_role(&context, Role::Operator, "list_resource_templates")
-            .await?;
+        self.require_resource_role(&context, Role::Operator, "list_resource_templates")?;
 
         let mut templates: Vec<ResourceTemplate> = resources::nous::resource_templates();
         templates.extend(resources::config::resource_templates());
@@ -179,8 +216,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
 
-        self.require_resource_role(&context, Role::Operator, "list_resources")
-            .await?;
+        let caller = self.require_resource_role(&context, Role::Operator, "list_resources")?;
 
         let mut resources: Vec<Resource> = Vec::new();
 
@@ -197,6 +233,13 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         // files that actually exist so clients do not discover unreadable URIs.
         let config = self.state.config.read().await;
         for agent in &config.agents.list {
+            if caller
+                .nous_id
+                .as_deref()
+                .is_some_and(|scoped| scoped != agent.id)
+            {
+                continue;
+            }
             for (slug, name, description) in resources::nous::WORKSPACE_FILES {
                 let uri = format!("aletheia://nous/{}/{slug}", agent.id);
                 if resources::nous::resource_exists(self.state.oikos.as_ref(), &uri) {
@@ -228,10 +271,11 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         // WHY(#3337): all MCP resources expose internal state (agent workspace
         // files, runtime config). Require Operator+ to prevent Readonly users
         // from enumerating agents, config, or knowledge.
-        self.require_resource_role(&context, Role::Operator, uri)
-            .await?;
+        let caller = self.require_resource_role(&context, Role::Operator, uri)?;
 
         let contents = if uri.starts_with("aletheia://nous/") {
+            let (nous_id, _) = resources::nous::parse_resource_uri(uri)?;
+            Self::require_resource_nous_access(&caller, nous_id.as_str(), uri)?;
             resources::nous::read_resource(&self.state, &params)?
         } else if uri.starts_with("aletheia://config") {
             resources::config::read_resource(&self.state, &params).await?
