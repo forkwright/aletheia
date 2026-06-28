@@ -598,6 +598,15 @@ impl EnergeiaStore {
         queries::list_dispatches(&self.keyspace, limit)
     }
 
+    /// List newest dispatch records first, up to `limit`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub(crate) fn list_recent_dispatches(&self, limit: usize) -> Result<Vec<DispatchRecord>> {
+        queries::list_recent_dispatches(&self.keyspace, limit)
+    }
+
     /// List all session records across all dispatches, up to `limit`.
     ///
     /// Ordered approximately by time (dispatch ULID, then prompt number).
@@ -704,6 +713,16 @@ impl EnergeiaStore {
         self.keyspace
             .insert(key.as_bytes(), value)
             .map_err(|e| store_err("write backdated dispatch", e))?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_dispatch_record_for_test(&self, record: &DispatchRecord) -> Result<()> {
+        let key = schema::dispatch_key(&record.id);
+        let value = serialize_msgpack(record, "test dispatch record")?;
+        self.keyspace
+            .insert(key.as_bytes(), value)
+            .map_err(|e| store_err("write test dispatch", e))?;
         Ok(())
     }
 }

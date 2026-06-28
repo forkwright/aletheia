@@ -142,6 +142,7 @@ fn compute_status_dashboard_inner(
     let now = jiff::Timestamp::now();
 
     let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
+    let recent_dispatches = store.list_recent_dispatches(RECENT_LIMIT)?;
     let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
     let stale_running_dispatches =
         u64::from(store.stale_running_dispatch_count(stale_running_dispatch_threshold())?);
@@ -166,12 +167,8 @@ fn compute_status_dashboard_inner(
     let active_dispatches = active_dispatch_records.len() as u64;
     let queue_depth = active_dispatches;
 
-    // Dispatches from the scan come out oldest-first (ULID order). Reverse to
-    // get newest first, then take up to RECENT_LIMIT.
-    let recent_outcomes: Vec<RecentOutcome> = all_dispatches
+    let recent_outcomes: Vec<RecentOutcome> = recent_dispatches
         .iter()
-        .rev()
-        .take(RECENT_LIMIT)
         .map(|d| RecentOutcome {
             dispatch_id: d.id.as_str().to_owned(),
             project: d.project.clone(),
@@ -305,7 +302,7 @@ mod tests {
     use super::*;
     use crate::cron::{CronFireRecord, CronLockStore};
     use crate::store::EnergeiaStore;
-    use crate::store::records::SessionUpdate;
+    use crate::store::records::{DispatchId, DispatchRecord, DispatchStatus, SessionUpdate};
     use crate::types::{DispatchSpec, SessionStatus};
 
     fn setup() -> (TempDir, EnergeiaStore) {
@@ -373,6 +370,35 @@ mod tests {
             .collect();
         assert!(ids.contains(&d1.as_str()));
         assert!(ids.contains(&d2.as_str()));
+    }
+
+    #[test]
+    fn recent_outcomes_uses_newest_dispatches_beyond_scan_cap() {
+        let (_dir, store) = setup();
+        let total = crate::store::SCAN_LIMIT_DISPATCHES + 1;
+        for i in 0..total {
+            let id = DispatchId::new(format!("{i:026}"));
+            let timestamp = jiff::Timestamp::from_millisecond(i64::try_from(i).unwrap()).unwrap();
+            let record = DispatchRecord {
+                id,
+                project: "acme".to_owned(),
+                spec: "{}".to_owned(),
+                status: DispatchStatus::Completed,
+                created_at: timestamp,
+                finished_at: Some(timestamp),
+                total_cost_usd: 0.0,
+                total_sessions: 0,
+            };
+            store.insert_dispatch_record_for_test(&record).unwrap();
+        }
+
+        let dashboard = compute_status_dashboard(&store).unwrap();
+
+        assert_eq!(dashboard.recent_outcomes.len(), RECENT_LIMIT);
+        assert_eq!(
+            dashboard.recent_outcomes[0].dispatch_id,
+            format!("{:026}", total - 1)
+        );
     }
 
     #[test]

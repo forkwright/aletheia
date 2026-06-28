@@ -61,6 +61,30 @@ fn prefix_scan<T: serde::de::DeserializeOwned>(
     Ok(results)
 }
 
+/// Scan a fjall keyspace by prefix from newest key to oldest.
+#[cfg(feature = "storage-fjall")]
+fn prefix_scan_reverse<T: serde::de::DeserializeOwned>(
+    keyspace: &fjall::Keyspace,
+    prefix: &[u8],
+    context: &str,
+    limit: usize,
+) -> Result<Vec<T>> {
+    let mut results = Vec::new();
+    for guard in keyspace.prefix(prefix).rev() {
+        if results.len() >= limit {
+            break;
+        }
+        let (_key, value) = guard.into_inner().map_err(|e| {
+            error::StoreSnafu {
+                message: format!("{context}: {e}"),
+            }
+            .build()
+        })?;
+        results.push(deserialize_value::<T>(&value)?);
+    }
+    Ok(results)
+}
+
 /// Collect all sessions for a given dispatch via prefix scan.
 #[cfg(feature = "storage-fjall")]
 pub(crate) fn list_sessions_for_dispatch(
@@ -173,6 +197,18 @@ pub(crate) fn list_dispatches(
         limit,
         |_: &DispatchRecord| true,
     )
+}
+
+/// Collect newest dispatch records via reverse prefix scan.
+///
+/// Results are ordered by ULID descending. Use `limit` to cap memory usage.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_recent_dispatches(
+    keyspace: &fjall::Keyspace,
+    limit: usize,
+) -> Result<Vec<crate::store::records::DispatchRecord>> {
+    let prefix_bytes = schema::dispatch_prefix().as_bytes();
+    prefix_scan_reverse(keyspace, prefix_bytes, "dispatch prefix scan", limit)
 }
 
 /// Collect all session records across all dispatches via prefix scan.
