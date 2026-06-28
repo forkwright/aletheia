@@ -163,21 +163,7 @@ Before any upgrade:
    LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
    BACKUP="instance/data/backups/instance/${LATEST}"
    aletheia backup verify "$BACKUP"
-   # Move the modified stores aside (do not delete until recovery is confirmed).
-   mv instance/data/knowledge.fjall "instance/data/knowledge.fjall.upgraded.$(date -u +%Y%m%dT%H%M%SZ)"
-   mv instance/data/sessions.db     "instance/data/sessions.db.upgraded.$(date -u +%Y%m%dT%H%M%SZ)"
-   mv instance/data/auth.fjall      "instance/data/auth.fjall.upgraded.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
-   mv instance/data/daemon-task-state "instance/data/daemon-task-state.upgraded.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
-   mv instance/data/cron-locks.fjall "instance/data/cron-locks.fjall.upgraded.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
-   # Restore the required and present runtime stores from the backup set.
-   cp -a "$BACKUP/stores/knowledge.fjall" instance/data/knowledge.fjall
-   cp -a "$BACKUP/stores/sessions.db"     instance/data/sessions.db
-   cp -a "$BACKUP/stores/auth.fjall"      instance/data/auth.fjall 2>/dev/null || true
-   cp -a "$BACKUP/stores/daemon-task-state" instance/data/daemon-task-state 2>/dev/null || true
-   cp -a "$BACKUP/stores/cron-locks.fjall" instance/data/cron-locks.fjall 2>/dev/null || true
-   # Restore config and workspace data if the upgrade modified them.
-   cp -a "$BACKUP/config/." instance/config/ 2>/dev/null || true
-   cp -a "$BACKUP/workspace/." instance/ 2>/dev/null || true
+   aletheia backup restore "$BACKUP"
    ```
 4. Start the service:
    ```bash

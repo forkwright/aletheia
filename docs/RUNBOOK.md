@@ -377,30 +377,23 @@ aletheia backup --list --json    # machine-readable
 
 ## Restore from backup
 
-Restoring requires a complete instance backup set. Always stop the service,
-verify the set, move live stores aside, then copy the required and present
-runtime stores back.
+Restoring requires a complete instance backup set. Always stop the service and
+verify the set first. The restore command reads the manifest, stages every
+selected entry, verifies the staged copy, swaps entries into place, and rolls
+back automatically if publish fails.
 
 ```bash
 systemctl --user stop aletheia
 BACKUP=instance/data/backups/instance/<timestamp>
 aletheia backup verify "$BACKUP"
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-mv instance/data/knowledge.fjall "instance/data/knowledge.fjall.pre-restore.$STAMP"
-mv instance/data/sessions.db     "instance/data/sessions.db.pre-restore.$STAMP"
-mv instance/data/auth.fjall      "instance/data/auth.fjall.pre-restore.$STAMP" 2>/dev/null || true
-mv instance/data/daemon-task-state "instance/data/daemon-task-state.pre-restore.$STAMP" 2>/dev/null || true
-mv instance/data/cron-locks.fjall "instance/data/cron-locks.fjall.pre-restore.$STAMP" 2>/dev/null || true
-cp -a "$BACKUP/stores/knowledge.fjall" instance/data/knowledge.fjall
-cp -a "$BACKUP/stores/sessions.db"     instance/data/sessions.db
-cp -a "$BACKUP/stores/auth.fjall"      instance/data/auth.fjall 2>/dev/null || true
-cp -a "$BACKUP/stores/daemon-task-state" instance/data/daemon-task-state 2>/dev/null || true
-cp -a "$BACKUP/stores/cron-locks.fjall" instance/data/cron-locks.fjall 2>/dev/null || true
-cp -a "$BACKUP/config/." instance/config/ 2>/dev/null || true
-cp -a "$BACKUP/workspace/." instance/ 2>/dev/null || true
+aletheia backup restore "$BACKUP"
 systemctl --user start aletheia
 aletheia health
 ```
+
+Use `--include <selector>` or `--exclude <selector>` for intentional partial
+restore. Selectors match manifest names such as `sessions.db`, backup paths such
+as `stores/sessions.db`, or target paths such as `data/archive`.
 
 ## Prune old backups
 
