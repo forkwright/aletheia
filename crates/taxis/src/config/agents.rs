@@ -208,9 +208,9 @@ pub struct RecallSettings {
     pub reranker_url: Option<String>,
     /// Filesystem path to a local ONNX cross-encoder model for in-process reranking.
     ///
-    /// When set alongside `reranker_url`, the URL takes precedence.  This path
-    /// is only consulted when `reranker_url` is `None` and the
-    /// `local-reranker` feature is enabled.  Default: `None`.
+    /// Reserved for local reranker wiring. Current recall scoring preserves
+    /// this value in config, but only the HTTP reranker URL is active.
+    /// Default: `None`.
     #[serde(default)]
     pub reranker_model_path: Option<String>,
 }

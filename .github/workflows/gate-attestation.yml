@@ -93,6 +93,12 @@ jobs:
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: scripts/check-test-tier-features.py
 
+      - name: Check release feature policy
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: |
+          cargo metadata --format-version 1 --no-deps > metadata.json
+          scripts/release-feature-policy.py --metadata metadata.json validate
+
       - name: cargo fmt --check
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo fmt --all -- --check
