@@ -56,6 +56,20 @@ type LlmCallFuture<'a> = std::pin::Pin<
     Box<dyn std::future::Future<Output = hermeneus::error::Result<LlmCompletion>> + Send + 'a>,
 >;
 
+/// Resolve the routed model for a turn using the same approximation as execute.
+pub(crate) fn routed_model_for_turn(
+    ctx: &PipelineContext,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    tools: &ToolRegistry,
+) -> String {
+    let tool_count = config.tool_allowlist.as_ref().map_or_else(
+        || tools.definitions_for_policy(&config.tool_groups).len(),
+        Vec::len,
+    );
+    resolve_turn_model(ctx, config, providers, tool_count)
+}
+
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
 /// This is the core agent loop. It:
@@ -118,11 +132,7 @@ pub(crate) async fn execute_with_deadline(
     // when restricted, else the full registry size; the score only shifts a
     // tier when tool_count crosses small integer breakpoints, so approximation
     // here doesn't bend routing off the correct tier.
-    let tool_count = config.tool_allowlist.as_ref().map_or_else(
-        || tools.definitions_for_policy(&config.tool_groups).len(),
-        Vec::len,
-    );
-    let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
+    let turn_model = routed_model_for_turn(ctx, config, providers, tools);
     let mut model_used = turn_model.clone();
 
     let mut messages = build_messages(&ctx.messages);
@@ -708,11 +718,7 @@ pub(crate) async fn execute_streaming_with_deadline(
     // WHY: resolve the streaming turn model once — same reasoning as execute().
     // Must come before find_streaming_provider so the streaming provider is
     // looked up for the actual model the turn will use.
-    let tool_count = config.tool_allowlist.as_ref().map_or_else(
-        || tools.definitions_for_policy(&config.tool_groups).len(),
-        Vec::len,
-    );
-    let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
+    let turn_model = routed_model_for_turn(ctx, config, providers, tools);
     let mut model_used = turn_model.clone();
 
     let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {

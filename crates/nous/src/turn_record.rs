@@ -16,6 +16,7 @@ use snafu::ResultExt;
 
 use mneme::store::SessionStore;
 
+use crate::degraded_mode::DegradedProvenance;
 use crate::error;
 
 /// Lifecycle statuses for a turn attempt.
@@ -45,6 +46,14 @@ pub enum TurnAttemptStatus {
     FinalizePending,
 }
 
+impl TurnAttemptStatus {
+    /// Whether this status ends the finalize lifecycle for idempotency.
+    #[must_use]
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Degraded)
+    }
+}
+
 /// Durable record of a turn-attempt state transition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnAttemptRecord {
@@ -70,6 +79,12 @@ pub struct TurnAttemptRecord {
     /// Provider/model context, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Degraded-mode provider failure provenance, when this was a synthetic response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_provenance: Option<DegradedProvenance>,
+    /// Whether the user message for this turn was persisted with the terminal record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_content_saved: Option<bool>,
     /// Number of messages already persisted when status is `FinalizePending`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages_persisted: Option<usize>,
@@ -93,6 +108,8 @@ impl TurnAttemptRecord {
             error_code: None,
             error_message: None,
             model: None,
+            degraded_provenance: None,
+            user_content_saved: None,
             messages_persisted: None,
             expected_messages: None,
             created_at: jiff::Timestamp::now().to_string(),
@@ -163,14 +180,14 @@ pub fn latest_turn_attempt_record(
     Ok(records.pop())
 }
 
-/// Return true if the latest record for this turn is `Completed`.
-pub fn is_turn_completed(
+/// Return true if the latest record for this turn is terminal.
+pub fn is_turn_terminal(
     store: &SessionStore,
     session_id: &str,
     turn_id: &Ulid,
 ) -> error::Result<bool> {
     Ok(latest_turn_attempt_record(store, session_id, turn_id)?
-        .is_some_and(|r| r.status == TurnAttemptStatus::Completed))
+        .is_some_and(|r| r.status.is_terminal()))
 }
 
 #[cfg(test)]
@@ -219,9 +236,9 @@ mod tests {
     }
 
     #[test]
-    fn is_turn_completed_detects_completed_status() {
+    fn is_turn_terminal_detects_completed_status() {
         let (store, session) = make_store_and_session();
-        assert!(!is_turn_completed(&store, &session.id, &session.turn_id).expect("check"));
+        assert!(!is_turn_terminal(&store, &session.id, &session.turn_id).expect("check"));
 
         let record = TurnAttemptRecord::new(
             &session.turn_id,
@@ -231,6 +248,22 @@ mod tests {
         );
         persist_turn_attempt(&store, "test-nous", &record).expect("persist");
 
-        assert!(is_turn_completed(&store, &session.id, &session.turn_id).expect("check"));
+        assert!(is_turn_terminal(&store, &session.id, &session.turn_id).expect("check"));
+    }
+
+    #[test]
+    fn is_turn_terminal_detects_degraded_status() {
+        let (store, session) = make_store_and_session();
+        assert!(!is_turn_terminal(&store, &session.id, &session.turn_id).expect("check"));
+
+        let record = TurnAttemptRecord::new(
+            &session.turn_id,
+            &session.id,
+            "test-nous",
+            TurnAttemptStatus::Degraded,
+        );
+        persist_turn_attempt(&store, "test-nous", &record).expect("persist");
+
+        assert!(is_turn_terminal(&store, &session.id, &session.turn_id).expect("check"));
     }
 }

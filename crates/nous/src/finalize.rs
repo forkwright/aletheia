@@ -234,6 +234,18 @@ fn usage_record(session: &SessionState, result: &TurnResult, turn_seq: i64) -> U
     }
 }
 
+fn terminal_status_for_result(result: &TurnResult) -> TurnAttemptStatus {
+    match result.degraded {
+        Some(
+            crate::pipeline::DegradedMode::DistillationCache { .. }
+            | crate::pipeline::DegradedMode::Unavailable { .. },
+        ) => TurnAttemptStatus::Degraded,
+        Some(crate::pipeline::DegradedMode::TurnBudgetExceeded { .. }) | None => {
+            TurnAttemptStatus::Completed
+        }
+    }
+}
+
 fn turn_attempt_record(
     session: &SessionState,
     result: &TurnResult,
@@ -244,8 +256,18 @@ fn turn_attempt_record(
     let mut record =
         TurnAttemptRecord::new(&session.turn_id, &session.id, &session.nous_id, status);
     record.model = Some(result.model_used.clone());
+    record.degraded_provenance = result
+        .degraded
+        .as_ref()
+        .and_then(crate::pipeline::DegradedMode::provenance)
+        .cloned();
     record.expected_messages = Some(expected_messages);
     record.messages_persisted = messages_persisted;
+    if status == TurnAttemptStatus::FinalizePending {
+        record.user_content_saved = Some(false);
+    } else if status.is_terminal() {
+        record.user_content_saved = Some(messages_persisted.is_some_and(|count| count > 0));
+    }
     record
 }
 
@@ -277,10 +299,11 @@ pub(crate) fn finalize(
     let usage_exists = store
         .usage_exists_for_turn(&session.id, turn_seq)
         .context(error::StoreSnafu)?;
-    let completed_exists =
-        crate::turn_record::is_turn_completed(store, &session.id, &session.turn_id)?;
-    if usage_exists || completed_exists {
-        if usage_exists && !completed_exists {
+    let terminal_status = terminal_status_for_result(result);
+    let terminal_exists =
+        crate::turn_record::is_turn_terminal(store, &session.id, &session.turn_id)?;
+    if usage_exists || terminal_exists {
+        if usage_exists && !terminal_exists {
             let expected_messages = if config.persist_messages {
                 2 + result.tool_calls.len().saturating_mul(2)
             } else {
@@ -289,7 +312,7 @@ pub(crate) fn finalize(
             let completed = turn_attempt_record(
                 session,
                 result,
-                TurnAttemptStatus::Completed,
+                terminal_status,
                 expected_messages,
                 Some(expected_messages),
             );
@@ -347,7 +370,7 @@ pub(crate) fn finalize(
     let completed = turn_attempt_record(
         session,
         result,
-        TurnAttemptStatus::Completed,
+        terminal_status,
         expected_messages,
         Some(expected_messages),
     );
@@ -420,6 +443,9 @@ mod tests {
 
     use super::*;
     use crate::config::NousConfig;
+    use crate::degraded_mode::{
+        DegradationSource, DegradedAttemptContext, build_degraded_response_with_provenance,
+    };
     use crate::pipeline::{ToolCall, TurnUsage};
 
     fn make_store_and_session() -> (SessionStore, SessionState) {
@@ -455,6 +481,33 @@ mod tests {
             model_used: "test-model".to_owned(),
             tool_surface_hashes: Vec::new(),
         }
+    }
+
+    fn llm_rate_limit_error() -> error::Error {
+        use hermeneus::error::RateLimitedSnafu;
+        use snafu::IntoError as _;
+
+        let hermeneus_err = RateLimitedSnafu {
+            retry_after_ms: 5000u64,
+        }
+        .build();
+        error::LlmSnafu.into_error(hermeneus_err)
+    }
+
+    fn degraded_result(recent_distillation: Option<&str>, source_id: Option<&str>) -> TurnResult {
+        let err = llm_rate_limit_error();
+        build_degraded_response_with_provenance(
+            "test-nous",
+            "ses-1",
+            &err,
+            recent_distillation,
+            DegradedAttemptContext {
+                attempted_provider: Some("anthropic".to_owned()),
+                configured_model: "configured-model".to_owned(),
+                routed_model: "routed-model".to_owned(),
+                source_id: source_id.map(str::to_owned),
+            },
+        )
     }
 
     fn result_with_tools() -> TurnResult {
@@ -747,6 +800,94 @@ mod tests {
     }
 
     #[test]
+    fn finalize_persists_degraded_cache_terminal_provenance() {
+        let (store, session) = make_store_and_session();
+        let result = degraded_result(
+            Some("User prefers concise answers."),
+            Some("message:ses-1:7"),
+        );
+        let config = FinalizeConfig::default();
+
+        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        assert_eq!(fr.messages_persisted, 2);
+        assert!(fr.usage_recorded);
+
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].role, Role::User);
+        assert!(history[1].content.contains("User prefers concise answers."));
+
+        let usage = store.get_usage_for_session("ses-1").expect("usage");
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].model.as_deref(), Some("routed-model"));
+        assert_eq!(usage[0].input_tokens, 0);
+        assert_eq!(usage[0].output_tokens, 0);
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].status, TurnAttemptStatus::FinalizePending);
+        assert_eq!(records[0].user_content_saved, Some(false));
+        assert_eq!(records[1].status, TurnAttemptStatus::Degraded);
+        assert_eq!(records[1].model.as_deref(), Some("routed-model"));
+        assert_eq!(records[1].user_content_saved, Some(true));
+        let provenance = records[1]
+            .degraded_provenance
+            .as_ref()
+            .expect("degraded provenance");
+        assert_eq!(provenance.attempted_provider.as_deref(), Some("anthropic"));
+        assert_eq!(provenance.attempted_model, "routed-model");
+        assert_eq!(provenance.configured_model, "configured-model");
+        assert_eq!(provenance.routed_model, "routed-model");
+        assert_eq!(
+            provenance.degradation_source,
+            DegradationSource::DistillationCache
+        );
+        assert_eq!(provenance.source_id.as_deref(), Some("message:ses-1:7"));
+        assert_eq!(provenance.original_error_class, "transient");
+        assert!(provenance.synthetic_response);
+        assert!(!provenance.provider_usage_recorded);
+
+        store
+            .cleanup_usage_records("ses-1", 0)
+            .expect("remove usage");
+        let duplicate =
+            finalize(&store, &session, "Hi again", &result, &config).expect("duplicate finalize");
+        assert_eq!(duplicate.messages_persisted, 0);
+        assert!(!duplicate.usage_recorded);
+        let history_after_duplicate = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history_after_duplicate.len(), 2);
+    }
+
+    #[test]
+    fn finalize_persists_degraded_without_cache_terminal_provenance() {
+        let (store, session) = make_store_and_session();
+        let result = degraded_result(None, None);
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].status, TurnAttemptStatus::Degraded);
+        assert_eq!(records[1].user_content_saved, Some(true));
+        let provenance = records[1]
+            .degraded_provenance
+            .as_ref()
+            .expect("degraded provenance");
+        assert_eq!(
+            provenance.degradation_source,
+            DegradationSource::Unavailable
+        );
+        assert!(provenance.source_id.is_none());
+        assert_eq!(provenance.attempted_model, "routed-model");
+        assert!(!provenance.provider_usage_recorded);
+    }
+
+    #[test]
     fn finalize_dedup_guard_skips_duplicate() {
         let (store, session) = make_store_and_session();
         let result = simple_result();
@@ -950,8 +1091,8 @@ mod tests {
             .expect("history after duplicate");
         assert_eq!(history.len(), 2, "duplicate retry must not append");
         assert!(
-            crate::turn_record::is_turn_completed(&store, &session.id, &session.turn_id)
-                .expect("completed marker")
+            crate::turn_record::is_turn_terminal(&store, &session.id, &session.turn_id)
+                .expect("terminal marker")
         );
     }
 }
