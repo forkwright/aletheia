@@ -6,7 +6,9 @@ use tracing::warn;
 use mneme::workspace::ProjectId;
 use nous::config::{HookConfig, NousConfig, NousLimits, PipelineConfig};
 use organon::types::{ToolGroupId, ToolGroupPolicy};
-use taxis::config::{AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, resolve_nous};
+use taxis::config::{
+    AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, ResolvedNousConfig, resolve_nous,
+};
 use taxis::oikos::Oikos;
 
 fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
@@ -122,16 +124,27 @@ fn build_complexity_config(
     }
 }
 
-pub(super) fn build_nous_runtime_config(
-    config: &AletheiaConfig,
-    oikos: &Oikos,
+struct PackRuntimeOverlay {
+    domains: Vec<String>,
+    model: String,
+    provider: Option<String>,
+    max_tool_iterations: u32,
+}
+
+fn apply_pack_overlays(
+    resolved: &ResolvedNousConfig,
     packs: &[thesauros::loader::LoadedPack],
     agent_id: &str,
-) -> (NousConfig, PipelineConfig) {
-    let resolved = resolve_nous(config, agent_id);
+) -> PackRuntimeOverlay {
     let mut domains = resolved.domains.clone();
     let mut model = resolved.model.primary.to_string();
+    let mut provider = resolved
+        .model
+        .primary_provider
+        .as_deref()
+        .map(ToString::to_string);
     let mut max_tool_iterations = resolved.capabilities.max_tool_iterations;
+
     for pack in packs {
         for domain in pack.domains_for_agent(agent_id) {
             if !domains.contains(&domain) {
@@ -140,6 +153,7 @@ pub(super) fn build_nous_runtime_config(
         }
         if let Some(pack_model) = pack.model_for_agent(agent_id) {
             model = pack_model;
+            provider = None;
         }
         if let Some(agency) = pack.agency_for_agent(agent_id) {
             max_tool_iterations = match agency.as_str() {
@@ -159,20 +173,44 @@ pub(super) fn build_nous_runtime_config(
         }
     }
 
+    PackRuntimeOverlay {
+        domains,
+        model,
+        provider,
+        max_tool_iterations,
+    }
+}
+
+pub(super) fn build_nous_runtime_config(
+    config: &AletheiaConfig,
+    oikos: &Oikos,
+    packs: &[thesauros::loader::LoadedPack],
+    agent_id: &str,
+) -> (NousConfig, PipelineConfig) {
+    let resolved = resolve_nous(config, agent_id);
+    let overlay = apply_pack_overlays(&resolved, packs, agent_id);
+
     let workspace = resolve_config_path(oikos, &resolved.workspace);
     let project_id = detect_project_id(&workspace);
     let behavior = resolved.behavior.clone();
-    let complexity = build_complexity_config(config, &model);
+    let complexity = build_complexity_config(config, &overlay.model);
     let mut nous_config = NousConfig {
         id: resolved.id,
         name: resolved.name,
         generation: nous::config::NousGenerationConfig {
-            model,
+            model: overlay.model,
+            provider: overlay.provider,
             fallback_models: resolved
                 .model
                 .fallbacks
                 .iter()
                 .map(ToString::to_string)
+                .collect(),
+            fallback_providers: resolved
+                .model
+                .fallback_providers
+                .iter()
+                .map(|provider| provider.as_deref().map(ToString::to_string))
                 .collect(),
             retries_before_fallback: resolved.model.retries_before_fallback,
             context_window: resolved.limits.context_tokens,
@@ -187,12 +225,12 @@ pub(super) fn build_nous_runtime_config(
             distillation_model: None,
         },
         limits: build_nous_limits(
-            max_tool_iterations,
+            overlay.max_tool_iterations,
             resolved.limits.max_tool_result_bytes,
             &behavior,
             config,
         ),
-        domains,
+        domains: overlay.domains,
         private: resolved.private,
         episteme_cohort: resolved.episteme_cohort,
         workspace,
@@ -308,7 +346,8 @@ mod tests {
     #[test]
     fn provider_behavior_maps_to_runtime_complexity_config() {
         let mut config = AletheiaConfig::default();
-        config.agents.defaults.model_defaults.model.primary = "balanced-tier".to_owned();
+        config.agents.defaults.model_defaults.model.primary =
+            taxis::config::ModelRoute::new("balanced-tier");
         config.provider_behavior.complexity_routing_enabled = true;
         config.provider_behavior.complexity_low_threshold = 41;
         config.provider_behavior.complexity_high_threshold = 82;

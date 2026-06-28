@@ -411,6 +411,7 @@ fn turn_complete_event_payload_includes_cache_tokens() {
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     };
 
@@ -450,6 +451,7 @@ async fn emit_turn_result_events_buffered_includes_cache_tokens() {
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     };
 

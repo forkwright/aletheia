@@ -84,6 +84,7 @@ fn turn_result_with_tool_calls() {
         stop_reason: "end_turn".to_owned(),
         degraded: None,
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     };
 

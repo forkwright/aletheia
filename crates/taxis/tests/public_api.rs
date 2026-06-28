@@ -15,7 +15,7 @@
 
 use koina::secret::SecretString;
 use taxis::config::{
-    AgencyLevel, AletheiaConfig, ChannelBinding, EgressPolicy, ModelPricing, ModelSpec,
+    AgencyLevel, AletheiaConfig, ChannelBinding, EgressPolicy, ModelPricing, ModelRoute, ModelSpec,
     NousDefinition, SandboxEnforcementMode, SignalAccountConfig, resolve_nous,
 };
 use taxis::redact::redact;
@@ -84,8 +84,8 @@ fn resolve_nous_agent_model_override_replaces_defaults() {
         id: "syn".to_owned(),
         name: Some("Synthetic".to_owned()),
         model: Some(ModelSpec {
-            primary: "claude-opus-4-6".to_owned(),
-            fallbacks: vec!["claude-sonnet-4-6".to_owned()],
+            primary: ModelRoute::new("claude-opus-4-6"),
+            fallbacks: vec![ModelRoute::new("claude-sonnet-4-6")],
             retries_before_fallback: 1,
         }),
         workspace: "/tmp/syn".to_owned(),

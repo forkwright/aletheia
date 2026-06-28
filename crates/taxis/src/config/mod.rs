@@ -10,7 +10,8 @@ mod tools;
 
 pub use agents::{
     AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentToolGroupPolicy, AgentsConfig,
-    CachingConfig, ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
+    CachingConfig, ModelRoute, ModelSpec, NousDefinition, RecallProfile, RecallSettings,
+    RecallWeights,
 };
 pub use behavior::{
     AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig,

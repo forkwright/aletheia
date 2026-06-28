@@ -55,6 +55,9 @@ pub(crate) enum SseEvent {
     MessageComplete {
         stop_reason: String,
         usage: UsageData,
+        /// Provider instance that served the turn, when known.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
         /// Per-request correlation ID for distributed tracing across the pipeline.
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
@@ -214,6 +217,8 @@ pub(crate) struct TurnOutcome {
     pub nous_id: String,
     pub session_id: String,
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     pub tool_calls: usize,
     pub input_tokens: u64,
     pub output_tokens: u64,

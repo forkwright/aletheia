@@ -513,6 +513,7 @@ fn sse_event_message_complete_serializes_correctly() {
             cache_read_tokens: 50,
             cache_write_tokens: 25,
         },
+        provider: None,
         request_id: Some("req-456".to_owned()),
     };
     let result = sse_event_to_axum_with_id((3, event)).expect("infallible");
@@ -534,6 +535,7 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     };
 

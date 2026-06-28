@@ -35,8 +35,11 @@ Each provider declares `name`, `providerType`, optional `baseUrl`, optional
 `apiKeyEnv`, subprocess-only `binary`/`workdir`/`timeoutSecs`,
 `deploymentTarget`, and the `models` it can serve.
 When this list is non-empty, it is the complete provider ordering surface:
-providers are registered in list order, and an `anthropic` entry without
-`apiKeyEnv` uses the top-level credential chain at that declared position.
+providers are registered in list order. String model routes use that order as
+the equal-specificity tie breaker, while object routes such as
+`primary = { model = "claude-sonnet-4-6", provider = "local-proxy" }` target a
+specific provider instance. An `anthropic` entry without `apiKeyEnv` uses the
+top-level credential chain at that declared position.
 
 Credential discovery is configured by `[credential]`. The documented strategies
 are `auto`, `api-key`, and `claude-code`; the Anthropic provider also reads

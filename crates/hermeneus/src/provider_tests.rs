@@ -306,7 +306,9 @@ fn health_aware_selection_returns_none_when_all_unavailable() {
             assert_eq!(name, "alpha");
             assert!(matches!(health, ProviderHealth::Down { .. }));
         }
-        other @ ProviderResolutionError::NoProvider { .. } => {
+        other @ (ProviderResolutionError::NoProvider { .. }
+        | ProviderResolutionError::ProviderNotFound { .. }
+        | ProviderResolutionError::ProviderDoesNotSupportModel { .. }) => {
             panic!("expected ProviderUnavailable, got {other}")
         }
     }
@@ -325,6 +327,34 @@ fn explicit_provider_route_selects_named_provider() {
         .resolve_provider("some-model", ProviderRoute::Explicit("named-provider"))
         .expect("explicit route to a healthy provider must succeed");
     assert_eq!(selected.name(), "named-provider");
+}
+
+#[test]
+fn explicit_provider_route_requires_named_provider_to_claim_model() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("named")
+            .named("named-provider")
+            .models(&["other-model"]),
+    ));
+    registry.register(Box::new(
+        MockProvider::new("fallback")
+            .named("fallback-provider")
+            .models(&["some-model"]),
+    ));
+
+    let err = registry
+        .resolve_provider("some-model", ProviderRoute::Explicit("named-provider"))
+        .err()
+        .expect("explicit route must not use provider that does not claim model");
+
+    match err {
+        ProviderResolutionError::ProviderDoesNotSupportModel { name, model } => {
+            assert_eq!(name, "named-provider");
+            assert_eq!(model, "some-model");
+        }
+        other => panic!("expected ProviderDoesNotSupportModel, got {other}"),
+    }
 }
 
 #[test]
@@ -358,7 +388,9 @@ fn explicit_provider_route_reports_health_failure_directly() {
             assert_eq!(name, "named-provider");
             assert!(matches!(health, ProviderHealth::Down { .. }));
         }
-        other @ ProviderResolutionError::NoProvider { .. } => {
+        other @ (ProviderResolutionError::NoProvider { .. }
+        | ProviderResolutionError::ProviderNotFound { .. }
+        | ProviderResolutionError::ProviderDoesNotSupportModel { .. }) => {
             panic!("expected ProviderUnavailable, got {other}")
         }
     }

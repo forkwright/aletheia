@@ -62,8 +62,8 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model.primary` | string | `"claude-sonnet-4-6"` | Primary model ID |
-| `model.fallbacks` | string[] | `[]` | Fallback model IDs, tried in order |
+| `model.primary` | string or object | `"claude-sonnet-4-6"` | Primary model route. String form is a model ID; object form is `{ model, provider }` to pin a named provider. |
+| `model.fallbacks` | array of strings or objects | `[]` | Fallback model routes, tried in order. String entries use model-only routing; object entries can pin a named provider. |
 | `contextTokens` | u32 | `200000` | Context window budget (tokens) |
 | `maxOutputTokens` | u32 | `16384` | Max tokens per response |
 | `bootstrapMaxTokens` | u32 | `40000` | Max tokens for bootstrap context injection |
@@ -123,6 +123,18 @@ domains = ["research", "analysis"]
 [agents.list.model]
 primary = "claude-opus-4-6"
 fallbacks = ["claude-sonnet-4-6"]
+```
+
+Model routes also accept an object form when a specific provider instance should
+serve the request:
+
+```toml
+[agents.list.model]
+primary = { model = "claude-sonnet-4-6", provider = "local-proxy" }
+fallbacks = [
+  { model = "claude-sonnet-4-6", provider = "anthropic-cloud" },
+  "claude-haiku-4-6",
+]
 ```
 
 `toolGroups` is fail-closed. If the field is absent, set to `"deny"`, or set
@@ -427,7 +439,7 @@ claude_code_credentials = "~/.claude/.credentials.json"
 
 ## providers
 
-`[[providers]]` entries declare available LLM providers declaratively. When the list is non-empty, it is the complete provider-ordering contract: the runtime registers entries in list order, and model routing picks the first provider that advertises the requested model at the highest match specificity. When the list is empty, startup preserves the legacy single-Anthropic fallback from the top-level credential chain. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and planned in `crates/aletheia/src/runtime/setup.rs`.
+`[[providers]]` entries declare available LLM providers declaratively. When the list is non-empty, it is the complete provider-ordering contract: the runtime registers entries in list order, and model-only routing picks the first provider that advertises the requested model at the highest match specificity. A model route with `provider = "<name>"` targets that exact provider instance and fails if the provider is missing or does not advertise the requested model. When no provider is pinned, equal-specificity duplicate model claims fall back to the list order. When the list is empty, startup preserves the legacy single-Anthropic fallback from the top-level credential chain. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and planned in `crates/aletheia/src/runtime/setup.rs`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -440,7 +452,7 @@ claude_code_credentials = "~/.claude/.credentials.json"
 | `workdir` | string | no | Subprocess working directory. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
 | `timeoutSecs` | integer | no | Subprocess wall-clock timeout, 5-3600 seconds. Only valid for `claude-code` and `codex-oauth`; defaults to 300 seconds. |
 | `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
-| `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity matches use list order. |
+| `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity model-only matches use list order. Provider-pinned routes require the named provider to advertise the model. |
 
 ```toml
 [[providers]]

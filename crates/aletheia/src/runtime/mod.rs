@@ -734,6 +734,7 @@ impl RuntimeBuilder {
                             .model_defaults
                             .model
                             .primary
+                            .model
                             .clone(),
                     ));
                 let km_executor = Arc::new(

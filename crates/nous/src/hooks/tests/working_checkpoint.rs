@@ -27,6 +27,7 @@ fn test_turn_result() -> TurnResult {
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     }
 }

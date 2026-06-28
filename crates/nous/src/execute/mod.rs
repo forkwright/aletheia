@@ -18,7 +18,6 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
-use hermeneus::fallback::FallbackConfig;
 use hermeneus::provider::{DeploymentTarget, ProviderRegistry};
 use hermeneus::types::{
     CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
@@ -34,10 +33,10 @@ use self::dispatch::{
 };
 use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
-    resolve_turn_model,
+    resolve_turn_model, resolve_turn_route,
 };
 use crate::approval::ApprovalGate;
-use crate::config::NousConfig;
+use crate::config::{ModelProviderRoute, NousConfig};
 use crate::error;
 use crate::hooks::registry::HookRegistry;
 use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResultRecord};
@@ -51,7 +50,12 @@ const STOP_REASON_MAX_TOOL_ITERATIONS: &str = "max_tool_iterations";
 const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
 const STOP_REASON_TURN_TIMEOUT: &str = "turn_timeout";
 
-type LlmCompletion = (CompletionResponse, String);
+struct LlmCompletion {
+    response: CompletionResponse,
+    model: String,
+    provider: String,
+}
+
 type LlmCallFuture<'a> = std::pin::Pin<
     Box<dyn std::future::Future<Output = hermeneus::error::Result<LlmCompletion>> + Send + 'a>,
 >;
@@ -68,6 +72,44 @@ pub(crate) fn routed_model_for_turn(
         Vec::len,
     );
     resolve_turn_model(ctx, config, providers, tool_count)
+}
+
+fn fallback_config(config: &NousConfig) -> Option<model_fallback::RegistryFallbackConfig> {
+    if config.generation.fallback_models.is_empty() {
+        return None;
+    }
+
+    let fallback_routes = config
+        .generation
+        .fallback_models
+        .iter()
+        .enumerate()
+        .map(|(index, model)| ModelProviderRoute {
+            model: model.clone(),
+            provider: config
+                .generation
+                .fallback_providers
+                .get(index)
+                .and_then(Clone::clone),
+        })
+        .collect();
+
+    Some(model_fallback::RegistryFallbackConfig {
+        fallback_routes,
+        retries_before_fallback: config.generation.retries_before_fallback,
+    })
+}
+
+fn provider_deployment_target(providers: &ProviderRegistry, provider_name: &str) -> String {
+    providers
+        .providers()
+        .into_iter()
+        .find(|provider| provider.name() == provider_name)
+        .map_or(DeploymentTarget::Cloud, |provider| {
+            provider.deployment_target()
+        })
+        .as_str()
+        .to_owned()
 }
 
 /// Execute stage: calls the LLM and iterates on tool use.
@@ -132,8 +174,13 @@ pub(crate) async fn execute_with_deadline(
     // when restricted, else the full registry size; the score only shifts a
     // tier when tool_count crosses small integer breakpoints, so approximation
     // here doesn't bend routing off the correct tier.
-    let turn_model = routed_model_for_turn(ctx, config, providers, tools);
-    let mut model_used = turn_model.clone();
+    let tool_count = config.tool_allowlist.as_ref().map_or_else(
+        || tools.definitions_for_policy(&config.tool_groups).len(),
+        Vec::len,
+    );
+    let turn_route = resolve_turn_route(ctx, config, providers, tool_count);
+    let mut model_used = turn_route.model.clone();
+    let mut provider_used = None;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -162,10 +209,7 @@ pub(crate) async fn execute_with_deadline(
             enabled: true,
             budget_tokens: config.generation.thinking_budget,
         });
-    let fallback_config = (!config.generation.fallback_models.is_empty()).then(|| FallbackConfig {
-        fallback_models: config.generation.fallback_models.clone(),
-        retries_before_fallback: config.generation.retries_before_fallback,
-    });
+    let fallback_config = fallback_config(config);
 
     // WHY: hoist the config server_tools Vec into an Arc once per turn so the
     // per-iteration backward-compat clone becomes a pointer bump (#3389).
@@ -228,7 +272,7 @@ pub(crate) async fn execute_with_deadline(
         // has refcount > 1 and the underlying Vec is shared across turns, so
         // only this leaf clone pays. Still cheaper than rebuilding every turn.
         let request = CompletionRequest {
-            model: turn_model.clone(),
+            model: turn_route.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
@@ -257,22 +301,33 @@ pub(crate) async fn execute_with_deadline(
             // (provider.complete → Pin<Box<dyn Future>>) is taken.
             let llm_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
                 let request_ref = &request;
+                let route_ref = &turn_route;
                 Box::pin(async move {
                     let completion = model_fallback::complete_with_registry_fallback(
                         providers,
                         request_ref,
+                        route_ref,
                         fallback_config,
                     )
                     .await?;
-                    Ok((completion.response, completion.model))
+                    Ok(LlmCompletion {
+                        response: completion.response,
+                        model: completion.model,
+                        provider: completion.provider,
+                    })
                 })
             } else {
-                let provider = resolve_provider_checked(providers, &turn_model)?;
-                let requested_model = turn_model.clone();
+                let provider = resolve_provider_checked(providers, &turn_route)?;
+                let requested_model = turn_route.model.clone();
+                let provider_name = provider.name().to_owned();
                 let request_ref = &request;
                 Box::pin(async move {
                     let response = provider.complete(request_ref).await?;
-                    Ok((response, requested_model))
+                    Ok(LlmCompletion {
+                        response,
+                        model: requested_model,
+                        provider: provider_name,
+                    })
                 })
             };
             if let Some(deadline) = deadline {
@@ -295,17 +350,17 @@ pub(crate) async fn execute_with_deadline(
         };
 
         let response = match completion {
-            Ok((resp, observed)) => {
+            Ok(completion) => {
                 if fallback_config.is_none() {
-                    let provider = resolve_provider_checked(providers, &turn_model)?;
-                    providers.record_success(provider.name());
+                    providers.record_success(&completion.provider);
                 }
-                model_used = observed;
-                resp
+                model_used = completion.model;
+                provider_used = Some(completion.provider);
+                completion.response
             }
             Err(e) => {
                 if fallback_config.is_none()
-                    && let Ok(provider) = resolve_provider_checked(providers, &turn_model)
+                    && let Ok(provider) = resolve_provider_checked(providers, &turn_route)
                 {
                     providers.record_error(provider.name(), &e);
                 }
@@ -317,27 +372,18 @@ pub(crate) async fn execute_with_deadline(
         // using the actual model/provider/route and effective tool surface for
         // this iteration, not the top-level config defaults.
         if let Some(log) = audit_log {
-            let (provider_name, deployment_target) =
-                providers.find_provider(&model_used).map_or_else(
-                    || {
-                        (
-                            "unknown".to_owned(),
-                            DeploymentTarget::Cloud.as_str().to_owned(),
-                        )
-                    },
-                    |provider| {
-                        (
-                            provider.name().to_owned(),
-                            provider.deployment_target().as_str().to_owned(),
-                        )
-                    },
-                );
+            let provider_name = provider_used
+                .as_deref()
+                .map_or_else(|| "unknown".to_owned(), ToOwned::to_owned);
+            let deployment_target = provider_deployment_target(providers, &provider_name);
+            let mut audit_request = request.clone();
+            audit_request.model.clone_from(&model_used);
             let record = crate::audit::build_audit_record_for_request(
                 crate::audit::PromptAuditRequestRecordInput {
                     ctx,
                     session,
                     model: &model_used,
-                    request: &request,
+                    request: &audit_request,
                     provider: &provider_name,
                     deployment_target: &deployment_target,
                     surface_hash: &surface_hash,
@@ -542,6 +588,7 @@ pub(crate) async fn execute_with_deadline(
             total_usage,
             reasoning_parts.join("\n"),
             model_used,
+            provider_used,
             tool_surface_hashes.into_iter().collect(),
         ));
     }
@@ -570,6 +617,7 @@ pub(crate) async fn execute_with_deadline(
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
         model_used,
+        provider_used,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }
@@ -586,6 +634,7 @@ fn build_turn_budget_exceeded_result(
     usage: TurnUsage,
     reasoning: String,
     model_used: String,
+    provider_used: Option<String>,
     tool_surface_hashes: Vec<String>,
 ) -> TurnResult {
     let banner =
@@ -602,6 +651,7 @@ fn build_turn_budget_exceeded_result(
         }),
         reasoning,
         model_used,
+        provider_used,
         tool_surface_hashes,
     }
 }
@@ -715,13 +765,19 @@ pub(crate) async fn execute_streaming_with_deadline(
     deadline: Option<Instant>,
     audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
-    // WHY: resolve the streaming turn model once — same reasoning as execute().
-    // Must come before find_streaming_provider so the streaming provider is
-    // looked up for the actual model the turn will use.
-    let turn_model = routed_model_for_turn(ctx, config, providers, tools);
-    let mut model_used = turn_model.clone();
+    // WHY: resolve the streaming turn route once — same reasoning as execute().
+    // Must come before checking streaming support so an explicit provider pin
+    // cannot be bypassed by another model-only streaming provider.
+    let tool_count = config.tool_allowlist.as_ref().map_or_else(
+        || tools.definitions_for_policy(&config.tool_groups).len(),
+        Vec::len,
+    );
+    let turn_route = resolve_turn_route(ctx, config, providers, tool_count);
+    let mut model_used = turn_route.model.clone();
+    let mut provider_used = None;
 
-    let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
+    let streaming_provider = resolve_provider_checked(providers, &turn_route)?;
+    if !streaming_provider.supports_streaming() {
         return execute_with_deadline(
             ctx,
             session,
@@ -736,9 +792,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             audit_log,
         )
         .await;
-    };
-
-    let provider = resolve_provider_checked(providers, &turn_model)?;
+    }
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -768,10 +822,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             enabled: true,
             budget_tokens: config.generation.thinking_budget,
         });
-    let fallback_config = (!config.generation.fallback_models.is_empty()).then(|| FallbackConfig {
-        fallback_models: config.generation.fallback_models.clone(),
-        retries_before_fallback: config.generation.retries_before_fallback,
-    });
+    let fallback_config = fallback_config(config);
 
     // WHY: hoist config server_tools Vec into Arc once per turn (#3389).
     let config_server_tools: Arc<Vec<ServerToolDefinition>> = Arc::new(config.server_tools.clone());
@@ -824,7 +875,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         let tool_defs = dispatch_policy.tool_definitions();
 
         let request = CompletionRequest {
-            model: turn_model.clone(),
+            model: turn_route.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
@@ -856,23 +907,34 @@ pub(crate) async fn execute_streaming_with_deadline(
         // one future type whether the configured fallback chain is active or not.
         let request_ref = &request;
         let streaming_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
+            let route_ref = &turn_route;
             Box::pin(async move {
                 let completion = model_fallback::complete_streaming_with_registry_fallback(
                     providers,
                     request_ref,
+                    route_ref,
                     fallback_config,
                     &mut on_event,
                 )
                 .await?;
-                Ok((completion.response, completion.model))
+                Ok(LlmCompletion {
+                    response: completion.response,
+                    model: completion.model,
+                    provider: completion.provider,
+                })
             })
         } else {
-            let requested_model = turn_model.clone();
+            let requested_model = turn_route.model.clone();
+            let provider_name = streaming_provider.name().to_owned();
             Box::pin(async move {
                 let response = streaming_provider
                     .complete_streaming(request_ref, &mut on_event)
                     .await?;
-                Ok((response, requested_model))
+                Ok(LlmCompletion {
+                    response,
+                    model: requested_model,
+                    provider: provider_name,
+                })
             })
         };
 
@@ -894,35 +956,27 @@ pub(crate) async fn execute_streaming_with_deadline(
             streaming_fut.await
         };
         let response = match completion {
-            Ok((resp, observed)) => {
+            Ok(completion) => {
                 if fallback_config.is_none() {
-                    providers.record_success(provider.name());
+                    providers.record_success(&completion.provider);
                 }
-                model_used = observed;
+                model_used = completion.model;
+                provider_used = Some(completion.provider);
 
                 // WHY(#4831): log the outbound streaming request with actual route/surface.
                 if let Some(log) = audit_log {
-                    let (provider_name, deployment_target) =
-                        providers.find_provider(&model_used).map_or_else(
-                            || {
-                                (
-                                    "unknown".to_owned(),
-                                    DeploymentTarget::Cloud.as_str().to_owned(),
-                                )
-                            },
-                            |provider| {
-                                (
-                                    provider.name().to_owned(),
-                                    provider.deployment_target().as_str().to_owned(),
-                                )
-                            },
-                        );
+                    let provider_name = provider_used
+                        .as_deref()
+                        .map_or_else(|| "unknown".to_owned(), ToOwned::to_owned);
+                    let deployment_target = provider_deployment_target(providers, &provider_name);
+                    let mut audit_request = request.clone();
+                    audit_request.model.clone_from(&model_used);
                     let record = crate::audit::build_audit_record_for_request(
                         crate::audit::PromptAuditRequestRecordInput {
                             ctx,
                             session,
                             model: &model_used,
-                            request: &request,
+                            request: &audit_request,
                             provider: &provider_name,
                             deployment_target: &deployment_target,
                             surface_hash: &surface_hash,
@@ -938,11 +992,11 @@ pub(crate) async fn execute_streaming_with_deadline(
                         tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
                     }
                 }
-                resp
+                completion.response
             }
             Err(e) => {
                 if fallback_config.is_none() {
-                    providers.record_error(provider.name(), &e);
+                    providers.record_error(streaming_provider.name(), &e);
                 }
                 return Err(e).context(error::LlmSnafu);
             }
@@ -1148,6 +1202,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             total_usage,
             reasoning_parts.join("\n"),
             model_used,
+            provider_used,
             tool_surface_hashes.into_iter().collect(),
         ));
     }
@@ -1176,6 +1231,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
         model_used,
+        provider_used,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }

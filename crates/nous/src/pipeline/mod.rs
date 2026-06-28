@@ -701,6 +701,10 @@ pub struct TurnResult {
     /// `after_action` can record the correct provider in the empirical store
     /// without re-running routing logic at finalize time.
     pub model_used: String,
+    /// Observed provider instance that served the turn.
+    ///
+    /// `None` for degraded turns that did not receive provider output.
+    pub provider_used: Option<String>,
     /// Opaque effective tool-surface hash refs observed during this turn.
     pub tool_surface_hashes: Vec<String>,
 }
@@ -1509,6 +1513,7 @@ pub(crate) async fn run_pipeline(
         emitter.emit(&events::TurnCompleted {
             nous_id: config.id.to_string(),
             model: result.model_used.clone(),
+            provider: result.provider_used.clone(),
             duration_ms,
             input_tokens: result.usage.input_tokens,
             output_tokens: result.usage.output_tokens,

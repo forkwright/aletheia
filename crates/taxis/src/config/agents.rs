@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use eidos::id::FactId;
 use eidos::knowledge::MemoryScope;
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
-use serde::ser::{SerializeSeq as _, Serializer};
+use serde::ser::{SerializeSeq as _, SerializeStruct as _, Serializer};
 use serde::{Deserialize, Serialize};
 
 use super::{AgencyLevel, BookkeepingProviderKind, CompactionStrategyKind};
@@ -338,15 +338,121 @@ impl Default for AgentDefaults {
     }
 }
 
+/// A model request route, optionally pinned to a named provider instance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelRoute {
+    /// Model identifier sent to the provider.
+    pub model: String,
+    /// Optional provider instance name from `[[providers]].name`.
+    pub provider: Option<String>,
+}
+
+impl ModelRoute {
+    /// Build a model-only route.
+    #[must_use]
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            provider: None,
+        }
+    }
+
+    /// Build a route pinned to a provider instance.
+    #[must_use]
+    pub fn with_provider(model: impl Into<String>, provider: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            provider: Some(provider.into()),
+        }
+    }
+
+    /// Model identifier as a string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.model
+    }
+}
+
+impl Default for ModelRoute {
+    fn default() -> Self {
+        Self::new(koina::defaults::DEFAULT_MODEL)
+    }
+}
+
+impl From<String> for ModelRoute {
+    fn from(model: String) -> Self {
+        Self::new(model)
+    }
+}
+
+impl From<&str> for ModelRoute {
+    fn from(model: &str) -> Self {
+        Self::new(model)
+    }
+}
+
+impl PartialEq<&str> for ModelRoute {
+    fn eq(&self, other: &&str) -> bool {
+        self.model == *other
+    }
+}
+
+impl Serialize for ModelRoute {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if let Some(provider) = &self.provider {
+            let mut state = serializer.serialize_struct("ModelRoute", 2)?;
+            state.serialize_field("model", &self.model)?;
+            state.serialize_field("provider", provider)?;
+            state.end()
+        } else {
+            serializer.serialize_str(&self.model)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelRoute {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        #[serde(deny_unknown_fields)]
+        struct ModelRouteFields {
+            model: String,
+            #[serde(default)]
+            provider: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum ModelRouteRepr {
+            Model(String),
+            Routed(ModelRouteFields),
+        }
+
+        match ModelRouteRepr::deserialize(deserializer)? {
+            ModelRouteRepr::Model(model) => Ok(Self::new(model)),
+            ModelRouteRepr::Routed(fields) => Ok(Self {
+                model: fields.model,
+                provider: fields.provider,
+            }),
+        }
+    }
+}
+
 /// Model specification with primary model and fallbacks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct ModelSpec {
     /// Primary model identifier (e.g. `claude-sonnet-4-6`).
-    pub primary: String,
+    pub primary: ModelRoute,
     /// Ordered fallback models tried when the primary is unavailable.
-    pub fallbacks: Vec<String>,
+    pub fallbacks: Vec<ModelRoute>,
     /// How many times to retry the primary model before trying the next fallback.
     pub retries_before_fallback: u32,
 }
@@ -354,7 +460,7 @@ pub struct ModelSpec {
 impl Default for ModelSpec {
     fn default() -> Self {
         Self {
-            primary: koina::defaults::DEFAULT_MODEL.to_owned(),
+            primary: ModelRoute::new(koina::defaults::DEFAULT_MODEL),
             fallbacks: Vec::new(),
             retries_before_fallback: 2,
         }
