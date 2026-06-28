@@ -1,6 +1,7 @@
 //! Search and filter bar for the session list.
 
 use dioxus::prelude::*;
+use skene::api::types::SessionLifecycle;
 
 use crate::state::sessions::{SessionListStore, StatusFilter};
 
@@ -237,20 +238,15 @@ fn FilterChip(label: String, on_remove: EventHandler<()>) -> Element {
 }
 
 fn status_filter_value(filter: StatusFilter) -> &'static str {
-    match filter {
-        StatusFilter::All => "all",
-        StatusFilter::Active => "active",
-        StatusFilter::Idle => "idle",
-        StatusFilter::Archived => "archived",
-    }
+    filter.query_value().unwrap_or("all")
 }
 
 fn parse_status_filter(value: &str) -> StatusFilter {
-    match value {
-        "active" => StatusFilter::Active,
-        "idle" => StatusFilter::Idle,
-        "archived" => StatusFilter::Archived,
-        _ => StatusFilter::All,
+    match SessionLifecycle::parse(value) {
+        Some(SessionLifecycle::Active) => StatusFilter::Active,
+        Some(SessionLifecycle::Archived) => StatusFilter::Archived,
+        Some(SessionLifecycle::Distilled) => StatusFilter::Distilled,
+        Some(_) | None => StatusFilter::All,
     }
 }
 
@@ -275,4 +271,23 @@ fn web_sys_clear_timeout(_id: i64) {
     // WHY: on desktop (tokio), we cannot cancel a spawned future by ID.
     // The debounce works because the search handler will use the latest
     // query value from the signal regardless of how many timers fire.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_filter_values_are_backend_lifecycle_values() {
+        assert_eq!(status_filter_value(StatusFilter::All), "all");
+        assert_eq!(status_filter_value(StatusFilter::Active), "active");
+        assert_eq!(status_filter_value(StatusFilter::Archived), "archived");
+        assert_eq!(status_filter_value(StatusFilter::Distilled), "distilled");
+    }
+
+    #[test]
+    fn parse_status_filter_rejects_unsupported_idle_value() {
+        assert_eq!(parse_status_filter("distilled"), StatusFilter::Distilled);
+        assert_eq!(parse_status_filter("idle"), StatusFilter::All);
+    }
 }

@@ -12,6 +12,21 @@ use tracing::Instrument;
 
 use super::helpers::*;
 
+#[test]
+fn skene_session_lifecycle_values_match_backend_session_statuses() {
+    let client_values: Vec<&str> = skene::api::types::SessionLifecycle::ALL
+        .iter()
+        .map(|status| status.as_str())
+        .collect();
+    let backend_values: Vec<&str> = mneme::types::SessionStatus::ALL
+        .iter()
+        .map(|status| status.as_str())
+        .collect();
+
+    assert_eq!(client_values, backend_values);
+    assert!(!client_values.contains(&"idle"));
+}
+
 #[tokio::test]
 async fn create_session_returns_201() {
     let (app, _dir) = app().await;

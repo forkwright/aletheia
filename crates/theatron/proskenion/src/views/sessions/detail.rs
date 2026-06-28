@@ -4,7 +4,8 @@ use dioxus::prelude::*;
 use skene::id::SessionId;
 
 use crate::state::sessions::{
-    SessionDetailStore, SessionLoadState, format_relative_time, session_display_status,
+    SessionDetailStore, SessionLoadState, format_relative_time, session_can_archive,
+    session_can_restore, session_display_status,
 };
 
 const DETAIL_CONTAINER_STYLE: &str = "\
@@ -231,12 +232,14 @@ pub(crate) fn SessionDetail(
                         let session_id = session.id.clone();
                         let status = session_display_status(session);
                         // NOTE: archived pairs with the thanatochromia dye token (archived semantics).
-                        let (status_bg, status_fg) = match status {
+                        let (status_bg, status_fg) = match status.as_str() {
                             "active" => ("var(--status-success-bg)", "var(--status-success)"),
                             "archived" => ("var(--thanatochromia-bg)", "var(--thanatochromia)"),
-                            _ => ("var(--status-warning-bg)", "var(--status-warning)"),
+                            "distilled" => ("var(--status-info-bg)", "var(--status-info)"),
+                            _ => ("var(--bg-surface)", "var(--text-secondary)"),
                         };
-                        let is_archived = session.is_archived();
+                        let can_archive = session_can_archive(session);
+                        let can_restore = session_can_restore(session);
 
                         let id_for_chat = session_id.clone();
                         let id_for_action = session_id.clone();
@@ -270,7 +273,7 @@ pub(crate) fn SessionDetail(
                                             onclick: move |_| on_open_chat.call(id_for_chat.clone()),
                                             "Open in Chat"
                                         }
-                                        if is_archived {
+                                        if can_restore {
                                             button {
                                                 style: "{ARCHIVE_BTN}",
                                                 onclick: {
@@ -279,7 +282,8 @@ pub(crate) fn SessionDetail(
                                                 },
                                                 "Restore"
                                             }
-                                        } else {
+                                        }
+                                        if can_archive {
                                             button {
                                                 style: "{ARCHIVE_BTN}",
                                                 onclick: {

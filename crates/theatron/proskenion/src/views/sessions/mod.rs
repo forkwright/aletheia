@@ -340,11 +340,9 @@ pub(crate) fn Sessions() -> Element {
                     path.push_str(&format!("&search={encoded}"));
                 }
 
-                match status {
-                    StatusFilter::Active => path.push_str("&status=active"),
-                    StatusFilter::Idle => path.push_str("&status=idle"),
-                    StatusFilter::Archived => path.push_str("&status=archived"),
-                    StatusFilter::All => {}
+                if let Some(status) = status.query_value() {
+                    path.push_str("&status=");
+                    path.push_str(status);
                 }
 
                 for agent in &agent_filter {
@@ -746,6 +744,7 @@ pub(crate) fn Sessions() -> Element {
                         },
                     }
                     BulkActionBar {
+                        list_store,
                         selection_store,
                         on_bulk_archive: move |ids: Vec<SessionId>| {
                             for id in ids {

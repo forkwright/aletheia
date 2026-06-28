@@ -282,7 +282,7 @@ impl ApiClient {
             push_param("search", search);
         }
         if let Some(status) = &params.status {
-            push_param("status", status);
+            push_param("status", status.as_str());
         }
         if let Some(limit) = params.limit {
             push_param("limit", &limit.to_string());

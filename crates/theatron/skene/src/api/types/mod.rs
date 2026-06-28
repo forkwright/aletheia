@@ -12,6 +12,55 @@ use koina::secret::SecretString;
 
 use crate::id::{GitSha, NousId, PlanId, SessionId, TurnId};
 
+/// Backend-owned lifecycle status for a session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum SessionLifecycle {
+    /// Session is live and accepting new messages.
+    Active,
+    /// Session has been closed and retained for history.
+    Archived,
+    /// Session has been compacted into a distillation summary.
+    Distilled,
+}
+
+impl SessionLifecycle {
+    /// Known lifecycle values in backend wire order.
+    pub const ALL: &[Self] = &[Self::Active, Self::Archived, Self::Distilled];
+
+    /// Return the wire-format string for this lifecycle status.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Archived => "archived",
+            Self::Distilled => "distilled",
+        }
+    }
+
+    /// Parse a known lifecycle status from the wire-format string.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "archived" => Some(Self::Archived),
+            "distilled" => Some(Self::Distilled),
+            _ => None,
+        }
+    }
+
+    /// Human-readable label for controls.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Active => "Active",
+            Self::Archived => "Archived",
+            Self::Distilled => "Distilled",
+        }
+    }
+}
+
 /// A registered agent (nous) in the system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
@@ -104,9 +153,9 @@ pub struct ListSessionsRequest {
     /// Free-text search across session key and display name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search: Option<String>,
-    /// Filter to sessions in this status.
+    /// Filter to sessions in this lifecycle status.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
+    pub status: Option<SessionLifecycle>,
     /// Maximum number of sessions to return.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
