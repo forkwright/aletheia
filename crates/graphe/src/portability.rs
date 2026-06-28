@@ -40,6 +40,9 @@ pub struct ExportMetadata {
     /// Slots where the exported data was truncated by operator request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub truncations: Vec<TruncationRecord>,
+    /// Workspace symbolic-link traversal policy used by the exporter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_symlink_policy: Option<String>,
 }
 
 /// A section that was omitted from an export.

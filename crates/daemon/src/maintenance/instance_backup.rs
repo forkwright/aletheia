@@ -27,6 +27,9 @@ const MANIFEST_VERSION: &str = "aletheia-instance-backup-v1";
 /// WHY(#4950): bumped when the stage/verify/atomic-publish protocol changes.
 const SNAPSHOT_PROTOCOL_VERSION: &str = "aletheia-instance-backup-v1-snapshot-1";
 
+/// Policy used for all backup source traversal.
+const SYMLINK_POLICY: &str = "reject";
+
 /// Prefix for hidden staging directories inside `backup_dir`.
 ///
 /// WHY(#4950): `list_backups` skips these so an in-progress backup is never
@@ -141,6 +144,9 @@ pub struct BackupManifest {
     /// time and help detect restore mismatches.
     #[serde(default)]
     pub store_generations: HashMap<String, u64>,
+    /// Symbolic-link traversal policy used when copying source paths.
+    #[serde(default = "default_symlink_policy")]
+    pub symlink_policy: String,
 }
 
 /// Outcome of a whole-instance backup run.
@@ -757,6 +763,7 @@ impl InstanceBackup {
             snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
             quiesced: false,
             store_generations: store_generations.clone(),
+            symlink_policy: String::from(SYMLINK_POLICY),
         };
         let manifest_path = backup_path.join("manifest.json");
         let manifest_json = serde_json::to_string_pretty(&manifest)
@@ -1189,8 +1196,24 @@ fn write_text_file(path: &Path, contents: &str) -> error::Result<()> {
 
 /// Copy a file or directory tree. Returns `(bytes_copied, files_copied)`.
 fn copy_path(src: &Path, dst: &Path) -> error::Result<(u64, u32)> {
-    if src.is_dir() {
-        return copy_dir_recursive(src, dst);
+    reject_symlinks_in_backup_source(src, src)?;
+    copy_path_checked(src, dst, src)
+}
+
+fn copy_path_checked(src: &Path, dst: &Path, source_root: &Path) -> error::Result<(u64, u32)> {
+    let metadata = fs::symlink_metadata(src).context(error::MaintenanceIoSnafu {
+        context: format!("reading source metadata {}", src.display()),
+    })?;
+    if metadata.file_type().is_symlink() {
+        return refuse_backup_source_entry("symbolic link", src, source_root);
+    }
+
+    if metadata.is_dir() {
+        return copy_dir_recursive(src, dst, source_root);
+    }
+
+    if !metadata.is_file() {
+        return refuse_backup_source_entry("unsupported file type", src, source_root);
     }
 
     if let Some(parent) = dst.parent() {
@@ -1205,7 +1228,7 @@ fn copy_path(src: &Path, dst: &Path) -> error::Result<(u64, u32)> {
 }
 
 /// Recursively copy a directory. Returns `(bytes_copied, files_copied)`.
-fn copy_dir_recursive(src: &Path, dst: &Path) -> error::Result<(u64, u32)> {
+fn copy_dir_recursive(src: &Path, dst: &Path, source_root: &Path) -> error::Result<(u64, u32)> {
     fs::create_dir_all(dst).context(error::MaintenanceIoSnafu {
         context: format!("creating backup dir {}", dst.display()),
     })?;
@@ -1223,21 +1246,73 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> error::Result<(u64, u32)> {
         })?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&src_path).context(error::MaintenanceIoSnafu {
+            context: format!("reading source metadata {}", src_path.display()),
+        })?;
 
-        if src_path.is_dir() {
-            let (bytes, files) = copy_dir_recursive(&src_path, &dst_path)?;
+        if metadata.file_type().is_symlink() {
+            return refuse_backup_source_entry("symbolic link", &src_path, source_root);
+        } else if metadata.is_dir() {
+            let (bytes, files) = copy_dir_recursive(&src_path, &dst_path, source_root)?;
             total_bytes += bytes;
             total_files += files;
-        } else {
+        } else if metadata.is_file() {
             let bytes = fs::copy(&src_path, &dst_path).context(error::MaintenanceIoSnafu {
                 context: format!("copying {} to {}", src_path.display(), dst_path.display()),
             })?;
             total_bytes += bytes;
             total_files += 1;
+        } else {
+            return refuse_backup_source_entry("unsupported file type", &src_path, source_root);
         }
     }
 
     Ok((total_bytes, total_files))
+}
+
+fn reject_symlinks_in_backup_source(path: &Path, source_root: &Path) -> error::Result<()> {
+    let metadata = fs::symlink_metadata(path).context(error::MaintenanceIoSnafu {
+        context: format!("reading source metadata {}", path.display()),
+    })?;
+    if metadata.file_type().is_symlink() {
+        return refuse_backup_source_entry("symbolic link", path, source_root);
+    }
+    if !metadata.is_dir() {
+        return Ok(());
+    }
+
+    let entries = fs::read_dir(path).context(error::MaintenanceIoSnafu {
+        context: format!("reading source dir {}", path.display()),
+    })?;
+    for entry in entries {
+        let entry = entry.context(error::MaintenanceIoSnafu {
+            context: "reading directory entry",
+        })?;
+        reject_symlinks_in_backup_source(&entry.path(), source_root)?;
+    }
+    Ok(())
+}
+
+fn refuse_backup_source_entry<T>(
+    reason: &str,
+    path: &Path,
+    source_root: &Path,
+) -> error::Result<T> {
+    error::BackupTraversalPolicySnafu {
+        reason: String::from(reason),
+        relative_path: traversal_relative_path(path, source_root),
+        source_root: source_root.display().to_string(),
+    }
+    .fail()
+}
+
+fn traversal_relative_path(path: &Path, source_root: &Path) -> String {
+    let relative = path.strip_prefix(source_root).unwrap_or(path);
+    if relative.as_os_str().is_empty() {
+        String::from(".")
+    } else {
+        relative.to_string_lossy().replace('\\', "/")
+    }
 }
 
 /// Calculate total size of a directory tree.
@@ -1246,14 +1321,24 @@ fn dir_size(path: &Path) -> u64 {
     if let Ok(entries) = fs::read_dir(path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() {
+            let Ok(metadata) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
                 total += dir_size(&path);
-            } else if let Ok(metadata) = entry.metadata() {
+            } else if metadata.is_file() {
                 total += metadata.len();
             }
         }
     }
     total
+}
+
+fn default_symlink_policy() -> String {
+    String::from(SYMLINK_POLICY)
 }
 
 /// Parse the `created_at` field from a backup set's manifest into a
@@ -1410,6 +1495,7 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
                 .unwrap();
         assert_eq!(manifest.version, MANIFEST_VERSION);
+        assert_eq!(manifest.symlink_policy, SYMLINK_POLICY);
         assert_eq!(manifest.stores.len(), 3); // knowledge, sessions, config
         assert!(manifest.stores.iter().any(|s| s.name == "knowledge.fjall"));
         assert!(manifest.stores.iter().any(|s| s.name == "sessions.db"));
@@ -1664,6 +1750,111 @@ workspace = "{}"
         );
     }
 
+    #[cfg(unix)]
+    fn assert_backup_symlink_rejected<T>(
+        result: error::Result<T>,
+        expected_relative_path: &str,
+        expected_source_root: &Path,
+    ) {
+        let msg = match result {
+            Ok(_) => panic!("symlink traversal should be rejected"),
+            Err(err) => err.to_string(),
+        };
+        assert!(
+            msg.contains("symbolic link"),
+            "error should identify symlink policy: {msg}"
+        );
+        assert!(
+            msg.contains(expected_relative_path),
+            "error should include relative path {expected_relative_path:?}: {msg}"
+        );
+        assert!(
+            msg.contains("source root")
+                && msg.contains(&expected_source_root.display().to_string()),
+            "error should include source root {}: {msg}",
+            expected_source_root.display()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_path_rejects_symlink_to_outside_instance_4952() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source_root = tmp.path().join("instance");
+        let workspace = source_root.join("nous").join("alice");
+        fs::create_dir_all(&workspace).unwrap();
+        write_text_file(&workspace.join("NOTE.md"), "safe").unwrap();
+
+        let outside_dir = tmp.path().join("outside");
+        fs::create_dir_all(&outside_dir).unwrap();
+        write_text_file(&outside_dir.join("secret.txt"), "outside").unwrap();
+        std::os::unix::fs::symlink(outside_dir.join("secret.txt"), workspace.join("leak.txt"))
+            .unwrap();
+
+        let dst = tmp.path().join("backup-copy");
+        assert_backup_symlink_rejected(
+            copy_path(&source_root, &dst),
+            "nous/alice/leak.txt",
+            &source_root,
+        );
+        assert!(
+            !dst.exists(),
+            "pre-walk rejection must not leave a partial destination"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_path_rejects_symlink_loop_4952() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source_root = tmp.path().join("source");
+        fs::create_dir_all(&source_root).unwrap();
+        write_text_file(&source_root.join("real.txt"), "safe").unwrap();
+        std::os::unix::fs::symlink(".", source_root.join("loop")).unwrap();
+
+        let dst = tmp.path().join("backup-copy");
+        assert_backup_symlink_rejected(copy_path(&source_root, &dst), "loop", &source_root);
+        assert!(
+            !dst.exists(),
+            "pre-walk rejection must not leave a partial destination"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_path_rejects_symlink_to_file_4952() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source_root = tmp.path().join("source");
+        fs::create_dir_all(&source_root).unwrap();
+        write_text_file(&source_root.join("real.txt"), "safe").unwrap();
+        std::os::unix::fs::symlink("real.txt", source_root.join("link.txt")).unwrap();
+
+        let dst = tmp.path().join("backup-copy");
+        assert_backup_symlink_rejected(copy_path(&source_root, &dst), "link.txt", &source_root);
+        assert!(
+            !dst.exists(),
+            "pre-walk rejection must not leave a partial destination"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_path_rejects_internal_directory_symlink_4952() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let source_root = tmp.path().join("source");
+        let target = source_root.join("target");
+        fs::create_dir_all(&target).unwrap();
+        write_text_file(&target.join("NOTE.md"), "safe").unwrap();
+        std::os::unix::fs::symlink("target", source_root.join("target-link")).unwrap();
+
+        let dst = tmp.path().join("backup-copy");
+        assert_backup_symlink_rejected(copy_path(&source_root, &dst), "target-link", &source_root);
+        assert!(
+            !dst.exists(),
+            "pre-walk rejection must not leave a partial destination"
+        );
+    }
+
     #[test]
     fn verify_backup_passes_for_complete_set() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -1734,6 +1925,7 @@ workspace = "{}"
             snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
             quiesced: false,
             store_generations: HashMap::new(),
+            symlink_policy: String::from(SYMLINK_POLICY),
         };
         write_text_file(
             &backup_path.join("manifest.json"),
@@ -1970,6 +2162,7 @@ workspace = "{}"
             snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
             quiesced: false,
             store_generations: HashMap::new(),
+            symlink_policy: String::from(SYMLINK_POLICY),
         };
         let manifest_json = serde_json::to_string(&manifest).unwrap();
 

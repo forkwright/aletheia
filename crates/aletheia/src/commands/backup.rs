@@ -389,6 +389,7 @@ mod tests {
             snapshot_protocol_version: String::from("aletheia-instance-backup-v1-snapshot-1"),
             quiesced: false,
             store_generations: std::collections::HashMap::new(),
+            symlink_policy: String::from("reject"),
         };
         write_text_file(
             &backup_path.join("manifest.json"),

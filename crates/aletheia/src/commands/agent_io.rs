@@ -807,6 +807,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         lossless: omitted_sections.is_empty() && truncations.is_empty(),
         omitted_sections,
         truncations,
+        workspace_symlink_policy: Some(String::from("reject")),
     });
     let agent_file = AgentFile {
         version: mneme::portability::AGENT_FILE_VERSION,
@@ -964,12 +965,30 @@ fn export_workspace(root: &Path) -> Result<mneme::portability::WorkspaceData> {
     let mut files = HashMap::new();
     let mut binary_files = Vec::new();
     let mut binary_file_contents = Vec::new();
-    if !root.exists() {
-        return Ok(mneme::portability::WorkspaceData {
-            files,
-            binary_files,
-            binary_file_contents,
-        });
+    let metadata = match std::fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(mneme::portability::WorkspaceData {
+                files,
+                binary_files,
+                binary_file_contents,
+            });
+        }
+        Err(e) => {
+            return Err(crate::error::Error::msg(format!(
+                "failed to read workspace source metadata {}: {e}",
+                root.display()
+            )));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        reject_workspace_symlink(root, root)?;
+    }
+    if !metadata.is_dir() {
+        whatever!(
+            "workspace source root {} is not a directory",
+            root.display()
+        );
     }
     collect_workspace_entries(
         root,
@@ -1002,11 +1021,16 @@ fn collect_workspace_entries(
         let entry = entry
             .with_whatever_context(|_| format!("failed to read entry in {}", dir.display()))?;
         let path = entry.path();
-        if path.is_dir() {
+        let metadata = std::fs::symlink_metadata(&path)
+            .with_whatever_context(|_| format!("failed to read metadata for {}", path.display()))?;
+        if metadata.file_type().is_symlink() {
+            reject_workspace_symlink(root, &path)?;
+        }
+        if metadata.is_dir() {
             collect_workspace_entries(root, &path, files, binary_files, binary_file_contents)?;
             continue;
         }
-        if !path.is_file() {
+        if !metadata.is_file() {
             continue;
         }
         let relative = path
@@ -1039,6 +1063,26 @@ fn collect_workspace_entries(
         }
     }
     Ok(())
+}
+
+fn reject_workspace_symlink(root: &Path, path: &Path) -> Result<()> {
+    let relative = workspace_relative_path(root, path);
+    whatever!(
+        "refusing to follow symbolic link in workspace export: {} \
+         (relative path {} under source root {})",
+        path.display(),
+        relative,
+        root.display(),
+    );
+}
+
+fn workspace_relative_path(root: &Path, path: &Path) -> String {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    if relative.as_os_str().is_empty() {
+        String::from(".")
+    } else {
+        relative.to_string_lossy().replace('\\', "/")
+    }
 }
 fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
@@ -2732,6 +2776,13 @@ workspace = "nous/{agent_id}"
         assert_eq!(
             exported.sessions[0].messages[1].tool_name.as_deref(),
             Some("read_file")
+        );
+        assert_eq!(
+            exported
+                .export_metadata
+                .as_ref()
+                .and_then(|meta| meta.workspace_symlink_policy.as_deref()),
+            Some("reject")
         );
         let usage_records = exported.sessions[0]
             .usage_records
@@ -4736,6 +4787,7 @@ workspace = "nous/{agent_id}"
                 count: None,
             }],
             truncations: vec![],
+            workspace_symlink_policy: None,
         });
         let json = serde_json::to_string(&agent_file).unwrap();
         let agent_path = dir.path().join("partial.agent.json");
@@ -4952,6 +5004,77 @@ workspace = "nous/{agent_id}"
             "binary workspace payloads must not make export partial"
         );
         assert!(meta.omitted_sections.is_empty());
+    }
+
+    #[cfg(unix)]
+    fn assert_workspace_symlink_rejected(root: &Path, expected_relative_path: &str) {
+        let err = export_workspace(root).expect_err("workspace symlink should be rejected");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("symbolic link"),
+            "error should identify symlink policy: {msg}"
+        );
+        assert!(
+            msg.contains(expected_relative_path),
+            "error should include relative path {expected_relative_path:?}: {msg}"
+        );
+        assert!(
+            msg.contains("source root") && msg.contains(&root.display().to_string()),
+            "error should include source root {}: {msg}",
+            root.display()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_workspace_rejects_symlink_to_outside_root_4952() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("SOUL.md"), "# Alice\n").unwrap();
+
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, "outside").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("leak.txt")).unwrap();
+
+        assert_workspace_symlink_rejected(&root, "leak.txt");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_workspace_rejects_symlink_loop_4952() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("SOUL.md"), "# Alice\n").unwrap();
+        std::os::unix::fs::symlink(".", root.join("loop")).unwrap();
+
+        assert_workspace_symlink_rejected(&root, "loop");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_workspace_rejects_symlink_to_file_4952() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("real.txt"), "safe").unwrap();
+        std::os::unix::fs::symlink("real.txt", root.join("link.txt")).unwrap();
+
+        assert_workspace_symlink_rejected(&root, "link.txt");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_workspace_rejects_internal_directory_symlink_4952() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("workspace");
+        let target = root.join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("NOTE.md"), "safe").unwrap();
+        std::os::unix::fs::symlink("target", root.join("target-link")).unwrap();
+
+        assert_workspace_symlink_rejected(&root, "target-link");
     }
 
     /// WHY(#4590): importers must not silently drop path-only binary entries
