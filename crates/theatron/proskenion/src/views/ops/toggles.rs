@@ -1,6 +1,10 @@
 //! Toggle controls panel: agent enable/disable, tool toggles, feature flags.
 
 use dioxus::prelude::*;
+use skene::api::routes::{
+    config::feature_flags_url,
+    nous::{agent_tools_url, agent_url},
+};
 use skeue::EmptyState;
 
 use crate::api::client::authenticated_client;
@@ -636,9 +640,8 @@ fn fire_agent_toggle(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let base = cfg.server_url.trim_end_matches('/');
         let new_enabled = !prev_val;
-        let url = format!("{base}/api/v1/nous/{agent_id}");
+        let url = agent_url(&cfg.server_url, agent_id.as_ref());
 
         let result = client
             .patch(&url)
@@ -650,7 +653,7 @@ fn fire_agent_toggle(
             Ok(resp) if resp.status().is_success() => {
                 match resp.json::<AgentToggleUpdateResponse>().await {
                     Ok(mut body) => {
-                        let status_url = format!("{base}/api/v1/nous/{agent_id}");
+                        let status_url = agent_url(&cfg.server_url, agent_id.as_ref());
                         match client.get(&status_url).send().await {
                             Ok(status_resp) if status_resp.status().is_success() => {
                                 if let Ok(status_body) =
@@ -697,9 +700,8 @@ fn fire_tool_toggle(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let base = cfg.server_url.trim_end_matches('/');
         let new_enabled = !prev_val;
-        let url = format!("{base}/api/v1/nous/{aid}/tools");
+        let url = agent_tools_url(&cfg.server_url, aid.as_ref());
 
         let result = client
             .patch(&url)
@@ -742,12 +744,6 @@ struct ConfigFeatureFlagsUpdateResponse {
     restart_required: Vec<String>,
 }
 
-/// Build the URL for updating the `feature_flags` config section.
-#[must_use]
-fn feature_flags_update_url(base: &str) -> String {
-    format!("{}/api/v1/config/feature_flags", base.trim_end_matches('/'))
-}
-
 fn fire_feature_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
@@ -761,8 +757,7 @@ fn fire_feature_toggle(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let base = cfg.server_url.trim_end_matches('/');
-        let url = feature_flags_update_url(base);
+        let url = feature_flags_url(&cfg.server_url);
 
         // WHY: Send the complete feature_flags section so the server replaces
         // the array wholesale; a partial PATCH would silently drop sibling flags.
@@ -830,20 +825,20 @@ fn fire_feature_toggle(
 mod tests {
     use crate::state::ops::{FeatureFlag, ToggleStore};
 
-    use super::feature_flags_update_url;
+    use skene::api::routes::config::feature_flags_url;
 
     #[test]
-    fn feature_flags_update_url_uses_put_section_endpoint() {
+    fn feature_flags_url_uses_put_section_endpoint() {
         assert_eq!(
-            feature_flags_update_url("https://example.com"),
+            feature_flags_url("https://example.com"),
             "https://example.com/api/v1/config/feature_flags"
         );
     }
 
     #[test]
-    fn feature_flags_update_url_trims_trailing_slash() {
+    fn feature_flags_url_trims_trailing_slash() {
         assert_eq!(
-            feature_flags_update_url("http://localhost:8080/"),
+            feature_flags_url("http://localhost:8080/"),
             "http://localhost:8080/api/v1/config/feature_flags"
         );
     }

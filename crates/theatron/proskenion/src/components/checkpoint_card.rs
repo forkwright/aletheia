@@ -1,6 +1,7 @@
 //! Checkpoint approval card with approve, skip, and override actions.
 
 use dioxus::prelude::*;
+use skene::api::routes::planning::project_checkpoint_action_url;
 
 use crate::api::client::authenticated_client;
 use crate::components::badge::status_badge_style as badge_style;
@@ -216,10 +217,7 @@ pub(crate) fn CheckpointCard(
         error_msg.set(None);
         spawn(async move {
             let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/v1/planning/projects/{pid}/checkpoints/{cid}/action",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = project_checkpoint_action_url(&cfg.server_url, &pid, &cid);
             let req = CheckpointActionRequest {
                 action: CheckpointAction::Approve,
                 notes: None,
@@ -256,10 +254,7 @@ pub(crate) fn CheckpointCard(
         error_msg.set(None);
         spawn(async move {
             let client = authenticated_client(&cfg);
-            let url = format!(
-                "{}/api/v1/planning/projects/{pid}/checkpoints/{cid}/action",
-                cfg.server_url.trim_end_matches('/')
-            );
+            let url = project_checkpoint_action_url(&cfg.server_url, &pid, &cid);
             let req = CheckpointActionRequest {
                 action,
                 notes: Some(notes_val),

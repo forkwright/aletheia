@@ -1,6 +1,7 @@
 //! Requirements table: v1/v2/out-of-scope categorization with inline editing.
 
 use dioxus::prelude::*;
+use skene::api::routes::planning::project_requirement_url;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
@@ -536,10 +537,7 @@ fn send_edit(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let url = format!(
-            "{}/api/v1/planning/projects/{pid}/requirements/{rid}",
-            cfg.server_url.trim_end_matches('/')
-        );
+        let url = project_requirement_url(&cfg.server_url, &pid, &rid);
 
         match client.put(&url).json(&update).send().await {
             Ok(resp) if resp.status().is_success() => {
@@ -579,10 +577,7 @@ fn send_category_change(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let url = format!(
-            "{}/api/v1/planning/projects/{pid}/requirements/{rid}",
-            cfg.server_url.trim_end_matches('/')
-        );
+        let url = project_requirement_url(&cfg.server_url, &pid, &rid);
 
         if let Ok(resp) = client.put(&url).json(&update).send().await
             && resp.status().is_success()
