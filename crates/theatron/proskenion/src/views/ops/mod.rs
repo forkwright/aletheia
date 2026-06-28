@@ -4,23 +4,26 @@
 mod agents;
 pub(crate) mod credentials;
 mod health;
+mod providers;
 mod toggles;
 
 use std::collections::HashMap;
 
 use dioxus::prelude::*;
+use skene::api::types::ProviderListResponse;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::events::EventState;
 use crate::state::fetch::FetchState;
 use crate::state::ops::{
-    AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag, HealthTier, ServiceHealthStore,
-    ToggleApplyState, ToggleStore, ToolToggle, health_from_status,
+    AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag, HealthTier, ProviderInventoryStore,
+    ServiceHealthStore, ToggleApplyState, ToggleStore, ToolToggle, health_from_status,
 };
 
 use self::agents::AgentCards;
 use self::health::ServiceHealthPanel;
+use self::providers::ProviderReadinessPanel;
 use self::toggles::ToggleControlsPanel;
 
 // ── Tab enum ──
@@ -264,6 +267,7 @@ const TAB_INACTIVE: &str = "\
 
 const BOTTOM_ROW: &str = "\
     display: flex; \
+    flex-wrap: wrap; \
     gap: var(--space-4); \
     flex: 1; \
     min-height: 0;\
@@ -282,6 +286,7 @@ pub(crate) fn Ops() -> Element {
     // ── Dashboard-specific state ──
     let mut agent_store = use_signal(AgentStatusStore::new);
     let mut health_store = use_signal(ServiceHealthStore::new);
+    let mut provider_store = use_signal(ProviderInventoryStore::new);
     let mut toggle_store = use_signal(ToggleStore::new);
     let mut dash_fetch = use_signal(|| FetchState::<()>::Loading);
 
@@ -301,11 +306,13 @@ pub(crate) fn Ops() -> Element {
             let agents_url = format!("{base}/api/v1/nous");
             let health_url = format!("{base}/api/v1/system/health");
             let config_url = format!("{base}/api/v1/config");
+            let providers_url = format!("{base}/api/v1/providers");
 
-            let (agents_res, health_res, config_res) = tokio::join!(
+            let (agents_res, health_res, config_res, providers_res) = tokio::join!(
                 client.get(&agents_url).send(),
                 client.get(&health_url).send(),
                 client.get(&config_url).send(),
+                client.get(&providers_url).send(),
             );
 
             let agents_data: Vec<AgentEntry> = match agents_res {
@@ -384,6 +391,24 @@ pub(crate) fn Ops() -> Element {
                 };
 
             health_store.set(health_store_data);
+
+            let provider_store_data = match providers_res {
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<ProviderListResponse>().await {
+                        Ok(data) => ProviderInventoryStore::from_response(data),
+                        Err(err) => {
+                            tracing::warn!(error = %err, "failed to parse ops provider response");
+                            ProviderInventoryStore::unavailable(format!("parse error: {err}"))
+                        }
+                    }
+                }
+                Ok(resp) => ProviderInventoryStore::unavailable(format!(
+                    "providers endpoint returned {}",
+                    resp.status()
+                )),
+                Err(err) => ProviderInventoryStore::unavailable(format!("connection error: {err}")),
+            };
+            provider_store.set(provider_store_data);
 
             // ── Feature flags ──
             let feature_flags: Vec<FeatureFlag> = match config_res {
@@ -564,6 +589,7 @@ pub(crate) fn Ops() -> Element {
                     div {
                         style: "{BOTTOM_ROW}",
                         ServiceHealthPanel { store: health_store }
+                        ProviderReadinessPanel { store: provider_store }
                         ToggleControlsPanel { store: toggle_store, config }
                     }
                 },

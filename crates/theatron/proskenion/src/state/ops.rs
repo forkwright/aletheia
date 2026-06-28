@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use skene::api::types::{ProviderInfo, ProviderListResponse};
 use skene::id::NousId;
 
 // -- Agent card data ----------------------------------------------------------
@@ -135,9 +136,9 @@ impl HealthStatus {
     #[must_use]
     pub(crate) fn from_status(status: &str) -> Self {
         match status {
-            "healthy" | "pass" => Self::Healthy,
+            "healthy" | "pass" | "up" => Self::Healthy,
             "degraded" | "warn" => Self::Degraded,
-            "unhealthy" | "fail" | "timeout" => Self::Unhealthy,
+            "unhealthy" | "fail" | "timeout" | "down" => Self::Unhealthy,
             _ => Self::Unknown,
         }
     }
@@ -212,6 +213,51 @@ impl ServiceHealthStore {
             checks: Vec::new(),
             error: Some(message),
         }
+    }
+}
+
+// -- Provider inventory -------------------------------------------------------
+
+/// Provider and model-route readiness from `/api/v1/providers`.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ProviderInventoryStore {
+    /// Provider entries in backend registration order.
+    pub providers: Vec<ProviderInfo>,
+    /// Fetch or parse error when provider data could not be loaded.
+    pub error: Option<String>,
+}
+
+impl ProviderInventoryStore {
+    #[must_use]
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Build store from a parsed provider inventory response.
+    #[must_use]
+    pub(crate) fn from_response(response: ProviderListResponse) -> Self {
+        Self {
+            providers: response.providers,
+            error: None,
+        }
+    }
+
+    /// Build store for an unreachable or unparseable provider response.
+    #[must_use]
+    pub(crate) fn unavailable(message: String) -> Self {
+        Self {
+            providers: Vec::new(),
+            error: Some(message),
+        }
+    }
+
+    /// Number of providers currently ready for routing.
+    #[must_use]
+    pub(crate) fn ready_count(&self) -> usize {
+        self.providers
+            .iter()
+            .filter(|provider| provider.available)
+            .count()
     }
 }
 
@@ -747,6 +793,7 @@ mod tests {
     fn health_status_from_string() {
         assert_eq!(HealthStatus::from_status("healthy"), HealthStatus::Healthy);
         assert_eq!(HealthStatus::from_status("pass"), HealthStatus::Healthy);
+        assert_eq!(HealthStatus::from_status("up"), HealthStatus::Healthy);
         assert_eq!(
             HealthStatus::from_status("degraded"),
             HealthStatus::Degraded
@@ -757,6 +804,7 @@ mod tests {
             HealthStatus::Unhealthy
         );
         assert_eq!(HealthStatus::from_status("fail"), HealthStatus::Unhealthy);
+        assert_eq!(HealthStatus::from_status("down"), HealthStatus::Unhealthy);
         assert_eq!(HealthStatus::from_status("unknown"), HealthStatus::Unknown);
     }
 
@@ -803,6 +851,60 @@ mod tests {
         assert_eq!(store.status, HealthStatus::Unknown);
         assert!(store.checks.is_empty());
         assert_eq!(store.error.as_deref(), Some("connection refused"));
+    }
+
+    #[test]
+    fn provider_inventory_store_from_response_counts_ready_providers() {
+        let response = ProviderListResponse {
+            providers: vec![
+                ProviderInfo {
+                    name: "local".to_string(),
+                    kind: "openai-compatible".to_string(),
+                    deployment_target: "local-hosted".to_string(),
+                    base_url: "http://localhost:11434/v1".to_string(),
+                    supported_models: vec!["qwen3".to_string()],
+                    configured_models: vec!["qwen3".to_string()],
+                    health: "up".to_string(),
+                    health_reason: None,
+                    auth_source: "none".to_string(),
+                    available: true,
+                },
+                ProviderInfo {
+                    name: "cloud".to_string(),
+                    kind: "anthropic".to_string(),
+                    deployment_target: "cloud".to_string(),
+                    base_url: "default".to_string(),
+                    supported_models: vec!["claude-opus-4-6".to_string()],
+                    configured_models: vec!["claude-opus-4-6".to_string()],
+                    health: "down".to_string(),
+                    health_reason: Some("down: authentication failure".to_string()),
+                    auth_source: "env".to_string(),
+                    available: false,
+                },
+            ],
+        };
+
+        let store = ProviderInventoryStore::from_response(response);
+
+        assert_eq!(store.providers.len(), 2);
+        assert_eq!(store.ready_count(), 1);
+        assert_eq!(
+            store.providers[1].health_reason.as_deref(),
+            Some("down: authentication failure")
+        );
+        assert!(store.error.is_none());
+    }
+
+    #[test]
+    fn provider_inventory_store_unavailable_keeps_error() {
+        let store =
+            ProviderInventoryStore::unavailable("providers endpoint returned 404".to_string());
+        assert!(store.providers.is_empty());
+        assert_eq!(store.ready_count(), 0);
+        assert_eq!(
+            store.error.as_deref(),
+            Some("providers endpoint returned 404")
+        );
     }
 
     #[test]

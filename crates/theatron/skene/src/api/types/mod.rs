@@ -530,6 +530,64 @@ pub struct NousToolsResponse {
     pub tools: Vec<NousTool>,
 }
 
+/// Response from the provider inventory endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderListResponse {
+    /// Provider entries in registration order.
+    pub providers: Vec<ProviderInfo>,
+}
+
+/// Single provider inventory and health snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderInfo {
+    /// Provider identifier from configuration.
+    pub name: String,
+    /// Provider kind, such as `"openai"`, `"anthropic"`, or `"openai-compatible"`.
+    pub kind: String,
+    /// Deployment target class.
+    pub deployment_target: String,
+    /// Redacted base URL.
+    pub base_url: String,
+    /// Models the runtime provider reports it can serve.
+    pub supported_models: Vec<String>,
+    /// Models explicitly listed for this provider in configuration.
+    pub configured_models: Vec<String>,
+    /// Current health status: `"up"`, `"degraded"`, or `"down"`.
+    pub health: String,
+    /// Diagnostic reason when health is not `"up"`.
+    pub health_reason: Option<String>,
+    /// Credential source class, such as `"env"` or `"none"`.
+    pub auth_source: String,
+    /// Whether the provider is currently available for routing.
+    pub available: bool,
+}
+
+/// Provider selected for a requested model.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProviderRouteResponse {
+    /// Model that was looked up.
+    pub model: String,
+    /// Name of the provider that would handle the model, if any.
+    pub provider: Option<String>,
+    /// Health status of the resolved provider, if any.
+    pub health: Option<String>,
+    /// Whether the resolved provider is currently available.
+    pub available: Option<bool>,
+}
+
+/// Readiness of a single model route.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModelProviderReadiness {
+    /// Model identifier.
+    pub model: String,
+    /// Provider that would handle the model, if resolved.
+    pub provider: Option<String>,
+    /// Provider health status, if resolved.
+    pub health: Option<String>,
+    /// Whether the route is currently available.
+    pub available: bool,
+}
+
 /// Server health response from `GET /api/health`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {

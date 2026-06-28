@@ -31,7 +31,7 @@ pub struct ProviderInfo {
     pub health: String,
     /// Diagnostic reason when health is not `"up"`.
     pub health_reason: Option<String>,
-    /// Credential source class: `"env:<VAR>"` or `"none"`.
+    /// Credential source class: `"env"` or `"none"`.
     pub auth_source: String,
     /// Whether the provider is currently available for routing.
     pub available: bool,

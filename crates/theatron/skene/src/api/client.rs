@@ -13,7 +13,8 @@ use super::error::{
 };
 use super::types::{
     Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
-    NousTool, NousToolsResponse, PaginatedSessionsResponse, Session, SessionsResponse,
+    NousTool, NousToolsResponse, PaginatedSessionsResponse, ProviderInfo, ProviderListResponse,
+    ProviderRouteResponse, Session, SessionsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -510,6 +511,63 @@ impl ApiClient {
         Ok(wrapper.tools)
     }
 
+    /// Fetch registered provider inventory and readiness.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn providers(&self) -> Result<Vec<ProviderInfo>> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/providers")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load providers",
+            })?;
+        let resp = Self::check_status(resp, "providers request").await?;
+        let wrapper: ProviderListResponse = resp.json().await.context(HttpSnafu {
+            operation: "providers response",
+        })?;
+        Ok(wrapper.providers)
+    }
+
+    /// Resolve which provider would handle a model.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn provider_route(&self, model: &str) -> Result<ProviderRouteResponse> {
+        let encoded: String = form_urlencoded::byte_serialize(model.as_bytes()).collect();
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/v1/providers/route?model={encoded}"),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "resolve provider route",
+            })?;
+        let resp = Self::check_status(resp, "provider route request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "provider route response",
+        })
+    }
+
     /// Fetch the server configuration.
     ///
     /// # Errors
@@ -858,6 +916,35 @@ mod tests {
         (format!("http://{addr}"), handle)
     }
 
+    fn serve_json_once(
+        expected_path: &'static str,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 2048];
+            let read = stream.read(&mut buf).expect("read test request");
+            let request_bytes = buf.get(..read).expect("read length is within buffer");
+            let request = String::from_utf8_lossy(request_bytes);
+            let first_line = request.lines().next().unwrap_or_default();
+            assert_eq!(first_line, format!("GET {expected_path} HTTP/1.1"));
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write JSON test response");
+        });
+        (format!("http://{addr}"), handle)
+    }
+
     #[test]
     fn rest_client_builds_with_timeout() {
         let client = build_http_client(None);
@@ -956,5 +1043,40 @@ mod tests {
             panic!("expected legacy RateLimited error");
         };
         assert_eq!(retry_after_secs, Some(7));
+    }
+
+    #[tokio::test]
+    async fn providers_fetches_typed_inventory() {
+        let body = r#"{"providers":[{"name":"local","kind":"openai-compatible","deployment_target":"local-hosted","base_url":"http://localhost:11434/v1","supported_models":["qwen3"],"configured_models":["qwen3"],"health":"up","health_reason":null,"auth_source":"none","available":true}]}"#;
+        let (base_url, server) = serve_json_once("/api/v1/providers", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let providers = client.providers().await.expect("provider inventory parses");
+        server.join().expect("test server thread should finish");
+
+        assert_eq!(providers.len(), 1);
+        let provider = providers.first().expect("one provider");
+        assert_eq!(provider.name, "local");
+        assert_eq!(provider.kind, "openai-compatible");
+        assert_eq!(provider.supported_models, vec!["qwen3".to_owned()]);
+        assert!(provider.available);
+    }
+
+    #[tokio::test]
+    async fn provider_route_encodes_model_query() {
+        let body = r#"{"model":"qwen 3","provider":"local","health":"up","available":true}"#;
+        let (base_url, server) = serve_json_once("/api/v1/providers/route?model=qwen+3", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let route = client
+            .provider_route("qwen 3")
+            .await
+            .expect("provider route parses");
+        server.join().expect("test server thread should finish");
+
+        assert_eq!(route.model, "qwen 3");
+        assert_eq!(route.provider.as_deref(), Some("local"));
+        assert_eq!(route.health.as_deref(), Some("up"));
+        assert_eq!(route.available, Some(true));
     }
 }
