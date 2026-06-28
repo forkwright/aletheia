@@ -153,6 +153,7 @@ fn map_message(row: &Row<'_>) -> rusqlite::Result<Message> {
     Ok(Message {
         id: row.get("id")?,
         session_id: row.get("session_id")?,
+        turn_id: None,
         seq: row.get("seq")?,
         role: match role_str.as_str() {
             "user" => Role::User,
@@ -196,6 +197,7 @@ pub fn read_messages(conn: &Connection) -> Result<Vec<Message>> {
 fn map_usage(row: &Row<'_>) -> rusqlite::Result<UsageRecord> {
     Ok(UsageRecord {
         session_id: row.get("session_id")?,
+        turn_id: None,
         turn_seq: row.get("turn_seq")?,
         input_tokens: row.get("input_tokens")?,
         output_tokens: row.get("output_tokens")?,

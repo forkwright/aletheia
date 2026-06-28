@@ -276,6 +276,9 @@ pub struct Message {
     pub id: i64,
     /// Session this message belongs to.
     pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    /// Canonical turn identifier that produced this message, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Sequence number within the session (monotonically increasing).
     pub seq: i64,
     /// Author role (system, user, assistant, or `tool_result`).
@@ -299,6 +302,9 @@ pub struct Message {
 pub struct UsageRecord {
     /// Session this usage belongs to.
     pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    /// Canonical turn identifier for this usage row, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Turn sequence number within the session.
     pub turn_seq: i64,
     /// Tokens consumed from the input (prompt).
@@ -566,6 +572,7 @@ mod tests {
         let msg = Message {
             id: 1,
             session_id: "ses-123".to_owned(),
+            turn_id: Some("turn-123".to_owned()),
             seq: 1,
             role: Role::Assistant,
             content: "hello world".to_owned(),
@@ -579,6 +586,7 @@ mod tests {
         let back: Message = serde_json::from_str(&json).expect("round-trip JSON is valid");
         assert_eq!(msg.role, back.role);
         assert_eq!(msg.content, back.content);
+        assert_eq!(msg.turn_id, back.turn_id);
     }
 
     #[test]

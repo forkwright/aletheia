@@ -669,6 +669,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             .map(|msg| ExportedMessage {
                 role: msg.role.to_string(),
                 content: msg.content,
+                turn_id: msg.turn_id,
                 seq: msg.seq,
                 token_estimate: msg.token_estimate,
                 is_distilled: msg.is_distilled,
@@ -694,6 +695,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             .with_whatever_context(|_| format!("failed to read usage for {}", session.id))?
             .into_iter()
             .map(|record| ExportedUsageRecord {
+                turn_id: record.turn_id,
                 turn_seq: record.turn_seq,
                 input_tokens: record.input_tokens,
                 output_tokens: record.output_tokens,
@@ -1623,6 +1625,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                     .insert_message_raw(&mneme::types::Message {
                         id: msg.seq,
                         session_id: imported.id.clone(),
+                        turn_id: msg.turn_id.clone(),
                         seq: msg.seq,
                         role,
                         content: msg.content.clone(),
@@ -1645,6 +1648,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                     store
                         .record_usage(&mneme::types::UsageRecord {
                             session_id: imported.id.clone(),
+                            turn_id: record.turn_id.clone(),
                             turn_seq: record.turn_seq,
                             input_tokens: record.input_tokens,
                             output_tokens: record.output_tokens,
@@ -2588,6 +2592,7 @@ mod tests {
                     ExportedMessage {
                         role: "user".to_owned(),
                         content: "hello".to_owned(),
+                        turn_id: Some("turn-import-1".to_owned()),
                         seq: 1,
                         token_estimate: 50,
                         is_distilled: false,
@@ -2598,6 +2603,7 @@ mod tests {
                     ExportedMessage {
                         role: "tool_result".to_owned(),
                         content: "tool output".to_owned(),
+                        turn_id: Some("turn-import-1".to_owned()),
                         seq: 2,
                         token_estimate: 25,
                         is_distilled: false,
@@ -2607,6 +2613,7 @@ mod tests {
                     },
                 ],
                 usage_records: Some(vec![ExportedUsageRecord {
+                    turn_id: Some("turn-import-1".to_owned()),
                     turn_seq: 1,
                     input_tokens: 50,
                     output_tokens: 100,
@@ -2690,6 +2697,7 @@ workspace = "nous/{agent_id}"
         store
             .record_usage(&mneme::types::UsageRecord {
                 session_id: session.id.clone(),
+                turn_id: None,
                 turn_seq: 1,
                 input_tokens: 5,
                 output_tokens: 7,
@@ -3002,6 +3010,7 @@ workspace = "nous/{agent_id}"
         source_store
             .record_usage(&mneme::types::UsageRecord {
                 session_id: session.id.clone(),
+                turn_id: None,
                 turn_seq: 1,
                 input_tokens: 40,
                 output_tokens: 20,
@@ -4206,6 +4215,7 @@ workspace = "nous/{agent_id}"
             messages: vec![ExportedMessage {
                 role: role.to_owned(),
                 content: "hello".to_owned(),
+                turn_id: None,
                 seq: 1,
                 token_estimate: 10,
                 is_distilled: false,

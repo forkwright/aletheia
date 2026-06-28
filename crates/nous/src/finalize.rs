@@ -193,6 +193,7 @@ fn build_finalize_messages<'a>(
 fn usage_record(session: &SessionState, result: &TurnResult, turn_seq: i64) -> UsageRecord {
     UsageRecord {
         session_id: session.id.clone(),
+        turn_id: Some(session.turn_id.to_string()),
         turn_seq,
         input_tokens: token_count_to_i64(result.usage.input_tokens),
         output_tokens: token_count_to_i64(result.usage.output_tokens),
@@ -236,33 +237,14 @@ pub(crate) fn finalize(
     result: &TurnResult,
     config: &FinalizeConfig,
 ) -> error::Result<FinalizeResult> {
-    // INVARIANT: dedup guard: skip if this turn was already finalized.
-    //
-    // WHY: canonical turn_id is the primary idempotency key. The legacy
-    // usage_exists_for_turn guard remains for backward compatibility with
-    // turns finalized before the turn-attempt note protocol.
+    // INVARIANT: dedup guard: skip only if this canonical turn_id was already
+    // finalized. A usage row alone is not authoritative: older partial
+    // finalization could leave usage without messages, and retry must repair
+    // that by writing the whole turn payload.
     let turn_seq = turn_seq_from_ulid(&session.turn_id);
-    let usage_exists = store
-        .usage_exists_for_turn(&session.id, turn_seq)
-        .context(error::StoreSnafu)?;
     let completed_exists =
         crate::turn_record::is_turn_completed(store, &session.id, &session.turn_id)?;
-    if usage_exists || completed_exists {
-        if usage_exists && !completed_exists {
-            let expected_messages = if config.persist_messages {
-                2 + result.tool_calls.len().saturating_mul(2)
-            } else {
-                0
-            };
-            let completed = turn_attempt_record(
-                session,
-                result,
-                TurnAttemptStatus::Completed,
-                expected_messages,
-                Some(expected_messages),
-            );
-            crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
-        }
+    if completed_exists {
         warn!(
             turn = session.turn,
             turn_id = %session.turn_id,
@@ -297,9 +279,11 @@ pub(crate) fn finalize(
     #[cfg(test)]
     test_failure_injection::maybe_fail_after_pending()?;
 
+    let turn_id = session.turn_id.to_string();
     let finalize_messages: Vec<FinalizeMessage<'_>> = pending_messages
         .iter()
         .map(|msg| FinalizeMessage {
+            turn_id: Some(turn_id.as_str()),
             role: msg.role,
             content: msg.content.as_str(),
             tool_call_id: msg.tool_call_id,
@@ -466,11 +450,14 @@ mod tests {
         finalize(&store, &session, "Hi there", &result, &config).expect("finalize");
 
         let history = store.get_history("ses-1", None).expect("history");
+        let turn_id = session.turn_id.to_string();
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].role, Role::User);
         assert_eq!(history[0].content, "Hi there");
+        assert_eq!(history[0].turn_id.as_deref(), Some(turn_id.as_str()));
         assert_eq!(history[1].role, Role::Assistant);
         assert_eq!(history[1].content, "Hello!");
+        assert_eq!(history[1].turn_id.as_deref(), Some(turn_id.as_str()));
     }
 
     /// Regression test for #4915: partial terminal outcomes must not be
@@ -554,6 +541,10 @@ mod tests {
 
         let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
         assert!(fr.usage_recorded);
+        let usage = store.get_usage_for_session("ses-1").expect("usage");
+        let turn_id = session.turn_id.to_string();
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].turn_id.as_deref(), Some(turn_id.as_str()));
     }
 
     #[test]
@@ -797,6 +788,44 @@ mod tests {
 
         let history = store.get_history("ses-1", None).expect("history");
         assert_eq!(history.len(), 2);
+    }
+
+    #[test]
+    fn finalize_repairs_usage_only_partial() {
+        let (store, session) = make_store_and_session();
+        let result = simple_result();
+        let config = FinalizeConfig::default();
+        let turn_seq = turn_seq_from_ulid(&session.turn_id);
+        let partial_usage = usage_record(&session, &result, turn_seq);
+        store
+            .record_usage(&partial_usage)
+            .expect("seed usage-only partial");
+
+        let repaired = finalize(&store, &session, "Hi", &result, &config).expect("repair finalize");
+        assert_eq!(repaired.messages_persisted, 2);
+        assert!(repaired.usage_recorded);
+
+        let turn_id = session.turn_id.to_string();
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history.len(), 2, "repair should write missing messages");
+        assert!(
+            history
+                .iter()
+                .all(|msg| msg.turn_id.as_deref() == Some(turn_id.as_str())),
+            "repaired messages should use the canonical turn id"
+        );
+        let usage = store.get_usage_for_session("ses-1").expect("usage");
+        assert_eq!(
+            usage.len(),
+            1,
+            "repair should overwrite, not duplicate usage"
+        );
+        assert_eq!(usage[0].turn_id.as_deref(), Some(turn_id.as_str()));
+        assert!(
+            crate::turn_record::is_turn_completed(&store, &session.id, &session.turn_id)
+                .expect("completed marker"),
+            "repair should record completed turn status"
+        );
     }
 
     #[test]

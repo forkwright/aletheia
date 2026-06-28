@@ -753,6 +753,7 @@ mod tests {
         mneme::types::Message {
             id: 1,
             session_id: "ses-1".to_owned(),
+            turn_id: None,
             seq: 1,
             role: mneme::types::Role::User,
             content: content.to_owned(),
@@ -839,6 +840,7 @@ mod tests {
             mneme::types::Message {
                 id: 1,
                 session_id: "s".to_owned(),
+                turn_id: None,
                 seq: 1,
                 role: MnemeRole::System,
                 content: "system".to_owned(),
@@ -851,6 +853,7 @@ mod tests {
             mneme::types::Message {
                 id: 2,
                 session_id: "s".to_owned(),
+                turn_id: None,
                 seq: 2,
                 role: MnemeRole::User,
                 content: "user".to_owned(),
@@ -863,6 +866,7 @@ mod tests {
             mneme::types::Message {
                 id: 3,
                 session_id: "s".to_owned(),
+                turn_id: None,
                 seq: 3,
                 role: MnemeRole::ToolResult,
                 content: "tool output".to_owned(),

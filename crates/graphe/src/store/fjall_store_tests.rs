@@ -648,6 +648,7 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
     store
         .record_usage(&crate::types::UsageRecord {
             session_id: "ses-x".to_owned(),
+            turn_id: None,
             turn_seq: 1,
             input_tokens: 5,
             output_tokens: 7,
@@ -900,6 +901,7 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
     let session_id = "ses-finalize-1";
     let usage = UsageRecord {
         session_id: session_id.to_owned(),
+        turn_id: Some("turn-finalize-1".to_owned()),
         turn_seq: 7,
         input_tokens: 10,
         output_tokens: 20,
@@ -909,6 +911,7 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
     };
     let messages = vec![
         FinalizeMessage {
+            turn_id: Some("turn-finalize-1"),
             role: Role::User,
             content: "hello",
             tool_call_id: None,
@@ -916,6 +919,7 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
             token_estimate: 2,
         },
         FinalizeMessage {
+            turn_id: Some("turn-finalize-1"),
             role: Role::Assistant,
             content: "hi there",
             tool_call_id: None,
@@ -952,12 +956,15 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].role, Role::User);
     assert_eq!(history[0].content, "hello");
+    assert_eq!(history[0].turn_id.as_deref(), Some("turn-finalize-1"));
     assert_eq!(history[1].role, Role::Assistant);
     assert_eq!(history[1].content, "hi there");
+    assert_eq!(history[1].turn_id.as_deref(), Some("turn-finalize-1"));
 
     let usage_rows = store.get_usage_for_session(session_id).expect("read usage");
     assert_eq!(usage_rows.len(), 1);
     assert_eq!(usage_rows[0].turn_seq, 7);
+    assert_eq!(usage_rows[0].turn_id.as_deref(), Some("turn-finalize-1"));
 
     let notes = store.get_notes(session_id).expect("read notes");
     assert_eq!(notes.len(), 1);
@@ -972,6 +979,7 @@ fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
     let session_id = "ses-finalize-retry";
     let usage = UsageRecord {
         session_id: session_id.to_owned(),
+        turn_id: Some("turn-finalize-retry".to_owned()),
         turn_seq: 8,
         input_tokens: 11,
         output_tokens: 13,
@@ -981,6 +989,7 @@ fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
     };
     let messages = vec![
         FinalizeMessage {
+            turn_id: Some("turn-finalize-retry"),
             role: Role::User,
             content: "first attempt",
             tool_call_id: None,
@@ -988,6 +997,7 @@ fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
             token_estimate: 3,
         },
         FinalizeMessage {
+            turn_id: Some("turn-finalize-retry"),
             role: Role::Assistant,
             content: "retry-safe",
             tool_call_id: None,
@@ -1060,6 +1070,209 @@ fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
             .expect("notes after retry")
             .len(),
         1
+    );
+}
+
+#[test]
+fn finalize_turn_failure_after_usage_rolls_back_and_retry_is_clean() {
+    test_finalize_failure::clear();
+    let store = test_store();
+    let session_id = "ses-finalize-after-usage";
+    let usage = UsageRecord {
+        session_id: session_id.to_owned(),
+        turn_id: Some("turn-after-usage".to_owned()),
+        turn_seq: 9,
+        input_tokens: 17,
+        output_tokens: 19,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        model: Some("test-model".to_owned()),
+    };
+    let messages = vec![
+        FinalizeMessage {
+            turn_id: Some("turn-after-usage"),
+            role: Role::User,
+            content: "persist this atomically",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 5,
+        },
+        FinalizeMessage {
+            turn_id: Some("turn-after-usage"),
+            role: Role::Assistant,
+            content: "only after usage is safe",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 6,
+        },
+    ];
+    let request = FinalizeTurnRequest {
+        session_id,
+        nous_id: "syn",
+        session_key: "main",
+        model: Some("test-model"),
+        parent_session_id: None,
+        messages: &messages,
+        usage: Some(&usage),
+        completion_note: Some(FinalizeNote {
+            category: "context",
+            content: r#"{"status":"completed"}"#,
+        }),
+    };
+
+    test_finalize_failure::fail_after_usage();
+    let failed = store.finalize_turn(&request);
+    assert!(
+        failed.is_err(),
+        "injected failure after usage should abort finalization"
+    );
+    assert!(
+        store
+            .get_history(session_id, None)
+            .expect("history after failed finalize")
+            .is_empty(),
+        "messages must roll back with the usage write"
+    );
+    assert!(
+        store
+            .get_usage_for_session(session_id)
+            .expect("usage after failed finalize")
+            .is_empty(),
+        "usage must not survive without the completion marker"
+    );
+    assert!(
+        store
+            .get_notes(session_id)
+            .expect("notes after failed finalize")
+            .is_empty(),
+        "completion note must not be written after an aborted transaction"
+    );
+
+    let retried = store
+        .finalize_turn(&request)
+        .expect("retry should commit the whole turn");
+    assert_eq!(retried.messages_persisted, 2);
+    assert!(retried.usage_recorded);
+    assert_eq!(
+        store
+            .get_history(session_id, None)
+            .expect("history after retry")
+            .len(),
+        2
+    );
+    let usage_rows = store
+        .get_usage_for_session(session_id)
+        .expect("usage after retry");
+    assert_eq!(usage_rows.len(), 1);
+    assert_eq!(usage_rows[0].turn_id.as_deref(), Some("turn-after-usage"));
+    assert_eq!(
+        store
+            .get_notes(session_id)
+            .expect("notes after retry")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn finalize_turn_tool_message_failure_rolls_back_and_retry_is_clean() {
+    test_finalize_failure::clear();
+    let store = test_store();
+    let session_id = "ses-finalize-tool-retry";
+    let usage = UsageRecord {
+        session_id: session_id.to_owned(),
+        turn_id: Some("turn-tool-retry".to_owned()),
+        turn_seq: 10,
+        input_tokens: 23,
+        output_tokens: 29,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        model: Some("test-model".to_owned()),
+    };
+    let messages = vec![
+        FinalizeMessage {
+            turn_id: Some("turn-tool-retry"),
+            role: Role::User,
+            content: "read it",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 2,
+        },
+        FinalizeMessage {
+            turn_id: Some("turn-tool-retry"),
+            role: Role::Assistant,
+            content: r#"{"path":"README.md"}"#,
+            tool_call_id: Some("call-read"),
+            tool_name: Some("read_file"),
+            token_estimate: 0,
+        },
+        FinalizeMessage {
+            turn_id: Some("turn-tool-retry"),
+            role: Role::ToolResult,
+            content: "[tool:read_file] contents",
+            tool_call_id: Some("call-read"),
+            tool_name: Some("read_file"),
+            token_estimate: 0,
+        },
+        FinalizeMessage {
+            turn_id: Some("turn-tool-retry"),
+            role: Role::Assistant,
+            content: "done",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 3,
+        },
+    ];
+    let request = FinalizeTurnRequest {
+        session_id,
+        nous_id: "syn",
+        session_key: "main",
+        model: Some("test-model"),
+        parent_session_id: None,
+        messages: &messages,
+        usage: Some(&usage),
+        completion_note: Some(FinalizeNote {
+            category: "context",
+            content: r#"{"status":"completed"}"#,
+        }),
+    };
+
+    test_finalize_failure::fail_after_messages(3);
+    let failed = store.finalize_turn(&request);
+    assert!(
+        failed.is_err(),
+        "injected failure during tool-message persistence should abort finalization"
+    );
+    assert!(
+        store
+            .get_history(session_id, None)
+            .expect("history after failed tool finalize")
+            .is_empty(),
+        "tool message prefixes must not survive failed finalization"
+    );
+    assert!(
+        store
+            .get_usage_for_session(session_id)
+            .expect("usage after failed tool finalize")
+            .is_empty()
+    );
+
+    let retried = store
+        .finalize_turn(&request)
+        .expect("tool retry should commit the whole turn");
+    assert_eq!(retried.messages_persisted, 4);
+    assert!(retried.usage_recorded);
+
+    let history = store.get_history(session_id, None).expect("history");
+    assert_eq!(history.len(), 4, "retry must not duplicate tool messages");
+    assert_eq!(history[1].tool_call_id.as_deref(), Some("call-read"));
+    assert_eq!(history[2].role, Role::ToolResult);
+    assert_eq!(history[2].tool_name.as_deref(), Some("read_file"));
+    assert!(
+        history
+            .iter()
+            .all(|msg| msg.turn_id.as_deref() == Some("turn-tool-retry")),
+        "every finalized message must carry the canonical turn id"
     );
 }
 

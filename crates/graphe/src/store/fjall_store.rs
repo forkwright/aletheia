@@ -156,6 +156,8 @@ pub struct SessionStore {
 /// makes the one-message-at-a-time API expensive on the hot path.
 #[derive(Debug, Clone, Copy)]
 pub struct FinalizeMessage<'a> {
+    /// Canonical turn identifier that produced this message, when known.
+    pub turn_id: Option<&'a str>,
     /// Author role for this message.
     pub role: Role,
     /// Message body text.
@@ -245,14 +247,20 @@ pub(crate) mod test_finalize_failure {
 
     thread_local! {
         static FAIL_AFTER_MESSAGES: Cell<Option<usize>> = const { Cell::new(None) };
+        static FAIL_AFTER_USAGE: Cell<bool> = const { Cell::new(false) };
     }
 
     pub fn fail_after_messages(count: usize) {
         FAIL_AFTER_MESSAGES.with(|cell| cell.set(Some(count)));
     }
 
+    pub fn fail_after_usage() {
+        FAIL_AFTER_USAGE.with(|cell| cell.set(true));
+    }
+
     pub fn clear() {
         FAIL_AFTER_MESSAGES.with(|cell| cell.set(None));
+        FAIL_AFTER_USAGE.with(|cell| cell.set(false));
     }
 
     pub fn maybe_fail_after_messages(messages_persisted: usize) -> Result<()> {
@@ -267,6 +275,17 @@ pub(crate) mod test_finalize_failure {
             Err(storage_error(format!(
                 "injected finalize_turn failure after {messages_persisted} messages"
             )))
+        })
+    }
+
+    pub fn maybe_fail_after_usage() -> Result<()> {
+        FAIL_AFTER_USAGE.with(|cell| {
+            if !cell.replace(false) {
+                return Ok(());
+            }
+            Err(storage_error(
+                "injected finalize_turn failure after usage".to_owned(),
+            ))
         })
     }
 }
@@ -1277,6 +1296,7 @@ impl SessionStore {
             &counters_part,
             &mut session,
             &FinalizeMessage {
+                turn_id: None,
                 role,
                 content,
                 tool_call_id,
@@ -1310,6 +1330,7 @@ impl SessionStore {
     ) -> Result<i64> {
         use fjall::Readable;
         let &FinalizeMessage {
+            turn_id,
             role,
             content,
             tool_call_id,
@@ -1340,6 +1361,7 @@ impl SessionStore {
         let msg = Message {
             id: msg_id_counter as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
             session_id: session_id.to_owned(),
+            turn_id: turn_id.map(str::to_owned),
             seq: seq as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
             role,
             content: content.to_owned(),
@@ -1659,6 +1681,7 @@ impl SessionStore {
         let summary_msg = Message {
             id: new_msg_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
             session_id: session_id.to_owned(),
+            turn_id: None,
             seq: 0,
             role: Role::System,
             content: content.to_owned(),
@@ -2020,6 +2043,8 @@ impl SessionStore {
         if let Some(usage) = request.usage {
             Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, usage)?;
             usage_recorded = true;
+            #[cfg(test)]
+            test_finalize_failure::maybe_fail_after_usage()?;
         }
 
         if let Some(note) = request.completion_note {

@@ -58,6 +58,7 @@ fn insert_message_raw_preserves_seq_and_created_at() {
     let msg = Message {
         id: 99,
         session_id: s.id.clone(),
+        turn_id: Some("turn-raw2".to_owned()),
         seq: 42,
         role: Role::User,
         content: "raw insert".to_owned(),
@@ -76,6 +77,7 @@ fn insert_message_raw_preserves_seq_and_created_at() {
     assert!(raw[0].is_distilled);
     assert_eq!(raw[0].content, "raw insert");
     assert_eq!(raw[0].id, 99);
+    assert_eq!(raw[0].turn_id.as_deref(), Some("turn-raw2"));
 }
 
 #[test]
@@ -89,6 +91,7 @@ fn insert_message_raw_does_not_touch_session_updated_at() {
     let msg = Message {
         id: 1,
         session_id: s.id.clone(),
+        turn_id: None,
         seq: 1,
         role: Role::User,
         content: "preserve".to_owned(),
@@ -129,6 +132,7 @@ fn insert_message_raw_then_append_does_not_collide() {
     let raw_msg = Message {
         id: 50,
         session_id: s.id.clone(),
+        turn_id: None,
         seq: 5,
         role: Role::User,
         content: "imported".to_owned(),
@@ -352,6 +356,7 @@ fn insert_message_raw_preserves_tool_metadata() {
     let msg = Message {
         id: 7,
         session_id: s.id.clone(),
+        turn_id: Some("turn-toolmeta".to_owned()),
         seq: 3,
         role: Role::ToolResult,
         content: "file contents".to_owned(),
@@ -368,6 +373,7 @@ fn insert_message_raw_preserves_tool_metadata() {
     assert_eq!(raw[0].tool_call_id.as_deref(), Some("call-42"));
     assert_eq!(raw[0].tool_name.as_deref(), Some("read_file"));
     assert_eq!(raw[0].role, Role::ToolResult);
+    assert_eq!(raw[0].turn_id.as_deref(), Some("turn-toolmeta"));
 }
 
 #[test]

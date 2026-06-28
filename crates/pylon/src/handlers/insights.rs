@@ -1083,6 +1083,7 @@ mod tests {
     fn usage(session_id: &str, input_tokens: i64, output_tokens: i64) -> UsageRecord {
         UsageRecord {
             session_id: session_id.to_owned(),
+            turn_id: None,
             turn_seq: 1,
             input_tokens,
             output_tokens,

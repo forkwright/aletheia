@@ -193,6 +193,8 @@ pub struct ExportedSession {
 pub struct ExportedMessage {
     pub role: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub turn_id: Option<String>,
     pub seq: i64,
     pub token_estimate: i64,
     pub is_distilled: bool,
@@ -224,6 +226,8 @@ pub struct ExportedNote {
     reason = "portability struct fields are self-documenting by name"
 )]
 pub struct ExportedUsageRecord {
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub turn_id: Option<String>,
     pub turn_seq: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
@@ -350,6 +354,7 @@ mod tests {
                     ExportedMessage {
                         role: "user".to_owned(),
                         content: "hello".to_owned(),
+                        turn_id: Some("turn-001".to_owned()),
                         seq: 1,
                         token_estimate: 50,
                         is_distilled: false,
@@ -360,6 +365,7 @@ mod tests {
                     ExportedMessage {
                         role: "tool_result".to_owned(),
                         content: "tool output".to_owned(),
+                        turn_id: Some("turn-001".to_owned()),
                         seq: 2,
                         token_estimate: 15,
                         is_distilled: false,
@@ -369,6 +375,7 @@ mod tests {
                     },
                 ],
                 usage_records: Some(vec![ExportedUsageRecord {
+                    turn_id: Some("turn-001".to_owned()),
                     turn_seq: 1,
                     input_tokens: 65,
                     output_tokens: 100,
