@@ -60,7 +60,8 @@ impl<'s, S: Storage<'s>> Db<S> {
     pub(crate) fn current_callback_targets(&self) -> BTreeSet<CompactString> {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.callbacks.registry
+            self.callbacks
+                .registry
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .1

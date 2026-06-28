@@ -40,10 +40,10 @@ use crate::runtime::relation::RelationId;
 use crate::storage::Storage;
 use crate::storage::temp::TempStorage;
 
+pub(crate) use crate::runtime::poison::ProcessKilled;
 pub use crate::runtime::poison::{
     DEFAULT_MAX_EVALUATION_EPOCHS, Poison, QueryBudget, QueryCancellationReason,
 };
-pub(crate) use crate::runtime::poison::ProcessKilled;
 
 /// Durability level for fjall-backed storage.
 ///

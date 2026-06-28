@@ -18,7 +18,6 @@
     reason = "engine callback wiring — pedantic style lints"
 )]
 pub(crate) mod callback;
-pub(crate) mod poison;
 #[expect(
     dead_code,
     private_interfaces,
@@ -104,6 +103,7 @@ pub(crate) mod imperative;
     reason = "MinHash LSH — numeric casts and indexing for hash computation"
 )]
 pub(crate) mod minhash_lsh;
+pub(crate) mod poison;
 #[expect(
     clippy::as_conversions,
     clippy::assigning_clones,
