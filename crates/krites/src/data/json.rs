@@ -1,4 +1,6 @@
 //! JSON serialization and deserialization for data values.
+use std::num::FpCategory;
+
 use koina::base64;
 pub(crate) use serde_json::Value as JsonValue;
 use serde_json::json;
@@ -50,21 +52,17 @@ impl From<DataValue> for JsonValue {
             DataValue::Null | DataValue::Bot => JsonValue::Null,
             DataValue::Bool(b) => JsonValue::Bool(b),
             DataValue::Num(Num::Int(i)) => JsonValue::Number(i.into()),
-            DataValue::Num(Num::Float(f)) => {
-                if f.is_finite() {
-                    json!(f)
-                } else if f.is_nan() {
-                    json!(())
-                } else if f.is_infinite() {
+            DataValue::Num(Num::Float(f)) => match f.classify() {
+                FpCategory::Nan => JsonValue::Null,
+                FpCategory::Infinite => {
                     if f.is_sign_negative() {
                         json!("NEGATIVE_INFINITY")
                     } else {
                         json!("INFINITY")
                     }
-                } else {
-                    unreachable!("INVARIANT: f64 is always finite, NaN, or infinite")
                 }
-            }
+                FpCategory::Zero | FpCategory::Subnormal | FpCategory::Normal => json!(f),
+            },
             DataValue::Str(t) => JsonValue::String(t.into()),
             DataValue::Bytes(bytes) => JsonValue::String(base64::encode(&bytes)),
             DataValue::List(l) => JsonValue::Array(l.into_iter().map(JsonValue::from).collect()),
@@ -107,25 +105,26 @@ mod tests {
         assert_eq!(JsonValue::from(DataValue::Null), JsonValue::Null);
     }
 
-    /// Justify the f64 unreachable: every f64 is exactly one of finite/NaN/infinite
-    /// by IEEE 754; the else branch provably cannot be reached.
+    /// Regression for #4607: float JSON export must be exhaustive without a
+    /// process-wide panic branch.
     #[test]
-    fn f64_is_always_finite_nan_or_infinite() {
-        let samples: &[f64] = &[
-            0.0,
-            1.5,
-            -1.5,
-            f64::MAX,
-            f64::MIN_POSITIVE,
-            f64::NAN,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
+    fn float_json_export_handles_every_f64_category() {
+        let subnormal = f64::from_bits(1);
+        let cases: &[(f64, FpCategory, JsonValue)] = &[
+            (0.0, FpCategory::Zero, json!(0.0)),
+            (subnormal, FpCategory::Subnormal, json!(subnormal)),
+            (1.5, FpCategory::Normal, json!(1.5)),
+            (f64::NAN, FpCategory::Nan, JsonValue::Null),
+            (f64::INFINITY, FpCategory::Infinite, json!("INFINITY")),
+            (
+                f64::NEG_INFINITY,
+                FpCategory::Infinite,
+                json!("NEGATIVE_INFINITY"),
+            ),
         ];
-        for &f in samples {
-            assert!(
-                f.is_finite() || f.is_nan() || f.is_infinite(),
-                "f64 {f} is neither finite nor NaN nor infinite — unreachable branch reachable"
-            );
+        for (value, category, expected) in cases {
+            assert_eq!(value.classify(), *category);
+            assert_eq!(JsonValue::from(DataValue::from(*value)), *expected);
         }
     }
 }

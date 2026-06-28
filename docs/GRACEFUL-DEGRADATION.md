@@ -101,9 +101,10 @@ See [Daemon Workers](#daemon-workers). Maintenance tasks inherit the same isolat
 
 ## Surface List - Components That Crash the Process
 
-The following components can turn a local failure into a process-wide crash:
+No audited production component currently turns a documented local failure into
+a process-wide crash. The formerly open crash surfaces are resolved:
 
-1. **Krites Datalog engine** - `unreachable!` on the f64 IEEE 754 exhaustiveness invariant during JSON export; query-planning invariant violations now return typed errors.
+1. ~~Krites Datalog engine~~ - **resolved**: float JSON export uses `f64::classify()` for exhaustive handling without `unreachable!`; query-planning invariant violations return typed errors.
 2. ~~Pylon signal handler setup~~ - **resolved** (`server.rs:428`, `508`).
 3. ~~Nous manager health poller~~ - **resolved** (`crates/nous/src/manager.rs:895`).
 
@@ -124,14 +125,14 @@ The following components can turn a local failure into a process-wide crash:
 | Tool executors | Errors returned; sandbox no-op on non-Linux | Request | Isolate and return errors | ✅ None |
 | Pylon signal handlers | Signal-installation failures log warnings | Signal path | Continue serving without the failed signal path | ✅ None (resolved: `server.rs:428`, `508`) |
 | Pylon streaming handlers | Spawned tasks awaited, `JoinError` mapped to SSE | Request | Per-request failure isolation | ✅ None |
-| Krites query engine | `unreachable!` on the f64 IEEE 754 exhaustiveness invariant during JSON export | Process | Return `Result` error to caller | `data/json.rs:65` |
+| Krites query engine | Float JSON export uses exhaustive `f64::classify()`; query-planning invariants return typed errors | Request | No panic from external input/storage state | ✅ None (resolved: `data/json.rs:55`) |
 | Krites query engine - resolved planning invariants | Internal invariant violations during query planning now return typed errors | Process | Return `Result` error to caller | ✅ None (resolved: `query/graph.rs:127`, `query/graph.rs:205`, `query/magic.rs:217`, `query/stratify.rs:203`) |
 | Krites storage backend | Assumed-live transaction access now returns a typed error | Process | Return corruption/error instead of panic | ✅ None (resolved: `storage/fjall_backend.rs:194`) |
 
 ## Detailed citation index
 
 ### Krites
-- `crates/krites/src/data/json.rs:65` - `unreachable!` on the f64 IEEE 754 exhaustiveness invariant during JSON export. `DataValue::Bot` is handled in the `Null | Bot` arm and emitted as `JsonValue::Null`.
+- ~~`crates/krites/src/data/json.rs:65` - `unreachable!` on the f64 IEEE 754 exhaustiveness invariant during JSON export.~~ Resolved: float JSON export now matches `f64::classify()` exhaustively without a panic branch, and `DataValue::Bot` is handled in the `Null | Bot` arm and emitted as `JsonValue::Null`.
 - ~~`crates/krites/src/query/graph.rs:127` - empty `safe_pending` stack in topological sort.~~ Resolved: now returns a typed error.
 - ~~`crates/krites/src/query/graph.rs:205` - missing `ids[at]` entry in SCC computation.~~ Resolved: now returns a typed error.
 - ~~`crates/krites/src/query/magic.rs:217` - defaulted `MagicRulesOrFixed` in query rewrite.~~ Resolved: now returns a typed error.
