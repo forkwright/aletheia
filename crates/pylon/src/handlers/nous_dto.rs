@@ -57,8 +57,13 @@ pub struct NousSummary {
     pub enabled: bool,
     /// Primary LLM model assigned to this agent.
     pub model: String,
+    /// Provider instance selected for the primary model, when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// Fallback models tried after primary-model failures.
     pub fallback_models: Vec<String>,
+    /// Provider instances selected for fallback models, by index.
+    pub fallback_providers: Vec<Option<String>>,
     /// Per-model provider readiness for the agent's model chain.
     pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Lifecycle status (e.g. `"active"`).
@@ -86,8 +91,13 @@ pub struct NousStatus {
     pub id: String,
     /// Primary LLM model assigned to this agent.
     pub model: String,
+    /// Provider instance selected for the primary model, when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// Fallback models tried after primary-model failures.
     pub fallback_models: Vec<String>,
+    /// Provider instances selected for fallback models, by index.
+    pub fallback_providers: Vec<Option<String>>,
     /// Number of primary-model attempts before moving to the fallback chain.
     pub retries_before_fallback: u32,
     /// Whether complexity-based model routing is enabled.

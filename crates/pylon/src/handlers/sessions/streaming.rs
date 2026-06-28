@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use hermeneus::provider::ProviderRoute;
 use nous::pipeline::TurnResult;
 use nous::stream::TurnStreamEvent;
 
@@ -89,6 +90,7 @@ fn turn_complete_event_payload(
         "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
         "model": result.model_used.as_str(),
+        "provider": result.provider_used.as_deref(),
     })
 }
 
@@ -339,11 +341,26 @@ pub async fn send_message(
     if let Some(config) = state.nous_manager.get_config(nous_id)
         && state
             .provider_registry
-            .find_provider(&config.generation.model)
-            .is_none()
+            .resolve_provider(
+                &config.generation.model,
+                config
+                    .generation
+                    .provider
+                    .as_deref()
+                    .map_or(ProviderRoute::ModelOnly, ProviderRoute::Explicit),
+            )
+            .is_err()
     {
+        let provider = config
+            .generation
+            .provider
+            .as_deref()
+            .map_or_else(String::new, |provider| format!(" via provider {provider}"));
         return Err(InternalSnafu {
-            message: format!("no provider for model {}", config.generation.model),
+            message: format!(
+                "no provider for model {}{}",
+                config.generation.model, provider
+            ),
         }
         .build());
     }
@@ -583,6 +600,7 @@ pub async fn send_message(
                             cache_read_tokens: 0,
                             cache_write_tokens: 0,
                         },
+                        provider: None,
                         request_id: Some(request_id_str.clone()),
                     };
                     if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
@@ -999,6 +1017,7 @@ pub async fn stream_turn(
                             nous_id: aid.clone(),
                             session_id: sid.clone(),
                             model: Some(result.model_used.clone()),
+                            provider: result.provider_used.clone(),
                             tool_calls: result.tool_calls.len(),
                             input_tokens: result.usage.input_tokens,
                             output_tokens: result.usage.output_tokens,
@@ -1074,6 +1093,7 @@ pub async fn stream_turn(
                             nous_id: aid,
                             session_id: sid,
                             model: configured_model,
+                            provider: None,
                             tool_calls: 0,
                             input_tokens: 0,
                             output_tokens: 0,
@@ -1662,6 +1682,7 @@ async fn emit_turn_result_events_buffered(
             cache_read_tokens: result.usage.cache_read_tokens,
             cache_write_tokens: result.usage.cache_write_tokens,
         },
+        provider: result.provider_used.clone(),
         request_id: request_id.map(ToOwned::to_owned),
     };
     if let Some(recorded) = record_sse_event(buf, &event).await {

@@ -87,6 +87,8 @@ pub(crate) struct TurnCompleted {
     pub(crate) nous_id: String,
     /// Observed model name for the completed turn.
     pub(crate) model: String,
+    /// Observed provider instance for the completed turn.
+    pub(crate) provider: Option<String>,
     /// Total duration in milliseconds.
     pub(crate) duration_ms: u64,
     /// Input tokens consumed.
@@ -110,9 +112,10 @@ impl InternalEvent for TurnCompleted {
 
     fn log_message(&self) -> String {
         format!(
-            "turn completed for {} (model={}, {}ms, in={}, out={}, tools={}, stages={})",
+            "turn completed for {} (model={}, provider={}, {}ms, in={}, out={}, tools={}, stages={})",
             self.nous_id,
             self.model,
+            self.provider.as_deref().unwrap_or("unknown"),
             self.duration_ms,
             self.input_tokens,
             self.output_tokens,
@@ -122,7 +125,15 @@ impl InternalEvent for TurnCompleted {
     }
 
     fn metric_labels(&self) -> Vec<(&'static str, String)> {
-        vec![("nous_id", self.nous_id.clone())]
+        vec![
+            ("nous_id", self.nous_id.clone()),
+            (
+                "provider",
+                self.provider
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_owned()),
+            ),
+        ]
     }
 }
 
@@ -346,6 +357,7 @@ mod tests {
         let event = TurnCompleted {
             nous_id: "test-agent".to_owned(),
             model: "test-model".to_owned(),
+            provider: Some("test-provider".to_owned()),
             duration_ms: 1234,
             input_tokens: 1000,
             output_tokens: 500,
@@ -356,6 +368,7 @@ mod tests {
         let msg = event.log_message();
         assert!(msg.contains("1234"), "message includes duration");
         assert!(msg.contains("test-model"), "message includes model");
+        assert!(msg.contains("test-provider"), "message includes provider");
     }
 
     #[test]

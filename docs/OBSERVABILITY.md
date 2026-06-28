@@ -38,7 +38,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `aletheia_pipeline_turns_total` | Counter | `nous_id` | Turns processed per agent |
+| `aletheia_pipeline_turns_total` | Counter | `nous_id`, `provider` | Turns processed per agent and observed provider |
 | `aletheia_pipeline_stage_duration_seconds` | Histogram | `nous_id`, `stage` | Per-stage latency (`context`, `recall`, `execute`, etc.) |
 | `aletheia_pipeline_errors_total` | Counter | `nous_id`, `stage`, `error_type` | Errors by pipeline stage |
 | `aletheia_tool_failures_total` | Counter | `nous_id`, `tool_name` | Tool execution failures |

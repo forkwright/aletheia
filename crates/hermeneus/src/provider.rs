@@ -54,7 +54,7 @@ pub enum ProviderRoute<'a> {
     /// Select any provider that claims the model, preferring the healthiest,
     /// most-specific match.
     ModelOnly,
-    /// Use the provider with this exact instance name, regardless of specificity.
+    /// Use the provider with this exact instance name if it claims the model.
     Explicit(&'a str),
 }
 
@@ -62,9 +62,23 @@ pub enum ProviderRoute<'a> {
 #[derive(Debug, Clone)]
 pub enum ProviderResolutionError {
     /// No registered provider supports the requested model (model-only routing),
-    /// or the explicitly named provider does not exist.
+    /// or no provider is registered at all.
     NoProvider {
         /// The model ID for which no provider was found.
+        model: String,
+    },
+    /// The explicitly named provider does not exist.
+    ProviderNotFound {
+        /// Requested provider instance name.
+        name: String,
+        /// Requested model ID.
+        model: String,
+    },
+    /// The explicitly named provider exists but does not claim the requested model.
+    ProviderDoesNotSupportModel {
+        /// Requested provider instance name.
+        name: String,
+        /// Requested model ID.
         model: String,
     },
     /// The explicitly named provider exists but is not available.
@@ -80,6 +94,12 @@ impl std::fmt::Display for ProviderResolutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoProvider { model } => write!(f, "no provider for model: {model}"),
+            Self::ProviderNotFound { name, model } => {
+                write!(f, "provider '{name}' is not registered for model: {model}")
+            }
+            Self::ProviderDoesNotSupportModel { name, model } => {
+                write!(f, "provider '{name}' does not support model: {model}")
+            }
             Self::ProviderUnavailable { name, health } => {
                 write!(f, "provider '{name}' is currently unavailable: {health:?}")
             }
@@ -589,9 +609,22 @@ impl ProviderRegistry {
             .providers
             .iter()
             .find(|e| e.provider.name() == name)
-            .ok_or_else(|| ProviderResolutionError::NoProvider {
+            .ok_or_else(|| ProviderResolutionError::ProviderNotFound {
+                name: name.to_owned(),
                 model: model.to_owned(),
             })?;
+
+        if entry.provider.match_specificity(model).is_none() {
+            tracing::info!(
+                provider = name,
+                model,
+                "explicit provider does not claim model"
+            );
+            return Err(ProviderResolutionError::ProviderDoesNotSupportModel {
+                name: name.to_owned(),
+                model: model.to_owned(),
+            });
+        }
 
         let health = entry.health.health();
         if !Self::is_available(&health) {
