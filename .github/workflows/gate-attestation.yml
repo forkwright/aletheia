@@ -86,6 +86,12 @@ jobs:
       - name: Cargo publish policy
         run: scripts/check-cargo-publish-policy.py
 
+      - name: Release versioning
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: |
+          scripts/check-release-versioning.py
+          scripts/test-release-versioning.py
+
       - name: Proskenion flake wiring
         run: scripts/check-proskenion-flake.py
 
