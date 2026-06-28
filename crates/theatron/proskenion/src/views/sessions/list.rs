@@ -508,7 +508,7 @@ pub(crate) fn SessionList(
                                         title: session.label().to_string(),
                                         message_count: session.message_count,
                                         updated_at: session.updated_at.clone().unwrap_or_default(),
-                                        status: session_display_status(&session).to_string(),
+                                        status: session_display_status(&session),
                                         is_selected: selection_store.read().is_selected(&session.id),
                                         on_click: move |id: SessionId| on_select_session.call(id),
                                         on_toggle_select: move |id: SessionId| {

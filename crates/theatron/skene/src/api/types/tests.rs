@@ -80,6 +80,21 @@ fn session_deserialization_defaults() {
 }
 
 #[test]
+fn session_lifecycle_wire_values_are_backend_owned() {
+    let values: Vec<&str> = SessionLifecycle::ALL
+        .iter()
+        .map(|status| status.as_str())
+        .collect();
+
+    assert_eq!(values, ["active", "archived", "distilled"]);
+    assert_eq!(
+        SessionLifecycle::parse("distilled"),
+        Some(SessionLifecycle::Distilled)
+    );
+    assert!(SessionLifecycle::parse("idle").is_none());
+}
+
+#[test]
 fn history_message_deserialization() {
     let json = r#"{
         "role": "user",
@@ -337,7 +352,7 @@ fn list_sessions_request_serializes_only_set_fields() {
     let params = ListSessionsRequest {
         nous_id: Some("syn".to_string()),
         search: None,
-        status: Some("active".to_string()),
+        status: Some(SessionLifecycle::Active),
         limit: Some(25),
         after: None,
     };

@@ -82,7 +82,7 @@ pub struct SessionListItem {
     pub nous_id: String,
     /// Client-chosen deduplication key.
     pub session_key: String,
-    /// Lifecycle status (e.g. `"active"`, `"archived"`).
+    /// Lifecycle status (e.g. `"active"`, `"archived"`, `"distilled"`).
     pub status: String,
     /// Total messages stored in this session.
     pub message_count: i64,
@@ -102,7 +102,7 @@ pub struct SessionResponse {
     pub nous_id: String,
     /// Client-chosen deduplication key.
     pub session_key: String,
-    /// Lifecycle status (e.g. `"active"`, `"archived"`).
+    /// Lifecycle status (e.g. `"active"`, `"archived"`, `"distilled"`).
     pub status: String,
     /// LLM model used for this session, if set.
     pub model: Option<String>,

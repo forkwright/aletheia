@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use skene::api::types::Session;
+use skene::api::types::{Session, SessionLifecycle};
 use skene::id::SessionId;
 
 /// Operator-facing failure metadata for a sessions API request.
@@ -89,25 +89,90 @@ pub(crate) enum StatusFilter {
     All,
     /// Active sessions only.
     Active,
-    /// Idle sessions only.
-    Idle,
     /// Archived sessions only.
     Archived,
+    /// Distilled sessions only.
+    Distilled,
 }
 
 impl StatusFilter {
     /// All available filter options.
-    pub(crate) const ALL: &[Self] = &[Self::All, Self::Active, Self::Idle, Self::Archived];
+    pub(crate) const ALL: &[Self] = &[
+        Self::All,
+        Self::Active,
+        Self::Archived,
+        Self::Distilled,
+    ];
 
     /// Human-readable label.
     #[must_use]
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::All => "All",
-            Self::Active => "Active",
-            Self::Idle => "Idle",
-            Self::Archived => "Archived",
+            Self::Active => SessionLifecycle::Active.label(),
+            Self::Archived => SessionLifecycle::Archived.label(),
+            Self::Distilled => SessionLifecycle::Distilled.label(),
         }
+    }
+
+    /// Backend lifecycle query value, if this filter narrows by lifecycle.
+    #[must_use]
+    pub(crate) fn query_value(self) -> Option<&'static str> {
+        match self {
+            Self::All => None,
+            Self::Active => Some(SessionLifecycle::Active.as_str()),
+            Self::Archived => Some(SessionLifecycle::Archived.as_str()),
+            Self::Distilled => Some(SessionLifecycle::Distilled.as_str()),
+        }
+    }
+}
+
+/// Parsed session lifecycle for UI decisions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SessionLifecycleState {
+    /// Status is one of the backend-owned lifecycle values.
+    Known(SessionLifecycle),
+    /// Status came from the server but is not yet known by this client.
+    Unknown(String),
+    /// Status was absent from the response.
+    Missing,
+}
+
+impl SessionLifecycleState {
+    /// Parse lifecycle state from a session DTO without inventing fallback states.
+    #[must_use]
+    pub(crate) fn from_session(session: &Session) -> Self {
+        match session.status.as_deref() {
+            Some(raw) if !raw.is_empty() => SessionLifecycle::parse(raw)
+                .map(Self::Known)
+                .unwrap_or_else(|| Self::Unknown(raw.to_owned())),
+            _ => Self::Missing,
+        }
+    }
+
+    /// Display label for the lifecycle badge.
+    #[must_use]
+    pub(crate) fn display_label(&self) -> String {
+        match self {
+            Self::Known(status) => status.as_str().to_owned(),
+            Self::Unknown(raw) => format!("unknown: {raw}"),
+            Self::Missing => "unknown: missing".to_string(),
+        }
+    }
+
+    /// Whether this lifecycle can be archived.
+    #[must_use]
+    pub(crate) fn can_archive(&self) -> bool {
+        matches!(
+            self,
+            Self::Known(SessionLifecycle::Active | SessionLifecycle::Distilled)
+        )
+    }
+
+    /// Whether this lifecycle can be restored with the unarchive endpoint.
+    #[must_use]
+    pub(crate) fn can_restore(&self) -> bool {
+        matches!(self, Self::Known(SessionLifecycle::Archived))
     }
 }
 
@@ -343,24 +408,12 @@ impl SessionSelectionStore {
         self.select_all = false;
     }
 
-    /// Whether any sessions are currently selected.
-    #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
-    #[must_use]
-    pub(crate) fn has_selection(&self) -> bool {
-        !self.selected.is_empty()
-    }
-
     /// Number of selected sessions.
     #[must_use]
     pub(crate) fn count(&self) -> usize {
         self.selected.len()
     }
 
-    /// Consume the selection, returning the IDs.
-    pub(crate) fn take_selected(&mut self) -> Vec<SessionId> {
-        self.select_all = false;
-        self.selected.drain().collect()
-    }
 }
 
 /// Format a relative time string from an ISO timestamp.
@@ -442,22 +495,28 @@ fn is_leap(y: u64) -> bool {
 }
 
 /// Infer session status for display from the Session struct.
-pub(crate) fn session_display_status(session: &Session) -> &'static str {
-    if session.is_archived() {
-        "archived"
-    } else if session.status.as_deref() == Some("active") {
-        "active"
-    } else {
-        "idle"
-    }
+pub(crate) fn session_display_status(session: &Session) -> String {
+    SessionLifecycleState::from_session(session).display_label()
+}
+
+/// Whether the session can be archived through the lifecycle endpoint.
+#[must_use]
+pub(crate) fn session_can_archive(session: &Session) -> bool {
+    SessionLifecycleState::from_session(session).can_archive()
+}
+
+/// Whether the session can be restored through the lifecycle endpoint.
+#[must_use]
+pub(crate) fn session_can_restore(session: &Session) -> bool {
+    SessionLifecycleState::from_session(session).can_restore()
 }
 
 /// CSS color for a session status.
 pub(crate) fn status_color(status: &str) -> &'static str {
     match status {
         "active" => "var(--status-success)",
-        "idle" => "var(--status-warning)",
         "archived" => "var(--text-muted)",
+        "distilled" => "var(--status-info)",
         _ => "var(--text-secondary)",
     }
 }
@@ -647,16 +706,6 @@ mod tests {
     }
 
     #[test]
-    fn selection_store_take_selected() {
-        let mut sel = SessionSelectionStore::new();
-        sel.toggle(&"s1".into());
-        sel.toggle(&"s2".into());
-        let taken = sel.take_selected();
-        assert_eq!(taken.len(), 2);
-        assert!(!sel.has_selection());
-    }
-
-    #[test]
     fn format_relative_time_iso() {
         // Cannot test exact output without controlling system time,
         // but verify it doesn't panic and returns a string.
@@ -696,18 +745,51 @@ mod tests {
     }
 
     #[test]
-    fn session_display_status_idle() {
+    fn session_display_status_distilled() {
         let mut s = make_session("s1", "chat");
-        s.status = Some("idle".to_string());
-        assert_eq!(session_display_status(&s), "idle");
+        s.status = Some("distilled".to_string());
+        assert_eq!(session_display_status(&s), "distilled");
+    }
+
+    #[test]
+    fn session_display_status_preserves_unknown_raw_status() {
+        let mut s = make_session("s1", "chat");
+        s.status = Some("paused".to_string());
+        assert_eq!(session_display_status(&s), "unknown: paused");
+    }
+
+    #[test]
+    fn session_display_status_marks_missing_status_explicitly() {
+        let mut s = make_session("s1", "chat");
+        s.status = None;
+        assert_eq!(session_display_status(&s), "unknown: missing");
+    }
+
+    #[test]
+    fn lifecycle_actions_follow_canonical_status() {
+        let mut s = make_session("s1", "chat");
+        assert!(session_can_archive(&s));
+        assert!(!session_can_restore(&s));
+
+        s.status = Some("distilled".to_string());
+        assert!(session_can_archive(&s));
+        assert!(!session_can_restore(&s));
+
+        s.status = Some("archived".to_string());
+        assert!(!session_can_archive(&s));
+        assert!(session_can_restore(&s));
+
+        s.status = Some("paused".to_string());
+        assert!(!session_can_archive(&s));
+        assert!(!session_can_restore(&s));
     }
 
     #[test]
     fn status_color_values() {
         assert_eq!(status_color("active"), "var(--status-success)");
-        assert_eq!(status_color("idle"), "var(--status-warning)");
         assert_eq!(status_color("archived"), "var(--text-muted)");
-        assert_eq!(status_color("unknown"), "var(--text-secondary)");
+        assert_eq!(status_color("distilled"), "var(--status-info)");
+        assert_eq!(status_color("unknown: paused"), "var(--text-secondary)");
     }
 
     #[test]
@@ -722,5 +804,20 @@ mod tests {
         for filter in StatusFilter::ALL {
             assert!(!filter.label().is_empty());
         }
+    }
+
+    #[test]
+    fn status_filter_query_values_match_session_lifecycle_contract() {
+        let filter_values: Vec<&str> = StatusFilter::ALL
+            .iter()
+            .filter_map(|filter| filter.query_value())
+            .collect();
+        let lifecycle_values: Vec<&str> = SessionLifecycle::ALL
+            .iter()
+            .map(|status| status.as_str())
+            .collect();
+
+        assert_eq!(filter_values, lifecycle_values);
+        assert!(!filter_values.contains(&"idle"));
     }
 }

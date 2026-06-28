@@ -17,6 +17,9 @@ pub enum SessionStatus {
 }
 
 impl SessionStatus {
+    /// Known lifecycle values in backend wire order.
+    pub const ALL: &[Self] = &[Self::Active, Self::Archived, Self::Distilled];
+
     /// Return the wire-format string for this status.
     #[must_use]
     pub fn as_str(self) -> &'static str {
