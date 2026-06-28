@@ -244,6 +244,7 @@ pub(crate) async fn execute_command(app: &mut App) {
             app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
                 cursor: 0,
                 show_archived,
+                new_session_status: app.dashboard.new_session_status.clone(),
             }));
         }
         "health" | "h" | "cost" | "$" => {
@@ -296,7 +297,7 @@ pub(crate) async fn execute_command(app: &mut App) {
             execute_model(app);
         }
         "new" => {
-            super::api::handle_new_session(app).await;
+            super::api::handle_new_session(app);
         }
         "rename" => {
             if args.is_empty() {

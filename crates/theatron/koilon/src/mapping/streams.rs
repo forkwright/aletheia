@@ -13,6 +13,7 @@ impl App {
             Event::Terminal(term_event) => self.map_terminal(term_event),
             Event::Sse(sse_event) => Some(self.map_sse(sse_event)),
             Event::Stream(stream_event) => Some(self.map_stream(stream_event)),
+            Event::Background(msg) => Some(msg),
             Event::Tick => Some(Msg::Tick),
         }
     }
