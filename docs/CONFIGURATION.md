@@ -994,6 +994,7 @@ These are read only by maintainer and CI tooling, not by the public runtime path
 | Variable | Owner | Meaning |
 |----------|-------|---------|
 | `ALETHEIA_AUTH_TOKEN` | `scripts/smoke-proskenion.sh` | Bearer token written to the temporary desktop config during the smoke check. |
+| `ALETHEIA_EVAL_COVERAGE_POLICY` | `aletheia eval` | Eval coverage gate. Defaults to `ci`; use `smoke-dev` only for local exploratory runs that may intentionally tolerate skips. |
 | `ALETHEIA_EVAL_TOKEN` | `scripts/benchmark.sh` | Auth token used when the benchmarked instance requires authentication. |
 | `ALETHEIA_SMOKE_PORT` | `scripts/smoke-proskenion.sh` | Port for the smoke check's local server. Defaults to a random port in `39000-40999`. |
 | `ALETHEIA_SMOKE_KEEP_LOGS` | `scripts/smoke-proskenion.sh` | Set to `1` to retain temporary smoke logs on success. |

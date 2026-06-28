@@ -4,6 +4,7 @@ use owo_colors::OwoColorize;
 use serde::Serialize;
 use tracing::info;
 
+use crate::coverage::{self, SkipClass, SkipKind, Summary};
 use crate::provenance::EvalProvenance;
 use crate::runner::RunReport;
 use crate::scenario::{ScenarioClassification, ScenarioOutcome, ScenarioSubResult};
@@ -11,6 +12,16 @@ use crate::scenario::{ScenarioClassification, ScenarioOutcome, ScenarioSubResult
 /// Print a human-readable eval report to stdout.
 #[tracing::instrument(skip_all)]
 pub fn print_report(report: &RunReport, base_url: &str) {
+    print_report_inner(report, base_url, None);
+}
+
+/// Print a human-readable eval report with coverage policy details.
+#[tracing::instrument(skip_all)]
+pub fn print_report_with_coverage(report: &RunReport, base_url: &str, coverage: &Summary) {
+    print_report_inner(report, base_url, Some(coverage));
+}
+
+fn print_report_inner(report: &RunReport, base_url: &str, coverage: Option<&Summary>) {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
 
     if use_color {
@@ -98,6 +109,37 @@ pub fn print_report(report: &RunReport, base_url: &str) {
     } else {
         info!("{summary}");
     }
+
+    if let Some(coverage) = coverage {
+        print_coverage_summary(coverage, use_color);
+    }
+}
+
+fn print_coverage_summary(summary: &Summary, use_color: bool) {
+    let coverage_summary = format!(
+        "coverage [{}]: {}/{} required passed, {} skipped (pass {}, skip {})",
+        summary.policy,
+        summary.passed_required,
+        summary.required_scenarios,
+        summary.skipped_required,
+        coverage::format_bps(summary.required_pass_rate_bps),
+        coverage::format_bps(summary.required_skip_ratio_bps)
+    );
+    if use_color && !summary.passed {
+        info!("{}", coverage_summary.red().bold());
+    } else if use_color {
+        info!("{}", coverage_summary.green().bold());
+    } else {
+        info!("{coverage_summary}");
+    }
+
+    for violation in summary.violation_messages() {
+        if use_color {
+            info!("  {}", violation.red());
+        } else {
+            info!("  {violation}");
+        }
+    }
 }
 
 fn format_sub_result(sub: &ScenarioSubResult) -> String {
@@ -116,7 +158,18 @@ fn format_sub_result(sub: &ScenarioSubResult) -> String {
 /// Print the report as JSON for machine consumption.
 #[tracing::instrument(skip_all)]
 pub fn print_report_json(report: &RunReport) {
-    let json_report = build_json_report(report);
+    let json_report = build_json_report(report, None);
+
+    match serde_json::to_string_pretty(&json_report) {
+        Ok(json) => info!("{json}"),
+        Err(e) => tracing::error!(error = %e, "failed to serialize eval report as JSON"),
+    }
+}
+
+/// Print the report as JSON with coverage policy details.
+#[tracing::instrument(skip_all)]
+pub fn print_report_json_with_coverage(report: &RunReport, coverage: &Summary) {
+    let json_report = build_json_report(report, Some(coverage));
 
     match serde_json::to_string_pretty(&json_report) {
         Ok(json) => info!("{json}"),
@@ -134,7 +187,7 @@ pub fn print_report_json(report: &RunReport) {
 /// Returns an error if JSON serialization fails or if the Typst render fails.
 #[tracing::instrument(skip_all)]
 pub fn emit_eval_report(report: &RunReport) -> crate::error::Result<Vec<u8>> {
-    let json_report = build_json_report(report);
+    let json_report = build_json_report(report, None);
 
     let data = serde_json::json!({
         "summary": {
@@ -154,13 +207,14 @@ pub fn emit_eval_report(report: &RunReport) -> crate::error::Result<Vec<u8>> {
     })
 }
 
-fn build_json_report(report: &RunReport) -> JsonReport {
+fn build_json_report(report: &RunReport, coverage: Option<&Summary>) -> JsonReport {
     JsonReport {
         eval_run_id: report.provenance.eval_run_id.clone(),
         provenance: report.provenance.clone(),
         passed: report.passed,
         failed: report.failed,
         skipped: report.skipped,
+        coverage: coverage.cloned(),
         total_duration_ms: u64::try_from(report.total_duration.as_millis()).unwrap_or(u64::MAX),
         results: report
             .results
@@ -170,6 +224,7 @@ fn build_json_report(report: &RunReport) -> JsonReport {
                 category: r.meta.category.to_owned(),
                 classification: r.meta.classification,
                 criteria: r.meta.criteria_summary(),
+                required_for_coverage: coverage::required_for_coverage(&r.meta),
                 outcome: match &r.outcome {
                     ScenarioOutcome::Passed { .. } => OutcomeKind::Passed,
                     ScenarioOutcome::Failed { .. } => OutcomeKind::Failed,
@@ -188,6 +243,16 @@ fn build_json_report(report: &RunReport) -> JsonReport {
                 },
                 skip_reason: match &r.outcome {
                     ScenarioOutcome::Skipped { reason } => Some(reason.clone()),
+                    _ => None,
+                },
+                skip_kind: match &r.outcome {
+                    ScenarioOutcome::Skipped { reason } => Some(coverage::classify_skip(reason)),
+                    _ => None,
+                },
+                skip_class: match &r.outcome {
+                    ScenarioOutcome::Skipped { reason } => {
+                        Some(coverage::classify_skip(reason).class())
+                    }
                     _ => None,
                 },
                 sub_results: r.sub_results.clone(),
@@ -213,6 +278,8 @@ struct JsonReport {
     passed: usize,
     failed: usize,
     skipped: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    coverage: Option<Summary>,
     total_duration_ms: u64,
     results: Vec<JsonScenarioResult>,
 }
@@ -224,12 +291,17 @@ struct JsonScenarioResult {
     classification: ScenarioClassification,
     #[serde(skip_serializing_if = "Option::is_none")]
     criteria: Option<String>,
+    required_for_coverage: bool,
     outcome: OutcomeKind,
     duration_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     skip_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skip_kind: Option<SkipKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skip_class: Option<SkipClass>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     sub_results: Vec<ScenarioSubResult>,
 }
@@ -295,7 +367,7 @@ mod tests {
     #[test]
     fn json_report_serializes() {
         let report = sample_report();
-        let json_report = build_json_report(&report);
+        let json_report = build_json_report(&report, None);
         let json = serde_json::to_string(&json_report).expect("serialization should succeed");
         assert!(!json.is_empty());
     }
@@ -303,7 +375,7 @@ mod tests {
     #[test]
     fn json_report_contains_expected_fields() {
         let report = sample_report();
-        let json_report = build_json_report(&report);
+        let json_report = build_json_report(&report, None);
         let json = serde_json::to_string_pretty(&json_report).expect("serialize");
         assert!(json.contains("\"passed\""));
         assert!(json.contains("\"failed\""));
@@ -363,8 +435,38 @@ mod tests {
                 response_excerpt: None,
                 violation_ids: vec![],
             });
-        let json_report = build_json_report(&report);
+        let json_report = build_json_report(&report, None);
         let result = json_report.results.first().expect("first JSON result");
         assert_eq!(result.sub_results.len(), 1);
+    }
+
+    #[test]
+    fn json_report_includes_coverage_and_skip_classification() {
+        let mut report = sample_report();
+        report.results.push(ScenarioResult {
+            meta: ScenarioMeta {
+                id: "session-create-skipped",
+                description: "session creation skipped",
+                category: "session",
+                requires_auth: true,
+                requires_nous: true,
+                expected_contains: None,
+                expected_pattern: None,
+                classification: ScenarioClassification::Assertive,
+            },
+            outcome: ScenarioOutcome::Skipped {
+                reason: crate::coverage::SKIP_REASON_NO_AUTH_TOKEN.to_owned(),
+            },
+            sub_results: vec![],
+        });
+        let coverage = crate::coverage::Policy::Ci.evaluate(&report);
+
+        let json_report = build_json_report(&report, Some(&coverage));
+        let json = serde_json::to_string_pretty(&json_report).expect("serialize");
+
+        assert!(json.contains("\"coverage\""));
+        assert!(json.contains("\"required_scenarios\""));
+        assert!(json.contains("\"skip_kind\": \"missing_auth_token\""));
+        assert!(json.contains("\"skip_class\": \"environmental\""));
     }
 }
