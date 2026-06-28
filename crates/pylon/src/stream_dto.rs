@@ -180,6 +180,8 @@ pub(crate) enum TurnStreamEvent {
     /// `MessageComplete` event.
     #[serde(rename = "error")]
     Error {
+        /// Stable machine-readable failure classification.
+        code: String,
         message: String,
         /// Per-request correlation ID for cross-system error tracing.
         #[serde(skip_serializing_if = "Option::is_none")]

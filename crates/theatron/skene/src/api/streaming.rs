@@ -507,13 +507,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_error_event_preserves_request_id_and_details() {
-        let data = r#"{"type":"error","message":"provider unavailable","request_id":"req-stream","details":{"provider":"synthetic"}}"#;
+    fn parse_error_event_preserves_code_request_id_and_details() {
+        let data = r#"{"type":"error","code":"provider_unavailable","message":"provider unavailable","request_id":"req-stream","details":{"provider":"synthetic"}}"#;
         let result = parse("error", data);
         let Some(StreamEvent::Error(message)) = result else {
             panic!("expected Error");
         };
         assert!(message.contains("provider unavailable"));
+        assert!(message.contains("code provider_unavailable"));
         assert!(message.contains("request_id req-stream"));
         assert!(message.contains(r#""provider":"synthetic""#));
     }
@@ -524,7 +525,7 @@ mod tests {
             "event: message_start\n",
             "data: {\"type\":\"message_start\",\"session_id\":\"s1\",\"nous_id\":\"syn\",\"turn_id\":\"t1\"}\n\n",
             "event: error\n",
-            "data: {\"type\":\"error\",\"message\":\"provider unavailable\"}\n\n",
+            "data: {\"type\":\"error\",\"code\":\"provider_unavailable\",\"message\":\"provider unavailable\"}\n\n",
             "event: message_complete\n",
             "data: {\"type\":\"message_complete\",\"outcome\":{\"text\":\"\",\"nous_id\":\"syn\",\"session_id\":\"s1\",\"model\":\"mock\",\"tool_calls\":0,\"input_tokens\":7,\"output_tokens\":3,\"cache_read_tokens\":2,\"cache_write_tokens\":1,\"stop_reason\":\"error\",\"error\":\"provider unavailable\"}}\n\n",
         );
@@ -545,7 +546,7 @@ mod tests {
         server.join().expect("test server thread should finish");
 
         assert!(
-            matches!(events.get(1), Some(StreamEvent::Error(message)) if message == "provider unavailable"),
+            matches!(events.get(1), Some(StreamEvent::Error(message)) if message.contains("provider unavailable") && message.contains("code provider_unavailable")),
             "stream must deliver the diagnostic error before completion: {events:?}"
         );
         let Some(StreamEvent::TurnComplete { outcome }) = events.get(2) else {

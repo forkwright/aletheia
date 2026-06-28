@@ -186,10 +186,16 @@ fn tui_event_message_complete_type() {
 #[test]
 fn tui_event_error_type() {
     let event = crate::stream::TurnStreamEvent::Error {
+        code: "provider_unavailable".to_owned(),
         message: "fail".to_owned(),
-        request_id: None,
+        request_id: Some("req-123".to_owned()),
     };
     assert_eq!(event.event_type(), "error");
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "error");
+    assert_eq!(json["code"], "provider_unavailable");
+    assert_eq!(json["message"], "fail");
+    assert_eq!(json["request_id"], "req-123");
 }
 
 #[test]
