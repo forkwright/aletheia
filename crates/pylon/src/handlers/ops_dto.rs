@@ -10,6 +10,22 @@ pub struct ToolCatalogEntry {
     pub description: String,
     /// Tool identifier used by the registry.
     pub id: String,
+    /// Semantic tool category.
+    pub category: String,
+    /// Reversibility metadata used to derive approval policy.
+    pub reversibility: String,
+    /// Approval requirement derived from reversibility.
+    pub approval: String,
+    /// Whether the tool's default metadata requires an operator approval prompt.
+    pub requires_approval: bool,
+    /// Whether the tool's default metadata marks it as side-effecting or destructive.
+    pub destructive: bool,
+    /// Tool groups used by policy resolution.
+    pub groups: Vec<String>,
+    /// Tool source plane, e.g. `"organon_builtin"` or `"runtime_bridged_mcp"`.
+    pub source_plane: String,
+    /// Whether metadata came from the server-owned registry.
+    pub metadata_verified: bool,
 }
 
 /// A currently-running tool invocation.

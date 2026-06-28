@@ -321,6 +321,36 @@ fn nous_tool_enabled_defaults_to_true() {
     let json = r#"{"name": "bash"}"#;
     let tool: NousTool = serde_json::from_str(json).unwrap();
     assert!(tool.enabled);
+    assert!(!tool.metadata_verified);
+}
+
+#[test]
+fn nous_tool_deserializes_risk_metadata() {
+    let json = r#"{
+        "name": "read_but_irreversible",
+        "enabled": true,
+        "description": "Misleading name",
+        "category": "communication",
+        "reversibility": "irreversible",
+        "approval": "mandatory",
+        "requires_approval": true,
+        "destructive": true,
+        "groups": ["mcp"],
+        "source_plane": "organon_builtin",
+        "policy_state": "callable",
+        "metadata_verified": true,
+        "auto_activate": true
+    }"#;
+    let tool: NousTool = serde_json::from_str(json).unwrap();
+    assert_eq!(tool.category.as_deref(), Some("communication"));
+    assert_eq!(tool.reversibility.as_deref(), Some("irreversible"));
+    assert_eq!(tool.approval.as_deref(), Some("mandatory"));
+    assert!(tool.requires_approval);
+    assert!(tool.destructive);
+    assert_eq!(tool.groups, vec!["mcp"]);
+    assert_eq!(tool.source_plane.as_deref(), Some("organon_builtin"));
+    assert_eq!(tool.policy_state.as_deref(), Some("callable"));
+    assert!(tool.metadata_verified);
 }
 
 #[test]

@@ -139,7 +139,16 @@ fn tools_response_serializes_tool_list() {
             name: "read_file".to_owned(),
             enabled: true,
             description: "Read a file from disk".to_owned(),
-            category: "Builtin".to_owned(),
+            category: "workspace".to_owned(),
+            reversibility: "fully_reversible".to_owned(),
+            approval: "none".to_owned(),
+            requires_approval: false,
+            destructive: false,
+            groups: vec!["read".to_owned()],
+            source_plane: "organon_builtin".to_owned(),
+            policy_state: "callable".to_owned(),
+            unavailable_reason: None,
+            metadata_verified: true,
             auto_activate: true,
         }],
         config_applied: None,
@@ -150,7 +159,10 @@ fn tools_response_serializes_tool_list() {
     let json = serde_json::to_value(&resp).unwrap();
     assert_eq!(json["tools"][0]["name"], "read_file");
     assert_eq!(json["tools"][0]["enabled"], true);
-    assert_eq!(json["tools"][0]["category"], "Builtin");
+    assert_eq!(json["tools"][0]["category"], "workspace");
+    assert_eq!(json["tools"][0]["reversibility"], "fully_reversible");
+    assert_eq!(json["tools"][0]["approval"], "none");
+    assert_eq!(json["tools"][0]["metadata_verified"], true);
     assert_eq!(json["tools"][0]["auto_activate"], true);
 }
 
@@ -160,12 +172,24 @@ fn tool_summary_serializes_enabled_bit() {
         name: "search".to_owned(),
         enabled: false,
         description: "Search the workspace".to_owned(),
-        category: "Builtin".to_owned(),
+        category: "research".to_owned(),
+        reversibility: "irreversible".to_owned(),
+        approval: "mandatory".to_owned(),
+        requires_approval: true,
+        destructive: true,
+        groups: vec!["mcp".to_owned()],
+        source_plane: "organon_builtin".to_owned(),
+        policy_state: "denied".to_owned(),
+        unavailable_reason: Some("group_policy".to_owned()),
+        metadata_verified: true,
         auto_activate: false,
     };
     let json = serde_json::to_value(&tool).unwrap();
     assert_eq!(json["enabled"], false);
     assert_eq!(json["name"], "search");
+    assert_eq!(json["approval"], "mandatory");
+    assert_eq!(json["destructive"], true);
+    assert_eq!(json["unavailable_reason"], "group_policy");
 }
 
 #[test]

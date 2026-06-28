@@ -1,6 +1,6 @@
-//! Helper functions for tool categorization, argument extraction, and diff parsing.
+//! Helper functions for tool metadata, argument extraction, and diff parsing.
 
-use super::types::{OpsDiffEntry, ToolCategory};
+use super::types::{OpsDiffEntry, ToolCategory, ToolMetadata, ToolRisk};
 
 /// Maximum length for the inline primary arg display.
 const PRIMARY_ARG_MAX_LEN: usize = 40;
@@ -19,7 +19,7 @@ const PRIMARY_ARG_KEYS: &[&str] = &[
     "glob",
 ];
 
-/// Categorize a tool name into a [`ToolCategory`].
+/// Categorize a tool name into a [`ToolCategory`] as an unverified compatibility fallback.
 pub(crate) fn categorize_tool(name: &str) -> ToolCategory {
     let lower = name.to_lowercase();
     if lower.contains("read") || lower.contains("glob") || lower.contains("grep") {
@@ -38,6 +38,110 @@ pub(crate) fn categorize_tool(name: &str) -> ToolCategory {
         ToolCategory::Http
     } else {
         ToolCategory::Other
+    }
+}
+
+/// Build verified metadata from server-owned tool fields.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "metadata fields mirror the server DTO; grouping them would add an extra transient type"
+)]
+pub(crate) fn verified_tool_metadata(
+    category: Option<&str>,
+    reversibility: Option<&str>,
+    approval: Option<&str>,
+    requires_approval: bool,
+    destructive: bool,
+    source_plane: Option<String>,
+    policy_state: Option<String>,
+    unavailable_reason: Option<String>,
+) -> ToolMetadata {
+    let risk = risk_from_metadata(approval, reversibility, requires_approval, destructive);
+    ToolMetadata {
+        category: category
+            .and_then(category_from_metadata)
+            .unwrap_or(ToolCategory::Other),
+        risk,
+        reversibility: reversibility.map(str::to_owned),
+        approval: approval.map(str::to_owned),
+        requires_approval,
+        destructive: destructive || risk.is_destructive(),
+        source_plane,
+        policy_state,
+        unavailable_reason,
+        verified: true,
+    }
+}
+
+/// Build explicit unverified metadata from the legacy name heuristic.
+pub(crate) fn unverified_tool_metadata(name: &str) -> ToolMetadata {
+    let category = categorize_tool(name);
+    let risk = fallback_risk(category);
+    ToolMetadata {
+        category,
+        risk,
+        reversibility: None,
+        approval: None,
+        requires_approval: risk.is_destructive(),
+        destructive: risk.is_destructive(),
+        source_plane: None,
+        policy_state: None,
+        unavailable_reason: None,
+        verified: false,
+    }
+}
+
+fn category_from_metadata(category: &str) -> Option<ToolCategory> {
+    match category.to_ascii_lowercase().as_str() {
+        "workspace" => Some(ToolCategory::Workspace),
+        "memory" => Some(ToolCategory::Memory),
+        "communication" => Some(ToolCategory::Communication),
+        "planning" => Some(ToolCategory::Planning),
+        "system" => Some(ToolCategory::System),
+        "agent" => Some(ToolCategory::Agent),
+        "research" => Some(ToolCategory::Research),
+        "domain" => Some(ToolCategory::Domain),
+        "server" => Some(ToolCategory::Server),
+        "read" => Some(ToolCategory::Read),
+        "write" => Some(ToolCategory::Write),
+        "search" => Some(ToolCategory::Search),
+        "exec" => Some(ToolCategory::Exec),
+        "http" => Some(ToolCategory::Http),
+        "other" => Some(ToolCategory::Other),
+        _ => None,
+    }
+}
+
+fn risk_from_metadata(
+    approval: Option<&str>,
+    reversibility: Option<&str>,
+    requires_approval: bool,
+    destructive: bool,
+) -> ToolRisk {
+    match approval {
+        Some("mandatory") => return ToolRisk::Critical,
+        Some("required") => return ToolRisk::High,
+        Some("advisory") => return ToolRisk::Medium,
+        Some("none") => return ToolRisk::Low,
+        _ => {}
+    }
+
+    match reversibility {
+        Some("irreversible") => ToolRisk::Critical,
+        Some("partially_reversible") => ToolRisk::High,
+        Some("reversible") => ToolRisk::Medium,
+        Some("fully_reversible") => ToolRisk::Low,
+        _ if requires_approval || destructive => ToolRisk::High,
+        _ => ToolRisk::Medium,
+    }
+}
+
+fn fallback_risk(category: ToolCategory) -> ToolRisk {
+    match category {
+        ToolCategory::Read | ToolCategory::Search => ToolRisk::Low,
+        ToolCategory::Write | ToolCategory::Http => ToolRisk::High,
+        ToolCategory::Exec => ToolRisk::Critical,
+        _ => ToolRisk::Medium,
     }
 }
 

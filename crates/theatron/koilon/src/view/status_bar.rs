@@ -589,6 +589,7 @@ mod tests {
     #[test]
     fn tool_indicator_shows_counts() {
         use crate::state::ToolSummary;
+        use crate::state::ops::unverified_tool_metadata;
 
         let mut app = test_app();
         let mut agent = test_agent("syn", "Syn");
@@ -596,14 +597,17 @@ mod tests {
             ToolSummary {
                 name: "read_file".to_string(),
                 enabled: true,
+                metadata: unverified_tool_metadata("read_file"),
             },
             ToolSummary {
                 name: "bash".to_string(),
                 enabled: false,
+                metadata: unverified_tool_metadata("bash"),
             },
             ToolSummary {
                 name: "write_file".to_string(),
                 enabled: true,
+                metadata: unverified_tool_metadata("write_file"),
             },
         ];
         let agent_id = agent.id.clone();

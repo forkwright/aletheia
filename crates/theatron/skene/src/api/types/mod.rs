@@ -511,12 +511,52 @@ pub struct PaginatedSessionsResponse {
 
 /// A tool available to an agent, with its enablement state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "WHY(#4919): mirrors Pylon's flat tool metadata wire DTO; grouping booleans would complicate backward-compatible deserialization"
+)]
 pub struct NousTool {
     /// Tool name.
     pub name: String,
     /// Whether the tool is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Human-readable description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Semantic server-owned category.
+    #[serde(default)]
+    pub category: Option<String>,
+    /// Reversibility metadata used to derive approval policy.
+    #[serde(default)]
+    pub reversibility: Option<String>,
+    /// Approval requirement derived from reversibility/capability metadata.
+    #[serde(default)]
+    pub approval: Option<String>,
+    /// Whether approval is required before execution.
+    #[serde(default)]
+    pub requires_approval: bool,
+    /// Whether the tool is side-effecting or destructive.
+    #[serde(default)]
+    pub destructive: bool,
+    /// Tool groups used by policy resolution.
+    #[serde(default)]
+    pub groups: Vec<String>,
+    /// Tool source plane.
+    #[serde(default)]
+    pub source_plane: Option<String>,
+    /// Effective policy state for the active agent.
+    #[serde(default)]
+    pub policy_state: Option<String>,
+    /// Reason the tool is unavailable under the active policy.
+    #[serde(default)]
+    pub unavailable_reason: Option<String>,
+    /// Whether metadata came from the server-owned tool surface.
+    #[serde(default)]
+    pub metadata_verified: bool,
+    /// Whether the tool activates automatically without explicit configuration.
+    #[serde(default)]
+    pub auto_activate: bool,
 }
 
 fn default_true() -> bool {

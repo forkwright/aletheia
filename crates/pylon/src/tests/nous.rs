@@ -52,6 +52,55 @@ fn probe_tool_registry() -> ToolRegistry {
     registry
 }
 
+fn metadata_probe_tool_def(
+    name: &str,
+    category: ToolCategory,
+    reversibility: organon::types::Reversibility,
+    groups: Vec<ToolGroupId>,
+) -> ToolDef {
+    ToolDef {
+        name: ToolName::new(name).expect("valid tool name"),
+        description: "Probe tool with misleading name for metadata tests.".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: vec![].into_iter().collect(),
+            required: Vec::new(),
+        },
+        category,
+        reversibility,
+        auto_activate: true,
+        groups,
+        tags: vec![organon::types::ToolTag::Recon],
+    }
+}
+
+fn metadata_probe_tool_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(
+            metadata_probe_tool_def(
+                "read_but_irreversible",
+                ToolCategory::Communication,
+                organon::types::Reversibility::Irreversible,
+                vec![ToolGroupId::Mcp],
+            ),
+            Box::new(ProbeExecutor),
+        )
+        .expect("register irreversible probe");
+    registry
+        .register(
+            metadata_probe_tool_def(
+                "write_but_reversible",
+                ToolCategory::Research,
+                organon::types::Reversibility::FullyReversible,
+                vec![ToolGroupId::Read],
+            ),
+            Box::new(ProbeExecutor),
+        )
+        .expect("register reversible probe");
+    registry
+}
+
 /// WHY: Unix-only helper that makes a directory read-only for the test body
 /// and reliably restores write permissions when dropped so the tempdir can
 /// be cleaned up.
@@ -240,6 +289,47 @@ async fn get_nous_tools() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
     assert!(body["tools"].is_array());
+}
+
+#[tokio::test]
+async fn get_nous_tools_reports_canonical_metadata_for_misleading_names() {
+    let (state, _dir) = test_state().await;
+    let mut state = Arc::try_unwrap(state).unwrap_or_else(|_| panic!("unique app state"));
+    state.tool_registry = Arc::new(metadata_probe_tool_registry());
+    let state = Arc::new(state);
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/nous/syn/tools"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let tools = body["tools"].as_array().expect("tools array");
+    let read_named = tools
+        .iter()
+        .find(|tool| tool["name"] == "read_but_irreversible")
+        .expect("read_but_irreversible present");
+    assert_eq!(read_named["category"], "communication");
+    assert_eq!(read_named["reversibility"], "irreversible");
+    assert_eq!(read_named["approval"], "mandatory");
+    assert_eq!(read_named["requires_approval"], true);
+    assert_eq!(read_named["destructive"], true);
+    assert_eq!(read_named["groups"][0], "mcp");
+    assert_eq!(read_named["source_plane"], "organon_builtin");
+    assert_eq!(read_named["metadata_verified"], true);
+
+    let write_named = tools
+        .iter()
+        .find(|tool| tool["name"] == "write_but_reversible")
+        .expect("write_but_reversible present");
+    assert_eq!(write_named["category"], "research");
+    assert_eq!(write_named["reversibility"], "fully_reversible");
+    assert_eq!(write_named["approval"], "none");
+    assert_eq!(write_named["requires_approval"], false);
+    assert_eq!(write_named["destructive"], false);
+    assert_eq!(write_named["metadata_verified"], true);
 }
 
 #[tokio::test]

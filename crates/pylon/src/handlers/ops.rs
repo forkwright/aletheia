@@ -2,6 +2,7 @@
 
 use axum::Json;
 use axum::extract::State;
+use organon::types::{ApprovalRequirement, Reversibility, ToolDef};
 use symbolon::types::Role;
 use tracing::warn;
 
@@ -70,6 +71,46 @@ fn history_entry(record: mneme::types::ToolAuditRecord) -> ToolHistoryEntry {
     }
 }
 
+fn approval_requires_prompt(approval: ApprovalRequirement) -> bool {
+    matches!(
+        approval,
+        ApprovalRequirement::Required | ApprovalRequirement::Mandatory
+    )
+}
+
+fn reversibility_is_destructive(reversibility: Reversibility) -> bool {
+    matches!(
+        reversibility,
+        Reversibility::PartiallyReversible | Reversibility::Irreversible
+    )
+}
+
+fn catalog_entry(def: &ToolDef, has_origin: bool) -> ToolCatalogEntry {
+    let approval = ApprovalRequirement::from(def.reversibility);
+    ToolCatalogEntry {
+        name: def.name.as_str().to_owned(),
+        description: def.description.clone(),
+        id: def.name.as_str().to_owned(),
+        category: def.category.to_string(),
+        reversibility: def.reversibility.to_string(),
+        approval: approval.to_string(),
+        requires_approval: approval_requires_prompt(approval),
+        destructive: reversibility_is_destructive(def.reversibility),
+        groups: def
+            .groups
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
+        source_plane: if has_origin {
+            "runtime_bridged_mcp"
+        } else {
+            "organon_builtin"
+        }
+        .to_owned(),
+        metadata_verified: true,
+    }
+}
+
 /// GET /api/v1/ops/tools: summarize the live tool registry and metrics.
 ///
 /// The registry catalog is sourced from organon's live tool registry. Live
@@ -96,11 +137,7 @@ pub async fn tools(
         .tool_registry
         .definitions()
         .into_iter()
-        .map(|def| ToolCatalogEntry {
-            name: def.name.as_str().to_owned(),
-            description: def.description.clone(),
-            id: def.name.as_str().to_owned(),
-        })
+        .map(|def| catalog_entry(def, state.tool_registry.origin(&def.name).is_some()))
         .collect();
 
     let live_invocations = organon::metrics::live_invocations()
