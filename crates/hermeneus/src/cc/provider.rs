@@ -9,7 +9,7 @@
 //! timeouts produce [`Error::ApiRequest`].
 
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -32,20 +32,32 @@ pub(crate) const CC_MODEL_PREFIX: &str = "cc/";
 /// Configuration for the CC subprocess provider.
 #[derive(Debug, Clone)]
 pub struct CcProviderConfig {
+    /// Provider instance name used for routing diagnostics and metrics.
+    pub name: String,
     /// Path to the `claude` binary. If `None`, resolved from `PATH`.
     pub cc_binary: Option<PathBuf>,
+    /// Working directory for the subprocess. If `None`, inherits the parent cwd.
+    pub working_directory: Option<PathBuf>,
+    /// Model IDs this provider advertises for exact routing.
+    pub models: Vec<String>,
     /// Default model when the request doesn't specify one.
     pub default_model: String,
     /// Subprocess timeout (wall-clock).
     pub timeout: Duration,
+    /// Where the provider's model traffic terminates for recall filtering.
+    pub deployment_target: DeploymentTarget,
 }
 
 impl Default for CcProviderConfig {
     fn default() -> Self {
         Self {
+            name: "cc".to_owned(),
             cc_binary: None,
+            working_directory: None,
+            models: Vec::new(),
             default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_mins(5),
+            deployment_target: DeploymentTarget::Cloud,
         }
     }
 }
@@ -57,9 +69,13 @@ impl Default for CcProviderConfig {
 /// so the provider only needs to spawn the process and parse output.
 pub struct CcProvider {
     // kanon:ignore RUST/pub-visibility
+    name: String,
     cc_binary: PathBuf,
+    working_directory: Option<PathBuf>,
+    models: Vec<String>,
     default_model: String,
     timeout: Duration,
+    deployment_target: DeploymentTarget,
 }
 
 impl CcProvider {
@@ -86,17 +102,26 @@ impl CcProvider {
             find_cc_binary()?
         };
 
+        let working_directory = validate_working_directory(config.working_directory.as_deref())?;
+
         info!(
+            provider = %config.name,
             binary = %cc_binary.display(),
+            cwd = ?working_directory.as_ref().map(|path| path.display().to_string()),
+            models = ?config.models,
             default_model = %config.default_model,
             timeout_secs = config.timeout.as_secs(),
             "CC subprocess provider initialized"
         );
 
         Ok(Self {
+            name: config.name.clone(),
             cc_binary,
+            working_directory,
+            models: config.models.clone(),
             default_model: config.default_model.clone(),
             timeout: config.timeout,
+            deployment_target: config.deployment_target,
         })
     }
 
@@ -175,6 +200,7 @@ impl CcProvider {
 
         let output = process::run_completion(
             &self.cc_binary,
+            self.working_directory.as_deref(),
             model,
             system,
             &prompt,
@@ -220,6 +246,7 @@ impl CcProvider {
 
         let output = process::run_streaming(
             &self.cc_binary,
+            self.working_directory.as_deref(),
             model,
             system,
             &prompt,
@@ -277,9 +304,13 @@ fn extract_text_content(content: &Content) -> String {
 impl std::fmt::Debug for CcProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CcProvider")
+            .field("name", &self.name)
             .field("cc_binary", &self.cc_binary)
+            .field("working_directory", &self.working_directory)
+            .field("models", &self.models)
             .field("default_model", &self.default_model)
             .field("timeout_secs", &self.timeout.as_secs())
+            .field("deployment_target", &self.deployment_target)
             .finish_non_exhaustive()
     }
 }
@@ -293,7 +324,22 @@ impl LlmProvider for CcProvider {
     }
 
     fn supported_models(&self) -> &[&str] {
-        koina::models::provider_models(koina::models::ModelProvider::Anthropic)
+        if self.models.is_empty() {
+            koina::models::provider_models(koina::models::ModelProvider::Anthropic)
+        } else {
+            &[]
+        }
+    }
+
+    fn supported_model_list(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        if self.models.is_empty() {
+            self.supported_models()
+                .iter()
+                .map(|&model| std::borrow::Cow::Borrowed(model))
+                .collect()
+        } else {
+            crate::provider::owned_model_list(&self.models)
+        }
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -301,12 +347,14 @@ impl LlmProvider for CcProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        if model.starts_with(CC_MODEL_PREFIX) {
+        if self.models.iter().any(|m| m == model) {
+            Some(MatchKind::Exact)
+        } else if model.starts_with(CC_MODEL_PREFIX) {
             // WHY: `cc/<model>` is an operator-explicit routing directive —
             // this provider is the intended destination regardless of what
             // other providers are registered.
             Some(MatchKind::Prefix)
-        } else if model.starts_with("claude-") {
+        } else if self.models.is_empty() && model.starts_with("claude-") {
             // WHY: CC delegates model routing to the `claude` CLI, which
             // handles all claude-* models internally, including future IDs
             // not yet in the shared catalog. This catch-all ensures forward
@@ -318,12 +366,12 @@ impl LlmProvider for CcProvider {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "cc"
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn deployment_target(&self) -> DeploymentTarget {
-        DeploymentTarget::Cloud
+        self.deployment_target
     }
 
     fn supports_streaming(&self) -> bool {
@@ -350,6 +398,20 @@ impl SeatBridgedProvider for CcProvider {
 
     fn cli_product_name(&self) -> &'static str {
         "claude"
+    }
+}
+
+fn validate_working_directory(path: Option<&Path>) -> Result<Option<PathBuf>> {
+    match path {
+        Some(path) if path.is_dir() => Ok(Some(path.to_path_buf())),
+        Some(path) => Err(error::ProviderInitSnafu {
+            message: format!(
+                "configured claude working directory does not exist: {}",
+                path.display()
+            ),
+        }
+        .build()),
+        None => Ok(None),
     }
 }
 
@@ -454,9 +516,13 @@ mod tests {
     #[test]
     fn supports_model_known() {
         let provider = CcProvider {
+            name: "cc".to_owned(),
             cc_binary: PathBuf::from("claude"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert!(provider.supports_model(crate::models::names::sonnet()));
         assert!(provider.supports_model("claude-future-family-model"));
@@ -464,11 +530,42 @@ mod tests {
     }
 
     #[test]
+    fn configured_models_are_exact_claims() {
+        let provider = CcProvider {
+            name: "cc-seat".to_owned(),
+            cc_binary: PathBuf::from("claude"),
+            working_directory: None,
+            models: vec!["team-claude".to_owned()],
+            default_model: "team-claude".to_owned(),
+            timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
+        };
+
+        assert_eq!(
+            provider.match_specificity("team-claude"),
+            Some(MatchKind::Exact)
+        );
+        assert_eq!(
+            provider.match_specificity("cc/claude-opus-4-6"),
+            Some(MatchKind::Prefix)
+        );
+        assert_eq!(
+            provider.match_specificity("claude-future-family-model"),
+            None
+        );
+        assert_eq!(provider.name(), "cc-seat");
+    }
+
+    #[test]
     fn cc_provider_reports_cloud_deployment_target() {
         let provider = CcProvider {
+            name: "cc".to_owned(),
             cc_binary: PathBuf::from("claude"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
     }
@@ -476,9 +573,13 @@ mod tests {
     #[test]
     fn seat_bridged_fields() {
         let provider = CcProvider {
+            name: "cc".to_owned(),
             cc_binary: PathBuf::from("/usr/local/bin/claude"),
+            working_directory: None,
+            models: Vec::new(),
             default_model: crate::models::names::opus().to_owned(),
             timeout: Duration::from_mins(5),
+            deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(
             provider.cli_binary(),

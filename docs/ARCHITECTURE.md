@@ -178,9 +178,10 @@ generated inventory is `_llm/L1-workspace.md`.
 
 `hermeneus` owns the provider trait and concrete provider clients. `taxis`
 owns the serialized `[[providers]]` config shape, including `providerType`,
-`baseUrl`, `apiKeyEnv`, `models`, and `deploymentTarget`. The `aletheia`
-binary joins those layers in `runtime/setup.rs` by building a provider plan and
-registering providers in list order.
+`baseUrl`, `apiKeyEnv`, subprocess `binary`/`workdir`/`timeoutSecs`, `models`,
+and `deploymentTarget`. The `aletheia` binary joins those layers in
+`runtime/setup.rs` by building a provider plan and registering providers in list
+order.
 
 Current provider families:
 
@@ -202,9 +203,10 @@ see `docs/CONFIGURATION.md#providers` for the full field reference. When the
 list is non-empty, it is the complete provider-ordering contract. An
 `anthropic` entry without `apiKeyEnv` uses the legacy top-level credential
 chain at that entry's declared position; an empty list preserves the legacy
-single-Anthropic fallback. Feature-gated subprocess adapters (`claude-code`,
-`codex-oauth`) must be declared in the list to participate in declarative
-ordering.
+single-Anthropic fallback and its feature-gated startup shortcuts. Feature-gated
+subprocess adapters (`claude-code`, `codex-oauth`) must be declared in the list
+to participate in declarative ordering, and declarations fail startup/config
+validation when the corresponding adapter feature is absent.
 
 Local OpenAI-compatible servers continue to use the Chat Completions-compatible
 shape:

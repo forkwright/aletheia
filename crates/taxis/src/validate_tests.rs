@@ -261,6 +261,9 @@ fn accepts_provider_type_and_deployment_aliases() {
         {
             "name": "codex-seat",
             "providerType": "codex_oauth",
+            "binary": "bin/codex",
+            "workdir": "workspace",
+            "timeoutSecs": 30,
             "deploymentTarget": "cloud",
             "models": ["codex/gpt-5-codex"]
         }
@@ -292,6 +295,9 @@ fn provider_aliases_deserialize_to_typed_config() {
             {
                 "name": "codex-seat",
                 "providerType": "codex-oauth",
+                "binary": "bin/codex",
+                "workdir": "workspace",
+                "timeoutSecs": 30,
                 "deploymentTarget": "cloud",
                 "models": ["codex/gpt-5-codex"]
             }
@@ -324,6 +330,56 @@ fn provider_aliases_deserialize_to_typed_config() {
     assert_eq!(
         config.providers[2].deployment_target,
         crate::config::DeploymentTarget::Cloud
+    );
+    assert_eq!(
+        config.providers[2].binary.as_deref(),
+        Some(std::path::Path::new("bin/codex"))
+    );
+    assert_eq!(
+        config.providers[2].workdir.as_deref(),
+        Some(std::path::Path::new("workspace"))
+    );
+    assert_eq!(config.providers[2].timeout_secs, Some(30));
+}
+
+#[test]
+fn rejects_invalid_subprocess_provider_fields() {
+    let section = json!([
+        {
+            "name": "cc-seat",
+            "providerType": "claude-code",
+            "baseUrl": "https://api.anthropic.com",
+            "timeoutSecs": 1,
+            "models": [""]
+        },
+        {
+            "name": "openai-cloud",
+            "providerType": "openai",
+            "binary": "bin/openai"
+        }
+    ]);
+
+    let result = validate_section("providers", &section);
+    assert!(
+        result.is_err(),
+        "invalid subprocess fields should be rejected"
+    );
+    let errors = result.unwrap_err().errors.join("\n");
+    assert!(
+        errors.contains("baseUrl is not valid for subprocess"),
+        "HTTP-only fields should be rejected for subprocess providers: {errors}"
+    );
+    assert!(
+        errors.contains("timeoutSecs must be between 5 and 3600"),
+        "subprocess timeout range should be enforced: {errors}"
+    );
+    assert!(
+        errors.contains("models[0] must be a non-empty string"),
+        "empty model IDs should be rejected: {errors}"
+    );
+    assert!(
+        errors.contains("binary is only valid"),
+        "subprocess-only fields should be rejected on HTTP providers: {errors}"
     );
 }
 

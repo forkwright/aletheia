@@ -1140,7 +1140,8 @@ fn validate_tool_auth(path: &str, value: &Value, errors: &mut Vec<String>) {
 /// (#3424, #3414).
 ///
 /// Rejects entries with empty names, unknown provider kinds, OpenAI-compatible
-/// entries missing a base URL, or duplicate provider names.
+/// entries missing a base URL, malformed subprocess fields, or duplicate
+/// provider names.
 fn validate_providers(value: &Value, errors: &mut Vec<String>) {
     let Some(entries) = value.as_array() else {
         // WHY: missing or empty provider list is a valid config — the
@@ -1163,7 +1164,8 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
             }
         }
 
-        match entry.get("providerType").and_then(Value::as_str) {
+        let provider_kind = entry.get("providerType").and_then(Value::as_str);
+        match provider_kind {
             None | Some("") => {
                 errors.push(format!(
                     "providers[{i}].providerType must be one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code, codex_oauth, codex-oauth"
@@ -1194,8 +1196,10 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
                         "providers[{i}].baseUrl is required for providerType = openai-compatible"
                     ));
                 }
+                validate_provider_kind_specific_fields(i, entry, kind, errors);
             }
         }
+        validate_provider_models(i, entry, errors);
         if let Some(target) = entry.get("deploymentTarget").and_then(Value::as_str)
             && !matches!(
                 target,
@@ -1212,6 +1216,84 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
             errors.push(format!(
                 "providers[{i}].apiFamily '{api_family}' is not recognized (expected one of: chat-completions, responses)"
             ));
+        }
+    }
+}
+
+fn validate_provider_kind_specific_fields(
+    i: usize,
+    entry: &Value,
+    kind: &str,
+    errors: &mut Vec<String>,
+) {
+    let subprocess = matches!(kind, "claude-code" | "codex_oauth" | "codex-oauth");
+    if subprocess {
+        for field in ["baseUrl", "apiKeyEnv", "apiFamily"] {
+            if entry.get(field).is_some() {
+                errors.push(format!(
+                    "providers[{i}].{field} is not valid for subprocess providerType = {kind}; remove it or use an HTTP provider type"
+                ));
+            }
+        }
+        validate_optional_non_empty_string(i, entry, "binary", errors);
+        validate_optional_non_empty_string(i, entry, "workdir", errors);
+        validate_provider_timeout(i, entry, errors);
+        return;
+    }
+
+    for field in ["binary", "workdir", "timeoutSecs"] {
+        if entry.get(field).is_some() {
+            errors.push(format!(
+                "providers[{i}].{field} is only valid for providerType = claude-code or codex-oauth"
+            ));
+        }
+    }
+}
+
+fn validate_optional_non_empty_string(
+    i: usize,
+    entry: &Value,
+    field: &str,
+    errors: &mut Vec<String>,
+) {
+    let Some(value) = entry.get(field) else {
+        return;
+    };
+    match value.as_str() {
+        Some(text) if !text.is_empty() => {}
+        _ => errors.push(format!("providers[{i}].{field} must be a non-empty string")),
+    }
+}
+
+fn validate_provider_timeout(i: usize, entry: &Value, errors: &mut Vec<String>) {
+    let Some(value) = entry.get("timeoutSecs") else {
+        return;
+    };
+    let Some(timeout_secs) = value.as_u64() else {
+        errors.push(format!("providers[{i}].timeoutSecs must be an integer"));
+        return;
+    };
+    if !(5..=3600).contains(&timeout_secs) {
+        errors.push(format!(
+            "providers[{i}].timeoutSecs must be between 5 and 3600 seconds, got {timeout_secs}"
+        ));
+    }
+}
+
+fn validate_provider_models(i: usize, entry: &Value, errors: &mut Vec<String>) {
+    let Some(models) = entry.get("models") else {
+        return;
+    };
+    let Some(models) = models.as_array() else {
+        errors.push(format!("providers[{i}].models must be an array of strings"));
+        return;
+    };
+    for (model_i, model) in models.iter().enumerate() {
+        match model.as_str() {
+            Some(text) if !text.is_empty() => {}
+            _ => errors.push(format!(
+                "providers[{i}].models[{model_i}] must be a non-empty string"
+            )),
         }
     }
 }

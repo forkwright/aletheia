@@ -32,7 +32,8 @@ cascade: compiled defaults, then TOML, then `ALETHEIA_` environment overrides.
 The agent model path starts under `agents.defaults.model` and can be overridden
 per `agents.list[]` entry. Provider backends live in `[[providers]]` tables.
 Each provider declares `name`, `providerType`, optional `baseUrl`, optional
-`apiKeyEnv`, `deploymentTarget`, and the `models` it can serve.
+`apiKeyEnv`, subprocess-only `binary`/`workdir`/`timeoutSecs`,
+`deploymentTarget`, and the `models` it can serve.
 When this list is non-empty, it is the complete provider ordering surface:
 providers are registered in list order, and an `anthropic` entry without
 `apiKeyEnv` uses the top-level credential chain at that declared position.
@@ -40,6 +41,9 @@ providers are registered in list order, and an `anthropic` entry without
 Credential discovery is configured by `[credential]`. The documented strategies
 are `auto`, `api-key`, and `claude-code`; the Anthropic provider also reads
 `ANTHROPIC_API_KEY` outside the config cascade.
+`[credential].source = "claude-code"` is a credential-chain choice for the
+Anthropic HTTP provider, not a `[[providers]]` declaration for the Claude Code
+subprocess adapter.
 
 Tool access is fail-closed. The `toolGroups` field accepts `"all"`, `"deny"`,
 or a list of group names. Missing `toolGroups`, `"deny"`, and `[]` all deny

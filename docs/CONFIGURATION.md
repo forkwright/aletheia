@@ -432,9 +432,12 @@ claude_code_credentials = "~/.claude/.credentials.json"
 |-------|------|----------|-------------|
 | `name` | string | yes | Operator-facing label, must be unique across the list. |
 | `providerType` | string | yes | `anthropic`, `openai`, `openai-compatible`, `claude-code`, or `codex-oauth`. |
-| `apiFamily` | string | no | For `openai`: `responses` (default) or `chat-completions`. For `openai-compatible`: `chat-completions` (default). Ignored for other kinds. |
-| `baseUrl` | string | no | HTTP base URL. Required for `openai-compatible`; optional for `anthropic` (defaults to `https://api.anthropic.com`); ignored for subprocess adapters. |
-| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. For `anthropic`, omit this to use the top-level credential chain at the entry's declared position. |
+| `apiFamily` | string | no | For `openai`: `responses` (default) or `chat-completions`. For `openai-compatible`: `chat-completions` (default). Not valid for subprocess adapters. |
+| `baseUrl` | string | no | HTTP base URL. Required for `openai-compatible`; optional for `anthropic` (defaults to `https://api.anthropic.com`). Not valid for subprocess adapters. |
+| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. For `anthropic`, omit this to use the top-level credential chain at the entry's declared position. Not valid for subprocess adapters. |
+| `binary` | string | no | Subprocess provider CLI path (`claude` or `codex`). Omit to resolve from `PATH` and well-known user install directories. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
+| `workdir` | string | no | Subprocess working directory. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
+| `timeoutSecs` | integer | no | Subprocess wall-clock timeout, 5-3600 seconds. Only valid for `claude-code` and `codex-oauth`; defaults to 300 seconds. |
 | `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
 | `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity matches use list order. |
 
@@ -460,7 +463,25 @@ providerType = "openai-compatible"
 baseUrl = "http://127.0.0.1:8088/v1"
 deploymentTarget = "embedded"
 models = ["llama3.1-70b"]
+
+[[providers]]
+name = "cc-seat"
+providerType = "claude-code"
+binary = "bin/claude"
+workdir = "workspaces/default"
+timeoutSecs = 300
+deploymentTarget = "cloud"
+models = ["cc/claude-sonnet-4-6"]
 ```
+
+Subprocess provider entries are declarative routing entries. They are different
+from `[credential].source = "claude-code"`, which only controls the credential
+chain used by an Anthropic HTTP provider. They are also different from Cargo
+feature flags: `cc-provider` and `codex-provider` compile the adapters into the
+binary, but a non-empty `[[providers]]` list must still declare the subprocess
+provider explicitly. If a config declares a subprocess provider that the binary
+was not built to support, startup and `aletheia check-config` fail with an
+actionable provider error.
 
 ### Provider capability matrix
 
@@ -469,8 +490,8 @@ models = ["llama3.1-70b"]
 | Native Anthropic provider | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` | yes | yes | Messages API. Declarative `anthropic` entries without `apiKeyEnv` use the top-level credential chain at their list position; entries with `apiKeyEnv` use that static-key endpoint. |
 | OpenAI cloud (`openai`) | `OPENAI_API_KEY` | yes | yes | First-party `/v1/responses` by default; set `apiFamily = "chat-completions"` for the legacy endpoint. |
 | OpenAI-compatible local/third-party (`openai-compatible`) | Optional (`apiKeyEnv`) | yes | yes | `/v1/chat/completions` wire format for llama.cpp, ollama, vllm, and compatible proxies. |
-| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); declare this provider in `[[providers]]` to place it in the routing order. |
-| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); declare this provider in `[[providers]]` to place it in the routing order. |
+| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); declarative entries use `name`, `models`, `binary`, `workdir`, and `timeoutSecs`. |
+| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); declarative entries use `name`, `models`, `binary`, `workdir`, and `timeoutSecs`. |
 
 The `aletheia add-nous` scaffolding command supports `anthropic` and `openai` provider strings. It checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` and creates or updates the matching `[[providers]]` entry when the generated agent needs declarative provider routing. Other provider kinds must be configured manually in `aletheia.toml`.
 
