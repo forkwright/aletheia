@@ -357,44 +357,32 @@ mod tests {
 
     #[test]
     fn verify_instance_backup_rejects_missing_sessions() {
-        use oikonomos::maintenance::{BackupManifest, InstanceBackup, StoreEntry};
+        use oikonomos::maintenance::{BackupManifest, InstanceBackup, InstanceBackupConfig};
 
         let tmp = tempfile::tempdir().unwrap();
-        let backup_path = tmp.path().join("bad-backup");
-        std::fs::create_dir_all(&backup_path).unwrap();
+        let instance_root = tmp.path().join("instance");
+        std::fs::create_dir_all(instance_root.join("data")).unwrap();
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
 
-        let manifest = BackupManifest {
-            version: String::from("aletheia-instance-backup-v1"),
-            created_at: jiff::Zoned::now().to_string(),
-            source_root: tmp.path().join("instance"),
-            stores: vec![StoreEntry {
-                name: String::from("knowledge.fjall"),
-                source_path: tmp
-                    .path()
-                    .join("instance")
-                    .join("data")
-                    .join("knowledge.fjall"),
-                backup_path: PathBuf::from("stores/knowledge.fjall"),
-                snapshot_time: jiff::Zoned::now().to_string(),
-                byte_count: 0,
-                status: String::from("ok"),
-                agent_id: None,
-                workspace_source_class: None,
-                exclusion_reason: None,
-            }],
-            optional_stores: Vec::new(),
-            workspace_omissions: Vec::new(),
-            total_bytes: 0,
-            snapshot_epoch: jiff::Zoned::now().to_string(),
-            snapshot_protocol_version: String::from("aletheia-instance-backup-v1-snapshot-1"),
-            quiesced: false,
-            store_generations: std::collections::HashMap::new(),
-        };
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir: tmp.path().join("backups"),
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let backup_path = manager.create_backup().unwrap().backup_path.unwrap();
+        let mut manifest: BackupManifest = serde_json::from_str(
+            &std::fs::read_to_string(backup_path.join("manifest.json")).unwrap(),
+        )
+        .unwrap();
+        manifest.stores.retain(|entry| entry.name != "sessions.db");
         write_text_file(
             &backup_path.join("manifest.json"),
             &serde_json::to_string_pretty(&manifest).unwrap(),
         );
-        make_fjall_store(&backup_path.join("stores").join("knowledge.fjall"));
 
         let result = InstanceBackup::verify_backup(&backup_path).unwrap();
         assert!(result.first_error.is_some());

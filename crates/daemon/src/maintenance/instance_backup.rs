@@ -5,13 +5,15 @@
 //! a backup *set* that includes `sessions.db`, auth/task-state stores,
 //! configuration, and workspace data needed for run replay/review. A JSON
 //! manifest records every covered store, its source path, snapshot time, byte
-//! count, and verification status.
+//! and file counts, content digest, symlink metadata, checkpoint evidence when
+//! available, and verification status.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Write as _;
+use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest as _, Sha256};
 use snafu::ResultExt;
 use tracing::{info, warn};
 
@@ -20,7 +22,16 @@ use crate::error;
 use super::fjall_backup::{BackupEntry, FjallBackup};
 
 /// Manifest format version.
-const MANIFEST_VERSION: &str = "aletheia-instance-backup-v1";
+const MANIFEST_VERSION: &str = "aletheia-instance-backup-v2";
+
+/// Numeric manifest schema version.
+const MANIFEST_SCHEMA_VERSION: u32 = 2;
+
+/// Per-entry integrity schema version.
+const ENTRY_INTEGRITY_SCHEMA_VERSION: u32 = 1;
+
+/// Hash prefix for deterministic backup tree digests.
+const CONTENT_HASH_PREFIX: &str = "sha256-tree-v1:";
 
 /// Snapshot protocol version.
 ///
@@ -78,9 +89,21 @@ pub struct WorkspaceOmission {
     pub reason: String,
 }
 
+/// Symlink metadata recorded as part of an entry's integrity evidence.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SymlinkMetadata {
+    /// Backup-relative path of the symlink inside this entry.
+    pub path: PathBuf,
+    /// Link target recorded without following it.
+    pub target: PathBuf,
+}
+
 /// A single store entry recorded in the backup manifest.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StoreEntry {
+    /// Per-entry integrity schema version.
+    #[serde(default = "entry_integrity_schema_version")]
+    pub backup_schema_version: u32,
     /// Logical store name, e.g. `knowledge.fjall` or `sessions.db`.
     pub name: String,
     /// Absolute source path the store was copied from.
@@ -91,7 +114,22 @@ pub struct StoreEntry {
     pub snapshot_time: String,
     /// Total bytes copied for this store.
     pub byte_count: u64,
-    /// Verification status: `ok`, `missing`, or `error`.
+    /// Regular file count copied for this store.
+    #[serde(default)]
+    pub file_count: u64,
+    /// Deterministic content digest for the copied file tree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+    /// Number of symlinks observed in this copied entry.
+    #[serde(default)]
+    pub symlink_count: u64,
+    /// Symlink targets observed in this copied entry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub symlink_metadata: Vec<SymlinkMetadata>,
+    /// Fjall seqno/checkpoint for this logical store, when it has a single root store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store_checkpoint_id: Option<u64>,
+    /// Verification status: `ok`, `missing`, `error`, or `excluded`.
     pub status: String,
     /// Agent that produced this store, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,6 +147,9 @@ pub struct StoreEntry {
 pub struct BackupManifest {
     /// Manifest format version.
     pub version: String,
+    /// Numeric schema version for compatibility checks.
+    #[serde(default)]
+    pub schema_version: u32,
     /// ISO 8601 timestamp when the backup set was created.
     pub created_at: String,
     /// Absolute path to the instance root that was backed up.
@@ -186,6 +227,14 @@ struct BackupBuild {
     snapshot_time: String,
 }
 
+#[derive(Clone)]
+struct PathIntegrity {
+    byte_count: u64,
+    file_count: u64,
+    content_hash: String,
+    symlink_metadata: Vec<SymlinkMetadata>,
+}
+
 /// Arguments for recording an optional store entry without copying.
 struct OptionalStoreRecord {
     name: String,
@@ -195,7 +244,7 @@ struct OptionalStoreRecord {
     agent_id: Option<String>,
     workspace_source_class: Option<String>,
     exclusion_reason: Option<String>,
-    byte_count: u64,
+    integrity: Option<PathIntegrity>,
 }
 
 impl BackupBuild {
@@ -218,15 +267,26 @@ impl BackupBuild {
         backup_path: PathBuf,
         optional: bool,
     ) -> error::Result<()> {
-        let (bytes, files) = copy_path(&src, dst)?;
-        self.total_bytes += bytes;
-        self.total_files += files;
+        copy_path(&src, dst)?;
+        let integrity = compute_path_integrity(dst).context(error::MaintenanceIoSnafu {
+            context: format!("computing backup integrity for {}", dst.display()),
+        })?;
+        self.total_bytes += integrity.byte_count;
+        self.total_files = self
+            .total_files
+            .saturating_add(u32::try_from(integrity.file_count).unwrap_or(u32::MAX));
         let entry = StoreEntry {
+            backup_schema_version: ENTRY_INTEGRITY_SCHEMA_VERSION,
             name: String::from(name),
             source_path: src,
             backup_path,
             snapshot_time: self.snapshot_time.clone(),
-            byte_count: bytes,
+            byte_count: integrity.byte_count,
+            file_count: integrity.file_count,
+            content_hash: Some(integrity.content_hash),
+            symlink_count: u64::try_from(integrity.symlink_metadata.len()).unwrap_or(u64::MAX),
+            symlink_metadata: integrity.symlink_metadata,
+            store_checkpoint_id: None,
             status: String::from("ok"),
             agent_id: None,
             workspace_source_class: None,
@@ -250,15 +310,26 @@ impl BackupBuild {
         agent_id: String,
         workspace_source_class: String,
     ) -> error::Result<()> {
-        let (bytes, files) = copy_path(&src, dst)?;
-        self.total_bytes += bytes;
-        self.total_files += files;
+        copy_path(&src, dst)?;
+        let integrity = compute_path_integrity(dst).context(error::MaintenanceIoSnafu {
+            context: format!("computing backup integrity for {}", dst.display()),
+        })?;
+        self.total_bytes += integrity.byte_count;
+        self.total_files = self
+            .total_files
+            .saturating_add(u32::try_from(integrity.file_count).unwrap_or(u32::MAX));
         let entry = StoreEntry {
+            backup_schema_version: ENTRY_INTEGRITY_SCHEMA_VERSION,
             name: String::from(name),
             source_path: src,
             backup_path,
             snapshot_time: self.snapshot_time.clone(),
-            byte_count: bytes,
+            byte_count: integrity.byte_count,
+            file_count: integrity.file_count,
+            content_hash: Some(integrity.content_hash),
+            symlink_count: u64::try_from(integrity.symlink_metadata.len()).unwrap_or(u64::MAX),
+            symlink_metadata: integrity.symlink_metadata,
+            store_checkpoint_id: None,
             status: String::from("ok"),
             agent_id: Some(agent_id),
             workspace_source_class: Some(workspace_source_class),
@@ -269,13 +340,34 @@ impl BackupBuild {
     }
 
     fn record_optional_entry(&mut self, record: OptionalStoreRecord) {
-        self.total_bytes += record.byte_count;
+        let (byte_count, file_count, content_hash, symlink_metadata) =
+            record
+                .integrity
+                .map_or((0, 0, None, Vec::new()), |integrity| {
+                    (
+                        integrity.byte_count,
+                        integrity.file_count,
+                        Some(integrity.content_hash),
+                        integrity.symlink_metadata,
+                    )
+                });
+        self.total_bytes += byte_count;
+        self.total_files = self
+            .total_files
+            .saturating_add(u32::try_from(file_count).unwrap_or(u32::MAX));
+        let symlink_count = u64::try_from(symlink_metadata.len()).unwrap_or(u64::MAX);
         let entry = StoreEntry {
+            backup_schema_version: ENTRY_INTEGRITY_SCHEMA_VERSION,
             name: record.name,
             source_path: record.source_path,
             backup_path: record.backup_path,
             snapshot_time: self.snapshot_time.clone(),
-            byte_count: record.byte_count,
+            byte_count,
+            file_count,
+            content_hash,
+            symlink_count,
+            symlink_metadata,
+            store_checkpoint_id: None,
             status: record.status,
             agent_id: record.agent_id,
             workspace_source_class: record.workspace_source_class,
@@ -606,10 +698,6 @@ impl InstanceBackup {
             }
         };
 
-        // WHY: two agents may share the same workspace directory. Copy it once
-        // and record every agent that points at it with the same backup path.
-        let mut copied: HashMap<PathBuf, PathBuf> = HashMap::new();
-
         for agent in &config.agents.list {
             let source = resolve_workspace_source(instance_root, &agent.workspace);
             let name = format!("workspace:{}", agent.id);
@@ -628,7 +716,7 @@ impl InstanceBackup {
                     exclusion_reason: Some(String::from(
                         "absolute workspace outside instance root requires explicit backup policy",
                     )),
-                    byte_count: 0,
+                    integrity: None,
                 });
                 continue;
             }
@@ -642,38 +730,7 @@ impl InstanceBackup {
                     agent_id: Some(agent.id.clone()),
                     workspace_source_class: Some(source_class),
                     exclusion_reason: Some(String::from("workspace path missing")),
-                    byte_count: 0,
-                });
-                continue;
-            }
-
-            // If the workspace is one of the fixed directories already copied,
-            // point the manifest at the existing backup location.
-            if let Some(existing_backup_path) = existing_fixed_backup_path(instance_root, &source) {
-                let byte_count = dir_size(&source);
-                build.record_optional_entry(OptionalStoreRecord {
-                    name,
-                    source_path: source,
-                    backup_path: existing_backup_path,
-                    status: String::from("ok"),
-                    agent_id: Some(agent.id.clone()),
-                    workspace_source_class: Some(source_class),
-                    exclusion_reason: None,
-                    byte_count,
-                });
-                continue;
-            }
-
-            if let Some(existing_backup_path) = copied.get(&source) {
-                build.record_optional_entry(OptionalStoreRecord {
-                    name,
-                    source_path: source,
-                    backup_path: existing_backup_path.clone(),
-                    status: String::from("ok"),
-                    agent_id: Some(agent.id.clone()),
-                    workspace_source_class: Some(source_class),
-                    exclusion_reason: None,
-                    byte_count: 0,
+                    integrity: None,
                 });
                 continue;
             }
@@ -687,7 +744,6 @@ impl InstanceBackup {
                 agent.id.clone(),
                 source_class.clone(),
             )?;
-            copied.insert(source, configured_backup_path);
         }
 
         Ok(())
@@ -726,13 +782,7 @@ impl InstanceBackup {
                 } else {
                     "data/prompt-audit"
                 };
-                build.copy_entry(
-                    "prompt-audit",
-                    src,
-                    &backup_path.join(rel),
-                    PathBuf::from(rel),
-                    true,
-                )?;
+                build.copy_entry(rel, src, &backup_path.join(rel), PathBuf::from(rel), true)?;
             }
         }
         Ok(())
@@ -745,12 +795,18 @@ impl InstanceBackup {
         snapshot_epoch: &str,
         store_generations: &HashMap<String, u64>,
     ) -> error::Result<()> {
+        let mut stores = build.stores.clone();
+        let mut optional_stores = build.optional_stores.clone();
+        attach_store_checkpoint_ids(&mut stores, store_generations);
+        attach_store_checkpoint_ids(&mut optional_stores, store_generations);
+
         let manifest = BackupManifest {
             version: String::from(MANIFEST_VERSION),
+            schema_version: MANIFEST_SCHEMA_VERSION,
             created_at: build.snapshot_time.clone(),
             source_root: self.config.instance_root.clone(),
-            stores: build.stores.clone(),
-            optional_stores: build.optional_stores.clone(),
+            stores,
+            optional_stores,
             workspace_omissions: build.workspace_omissions.clone(),
             total_bytes: build.total_bytes,
             snapshot_epoch: String::from(snapshot_epoch),
@@ -829,10 +885,6 @@ impl InstanceBackup {
     /// Reads `manifest.json`, confirms the required stores (`knowledge.fjall`
     /// and `sessions.db`) are present, and iterates every fjall store to prove
     /// the files are openable. Returns the manifest and per-store results.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "#4950: sequential store verification with per-store error and generation tracking is clearer in one function"
-    )]
     pub fn verify_backup(path: &Path) -> error::Result<InstanceVerifyResult> {
         let manifest_path = path.join("manifest.json");
         if !manifest_path.is_file() {
@@ -863,45 +915,35 @@ impl InstanceBackup {
             store_generations: HashMap::new(),
         };
 
+        let manifest_errors = validate_manifest(&manifest);
+        if !manifest_errors.is_empty() {
+            for err in manifest_errors {
+                record_verify_error(&mut result, "manifest", err);
+            }
+            return Ok(result);
+        }
+
         // Required stores.
         for name in ["knowledge.fjall", "sessions.db"] {
-            let found = manifest.stores.iter().any(|s| s.name == name);
-            if !found {
+            let Some(store) = manifest.stores.iter().find(|s| s.name == name) else {
                 let err = format!("required store missing from manifest: {name}");
-                result
-                    .store_results
-                    .push((String::from(name), Err(err.clone())));
-                if result.first_error.is_none() {
-                    result.first_error = Some(err);
-                }
+                record_verify_error(&mut result, name, err);
+                continue;
+            };
+
+            if let Some(err) = non_ok_status_error(store) {
+                record_verify_error(&mut result, name, err);
                 continue;
             }
 
-            let store_path = path.join("stores").join(name);
-            if !store_path.exists() {
-                let err = format!("required store directory missing: {}", store_path.display());
-                result
-                    .store_results
-                    .push((String::from(name), Err(err.clone())));
-                if result.first_error.is_none() {
-                    result.first_error = Some(err);
-                }
-                continue;
-            }
-
-            match verify_store_path(name, &store_path) {
+            match verify_manifest_store(store, path, &manifest.store_generations) {
                 Ok((total, generations)) => {
                     result.total_keys += total;
                     result.store_results.push((String::from(name), Ok(total)));
                     insert_generations(&mut result.store_generations, generations);
                 }
                 Err(err) => {
-                    result
-                        .store_results
-                        .push((String::from(name), Err(err.clone())));
-                    if result.first_error.is_none() {
-                        result.first_error = Some(err);
-                    }
+                    record_verify_error(&mut result, name, err);
                 }
             }
         }
@@ -922,34 +964,18 @@ impl InstanceBackup {
                 continue;
             }
 
-            if store.status != "ok" {
-                let err = if let Some(reason) = &store.exclusion_reason {
-                    format!("{}: {}", store.name, reason)
-                } else {
-                    format!("{}: backup status is not ok", store.name)
-                };
-                result
-                    .store_results
-                    .push((store.name.clone(), Err(err.clone())));
-                if result.first_error.is_none() {
-                    result.first_error = Some(err);
-                }
+            if let Some(err) = non_ok_status_error(store) {
+                record_verify_error(&mut result, &store.name, err);
                 continue;
             }
 
-            let store_path = path.join(&store.backup_path);
-            match verify_manifest_store(&store.name, &store_path) {
+            match verify_manifest_store(store, path, &manifest.store_generations) {
                 Ok((total, generations)) => {
                     result.store_results.push((store.name.clone(), Ok(total)));
                     insert_generations(&mut result.store_generations, generations);
                 }
                 Err(err) => {
-                    result
-                        .store_results
-                        .push((store.name.clone(), Err(err.clone())));
-                    if result.first_error.is_none() {
-                        result.first_error = Some(err);
-                    }
+                    record_verify_error(&mut result, &store.name, err);
                 }
             }
         }
@@ -989,48 +1015,295 @@ impl InstanceBackup {
 /// store may contain several fjall cohorts, such as `knowledge.fjall/shared`.
 type VerifyStoreOutcome = (usize, Vec<(String, u64)>);
 
-fn verify_store_path(name: &str, path: &Path) -> std::result::Result<VerifyStoreOutcome, String> {
-    if let Some(outcome) = verify_fjall_tree(name, path)? {
-        return Ok(outcome);
+fn entry_integrity_schema_version() -> u32 {
+    ENTRY_INTEGRITY_SCHEMA_VERSION
+}
+
+fn attach_store_checkpoint_ids(
+    entries: &mut [StoreEntry],
+    store_generations: &HashMap<String, u64>,
+) {
+    for entry in entries {
+        entry.store_checkpoint_id = store_generations.get(&entry.name).copied();
+    }
+}
+
+fn validate_manifest(manifest: &BackupManifest) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    if manifest.version != MANIFEST_VERSION {
+        errors.push(format!(
+            "unsupported manifest version: expected {MANIFEST_VERSION}, got {}",
+            manifest.version
+        ));
     }
 
-    if path.is_file() {
-        let len = path
-            .metadata()
-            .map(|m| usize::try_from(m.len()).unwrap_or(usize::MAX))
-            .map_err(|e| format!("{name}: failed to read file metadata: {e}"))?;
-        return Ok((len, Vec::new()));
+    if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
+        errors.push(format!(
+            "unsupported manifest schema version: expected {MANIFEST_SCHEMA_VERSION}, got {}",
+            manifest.schema_version
+        ));
     }
 
-    Err(format!(
-        "{name}: required store is not a fjall store, fjall cohort root, or file: {}",
-        path.display()
-    ))
+    let mut names = HashSet::new();
+    let mut backup_paths = HashSet::new();
+    for store in manifest
+        .stores
+        .iter()
+        .chain(manifest.optional_stores.iter())
+    {
+        if !names.insert(store.name.clone()) {
+            errors.push(format!("duplicate logical store name: {}", store.name));
+        }
+
+        match validate_backup_path(&store.backup_path) {
+            Ok(()) => {
+                let key = backup_path_key(&store.backup_path);
+                if !backup_paths.insert(key.clone()) {
+                    errors.push(format!("duplicate backup path: {key}"));
+                }
+            }
+            Err(err) => errors.push(format!("{}: {err}", store.name)),
+        }
+
+        if store.backup_schema_version != ENTRY_INTEGRITY_SCHEMA_VERSION {
+            errors.push(format!(
+                "{}: unsupported entry integrity schema version: expected {}, got {}",
+                store.name, ENTRY_INTEGRITY_SCHEMA_VERSION, store.backup_schema_version
+            ));
+        }
+
+        if !is_valid_status(&store.status) {
+            errors.push(format!(
+                "{}: invalid backup status: {}",
+                store.name, store.status
+            ));
+        }
+
+        if store.status == "ok" && store.content_hash.is_none() {
+            errors.push(format!("{}: missing content hash", store.name));
+        }
+
+        if store.symlink_count != u64::try_from(store.symlink_metadata.len()).unwrap_or(u64::MAX) {
+            errors.push(format!(
+                "{}: symlink count does not match symlink metadata",
+                store.name
+            ));
+        }
+    }
+
+    errors
+}
+
+fn validate_backup_path(path: &Path) -> std::result::Result<(), String> {
+    if path.as_os_str().is_empty() {
+        return Err(String::from("backup path is empty"));
+    }
+
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(_) => {}
+            std::path::Component::CurDir => {
+                return Err(format!(
+                    "backup path contains current-directory component: {}",
+                    path.display()
+                ));
+            }
+            std::path::Component::ParentDir => {
+                return Err(format!(
+                    "backup path escapes backup root with '..': {}",
+                    path.display()
+                ));
+            }
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                return Err(format!(
+                    "backup path must be relative to the backup root: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn backup_path_key(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn is_valid_status(status: &str) -> bool {
+    matches!(status, "ok" | "missing" | "error" | "excluded")
+}
+
+fn non_ok_status_error(store: &StoreEntry) -> Option<String> {
+    if store.status == "ok" {
+        return None;
+    }
+
+    Some(if let Some(reason) = &store.exclusion_reason {
+        format!("{}: {}", store.name, reason)
+    } else {
+        format!("{}: backup status is {}", store.name, store.status)
+    })
+}
+
+fn record_verify_error(result: &mut InstanceVerifyResult, name: &str, err: String) {
+    result
+        .store_results
+        .push((String::from(name), Err(err.clone())));
+    if result.first_error.is_none() {
+        result.first_error = Some(err);
+    }
+}
+
+fn compare_store_integrity(
+    store: &StoreEntry,
+    actual: &PathIntegrity,
+) -> std::result::Result<(), String> {
+    if store.file_count != actual.file_count {
+        return Err(format!(
+            "{}: file count mismatch: manifest {}, observed {}",
+            store.name, store.file_count, actual.file_count
+        ));
+    }
+
+    if store.byte_count != actual.byte_count {
+        return Err(format!(
+            "{}: byte count mismatch: manifest {}, observed {}",
+            store.name, store.byte_count, actual.byte_count
+        ));
+    }
+
+    let Some(expected_hash) = store.content_hash.as_deref() else {
+        return Err(format!("{}: missing content hash", store.name));
+    };
+    if expected_hash != actual.content_hash {
+        return Err(format!(
+            "{}: content hash mismatch: manifest {}, observed {}",
+            store.name, expected_hash, actual.content_hash
+        ));
+    }
+
+    let actual_symlink_count = u64::try_from(actual.symlink_metadata.len()).unwrap_or(u64::MAX);
+    if store.symlink_count != actual_symlink_count {
+        return Err(format!(
+            "{}: symlink count mismatch: manifest {}, observed {}",
+            store.name, store.symlink_count, actual_symlink_count
+        ));
+    }
+
+    if store.symlink_metadata != actual.symlink_metadata {
+        return Err(format!("{}: symlink metadata mismatch", store.name));
+    }
+
+    Ok(())
+}
+
+fn compare_store_generations(
+    store: &StoreEntry,
+    actual_generations: &[(String, u64)],
+    expected_generations: &HashMap<String, u64>,
+) -> std::result::Result<(), String> {
+    let actual: HashMap<&str, u64> = actual_generations
+        .iter()
+        .map(|(name, seqno)| (name.as_str(), *seqno))
+        .collect();
+
+    if let Some(expected) = store.store_checkpoint_id {
+        match actual.get(store.name.as_str()) {
+            Some(actual) if *actual == expected => {}
+            Some(actual) => {
+                return Err(format!(
+                    "{}: checkpoint mismatch: manifest {}, observed {}",
+                    store.name, expected, actual
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "{}: manifest records checkpoint {}, but no store checkpoint was observed",
+                    store.name, expected
+                ));
+            }
+        }
+    }
+
+    for (name, expected) in expected_generations
+        .iter()
+        .filter(|(name, _)| generation_belongs_to_store(&store.name, name))
+    {
+        match actual.get(name.as_str()) {
+            Some(actual) if actual == expected => {}
+            Some(actual) => {
+                return Err(format!(
+                    "{name}: generation mismatch: manifest {expected}, observed {actual}"
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "{name}: manifest records generation {expected}, but it was not observed"
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn generation_belongs_to_store(store_name: &str, generation_name: &str) -> bool {
+    generation_name == store_name
+        || generation_name
+            .strip_prefix(store_name)
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
 fn verify_manifest_store(
-    name: &str,
-    path: &Path,
+    store: &StoreEntry,
+    backup_root: &Path,
+    expected_generations: &HashMap<String, u64>,
 ) -> std::result::Result<VerifyStoreOutcome, String> {
-    if !path.exists() {
-        return Err(format!("missing: {name}"));
+    let path = backup_root.join(&store.backup_path);
+    let integrity = compute_path_integrity(&path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("missing: {}", store.name)
+        } else {
+            format!(
+                "{}: failed to compute integrity for {}: {e}",
+                store.name,
+                path.display()
+            )
+        }
+    })?;
+    compare_store_integrity(store, &integrity)?;
+
+    if let Some((total, generations)) = verify_fjall_tree(&store.name, &path)? {
+        compare_store_generations(store, &generations, expected_generations)?;
+        return Ok((total, generations));
     }
 
-    if let Some(outcome) = verify_fjall_tree(name, path)? {
-        return Ok(outcome);
-    }
-
-    if path.is_file() {
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|e| format!("{}: failed to read metadata: {e}", store.name))?;
+    if metadata.file_type().is_file() {
         let len = path
             .metadata()
             .map(|m| usize::try_from(m.len()).unwrap_or(usize::MAX))
-            .map_err(|e| format!("failed to read file metadata: {e}"))?;
+            .map_err(|e| format!("{}: failed to read file metadata: {e}", store.name))?;
         return Ok((len, Vec::new()));
     }
 
-    Ok((
-        usize::try_from(dir_size(path)).unwrap_or(usize::MAX),
-        Vec::new(),
+    if metadata.file_type().is_dir() {
+        return Ok((
+            usize::try_from(integrity.byte_count).unwrap_or(usize::MAX),
+            Vec::new(),
+        ));
+    }
+
+    Err(format!(
+        "{}: backup path is not a fjall store, fjall cohort root, directory, or file: {}",
+        store.name,
+        path.display()
     ))
 }
 
@@ -1038,6 +1311,12 @@ fn verify_fjall_tree(
     logical_name: &str,
     path: &Path,
 ) -> std::result::Result<Option<VerifyStoreOutcome>, String> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|e| format!("{logical_name}: failed to read metadata: {e}"))?;
+    if !metadata.file_type().is_dir() {
+        return Ok(None);
+    }
+
     if path.join("version").is_file() {
         let verify = FjallBackup::verify_store(path).map_err(|e| format!("{logical_name}: {e}"))?;
         if let Some(err) = verify.first_error {
@@ -1047,10 +1326,6 @@ fn verify_fjall_tree(
             .seqno
             .map_or_else(Vec::new, |seqno| vec![(String::from(logical_name), seqno)]);
         return Ok(Some((verify.total_keys, generations)));
-    }
-
-    if !path.is_dir() {
-        return Ok(None);
     }
 
     let mut total_keys = 0usize;
@@ -1078,7 +1353,10 @@ fn collect_fjall_tree(
         let entry =
             entry.map_err(|e| format!("{logical_name}: failed to read directory entry: {e}"))?;
         let path = entry.path();
-        if !path.is_dir() {
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("{logical_name}: failed to read file type: {e}"))?;
+        if !file_type.is_dir() {
             continue;
         }
 
@@ -1153,21 +1431,6 @@ fn classify_workspace_source(instance_root: &Path, workspace: &str, source: &Pat
     }
 }
 
-/// Map a workspace that lives under a fixed copied root to its backup path.
-fn existing_fixed_backup_path(instance_root: &Path, source: &Path) -> Option<PathBuf> {
-    for (dir_name, backup_prefix) in [
-        ("nous", "workspace/nous"),
-        ("shared", "workspace/shared"),
-        ("theke", "workspace/theke"),
-    ] {
-        let root_dir = instance_root.join(dir_name);
-        if let Ok(rel) = source.strip_prefix(&root_dir) {
-            return Some(PathBuf::from(backup_prefix).join(rel));
-        }
-    }
-    None
-}
-
 #[expect(
     clippy::disallowed_methods,
     reason = "synchronous maintenance utility invoked from spawn_blocking outside the async runtime"
@@ -1238,6 +1501,139 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> error::Result<(u64, u32)> {
     }
 
     Ok((total_bytes, total_files))
+}
+
+fn compute_path_integrity(path: &Path) -> std::io::Result<PathIntegrity> {
+    let mut accumulator = IntegrityAccumulator {
+        hasher: Sha256::new(),
+        byte_count: 0,
+        file_count: 0,
+        symlink_metadata: Vec::new(),
+    };
+    hash_path(path, path, &mut accumulator)?;
+    let digest = accumulator.hasher.finalize();
+    Ok(PathIntegrity {
+        byte_count: accumulator.byte_count,
+        file_count: accumulator.file_count,
+        content_hash: format!("{CONTENT_HASH_PREFIX}{}", hex_encode(&digest)),
+        symlink_metadata: accumulator.symlink_metadata,
+    })
+}
+
+struct IntegrityAccumulator {
+    hasher: Sha256,
+    byte_count: u64,
+    file_count: u64,
+    symlink_metadata: Vec<SymlinkMetadata>,
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "WHY(#4953): backup integrity hashing is synchronous maintenance work invoked from spawn_blocking"
+)]
+fn hash_path(
+    root: &Path,
+    path: &Path,
+    accumulator: &mut IntegrityAccumulator,
+) -> std::io::Result<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    let rel = relative_digest_path(root, path);
+    if metadata.file_type().is_symlink() {
+        let target = fs::read_link(path)?;
+        hash_record(&mut accumulator.hasher, b"symlink", rel.as_bytes());
+        hash_record(
+            &mut accumulator.hasher,
+            b"target",
+            target.to_string_lossy().as_bytes(),
+        );
+        accumulator.symlink_metadata.push(SymlinkMetadata {
+            path: PathBuf::from(rel),
+            target,
+        });
+        return Ok(());
+    }
+
+    if metadata.file_type().is_file() {
+        hash_record(&mut accumulator.hasher, b"file", rel.as_bytes());
+        hash_record(
+            &mut accumulator.hasher,
+            b"len",
+            metadata.len().to_string().as_bytes(),
+        );
+        let mut file = fs::File::open(path)?;
+        let mut buf = [0_u8; 8192];
+        loop {
+            let read = file.read(&mut buf)?;
+            if read == 0 {
+                break;
+            }
+            let chunk = buf
+                .get(..read)
+                .ok_or_else(|| std::io::Error::other("read exceeded buffer length"))?;
+            accumulator.hasher.update(chunk);
+        }
+        accumulator.byte_count += metadata.len();
+        accumulator.file_count += 1;
+        return Ok(());
+    }
+
+    if metadata.file_type().is_dir() {
+        hash_record(&mut accumulator.hasher, b"dir", rel.as_bytes());
+        let mut children = Vec::new();
+        for entry in fs::read_dir(path)? {
+            children.push(entry?.path());
+        }
+        children.sort_by_key(|child| {
+            child
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        });
+        for child in children {
+            hash_path(root, &child, accumulator)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn hash_record(hasher: &mut Sha256, label: &[u8], value: &[u8]) {
+    hasher.update(label.len().to_string().as_bytes());
+    hasher.update(b":");
+    hasher.update(label);
+    hasher.update(b":");
+    hasher.update(value.len().to_string().as_bytes());
+    hasher.update(b":");
+    hasher.update(value);
+    hasher.update(b";");
+}
+
+fn relative_digest_path(root: &Path, path: &Path) -> String {
+    let Ok(rel) = path.strip_prefix(root) else {
+        return path.to_string_lossy().into_owned();
+    };
+    if rel.as_os_str().is_empty() {
+        String::from(".")
+    } else {
+        backup_path_key(rel)
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(hex_nibble(byte >> 4));
+        out.push(hex_nibble(byte & 0x0f));
+    }
+    out
+}
+
+fn hex_nibble(nibble: u8) -> char {
+    char::from(if nibble < 10 {
+        b'0' + nibble
+    } else {
+        b'a' + (nibble - 10)
+    })
 }
 
 /// Calculate total size of a directory tree.
@@ -1313,6 +1709,8 @@ fn set_files_restrictive(_dir: &Path) {}
 mod tests {
     use super::*;
 
+    type ManifestMutation = (&'static str, fn(&mut BackupManifest));
+
     fn make_fjall_store(path: &Path) {
         fs::create_dir_all(path).unwrap();
         let db = fjall::SingleWriterTxDatabase::builder(path).open().unwrap();
@@ -1348,6 +1746,80 @@ mod tests {
                 verify.store_generations
             );
         }
+    }
+
+    fn load_backup_manifest(backup_path: &Path) -> BackupManifest {
+        serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+            .unwrap()
+    }
+
+    fn write_backup_manifest(backup_path: &Path, manifest: &BackupManifest) {
+        write_text_file(
+            &backup_path.join("manifest.json"),
+            &serde_json::to_string_pretty(manifest).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn first_verify_error(backup_path: &Path) -> String {
+        InstanceBackup::verify_backup(backup_path)
+            .unwrap()
+            .first_error
+            .expect("verification should fail")
+    }
+
+    fn first_store_mut(manifest: &mut BackupManifest) -> &mut StoreEntry {
+        manifest
+            .stores
+            .first_mut()
+            .expect("fixture should contain a first store")
+    }
+
+    fn second_store_mut(manifest: &mut BackupManifest) -> &mut StoreEntry {
+        manifest
+            .stores
+            .get_mut(1)
+            .expect("fixture should contain a second store")
+    }
+
+    fn reject_as_unsupported_manifest_version(manifest: &mut BackupManifest) {
+        manifest.version = String::from("aletheia-instance-backup-v1");
+    }
+
+    fn reject_as_unsupported_manifest_schema(manifest: &mut BackupManifest) {
+        manifest.schema_version = 1;
+    }
+
+    fn reject_as_absolute_backup_path(manifest: &mut BackupManifest) {
+        first_store_mut(manifest).backup_path = PathBuf::from("/tmp/escape");
+    }
+
+    fn reject_as_parent_backup_path(manifest: &mut BackupManifest) {
+        first_store_mut(manifest).backup_path = PathBuf::from("../escape");
+    }
+
+    fn reject_as_invalid_status(manifest: &mut BackupManifest) {
+        first_store_mut(manifest).status = String::from("done");
+    }
+
+    fn reject_as_duplicate_logical_name(manifest: &mut BackupManifest) {
+        let first_name = manifest
+            .stores
+            .first()
+            .expect("fixture should contain a first store")
+            .name
+            .clone();
+        second_store_mut(manifest).name = first_name;
+    }
+
+    fn reject_as_duplicate_backup_path(manifest: &mut BackupManifest) {
+        let first_path = manifest
+            .stores
+            .first()
+            .expect("fixture should contain a first store")
+            .backup_path
+            .clone();
+        second_store_mut(manifest).backup_path = first_path;
     }
 
     #[test]
@@ -1406,15 +1878,34 @@ mod tests {
                 .is_file()
         );
 
-        let manifest: BackupManifest =
-            serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
-                .unwrap();
+        let manifest = load_backup_manifest(&backup_path);
         assert_eq!(manifest.version, MANIFEST_VERSION);
+        assert_eq!(manifest.schema_version, MANIFEST_SCHEMA_VERSION);
         assert_eq!(manifest.stores.len(), 3); // knowledge, sessions, config
         assert!(manifest.stores.iter().any(|s| s.name == "knowledge.fjall"));
         assert!(manifest.stores.iter().any(|s| s.name == "sessions.db"));
         assert!(manifest.stores.iter().any(|s| s.name == "config"));
         assert!(manifest.optional_stores.iter().any(|s| s.name == "nous"));
+        for entry in manifest
+            .stores
+            .iter()
+            .chain(manifest.optional_stores.iter())
+            .filter(|entry| entry.status == "ok")
+        {
+            assert_eq!(
+                entry.backup_schema_version, ENTRY_INTEGRITY_SCHEMA_VERSION,
+                "entry should record integrity schema: {}",
+                entry.name
+            );
+            assert!(
+                entry
+                    .content_hash
+                    .as_deref()
+                    .is_some_and(|hash| hash.starts_with(CONTENT_HASH_PREFIX)),
+                "entry should record content hash: {}",
+                entry.name
+            );
+        }
     }
 
     #[test]
@@ -1501,7 +1992,7 @@ mod tests {
     #[test]
     #[expect(
         clippy::too_many_lines,
-        reason = "single fixture covers #5139 workspace classes and duplicate handling"
+        reason = "single fixture covers #5139 workspace classes and unique duplicate-source handling"
     )]
     fn create_backup_records_configured_agent_workspaces() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -1638,21 +2129,31 @@ workspace = "{}"
         let frank = entry_for("frank");
         assert_eq!(erin.status, "ok");
         assert_eq!(frank.status, "ok");
-        assert_eq!(&frank.backup_path, &erin.backup_path);
-        assert_eq!(
-            manifest
-                .optional_stores
-                .iter()
-                .filter(|entry| entry.backup_path == erin.backup_path)
-                .count(),
-            2
-        );
+        assert_ne!(&frank.backup_path, &erin.backup_path);
         assert!(
             backup_path
                 .join(&erin.backup_path)
                 .join("NOTE.md")
                 .is_file()
         );
+        assert!(
+            backup_path
+                .join(&frank.backup_path)
+                .join("NOTE.md")
+                .is_file()
+        );
+        let mut backup_paths = std::collections::HashSet::new();
+        for entry in manifest
+            .stores
+            .iter()
+            .chain(manifest.optional_stores.iter())
+        {
+            assert!(
+                backup_paths.insert(entry.backup_path.clone()),
+                "duplicate backup path in manifest: {}",
+                entry.backup_path.display()
+            );
+        }
 
         // WHY(#4950): excluded entries are intentional policy omissions, not
         // verification failures, so the published backup set must verify cleanly.
@@ -1704,45 +2205,30 @@ workspace = "{}"
     #[test]
     fn verify_backup_rejects_missing_sessions_store() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let backup_path = tmp.path().join("bad-backup");
-        fs::create_dir_all(&backup_path).unwrap();
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
 
-        // Create a manifest that claims only knowledge.fjall was backed up.
-        let manifest = BackupManifest {
-            version: String::from(MANIFEST_VERSION),
-            created_at: jiff::Zoned::now().to_string(),
-            source_root: tmp.path().join("instance"),
-            stores: vec![StoreEntry {
-                name: String::from("knowledge.fjall"),
-                source_path: tmp
-                    .path()
-                    .join("instance")
-                    .join("data")
-                    .join("knowledge.fjall"),
-                backup_path: PathBuf::from("stores/knowledge.fjall"),
-                snapshot_time: jiff::Zoned::now().to_string(),
-                byte_count: 0,
-                status: String::from("ok"),
-                agent_id: None,
-                workspace_source_class: None,
-                exclusion_reason: None,
-            }],
-            optional_stores: Vec::new(),
-            workspace_omissions: Vec::new(),
-            total_bytes: 0,
-            snapshot_epoch: jiff::Zoned::now().to_string(),
-            snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
-            quiesced: false,
-            store_generations: HashMap::new(),
-        };
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir: tmp.path().join("backups"),
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let report = manager.create_backup().unwrap();
+        let backup_path = report.backup_path.unwrap();
+        let mut manifest: BackupManifest =
+            serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+                .unwrap();
+        manifest.stores.retain(|entry| entry.name != "sessions.db");
         write_text_file(
             &backup_path.join("manifest.json"),
             &serde_json::to_string_pretty(&manifest).unwrap(),
         )
         .unwrap();
-        // Create the knowledge store so that the failure is the missing sessions
-        // entry, not a missing directory.
-        make_fjall_store(&backup_path.join("stores").join("knowledge.fjall"));
 
         let result = InstanceBackup::verify_backup(&backup_path).unwrap();
         assert!(result.first_error.is_some());
@@ -1790,6 +2276,177 @@ workspace = "{}"
             err.contains("auth.fjall"),
             "error should mention missing auth store: {err}"
         );
+    }
+
+    #[test]
+    fn verify_backup_rejects_mutated_non_fjall_entry() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        fs::create_dir_all(instance_root.join("config")).unwrap();
+        write_text_file(&instance_root.join("config").join("aletheia.toml"), "test").unwrap();
+
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
+
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir: tmp.path().join("backups"),
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let backup_path = manager.create_backup().unwrap().backup_path.unwrap();
+
+        write_text_file(&backup_path.join("config").join("aletheia.toml"), "tset").unwrap();
+
+        let err = first_verify_error(&backup_path);
+        assert!(
+            err.contains("content hash mismatch"),
+            "same-size mutation should fail by content hash: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_backup_rejects_truncated_file_entry() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        write_text_file(
+            &instance_root.join("data").join("sessions.db"),
+            "legacy-session-store",
+        )
+        .unwrap();
+
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir: tmp.path().join("backups"),
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let backup_path = manager.create_backup().unwrap().backup_path.unwrap();
+
+        write_text_file(&backup_path.join("stores").join("sessions.db"), "legacy").unwrap();
+
+        let err = first_verify_error(&backup_path);
+        assert!(
+            err.contains("byte count mismatch"),
+            "truncated file-shaped sessions store should fail by byte count: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_backup_rejects_swapped_manifest_entry_paths() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        fs::create_dir_all(instance_root.join("nous")).unwrap();
+        fs::create_dir_all(instance_root.join("shared")).unwrap();
+        write_text_file(&instance_root.join("nous").join("NOTE.md"), "alpha").unwrap();
+        write_text_file(&instance_root.join("shared").join("NOTE.md"), "bravo").unwrap();
+
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
+
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir: tmp.path().join("backups"),
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let backup_path = manager.create_backup().unwrap().backup_path.unwrap();
+        let mut manifest = load_backup_manifest(&backup_path);
+        let nous_path = manifest
+            .optional_stores
+            .iter()
+            .find(|entry| entry.name == "nous")
+            .expect("nous entry")
+            .backup_path
+            .clone();
+        let shared_path = manifest
+            .optional_stores
+            .iter()
+            .find(|entry| entry.name == "shared")
+            .expect("shared entry")
+            .backup_path
+            .clone();
+        for entry in &mut manifest.optional_stores {
+            if entry.name == "nous" {
+                entry.backup_path = shared_path.clone();
+            } else if entry.name == "shared" {
+                entry.backup_path = nous_path.clone();
+            }
+        }
+        write_backup_manifest(&backup_path, &manifest);
+
+        let err = first_verify_error(&backup_path);
+        assert!(
+            err.contains("content hash mismatch"),
+            "swapped same-size entries should fail by content hash: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_backup_rejects_manifest_policy_violations() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
+
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir: tmp.path().join("backups"),
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let backup_path = manager.create_backup().unwrap().backup_path.unwrap();
+        let manifest = load_backup_manifest(&backup_path);
+
+        let cases: Vec<ManifestMutation> = vec![
+            (
+                "unsupported manifest version",
+                reject_as_unsupported_manifest_version,
+            ),
+            (
+                "unsupported manifest schema version",
+                reject_as_unsupported_manifest_schema,
+            ),
+            (
+                "backup path must be relative",
+                reject_as_absolute_backup_path,
+            ),
+            (
+                "backup path escapes backup root",
+                reject_as_parent_backup_path,
+            ),
+            ("invalid backup status", reject_as_invalid_status),
+            (
+                "duplicate logical store name",
+                reject_as_duplicate_logical_name,
+            ),
+            ("duplicate backup path", reject_as_duplicate_backup_path),
+        ];
+
+        for (expected, mutate) in cases {
+            let mut mutated = manifest.clone();
+            mutate(&mut mutated);
+            write_backup_manifest(&backup_path, &mutated);
+
+            let err = first_verify_error(&backup_path);
+            assert!(
+                err.contains(expected),
+                "expected '{expected}' in manifest policy failure, got: {err}"
+            );
+        }
     }
 
     #[test]
@@ -1960,6 +2617,7 @@ workspace = "{}"
 
         let manifest = BackupManifest {
             version: String::from(MANIFEST_VERSION),
+            schema_version: MANIFEST_SCHEMA_VERSION,
             created_at: jiff::Zoned::now().to_string(),
             source_root: backup_dir.clone(),
             stores: Vec::new(),
