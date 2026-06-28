@@ -90,6 +90,42 @@ pub struct ContextAction {
 pub struct SessionPickerOverlay {
     pub cursor: usize,
     pub show_archived: bool,
+    pub new_session_status: ControlMutationStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum ControlMutationStatus {
+    #[default]
+    Idle,
+    Pending {
+        action_id: String,
+    },
+    Succeeded {
+        action_id: String,
+    },
+    Failed {
+        action_id: String,
+        message: String,
+    },
+}
+
+impl ControlMutationStatus {
+    pub(crate) fn pending(action_id: String) -> Self {
+        Self::Pending { action_id }
+    }
+
+    pub(crate) fn succeeded(action_id: String) -> Self {
+        Self::Succeeded { action_id }
+    }
+
+    pub(crate) fn failed(action_id: String, message: String) -> Self {
+        Self::Failed { action_id, message }
+    }
+
+    pub(crate) fn is_pending(&self) -> bool {
+        matches!(self, Self::Pending { .. })
+    }
 }
 
 #[derive(Debug)]
@@ -100,6 +136,7 @@ pub struct ToolApprovalOverlay {
     pub input: serde_json::Value,
     pub risk: String,
     pub reason: String,
+    pub status: ControlMutationStatus,
 }
 
 #[derive(Debug)]
@@ -107,6 +144,7 @@ pub struct PlanApprovalOverlay {
     pub steps: Vec<PlanStepApproval>,
     pub total_cost_cents: u32,
     pub cursor: usize,
+    pub status: ControlMutationStatus,
 }
 
 #[derive(Debug)]
@@ -237,6 +275,7 @@ mod tests {
             input: serde_json::json!({"path": "/tmp/test"}),
             risk: "high".to_string(),
             reason: "writes files".to_string(),
+            status: ControlMutationStatus::Idle,
         };
         assert_eq!(overlay.tool_name, "write_file");
         assert_eq!(overlay.risk, "high");
@@ -253,10 +292,28 @@ mod tests {
             }],
             total_cost_cents: 100,
             cursor: 0,
+            status: ControlMutationStatus::Idle,
         };
         assert_eq!(overlay.steps.len(), 1);
         assert!(overlay.steps[0].checked);
         assert_eq!(overlay.total_cost_cents, 100);
+    }
+
+    #[test]
+    fn control_mutation_status_tracks_pending_and_failure() {
+        let pending = ControlMutationStatus::pending("action-1".to_string());
+        assert!(pending.is_pending());
+
+        let failed =
+            ControlMutationStatus::failed("action-1".to_string(), "request failed".to_string());
+        assert!(!failed.is_pending());
+        assert!(matches!(
+            failed,
+            ControlMutationStatus::Failed {
+                ref action_id,
+                ref message
+            } if action_id == "action-1" && message == "request failed"
+        ));
     }
 
     #[test]

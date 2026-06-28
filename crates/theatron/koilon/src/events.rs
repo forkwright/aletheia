@@ -1,5 +1,7 @@
 use skene::api::types::SseEvent;
 
+use crate::msg::Msg;
+
 pub use skene::events::StreamEvent;
 
 /// Raw events from the three multiplexed sources.
@@ -13,6 +15,8 @@ pub enum Event {
     Sse(SseEvent),
     /// Per-session streaming response
     Stream(StreamEvent),
+    /// Result from an in-flight backend mutation.
+    Background(Msg),
     /// 60fps UI tick
     Tick,
 }

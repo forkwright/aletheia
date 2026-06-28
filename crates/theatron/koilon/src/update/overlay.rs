@@ -1,8 +1,9 @@
 use tracing::Instrument;
 
 use crate::app::App;
-use crate::msg::OverlayKind;
-use crate::state::{Overlay, SessionPickerOverlay};
+use crate::msg::{ErrorToast, OverlayKind, ToolApprovalAction};
+use crate::sanitize::sanitize_for_display;
+use crate::state::{ControlMutationStatus, Overlay, SessionPickerOverlay};
 
 pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
     match kind {
@@ -16,10 +17,12 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
                 OverlayKind::SessionPicker => Overlay::SessionPicker(SessionPickerOverlay {
                     cursor: 0,
                     show_archived: false,
+                    new_session_status: app.dashboard.new_session_status.clone(),
                 }),
                 OverlayKind::SessionPickerAll => Overlay::SessionPicker(SessionPickerOverlay {
                     cursor: 0,
                     show_archived: true,
+                    new_session_status: app.dashboard.new_session_status.clone(),
                 }),
                 OverlayKind::SystemStatus => Overlay::SystemStatus,
                 OverlayKind::ContextBudget => Overlay::ContextBudget,
@@ -37,24 +40,7 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
 }
 
 pub(crate) fn handle_tool_approval_always_allow(app: &mut App) {
-    let Some(crate::state::Overlay::ToolApproval(ref approval)) = app.layout.overlay else {
-        return;
-    };
-    let turn_id = approval.turn_id.clone();
-    let tool_id = approval.tool_id.clone();
-    let tool_name = approval.tool_name.clone();
-    let client = app.client.clone();
-    let span = tracing::info_span!("approve_tool_always", %turn_id, %tool_id, %tool_name);
-    app.background_tasks.spawn(
-        async move {
-            if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
-                tracing::error!("failed to approve tool: {e}");
-            }
-        }
-        .instrument(span),
-    );
-    app.interaction.always_allowed_tools.insert(tool_name);
-    app.layout.overlay = None;
+    start_tool_approval_action(app, ToolApprovalAction::AlwaysAllow);
 }
 
 pub(crate) fn handle_close_overlay(app: &mut App) {
@@ -66,18 +52,11 @@ pub(crate) fn handle_close_overlay(app: &mut App) {
         return;
     }
     if let Some(Overlay::ToolApproval(ref approval)) = app.layout.overlay {
-        let turn_id = approval.turn_id.clone();
-        let tool_id = approval.tool_id.clone();
-        let client = app.client.clone();
-        let span = tracing::info_span!("deny_tool", %turn_id, %tool_id);
-        app.background_tasks.spawn(
-            async move {
-                if let Err(e) = client.deny_tool(&turn_id, &tool_id).await {
-                    tracing::error!("failed to deny tool: {e}");
-                }
-            }
-            .instrument(span),
-        );
+        if approval.status.is_pending() {
+            return;
+        }
+        start_tool_approval_action(app, ToolApprovalAction::Deny);
+        return;
     }
     // NOTE: DecisionCard close without submit = skip, no API call needed
     app.layout.overlay = None;
@@ -211,25 +190,12 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             }
         }
         Some(Overlay::ToolApproval(approval)) => {
-            let turn_id = approval.turn_id.clone();
-            let tool_id = approval.tool_id.clone();
-            let client = app.client.clone();
-            let span = tracing::info_span!("approve_tool", %turn_id, %tool_id);
-            app.background_tasks.spawn(
-                async move {
-                    if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
-                        tracing::error!("failed to approve tool: {e}");
-                    }
-                }
-                .instrument(span),
-            );
-            app.layout.overlay = None;
+            if !approval.status.is_pending() {
+                start_tool_approval_action(app, ToolApprovalAction::Approve);
+            }
         }
         Some(Overlay::PlanApproval(_plan)) => {
-            app.viewport.error_toast = Some(crate::msg::ErrorToast::new(
-                "Plan approval API not available - pending pylon support.".into(),
-            ));
-            app.layout.overlay = None;
+            mark_plan_approval_failed(app);
         }
         Some(Overlay::ContextActions(ctx)) => {
             if let Some(action) = ctx.selected_action() {
@@ -257,6 +223,161 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
             app.layout.overlay = None;
         }
     }
+}
+
+fn start_tool_approval_action(app: &mut App, action: ToolApprovalAction) {
+    let Some(Overlay::ToolApproval(ref mut approval)) = app.layout.overlay else {
+        return;
+    };
+    if approval.status.is_pending() {
+        return;
+    }
+
+    let turn_id = approval.turn_id.clone();
+    let tool_id = approval.tool_id.clone();
+    let tool_name = approval.tool_name.clone();
+    let action_id = tool_approval_action_id(action, &turn_id, &tool_id);
+    approval.status = ControlMutationStatus::pending(action_id.clone());
+
+    let client = app.client.clone();
+    let span = tracing::info_span!(
+        "tool_approval_action",
+        %action_id,
+        action = action.label(),
+        %turn_id,
+        %tool_id,
+        %tool_name
+    );
+    app.background_tasks.spawn(
+        async move {
+            let result = match action {
+                ToolApprovalAction::Deny => client.deny_tool(&turn_id, &tool_id).await,
+                ToolApprovalAction::Approve
+                | ToolApprovalAction::AlwaysAllow
+                | ToolApprovalAction::AutoApprove => client.approve_tool(&turn_id, &tool_id).await,
+            }
+            .map_err(|e| e.to_string());
+
+            crate::msg::Msg::ToolApprovalCompleted {
+                action_id,
+                turn_id,
+                tool_id,
+                tool_name: Some(tool_name),
+                action,
+                result,
+            }
+        }
+        .instrument(span),
+    );
+}
+
+pub(crate) fn start_auto_tool_approval(
+    app: &mut App,
+    turn_id: crate::id::TurnId,
+    tool_id: crate::id::ToolId,
+    tool_name: String,
+) {
+    let action = ToolApprovalAction::AutoApprove;
+    let action_id = tool_approval_action_id(action, &turn_id, &tool_id);
+    let client = app.client.clone();
+    let span = tracing::info_span!(
+        "auto_approve_tool",
+        %action_id,
+        %turn_id,
+        %tool_id,
+        %tool_name
+    );
+    app.background_tasks.spawn(
+        async move {
+            let result = client
+                .approve_tool(&turn_id, &tool_id)
+                .await
+                .map_err(|e| e.to_string());
+            crate::msg::Msg::ToolApprovalCompleted {
+                action_id,
+                turn_id,
+                tool_id,
+                tool_name: Some(tool_name),
+                action,
+                result,
+            }
+        }
+        .instrument(span),
+    );
+}
+
+pub(crate) fn handle_tool_approval_completed(
+    app: &mut App,
+    action_id: String,
+    turn_id: crate::id::TurnId,
+    tool_id: crate::id::ToolId,
+    tool_name: Option<String>,
+    action: ToolApprovalAction,
+    result: Result<(), String>,
+) {
+    match result {
+        Ok(()) => {
+            if action == ToolApprovalAction::AlwaysAllow
+                && let Some(tool_name) = tool_name
+            {
+                app.interaction.always_allowed_tools.insert(tool_name);
+            }
+            if current_tool_approval_matches(app, &turn_id, &tool_id, &action_id) {
+                app.layout.overlay = None;
+            }
+        }
+        Err(message) => {
+            let message = sanitize_for_display(&message).into_owned();
+            let status_message = format!("Tool {} failed: {message}", action.label());
+            let feedback = format!("[{action_id}] {status_message}");
+            if let Some(Overlay::ToolApproval(ref mut approval)) = app.layout.overlay
+                && approval.turn_id == turn_id
+                && approval.tool_id == tool_id
+            {
+                approval.status = ControlMutationStatus::failed(action_id.clone(), status_message);
+            }
+            app.viewport.error_toast = Some(ErrorToast::new(feedback));
+        }
+    }
+}
+
+fn current_tool_approval_matches(
+    app: &App,
+    turn_id: &crate::id::TurnId,
+    tool_id: &crate::id::ToolId,
+    action_id: &str,
+) -> bool {
+    matches!(
+        &app.layout.overlay,
+        Some(Overlay::ToolApproval(approval))
+            if &approval.turn_id == turn_id
+                && &approval.tool_id == tool_id
+                && matches!(
+                    &approval.status,
+                    ControlMutationStatus::Pending { action_id: pending_id }
+                        if pending_id == action_id
+                )
+    )
+}
+
+fn tool_approval_action_id(
+    action: ToolApprovalAction,
+    turn_id: &crate::id::TurnId,
+    tool_id: &crate::id::ToolId,
+) -> String {
+    format!("tool:{}:{turn_id}:{tool_id}", action.action_key())
+}
+
+fn mark_plan_approval_failed(app: &mut App) {
+    let action_id = "plan:approval:unavailable".to_string();
+    let message = "Plan approval API not available - pending pylon support.".to_string();
+    if let Some(Overlay::PlanApproval(ref mut plan)) = app.layout.overlay {
+        if plan.status.is_pending() {
+            return;
+        }
+        plan.status = ControlMutationStatus::failed(action_id.clone(), message.clone());
+    }
+    app.viewport.error_toast = Some(ErrorToast::new(format!("[{action_id}] {message}")));
 }
 
 pub(crate) fn visible_session_count(app: &App, show_archived: bool) -> usize {
@@ -302,12 +423,206 @@ fn pick_session_id(app: &App, cursor: usize, show_archived: bool) -> Option<crat
 mod tests {
     use super::*;
     use crate::app::test_helpers::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::task::JoinHandle;
+
+    async fn failing_server() -> (String, JoinHandle<()>) {
+        let listener = match TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => listener,
+            Err(e) => panic!("bind failing test server: {e}"),
+        };
+        let addr = match listener.local_addr() {
+            Ok(addr) => addr,
+            Err(e) => panic!("read failing test server address: {e}"),
+        };
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _addr)) = listener.accept().await else {
+                    break;
+                };
+                let _connection = tokio::spawn(async move {
+                    let mut request = [0_u8; 1024];
+                    if stream.read(&mut request).await.is_err() {
+                        return;
+                    }
+                    let response = concat!(
+                        "HTTP/1.1 500 Internal Server Error\r\n",
+                        "content-type: text/plain\r\n",
+                        "content-length: 19\r\n",
+                        "connection: close\r\n",
+                        "\r\n",
+                        "backend unavailable"
+                    );
+                    if let Err(e) = stream.write_all(response.as_bytes()).await {
+                        tracing::debug!("failed to write test response: {e}");
+                    }
+                });
+            }
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn point_app_at(app: &mut App, url: &str) {
+        app.config.url = url.to_string();
+        app.client = match crate::api::client::ApiClient::new(url, None) {
+            Ok(client) => client,
+            Err(e) => panic!("test ApiClient::new failed: {e}"),
+        };
+    }
+
+    async fn drain_one_background(app: &mut App) {
+        let Some(result) = app.background_tasks.join_next().await else {
+            panic!("expected one background task");
+        };
+        let msg = match result {
+            Ok(msg) => msg,
+            Err(e) => panic!("background task failed: {e}"),
+        };
+        app.update(msg).await;
+    }
+
+    fn tool_approval_overlay() -> Overlay {
+        Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+            turn_id: "t1".into(),
+            tool_id: "tool1".into(),
+            tool_name: "write_file".to_string(),
+            input: serde_json::json!({"path": "/tmp/test"}),
+            risk: "high".to_string(),
+            reason: "writes files".to_string(),
+            status: ControlMutationStatus::Idle,
+        })
+    }
 
     #[tokio::test]
     async fn open_overlay_help() {
         let mut app = test_app();
         handle_open_overlay(&mut app, OverlayKind::Help).await;
         assert!(matches!(app.layout.overlay, Some(Overlay::Help)));
+    }
+
+    #[tokio::test]
+    async fn approve_failure_keeps_overlay_failed_with_action_id() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.layout.overlay = Some(tool_approval_overlay());
+
+        handle_overlay_select(&mut app).await;
+
+        assert!(matches!(
+            app.layout.overlay,
+            Some(Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+                status: ControlMutationStatus::Pending { .. },
+                ..
+            }))
+        ));
+
+        drain_one_background(&mut app).await;
+
+        let Some(Overlay::ToolApproval(approval)) = &app.layout.overlay else {
+            panic!("approval failure should keep overlay open");
+        };
+        assert!(matches!(
+            &approval.status,
+            ControlMutationStatus::Failed { action_id, .. }
+                if action_id == "tool:approve:t1:tool1"
+        ));
+        assert!(
+            app.viewport
+                .error_toast
+                .as_ref()
+                .is_some_and(|toast| toast.message.contains("tool:approve:t1:tool1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn deny_failure_keeps_overlay_failed_with_action_id() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.layout.overlay = Some(tool_approval_overlay());
+
+        handle_close_overlay(&mut app);
+
+        assert!(matches!(
+            app.layout.overlay,
+            Some(Overlay::ToolApproval(crate::state::ToolApprovalOverlay {
+                status: ControlMutationStatus::Pending { .. },
+                ..
+            }))
+        ));
+
+        drain_one_background(&mut app).await;
+
+        let Some(Overlay::ToolApproval(approval)) = &app.layout.overlay else {
+            panic!("deny failure should keep overlay open");
+        };
+        assert!(matches!(
+            &approval.status,
+            ControlMutationStatus::Failed { action_id, .. }
+                if action_id == "tool:deny:t1:tool1"
+        ));
+        assert!(
+            app.viewport
+                .error_toast
+                .as_ref()
+                .is_some_and(|toast| toast.message.contains("tool:deny:t1:tool1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn always_allow_failure_does_not_insert_local_allow() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.layout.overlay = Some(tool_approval_overlay());
+
+        handle_tool_approval_always_allow(&mut app);
+        drain_one_background(&mut app).await;
+
+        assert!(!app.interaction.always_allowed_tools.contains("write_file"));
+        let Some(Overlay::ToolApproval(approval)) = &app.layout.overlay else {
+            panic!("always-allow failure should keep overlay open");
+        };
+        assert!(matches!(
+            &approval.status,
+            ControlMutationStatus::Failed { action_id, .. }
+                if action_id == "tool:always-allow:t1:tool1"
+        ));
+    }
+
+    #[tokio::test]
+    async fn plan_approval_failure_keeps_overlay_failed_with_action_id() {
+        let mut app = test_app();
+        app.layout.overlay = Some(Overlay::PlanApproval(crate::state::PlanApprovalOverlay {
+            steps: vec![crate::state::PlanStepApproval {
+                id: 1,
+                label: "Step".to_string(),
+                role: "planner".to_string(),
+                checked: true,
+            }],
+            total_cost_cents: 100,
+            cursor: 0,
+            status: ControlMutationStatus::Idle,
+        }));
+
+        handle_overlay_select(&mut app).await;
+
+        let Some(Overlay::PlanApproval(plan)) = &app.layout.overlay else {
+            panic!("plan approval failure should keep overlay open");
+        };
+        assert!(matches!(
+            &plan.status,
+            ControlMutationStatus::Failed { action_id, .. }
+                if action_id == "plan:approval:unavailable"
+        ));
+        assert!(
+            app.viewport
+                .error_toast
+                .as_ref()
+                .is_some_and(|toast| toast.message.contains("plan:approval:unavailable"))
+        );
     }
 
     #[tokio::test]
@@ -445,6 +760,7 @@ mod tests {
         app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
             cursor: 0,
             show_archived: false,
+            new_session_status: ControlMutationStatus::Idle,
         }));
         handle_overlay_up(&mut app);
         if let Some(Overlay::SessionPicker(picker)) = &app.layout.overlay {
@@ -458,6 +774,7 @@ mod tests {
         app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
             cursor: 2,
             show_archived: false,
+            new_session_status: ControlMutationStatus::Idle,
         }));
         handle_overlay_up(&mut app);
         if let Some(Overlay::SessionPicker(picker)) = &app.layout.overlay {
@@ -476,6 +793,7 @@ mod tests {
         app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
             cursor: 1,
             show_archived: false,
+            new_session_status: ControlMutationStatus::Idle,
         }));
         handle_overlay_down(&mut app);
         if let Some(Overlay::SessionPicker(picker)) = &app.layout.overlay {
@@ -495,6 +813,7 @@ mod tests {
         app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
             cursor: 0,
             show_archived: false,
+            new_session_status: ControlMutationStatus::Idle,
         }));
         handle_overlay_down(&mut app);
         if let Some(Overlay::SessionPicker(picker)) = &app.layout.overlay {
@@ -594,6 +913,7 @@ mod tests {
             ],
             total_cost_cents: 100,
             cursor: 1,
+            status: ControlMutationStatus::Idle,
         }));
 
         handle_overlay_up(&mut app);

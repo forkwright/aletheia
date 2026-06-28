@@ -1,5 +1,3 @@
-use tracing::Instrument;
-
 use crate::api::types::{Plan, TurnOutcome};
 use crate::app::App;
 use crate::id::{NousId, ToolId, TurnId};
@@ -263,16 +261,7 @@ pub(crate) fn handle_stream_tool_approval_required(
         .always_allowed_tools
         .contains(tool_name.as_str())
     {
-        let client = app.client.clone();
-        let span = tracing::info_span!("auto_approve_tool", %turn_id, %tool_id, %tool_name);
-        app.background_tasks.spawn(
-            async move {
-                if let Err(e) = client.approve_tool(&turn_id, &tool_id).await {
-                    tracing::error!("failed to auto-approve tool: {e}");
-                }
-            }
-            .instrument(span),
-        );
+        super::overlay::start_auto_tool_approval(app, turn_id, tool_id, tool_name);
         return;
     }
 
@@ -283,6 +272,7 @@ pub(crate) fn handle_stream_tool_approval_required(
         input,
         risk: sanitize_for_display(&risk).into_owned(),
         reason: sanitize_for_display(&reason).into_owned(),
+        status: crate::state::ControlMutationStatus::Idle,
     }));
 }
 
@@ -321,6 +311,7 @@ pub(crate) fn handle_stream_plan_proposed(app: &mut App, plan: Plan) {
     app.layout.overlay = Some(Overlay::PlanApproval(PlanApprovalOverlay {
         total_cost_cents: plan.total_estimated_cost_cents,
         cursor: 0,
+        status: crate::state::ControlMutationStatus::Idle,
         steps: plan
             .steps
             .into_iter()

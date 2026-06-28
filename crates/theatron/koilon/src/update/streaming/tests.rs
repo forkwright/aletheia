@@ -188,6 +188,7 @@ fn tool_approval_resolved_closes_overlay() {
         input: serde_json::Value::Null,
         risk: "low".to_string(),
         reason: "test".to_string(),
+        status: crate::state::ControlMutationStatus::Idle,
     }));
 
     handle_stream_tool_approval_resolved(&mut app);

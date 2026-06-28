@@ -35,11 +35,11 @@ use crate::state::virtual_scroll::VirtualScroll;
 )]
 pub use crate::state::{
     ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
-    ContextActionsOverlay, DecisionCardOverlay, DecisionField, DecisionOption, ErrorBanner,
-    FilterState, FocusedPane, InputState, MemoryInspectorState, MessageKind, NotificationStore,
-    OpsState, Overlay, PlanApprovalOverlay, PlanStepApproval, SelectionContext,
-    SessionPickerOverlay, SlashCompleteState, StreamPhase, SubmittedDecision, TabCompletion, Toast,
-    ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
+    ContextActionsOverlay, ControlMutationStatus, DecisionCardOverlay, DecisionField,
+    DecisionOption, ErrorBanner, FilterState, FocusedPane, InputState, MemoryInspectorState,
+    MessageKind, NotificationStore, OpsState, Overlay, PlanApprovalOverlay, PlanStepApproval,
+    SelectionContext, SessionPickerOverlay, SlashCompleteState, StreamPhase, SubmittedDecision,
+    TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
 };
 #[cfg(test)]
 use crate::theme::THEME;
@@ -73,6 +73,7 @@ pub struct DashboardState {
     /// Last-active session per agent, loaded from disk on startup and saved on exit.
     pub(crate) saved_sessions: HashMap<NousId, SessionId>,
     pub submitted_decisions: Vec<crate::state::SubmittedDecision>,
+    pub(crate) new_session_status: ControlMutationStatus,
 }
 
 /// SSE link, stream receiver, and reconnect bookkeeping.
@@ -210,7 +211,7 @@ pub struct App {
 
     /// Background fire-and-forget tasks (API calls, etc.) tracked so they can
     /// be awaited on shutdown instead of being silently dropped.
-    pub(crate) background_tasks: JoinSet<()>,
+    pub(crate) background_tasks: JoinSet<Msg>,
 }
 
 impl App {
@@ -253,6 +254,7 @@ impl App {
                 context_tokens_total: None,
                 saved_sessions,
                 submitted_decisions: Vec::new(),
+                new_session_status: ControlMutationStatus::Idle,
             },
             connection: ConnectionState {
                 sse: None,
@@ -594,7 +596,7 @@ impl App {
                 biased;
                 result = self.background_tasks.join_next() => {
                     match result {
-                        Some(Ok(())) => {}
+                        Some(Ok(_msg)) => {}
                         Some(Err(e)) => {
                             tracing::warn!(error = %e, "background task panicked during shutdown");
                         }

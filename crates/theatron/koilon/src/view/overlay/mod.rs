@@ -10,6 +10,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use crate::app::{AgentStatus, App, ContextActionsOverlay, Overlay};
 use crate::diff;
 use crate::keybindings;
+use crate::state::ControlMutationStatus;
 use crate::theme::Theme;
 
 /// Width percentage for the default (help/agent/session) popup.
@@ -239,6 +240,8 @@ fn render_tool_approval(
         lines.push(Line::from(Span::styled("  …", theme.style_dim())));
     }
 
+    push_mutation_status(&mut lines, &approval.status, theme);
+
     lines.push(Line::raw(""));
     lines.push(Line::from(vec![
         Span::raw("  "),
@@ -309,6 +312,7 @@ fn render_plan_approval(
     }
 
     lines.push(Line::raw(""));
+    push_mutation_status(&mut lines, &plan.status, theme);
     lines.push(Line::from(vec![
         Span::raw("  "),
         Span::styled("[A]", theme.style_success_bold()),
@@ -327,6 +331,41 @@ fn render_plan_approval(
     let block = overlay_block_accent(&title, theme.colors.accent, theme);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
+}
+
+fn push_mutation_status<'a>(
+    lines: &mut Vec<Line<'a>>,
+    status: &'a ControlMutationStatus,
+    theme: &Theme,
+) {
+    match status {
+        ControlMutationStatus::Idle => {}
+        ControlMutationStatus::Pending { action_id } => {
+            lines.push(Line::raw(""));
+            lines.push(Line::from(vec![
+                Span::styled("  Pending: ", theme.style_muted()),
+                Span::styled(action_id.clone(), theme.style_warning()),
+            ]));
+        }
+        ControlMutationStatus::Succeeded { action_id } => {
+            lines.push(Line::raw(""));
+            lines.push(Line::from(vec![
+                Span::styled("  Confirmed: ", theme.style_muted()),
+                Span::styled(action_id.clone(), theme.style_success()),
+            ]));
+        }
+        ControlMutationStatus::Failed { action_id, message } => {
+            lines.push(Line::raw(""));
+            lines.push(Line::from(vec![
+                Span::styled("  Failed: ", theme.style_muted()),
+                Span::styled(action_id.clone(), theme.style_error_bold()),
+            ]));
+            lines.push(Line::from(Span::styled(
+                format!("  {message}"),
+                theme.style_error(),
+            )));
+        }
+    }
 }
 
 fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
