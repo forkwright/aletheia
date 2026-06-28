@@ -1195,34 +1195,30 @@ mod tests {
 
         #[expect(
             unsafe_code,
-            reason = "std::env::remove_var is unsafe in edition 2024; tests serialize env access with ENV_LOCK"
+            reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; WHY(#4625): provider registration tests serialize env access with ENV_LOCK"
         )]
-        fn remove(key: &'static str) -> Self {
+        fn set_many_and_remove(set: &[(&'static str, &str)], remove: &[&'static str]) -> Self {
             let lock = ENV_LOCK.lock().expect("lock env var mutex");
-            let original = std::env::var_os(key);
-            // SAFETY: ENV_LOCK serializes all test env mutations in this module.
-            unsafe { std::env::remove_var(key) };
-            Self {
-                originals: vec![(key, original)],
-                _lock: lock,
+            let mut originals = Vec::with_capacity(set.len() + remove.len());
+            for &(key, _) in set {
+                originals.push((key, std::env::var_os(key)));
             }
-        }
+            for &key in remove {
+                originals.push((key, std::env::var_os(key)));
+            }
 
-        #[expect(
-            unsafe_code,
-            reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; tests serialize env access with ENV_LOCK"
-        )]
-        fn set_and_remove(set_key: &'static str, value: &str, remove_key: &'static str) -> Self {
-            let lock = ENV_LOCK.lock().expect("lock env var mutex");
-            let set_original = std::env::var_os(set_key);
-            let remove_original = std::env::var_os(remove_key);
             // SAFETY: ENV_LOCK serializes all test env mutations in this module.
             unsafe {
-                std::env::set_var(set_key, value);
-                std::env::remove_var(remove_key);
+                for &(key, value) in set {
+                    std::env::set_var(key, value);
+                }
+                for &key in remove {
+                    std::env::remove_var(key);
+                }
             }
+
             Self {
-                originals: vec![(set_key, set_original), (remove_key, remove_original)],
+                originals,
                 _lock: lock,
             }
         }
@@ -1400,6 +1396,20 @@ mod tests {
         }
     }
 
+    fn openai_cloud_provider(name: &str, model: &str) -> taxis::config::LlmProviderConfig {
+        use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+        LlmProviderConfig {
+            name: name.to_owned(),
+            kind: ProviderKind::OpenAi,
+            base_url: None,
+            api_key_env: Some("OPENAI_API_KEY".to_owned()),
+            api_family: None,
+            deployment_target: DeploymentTarget::Cloud,
+            models: vec![model.to_owned()],
+        }
+    }
+
     fn credential_chain_anthropic_provider(
         name: &str,
         model: &str,
@@ -1414,6 +1424,25 @@ mod tests {
             api_family: None,
             deployment_target: DeploymentTarget::Cloud,
             models: vec![model.to_owned()],
+        }
+    }
+
+    #[cfg(any(feature = "codex-provider", feature = "kimi-provider"))]
+    fn write_fake_cli_binary(bin_dir: &std::path::Path, name: &str) {
+        use std::io::Write as _;
+
+        std::fs::create_dir_all(bin_dir).expect("create fake cli dir");
+        let path = bin_dir.join(name);
+        let mut file = std::fs::File::create(&path).expect("create fake cli binary");
+        file.write_all(b"#!/bin/sh\nexit 0\n")
+            .expect("write fake cli binary");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod fake cli binary");
         }
     }
 
@@ -1471,7 +1500,8 @@ mod tests {
 
     #[test]
     fn declared_local_provider_registers_without_anthropic_credential() {
-        let _env = EnvVarGuard::remove("ANTHROPIC_API_KEY");
+        let _env =
+            EnvVarGuard::set_many_and_remove(&[], &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]);
         let model = "local-test-model";
         let mut config = AletheiaConfig::default();
         config.credential.source = "api-key".to_owned();
@@ -1482,6 +1512,50 @@ mod tests {
             .find_provider(model)
             .expect("declared local provider should register without Anthropic credentials");
 
+        assert_eq!(provider.name(), "local-only");
+    }
+
+    #[test]
+    fn declared_openai_provider_registers_with_openai_key_without_anthropic_credentials() {
+        let _env = EnvVarGuard::set_many_and_remove(
+            &[("OPENAI_API_KEY", "sk-openai-test")],
+            &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+        );
+        let model = "gpt-test-4625";
+        let mut config = AletheiaConfig::default();
+        config.credential.source = "api-key".to_owned();
+        config.providers = vec![openai_cloud_provider("openai-cloud", model)];
+
+        let registry = build_test_provider_registry(&config);
+        let provider = registry
+            .find_provider(model)
+            .expect("declared OpenAI provider should register with only OPENAI_API_KEY");
+
+        assert_eq!(provider.name(), "openai-cloud");
+    }
+
+    #[test]
+    fn missing_anthropic_credentials_skip_only_anthropic_in_mixed_provider_list() {
+        let _env =
+            EnvVarGuard::set_many_and_remove(&[], &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]);
+        let anthropic_model = koina::models::names::sonnet();
+        let local_model = "local-test-model";
+        let mut config = AletheiaConfig::default();
+        config.credential.source = "api-key".to_owned();
+        config.providers = vec![
+            credential_chain_anthropic_provider("anthropic-cloud", anthropic_model),
+            local_openai_provider("local-only", local_model),
+        ];
+
+        let registry = build_test_provider_registry(&config);
+
+        assert!(
+            registry.find_provider(anthropic_model).is_none(),
+            "missing Anthropic credentials should skip only the Anthropic entry"
+        );
+        let provider = registry
+            .find_provider(local_model)
+            .expect("non-Anthropic provider should still register after Anthropic skips");
         assert_eq!(provider.name(), "local-only");
     }
 
@@ -1503,7 +1577,10 @@ mod tests {
             .path()
             .to_str()
             .expect("temp home path should be utf-8");
-        let _env = EnvVarGuard::set_and_remove("HOME", fake_home, "ANTHROPIC_API_KEY");
+        let _env = EnvVarGuard::set_many_and_remove(
+            &[("HOME", fake_home)],
+            &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+        );
         let model = "local-test-model";
         let config = AletheiaConfig {
             providers: vec![local_openai_provider("local-only", model)],
@@ -1516,6 +1593,60 @@ mod tests {
             .expect("declared local provider should register without legacy credential discovery");
 
         assert_eq!(provider.name(), "local-only");
+    }
+
+    #[cfg(feature = "codex-provider")]
+    #[test]
+    fn auto_codex_provider_registers_without_anthropic_credentials() {
+        let fake_home = tempfile::tempdir().expect("create fake home");
+        let fake_bin = tempfile::tempdir().expect("create fake bin");
+        write_fake_cli_binary(fake_bin.path(), "codex");
+        let fake_home = fake_home
+            .path()
+            .to_str()
+            .expect("temp home path should be utf-8");
+        let fake_path = fake_bin
+            .path()
+            .to_str()
+            .expect("temp bin path should be utf-8");
+        let _env = EnvVarGuard::set_many_and_remove(
+            &[("HOME", fake_home), ("PATH", fake_path)],
+            &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+        );
+
+        let registry = build_test_provider_registry(&AletheiaConfig::default());
+        let provider = registry
+            .find_provider("codex/test-model")
+            .expect("Codex feature provider should register without Anthropic credentials");
+
+        assert_eq!(provider.name(), "codex");
+    }
+
+    #[cfg(feature = "kimi-provider")]
+    #[test]
+    fn auto_kimi_provider_registers_without_anthropic_credentials() {
+        let fake_home = tempfile::tempdir().expect("create fake home");
+        let fake_bin = tempfile::tempdir().expect("create fake bin");
+        write_fake_cli_binary(fake_bin.path(), "kimi");
+        let fake_home = fake_home
+            .path()
+            .to_str()
+            .expect("temp home path should be utf-8");
+        let fake_path = fake_bin
+            .path()
+            .to_str()
+            .expect("temp bin path should be utf-8");
+        let _env = EnvVarGuard::set_many_and_remove(
+            &[("HOME", fake_home), ("PATH", fake_path)],
+            &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+        );
+
+        let registry = build_test_provider_registry(&AletheiaConfig::default());
+        let provider = registry
+            .find_provider("kimi/test-model")
+            .expect("Kimi feature provider should register without Anthropic credentials");
+
+        assert_eq!(provider.name(), "kimi");
     }
 
     #[test]
@@ -1551,7 +1682,8 @@ mod tests {
     fn declarative_anthropic_without_key_env_needs_credential_chain() {
         use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
 
-        let _env = EnvVarGuard::remove("ANTHROPIC_API_KEY");
+        let _env =
+            EnvVarGuard::set_many_and_remove(&[], &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"]);
         let mut config = AletheiaConfig::default();
         config.credential.source = "api-key".to_owned();
         config.providers.push(LlmProviderConfig {
