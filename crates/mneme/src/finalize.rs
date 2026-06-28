@@ -1,12 +1,9 @@
 //! Idempotent turn-finalization support.
 //!
-//! WHY: `nous::finalize` currently checks `usage_exists_for_turn` before
-//! appending messages, then records usage only after all messages are
-//! persisted. If a crash or store failure happens between message append and
-//! usage recording, a retry sees no usage row and duplicates history (#4691).
-//! The primitives here let downstream record a deterministic idempotency
-//! token *before* mutating history so partial turns are detectable and
-//! recoverable without changing the public `SessionStore` API.
+//! WHY: finalized turns need durable lifecycle evidence in addition to message
+//! history. The primitives here let downstream record deterministic
+//! idempotency tokens so pending attempts are detectable and completed turns
+//! can short-circuit retries (#4691).
 
 use std::fmt;
 

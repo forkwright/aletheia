@@ -100,7 +100,17 @@ impl TurnAttemptRecord {
     }
 }
 
-const TURN_NOTE_CATEGORY: &str = "context";
+pub(crate) const TURN_NOTE_CATEGORY: &str = "context";
+
+/// Serialize a turn-attempt lifecycle record for storage as an agent note.
+pub(crate) fn serialize_turn_attempt(record: &TurnAttemptRecord) -> error::Result<String> {
+    serde_json::to_string(record).map_err(|e| {
+        error::ContextAssemblySnafu {
+            message: format!("turn attempt record serialization failed: {e}"),
+        }
+        .build()
+    })
+}
 
 /// Persist a turn-attempt lifecycle record as a durable agent note.
 ///
@@ -112,12 +122,7 @@ pub fn persist_turn_attempt(
     nous_id: &str,
     record: &TurnAttemptRecord,
 ) -> error::Result<()> {
-    let content = serde_json::to_string(record).map_err(|e| {
-        error::ContextAssemblySnafu {
-            message: format!("turn attempt record serialization failed: {e}"),
-        }
-        .build()
-    })?;
+    let content = serialize_turn_attempt(record)?;
     store
         .add_note(&record.session_id, nous_id, TURN_NOTE_CATEGORY, &content)
         .context(error::StoreSnafu)?;

@@ -5,7 +5,9 @@
     reason = "test assertions on Vecs with asserted length"
 )]
 
-use super::{FinalizeMessage, FinalizeTurnRequest, test_persist_counter};
+use super::{
+    FinalizeMessage, FinalizeNote, FinalizeTurnRequest, test_finalize_failure, test_persist_counter,
+};
 use crate::error::Error;
 use crate::test_fixtures::test_store;
 use crate::types::{BlackboardRow, Role, SessionStatus, UsageRecord};
@@ -928,7 +930,11 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
         model: Some("test-model"),
         parent_session_id: None,
         messages: &messages,
-        usage: &usage,
+        usage: Some(&usage),
+        completion_note: Some(FinalizeNote {
+            category: "context",
+            content: r#"{"status":"completed"}"#,
+        }),
     };
 
     let result = store
@@ -952,6 +958,109 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
     let usage_rows = store.get_usage_for_session(session_id).expect("read usage");
     assert_eq!(usage_rows.len(), 1);
     assert_eq!(usage_rows[0].turn_seq, 7);
+
+    let notes = store.get_notes(session_id).expect("read notes");
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].category, "context");
+    assert_eq!(notes[0].content, r#"{"status":"completed"}"#);
+}
+
+#[test]
+fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
+    test_finalize_failure::clear();
+    let store = test_store();
+    let session_id = "ses-finalize-retry";
+    let usage = UsageRecord {
+        session_id: session_id.to_owned(),
+        turn_seq: 8,
+        input_tokens: 11,
+        output_tokens: 13,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        model: Some("test-model".to_owned()),
+    };
+    let messages = vec![
+        FinalizeMessage {
+            role: Role::User,
+            content: "first attempt",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 3,
+        },
+        FinalizeMessage {
+            role: Role::Assistant,
+            content: "retry-safe",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 4,
+        },
+    ];
+    let request = FinalizeTurnRequest {
+        session_id,
+        nous_id: "syn",
+        session_key: "main",
+        model: Some("test-model"),
+        parent_session_id: None,
+        messages: &messages,
+        usage: Some(&usage),
+        completion_note: Some(FinalizeNote {
+            category: "context",
+            content: r#"{"status":"completed"}"#,
+        }),
+    };
+
+    test_finalize_failure::fail_after_messages(1);
+    let failed = store.finalize_turn(&request);
+    assert!(
+        failed.is_err(),
+        "injected failure should abort finalization"
+    );
+    assert!(
+        store
+            .get_history(session_id, None)
+            .expect("history after failed finalize")
+            .is_empty(),
+        "message writes inside the failed transaction must roll back"
+    );
+    assert!(
+        store
+            .get_usage_for_session(session_id)
+            .expect("usage after failed finalize")
+            .is_empty(),
+        "usage write must not survive a failed message batch"
+    );
+    assert!(
+        store
+            .get_notes(session_id)
+            .expect("notes after failed finalize")
+            .is_empty(),
+        "completion note must not be written without the turn"
+    );
+
+    let retried = store
+        .finalize_turn(&request)
+        .expect("retry should commit the whole turn");
+    assert_eq!(retried.messages_persisted, 2);
+    assert!(retried.usage_recorded);
+
+    let history = store.get_history(session_id, None).expect("history");
+    assert_eq!(history.len(), 2, "retry must not duplicate messages");
+    assert_eq!(history[0].content, "first attempt");
+    assert_eq!(history[1].content, "retry-safe");
+    assert_eq!(
+        store
+            .get_usage_for_session(session_id)
+            .expect("usage after retry")
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .get_notes(session_id)
+            .expect("notes after retry")
+            .len(),
+        1
+    );
 }
 
 #[path = "fjall_store_tests_notes.rs"]

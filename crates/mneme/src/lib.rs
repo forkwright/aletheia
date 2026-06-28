@@ -122,7 +122,9 @@ pub mod portability {
 
 /// Session store — fjall LSM-tree backend.
 pub mod store {
-    pub use graphe::store::SessionStore;
+    pub use graphe::store::{
+        FinalizeMessage, FinalizeNote, FinalizeTurnRequest, FinalizeTurnResult, SessionStore,
+    };
 }
 
 /// Core types for sessions, messages, usage records, and agent notes.
@@ -139,9 +141,8 @@ pub mod types {
 
 /// Idempotent turn-finalization primitives.
 ///
-/// WHY: `nous::finalize` uses `usage_exists_for_turn` as the dedup guard, but
-/// messages are appended before usage is recorded. The types here let
-/// downstream detect and recover partially finalized turns (#4691).
+/// WHY: finalized turns must carry durable lifecycle evidence so downstream
+/// recovery can distinguish pending attempts from completed turns (#4691).
 pub mod finalize;
 
 /// Working-memory checkpoint storage contract.
