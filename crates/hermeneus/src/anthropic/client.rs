@@ -491,9 +491,13 @@ impl AnthropicProvider {
             )
             .await;
 
+            let stream_result = match stream_result {
+                Ok(()) => accumulator.finish(),
+                Err(e) => Err(e),
+            };
+
             match stream_result {
-                Ok(()) => {
-                    let mut resp = accumulator.finish();
+                Ok(mut resp) => {
                     self.health.record_success();
                     let duration_ms =
                         u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);

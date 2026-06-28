@@ -1216,6 +1216,75 @@ pub(super) async fn dispatch_tool_items(
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use organon::testing::MockToolExecutor;
+    use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef, ToolGroupId};
+
+    fn test_tool_def(name: &str) -> ToolDef {
+        ToolDef {
+            name: ToolName::new(name).expect("valid test tool name"),
+            description: format!("Test tool: {name}"),
+            extended_description: None,
+            input_schema: InputSchema {
+                properties: indexmap::IndexMap::default(),
+                required: vec![],
+            },
+            category: ToolCategory::Workspace,
+            reversibility: Reversibility::FullyReversible,
+            auto_activate: true,
+            groups: vec![ToolGroupId::Read],
+            tags: vec![],
+        }
+    }
+
+    #[test]
+    fn dispatch_policy_denies_provider_parse_error_payload() {
+        let mut tools = ToolRegistry::new();
+        tools
+            .register(
+                test_tool_def("read_file"),
+                Box::new(MockToolExecutor::text("ok")),
+            )
+            .expect("register test tool");
+        let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+        let items = policy.filter_tool_uses(
+            vec![(
+                "call-malformed".to_owned(),
+                "read_file".to_owned(),
+                serde_json::json!({
+                    "_parse_error": "malformed tool input: expected value at line 1 column 1",
+                    "_raw_input": "{not json"
+                }),
+            )],
+            &tools,
+        );
+
+        assert_eq!(items.len(), 1);
+        match items.first().expect("one dispatch item") {
+            ToolDispatchItem::Denied {
+                id,
+                name,
+                input,
+                message,
+                outcome,
+            } => {
+                assert_eq!(id, "call-malformed");
+                assert_eq!(name, "read_file");
+                assert_eq!(*outcome, TOOL_OUTCOME_FAILED);
+                assert!(
+                    message.starts_with("malformed tool input:"),
+                    "expected provider parse error denial, got {message:?}"
+                );
+                assert!(
+                    input.get("_raw_input").is_some(),
+                    "denied call should retain diagnostic input payload"
+                );
+            }
+            ready @ ToolDispatchItem::Ready { .. } => {
+                panic!("malformed provider arguments must not be dispatch-ready: {ready:?}");
+            }
+        }
+    }
 
     #[test]
     fn text_within_limit_passes_through() {
