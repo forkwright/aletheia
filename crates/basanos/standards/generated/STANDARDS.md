@@ -1,0 +1,461 @@
+# Coding Standards
+
+> Generated from `crates/basanos/src/registry/`. Do not edit generated views by hand.
+
+## Contents
+
+- [COMMENTS/deflection-without-tracking](#commentsdeflection-without-tracking)
+- [COMMENTS/journal-shaped](#commentsjournal-shaped)
+- [MANIFEST/license-spdx-match](#manifestlicense-spdx-match)
+- [STANDARDS/aggregate-status-without-detail](#standardsaggregate-status-without-detail)
+- [STANDARDS/ai-indicator](#standardsai-indicator)
+- [STANDARDS/comment-metadata](#standardscomment-metadata)
+- [STANDARDS/consecutive-blank-lines](#standardsconsecutive-blank-lines)
+- [STANDARDS/declarative-extended-description](#standardsdeclarative-extended-description)
+- [STANDARDS/deprecated-term](#standardsdeprecated-term)
+- [STANDARDS/duplicated-prose](#standardsduplicated-prose)
+- [STANDARDS/removal-no-issue](#standardsremoval-no-issue)
+- [STANDARDS/tautological-doc](#standardstautological-doc)
+- [STANDARDS/trailing-blank-lines](#standardstrailing-blank-lines)
+- [WORKFLOW/conventional-commits](#workflowconventional-commits)
+- [WORKFLOW/derived-section-stale](#workflowderived-section-stale)
+- [WORKFLOW/no-ai-attribution](#workflowno-ai-attribution)
+- [WORKFLOW/no-hack-xxx-temp](#workflowno-hack-xxx-temp)
+- [WORKFLOW/pr-number-subject-stamp](#workflowpr-number-subject-stamp)
+
+## `COMMENTS/deflection-without-tracking` {#commentsdeflection-without-tracking}
+
+- Severity: `warning`
+- Scope: `language:rust`
+- Enforcer: `COMMENTS/deflection-without-tracking`
+- See also: `COMMENTS/journal-shaped`
+
+Deferred-work comments must either fix the concern immediately or point at a tracking artifact, decision, or explicit operator override. Deflection language without tracking turns surfaced concerns into unowned debt.
+
+### Examples
+
+**Good:** Tie deferred work to a tracking artifact.
+
+```text
+// TODO(#293): migrate the remaining registry-backed rules.
+```
+
+**Bad:** Defer work without an issue, ADR, decision, or operator override.
+
+```text
+// FIXME: this is out of scope, leave for now.
+```
+
+## `COMMENTS/journal-shaped` {#commentsjournal-shaped}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `COMMENTS/journal-shaped`
+- See also: `STANDARDS/comment-metadata`
+
+Comments should describe current behavior, invariants, or rationale instead of recording where code used to live. Git already preserves movement history, so archaeological notes such as extracted-from or moved-from comments become stale redundancy.
+
+### Examples
+
+**Good:** Explain the current invariant the comment protects.
+
+```text
+// WHY: cache keys include tenant IDs because object IDs are tenant-scoped.
+```
+
+**Bad:** Record movement history that git already preserves.
+
+```text
+// Extracted from the legacy parser during the config split.
+```
+
+## `MANIFEST/license-spdx-match` {#manifestlicense-spdx-match}
+
+- Severity: `error`
+- Scope: `language:toml`
+- Enforcer: `MANIFEST/license-spdx-match`
+- See also: `MANIFEST/no-license`
+
+Cargo manifests must declare an SPDX license expression that matches the repository's shipped LICENSE text. A mismatched `license` field gives compliance tooling and downstream consumers the wrong legal answer.
+
+### Examples
+
+**Good:** Declare the SPDX expression that matches the shipped LICENSE file.
+
+```text
+Cargo.toml
+license = "AGPL-3.0-or-later"
+
+LICENSE
+GNU Affero General Public License...
+```
+
+**Bad:** Declare one license while shipping different license text.
+
+```text
+Cargo.toml
+license = "AGPL-3.0-or-later"
+
+LICENSE
+PolyForm Shield License...
+```
+
+## `STANDARDS/aggregate-status-without-detail` {#standardsaggregate-status-without-detail}
+
+- Severity: `warning`
+- Scope: `language:rust`
+- Enforcer: `STANDARDS/aggregate-status-without-detail`
+- See also: `STANDARDS/tautological-doc`
+
+Health endpoints must derive their aggregate status from visible per-check detail. A bare `{"status": "healthy"}` claim hides which dependencies, queues, or components were checked and gives readers no evidence for the summary.
+
+### Examples
+
+**Good:** Expose the checks that the aggregate status summarizes.
+
+```text
+Json(json!({"status": "healthy", "checks": {"database": "ok", "queue": "ok"}}))
+```
+
+**Bad:** Return only a bare aggregate health claim.
+
+```text
+Json(json!({"status": "healthy"}))
+```
+
+## `STANDARDS/ai-indicator` {#standardsai-indicator}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `STANDARDS/ai-indicator`
+- See also: `WORKFLOW/no-ai-attribution`
+
+Source comments must not carry AI generation indicators such as generated-by or authored-by boilerplate. These labels add no technical value and drift from the repository history that already records authorship.
+
+### Examples
+
+**Good:** Keep comments focused on technical rationale.
+
+```text
+// WHY: preserve the caller's retry budget when the queue is saturated.
+```
+
+**Bad:** Leave generator attribution in a source comment.
+
+```text
+// Generated by an automated tool.
+```
+
+## `STANDARDS/comment-metadata` {#standardscomment-metadata}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `STANDARDS/comment-metadata`
+- See also: `STANDARDS/removal-no-issue`
+
+Code comments must not carry authorship, date, copyright, or modification metadata that git already tracks. Keep comments focused on behavior, invariants, and rationale so they do not drift from repository history.
+
+### Examples
+
+**Good:** Let git history own authorship and date metadata.
+
+```text
+// Validates repository-local standards citations.
+```
+
+**Bad:** Put stale-prone authorship metadata in a source comment.
+
+```text
+// Author: Jane Doe
+// Date: 2026-05-26
+```
+
+## `STANDARDS/consecutive-blank-lines` {#standardsconsecutive-blank-lines}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `STANDARDS/consecutive-blank-lines`
+- See also: `STANDARDS/trailing-blank-lines`
+
+Source files must not contain 3 or more consecutive blank lines. Excessive vertical whitespace reduces code density without improving readability.
+
+### Examples
+
+**Good:** Keep vertical whitespace bounded between code blocks.
+
+```text
+fn first() {}
+
+fn second() {}
+```
+
+**Bad:** Leave three consecutive blank lines in source.
+
+```text
+fn first() {}
+
+
+fn second() {}
+```
+
+## `STANDARDS/declarative-extended-description` {#standardsdeclarative-extended-description}
+
+- Severity: `warning`
+- Scope: `language:rust`
+- Enforcer: `STANDARDS/declarative-extended-description`
+- See also: `STANDARDS/tautological-doc`
+
+Tool and command `extended_description` fields must add context the schema cannot carry. Repeating the command name, argument shape, or obvious declaration creates maintained prose without new information.
+
+### Examples
+
+**Good:** Use extended_description for context the schema cannot carry.
+
+```text
+extended_description = "Streams repository paths and reports skipped binary files."
+```
+
+**Bad:** Restate the command name and argument shape in extended_description.
+
+```text
+extended_description = "The scan tool. Takes a path and scans it."
+```
+
+## `STANDARDS/deprecated-term` {#standardsdeprecated-term}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `STANDARDS/deprecated-term`
+
+Source text must avoid deprecated technical terms when current alternatives are available. Prefer inclusive branch, relationship, and allow/deny wording so repository language does not preserve obsolete conventions.
+
+### Examples
+
+**Good:** Use current inclusive terminology for branch and relationship names.
+
+```text
+git checkout main
+primary_db -> replica_db
+```
+
+**Bad:** Keep legacy branch and relationship terms in source text.
+
+```text
+git checkout master
+slave_db
+```
+
+## `STANDARDS/duplicated-prose` {#standardsduplicated-prose}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `STANDARDS/duplicated-prose`
+- See also: `COHERENCE/single-source-of-truth`
+
+The same standards prose must not be maintained in multiple documents. Put the rule in one owning document and replace copies with concise references.
+
+### Examples
+
+**Good:** Factor shared policy into one owner and point readers to it.
+
+```text
+See RUST.md#cargo-target-dir-discipline for dispatch worktree target-dir rules.
+```
+
+**Bad:** Maintain the same paragraph in two standards documents.
+
+```text
+Copy the full cargo target-dir policy into every workflow prompt standard.
+```
+
+## `STANDARDS/removal-no-issue` {#standardsremoval-no-issue}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `STANDARDS/removal-no-issue`
+- See also: `STANDARDS/comment-metadata`
+
+REMOVED and DEPRECATED comments must cite a tracking issue. Feature removals without issue references become untraceable because the comment records intent but not the decision trail.
+
+### Examples
+
+**Good:** Tie removal markers to a tracked decision.
+
+```text
+// REMOVED(#438): legacy parser entrypoint
+```
+
+**Bad:** Leave a removal marker with no issue reference.
+
+```text
+// REMOVED: legacy parser entrypoint
+```
+
+## `STANDARDS/tautological-doc` {#standardstautological-doc}
+
+- Severity: `warning`
+- Scope: `language:rust`
+- Enforcer: `STANDARDS/tautological-doc`
+- See also: `COHERENCE/single-source-of-truth`
+
+Documentation must add information the declaration cannot express. Doc comments that only restate the function name are maintained prose without derivation.
+
+### Examples
+
+**Good:** Document a fact the signature cannot express.
+
+```text
+/// Returns true when the path is inside a dispatch worktree.
+fn is_dispatch_worktree(path: &Path) -> bool
+```
+
+**Bad:** Restate the function name.
+
+```text
+/// Checks whether path is a dispatch worktree.
+fn is_dispatch_worktree(path: &Path) -> bool
+```
+
+## `STANDARDS/trailing-blank-lines` {#standardstrailing-blank-lines}
+
+- Severity: `warning`
+- Scope: `universal`
+- Enforcer: `STANDARDS/trailing-blank-lines`
+- See also: `STANDARDS/consecutive-blank-lines`
+
+Files must not carry trailing blank lines after their final content. Keep exactly one final newline at EOF so whitespace stays stable across tools and reviews.
+
+### Examples
+
+**Good:** Keep exactly one final newline at end of file.
+
+```text
+fn done() {}
+
+```
+
+**Bad:** Leave extra blank lines after the final content.
+
+```text
+fn done() {}
+
+
+
+```
+
+## `WORKFLOW/conventional-commits` {#workflowconventional-commits}
+
+- Severity: `warning`
+- Scope: `project:git-history`
+- Enforcer: `WORKFLOW/conventional-commits`
+
+Commit subjects must use the conventional-commits form `type(scope): description` with an allowed type and a non-empty description. Consistent subjects make changelog synthesis, dispatch review, and release automation easier to audit.
+
+### Examples
+
+**Good:** Use an allowed type, optional scope, and concise description.
+
+```text
+feat(basanos): migrate conventional_commits registry rule
+```
+
+**Bad:** Leave the subject outside the conventional-commits shape.
+
+```text
+update registry migration
+```
+
+## `WORKFLOW/derived-section-stale` {#workflowderived-section-stale}
+
+- Severity: `warning`
+- Scope: `project:workflow`
+- Enforcer: `WORKFLOW/derived-section-stale`
+- See also: `STANDARDS/duplicated-prose`
+
+Derived documentation sections must be regenerated from their source of truth instead of edited by hand. When AGENTS.md, CLAUDE.md, or README.md carries kanon auto markers or docs sync output, stale content hides drift from workflow config, standards, and MCP routing.
+
+### Examples
+
+**Good:** Regenerate marked documentation from its source of truth.
+
+```text
+kanon docs sync --apply --repo kanon
+```
+
+**Bad:** Hand-edit generated content and leave it drifted from docs sync output.
+
+```text
+<!-- kanon:auto-start -->
+manual workflow summary
+<!-- kanon:auto-end -->
+```
+
+## `WORKFLOW/no-ai-attribution` {#workflowno-ai-attribution}
+
+- Severity: `error`
+- Scope: `project:git-history`
+- Enforcer: `WORKFLOW/no-ai-attribution`
+- See also: `WORKFLOW/conventional-commits`
+
+Git artifacts must not include agent-attribution trailers, footers, URLs, or sigils. Attribution boilerplate is implicit metadata rather than useful project content.
+
+### Examples
+
+**Good:** Keep issue and authorship metadata limited to project-relevant trailers.
+
+```text
+Closes #123
+Co-authored-by: Pat Example <pat@example.com>
+```
+
+**Bad:** Attach agent attribution boilerplate to a commit message.
+
+```text
+Generated with Codex
+```
+
+## `WORKFLOW/no-hack-xxx-temp` {#workflowno-hack-xxx-temp}
+
+- Severity: `warning`
+- Scope: `project:workflow`
+- Enforcer: `WORKFLOW/no-hack-xxx-temp`
+
+HACK, XXX, and TEMP comment markers signal known debt and must not remain untracked. Fix the issue immediately or convert the marker to a tracked TODO(#NNN) so deferred work stays visible.
+
+### Examples
+
+**Good:** Track deferred work with an issue reference.
+
+```text
+// TODO(#123): replace temporary parser fallback
+```
+
+**Bad:** Leave an untracked debt marker in a comment.
+
+```text
+// HACK: temporary parser fallback
+```
+
+## `WORKFLOW/pr-number-subject-stamp` {#workflowpr-number-subject-stamp}
+
+- Severity: `warning`
+- Scope: `project:git-history`
+- Enforcer: `WORKFLOW/pr-number-subject-stamp`
+- See also: `WORKFLOW/conventional-commits`
+
+Main-history commit subjects must carry a durable link back to the pull request that landed them. Non-exempt subjects should end with `(#N)`; merge, release, tag, and version commits have separate traceability.
+
+### Examples
+
+**Good:** End the landing commit subject with the PR number.
+
+```text
+feat(basanos): migrate registry rule (#754)
+```
+
+**Bad:** Leave a main-history commit subject without its PR trace.
+
+```text
+feat(basanos): migrate registry rule
+```
+
