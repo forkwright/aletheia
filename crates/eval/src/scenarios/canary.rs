@@ -14,6 +14,7 @@ mod conflict;
 mod knowledge;
 mod recall;
 mod sessions;
+mod support;
 mod tools;
 
 use conflict::{

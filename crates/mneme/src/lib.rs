@@ -352,14 +352,18 @@ pub mod skills {
 
 /// Structured tracing subscriber that captures operational events as Datalog facts.
 pub mod trace_ingest {
-    pub use episteme::trace_ingest::{OPS_DDL, TraceEvent, TraceIngestLayer, ensure_ops_schema};
+    #[cfg(feature = "mneme-engine")]
+    pub use episteme::trace_ingest::ensure_ops_schema;
+    pub use episteme::trace_ingest::{OPS_DDL, TraceEvent, TraceIngestLayer};
 }
 
 /// Multi-agent verification protocol.
 pub mod verification {
+    #[cfg(feature = "mneme-engine")]
+    pub use episteme::verification::detect_conflict;
     pub use episteme::verification::{
         Conflict, ConflictKind, DEFAULT_VERIFICATION_THRESHOLD, ResolveError, VerificationOutcome,
-        detect_conflict, publish_fact, resolve_conflict, vote_on_proposal,
+        publish_fact, resolve_conflict, vote_on_proposal,
     };
 }
 

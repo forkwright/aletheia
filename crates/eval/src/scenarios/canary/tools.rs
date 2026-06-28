@@ -21,7 +21,7 @@ impl Scenario for ToolFileReadContent {
             expected_contains: None,
             expected_pattern: None,
 
-            classification: ScenarioClassification::Assertive,
+            classification: ScenarioClassification::Smoke,
         }
     }
 
@@ -79,7 +79,7 @@ impl Scenario for ToolFileWriteReadRoundtrip {
             expected_contains: None,
             expected_pattern: None,
 
-            classification: ScenarioClassification::Assertive,
+            classification: ScenarioClassification::Smoke,
         }
     }
 
@@ -138,7 +138,7 @@ impl Scenario for ToolWebSearchStructured {
             expected_contains: None,
             expected_pattern: None,
 
-            classification: ScenarioClassification::Assertive,
+            classification: ScenarioClassification::Smoke,
         }
     }
 
@@ -194,7 +194,7 @@ impl Scenario for ToolMultiToolChain {
             expected_contains: None,
             expected_pattern: None,
 
-            classification: ScenarioClassification::Assertive,
+            classification: ScenarioClassification::Smoke,
         }
     }
 
@@ -250,7 +250,7 @@ impl Scenario for ToolInvalidInputError {
             expected_contains: None,
             expected_pattern: None,
 
-            classification: ScenarioClassification::Assertive,
+            classification: ScenarioClassification::Smoke,
         }
     }
 
@@ -299,20 +299,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_descriptions_match_smoke_test_assertions() {
-        let descriptions = [
-            ToolFileReadContent.meta().description,
-            ToolFileWriteReadRoundtrip.meta().description,
-            ToolWebSearchStructured.meta().description,
-            ToolMultiToolChain.meta().description,
-            ToolInvalidInputError.meta().description,
+    fn tool_canaries_are_labeled_smoke_when_only_asserting_non_empty_text() {
+        let metas = [
+            ToolFileReadContent.meta(),
+            ToolFileWriteReadRoundtrip.meta(),
+            ToolWebSearchStructured.meta(),
+            ToolMultiToolChain.meta(),
+            ToolInvalidInputError.meta(),
         ];
 
-        for description in descriptions {
+        for meta in metas {
             assert!(
-                description.contains("non-empty response")
-                    || description.contains("completed non-empty response"),
+                meta.description.contains("non-empty response")
+                    || meta.description.contains("completed non-empty response"),
                 "tool canary descriptions should describe the non-empty-response smoke assertion"
+            );
+            assert_eq!(
+                meta.classification,
+                ScenarioClassification::Smoke,
+                "tool canary {} should not be assertive without observable tool-call invariants",
+                meta.id
             );
         }
     }
