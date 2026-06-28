@@ -14,6 +14,8 @@ use std::time::Duration;
 use aletheia_routing::store::AfterActionStoreError;
 use aletheia_routing::types::{RequestFeatures, TurnOutcome};
 use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing::Instrument;
 
 use super::store::AfterActionStore;
@@ -36,6 +38,8 @@ use super::{ProviderId, StaticRouter, TaskCategory};
 pub(crate) struct EmpiricalRouter {
     store: Arc<AfterActionStore>,
     fallback: StaticRouter,
+    outcome_tx: mpsc::UnboundedSender<TurnOutcome>,
+    outcome_worker: JoinHandle<()>,
     /// Minimum sample count before empirical routing overrides static.
     min_samples: u64,
     /// Rolling window for after-action record queries.
@@ -62,9 +66,13 @@ impl EmpiricalRouter {
         window: Duration,
         confidence_threshold: f64,
     ) -> Self {
+        let (outcome_tx, outcome_rx) = mpsc::unbounded_channel();
+        let outcome_worker = spawn_outcome_worker(Arc::clone(&store), outcome_rx);
         Self {
             store,
             fallback,
+            outcome_tx,
+            outcome_worker,
             min_samples,
             window,
             confidence_threshold,
@@ -216,6 +224,45 @@ impl EmpiricalRouter {
     }
 }
 
+fn spawn_outcome_worker(
+    store: Arc<AfterActionStore>,
+    mut outcome_rx: mpsc::UnboundedReceiver<TurnOutcome>,
+) -> JoinHandle<()> {
+    tokio::spawn(
+        async move {
+            while let Some(outcome) = outcome_rx.recv().await {
+                let provider = outcome.provider.clone();
+                let category = outcome.task_category;
+                let success = outcome.success;
+                let store = Arc::clone(&store);
+                let handle = tokio::spawn(async move { store.record_outcome(&outcome).await });
+                match handle.await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        tracing::error!(
+                            error = %error,
+                            provider = %provider,
+                            category = %category,
+                            success,
+                            "empirical router failed to record after-action outcome"
+                        );
+                    }
+                    Err(error) => {
+                        tracing::error!(
+                            error = %error,
+                            provider = %provider,
+                            category = %category,
+                            success,
+                            "empirical router after-action recorder task failed"
+                        );
+                    }
+                }
+            }
+        }
+        .instrument(tracing::debug_span!("empirical_router_outcome_recorder")),
+    )
+}
+
 impl Router for EmpiricalRouter {
     /// Route using the empirical success-rate model.
     ///
@@ -277,27 +324,31 @@ impl Router for EmpiricalRouter {
         _decision: &RoutingDecision,
         outcome: &TurnOutcome,
     ) -> Result<(), RouterError> {
-        // WHY: record_outcome is async (takes the write lock), but `after_action`
-        // on the trait is sync to keep the trait object-safe without boxing
-        // every future. We spawn a fire-and-forget task for the store write
-        // so the hot response path is never blocked.
-        let store = Arc::clone(&self.store);
-        let outcome = outcome.clone();
-        tokio::spawn(
-            async move {
-                if let Err(error) = store.record_outcome(&outcome).await {
-                    tracing::error!(
-                        error = %error,
-                        provider = %outcome.provider,
-                        category = %outcome.task_category,
-                        success = outcome.success,
-                        "empirical router failed to record after-action outcome"
-                    );
-                }
-            }
-            .instrument(tracing::Span::current()),
-        );
-        Ok(())
+        if self.outcome_worker.is_finished() {
+            let message = "after-action recorder worker stopped".to_owned();
+            tracing::error!(
+                provider = %outcome.provider,
+                category = %outcome.task_category,
+                success = outcome.success,
+                "empirical router after-action recorder worker stopped"
+            );
+            return Err(RouterError::AfterActionWrite { message });
+        }
+
+        self.outcome_tx.send(outcome.clone()).map_err(|error| {
+            let outcome = error.0;
+            let message = format!(
+                "after-action recorder stopped for provider {}",
+                outcome.provider
+            );
+            tracing::error!(
+                provider = %outcome.provider,
+                category = %outcome.task_category,
+                success = outcome.success,
+                "empirical router after-action recorder stopped"
+            );
+            RouterError::AfterActionWrite { message }
+        })
     }
 }
 
@@ -525,6 +576,45 @@ mod tests {
             "confidence should be present when empirical data exists"
         );
         assert!(decision.confidence.unwrap() > 0.8);
+    }
+
+    #[tokio::test]
+    async fn after_action_records_outcome_through_owned_worker() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let router = EmpiricalRouter::new(
+            Arc::clone(&store),
+            StaticRouter::new(ProviderId::new("fallback")),
+            1,
+            DEFAULT_ROUTING_WINDOW,
+            0.1,
+        );
+        let decision = RoutingDecision::new("provider-a", None);
+        let outcome = TurnOutcome::new(
+            ProviderId::new("provider-a"),
+            TaskCategory::Feature,
+            true,
+            true,
+        );
+
+        router
+            .after_action(&decision, &outcome)
+            .expect("after_action should enqueue outcome");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            if !store.recent_outcomes().await.is_empty() {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "after-action worker did not record outcome"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let recent = store.recent_outcomes().await;
+        assert_eq!(recent.len(), 1);
+        assert_eq!(&*recent[0].provider.0, "provider-a");
     }
 
     #[tokio::test]
