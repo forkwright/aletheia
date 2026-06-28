@@ -5,8 +5,8 @@
 //! converts them to knowledge graph facts.
 //!
 //! Quality gates:
-//! - Only violations with `pr_number` and `sha` (i.e., from merged PRs) are
-//!   considered successful fix candidates.
+//! - Only violations with PR context plus explicit fixed/resolved outcome
+//!   evidence or before/after violation deltas are successful fix candidates.
 //! - Confidence scoring: verified fixes get 0.9, inferred patterns get 0.6.
 //! - Deduplication by rule+file to avoid flooding the graph with duplicates.
 
@@ -50,6 +50,121 @@ pub(crate) struct ViolationRecord {
     pub(crate) pr_number: Option<u32>,
     /// Git SHA if this violation was found in a PR context.
     pub(crate) sha: Option<String>,
+    /// Additional outcome metadata emitted by training producers.
+    #[serde(default, flatten)]
+    pub(crate) metadata: HashMap<String, serde_json::Value>,
+}
+
+impl ViolationRecord {
+    fn has_pr_context(&self) -> bool {
+        self.pr_number.is_some()
+            && self
+                .sha
+                .as_deref()
+                .is_some_and(|sha| !sha.trim().is_empty())
+    }
+
+    fn has_verified_fix_evidence(&self) -> bool {
+        if !self.has_pr_context() || self.has_negative_outcome_evidence() {
+            return false;
+        }
+        self.has_positive_outcome_evidence() || self.has_decreasing_violation_delta()
+    }
+
+    fn has_positive_outcome_evidence(&self) -> bool {
+        self.metadata_string_matches(
+            &[
+                "outcome",
+                "status",
+                "resolution",
+                "result",
+                "fix_status",
+                "violation_outcome",
+            ],
+            &[
+                "fixed",
+                "resolved",
+                "fixed_in_pr",
+                "merged_fixed",
+                "success",
+                "succeeded",
+                "passed",
+            ],
+        ) || self.metadata_bool_any(&["fixed", "resolved", "violation_fixed"]) == Some(true)
+    }
+
+    fn has_negative_outcome_evidence(&self) -> bool {
+        self.metadata_string_matches(
+            &[
+                "outcome",
+                "status",
+                "resolution",
+                "result",
+                "fix_status",
+                "violation_outcome",
+                "pr_state",
+                "merge_state",
+                "ci_status",
+            ],
+            &[
+                "unresolved",
+                "introduced",
+                "failed",
+                "failure",
+                "unmerged",
+                "open",
+                "rejected",
+                "cancelled",
+                "closed_unmerged",
+                "ci_failed",
+            ],
+        ) || self.metadata_bool_any(&["fixed", "resolved", "violation_fixed"]) == Some(false)
+            || self.metadata_bool_any(&["merged", "pr_merged"]) == Some(false)
+            || self.metadata_bool_any(&["ci_passed"]) == Some(false)
+    }
+
+    fn has_decreasing_violation_delta(&self) -> bool {
+        let before = self.metadata_u64_any(&[
+            "violations_before",
+            "before_violations",
+            "violation_count_before",
+        ]);
+        let after = self.metadata_u64_any(&[
+            "violations_after",
+            "after_violations",
+            "violation_count_after",
+        ]);
+        matches!((before, after), (Some(before), Some(after)) if before > after)
+    }
+
+    fn metadata_string_matches(&self, keys: &[&str], accepted: &[&str]) -> bool {
+        keys.iter()
+            .filter_map(|key| self.metadata.get(*key))
+            .filter_map(normalized_metadata_string)
+            .any(|value| accepted.contains(&value.as_str()))
+    }
+
+    fn metadata_bool_any(&self, keys: &[&str]) -> Option<bool> {
+        keys.iter()
+            .filter_map(|key| self.metadata.get(*key))
+            .find_map(serde_json::Value::as_bool)
+    }
+
+    fn metadata_u64_any(&self, keys: &[&str]) -> Option<u64> {
+        keys.iter()
+            .filter_map(|key| self.metadata.get(*key))
+            .find_map(|value| {
+                value
+                    .as_u64()
+                    .or_else(|| value.as_str().and_then(|s| s.parse::<u64>().ok()))
+            })
+    }
+}
+
+fn normalized_metadata_string(value: &serde_json::Value) -> Option<String> {
+    value
+        .as_str()
+        .map(|raw| raw.trim().to_ascii_lowercase().replace(['-', ' '], "_"))
 }
 
 /// Expected schema version for lint summary records.
@@ -144,8 +259,8 @@ pub struct ExtractionResult {
 ///
 /// # Quality gates
 ///
-/// - Violations with `pr_number` and `sha` are treated as fixed (merged PR).
-/// - Violations without PR context are treated as unfixed (recurring).
+/// - Violations with PR context and explicit fix evidence are treated as fixed.
+/// - Violations without fix evidence are treated as unfixed (recurring).
 /// - Duplicate rule+file pairs are collapsed into a single lesson with
 ///   an occurrence count.
 ///
@@ -293,9 +408,9 @@ pub fn lessons_to_facts(lessons: &[TrainingLesson]) -> Vec<super::types::Extract
 /// Accumulator for violations grouped by rule.
 #[derive(Debug, Default)]
 struct RuleBucket {
-    /// Violations that came from merged PRs (have `pr_number` + `sha`).
+    /// Violations that carry explicit evidence of a merged/fixed PR outcome.
     fixed: Vec<ViolationRecord>,
-    /// Violations without PR context (unfixed/recurring).
+    /// Violations without real fix evidence (unfixed/recurring).
     unfixed: Vec<ViolationRecord>,
     /// Distinct file paths seen.
     files: HashMap<String, u32>,
@@ -307,7 +422,7 @@ impl RuleBucket {
     fn add_violation(&mut self, record: &ViolationRecord) {
         *self.files.entry(record.file.clone()).or_default() += 1;
 
-        if record.pr_number.is_some() && record.sha.is_some() {
+        if record.has_verified_fix_evidence() {
             self.fixed.push(record.clone());
         } else {
             self.unfixed.push(record.clone());
@@ -423,6 +538,49 @@ fn detect_trends(summary: &LintSummaryRecord, buckets: &mut HashMap<String, Rule
 mod tests {
     use super::*;
 
+    fn fixed_metadata() -> HashMap<String, serde_json::Value> {
+        metadata_string("outcome", "fixed")
+    }
+
+    fn metadata_string(key: &str, value: &str) -> HashMap<String, serde_json::Value> {
+        HashMap::from([(key.to_owned(), serde_json::Value::String(value.to_owned()))])
+    }
+
+    fn metadata_counts(before: u64, after: u64) -> HashMap<String, serde_json::Value> {
+        HashMap::from([
+            (
+                "violations_before".to_owned(),
+                serde_json::Value::Number(before.into()),
+            ),
+            (
+                "violations_after".to_owned(),
+                serde_json::Value::Number(after.into()),
+            ),
+        ])
+    }
+
+    fn violation_record(
+        rule: &str,
+        file: &str,
+        pr_number: Option<u32>,
+        sha: Option<&str>,
+        metadata: HashMap<String, serde_json::Value>,
+    ) -> ViolationRecord {
+        ViolationRecord {
+            record_type: "violation".to_owned(),
+            schema_version: 2,
+            ts: "2026-01-01T00:00:00Z".to_owned(),
+            rule: rule.to_owned(),
+            file: file.to_owned(),
+            line: 10,
+            snippet: "snippet".to_owned(),
+            project: String::new(),
+            pr_number,
+            sha: sha.map(str::to_owned),
+            metadata,
+        }
+    }
+
     #[test]
     fn parse_violation_record() {
         let json = r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/pub-visibility","file":"/src/lib.rs","line":28,"snippet":"pub type Result<T>","project":"","pr_number":null,"sha":null}"#;
@@ -430,14 +588,16 @@ mod tests {
         assert_eq!(record.rule, "RUST/pub-visibility");
         assert_eq!(record.line, 28);
         assert!(record.pr_number.is_none());
+        assert!(record.metadata.is_empty());
     }
 
     #[test]
     fn parse_violation_record_with_pr() {
-        let json = r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":10,"snippet":".expect(\"msg\")","project":"aletheia","pr_number":42,"sha":"abc123"}"#;
+        let json = r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":10,"snippet":".expect(\"msg\")","project":"aletheia","pr_number":42,"sha":"abc123","outcome":"fixed"}"#;
         let record: ViolationRecord = serde_json::from_str(json).unwrap();
         assert_eq!(record.pr_number, Some(42));
         assert_eq!(record.sha.as_deref(), Some("abc123"));
+        assert!(record.has_verified_fix_evidence());
     }
 
     #[test]
@@ -452,31 +612,21 @@ mod tests {
     fn rule_bucket_classifies_fixed_vs_unfixed() {
         let mut bucket = RuleBucket::default();
 
-        bucket.add_violation(&ViolationRecord {
-            record_type: "violation".to_owned(),
-            schema_version: 2,
-            ts: "2026-01-01T00:00:00Z".to_owned(),
-            rule: "RUST/expect".to_owned(),
-            file: "/src/lib.rs".to_owned(),
-            line: 10,
-            snippet: ".expect(\"msg\")".to_owned(),
-            project: String::new(),
-            pr_number: Some(42),
-            sha: Some("abc123".to_owned()),
-        });
+        bucket.add_violation(&violation_record(
+            "RUST/expect",
+            "/src/lib.rs",
+            Some(42),
+            Some("abc123"),
+            fixed_metadata(),
+        ));
 
-        bucket.add_violation(&ViolationRecord {
-            record_type: "violation".to_owned(),
-            schema_version: 2,
-            ts: "2026-01-02T00:00:00Z".to_owned(),
-            rule: "RUST/expect".to_owned(),
-            file: "/src/main.rs".to_owned(),
-            line: 20,
-            snippet: ".expect(\"other\")".to_owned(),
-            project: String::new(),
-            pr_number: None,
-            sha: None,
-        });
+        bucket.add_violation(&violation_record(
+            "RUST/expect",
+            "/src/main.rs",
+            None,
+            None,
+            HashMap::new(),
+        ));
 
         assert_eq!(bucket.fixed.len(), 1);
         assert_eq!(bucket.unfixed.len(), 1);
@@ -499,18 +649,13 @@ mod tests {
     #[test]
     fn fixed_lessons_have_high_confidence() {
         let mut bucket = RuleBucket::default();
-        bucket.add_violation(&ViolationRecord {
-            record_type: "violation".to_owned(),
-            schema_version: 2,
-            ts: "2026-01-01T00:00:00Z".to_owned(),
-            rule: "RUST/pub-visibility".to_owned(),
-            file: "/src/lib.rs".to_owned(),
-            line: 1,
-            snippet: "pub fn".to_owned(),
-            project: String::new(),
-            pr_number: Some(100),
-            sha: Some("def456".to_owned()),
-        });
+        bucket.add_violation(&violation_record(
+            "RUST/pub-visibility",
+            "/src/lib.rs",
+            Some(100),
+            Some("def456"),
+            fixed_metadata(),
+        ));
 
         let lessons = bucket.to_lessons("RUST/pub-visibility");
         assert_eq!(lessons.len(), 1);
@@ -521,18 +666,13 @@ mod tests {
     #[test]
     fn recurring_lessons_have_moderate_confidence() {
         let mut bucket = RuleBucket::default();
-        bucket.add_violation(&ViolationRecord {
-            record_type: "violation".to_owned(),
-            schema_version: 2,
-            ts: "2026-01-01T00:00:00Z".to_owned(),
-            rule: "RUST/expect".to_owned(),
-            file: "/src/lib.rs".to_owned(),
-            line: 1,
-            snippet: ".expect()".to_owned(),
-            project: String::new(),
-            pr_number: None,
-            sha: None,
-        });
+        bucket.add_violation(&violation_record(
+            "RUST/expect",
+            "/src/lib.rs",
+            None,
+            None,
+            HashMap::new(),
+        ));
 
         let lessons = bucket.to_lessons("RUST/expect");
         assert_eq!(lessons.len(), 1);
@@ -591,7 +731,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let violations = [
-            r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123"}"#,
+            r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123","outcome":"fixed"}"#,
             r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":null,"sha":null}"#,
         ];
         std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
@@ -647,7 +787,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let violations = [
             r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"LOW/rule","file":"/a.rs","line":1,"snippet":"x","project":"","pr_number":null,"sha":null}"#,
-            r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"HIGH/rule","file":"/b.rs","line":1,"snippet":"y","project":"","pr_number":99,"sha":"abc"}"#,
+            r#"{"type":"violation","schema_version":2,"ts":"2026-01-01T00:00:00Z","rule":"HIGH/rule","file":"/b.rs","line":1,"snippet":"y","project":"","pr_number":99,"sha":"abc","outcome":"fixed"}"#,
         ];
         std::fs::write(dir.path().join("violations.jsonl"), violations.join("\n")).unwrap();
 
@@ -657,6 +797,79 @@ mod tests {
         assert!(
             result.lessons[0].confidence >= result.lessons[1].confidence,
             "lessons should be sorted by confidence descending"
+        );
+    }
+
+    #[test]
+    fn pr_context_without_fix_evidence_is_recurring_not_fixed() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&violation_record(
+            "RUST/expect",
+            "/src/lib.rs",
+            Some(42),
+            Some("abc123"),
+            HashMap::new(),
+        ));
+
+        let lessons = bucket.to_lessons("RUST/expect");
+        assert!(
+            lessons
+                .iter()
+                .all(|lesson| lesson.outcome != LessonOutcome::FixedInPr),
+            "PR/SHA alone must not emit FixedInPr"
+        );
+        assert!(
+            lessons
+                .iter()
+                .any(|lesson| lesson.outcome == LessonOutcome::RecurringViolation),
+            "ambiguous PR/SHA records should remain unresolved observations"
+        );
+    }
+
+    #[test]
+    fn negative_pr_outcomes_are_not_fixed_lessons() {
+        for metadata in [
+            metadata_string("outcome", "unresolved"),
+            metadata_string("outcome", "introduced"),
+            metadata_string("ci_status", "failed"),
+            metadata_string("pr_state", "unmerged"),
+        ] {
+            let mut bucket = RuleBucket::default();
+            bucket.add_violation(&violation_record(
+                "RUST/expect",
+                "/src/lib.rs",
+                Some(42),
+                Some("abc123"),
+                metadata,
+            ));
+
+            let lessons = bucket.to_lessons("RUST/expect");
+            assert!(
+                lessons
+                    .iter()
+                    .all(|lesson| lesson.outcome != LessonOutcome::FixedInPr),
+                "negative PR metadata must not emit FixedInPr: {lessons:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn decreasing_violation_delta_is_fix_evidence() {
+        let mut bucket = RuleBucket::default();
+        bucket.add_violation(&violation_record(
+            "RUST/pub-visibility",
+            "/src/lib.rs",
+            Some(100),
+            Some("def456"),
+            metadata_counts(3, 0),
+        ));
+
+        let lessons = bucket.to_lessons("RUST/pub-visibility");
+        assert!(
+            lessons
+                .iter()
+                .any(|lesson| lesson.outcome == LessonOutcome::FixedInPr),
+            "before/after violation decrease should emit FixedInPr"
         );
     }
 }
