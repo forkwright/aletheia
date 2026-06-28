@@ -7,6 +7,7 @@
 //! ```text
 //! dispatch:{ulid}                          -> DispatchRecord
 //! session:{dispatch_ulid}:{prompt_no:08}   -> SessionRecord
+//! session_by_id:{session_id}               -> SessionRecord
 //! lesson:{source}:{timestamp_ms}           -> LessonRecord
 //! observation:{timestamp_ms}:{ulid}        -> ObservationRecord
 //! ci_validation:{session_id}:{check_name}  -> CiValidationRecord
@@ -19,6 +20,8 @@ use crate::store::records::{DispatchId, SessionId};
 const PREFIX_DISPATCH: &str = "dispatch:";
 /// Key prefix for session records.
 const PREFIX_SESSION: &str = "session:";
+/// Key prefix for the session reverse index.
+const PREFIX_SESSION_BY_ID: &str = "session_by_id:";
 /// Key prefix for lesson records.
 const PREFIX_LESSON: &str = "lesson:";
 /// Key prefix for observation records.
@@ -58,6 +61,12 @@ pub(crate) fn session_key(dispatch_id: &DispatchId, prompt_number: u32) -> Strin
         "{PREFIX_SESSION}{}:{prompt_number:08}",
         dispatch_id.as_str()
     )
+}
+
+/// Encode a reverse-index key for direct `SessionId` lookup.
+#[must_use]
+pub(crate) fn session_by_id_key(session_id: &SessionId) -> String {
+    format!("{PREFIX_SESSION_BY_ID}{}", session_id.as_str())
 }
 
 /// Prefix for scanning all sessions belonging to a dispatch.
@@ -201,6 +210,12 @@ mod tests {
         let other_dispatch = DispatchId::new("01JQOTHER");
         let key_c = session_key(&other_dispatch, 1);
         assert!(!key_c.starts_with(&prefix));
+    }
+
+    #[test]
+    fn session_by_id_key_format() {
+        let session_id = SessionId::new("01JQSESS01");
+        assert_eq!(session_by_id_key(&session_id), "session_by_id:01JQSESS01");
     }
 
     #[test]

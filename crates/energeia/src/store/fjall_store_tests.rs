@@ -167,6 +167,45 @@ fn update_session_partial() {
 }
 
 #[test]
+fn update_session_uses_reverse_index_not_prefix_scan() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+    let session_id = store.create_session(&dispatch_id, 42).unwrap();
+    let mut decoy = store.list_sessions_for_dispatch(&dispatch_id).unwrap()[0].clone();
+    let decoy_dispatch_id = DispatchId::new("00000000000000000000000000");
+    decoy.dispatch_id = decoy_dispatch_id.clone();
+    decoy.prompt_number = 1;
+    decoy.status = SessionStatus::Skipped;
+    let decoy_key = schema::session_key(&decoy_dispatch_id, decoy.prompt_number);
+    let decoy_value = serialize_msgpack(&decoy, "decoy session").unwrap();
+    store
+        .keyspace
+        .insert(decoy_key.as_bytes(), decoy_value)
+        .unwrap();
+
+    store
+        .update_session(
+            &session_id,
+            SessionUpdate {
+                status: Some(SessionStatus::Success),
+                cost_usd: Some(3.14),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let target_sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
+    assert_eq!(target_sessions[0].status, SessionStatus::Success);
+    assert_eq!(target_sessions[0].cost_usd, 3.14);
+
+    let decoy_sessions =
+        queries::list_sessions_for_dispatch(&store.keyspace, &decoy_dispatch_id).unwrap();
+    assert_eq!(decoy_sessions[0].status, SessionStatus::Skipped);
+    assert_eq!(decoy_sessions[0].cost_usd, 0.0);
+}
+
+#[test]
 fn update_nonexistent_session_returns_not_found() {
     let (_dir, store) = setup_test_store();
     let id = SessionId::new("01NONEXISTENT");

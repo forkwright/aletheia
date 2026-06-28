@@ -223,6 +223,11 @@ impl EnergeiaStore {
         self.keyspace
             .insert(key.as_bytes(), value)
             .map_err(|e| store_err("write session", e))?;
+        let index_key = schema::session_by_id_key(&id);
+        let index_value = serialize_msgpack(&record, "session reverse index")?;
+        self.keyspace
+            .insert(index_key.as_bytes(), index_value)
+            .map_err(|e| store_err("write session reverse index", e))?;
         self.ensure_durable()?;
 
         Ok(id)
@@ -234,10 +239,27 @@ impl EnergeiaStore {
     ///
     /// Returns `Error::NotFound` if the session does not exist.
     pub fn update_session(&self, id: &SessionId, update: SessionUpdate) -> Result<()> {
-        // WHY: session keys are indexed by (dispatch_id, prompt_number), so we
-        // need to scan to find the record by SessionId. For the expected
-        // cardinality (<100 sessions per dispatch), this is acceptable.
-        let (key_str, mut record) = self.find_session_by_id(id)?;
+        let index_key = schema::session_by_id_key(id);
+        let mut record = match self
+            .keyspace
+            .get(index_key.as_bytes())
+            .map_err(|e| store_err("read session reverse index", e))?
+        {
+            Some(value) => queries::deserialize_value::<SessionRecord>(&value)?,
+            None => {
+                return Err(error::NotFoundSnafu {
+                    what: format!("session {id}"),
+                }
+                .build());
+            }
+        };
+
+        if record.id != *id {
+            return Err(error::StoreSnafu {
+                message: format!("session reverse index mismatch for {id}"),
+            }
+            .build());
+        }
 
         if let Some(status) = update.status {
             record.status = status;
@@ -263,10 +285,15 @@ impl EnergeiaStore {
         record.updated_at = jiff::Timestamp::now();
 
         let value = serialize_msgpack(&record, "updated session")?;
+        let index_value = serialize_msgpack(&record, "updated session reverse index")?;
+        let key = schema::session_key(&record.dispatch_id, record.prompt_number);
 
         self.keyspace
-            .insert(key_str.as_bytes(), value)
+            .insert(key.as_bytes(), value)
             .map_err(|e| store_err("update session", e))?;
+        self.keyspace
+            .insert(index_key.as_bytes(), index_value)
+            .map_err(|e| store_err("update session reverse index", e))?;
         self.ensure_durable()?;
 
         Ok(())
@@ -666,25 +693,6 @@ impl EnergeiaStore {
     }
 
     // ── Internal helpers ──
-
-    /// Find a session record by its `SessionId` via prefix scan over all sessions.
-    fn find_session_by_id(&self, id: &SessionId) -> Result<(String, SessionRecord)> {
-        let prefix_bytes = schema::session_prefix().as_bytes();
-        for guard in self.keyspace.prefix(prefix_bytes) {
-            let (key, value) = guard
-                .into_inner()
-                .map_err(|e| store_err("session scan", e))?;
-            let record = queries::deserialize_value::<SessionRecord>(&value)?;
-            if record.id == *id {
-                let key_str = String::from_utf8_lossy(&key).into_owned();
-                return Ok((key_str, record));
-            }
-        }
-        Err(error::NotFoundSnafu {
-            what: format!("session {id}"),
-        }
-        .build())
-    }
 
     /// Back-date a dispatch record's `created_at` by the given duration.
     ///
