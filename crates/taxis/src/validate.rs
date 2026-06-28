@@ -901,6 +901,21 @@ fn validate_tuning(value: &Value, errors: &mut Vec<String>) {
 /// Validate configured external tool declarations.
 const VALID_TOOL_KINDS: &[&str] = &["mcp", "http", "builtin"];
 const VALID_HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch"];
+const VALID_TOOL_GROUPS: &[&str] = &[
+    "read",
+    "edit",
+    "command",
+    "mcp",
+    "spawn_subtask",
+    "plan",
+    "verify",
+];
+const VALID_REVERSIBILITIES: &[&str] = &[
+    "fully_reversible",
+    "reversible",
+    "partially_reversible",
+    "irreversible",
+];
 
 fn validate_tools(value: &Value, errors: &mut Vec<String>) {
     validate_tool_group(value, "required", errors);
@@ -955,6 +970,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                         "tools.{group}.{name}.endpoint must use http:// or https://"
                     ));
                 }
+                validate_http_tool_policy(entry, group, name, errors);
             }
             "mcp" => {
                 let has_endpoint = entry
@@ -986,6 +1002,77 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
             }
             _ => {} // other tool types carry no additional endpoint constraints
         }
+    }
+}
+
+fn validate_http_tool_policy(entry: &Value, group: &str, name: &str, errors: &mut Vec<String>) {
+    validate_http_tool_groups(entry, group, name, errors);
+    validate_http_tool_reversibility(entry, group, name, errors);
+}
+
+fn validate_http_tool_groups(entry: &Value, group: &str, name: &str, errors: &mut Vec<String>) {
+    let path = format!("tools.{group}.{name}.groups");
+    let groups_value = entry.get("groups").filter(|value| !value.is_null());
+    let Some(groups) = groups_value else {
+        if group == "required" {
+            errors.push(format!(
+                "{path} is required for required HTTP tools; use at least one of: {}",
+                VALID_TOOL_GROUPS.join(", ")
+            ));
+        }
+        return;
+    };
+
+    let Some(groups) = groups.as_array() else {
+        errors.push(format!("{path} must be a non-empty list of tool groups"));
+        return;
+    };
+    if groups.is_empty() {
+        errors.push(format!("{path} must not be empty"));
+        return;
+    }
+
+    for value in groups {
+        let Some(group_name) = value.as_str() else {
+            errors.push(format!("{path} entries must be strings"));
+            continue;
+        };
+        if !VALID_TOOL_GROUPS.contains(&group_name) {
+            errors.push(format!(
+                "{path} contains invalid group '{group_name}'; must be one of: {}",
+                VALID_TOOL_GROUPS.join(", ")
+            ));
+        }
+    }
+}
+
+fn validate_http_tool_reversibility(
+    entry: &Value,
+    group: &str,
+    name: &str,
+    errors: &mut Vec<String>,
+) {
+    let path = format!("tools.{group}.{name}.reversibility");
+    let reversibility = entry.get("reversibility").filter(|value| !value.is_null());
+    let Some(reversibility) = reversibility else {
+        if group == "required" {
+            errors.push(format!(
+                "{path} is required for required HTTP tools; use one of: {}",
+                VALID_REVERSIBILITIES.join(", ")
+            ));
+        }
+        return;
+    };
+
+    let Some(reversibility) = reversibility.as_str() else {
+        errors.push(format!("{path} must be a reversibility string"));
+        return;
+    };
+    if !VALID_REVERSIBILITIES.contains(&reversibility) {
+        errors.push(format!(
+            "{path} '{reversibility}' is invalid; must be one of: {}",
+            VALID_REVERSIBILITIES.join(", ")
+        ));
     }
 }
 

@@ -436,6 +436,8 @@ fn tools_config_deserializes_to_typed_config() {
 type = "http"
 endpoint = "https://example.com/search"
 method = "get"
+groups = ["read", "mcp"]
+reversibility = "fully_reversible"
 
 [tools.optional.local_mcp]
 type = "mcp"
@@ -447,6 +449,14 @@ args = ["--stdio"]
     let search = config.tools.required.get("search").expect("search tool");
     assert_eq!(search.kind, ExternalToolKind::Http);
     assert_eq!(search.method, ExternalToolMethod::Get);
+    assert_eq!(
+        search.groups.as_deref(),
+        Some(&[ExternalToolGroupId::Read, ExternalToolGroupId::Mcp][..])
+    );
+    assert_eq!(
+        search.reversibility,
+        Some(ExternalToolReversibility::FullyReversible)
+    );
     assert_eq!(
         search.endpoint.as_deref(),
         Some("https://example.com/search")

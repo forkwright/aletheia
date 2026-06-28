@@ -133,6 +133,32 @@ admin/full-access policy; use an array for normal role-limited access.
 `total`). These are runtime pipeline limits; top-level actor and manager
 timeouts live under `nous_behavior`.
 
+## tools
+
+Runtime-bridged external tools are declared under `[tools.required]` and
+`[tools.optional]`. For `type = "http"`, `groups` uses the same labels as
+`agents.defaults.toolGroups`, and `reversibility` is one of
+`"fully_reversible"`, `"reversible"`, `"partially_reversible"`, or
+`"irreversible"`. Required HTTP tools must declare both fields. Optional HTTP
+tools may omit them; the runtime defaults to `groups = ["mcp"]` and
+`reversibility = "irreversible"`, which requires approval.
+
+```toml
+[tools.required.search]
+type = "http"
+endpoint = "https://tools.example/search"
+method = "get"
+groups = ["read", "mcp"]
+reversibility = "fully_reversible"
+
+[tools.optional.webhook]
+type = "http"
+endpoint = "https://tools.example/webhook"
+method = "post"
+groups = ["mcp"]
+reversibility = "irreversible"
+```
+
 ---
 
 ## gateway

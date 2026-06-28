@@ -649,6 +649,8 @@ mod tests {
                 env: std::collections::HashMap::new(),
                 description: None,
                 method: crate::config::ExternalToolMethod::Post,
+                groups: None,
+                reversibility: None,
                 auth: None,
             },
         );
