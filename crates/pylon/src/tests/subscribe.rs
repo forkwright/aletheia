@@ -156,16 +156,36 @@ async fn discovery_returns_current_pylon_topics() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body = body_json(resp).await;
-    let topics = body
+    let topics = body["topics"]
         .as_array()
-        .expect("discovery should return a JSON array");
+        .expect("discovery should return topic descriptors");
     let returned: std::collections::HashSet<_> = topics
         .iter()
-        .map(|v| v.as_str().expect("topic should be a string"))
+        .map(|v| {
+            v["name"]
+                .as_str()
+                .expect("topic descriptor should have a name")
+        })
         .collect();
     let expected: std::collections::HashSet<_> = DISCOVERABLE_TOPICS.iter().copied().collect();
 
     assert_eq!(returned, expected);
+    let credential_topic = topics
+        .iter()
+        .find(|topic| topic["name"] == "credential.audit")
+        .expect("credential audit topic should be discoverable");
+    assert_eq!(credential_topic["visibility"], "operator");
+    let required = credential_topic["payload_contract"]["required"]
+        .as_array()
+        .expect("credential topic should advertise required fields");
+    assert!(
+        required.iter().any(|field| field == "request_id"),
+        "credential audit contract must include request_id"
+    );
+    assert!(
+        required.iter().any(|field| field == "runtime_effect"),
+        "credential audit contract must include runtime_effect"
+    );
 
     // WHY: These topics were previously advertised but have no current pylon
     // publisher, so they must not appear in discovery.

@@ -1,5 +1,5 @@
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{HeaderValue, Request, StatusCode};
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use symbolon::types::Role;
 use tower::ServiceExt;
@@ -10,6 +10,24 @@ fn effect_from_body(body: &serde_json::Value) -> Option<String> {
     body.get("runtime_effect")
         .and_then(serde_json::Value::as_str)
         .map(String::from)
+}
+
+fn with_request_id(mut request: Request<Body>, request_id: &'static str) -> Request<Body> {
+    request
+        .headers_mut()
+        .insert("x-request-id", HeaderValue::from_static(request_id));
+    request
+}
+
+async fn credential_audit_events(
+    state: &std::sync::Arc<AppState>,
+) -> Vec<crate::event_bus::DomainEvent> {
+    let (snapshot, _rx) = state.event_bus.subscribe_from(0).await;
+    snapshot
+        .replay
+        .into_iter()
+        .filter(|event| event.topic == "credential.audit")
+        .collect()
 }
 
 #[tokio::test]
@@ -92,6 +110,168 @@ async fn credentials_usage_counters_are_unavailable_not_zero() {
     // WHY: placeholder counters must not be serialized as factual zeros (#4922).
     assert!(!body.contains("\"requests_today\""));
     assert!(!body.contains("\"tokens_today\""));
+}
+
+#[tokio::test]
+async fn credential_operations_emit_redacted_audit_events() {
+    let (state, _dir) = test_state().await;
+    let app = build_router(std::sync::Arc::clone(&state), &test_security_config());
+    let raw_secret = "sk-test-audit-secret-4878";
+
+    let add = app
+        .clone()
+        .oneshot(with_request_id(
+            authed_request(
+                "POST",
+                "/api/v1/system/credentials",
+                Some(serde_json::json!({
+                    "provider": "anthropic",
+                    "key": raw_secret,
+                    "role": "backup"
+                })),
+            ),
+            "req-credential-add",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::CREATED);
+
+    let validate = app
+        .clone()
+        .oneshot(with_request_id(
+            authed_request(
+                "POST",
+                "/api/v1/system/credentials/anthropic:backup/validate",
+                None,
+            ),
+            "req-credential-validate",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(validate.status(), StatusCode::OK);
+
+    let rotate = app
+        .clone()
+        .oneshot(with_request_id(
+            authed_request(
+                "POST",
+                "/api/v1/system/credentials/rotate?provider=anthropic",
+                None,
+            ),
+            "req-credential-rotate",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(rotate.status(), StatusCode::OK);
+
+    let remove = app
+        .oneshot(with_request_id(
+            authed_delete("/api/v1/system/credentials/anthropic:backup"),
+            "req-credential-remove",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(remove.status(), StatusCode::OK);
+
+    let events = credential_audit_events(&state).await;
+    let actions: std::collections::HashSet<_> = events
+        .iter()
+        .filter_map(|event| event.payload["action"].as_str())
+        .collect();
+    assert_eq!(
+        actions,
+        ["add", "validate", "rotate", "remove"]
+            .into_iter()
+            .collect()
+    );
+
+    let add_event = events
+        .iter()
+        .find(|event| event.payload["action"] == "add")
+        .expect("add audit event");
+    assert_eq!(add_event.payload["principal"], "test-user");
+    assert_eq!(add_event.payload["actor"]["role"], "operator");
+    assert_eq!(add_event.payload["provider"], "anthropic");
+    assert_eq!(add_event.payload["role"], "backup");
+    assert_eq!(add_event.payload["result"], "success");
+    assert_eq!(add_event.payload["request_id"], "req-credential-add");
+    assert_eq!(add_event.payload["runtime_effect"], "restart_required");
+
+    let validate_event = events
+        .iter()
+        .find(|event| event.payload["action"] == "validate")
+        .expect("validate audit event");
+    assert_eq!(
+        validate_event.payload["runtime_effect"],
+        "no_runtime_change"
+    );
+
+    let serialized = serde_json::to_string(&events).unwrap();
+    assert!(!serialized.contains(raw_secret));
+    assert!(!serialized.contains("audit-secret"));
+}
+
+#[tokio::test]
+async fn credential_add_failure_emits_audit_event_and_health_result() {
+    let (state, _dir) = test_state().await;
+    let app = build_router(std::sync::Arc::clone(&state), &test_security_config());
+    let raw_secret = "sk-test-audit-failure-secret-4878";
+
+    let add = app
+        .clone()
+        .oneshot(with_request_id(
+            authed_request(
+                "POST",
+                "/api/v1/system/credentials",
+                Some(serde_json::json!({
+                    "provider": "openai",
+                    "key": raw_secret,
+                    "role": "primary"
+                })),
+            ),
+            "req-credential-add-fail",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::BAD_REQUEST);
+
+    let events = credential_audit_events(&state).await;
+    let event = events
+        .iter()
+        .find(|event| event.payload["action"] == "add")
+        .expect("failure audit event");
+    assert_eq!(event.payload["provider"], "openai");
+    assert_eq!(event.payload["role"], "primary");
+    assert_eq!(event.payload["result"], "failure");
+    assert_eq!(event.payload["request_id"], "req-credential-add-fail");
+    assert_eq!(event.payload["runtime_effect"], "not_applied");
+    assert_eq!(event.payload["error_code"], "bad_request");
+
+    let health = app
+        .oneshot(authed_get("/api/v1/system/health"))
+        .await
+        .unwrap();
+    assert_eq!(health.status(), StatusCode::OK);
+    let body = body_json(health).await;
+    let runtime_check = body["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|check| check["name"] == "credential_runtime")
+        .expect("credential_runtime check");
+    assert_eq!(runtime_check["status"], "warn");
+    assert_eq!(
+        runtime_check["details"]["last_mutation_result"]["result"],
+        "failure"
+    );
+    assert_eq!(
+        runtime_check["details"]["last_mutation_result"]["error_code"],
+        "bad_request"
+    );
+
+    let serialized = serde_json::to_string(&events).unwrap();
+    assert!(!serialized.contains(raw_secret));
+    assert!(!serialized.contains("failure-secret"));
 }
 
 #[tokio::test]

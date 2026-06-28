@@ -556,6 +556,9 @@ pub struct HealthCheck {
     pub status: String,
     /// Diagnostic message when status is not `"pass"`.
     pub message: Option<String>,
+    /// Structured check details for richer control-plane rendering.
+    #[serde(default)]
+    pub details: Option<serde_json::Value>,
 }
 
 #[cfg(test)]

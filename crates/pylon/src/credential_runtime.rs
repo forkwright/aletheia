@@ -48,6 +48,52 @@ pub struct LastCredentialEffect {
     pub elapsed_secs: u64,
 }
 
+/// Snapshot of a recent credential control-plane operation.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct LastCredentialOperation {
+    /// Provider named by the operation, when parseable.
+    pub provider: Option<String>,
+    /// Credential role named by the operation, when applicable.
+    pub role: Option<String>,
+    /// Operation action (`add`, `validate`, `rotate`, or `remove`).
+    pub action: String,
+    /// Operation result (`success` or `failure`).
+    pub result: String,
+    /// Runtime effect reported by the operation.
+    pub runtime_effect: String,
+    /// Correlation id from `X-Request-ID` or pylon's generated request id.
+    pub request_id: String,
+    /// Machine-readable error code for failed operations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    /// Credential validation status returned by successful validation calls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credential_status: Option<String>,
+    /// Seconds since the operation was recorded.
+    pub elapsed_secs: u64,
+}
+
+/// Secret-free credential operation record retained for health/capability output.
+#[derive(Debug, Clone)]
+pub struct CredentialOperationRecord {
+    /// Provider named by the operation, when parseable.
+    pub provider: Option<String>,
+    /// Credential role named by the operation, when applicable.
+    pub role: Option<String>,
+    /// Operation action (`add`, `validate`, `rotate`, or `remove`).
+    pub action: String,
+    /// Operation result (`success` or `failure`).
+    pub result: String,
+    /// Runtime effect reported by the operation.
+    pub runtime_effect: String,
+    /// Correlation id from `X-Request-ID` or pylon's generated request id.
+    pub request_id: String,
+    /// Machine-readable error code for failed operations.
+    pub error_code: Option<String>,
+    /// Credential validation status returned by successful validation calls.
+    pub credential_status: Option<String>,
+}
+
 /// Manager that owns the runtime view of pylon-managed credentials.
 ///
 /// It knows the current provider registry, the set of providers whose
@@ -57,11 +103,20 @@ pub struct CredentialRuntimeManager {
     provider_registry: Arc<ProviderRegistry>,
     /// Last mutation effect recorded for health/capability output.
     last_effect: Mutex<Option<RecordedEffect>>,
+    /// Last credential mutation result, including failures.
+    last_mutation_result: Mutex<Option<RecordedOperation>>,
+    /// Last successful credential validation operation.
+    last_successful_validation: Mutex<Option<RecordedOperation>>,
 }
 
 struct RecordedEffect {
     provider: String,
     effect: CredentialMutationEffect,
+    at: Instant,
+}
+
+struct RecordedOperation {
+    record: CredentialOperationRecord,
     at: Instant,
 }
 
@@ -72,6 +127,8 @@ impl CredentialRuntimeManager {
         Self {
             provider_registry,
             last_effect: Mutex::new(None),
+            last_mutation_result: Mutex::new(None),
+            last_successful_validation: Mutex::new(None),
         }
     }
 
@@ -163,6 +220,24 @@ impl CredentialRuntimeManager {
         });
     }
 
+    /// Record a credential mutation operation for health/capability output.
+    pub async fn record_mutation_result(&self, record: CredentialOperationRecord) {
+        let mut guard = self.last_mutation_result.lock().await;
+        *guard = Some(RecordedOperation {
+            record,
+            at: Instant::now(),
+        });
+    }
+
+    /// Record a successful validation operation for health/capability output.
+    pub async fn record_successful_validation(&self, record: CredentialOperationRecord) {
+        let mut guard = self.last_successful_validation.lock().await;
+        *guard = Some(RecordedOperation {
+            record,
+            at: Instant::now(),
+        });
+    }
+
     /// Return the last recorded effect, if any.
     #[must_use]
     pub async fn last_effect(&self) -> Option<LastCredentialEffect> {
@@ -174,10 +249,40 @@ impl CredentialRuntimeManager {
         })
     }
 
+    /// Return the last credential mutation result, if any.
+    #[must_use]
+    pub async fn last_mutation_result(&self) -> Option<LastCredentialOperation> {
+        let guard = self.last_mutation_result.lock().await;
+        guard.as_ref().map(RecordedOperation::snapshot)
+    }
+
+    /// Return the last successful validation operation, if any.
+    #[must_use]
+    pub async fn last_successful_validation(&self) -> Option<LastCredentialOperation> {
+        let guard = self.last_successful_validation.lock().await;
+        guard.as_ref().map(RecordedOperation::snapshot)
+    }
+
     fn is_managed_provider_name(normalized: &str) -> bool {
         Self::MANAGED_PROVIDER_NAMES
             .iter()
             .any(|name| name.to_ascii_lowercase() == normalized)
+    }
+}
+
+impl RecordedOperation {
+    fn snapshot(&self) -> LastCredentialOperation {
+        LastCredentialOperation {
+            provider: self.record.provider.clone(),
+            role: self.record.role.clone(),
+            action: self.record.action.clone(),
+            result: self.record.result.clone(),
+            runtime_effect: self.record.runtime_effect.clone(),
+            request_id: self.record.request_id.clone(),
+            error_code: self.record.error_code.clone(),
+            credential_status: self.record.credential_status.clone(),
+            elapsed_secs: self.at.elapsed().as_secs(),
+        }
     }
 }
 

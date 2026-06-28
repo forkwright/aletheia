@@ -169,6 +169,7 @@ pub(crate) struct HealthCheckInfo {
     pub name: String,
     pub status: String,
     pub message: Option<String>,
+    pub details: Option<serde_json::Value>,
 }
 
 /// Aggregate service health data.
@@ -199,6 +200,7 @@ impl ServiceHealthStore {
                     name: c.name,
                     status: c.status,
                     message: c.message,
+                    details: c.details,
                 })
                 .collect(),
             error: None,
@@ -787,6 +789,7 @@ mod tests {
                 name: "providers".to_string(),
                 status: "warn".to_string(),
                 message: Some("no LLM providers registered".to_string()),
+                details: Some(serde_json::json!({"providers": []})),
             }],
             data_dir: "/tmp/data".to_string(),
         };
@@ -794,6 +797,15 @@ mod tests {
         assert_eq!(store.status, HealthStatus::Degraded);
         assert_eq!(store.checks.len(), 1);
         assert_eq!(store.checks[0].name, "providers");
+        assert_eq!(
+            store.checks[0]
+                .details
+                .as_ref()
+                .and_then(|details| details.get("providers"))
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::len),
+            Some(0)
+        );
         assert!(store.error.is_none());
     }
 

@@ -15,7 +15,7 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::{instrument, warn};
 
 use crate::error::ApiError;
-use crate::event_bus::{DISCOVERABLE_TOPICS, DomainEvent};
+use crate::event_bus::{DomainEvent, EventDiscoveryResponse, discoverable_topic_descriptors};
 use crate::extract::Claims;
 use crate::state::EventBusState;
 
@@ -259,13 +259,13 @@ pub async fn subscribe(
 
 /// GET /api/v1/events/discovery
 ///
-/// Returns the list of available event topics.  This is a static discovery
-/// endpoint; dynamic topic registration is not yet supported.
+/// Returns available event topics and payload contracts.  This is a static
+/// discovery endpoint; dynamic topic registration is not yet supported.
 #[utoipa::path(
     get,
     path = "/api/v1/events/discovery",
     responses(
-        (status = 200, description = "Available event topics"),
+        (status = 200, description = "Available event topics", body = EventDiscoveryResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -276,5 +276,5 @@ pub async fn discovery(_claims: Claims) -> impl IntoResponse {
     // WHY: Discovery must only advertise topics that have a current pylon
     // publisher; the canonical list lives in `event_bus_dto` so it is shared
     // with tests and cannot drift from the handlers that emit events.
-    Json(DISCOVERABLE_TOPICS)
+    Json(discoverable_topic_descriptors())
 }

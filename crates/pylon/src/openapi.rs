@@ -136,6 +136,8 @@ use crate::state::AppState;
         crate::handlers::credentials::AddCredentialRequest,
         crate::handlers::credentials::RotateCredentialQuery,
         crate::credential_runtime::CredentialMutationEffect,
+        crate::event_bus::EventDiscoveryResponse,
+        crate::event_bus::EventTopicDescriptor,
         crate::handlers::workspace::FileEntry,
         crate::handlers::workspace::GitStatusEntry,
         crate::handlers::workspace::SearchResult,

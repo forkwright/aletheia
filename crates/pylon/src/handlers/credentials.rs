@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use koina::http::BEARER_PREFIX;
@@ -14,10 +14,34 @@ use tracing::instrument;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::credential_runtime::{
-    CredentialMutationEffect, CredentialRuntimeError, CredentialRuntimeManager,
+    CredentialMutationEffect, CredentialOperationRecord, CredentialRuntimeError,
+    CredentialRuntimeManager,
 };
 use crate::error::ApiError;
+use crate::extract::Claims;
+use crate::middleware::RequestId;
 use crate::state::AppState;
+
+const CREDENTIAL_AUDIT_TOPIC: &str = "credential.audit";
+const ACTION_ADD: &str = "add";
+const ACTION_VALIDATE: &str = "validate";
+const ACTION_ROTATE: &str = "rotate";
+const ACTION_REMOVE: &str = "remove";
+const RESULT_SUCCESS: &str = "success";
+const RESULT_FAILURE: &str = "failure";
+const RUNTIME_EFFECT_NO_CHANGE: &str = "no_runtime_change";
+const RUNTIME_EFFECT_NOT_APPLIED: &str = "not_applied";
+
+#[derive(Clone, Copy)]
+struct CredentialOperation<'a> {
+    action: &'static str,
+    provider: Option<&'a str>,
+    role: Option<&'a str>,
+    result: &'static str,
+    runtime_effect: &'a str,
+    error_code: Option<&'a str>,
+    credential_status: Option<&'a str>,
+}
 
 /// Response body for credential list and mutation endpoints.
 // kanon:ignore RUST/no-debug-derive-on-public-types — contains only secret-safe credential metadata; no raw credential material is present in this type
@@ -167,28 +191,82 @@ pub async fn list_credentials(
 pub async fn add_credential(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Extension(request_id): Extension<RequestId>,
     Json(request): Json<AddCredentialRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    require_credential_operator(&state, &headers)?;
-    let provider = request.provider.trim();
-    state
+    let claims = require_credential_operator(&state, &headers)?;
+    let provider = request.provider.trim().to_owned();
+    let role_label = request.role.trim().to_owned();
+
+    let result: Result<(ManagedCredential, CredentialMutationEffect), ApiError> = match state
         .credential_runtime
-        .validate_provider(provider)
-        .map_err(map_runtime_error)?;
-    let role = request
-        .role
-        .parse::<ManagedCredentialRole>()
-        .map_err(|_role_err| bad_request("role must be primary or backup"))?;
-    let root = state.oikos.credentials();
-    let credential = state
-        .auth_facade
-        .add_credential(&root, provider, &request.key, role)
-        .map_err(map_symbolon_error)?;
-    let effect = apply_mutation_effect(&state.credential_runtime, provider).await;
-    Ok((
-        StatusCode::CREATED,
-        Json(CredentialResponse::from_managed(credential, Some(effect))),
-    ))
+        .validate_provider(&provider)
+        .map_err(map_runtime_error)
+    {
+        Ok(()) => match role_label.parse::<ManagedCredentialRole>() {
+            Ok(role) => {
+                let root = state.oikos.credentials();
+                match state
+                    .auth_facade
+                    .add_credential(&root, &provider, &request.key, role)
+                    .map_err(map_symbolon_error)
+                {
+                    Ok(credential) => {
+                        let effect =
+                            apply_mutation_effect(&state.credential_runtime, &provider).await;
+                        Ok((credential, effect))
+                    }
+                    Err(err) => Err(err),
+                }
+            }
+            Err(_role_err) => Err(bad_request("role must be primary or backup")),
+        },
+        Err(err) => Err(err),
+    };
+
+    match result {
+        Ok((credential, effect)) => {
+            let audit_provider = credential.provider.clone();
+            let audit_role = credential.role.as_str().to_owned();
+            let effect_label = effect.as_str();
+            let operation = CredentialOperation {
+                action: ACTION_ADD,
+                provider: Some(&audit_provider),
+                role: Some(&audit_role),
+                result: RESULT_SUCCESS,
+                runtime_effect: effect_label,
+                error_code: None,
+                credential_status: None,
+            };
+            state
+                .credential_runtime
+                .record_mutation_result(operation.to_record(&request_id))
+                .await;
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Ok((
+                StatusCode::CREATED,
+                Json(CredentialResponse::from_managed(credential, Some(effect))),
+            ))
+        }
+        Err(err) => {
+            let code = api_error_code(&err);
+            let operation = CredentialOperation {
+                action: ACTION_ADD,
+                provider: Some(&provider),
+                role: Some(&role_label),
+                result: RESULT_FAILURE,
+                runtime_effect: RUNTIME_EFFECT_NOT_APPLIED,
+                error_code: Some(&code),
+                credential_status: None,
+            };
+            state
+                .credential_runtime
+                .record_mutation_result(operation.to_record(&request_id))
+                .await;
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Err(err)
+        }
+    }
 }
 
 /// POST /api/v1/system/credentials/{id}/validate: validate one credential.
@@ -209,21 +287,68 @@ pub async fn add_credential(
 pub async fn validate_credential(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Extension(request_id): Extension<RequestId>,
     Path(id): Path<String>,
 ) -> Result<Json<CredentialResponse>, ApiError> {
-    require_credential_operator(&state, &headers)?;
-    if let Some(provider) = provider_from_id(&id) {
+    let claims = require_credential_operator(&state, &headers)?;
+    let (provider, role) = credential_parts_from_id(&id);
+
+    let result: Result<ManagedCredential, ApiError> = if let Some(provider) = provider.as_deref() {
         state
             .credential_runtime
             .validate_provider(provider)
-            .map_err(map_runtime_error)?;
+            .map_err(map_runtime_error)
+            .and_then(|()| {
+                let root = state.oikos.credentials();
+                state
+                    .auth_facade
+                    .validate_credential(&root, &id)
+                    .map_err(map_symbolon_error)
+            })
+    } else {
+        let root = state.oikos.credentials();
+        state
+            .auth_facade
+            .validate_credential(&root, &id)
+            .map_err(map_symbolon_error)
+    };
+
+    match result {
+        Ok(credential) => {
+            let audit_provider = credential.provider.clone();
+            let audit_role = credential.role.as_str().to_owned();
+            let credential_status = status_str(credential.status).to_owned();
+            let operation = CredentialOperation {
+                action: ACTION_VALIDATE,
+                provider: Some(&audit_provider),
+                role: Some(&audit_role),
+                result: RESULT_SUCCESS,
+                runtime_effect: RUNTIME_EFFECT_NO_CHANGE,
+                error_code: None,
+                credential_status: Some(&credential_status),
+            };
+            state
+                .credential_runtime
+                .record_successful_validation(operation.to_record(&request_id))
+                .await;
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Ok(Json(CredentialResponse::from_managed(credential, None)))
+        }
+        Err(err) => {
+            let code = api_error_code(&err);
+            let operation = CredentialOperation {
+                action: ACTION_VALIDATE,
+                provider: provider.as_deref(),
+                role: role.as_deref(),
+                result: RESULT_FAILURE,
+                runtime_effect: RUNTIME_EFFECT_NO_CHANGE,
+                error_code: Some(&code),
+                credential_status: None,
+            };
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Err(err)
+        }
     }
-    let root = state.oikos.credentials();
-    let credential = state
-        .auth_facade
-        .validate_credential(&root, &id)
-        .map_err(map_symbolon_error)?;
-    Ok(Json(CredentialResponse::from_managed(credential, None)))
 }
 
 /// POST /api/v1/system/credentials/rotate: swap primary and backup credentials.
@@ -244,27 +369,77 @@ pub async fn validate_credential(
 pub async fn rotate_credentials(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Extension(request_id): Extension<RequestId>,
     Query(query): Query<RotateCredentialQuery>,
 ) -> Result<Json<CredentialsListResponse>, ApiError> {
-    require_credential_operator(&state, &headers)?;
-    let provider = query.provider.trim();
-    state
+    let claims = require_credential_operator(&state, &headers)?;
+    let provider = query.provider.trim().to_owned();
+    let result: Result<(Vec<ManagedCredential>, CredentialMutationEffect), ApiError> = match state
         .credential_runtime
-        .validate_provider(provider)
-        .map_err(map_runtime_error)?;
-    let root = state.oikos.credentials();
-    let credentials = state
-        .auth_facade
-        .rotate_credentials(&root, provider)
-        .map_err(map_symbolon_error)?;
-    let effect = apply_mutation_effect(&state.credential_runtime, provider).await;
-    Ok(Json(CredentialsListResponse {
-        credentials: credentials
-            .into_iter()
-            .map(|c| CredentialResponse::from_managed(c, None))
-            .collect(),
-        runtime_effect: Some(effect),
-    }))
+        .validate_provider(&provider)
+        .map_err(map_runtime_error)
+    {
+        Ok(()) => {
+            let root = state.oikos.credentials();
+            match state
+                .auth_facade
+                .rotate_credentials(&root, &provider)
+                .map_err(map_symbolon_error)
+            {
+                Ok(credentials) => {
+                    let effect = apply_mutation_effect(&state.credential_runtime, &provider).await;
+                    Ok((credentials, effect))
+                }
+                Err(err) => Err(err),
+            }
+        }
+        Err(err) => Err(err),
+    };
+
+    match result {
+        Ok((credentials, effect)) => {
+            let effect_label = effect.as_str();
+            let operation = CredentialOperation {
+                action: ACTION_ROTATE,
+                provider: Some(&provider),
+                role: Some("primary_backup"),
+                result: RESULT_SUCCESS,
+                runtime_effect: effect_label,
+                error_code: None,
+                credential_status: None,
+            };
+            state
+                .credential_runtime
+                .record_mutation_result(operation.to_record(&request_id))
+                .await;
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Ok(Json(CredentialsListResponse {
+                credentials: credentials
+                    .into_iter()
+                    .map(|c| CredentialResponse::from_managed(c, None))
+                    .collect(),
+                runtime_effect: Some(effect),
+            }))
+        }
+        Err(err) => {
+            let code = api_error_code(&err);
+            let operation = CredentialOperation {
+                action: ACTION_ROTATE,
+                provider: Some(&provider),
+                role: Some("primary_backup"),
+                result: RESULT_FAILURE,
+                runtime_effect: RUNTIME_EFFECT_NOT_APPLIED,
+                error_code: Some(&code),
+                credential_status: None,
+            };
+            state
+                .credential_runtime
+                .record_mutation_result(operation.to_record(&request_id))
+                .await;
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Err(err)
+        }
+    }
 }
 
 /// DELETE /api/v1/system/credentials/{id}: remove one managed credential.
@@ -286,26 +461,77 @@ pub async fn rotate_credentials(
 pub async fn remove_credential(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
+    Extension(request_id): Extension<RequestId>,
     Path(id): Path<String>,
 ) -> Result<Json<CredentialRemoveResponse>, ApiError> {
-    require_credential_operator(&state, &headers)?;
-    let provider = provider_from_id(&id).ok_or_else(|| bad_request("invalid credential id"))?;
-    state
-        .credential_runtime
-        .validate_provider(provider)
-        .map_err(map_runtime_error)?;
-    let root = state.oikos.credentials();
-    state
-        .auth_facade
-        .remove_credential(&root, &id)
-        .map_err(map_symbolon_error)?;
-    let effect = apply_mutation_effect(&state.credential_runtime, provider).await;
-    Ok(Json(CredentialRemoveResponse {
-        runtime_effect: effect,
-    }))
+    let claims = require_credential_operator(&state, &headers)?;
+    let (provider, role) = credential_parts_from_id(&id);
+
+    let result: Result<CredentialMutationEffect, ApiError> = match provider.as_deref() {
+        Some(provider) => match state
+            .credential_runtime
+            .validate_provider(provider)
+            .map_err(map_runtime_error)
+        {
+            Ok(()) => {
+                let root = state.oikos.credentials();
+                match state
+                    .auth_facade
+                    .remove_credential(&root, &id)
+                    .map_err(map_symbolon_error)
+                {
+                    Ok(()) => Ok(apply_mutation_effect(&state.credential_runtime, provider).await),
+                    Err(err) => Err(err),
+                }
+            }
+            Err(err) => Err(err),
+        },
+        None => Err(bad_request("invalid credential id")),
+    };
+
+    match result {
+        Ok(effect) => {
+            let effect_label = effect.as_str();
+            let operation = CredentialOperation {
+                action: ACTION_REMOVE,
+                provider: provider.as_deref(),
+                role: role.as_deref(),
+                result: RESULT_SUCCESS,
+                runtime_effect: effect_label,
+                error_code: None,
+                credential_status: None,
+            };
+            state
+                .credential_runtime
+                .record_mutation_result(operation.to_record(&request_id))
+                .await;
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Ok(Json(CredentialRemoveResponse {
+                runtime_effect: effect,
+            }))
+        }
+        Err(err) => {
+            let code = api_error_code(&err);
+            let operation = CredentialOperation {
+                action: ACTION_REMOVE,
+                provider: provider.as_deref(),
+                role: role.as_deref(),
+                result: RESULT_FAILURE,
+                runtime_effect: RUNTIME_EFFECT_NOT_APPLIED,
+                error_code: Some(&code),
+                credential_status: None,
+            };
+            state
+                .credential_runtime
+                .record_mutation_result(operation.to_record(&request_id))
+                .await;
+            publish_credential_audit(&state, &claims, &request_id, operation).await;
+            Err(err)
+        }
+    }
 }
 
-fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<Claims, ApiError> {
     let header = headers
         .get("authorization")
         .and_then(|value| value.to_str().ok())
@@ -330,7 +556,12 @@ fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<
         .map_err(|_err| ApiError::Forbidden {
             message: "insufficient permissions".to_owned(),
             location: snafu::location!(),
-        })
+        })?;
+    Ok(Claims {
+        sub: claims.sub,
+        role: claims.role,
+        nous_id: claims.nous_id,
+    })
 }
 
 fn map_symbolon_error(err: symbolon::error::Error) -> ApiError {
@@ -412,8 +643,10 @@ fn status_str(status: ManagedCredentialStatus) -> &'static str {
     }
 }
 
-fn provider_from_id(id: &str) -> Option<&str> {
-    id.split_once(':').map(|(provider, _)| provider)
+fn credential_parts_from_id(id: &str) -> (Option<String>, Option<String>) {
+    id.split_once(':').map_or((None, None), |(provider, role)| {
+        (Some(provider.to_owned()), Some(role.to_owned()))
+    })
 }
 
 async fn apply_mutation_effect(
@@ -423,4 +656,69 @@ async fn apply_mutation_effect(
     let effect = credential_runtime.mutation_effect(provider);
     credential_runtime.record_effect(provider, effect).await;
     effect
+}
+
+impl CredentialOperation<'_> {
+    fn to_record(self, request_id: &RequestId) -> CredentialOperationRecord {
+        CredentialOperationRecord {
+            provider: self.provider.map(ToOwned::to_owned),
+            role: self.role.map(ToOwned::to_owned),
+            action: self.action.to_owned(),
+            result: self.result.to_owned(),
+            runtime_effect: self.runtime_effect.to_owned(),
+            request_id: request_id.0.clone(),
+            error_code: self.error_code.map(ToOwned::to_owned),
+            credential_status: self.credential_status.map(ToOwned::to_owned),
+        }
+    }
+}
+
+async fn publish_credential_audit(
+    state: &AppState,
+    claims: &Claims,
+    request_id: &RequestId,
+    operation: CredentialOperation<'_>,
+) {
+    let payload = serde_json::json!({
+        "actor": {
+            "principal": claims.sub.as_str(),
+            "role": claims.role.to_string(),
+            "nous_id": claims.nous_id.as_deref(),
+        },
+        "principal": claims.sub.as_str(),
+        "provider": operation.provider,
+        "role": operation.role,
+        "action": operation.action,
+        "result": operation.result,
+        "request_id": request_id.0.as_str(),
+        "runtime_effect": operation.runtime_effect,
+        "error_code": operation.error_code,
+    });
+    state
+        .event_bus
+        .publish(crate::event_bus::DomainEvent::new(
+            state.event_bus.next_id(),
+            CREDENTIAL_AUDIT_TOPIC,
+            payload,
+        ))
+        .await;
+}
+
+fn api_error_code(err: &ApiError) -> String {
+    match err {
+        ApiError::BadRequest { .. } => "bad_request".to_owned(),
+        ApiError::Unauthorized { .. } => "unauthorized".to_owned(),
+        ApiError::Forbidden { .. } => "forbidden".to_owned(),
+        ApiError::NotFound { .. } => "not_found".to_owned(),
+        ApiError::Conflict { .. } => "conflict".to_owned(),
+        ApiError::RateLimited { .. } => "rate_limited".to_owned(),
+        ApiError::ServiceUnavailable { .. } => "service_unavailable".to_owned(),
+        ApiError::ValidationFailed { .. } => "validation_failed".to_owned(),
+        ApiError::NotImplemented { .. } => "not_implemented".to_owned(),
+        ApiError::SessionNotFound { .. } => "session_not_found".to_owned(),
+        ApiError::NousNotFound { .. } => "nous_not_found".to_owned(),
+        ApiError::StreamTurnConflict { .. } => "stream_turn_conflict".to_owned(),
+        ApiError::UserFacing { code, .. } => code.clone(),
+        ApiError::Internal { .. } => "internal_error".to_owned(),
+    }
 }

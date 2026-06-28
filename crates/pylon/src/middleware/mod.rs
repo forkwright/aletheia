@@ -413,6 +413,20 @@ mod tests {
     }
 
     #[test]
+    fn classifies_sensitive_credential_endpoints() {
+        assert_eq!(
+            EndpointCategory::from_path("/api/v1/system/credentials"),
+            EndpointCategory::Sensitive,
+            "credential list/mutation endpoint must be classified as Sensitive"
+        );
+        assert_eq!(
+            EndpointCategory::from_path("/api/v1/system/credentials/anthropic:primary/validate"),
+            EndpointCategory::Sensitive,
+            "credential validation endpoint must be classified as Sensitive"
+        );
+    }
+
+    #[test]
     fn classifies_general_endpoints() {
         assert_eq!(
             EndpointCategory::from_path("/api/v1/sessions"),

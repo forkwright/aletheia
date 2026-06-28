@@ -24,6 +24,13 @@ fn authed_get_with_token(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn authed_post_with_token(uri: &str, token: &str) -> Request<Body> {
+    Request::post(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
 /// Build a router with per-user rate limiting enabled with the given config.
 async fn app_with_per_user_limits(
     config: PerUserRateLimitConfig,
@@ -171,6 +178,40 @@ async fn rate_limited_body_contains_error_details() {
     assert_eq!(body["error"]["code"], "rate_limited");
     assert!(body["error"]["details"]["retry_after_secs"].is_number());
     assert_eq!(body["error"]["details"]["category"], "general");
+}
+
+#[tokio::test]
+async fn credential_endpoints_use_sensitive_rate_limit_bucket() {
+    let (router, _dir) = app_with_per_user_limits(PerUserRateLimitConfig {
+        enabled: true,
+        default_rpm: 60,
+        default_burst: 10,
+        llm_rpm: 60,
+        llm_burst: 10,
+        tool_rpm: 60,
+        tool_burst: 1,
+        stale_after_secs: 600,
+    })
+    .await;
+    let token = default_token();
+
+    let path = "/api/v1/system/credentials/anthropic:primary/validate";
+    let first = router
+        .clone()
+        .oneshot(authed_post_with_token(path, &token))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = router
+        .clone()
+        .oneshot(authed_post_with_token(path, &token))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let body = body_json(second).await;
+    assert_eq!(body["error"]["details"]["category"], "sensitive");
 }
 
 #[tokio::test]

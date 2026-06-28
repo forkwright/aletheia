@@ -12,6 +12,7 @@ use symbolon::types::Role;
 
 use hermeneus::health::{DownReason, ProviderHealth};
 
+use crate::credential_runtime::CredentialMutationEffect;
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
 use crate::state::HealthState;
@@ -961,18 +962,42 @@ fn provider_uses_anthropic_credentials(name: &str) -> bool {
     normalized.contains("anthropic") || normalized.contains("claude")
 }
 
-/// Report runtime credential-management state: supported providers and the
-/// effect of the most recent mutation (#4872).
+/// Report runtime credential-management state, supported providers, provider
+/// availability, and recent credential operation outcomes.
 async fn check_credential_runtime(state: &HealthState) -> HealthCheck {
     let supported = state.credential_runtime.supported_providers();
+    let provider_details = credential_provider_capabilities(state, &supported);
     let last_effect = state.credential_runtime.last_effect().await;
+    let last_successful_validation = state.credential_runtime.last_successful_validation().await;
+    let last_mutation_result = state.credential_runtime.last_mutation_result().await;
+
+    let hot_apply_supported = provider_details
+        .iter()
+        .any(|detail| detail["hot_apply_supported"].as_bool().unwrap_or_default());
+    let restart_required = last_mutation_result.as_ref().is_some_and(|result| {
+        result.runtime_effect == CredentialMutationEffect::RestartRequired.as_str()
+    });
+    let degraded = restart_required
+        || last_mutation_result
+            .as_ref()
+            .is_some_and(|result| result.result == "failure");
 
     let details = serde_json::json!({
-        "supported_providers": supported,
+        "supported_provider_names": supported,
+        "supported_providers": provider_details,
+        "hot_apply_supported": hot_apply_supported,
         "last_effect": last_effect,
+        "last_successful_validation": last_successful_validation,
+        "last_mutation_result": last_mutation_result,
+        "restart_required": restart_required,
+        "degraded": degraded,
     });
 
-    let message = if let Some(ref effect) = last_effect {
+    let message = if restart_required {
+        Some("credential mutation requires restart before runtime use".to_owned())
+    } else if degraded {
+        Some("last credential mutation failed".to_owned())
+    } else if let Some(ref effect) = last_effect {
         Some(format!(
             "last mutation for '{}' returned '{}'",
             effect.provider,
@@ -984,10 +1009,73 @@ async fn check_credential_runtime(state: &HealthState) -> HealthCheck {
 
     HealthCheck {
         name: "credential_runtime".to_owned(),
-        status: "pass".to_owned(),
+        status: if degraded || restart_required {
+            "warn".to_owned()
+        } else {
+            "pass".to_owned()
+        },
         message,
         details: Some(details),
     }
+}
+
+fn credential_provider_capabilities(
+    state: &HealthState,
+    supported: &[String],
+) -> Vec<serde_json::Value> {
+    supported
+        .iter()
+        .map(|name| credential_provider_capability(state, name))
+        .collect()
+}
+
+fn credential_provider_capability(state: &HealthState, name: &str) -> serde_json::Value {
+    let effect = state.credential_runtime.mutation_effect(name);
+    let availability = credential_provider_availability(&state.provider_registry, name);
+    let hot_apply_supported = matches!(
+        effect,
+        CredentialMutationEffect::Applied | CredentialMutationEffect::PendingReload
+    );
+    let degraded = availability
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|status| matches!(status, "down" | "degraded"));
+    serde_json::json!({
+        "name": name,
+        "hot_apply_supported": hot_apply_supported,
+        "runtime_effect": effect.as_str(),
+        "availability": availability,
+        "restart_required": effect == CredentialMutationEffect::RestartRequired,
+        "degraded": degraded,
+    })
+}
+
+fn credential_provider_availability(
+    registry: &hermeneus::provider::ProviderRegistry,
+    name: &str,
+) -> serde_json::Value {
+    let registered_name = registry
+        .providers()
+        .into_iter()
+        .map(|provider| provider.name().to_owned())
+        .find(|registered| registered.eq_ignore_ascii_case(name));
+
+    if let Some(registered_name) = registered_name {
+        let health = registry
+            .provider_health(&registered_name)
+            .unwrap_or(ProviderHealth::Up);
+        let mut detail = provider_health_detail(&registered_name, &health);
+        if let Some(object) = detail.as_object_mut() {
+            object.insert("registered".to_owned(), serde_json::Value::Bool(true));
+        }
+        return detail;
+    }
+
+    serde_json::json!({
+        "name": name,
+        "registered": false,
+        "status": "not_registered",
+    })
 }
 
 /// Check if the data directory is writable.

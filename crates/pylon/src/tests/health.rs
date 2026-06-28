@@ -155,6 +155,17 @@ async fn detailed_health_exposes_credential_runtime_state() {
         .unwrap();
     assert_eq!(add.status(), StatusCode::CREATED);
 
+    let validate = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/anthropic:backup/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(validate.status(), StatusCode::OK);
+
     let resp = app
         .oneshot(authed_get("/api/v1/system/health"))
         .await
@@ -167,7 +178,7 @@ async fn detailed_health_exposes_credential_runtime_state() {
         .iter()
         .find(|c| c["name"] == "credential_runtime")
         .expect("credential_runtime check present");
-    assert_eq!(runtime_check["status"], "pass");
+    assert_eq!(runtime_check["status"], "warn");
 
     let details = runtime_check["details"]
         .as_object()
@@ -175,13 +186,39 @@ async fn detailed_health_exposes_credential_runtime_state() {
     let supported = details["supported_providers"]
         .as_array()
         .expect("supported_providers array");
-    assert!(supported.iter().any(|p| p == "anthropic"));
+    let anthropic = supported
+        .iter()
+        .find(|p| p["name"] == "anthropic")
+        .expect("anthropic capability present");
+    assert_eq!(anthropic["hot_apply_supported"], false);
+    assert_eq!(anthropic["restart_required"], true);
+    assert_eq!(anthropic["runtime_effect"], "restart_required");
+    assert_eq!(anthropic["availability"]["status"], "up");
 
     let last_effect = details["last_effect"]
         .as_object()
         .expect("last_effect object");
     assert_eq!(last_effect["provider"], "anthropic");
     assert_eq!(last_effect["effect"], "restart_required");
+    assert_eq!(details["restart_required"], true);
+    assert_eq!(details["degraded"], true);
+
+    let last_mutation = details["last_mutation_result"]
+        .as_object()
+        .expect("last_mutation_result object");
+    assert_eq!(last_mutation["provider"], "anthropic");
+    assert_eq!(last_mutation["role"], "backup");
+    assert_eq!(last_mutation["action"], "add");
+    assert_eq!(last_mutation["result"], "success");
+    assert_eq!(last_mutation["runtime_effect"], "restart_required");
+
+    let last_validation = details["last_successful_validation"]
+        .as_object()
+        .expect("last_successful_validation object");
+    assert_eq!(last_validation["provider"], "anthropic");
+    assert_eq!(last_validation["role"], "backup");
+    assert_eq!(last_validation["action"], "validate");
+    assert_eq!(last_validation["credential_status"], "valid");
 }
 
 #[tokio::test]

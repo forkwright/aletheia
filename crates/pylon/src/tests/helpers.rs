@@ -115,13 +115,17 @@ async fn test_state_with_provider_private_and_auth_mode(
 
 async fn test_state_with_provider_name_private_and_auth_mode(
     with_provider: bool,
-    provider_name: Option<&str>,
+    provider_name: Option<&'static str>,
     include_private_nous: bool,
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
     let provider = with_provider.then(|| {
         let name = provider_name.unwrap_or("Hello from mock!");
-        MockProvider::new(name).models(&["mock-model", "claude-opus-4-20250514"])
+        let provider = MockProvider::new(name).models(&["mock-model", "claude-opus-4-20250514"]);
+        match provider_name {
+            Some(provider_name) => provider.named(provider_name),
+            None => provider,
+        }
     });
     test_state_with_mock_provider(provider, include_private_nous, auth_mode).await
 }

@@ -41,6 +41,9 @@ pub enum EndpointCategory {
     /// Control-plane endpoints that affect sensitive backend state (#4773):
     /// tool approvals, event subscriptions, and knowledge mutations.
     ControlPlane,
+    /// Credential control-plane endpoints. They share the stricter tool bucket
+    /// until the config grows a dedicated sensitive quota (#4878).
+    Sensitive,
     /// All other API endpoints.
     General,
 }
@@ -55,6 +58,11 @@ impl EndpointCategory {
         }
         if path.contains("/tools") || path.contains("/config/reload") {
             return Self::Tool;
+        }
+        // WHY(#4878): Credential management changes provider authentication
+        // state. It must not share a bucket with low-risk general traffic.
+        if path.contains("/system/credentials") {
+            return Self::Sensitive;
         }
         // WHY(#4773): Approval decisions, event subscriptions, and knowledge
         // mutations are control-plane operations with outsized backend impact;
@@ -245,9 +253,11 @@ impl UserRateLimiter {
         buckets.last_access = now;
 
         let bucket = match category {
-            EndpointCategory::General | EndpointCategory::ControlPlane => &mut buckets.general,
+            EndpointCategory::General => &mut buckets.general,
             EndpointCategory::Llm => &mut buckets.llm,
-            EndpointCategory::Tool => &mut buckets.tool,
+            EndpointCategory::Tool
+            | EndpointCategory::ControlPlane
+            | EndpointCategory::Sensitive => &mut buckets.tool,
         };
 
         bucket.try_acquire(now).err()
@@ -266,9 +276,11 @@ impl UserRateLimiter {
 
         let buckets = state.get(user)?;
         let bucket = match category {
-            EndpointCategory::General | EndpointCategory::ControlPlane => &buckets.general,
+            EndpointCategory::General => &buckets.general,
             EndpointCategory::Llm => &buckets.llm,
-            EndpointCategory::Tool => &buckets.tool,
+            EndpointCategory::Tool
+            | EndpointCategory::ControlPlane
+            | EndpointCategory::Sensitive => &buckets.tool,
         };
 
         Some(bucket.quota(now))
@@ -310,9 +322,11 @@ impl UserRateLimiter {
         buckets.last_access = now;
 
         let bucket = match category {
-            EndpointCategory::General | EndpointCategory::ControlPlane => &mut buckets.general,
+            EndpointCategory::General => &mut buckets.general,
             EndpointCategory::Llm => &mut buckets.llm,
-            EndpointCategory::Tool => &mut buckets.tool,
+            EndpointCategory::Tool
+            | EndpointCategory::ControlPlane
+            | EndpointCategory::Sensitive => &mut buckets.tool,
         };
 
         bucket.try_acquire(now).err()

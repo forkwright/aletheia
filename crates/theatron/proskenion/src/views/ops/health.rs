@@ -26,6 +26,7 @@ const ROW_STYLE: &str = "\
     display: flex; \
     align-items: center; \
     gap: var(--space-2); \
+    flex-wrap: wrap; \
     padding: var(--space-1) 0; \
     border-bottom: 1px solid var(--border-separator); \
     font-size: var(--text-xs);\
@@ -49,7 +50,20 @@ const NAME_STYLE: &str = "\
 const MESSAGE_STYLE: &str = "\
     color: var(--text-muted); \
     font-size: var(--text-xs); \
-    white-space: nowrap;\
+    white-space: normal; \
+    overflow-wrap: anywhere;\
+";
+
+const DETAILS_STYLE: &str = "\
+    flex-basis: 100%; \
+    margin-left: 16px; \
+    color: var(--text-muted); \
+    font-family: var(--font-mono); \
+    font-size: var(--text-xs); \
+    white-space: pre-wrap; \
+    overflow-wrap: anywhere; \
+    max-height: 96px; \
+    overflow: auto;\
 ";
 
 const STATUS_BADGE_BASE: &str = "\
@@ -106,6 +120,7 @@ fn render_check_row(check: &HealthCheckInfo) -> Element {
         status.dot_color(),
         badge_text_color(status)
     );
+    let details_text = check.details.as_ref().map(format_details);
 
     rsx! {
         div {
@@ -116,8 +131,15 @@ fn render_check_row(check: &HealthCheckInfo) -> Element {
             if let Some(ref message) = check.message {
                 span { style: "{MESSAGE_STYLE}", "{message}" }
             }
+            if let Some(details) = details_text {
+                pre { style: "{DETAILS_STYLE}", "{details}" }
+            }
         }
     }
+}
+
+fn format_details(details: &serde_json::Value) -> String {
+    serde_json::to_string_pretty(details).unwrap_or_else(|_| details.to_string())
 }
 
 fn badge_text_color(status: HealthStatus) -> &'static str {
