@@ -32,6 +32,21 @@ enum OpsTab {
     Credentials,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpsRefreshTarget {
+    Dashboard,
+    Tools,
+    Credentials,
+}
+
+fn refresh_target_for_tab(tab: OpsTab) -> OpsRefreshTarget {
+    match tab {
+        OpsTab::Dashboard => OpsRefreshTarget::Dashboard,
+        OpsTab::Tools => OpsRefreshTarget::Tools,
+        OpsTab::Credentials => OpsRefreshTarget::Credentials,
+    }
+}
+
 // ── API response types ──
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -288,6 +303,7 @@ pub(crate) fn Ops() -> Element {
     // ── Tools-tab state ──
     let mut stats = use_signal(ToolStats::default);
     let mut tools_fetch = use_signal(|| FetchState::<()>::Loading);
+    let mut credentials_refresh = use_signal(|| 0u32);
 
     // ── Dashboard data fetch ──
     let mut refresh_dashboard = move || {
@@ -538,10 +554,12 @@ pub(crate) fn Ops() -> Element {
                     button {
                         style: "{REFRESH_BTN}",
                         onclick: move |_| {
-                            match tab {
-                                OpsTab::Dashboard => refresh_dashboard(),
-                                OpsTab::Tools => refresh_tools(),
-                                OpsTab::Credentials => {},
+                            match refresh_target_for_tab(tab) {
+                                OpsRefreshTarget::Dashboard => refresh_dashboard(),
+                                OpsRefreshTarget::Tools => refresh_tools(),
+                                OpsRefreshTarget::Credentials => {
+                                    credentials_refresh.set(credentials_refresh() + 1);
+                                },
                             }
                         },
                         "Refresh"
@@ -653,9 +671,29 @@ pub(crate) fn Ops() -> Element {
                 },
 
                 OpsTab::Credentials => rsx! {
-                    credentials::CredentialsView {}
+                    credentials::CredentialsView {
+                        refresh_token: *credentials_refresh.read()
+                    }
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refresh_target_includes_credentials_tab() {
+        assert_eq!(
+            refresh_target_for_tab(OpsTab::Dashboard),
+            OpsRefreshTarget::Dashboard
+        );
+        assert_eq!(refresh_target_for_tab(OpsTab::Tools), OpsRefreshTarget::Tools);
+        assert_eq!(
+            refresh_target_for_tab(OpsTab::Credentials),
+            OpsRefreshTarget::Credentials
+        );
     }
 }

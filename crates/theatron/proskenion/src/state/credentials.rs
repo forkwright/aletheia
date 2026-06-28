@@ -17,6 +17,21 @@ impl CredentialRole {
             Self::Backup => "Backup",
         }
     }
+
+    pub(crate) fn wire_value(self) -> &'static str {
+        match self {
+            Self::Primary => "primary",
+            Self::Backup => "backup",
+        }
+    }
+
+    pub(crate) fn from_wire_value(value: &str) -> Self {
+        if value == "backup" {
+            Self::Backup
+        } else {
+            Self::Primary
+        }
+    }
 }
 
 /// Validation status of a credential.
@@ -68,7 +83,7 @@ pub(crate) struct CredentialEntry {
 }
 
 /// Store for credential entries.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct CredentialStore {
     pub(crate) entries: Vec<CredentialEntry>,
 }
