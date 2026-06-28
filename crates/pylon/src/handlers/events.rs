@@ -15,7 +15,7 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tracing::{instrument, warn};
 
 use crate::error::ApiError;
-use crate::event_bus::{DISCOVERABLE_TOPICS, DomainEvent};
+use crate::event_bus::{DISCOVERABLE_TOPICS, DomainEvent, JournalGap, JournalGapReason};
 use crate::extract::Claims;
 use crate::state::EventBusState;
 
@@ -35,6 +35,9 @@ pub struct SubscribeParams {
 
 /// SSE event name for unrecoverable reconnect gaps.
 const STREAM_GAP_EVENT: &str = "stream_gap";
+
+/// SSE event name for reconnect cursors outside the current in-memory journal.
+const STREAM_EXPIRED_EVENT: &str = "stream_expired";
 
 /// SSE event name for live subscriber lag.
 const STREAM_LAGGED_EVENT: &str = "stream_lagged";
@@ -84,12 +87,12 @@ fn domain_event_to_sse(
     }
 }
 
-/// Build a gap SSE event carrying the range of missed ids.
+/// Build a reconnect-control SSE event carrying continuity failure details.
 #[expect(
     clippy::unnecessary_wraps,
     reason = "return type must match stream item type Result<Event, Infallible>"
 )]
-fn gap_event(first_missed: u64, last_missed: u64, scoped: bool) -> Result<Event, Infallible> {
+fn reconnect_control_event(gap: JournalGap, scoped: bool) -> Result<Event, Infallible> {
     // SECURITY(#5341, #4994, #4617): The missed-id range spans every event that
     // fell out of the journal, including cross-agent events a scoped token must
     // never observe. Leaking the raw `(first, last)` range to a scoped token
@@ -100,13 +103,51 @@ fn gap_event(first_missed: u64, last_missed: u64, scoped: bool) -> Result<Event,
     let data = if scoped {
         serde_json::json!({})
     } else {
-        serde_json::json!({
-            "first_missed_id": first_missed,
-            "last_missed_id": last_missed,
-        })
+        let mut data = serde_json::Map::new();
+        data.insert("reason".to_owned(), serde_json::json!(gap.reason.as_str()));
+        data.insert(
+            "requested_last_event_id".to_owned(),
+            serde_json::json!(gap.requested_last_event_id),
+        );
+        if let Some(first_missed_id) = gap.first_missed_id {
+            data.insert(
+                "first_missed_id".to_owned(),
+                serde_json::json!(first_missed_id),
+            );
+        }
+        if let Some(last_missed_id) = gap.last_missed_id {
+            data.insert(
+                "last_missed_id".to_owned(),
+                serde_json::json!(last_missed_id),
+            );
+        }
+        if let Some(oldest_retained_id) = gap.oldest_retained_id {
+            data.insert(
+                "oldest_retained_id".to_owned(),
+                serde_json::json!(oldest_retained_id),
+            );
+        }
+        if let Some(newest_retained_id) = gap.newest_retained_id {
+            data.insert(
+                "newest_retained_id".to_owned(),
+                serde_json::json!(newest_retained_id),
+            );
+        }
+        serde_json::Value::Object(data)
     };
     let data = serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_owned());
-    Ok(Event::default().event(STREAM_GAP_EVENT).data(data))
+    let event_name = match gap.reason {
+        JournalGapReason::RetainedEventsEvicted => STREAM_GAP_EVENT,
+        JournalGapReason::JournalEmpty | JournalGapReason::CursorBeyondJournal => {
+            STREAM_EXPIRED_EVENT
+        }
+    };
+    let event = Event::default().event(event_name).data(data);
+    if scoped {
+        Ok(event)
+    } else {
+        Ok(event.id(gap.reset_event_id.to_string()))
+    }
 }
 
 /// GET /api/v1/events/subscribe
@@ -116,8 +157,11 @@ fn gap_event(first_missed: u64, last_missed: u64, scoped: bool) -> Result<Event,
 /// Periodic heartbeat comments keep the connection alive.
 ///
 /// WHY(#4910): Reconnects with `Last-Event-ID` replay retained events from the
-/// in-memory journal. If the requested id has fallen out of the journal, a
-/// typed `stream_gap` event is emitted so the client knows it missed events.
+/// in-memory journal. If the requested id has fallen out of the retained tail,
+/// a typed `stream_gap` event is emitted. If the cursor is outside the current
+/// journal entirely, a typed `stream_expired` event is emitted. Both cases make
+/// stream discontinuity explicit instead of silently dropping control-plane
+/// updates.
 #[utoipa::path(
     get,
     path = "/api/v1/events/subscribe",
@@ -171,51 +215,46 @@ pub async fn subscribe(
     let subscriber_id = koina::ulid::Ulid::new().to_string();
 
     let last_event_id = parse_last_event_id(&headers, &params).unwrap_or(0);
-    let (replay, has_gap, gap_first, gap_last, rx) = if last_event_id > 0 {
+    let (replay, gap, rx) = if last_event_id > 0 {
         let (snapshot, rx) = state.event_bus.subscribe_from(last_event_id).await;
-        if snapshot.has_gap {
+        if let Some(gap) = snapshot.gap {
             warn!(
                 subscriber_id = %subscriber_id,
-                first_missed = snapshot.gap_first_missed_id,
-                last_missed = snapshot.gap_last_missed_id,
-                "event subscriber reconnect missed events that fell out of journal"
+                reason = gap.reason.as_str(),
+                requested_last_event_id = gap.requested_last_event_id,
+                first_missed = ?gap.first_missed_id,
+                last_missed = ?gap.last_missed_id,
+                oldest_retained = ?gap.oldest_retained_id,
+                newest_retained = ?gap.newest_retained_id,
+                "event subscriber reconnect could not be resumed from requested cursor"
             );
         }
-        (
-            snapshot.replay,
-            snapshot.has_gap,
-            snapshot.gap_first_missed_id,
-            snapshot.gap_last_missed_id,
-            rx,
-        )
+        (snapshot.replay, snapshot.gap, rx)
     } else {
-        (Vec::new(), false, 0, 0, state.event_bus.subscribe())
+        (Vec::new(), None, state.event_bus.subscribe())
     };
 
     // WHY(#4910): Pre-materialize the replay iterator so each closure below
     // owns its copy of the filter state. This avoids borrowing local variables
     // that would outlive the handler future.
-    let max_replayed_id = replay.iter().map(|e| e.id).max().unwrap_or(last_event_id);
+    let max_replayed_id = replay.iter().map(|e| e.id).max().unwrap_or(0);
     let topics_for_replay = topics.clone();
     let scoped_for_replay = scoped_nous_id.clone();
     let replay_stream = stream::iter(replay.into_iter().filter_map(move |event| {
         domain_event_to_sse(&event, &topics_for_replay, scoped_for_replay.as_deref())
     }));
 
-    let gap_stream = if has_gap {
-        Some(stream::iter(std::iter::once(gap_event(
-            gap_first,
-            gap_last,
+    let gap_stream = gap.map(|gap| {
+        stream::iter(std::iter::once(reconnect_control_event(
+            gap,
             scoped_nous_id.is_some(),
-        ))))
-    } else {
-        None
-    };
+        )))
+    });
 
     // WHY(#4910): Skip live events whose id is not greater than the newest
-    // replayed id. The broadcast receiver starts at the channel's current tail,
-    // which may overlap with the journal replay; de-duplicating by id prevents
-    // emitting the same event twice.
+    // replayed id. When a stale cursor points beyond this process's journal,
+    // `max_replayed_id` is 0 so new live events are not suppressed behind an
+    // unreachable old-process id.
     let live_stream = BroadcastStream::new(rx).filter_map(move |result| {
         let item = match result {
             Ok(event) if event.id > max_replayed_id => {
