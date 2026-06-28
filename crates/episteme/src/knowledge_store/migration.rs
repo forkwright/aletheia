@@ -83,6 +83,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
         target_version: 19,
         run: KnowledgeStore::migrate_v18_to_v19,
     },
+    MigrationStep {
+        target_version: 20,
+        run: KnowledgeStore::migrate_v19_to_v20,
+    },
 ];
 
 #[cfg(feature = "mneme-engine")]
@@ -1404,6 +1408,98 @@ impl KnowledgeStore {
         self.stamp_schema_version(19, "v18->v19")?;
 
         tracing::info!("knowledge schema migration v18 -> v19 complete");
+        Ok(())
+    }
+
+    /// Migrate v19 -> v20: add `nous_id` to consolidation audit rows (#5310).
+    ///
+    /// Legacy rows did not record their owner, so they are retained with an
+    /// empty `nous_id`. That preserves audit history while preventing a legacy
+    /// global row from rate-limiting any concrete nous after the migration.
+    pub(super) fn migrate_v19_to_v20(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::ScriptMutability;
+        tracing::info!("migrating knowledge schema v19 -> v20");
+
+        let existing_rows = self
+            .db
+            .run(
+                r"?[id, trigger_type, trigger_id, original_count, consolidated_count,
+                    original_fact_ids, consolidated_fact_ids, consolidated_at] :=
+                    *consolidation_audit{id, trigger_type, trigger_id, original_count,
+                                         consolidated_count, original_fact_ids,
+                                         consolidated_fact_ids, consolidated_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 read consolidation_audit: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(
+                "::remove consolidation_audit",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 remove consolidation_audit: {e}"),
+                }
+                .build()
+            })?;
+
+        self.run_ddl(
+            crate::consolidation::CONSOLIDATION_AUDIT_DDL,
+            "v19->v20 recreate consolidation_audit",
+        )?;
+
+        for row in &existing_rows.rows {
+            let script = r"
+                ?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
+                  original_fact_ids, consolidated_fact_ids, consolidated_at] <- [[
+                    $id, '', $trigger_type, $trigger_id, $original_count, $consolidated_count,
+                    $original_fact_ids, $consolidated_fact_ids, $consolidated_at
+                ]]
+                :put consolidation_audit {id => nous_id, trigger_type, trigger_id,
+                    original_count, consolidated_count, original_fact_ids,
+                    consolidated_fact_ids, consolidated_at}
+            ";
+            let mut params = BTreeMap::new();
+            for (i, name) in [
+                "id",
+                "trigger_type",
+                "trigger_id",
+                "original_count",
+                "consolidated_count",
+                "original_fact_ids",
+                "consolidated_fact_ids",
+                "consolidated_at",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(value) = row.get(i) {
+                    params.insert((*name).to_owned(), value.clone());
+                }
+            }
+            self.db
+                .run(script, params, ScriptMutability::Mutable)
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v19->v20 reinsert consolidation_audit: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        self.stamp_schema_version(20, "v19->v20")?;
+
+        tracing::info!("knowledge schema migration v19 -> v20 complete");
         Ok(())
     }
 }

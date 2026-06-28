@@ -409,3 +409,49 @@ fn execute_consolidation_empty_response_preserves_source_facts() {
         "source fact must remain retrievable after empty consolidation; got {ids:?}"
     );
 }
+
+/// Requirement #5310: consolidation rate limiting is scoped to the nous that
+/// produced the audit row, so one agent's recent consolidation cannot throttle
+/// another agent in the same cohort store.
+#[test]
+fn consolidation_rate_limit_is_per_nous() {
+    let store = make_store();
+    let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
+    store
+        .record_consolidation_audit(&ConsolidationAuditRecord {
+            id: "audit-rate-alice".to_owned(),
+            nous_id: "alice".to_owned(),
+            trigger_type: "entity_overflow".to_owned(),
+            trigger_id: "entity-alice".to_owned(),
+            original_count: 12,
+            consolidated_count: 3,
+            original_fact_ids: "[]".to_owned(),
+            consolidated_fact_ids: "[]".to_owned(),
+            consolidated_at: now,
+        })
+        .expect("audit write succeeds");
+
+    let config = ConsolidationConfig {
+        rate_limit_hours: 1.0,
+        ..ConsolidationConfig::default()
+    };
+
+    let alice = store.check_rate_limit("alice", &config);
+    assert!(
+        matches!(alice, Err(ConsolidationError::RateLimited { .. })),
+        "alice should be rate-limited by her own recent audit row"
+    );
+
+    let bob = store.check_rate_limit("bob", &config);
+    assert!(
+        bob.is_ok(),
+        "bob must not be rate-limited by alice's consolidation audit"
+    );
+    assert_eq!(
+        store
+            .last_consolidation_time("bob")
+            .expect("bob lookup succeeds"),
+        None,
+        "bob should have no scoped audit history"
+    );
+}

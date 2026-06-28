@@ -279,6 +279,10 @@ pub struct ConsolidationAuditRecord {
     /// Unique audit ID.
     // kanon:ignore RUST/primitive-for-domain-id — serialization type for Datalog/JSON audit records uses string IDs for compatibility
     pub id: String,
+    /// Nous that owned the consolidation cycle.
+    #[serde(default)]
+    // kanon:ignore RUST/primitive-for-domain-id — audit records store serialized nous IDs for Datalog compatibility.
+    pub nous_id: String,
     /// What triggered this consolidation.
     pub trigger_type: String,
     /// Entity or cluster ID that triggered it.
@@ -496,6 +500,7 @@ pub const CLUSTER_FACTS_FOR_CONSOLIDATION: &str = r"
 /// Datalog DDL for the `consolidation_audit` relation.
 pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
     id: String =>
+    nous_id: String,
     trigger_type: String,
     trigger_id: String,
     original_count: Int,

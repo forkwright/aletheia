@@ -275,7 +275,7 @@ impl KnowledgeStore {
 
         let new_fact_ids = self.persist_consolidated_facts(&result, nous_id)?;
         self.supersede_originals(&result, &new_fact_ids)?;
-        self.write_audit_record(candidate, &result, &new_fact_ids)?;
+        self.write_audit_record(candidate, &result, &new_fact_ids, nous_id)?;
 
         Ok(result)
     }
@@ -616,6 +616,7 @@ impl KnowledgeStore {
         candidate: &ConsolidationCandidate,
         result: &ConsolidationResult,
         new_fact_ids: &[FactId],
+        nous_id: &str,
     ) -> Result<(), ConsolidationError> {
         let now_str = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let audit_id = koina::ulid::Ulid::new().to_string();
@@ -633,6 +634,7 @@ impl KnowledgeStore {
 
         self.record_consolidation_audit(&ConsolidationAuditRecord {
             id: audit_id,
+            nous_id: nous_id.to_owned(),
             trigger_type: candidate.trigger.trigger_type().to_owned(),
             trigger_id: candidate.trigger.trigger_id(),
             original_count: result.original_count,
@@ -691,17 +693,21 @@ impl KnowledgeStore {
         record: &ConsolidationAuditRecord,
     ) -> crate::error::Result<()> {
         let script = r"
-?[id, trigger_type, trigger_id, original_count, consolidated_count,
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
    original_fact_ids, consolidated_fact_ids, consolidated_at] <-
-    [[$id, $trigger_type, $trigger_id, $original_count, $consolidated_count,
+    [[$id, $nous_id, $trigger_type, $trigger_id, $original_count, $consolidated_count,
       $original_fact_ids, $consolidated_fact_ids, $consolidated_at]]
 
-:put consolidation_audit {id => trigger_type, trigger_id, original_count,
+:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
                           consolidated_count, original_fact_ids,
                           consolidated_fact_ids, consolidated_at}
 ";
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(record.id.clone().into()));
+        params.insert(
+            "nous_id".to_owned(),
+            DataValue::Str(record.nous_id.clone().into()),
+        );
         params.insert(
             "trigger_type".to_owned(),
             DataValue::Str(record.trigger_type.clone().into()),
@@ -737,14 +743,17 @@ impl KnowledgeStore {
     /// Query the last consolidation timestamp from the audit trail.
     pub(crate) fn last_consolidation_time(
         &self,
-        _nous_id: &str,
+        nous_id: &str,
     ) -> Result<Option<String>, ConsolidationError> {
         let script = r"
-?[consolidated_at] := *consolidation_audit{consolidated_at}
+?[consolidated_at] := *consolidation_audit{nous_id, consolidated_at},
+    nous_id == $nous_id
 :sort -consolidated_at
 :limit 1
 ";
-        let result = self.run_query(script, BTreeMap::new()).map_err(|e| {
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        let result = self.run_query(script, params).map_err(|e| {
             StoreSnafu {
                 message: e.to_string(),
             }

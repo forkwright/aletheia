@@ -395,6 +395,7 @@ fn failing_provider_returns_error() {
 fn audit_record_serde_roundtrip() {
     let record = ConsolidationAuditRecord {
         id: "audit-1".to_owned(),
+        nous_id: "alice".to_owned(),
         trigger_type: "entity_overflow".to_owned(),
         trigger_id: "e-1".to_owned(),
         original_count: 15,
