@@ -11,7 +11,9 @@ use std::time::{Duration, Instant};
 use snafu::Snafu;
 
 use crate::error::InternalResult as Result;
-use crate::runtime::error::{QueryCancelledSnafu, UnsupportedSnafu};
+use crate::runtime::error::QueryCancelledSnafu;
+#[cfg(target_arch = "wasm32")]
+use crate::runtime::error::UnsupportedSnafu;
 
 /// Default maximum semi-naive evaluation epochs for one stratum.
 pub const DEFAULT_MAX_EVALUATION_EPOCHS: u32 = 10_000;
@@ -164,7 +166,6 @@ fn millis_to_u64(millis: u128) -> u64 {
 pub(crate) struct QueryBudgetState {
     budget: QueryBudget,
     started_at: Instant,
-    // WHY: timeout can come from parsed query options after token construction.
     wall_clock_timeout: parking_lot::Mutex<Option<Duration>>,
     cancelled: AtomicBool,
     reason: AtomicU8,
@@ -233,6 +234,10 @@ impl Poison {
     ///
     /// Returns a query-killed error if the user initiated termination or the
     /// timeout deadline has elapsed.
+    #[expect(
+        private_interfaces,
+        reason = "pub fn exposes InternalResult — consumed within crate or by FixedRule impls that propagate via ?"
+    )]
     #[must_use = "caller must propagate the query-killed error"]
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
@@ -327,20 +332,5 @@ impl Poison {
             limit,
         }
         .fail()?
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub(crate) fn set_timeout(&self, _secs: f64) -> Result<()> {
-        UnsupportedSnafu {
-            operation: "set timeout",
-            reason: "threading is disallowed on this platform",
-        }
-        .fail()?
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn set_timeout(&self, secs: f64) -> Result<()> {
-        *self.state.wall_clock_timeout.lock() = Some(saturating_secs_f64(secs));
-        Ok(())
     }
 }
