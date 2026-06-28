@@ -564,6 +564,24 @@ fn accepts_valid_external_http_tool() {
 }
 
 #[test]
+fn accepts_stdio_mcp_tool_with_explicit_sandbox_trust() {
+    let section = json!({
+        "optional": {
+            "local_mcp": {
+                "type": "mcp",
+                "command": "local-mcp",
+                "args": ["--stdio"],
+                "trust": "sandboxed"
+            }
+        }
+    });
+    assert!(
+        validate_section("tools", &section).is_ok(),
+        "stdio MCP tool with explicit sandbox trust should be accepted"
+    );
+}
+
+#[test]
 fn rejects_http_tool_missing_endpoint() {
     let section = json!({
         "required": {
@@ -623,6 +641,46 @@ fn rejects_mcp_tool_without_endpoint_or_command() {
     assert!(
         result.is_err(),
         "mcp tool without endpoint or command should be rejected"
+    );
+}
+
+#[test]
+fn rejects_stdio_mcp_tool_without_explicit_trust() {
+    let section = json!({
+        "required": {
+            "local_mcp": {
+                "type": "mcp",
+                "command": "local-mcp"
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "stdio MCP tool without explicit trust should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("trust")),
+        "error should mention trust: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_stdio_mcp_tool_with_invalid_trust() {
+    let section = json!({
+        "required": {
+            "local_mcp": {
+                "type": "mcp",
+                "command": "local-mcp",
+                "trust": "ambient"
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "stdio MCP tool with invalid trust should be rejected"
     );
 }
 

@@ -47,6 +47,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [logging](#logging)
 - [pricing](#pricing)
 - [packs](#packs)
+- [tools](#tools)
 - [sandbox](#sandbox)
 - [Environment variables](#environment-variables)
 - [Minimal config](#minimal-config)
@@ -811,6 +812,33 @@ packs = [
     "/srv/aletheia/packs/engineering",
     "/srv/aletheia/packs/research",
 ]
+```
+
+---
+
+## tools
+
+Runtime-bridged external tools. HTTP entries proxy tool calls to an endpoint.
+MCP entries connect to an external MCP server at startup, discover `tools/list`,
+and register discovered tools into the Organon registry.
+
+For stdio MCP entries, `trust` is required. Use `"sandboxed"` to apply the
+top-level `[sandbox]` policy before exec. Use `"trusted-local"` only for
+operator-audited local code that intentionally runs without the process sandbox.
+Stdio MCP child processes always start with an empty environment; only names in
+the entry's `env` map are passed through. Startup diagnostics log the trust
+mode, configured env-var names, and effective sandbox posture.
+
+```toml
+[tools.optional.local_mcp]
+type = "mcp"
+command = "/usr/local/bin/local-mcp"
+args = ["--stdio"]
+trust = "sandboxed"
+description = "Local MCP tools"
+
+[tools.optional.local_mcp.env]
+LOCAL_MCP_MODE = "readonly"
 ```
 
 ---

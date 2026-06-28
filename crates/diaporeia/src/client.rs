@@ -5,17 +5,20 @@
 //! external servers and route those tools into organon.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use organon::sandbox::{SandboxPolicy, apply_sandbox};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool,
 };
 use rmcp::service::{QuitReason, RunningService};
-use rmcp::transport::{ConfigureCommandExt as _, StreamableHttpClientTransport, TokioChildProcess};
+use rmcp::transport::{StreamableHttpClientTransport, TokioChildProcess};
 use rmcp::{RoleClient, ServiceExt as _};
 use tokio::sync::Mutex;
+use tracing::{info, warn};
 
 use crate::error::{Result, TransportSnafu};
 
@@ -35,8 +38,26 @@ const LIST_TOOLS_TIMEOUT: Duration = Duration::from_secs(10);
 /// Generous default to accommodate long-running tools; should be sourced from config.
 const CALL_TOOL_TIMEOUT: Duration = Duration::from_mins(1);
 
+/// Trust posture for a stdio child-process MCP server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StdioMcpTrustPolicy {
+    /// Run the child under the configured process sandbox.
+    Sandboxed,
+    /// Run without the process sandbox. Only for operator-audited local code.
+    TrustedLocal,
+}
+
+impl fmt::Display for StdioMcpTrustPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sandboxed => f.write_str("sandboxed"),
+            Self::TrustedLocal => f.write_str("trusted-local"),
+        }
+    }
+}
+
 /// Stdio child-process MCP server configuration.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct StdioMcpServerConfig {
     /// Executable to spawn.
     pub command: String,
@@ -50,6 +71,10 @@ pub struct StdioMcpServerConfig {
     /// listed here are passed to the child process. Secrets and deployment metadata
     /// from the parent process are never inherited.
     pub env: HashMap<String, String>,
+    /// Trust posture for the child process.
+    pub trust: StdioMcpTrustPolicy,
+    /// Resolved sandbox policy applied before exec when `trust == Sandboxed`.
+    pub sandbox_policy: Option<SandboxPolicy>,
 }
 
 impl StdioMcpServerConfig {
@@ -61,7 +86,63 @@ impl StdioMcpServerConfig {
             args: Vec::new(),
             cwd: None,
             env: HashMap::new(),
+            trust: StdioMcpTrustPolicy::Sandboxed,
+            sandbox_policy: None,
         }
+    }
+
+    /// Attach a resolved sandbox policy for a sandboxed stdio server.
+    #[must_use]
+    pub fn with_sandbox_policy(mut self, policy: SandboxPolicy) -> Self {
+        self.trust = StdioMcpTrustPolicy::Sandboxed;
+        self.sandbox_policy = Some(policy);
+        self
+    }
+
+    /// Mark this stdio server as operator-trusted local code.
+    #[must_use]
+    pub fn trusted_local(mut self) -> Self {
+        self.trust = StdioMcpTrustPolicy::TrustedLocal;
+        self.sandbox_policy = None;
+        self
+    }
+}
+
+fn log_stdio_mcp_posture(
+    command: &str,
+    cwd: Option<&PathBuf>,
+    env: &HashMap<String, String>,
+    trust: StdioMcpTrustPolicy,
+    sandbox_policy: Option<&SandboxPolicy>,
+) {
+    let mut env_keys: Vec<&str> = env.keys().map(String::as_str).collect();
+    env_keys.sort_unstable();
+
+    if let Some(policy) = sandbox_policy {
+        info!(
+            command = %command,
+            cwd = ?cwd,
+            trust = %trust,
+            env_policy = "clear-then-allowlist",
+            configured_env_vars = ?env_keys,
+            sandbox_enabled = policy.enabled,
+            sandbox_enforcement = ?policy.enforcement,
+            sandbox_egress = ?policy.egress,
+            sandbox_read_paths = policy.read_paths.len(),
+            sandbox_write_paths = policy.write_paths.len(),
+            sandbox_exec_paths = policy.exec_paths.len(),
+            "starting stdio MCP server"
+        );
+    } else {
+        warn!(
+            command = %command,
+            cwd = ?cwd,
+            trust = %trust,
+            env_policy = "clear-then-allowlist",
+            configured_env_vars = ?env_keys,
+            sandbox_enabled = false,
+            "starting stdio MCP server without process sandbox"
+        );
     }
 }
 
@@ -139,20 +220,61 @@ impl ExternalMcpClient {
         let args = config.args.clone();
         let cwd = config.cwd.clone();
         let env = config.env.clone();
-        let transport = TokioChildProcess::new(tokio::process::Command::new(&command).configure(
-            move |cmd| {
-                // WHY(#5186, #5346): clear the inherited parent env first so the
-                // child never receives secrets, tokens, or deployment metadata.
-                // Only the explicitly configured variables are forwarded.
-                cmd.env_clear();
-                cmd.args(args);
-                if let Some(dir) = cwd {
-                    cmd.current_dir(dir);
+        let sandbox_policy = match config.trust {
+            StdioMcpTrustPolicy::Sandboxed => {
+                Some(config.sandbox_policy.clone().ok_or_else(|| {
+                    TransportSnafu {
+                        message: format!(
+                            "stdio MCP server '{command}' requires a resolved sandbox policy \
+                             when trust is sandboxed"
+                        ),
+                    }
+                    .build()
+                })?)
+            }
+            StdioMcpTrustPolicy::TrustedLocal => {
+                if config.sandbox_policy.is_some() {
+                    warn!(
+                        command = %command,
+                        trust = %config.trust,
+                        "stdio MCP server supplied a sandbox policy but trust disables sandboxing"
+                    );
                 }
-                cmd.envs(env);
-            },
-        ))
-        .map_err(|e| {
+                None
+            }
+        };
+
+        log_stdio_mcp_posture(
+            &command,
+            cwd.as_ref(),
+            &env,
+            config.trust,
+            sandbox_policy.as_ref(),
+        );
+
+        let mut cmd = tokio::process::Command::new(&command);
+        // WHY(#5186, #5346): clear the inherited parent env first so the child
+        // never receives secrets, tokens, or deployment metadata. Only the
+        // explicitly configured variables are forwarded.
+        cmd.env_clear();
+        cmd.args(args);
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
+        cmd.envs(env);
+
+        if let Some(policy) = sandbox_policy {
+            apply_sandbox(cmd.as_std_mut(), policy).map_err(|e| {
+                TransportSnafu {
+                    message: format!(
+                        "failed to apply sandbox for stdio MCP server '{command}': {e}"
+                    ),
+                }
+                .build()
+            })?;
+        }
+
+        let transport = TokioChildProcess::new(cmd).map_err(|e| {
             TransportSnafu {
                 message: format!("failed to spawn stdio MCP server '{command}': {e}"),
             }
@@ -354,10 +476,27 @@ impl ExternalMcpClient {
 mod tests {
     use std::fs;
     use std::io::Write as _;
+    use std::path::Path;
 
+    use organon::sandbox::{SandboxConfig, SandboxEnforcement, SandboxPolicy};
     use tempfile::TempDir;
 
     use super::*;
+
+    fn test_sandbox_policy(dir: &Path) -> SandboxPolicy {
+        SandboxConfig {
+            enforcement: SandboxEnforcement::Permissive,
+            ..SandboxConfig::default()
+        }
+        .build_policy(dir, &[dir.to_path_buf()])
+    }
+
+    fn sandboxed_config(script: &Path, dir: &Path) -> StdioMcpServerConfig {
+        let mut config = StdioMcpServerConfig::new(script.display().to_string())
+            .with_sandbox_policy(test_sandbox_policy(dir));
+        config.cwd = Some(dir.to_path_buf());
+        config
+    }
 
     fn fake_mcp_server() -> (TempDir, StdioMcpServerConfig) {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -388,8 +527,22 @@ done
             fs::set_permissions(&script, perms).expect("chmod");
         }
 
-        let config = StdioMcpServerConfig::new(script.display().to_string());
+        let config = sandboxed_config(&script, dir.path());
         (dir, config)
+    }
+
+    #[tokio::test]
+    async fn sandboxed_stdio_child_requires_resolved_policy() {
+        let config = StdioMcpServerConfig::new("local-mcp");
+        let err = match ExternalMcpClient::connect_stdio(&config).await {
+            Ok(_client) => panic!("sandboxed stdio MCP server without policy must fail"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string()
+                .contains("requires a resolved sandbox policy"),
+            "error should explain missing sandbox policy: {err}"
+        );
     }
 
     #[tokio::test]
@@ -448,7 +601,7 @@ while IFS= read -r line; do :; done
             std::env::set_var("SECRET_VAR", "should-not-leak");
         }
 
-        let config = StdioMcpServerConfig::new(script.display().to_string());
+        let config = sandboxed_config(&script, dir.path());
         let client = ExternalMcpClient::connect_stdio(&config)
             .await
             .expect("connect");
@@ -466,5 +619,10 @@ while IFS= read -r line; do :; done
         );
 
         let _reason = client.close().await.expect("close");
+
+        #[expect(unsafe_code, reason = "test cleans up the env var it set above")]
+        unsafe {
+            std::env::remove_var("SECRET_VAR");
+        }
     }
 }

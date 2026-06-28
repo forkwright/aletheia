@@ -18,7 +18,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 #[cfg(feature = "mcp")]
-use diaporeia::client::{ExternalMcpClient, StdioMcpServerConfig};
+use diaporeia::client::{ExternalMcpClient, StdioMcpServerConfig, StdioMcpTrustPolicy};
 use indexmap::IndexMap;
 use serde::Serialize;
 use tracing::{info, warn};
@@ -32,7 +32,7 @@ use organon::types::{
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 #[cfg(feature = "mcp")]
-use taxis::config::ExternalToolAuth;
+use taxis::config::{ExternalMcpTrustPolicy, ExternalToolAuth};
 pub(crate) use taxis::config::{
     ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
 };
@@ -100,6 +100,7 @@ pub(crate) async fn register_external_tools(
     config: &ExternalToolsConfig,
     registry: &mut ToolRegistry,
     http_client: &reqwest::Client,
+    sandbox: &organon::sandbox::SandboxConfig,
 ) -> ToolManifest {
     let mut manifest = ToolManifest {
         required: Vec::new(),
@@ -109,12 +110,12 @@ pub(crate) async fn register_external_tools(
     // WHY: process required tools first so startup warnings about missing
     // required tools appear before optional tool info.
     for (name, entry) in &config.required {
-        let result = register_single_tool(name, entry, registry, http_client).await;
+        let result = register_single_tool(name, entry, registry, http_client, sandbox).await;
         manifest.required.extend(result);
     }
 
     for (name, entry) in &config.optional {
-        let result = register_single_tool(name, entry, registry, http_client).await;
+        let result = register_single_tool(name, entry, registry, http_client, sandbox).await;
         manifest.optional.extend(result);
     }
 
@@ -127,6 +128,7 @@ async fn register_single_tool(
     entry: &ExternalToolEntry,
     registry: &mut ToolRegistry,
     http_client: &reqwest::Client,
+    sandbox: &organon::sandbox::SandboxConfig,
 ) -> Vec<ToolManifestEntry> {
     #[cfg(not(feature = "mcp"))]
     std::future::ready(()).await;
@@ -155,9 +157,9 @@ async fn register_single_tool(
 
     if entry.kind == ExternalToolKind::Mcp {
         #[cfg(feature = "mcp")]
-        return register_mcp_server(name, entry, registry, description).await;
+        return register_mcp_server(name, entry, registry, description, sandbox).await;
         #[cfg(not(feature = "mcp"))]
-        return register_mcp_server(name, entry, registry, description);
+        return register_mcp_server(name, entry, registry, description, sandbox);
     }
 
     let Some(endpoint) = entry.endpoint.clone() else {
@@ -243,8 +245,9 @@ async fn register_mcp_server(
     entry: &ExternalToolEntry,
     registry: &mut ToolRegistry,
     description: String,
+    sandbox: &organon::sandbox::SandboxConfig,
 ) -> Vec<ToolManifestEntry> {
-    let client = match connect_mcp_server(server_name, entry).await {
+    let client = match connect_mcp_server(server_name, entry, sandbox).await {
         Ok(client) => client,
         Err(e) => {
             warn!(server = server_name, error = %e, "failed to connect MCP server");
@@ -382,6 +385,7 @@ async fn register_mcp_server(
 async fn connect_mcp_server(
     server_name: &str,
     entry: &ExternalToolEntry,
+    sandbox: &organon::sandbox::SandboxConfig,
 ) -> diaporeia::error::Result<ExternalMcpClient> {
     if let Some(endpoint) = entry.endpoint.as_deref() {
         let auth = entry.auth.as_ref().map(mcp_auth_to_diaporeia);
@@ -392,13 +396,75 @@ async fn connect_mcp_server(
         .command
         .clone()
         .unwrap_or_else(|| server_name.to_owned());
+    let trust = entry
+        .trust
+        .map(mcp_trust_to_diaporeia)
+        .unwrap_or(StdioMcpTrustPolicy::Sandboxed);
+    let sandbox_policy = match entry.trust {
+        Some(ExternalMcpTrustPolicy::TrustedLocal) | None => None,
+        Some(_) => Some(stdio_mcp_sandbox_policy(entry, &command, sandbox)),
+    };
     let config = StdioMcpServerConfig {
         command,
         args: entry.args.clone(),
         cwd: entry.cwd.clone(),
         env: entry.env.clone(),
+        trust,
+        sandbox_policy,
     };
     ExternalMcpClient::connect_stdio(&config).await
+}
+
+#[cfg(feature = "mcp")]
+fn mcp_trust_to_diaporeia(trust: ExternalMcpTrustPolicy) -> StdioMcpTrustPolicy {
+    match trust {
+        ExternalMcpTrustPolicy::TrustedLocal => StdioMcpTrustPolicy::TrustedLocal,
+        _ => StdioMcpTrustPolicy::Sandboxed,
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn stdio_mcp_sandbox_policy(
+    entry: &ExternalToolEntry,
+    command: &str,
+    sandbox: &organon::sandbox::SandboxConfig,
+) -> organon::sandbox::SandboxPolicy {
+    let workspace = entry
+        .cwd
+        .as_ref()
+        .map_or_else(current_working_dir, |cwd| resolve_against_current_dir(cwd));
+    let mut allowed_roots = vec![workspace.clone()];
+    if let Some(parent) = command_parent_root(command, &workspace) {
+        allowed_roots.push(parent);
+    }
+    sandbox.build_policy(&workspace, &allowed_roots)
+}
+
+#[cfg(feature = "mcp")]
+fn current_working_dir() -> std::path::PathBuf {
+    match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(_e) => std::path::PathBuf::from("."),
+    }
+}
+
+#[cfg(feature = "mcp")]
+fn resolve_against_current_dir(path: &std::path::Path) -> std::path::PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    current_working_dir().join(path)
+}
+
+#[cfg(feature = "mcp")]
+fn command_parent_root(command: &str, workspace: &std::path::Path) -> Option<std::path::PathBuf> {
+    let path = std::path::Path::new(command);
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty())?;
+    if parent.is_absolute() {
+        Some(parent.to_path_buf())
+    } else {
+        Some(workspace.join(parent))
+    }
 }
 
 #[cfg(feature = "mcp")]
@@ -427,6 +493,7 @@ fn register_mcp_server(
     entry: &ExternalToolEntry,
     _registry: &mut ToolRegistry,
     description: String,
+    _sandbox: &organon::sandbox::SandboxConfig,
 ) -> Vec<ToolManifestEntry> {
     let _ = entry;
     warn!(
@@ -761,6 +828,13 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
 
+    fn test_sandbox_config() -> organon::sandbox::SandboxConfig {
+        organon::sandbox::SandboxConfig {
+            enforcement: organon::sandbox::SandboxEnforcement::Permissive,
+            ..organon::sandbox::SandboxConfig::default()
+        }
+    }
+
     fn entry(
         kind: ExternalToolKind,
         endpoint: Option<&str>,
@@ -773,6 +847,7 @@ mod tests {
             args: Vec::new(),
             cwd: None,
             env: std::collections::HashMap::new(),
+            trust: None,
             description: description.map(ToOwned::to_owned),
             method: ExternalToolMethod::default(),
             auth: None,
@@ -821,11 +896,13 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         ensure_crypto_provider();
         let mut registry = ToolRegistry::new();
         let entry = entry(ExternalToolKind::Builtin, None, Some("built-in file ops"));
+        let sandbox = test_sandbox_config();
         let result = register_single_tool(
             "nonexistent_builtin",
             &entry,
             &mut registry,
             &reqwest::Client::new(),
+            &sandbox,
         )
         .await;
         // NOTE: builtin entry for a tool that doesn't exist in the registry
@@ -840,8 +917,15 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         ensure_crypto_provider();
         let mut registry = ToolRegistry::new();
         let entry = entry(ExternalToolKind::Mcp, None, Some("missing endpoint"));
-        let result =
-            register_single_tool("bad_tool", &entry, &mut registry, &reqwest::Client::new()).await;
+        let sandbox = test_sandbox_config();
+        let result = register_single_tool(
+            "bad_tool",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &sandbox,
+        )
+        .await;
         assert_eq!(result.len(), 1);
         assert!(!result.first().expect("manifest entry").available);
     }
@@ -855,11 +939,13 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
             Some("http://localhost:3100"),
             Some("Semantic Scholar"),
         );
+        let sandbox = test_sandbox_config();
         let result = register_single_tool(
             "semantic_scholar",
             &entry,
             &mut registry,
             &reqwest::Client::new(),
+            &sandbox,
         )
         .await;
         assert_eq!(result.len(), 1);
@@ -922,8 +1008,9 @@ no_endpoint = { type = "mcp" }
         let config: ExternalToolsConfig = toml::from_str(toml_str).expect("valid config");
         let mut registry = ToolRegistry::new();
         let client = reqwest::Client::new();
+        let sandbox = test_sandbox_config();
 
-        let manifest = register_external_tools(&config, &mut registry, &client).await;
+        let manifest = register_external_tools(&config, &mut registry, &client, &sandbox).await;
 
         // NOTE: file_ops is builtin but not registered in empty registry → unavailable
         assert_eq!(manifest.required.len(), 1);
@@ -999,13 +1086,22 @@ done
     #[tokio::test]
     async fn register_mcp_server_discovers_tools_and_execute_routes_call() {
         ensure_crypto_provider();
-        let (_dir, script) = fake_mcp_server_script();
+        let (dir, script) = fake_mcp_server_script();
         let mut registry = ToolRegistry::new();
         let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
         entry.command = Some(script.display().to_string());
+        entry.cwd = Some(dir.path().to_path_buf());
+        entry.trust = Some(ExternalMcpTrustPolicy::Sandboxed);
+        let sandbox = test_sandbox_config();
 
-        let result =
-            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "fake",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &sandbox,
+        )
+        .await;
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some_and(|e| e.available));
         assert_eq!(
@@ -1046,13 +1142,22 @@ done
     #[tokio::test]
     async fn execute_checked_denies_mcp_group_when_role_lacks_group() {
         ensure_crypto_provider();
-        let (_dir, script) = fake_mcp_server_script();
+        let (dir, script) = fake_mcp_server_script();
         let mut registry = ToolRegistry::new();
         let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
         entry.command = Some(script.display().to_string());
+        entry.cwd = Some(dir.path().to_path_buf());
+        entry.trust = Some(ExternalMcpTrustPolicy::Sandboxed);
+        let sandbox = test_sandbox_config();
 
-        let result =
-            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "fake",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &sandbox,
+        )
+        .await;
         assert!(result.iter().any(|entry| entry.available));
 
         let input = ToolInput {
@@ -1076,7 +1181,7 @@ done
     #[tokio::test]
     async fn mcp_tool_name_is_stable_even_when_bare_name_is_free() {
         ensure_crypto_provider();
-        let (_dir, script) = fake_mcp_server_script();
+        let (dir, script) = fake_mcp_server_script();
         let mut registry = ToolRegistry::new();
 
         // WHY: Pre-register a built-in named "echo" so the bare normalized
@@ -1101,9 +1206,18 @@ done
 
         let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
         entry.command = Some(script.display().to_string());
+        entry.cwd = Some(dir.path().to_path_buf());
+        entry.trust = Some(ExternalMcpTrustPolicy::Sandboxed);
+        let sandbox = test_sandbox_config();
 
-        let result =
-            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "fake",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &sandbox,
+        )
+        .await;
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some_and(|e| e.available));
         assert_eq!(

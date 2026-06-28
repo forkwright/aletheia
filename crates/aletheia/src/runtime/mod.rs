@@ -366,6 +366,7 @@ impl RuntimeBuilder {
             &self.config.tools,
             &mut tool_registry,
             &reqwest::Client::new(),
+            &sandbox_config(&self.config),
         )
         .await;
         if tool_manifest.available_count() > 0 || !self.config.tools.required.is_empty() {

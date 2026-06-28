@@ -441,6 +441,7 @@ method = "get"
 type = "mcp"
 command = "local-mcp"
 args = ["--stdio"]
+trust = "sandboxed"
 "#;
     let config: AletheiaConfig = toml::from_str(toml).expect("parse config");
 
@@ -460,6 +461,7 @@ args = ["--stdio"]
     assert_eq!(local_mcp.kind, ExternalToolKind::Mcp);
     assert_eq!(local_mcp.command.as_deref(), Some("local-mcp"));
     assert_eq!(local_mcp.args, vec!["--stdio"]);
+    assert_eq!(local_mcp.trust, Some(ExternalMcpTrustPolicy::Sandboxed));
 }
 
 #[test]

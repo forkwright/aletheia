@@ -647,6 +647,7 @@ mod tests {
                 args: Vec::new(),
                 cwd: None,
                 env: std::collections::HashMap::new(),
+                trust: None,
                 description: None,
                 method: crate::config::ExternalToolMethod::Post,
                 auth: None,

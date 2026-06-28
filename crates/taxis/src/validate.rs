@@ -901,6 +901,7 @@ fn validate_tuning(value: &Value, errors: &mut Vec<String>) {
 /// Validate configured external tool declarations.
 const VALID_TOOL_KINDS: &[&str] = &["mcp", "http", "builtin"];
 const VALID_HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch"];
+const VALID_MCP_TRUST_POLICIES: &[&str] = &["sandboxed", "trusted-local"];
 
 fn validate_tools(value: &Value, errors: &mut Vec<String>) {
     validate_tool_group(value, "required", errors);
@@ -969,6 +970,27 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                     errors.push(format!(
                         "tools.{group}.{name}: mcp tools require either endpoint or command"
                     ));
+                }
+                match entry.get("trust").and_then(Value::as_str) {
+                    Some(trust) if !VALID_MCP_TRUST_POLICIES.contains(&trust) => {
+                        errors.push(format!(
+                            "tools.{group}.{name}.trust '{trust}' is invalid; must be one of: sandboxed, trusted-local"
+                        ));
+                    }
+                    Some(_) => {
+                        if has_endpoint {
+                            errors.push(format!(
+                                "tools.{group}.{name}.trust is only valid for stdio MCP tools with a command"
+                            ));
+                        }
+                    }
+                    None => {
+                        if has_command && !has_endpoint {
+                            errors.push(format!(
+                                "tools.{group}.{name}.trust is required for stdio MCP tools; use 'sandboxed' or 'trusted-local'"
+                            ));
+                        }
+                    }
                 }
                 // kanon:ignore SECURITY/insecure-transport — scheme prefix literals used for validation, not as connection URLs
                 if has_endpoint

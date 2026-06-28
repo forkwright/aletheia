@@ -121,6 +121,9 @@ pub struct ExternalToolEntry {
     /// Extra environment for stdio MCP server processes.
     #[serde(default)]
     pub env: HashMap<String, String>,
+    /// Trust posture for stdio MCP server processes.
+    #[serde(default)]
+    pub trust: Option<ExternalMcpTrustPolicy>,
     /// Human-readable description sent to the LLM.
     pub description: Option<String>,
     /// HTTP method for `http` tools. Defaults to POST.
@@ -140,11 +143,23 @@ impl Default for ExternalToolEntry {
             args: Vec::new(),
             cwd: None,
             env: HashMap::new(),
+            trust: None,
             description: None,
             method: ExternalToolMethod::default(),
             auth: None,
         }
     }
+}
+
+/// Trust posture for a stdio MCP server process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
+pub enum ExternalMcpTrustPolicy {
+    /// Run the stdio MCP server under the configured process sandbox.
+    Sandboxed,
+    /// Run without the process sandbox; only use for operator-audited local code.
+    TrustedLocal,
 }
 
 /// Transport/execution strategy for an external tool.
