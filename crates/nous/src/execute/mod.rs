@@ -757,6 +757,10 @@ pub(crate) async fn execute_streaming_with_deadline(
             enabled: true,
             budget_tokens: config.generation.thinking_budget,
         });
+    let fallback_config = (!config.generation.fallback_models.is_empty()).then(|| FallbackConfig {
+        fallback_models: config.generation.fallback_models.clone(),
+        retries_before_fallback: config.generation.retries_before_fallback,
+    });
 
     // WHY: hoist config server_tools Vec into Arc once per turn (#3389).
     let config_server_tools: Arc<Vec<ServerToolDefinition>> = Arc::new(config.server_tools.clone());
@@ -836,16 +840,40 @@ pub(crate) async fn execute_streaming_with_deadline(
                 record_llm_stream_send_error(nous_id.as_ref(), &event, &e);
             }
         };
-        let streaming_fut = streaming_provider.complete_streaming(&request, &mut on_event);
-        let response = if let Some(deadline) = deadline {
+
+        // WHY(#4713): box both streaming branches so the deadline wrapper sees
+        // one future type whether the configured fallback chain is active or not.
+        let request_ref = &request;
+        let streaming_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
+            Box::pin(async move {
+                let completion = model_fallback::complete_streaming_with_registry_fallback(
+                    providers,
+                    request_ref,
+                    fallback_config,
+                    &mut on_event,
+                )
+                .await?;
+                Ok((completion.response, completion.model))
+            })
+        } else {
+            let requested_model = turn_model.clone();
+            Box::pin(async move {
+                let response = streaming_provider
+                    .complete_streaming(request_ref, &mut on_event)
+                    .await?;
+                Ok((response, requested_model))
+            })
+        };
+
+        let completion = if let Some(deadline) = deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 turn_budget_exceeded = true;
                 STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
                 break;
             }
-            if let Ok(resp) = tokio::time::timeout(remaining, streaming_fut).await {
-                resp
+            if let Ok(result) = tokio::time::timeout(remaining, streaming_fut).await {
+                result
             } else {
                 turn_budget_exceeded = true;
                 STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
@@ -854,20 +882,38 @@ pub(crate) async fn execute_streaming_with_deadline(
         } else {
             streaming_fut.await
         };
-        let response = match response {
-            Ok(resp) => {
-                providers.record_success(provider.name());
-                model_used = turn_model.clone();
+        let response = match completion {
+            Ok((resp, observed)) => {
+                if fallback_config.is_none() {
+                    providers.record_success(provider.name());
+                }
+                model_used = observed;
+
                 // WHY(#4831): log the outbound streaming request with actual route/surface.
                 if let Some(log) = audit_log {
+                    let (provider_name, deployment_target) =
+                        providers.find_provider(&model_used).map_or_else(
+                            || {
+                                (
+                                    "unknown".to_owned(),
+                                    DeploymentTarget::Cloud.as_str().to_owned(),
+                                )
+                            },
+                            |provider| {
+                                (
+                                    provider.name().to_owned(),
+                                    provider.deployment_target().as_str().to_owned(),
+                                )
+                            },
+                        );
                     let record = crate::audit::build_audit_record_for_request(
                         crate::audit::PromptAuditRequestRecordInput {
                             ctx,
                             session,
                             model: &model_used,
                             request: &request,
-                            provider: provider.name(),
-                            deployment_target: provider.deployment_target().as_str(),
+                            provider: &provider_name,
+                            deployment_target: &deployment_target,
                             surface_hash: &surface_hash,
                             options: log.record_options(),
                             chars_per_token: usize::try_from(
@@ -884,7 +930,9 @@ pub(crate) async fn execute_streaming_with_deadline(
                 resp
             }
             Err(e) => {
-                providers.record_error(provider.name(), &e);
+                if fallback_config.is_none() {
+                    providers.record_error(provider.name(), &e);
+                }
                 return Err(e).context(error::LlmSnafu);
             }
         };
