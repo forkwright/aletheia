@@ -436,12 +436,7 @@ async fn assemble_context_missing_soul_returns_error() {
 
 #[test]
 fn pipeline_message_serde_roundtrip() {
-    let msg = PipelineMessage {
-        role: "user".to_owned(),
-        content: "Hello world".to_owned(),
-        token_estimate: 3,
-        cache_breakpoint: false,
-    };
+    let msg = PipelineMessage::text("user", "Hello world", 3);
     let json = serde_json::to_string(&msg).expect("serialize message");
     let back: PipelineMessage = serde_json::from_str(&json).expect("deserialize message");
     assert_eq!(msg.role, back.role, "role should roundtrip");

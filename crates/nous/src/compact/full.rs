@@ -97,17 +97,17 @@ pub(crate) fn render_steps(steps: &[Step]) -> Vec<PipelineMessage> {
         .iter()
         .flat_map(|step| {
             let mut messages = Vec::with_capacity(1 + step.observations.len());
-            messages.push(PipelineMessage {
-                role: "assistant".to_owned(),
-                content: step.self_note.clone(),
-                token_estimate: i64::try_from(step.self_note.len().div_ceil(4)).unwrap_or(i64::MAX),
-                cache_breakpoint: false,
-            });
-            messages.extend(step.observations.iter().map(|observation| PipelineMessage {
-                role: "user".to_owned(),
-                content: observation.body.clone(),
-                token_estimate: i64::try_from(observation.token_estimate).unwrap_or(i64::MAX),
-                cache_breakpoint: false,
+            messages.push(PipelineMessage::text(
+                "assistant",
+                step.self_note.clone(),
+                i64::try_from(step.self_note.len().div_ceil(4)).unwrap_or(i64::MAX),
+            ));
+            messages.extend(step.observations.iter().map(|observation| {
+                PipelineMessage::text(
+                    "user",
+                    observation.body.clone(),
+                    i64::try_from(observation.token_estimate).unwrap_or(i64::MAX),
+                )
             }));
             messages
         })
@@ -137,27 +137,28 @@ pub(crate) fn apply_compaction(
     // WHY(#3781): mark the summary message with cache_breakpoint=true so
     // subsequent turns know to cache up to this point, achieving cache_read
     // pricing on the next turn after compaction.
-    messages.push(PipelineMessage {
-        role: "user".to_owned(),
-        content: format!("[Conversation summary FROM compaction]\n{summary}"),
-        token_estimate: summary_tokens,
-        cache_breakpoint: true,
-    });
+    messages.push(
+        PipelineMessage::text(
+            "user",
+            format!("[Conversation summary FROM compaction]\n{summary}"),
+            summary_tokens,
+        )
+        .with_cache_breakpoint(true),
+    );
 
     // NOTE: re-inject critical files before preserved messages
     let mut restored_files = Vec::new();
     let files_to_restore = critical_files.into_iter().take(config.max_critical_files);
 
     for file in files_to_restore {
-        messages.push(PipelineMessage {
-            role: "user".to_owned(),
-            content: format!(
+        messages.push(PipelineMessage::text(
+            "user",
+            format!(
                 "[Critical file restored after compaction: {}]\n{}",
                 file.path, file.content
             ),
-            token_estimate: file.token_estimate,
-            cache_breakpoint: false,
-        });
+            file.token_estimate,
+        ));
         restored_files.push(file.path);
     }
 
@@ -217,7 +218,7 @@ pub(crate) fn identify_critical_files(
     let recent = messages.get(lookback_start..).unwrap_or(&[]);
 
     for msg in recent {
-        if msg.role != "user" {
+        if !msg.is_tool_result() {
             continue;
         }
         // WHY: tool results with file operations contain the file path and content
@@ -293,12 +294,7 @@ mod tests {
     use crate::memory::step::{Observation, Step};
 
     fn make_text_msg(role: &str, content: &str, tokens: i64) -> PipelineMessage {
-        PipelineMessage {
-            role: role.to_owned(),
-            content: content.to_owned(),
-            token_estimate: tokens,
-            cache_breakpoint: false,
-        }
+        PipelineMessage::text(role, content, tokens)
     }
 
     fn make_step(index: usize, self_note: &str, observation_body: &str) -> Step {
@@ -327,12 +323,7 @@ mod tests {
 
     fn make_tool_msg(tool_name: &str, content: &str, tokens: i64) -> PipelineMessage {
         let ts = jiff::Timestamp::UNIX_EPOCH;
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: format_tool_result(tool_name, ts, content),
-            token_estimate: tokens,
-            cache_breakpoint: false,
-        }
+        PipelineMessage::text("user", format_tool_result(tool_name, ts, content), tokens)
     }
 
     #[test]

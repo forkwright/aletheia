@@ -721,7 +721,7 @@ pub(super) fn classify_signals(
 pub(super) fn build_messages(
     pipeline_messages: &[crate::pipeline::PipelineMessage],
 ) -> Vec<hermeneus::types::Message> {
-    use hermeneus::types::{Content, Message, Role};
+    use hermeneus::types::{Message, Role};
 
     pipeline_messages
         .iter()
@@ -733,10 +733,49 @@ pub(super) fn build_messages(
                 "system" => Role::System,
                 _ => Role::User,
             },
-            content: Content::Text(m.content.clone()),
+            content: content_for_pipeline_message(m),
             cache_breakpoint: m.cache_breakpoint,
         })
         .collect()
+}
+
+fn content_for_pipeline_message(m: &crate::pipeline::PipelineMessage) -> hermeneus::types::Content {
+    use hermeneus::types::{Content, ContentBlock};
+
+    match m.role.as_str() {
+        "assistant" => match (&m.tool_call_id, &m.tool_name) {
+            (Some(tool_call_id), Some(tool_name)) => match serde_json::from_str(&m.content) {
+                Ok(input) => Content::Blocks(vec![ContentBlock::ToolUse {
+                    id: tool_call_id.clone(),
+                    name: tool_name.clone(),
+                    input,
+                }]),
+                Err(error) => {
+                    warn!(
+                        tool_call_id = %tool_call_id,
+                        tool_name = %tool_name,
+                        %error,
+                        "historical tool-use input is not valid JSON; using assistant text content"
+                    );
+                    Content::Text(m.content.clone())
+                }
+            },
+            _ => Content::Text(m.content.clone()),
+        },
+        "tool_result" => {
+            if let Some(tool_call_id) = &m.tool_call_id {
+                Content::Blocks(vec![ContentBlock::ToolResult {
+                    tool_use_id: tool_call_id.clone(),
+                    content: ToolResultContent::Text(m.content.clone()),
+                    is_error: m.tool_is_error,
+                }])
+            } else {
+                warn!("historical tool-result message is missing tool_call_id; using text content");
+                Content::Text(m.content.clone())
+            }
+        }
+        _ => Content::Text(m.content.clone()),
+    }
 }
 
 /// Outcome of executing a single tool call: the persisted [`ToolCall`]

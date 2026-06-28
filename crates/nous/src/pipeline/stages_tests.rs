@@ -122,12 +122,7 @@ impl ToolExecutor for CountingExecutor {
 }
 
 fn make_msg(role: &str, content: &str) -> PipelineMessage {
-    PipelineMessage {
-        role: role.to_owned(),
-        content: content.to_owned(),
-        token_estimate: 0,
-        cache_breakpoint: false,
-    }
+    PipelineMessage::text(role, content, 0)
 }
 
 fn config_with_preserve(preserve: usize) -> CompactConfig {
@@ -259,18 +254,8 @@ async fn full_compaction_uses_llm_summary() {
     ));
     let mut ctx = PipelineContext {
         messages: vec![
-            PipelineMessage {
-                role: "user".to_owned(),
-                content: "old context".to_owned(),
-                token_estimate: 90,
-                cache_breakpoint: false,
-            },
-            PipelineMessage {
-                role: "assistant".to_owned(),
-                content: "recent".to_owned(),
-                token_estimate: 1,
-                cache_breakpoint: false,
-            },
+            PipelineMessage::text("user", "old context", 90),
+            PipelineMessage::text("assistant", "recent", 1),
         ],
         ..PipelineContext::default()
     };
@@ -317,12 +302,7 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
     config.generation.context_window = 100;
     let providers = ProviderRegistry::new();
     let mut ctx = PipelineContext {
-        messages: vec![PipelineMessage {
-            role: "user".to_owned(),
-            content: "old context".to_owned(),
-            token_estimate: 90,
-            cache_breakpoint: false,
-        }],
+        messages: vec![PipelineMessage::text("user", "old context", 90)],
         ..PipelineContext::default()
     };
     let (emitter, captured) = capturing_emitter();

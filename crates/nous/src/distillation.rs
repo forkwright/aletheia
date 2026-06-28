@@ -2,10 +2,12 @@
 //! Distillation wiring: trigger logic and orchestration.
 
 use snafu::ResultExt;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use hermeneus::provider::LlmProvider;
-use hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
+use hermeneus::types::{
+    Content, ContentBlock, Message as HermeneusMessage, Role as HermeneusRole, ToolResultContent,
+};
 use melete::distill::{DistillConfig, DistillEngine, DistillResult};
 #[cfg(feature = "knowledge-store")]
 use melete::flush::{FlushItem, MemoryFlush};
@@ -502,13 +504,51 @@ pub fn convert_to_hermeneus_messages(history: &[mneme::types::Message]) -> Vec<H
             };
             HermeneusMessage {
                 role,
-                content: Content::Text(msg.content.clone()),
+                content: distillation_content_for_message(msg),
                 cache_breakpoint: false,
             }
         })
         .collect()
 }
 
+fn distillation_content_for_message(msg: &mneme::types::Message) -> Content {
+    match msg.role {
+        MnemeRole::Assistant => match (&msg.tool_call_id, &msg.tool_name) {
+            (Some(tool_call_id), Some(tool_name)) => match serde_json::from_str(&msg.content) {
+                Ok(input) => Content::Blocks(vec![ContentBlock::ToolUse {
+                    id: tool_call_id.clone(),
+                    name: tool_name.clone(),
+                    input,
+                }]),
+                Err(error) => {
+                    warn!(
+                        tool_call_id = %tool_call_id,
+                        tool_name = %tool_name,
+                        %error,
+                        "historical distillation tool-use input is not valid JSON; using assistant text content"
+                    );
+                    Content::Text(msg.content.clone())
+                }
+            },
+            _ => Content::Text(msg.content.clone()),
+        },
+        MnemeRole::ToolResult => {
+            if let Some(tool_call_id) = &msg.tool_call_id {
+                Content::Blocks(vec![ContentBlock::ToolResult {
+                    tool_use_id: tool_call_id.clone(),
+                    content: ToolResultContent::Text(msg.content.clone()),
+                    is_error: None,
+                }])
+            } else {
+                warn!(
+                    "historical distillation tool-result message is missing tool_call_id; using text content"
+                );
+                Content::Text(msg.content.clone())
+            }
+        }
+        _ => Content::Text(msg.content.clone()),
+    }
+}
 #[expect(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
@@ -884,6 +924,18 @@ mod tests {
                 id: 3,
                 session_id: "s".to_owned(),
                 seq: 3,
+                role: MnemeRole::Assistant,
+                content: r#"{"path":"README.md"}"#.to_owned(),
+                tool_call_id: Some("tc-1".to_owned()),
+                tool_name: Some("read".to_owned()),
+                token_estimate: 0,
+                is_distilled: false,
+                created_at: String::new(),
+            },
+            mneme::types::Message {
+                id: 4,
+                session_id: "s".to_owned(),
+                seq: 4,
                 role: MnemeRole::ToolResult,
                 content: "tool output".to_owned(),
                 tool_call_id: Some("tc-1".to_owned()),
@@ -894,9 +946,39 @@ mod tests {
             },
         ];
         let converted = convert_to_hermeneus_messages(&messages);
-        assert_eq!(converted.len(), 3);
+        assert_eq!(converted.len(), 4);
         assert_eq!(converted[0].role, HermeneusRole::System);
         assert_eq!(converted[1].role, HermeneusRole::User);
-        assert_eq!(converted[2].role, HermeneusRole::User);
+        assert_eq!(converted[2].role, HermeneusRole::Assistant);
+        assert_eq!(converted[3].role, HermeneusRole::User);
+        match &converted[2].content {
+            Content::Blocks(blocks) => match &blocks[0] {
+                ContentBlock::ToolUse { id, name, input } => {
+                    assert_eq!(id, "tc-1");
+                    assert_eq!(name, "read");
+                    assert_eq!(input["path"], "README.md");
+                }
+                other => panic!("expected tool_use block, got {other:?}"),
+            },
+            other => panic!("expected typed assistant content, got {other:?}"),
+        }
+        match &converted[3].content {
+            Content::Blocks(blocks) => match &blocks[0] {
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                    is_error,
+                } => {
+                    assert_eq!(tool_use_id, "tc-1");
+                    assert_eq!(*is_error, None);
+                    match content {
+                        ToolResultContent::Text(text) => assert_eq!(text, "tool output"),
+                        other => panic!("expected text tool result, got {other:?}"),
+                    }
+                }
+                other => panic!("expected tool_result block, got {other:?}"),
+            },
+            other => panic!("expected typed tool result content, got {other:?}"),
+        }
     }
 }
