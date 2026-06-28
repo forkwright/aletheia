@@ -455,3 +455,78 @@ fn consolidation_rate_limit_is_per_nous() {
         "bob should have no scoped audit history"
     );
 }
+
+#[test]
+fn prune_consolidation_audit_removes_old_rows_and_indexes() {
+    let store = make_store();
+    for (id, nous_id, consolidated_at) in [
+        ("audit-old-alice", "alice", "2026-01-01T00:00:00Z"),
+        ("audit-old-bob", "bob", "2026-01-02T00:00:00Z"),
+        ("audit-new-alice", "alice", "2026-05-01T00:00:00Z"),
+    ] {
+        store
+            .record_consolidation_audit(&ConsolidationAuditRecord {
+                id: id.to_owned(),
+                nous_id: nous_id.to_owned(),
+                trigger_type: "entity_overflow".to_owned(),
+                trigger_id: format!("entity-{nous_id}"),
+                original_count: 12,
+                consolidated_count: 3,
+                original_fact_ids: "[]".to_owned(),
+                consolidated_fact_ids: "[]".to_owned(),
+                consolidated_at: consolidated_at.to_owned(),
+            })
+            .expect("audit write succeeds");
+    }
+
+    let pruned = store
+        .prune_consolidation_audit_before("2026-04-01T00:00:00Z")
+        .expect("prune succeeds");
+    assert_eq!(pruned, 2);
+
+    let audit_rows = store
+        .run_query(
+            "?[id] := *consolidation_audit{id}",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("query audit rows");
+    let audit_ids: Vec<String> = (0..audit_rows.row_count())
+        .filter_map(|idx| audit_rows.get_string(idx, "id"))
+        .collect();
+    assert_eq!(audit_ids, vec!["audit-new-alice".to_owned()]);
+
+    let recorded_at_rows = store
+        .run_query(
+            "?[id] := *consolidation_audit_recorded_at{recorded_at, id}",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("query recorded-at index rows");
+    let recorded_at_ids: Vec<String> = (0..recorded_at_rows.row_count())
+        .filter_map(|idx| recorded_at_rows.get_string(idx, "id"))
+        .collect();
+    assert_eq!(recorded_at_ids, vec!["audit-new-alice".to_owned()]);
+
+    let nous_rows = store
+        .run_query(
+            "?[id] := *consolidation_audit_nous_recorded_at{nous_id, recorded_at, id}",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("query nous index rows");
+    let nous_ids: Vec<String> = (0..nous_rows.row_count())
+        .filter_map(|idx| nous_rows.get_string(idx, "id"))
+        .collect();
+    assert_eq!(nous_ids, vec!["audit-new-alice".to_owned()]);
+
+    assert_eq!(
+        store
+            .last_consolidation_time("alice")
+            .expect("alice lookup succeeds"),
+        Some("2026-05-01T00:00:00Z".to_owned())
+    );
+    assert_eq!(
+        store
+            .last_consolidation_time("bob")
+            .expect("bob lookup succeeds"),
+        None
+    );
+}

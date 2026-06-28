@@ -23,6 +23,21 @@ use crate::knowledge::{
 use crate::knowledge_store::KnowledgeStore;
 use eidos::workspace::ProjectId;
 
+fn datalog_string_literal(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_owned())
+}
+
+fn datalog_row(values: &[&str]) -> String {
+    format!(
+        "[{}]",
+        values
+            .iter()
+            .map(|value| datalog_string_literal(value))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
 /// Convert a non-negative `i64` from a Datalog row to `usize`.
 ///
 /// Negative values indicate data corruption in the knowledge store (counts
@@ -50,6 +65,11 @@ impl KnowledgeStore {
     )]
     pub(crate) fn init_consolidation_audit(&self) -> crate::error::Result<()> {
         self.run_mut_query(CONSOLIDATION_AUDIT_DDL, BTreeMap::new())?;
+        self.run_mut_query(super::CONSOLIDATION_AUDIT_RECORDED_AT_DDL, BTreeMap::new())?;
+        self.run_mut_query(
+            super::CONSOLIDATION_AUDIT_NOUS_RECORDED_AT_DDL,
+            BTreeMap::new(),
+        )?;
         Ok(())
     }
 
@@ -737,6 +757,26 @@ impl KnowledgeStore {
             DataValue::Str(record.consolidated_at.clone().into()),
         );
         self.run_mut_query(script, params)?;
+        let recorded_at_index_script = r"
+?[recorded_at, id, nous_id] <- [[$recorded_at, $id, $nous_id]]
+:put consolidation_audit_recorded_at {recorded_at, id => nous_id}
+";
+        let mut index_params = BTreeMap::new();
+        index_params.insert("id".to_owned(), DataValue::Str(record.id.clone().into()));
+        index_params.insert(
+            "nous_id".to_owned(),
+            DataValue::Str(record.nous_id.clone().into()),
+        );
+        index_params.insert(
+            "recorded_at".to_owned(),
+            DataValue::Str(record.consolidated_at.clone().into()),
+        );
+        self.run_mut_query(recorded_at_index_script, index_params.clone())?;
+        let nous_index_script = r"
+?[nous_id, recorded_at, id, present] <- [[$nous_id, $recorded_at, $id, true]]
+:put consolidation_audit_nous_recorded_at {nous_id, recorded_at, id => present}
+";
+        self.run_mut_query(nous_index_script, index_params)?;
         Ok(())
     }
 
@@ -746,9 +786,8 @@ impl KnowledgeStore {
         nous_id: &str,
     ) -> Result<Option<String>, ConsolidationError> {
         let script = r"
-?[consolidated_at] := *consolidation_audit{nous_id, consolidated_at},
-    nous_id == $nous_id
-:sort -consolidated_at
+?[recorded_at] := *consolidation_audit_nous_recorded_at{nous_id: $nous_id, recorded_at}
+:sort -recorded_at
 :limit 1
 ";
         let mut params = BTreeMap::new();
@@ -765,9 +804,111 @@ impl KnowledgeStore {
         } else {
             Ok(Some(
                 // kanon:ignore RUST/no-result-unwrap-or-default — optional timestamp: empty string yields Ok(None) upstream
-                result.get_string(0, "consolidated_at").unwrap_or_default(),
+                result.get_string(0, "recorded_at").unwrap_or_default(),
             ))
         }
+    }
+
+    /// Prune consolidation audit rows older than `cutoff`.
+    ///
+    /// `cutoff` must use the same sortable timestamp format as
+    /// `ConsolidationAuditRecord::consolidated_at`.
+    pub fn prune_consolidation_audit_before(
+        &self,
+        cutoff: &str,
+    ) -> Result<usize, ConsolidationError> {
+        let mut params = BTreeMap::new();
+        params.insert("cutoff".to_owned(), DataValue::Str(cutoff.into()));
+        let rows = self
+            .run_query(
+                r"
+?[recorded_at, id, nous_id] :=
+    *consolidation_audit_recorded_at{recorded_at, id, nous_id},
+    recorded_at < $cutoff
+",
+                params,
+            )
+            .map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+        if rows.is_empty() {
+            return Ok(0);
+        }
+
+        let mut prune_keys = Vec::<(String, String, String)>::new();
+        for row in rows.rows() {
+            let Some(recorded_at) = row.first().and_then(DataValue::get_str) else {
+                continue;
+            };
+            let Some(id) = row.get(1).and_then(DataValue::get_str) else {
+                continue;
+            };
+            let Some(nous_id) = row.get(2).and_then(DataValue::get_str) else {
+                continue;
+            };
+            prune_keys.push((recorded_at.to_owned(), id.to_owned(), nous_id.to_owned()));
+        }
+        if prune_keys.is_empty() {
+            return Ok(0);
+        }
+
+        let audit_rows = prune_keys
+            .iter()
+            .map(|(_, id, _)| datalog_row(&[id.as_str()]))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let recorded_at_index_rows = prune_keys
+            .iter()
+            .map(|(recorded_at, id, _)| datalog_row(&[recorded_at.as_str(), id.as_str()]))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let nous_index_rows = prune_keys
+            .iter()
+            .map(|(recorded_at, id, nous_id)| {
+                datalog_row(&[nous_id.as_str(), recorded_at.as_str(), id.as_str()])
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        self.run_mut_query(
+            &format!("?[id] <- [{audit_rows}] :rm consolidation_audit {{id}}"),
+            BTreeMap::new(),
+        )
+        .map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        self.run_mut_query(
+            &format!(
+                "?[recorded_at, id] <- [{recorded_at_index_rows}] :rm consolidation_audit_recorded_at {{recorded_at, id}}"
+            ),
+            BTreeMap::new(),
+        )
+        .map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+        self.run_mut_query(
+            &format!(
+                "?[nous_id, recorded_at, id] <- [{nous_index_rows}] :rm consolidation_audit_nous_recorded_at {{nous_id, recorded_at, id}}"
+            ),
+            BTreeMap::new(),
+        )
+        .map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
+
+        Ok(prune_keys.len())
     }
 
     /// Run a full consolidation cycle for a nous.

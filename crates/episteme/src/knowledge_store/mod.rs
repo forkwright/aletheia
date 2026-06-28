@@ -625,7 +625,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    pub(crate) const SCHEMA_VERSION: i64 = 21;
+    pub(crate) const SCHEMA_VERSION: i64 = 22;
     const MIN_SCHEMA_VERSION: i64 = 1;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 
@@ -979,6 +979,30 @@ impl KnowledgeStore {
         self.db
             .run(
                 crate::consolidation::CONSOLIDATION_AUDIT_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+        self.db
+            .run(
+                crate::consolidation::CONSOLIDATION_AUDIT_RECORDED_AT_DDL,
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+        self.db
+            .run(
+                crate::consolidation::CONSOLIDATION_AUDIT_NOUS_RECORDED_AT_DDL,
                 BTreeMap::new(),
                 ScriptMutability::Mutable,
             )

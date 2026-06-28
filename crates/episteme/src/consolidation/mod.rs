@@ -510,6 +510,21 @@ pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
     consolidated_at: String
 }";
 
+/// Datalog DDL for pruning consolidation audit rows by timestamp (#5674).
+pub const CONSOLIDATION_AUDIT_RECORDED_AT_DDL: &str = r":create consolidation_audit_recorded_at {
+    recorded_at: String, id: String =>
+    nous_id: String
+}";
+
+/// Datalog DDL for per-nous consolidation audit lookups (#5674).
+pub const CONSOLIDATION_AUDIT_NOUS_RECORDED_AT_DDL: &str = r":create consolidation_audit_nous_recorded_at {
+    nous_id: String, recorded_at: String, id: String =>
+    present: Bool default true
+}";
+
+/// Default consolidation audit retention window in days (#5674).
+pub const DEFAULT_CONSOLIDATION_AUDIT_RETENTION_DAYS: i64 = 90;
+
 /// Datalog DDL for the `fact_multiplicity` side-index (#3634).
 ///
 /// Side-indexed rather than folded into the `facts` relation so that the

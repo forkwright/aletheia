@@ -91,6 +91,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
         target_version: 21,
         run: KnowledgeStore::migrate_v20_to_v21,
     },
+    MigrationStep {
+        target_version: 22,
+        run: KnowledgeStore::migrate_v21_to_v22,
+    },
 ];
 
 #[cfg(feature = "mneme-engine")]
@@ -1518,6 +1522,93 @@ impl KnowledgeStore {
         self.stamp_schema_version(21, "v20->v21")?;
 
         tracing::info!("knowledge schema migration v20 -> v21 complete");
+        Ok(())
+    }
+
+    /// Migrate v21 -> v22: add consolidation audit timestamp indexes (#5674).
+    pub(super) fn migrate_v21_to_v22(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+
+        tracing::info!("migrating knowledge schema v21 -> v22");
+
+        if !self.relation_exists("consolidation_audit_recorded_at")? {
+            self.run_ddl(
+                crate::consolidation::CONSOLIDATION_AUDIT_RECORDED_AT_DDL,
+                "v21->v22 create consolidation_audit_recorded_at",
+            )?;
+        }
+        if !self.relation_exists("consolidation_audit_nous_recorded_at")? {
+            self.run_ddl(
+                crate::consolidation::CONSOLIDATION_AUDIT_NOUS_RECORDED_AT_DDL,
+                "v21->v22 create consolidation_audit_nous_recorded_at",
+            )?;
+        }
+
+        let rows = self
+            .db
+            .run(
+                "?[id, nous_id, consolidated_at] := *consolidation_audit{id, nous_id, consolidated_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v21->v22 read consolidation_audit: {e}"),
+                }
+                .build()
+            })?;
+        for row in &rows.rows {
+            let Some(id) = row.first().and_then(DataValue::get_str) else {
+                continue;
+            };
+            let Some(nous_id) = row.get(1).and_then(DataValue::get_str) else {
+                continue;
+            };
+            let Some(recorded_at) = row.get(2).and_then(DataValue::get_str) else {
+                continue;
+            };
+            let mut params = BTreeMap::new();
+            params.insert("id".to_owned(), DataValue::Str(id.into()));
+            params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+            params.insert("recorded_at".to_owned(), DataValue::Str(recorded_at.into()));
+            params.insert("present".to_owned(), DataValue::from(true));
+            self.db
+                .run(
+                    r"
+                    ?[recorded_at, id, nous_id] <- [[$recorded_at, $id, $nous_id]]
+                    :put consolidation_audit_recorded_at {recorded_at, id => nous_id}
+                    ",
+                    params.clone(),
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v21->v22 backfill consolidation_audit_recorded_at: {e}"),
+                    }
+                    .build()
+                })?;
+            self.db
+                .run(
+                    r"
+                    ?[nous_id, recorded_at, id, present] <- [[$nous_id, $recorded_at, $id, $present]]
+                    :put consolidation_audit_nous_recorded_at {nous_id, recorded_at, id => present}
+                    ",
+                    params,
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v21->v22 backfill consolidation_audit_nous_recorded_at: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        self.stamp_schema_version(22, "v21->v22")?;
+
+        tracing::info!("knowledge schema migration v21 -> v22 complete");
         Ok(())
     }
 }
