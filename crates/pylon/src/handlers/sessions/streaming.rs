@@ -282,7 +282,7 @@ pub async fn send_message(
     axum::extract::Extension(request_id): axum::extract::Extension<RequestId>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     Json(body): Json<SendMessageRequest>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+) -> Result<BoxedSse, ApiError> {
     require_role(&claims, Role::Operator)?;
 
     let idempotency_key =
@@ -349,89 +349,44 @@ pub async fn send_message(
     }
 
     let body_fingerprint = send_message_body_fingerprint(&content);
+    let turn_id = koina::ulid::Ulid::new().to_string();
 
     if let Some(ref key) = idempotency_key {
-        match state.idempotency_cache.check_or_insert(
+        match state.idempotency_cache.check_or_insert_with_in_flight_body(
             &claims.sub,
             key,
             &session_id,
             &body_fingerprint,
+            Some(send_message_idempotency_body(&turn_id, "running")),
         ) {
             LookupResult::Miss => {}
             LookupResult::Hit { body, .. } => {
-                tracing::info!(idempotency_key = %key, "idempotency cache hit — returning cached completion");
-                // NOTE: Decode the cached turn summary stored by the original request.
-                let cached: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
-                // SAFETY: serde_json::Value::Index returns Value::Null for absent keys (no panic)
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
-                )]
-                let stop_reason = cached["stop_reason"]
-                    .as_str()
-                    .unwrap_or("idempotency_replay")
-                    .to_owned();
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
-                )]
-                let input_tokens = cached["input_tokens"].as_u64().unwrap_or(0);
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
-                )]
-                let output_tokens = cached["output_tokens"].as_u64().unwrap_or(0);
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
-                )]
-                let cache_read_tokens = cached["cache_read_tokens"].as_u64().unwrap_or(0);
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "serde_json::Value Index returns Null for absent keys, never panics"
-                )]
-                let cache_write_tokens = cached["cache_write_tokens"].as_u64().unwrap_or(0);
-
-                // WHY(#3276): Use (seq, event) pair for type-compatibility with
-                // the normal streaming path. Idempotency replays use seq=0 since
-                // they are not recoverable turns.
-                let (tx, rx) = mpsc::channel::<(u64, SseEvent)>(1);
-                let _ = tx
-                    .send((
-                        0,
-                        SseEvent::MessageComplete {
-                            stop_reason,
-                            usage: UsageData {
-                                input_tokens,
-                                output_tokens,
-                                cache_read_tokens,
-                                cache_write_tokens,
-                            },
-                            request_id: Some(request_id.0.clone()),
-                        },
-                    ))
-                    .await;
-                drop(tx);
-                let turn_cancel = CancellationToken::new();
-                let stream = GuardedStream {
-                    inner: ReceiverStream::new(rx).map(sse_event_to_axum_with_id),
-                    _guard: AbortOnDrop {
-                        task: tokio::spawn(
-                            async {}.instrument(tracing::info_span!("idempotent_noop")),
-                        ),
-                        turn_cancel,
-                        _idem_guard: None,
-                        turn_buffer: None,
-                        abort_reason: "",
-                    },
-                };
-                return Ok(
-                    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await)
+                let existing_turn_id =
+                    cached_send_message_turn_id(&body).unwrap_or_else(|| turn_id.clone());
+                tracing::info!(
+                    idempotency_key = %key,
+                    turn_id = %existing_turn_id,
+                    "idempotency cache hit — replaying buffered turn stream"
                 );
+                if let Some(response) =
+                    replay_buffered_sse_stream(&state, &session_id, &existing_turn_id).await
+                {
+                    return Ok(response);
+                }
+                return Err(StreamTurnConflictSnafu {
+                    message: "idempotent turn exists but its replay buffer is no longer available",
+                    turn_id: existing_turn_id,
+                }
+                .build());
             }
-            LookupResult::Conflict => {
-                return Err(ConflictSnafu {
-                    message: "Request with this idempotency key is still in progress",
+            LookupResult::Conflict { body } => {
+                let existing_turn_id = body
+                    .as_deref()
+                    .and_then(cached_send_message_turn_id)
+                    .unwrap_or_else(|| turn_id.clone());
+                return Err(StreamTurnConflictSnafu {
+                    message: "request with this idempotency key is still in progress",
+                    turn_id: existing_turn_id,
                 }
                 .build());
             }
@@ -476,7 +431,6 @@ pub async fn send_message(
     // WHY(#3276): Create a turn buffer so events emitted before a disconnect
     // survive and can be replayed on reconnect. The turn task is aborted on
     // disconnect, so only already-buffered events are available for replay.
-    let turn_id = koina::ulid::Ulid::new().to_string();
     let turn_buf = state
         .turn_buffer_registry
         .get_or_create(&session_id, &turn_id)
@@ -559,23 +513,17 @@ pub async fn send_message(
                         ))
                         .await;
 
-                    // NOTE: Store the turn summary so cache-hit replays return real data.
+                    // WHY(#4865): Store the canonical turn id, not a lossy
+                    // completion summary. Duplicate completed requests replay
+                    // the original buffered event sequence by this id.
                     if let Some(ref key) = idem_key {
-                        let body = serde_json::json!({
-                            "stop_reason": result.stop_reason,
-                            "input_tokens": result.usage.input_tokens,
-                            "output_tokens": result.usage.output_tokens,
-                            "cache_read_tokens": result.usage.cache_read_tokens,
-                            "cache_write_tokens": result.usage.cache_write_tokens,
-                        })
-                        .to_string();
                         idem_cache.complete(
                             &idem_principal,
                             key,
                             &idem_session_id,
                             &idem_body_fingerprint,
                             axum::http::StatusCode::OK,
-                            body,
+                            send_message_idempotency_body(&turn_id, "completed"),
                         );
                     }
                     // WHY(#5453): Mark the idempotency guard completed so the shared
@@ -664,7 +612,8 @@ pub async fn send_message(
         },
     };
 
-    Ok(Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await))
+    Ok(Sse::new(boxed_event_stream(stream))
+        .keep_alive(gateway_keepalive(&state.config, "ping").await))
 }
 
 /// POST /api/v1/sessions/stream: stream a conversation turn (turn stream protocol).
@@ -832,17 +781,23 @@ pub async fn stream_turn(
                 }
                 .build());
             }
-            LookupResult::Conflict => {
+            LookupResult::Conflict { body } => {
+                let existing_turn_id = body
+                    .as_deref()
+                    .and_then(cached_stream_turn_id)
+                    .unwrap_or_else(|| turn_id.clone());
                 tracing::info!(
-                    client_turn_id = %turn_id,
+                    client_turn_id = %existing_turn_id,
                     "stream turn duplicate while original request is in flight"
                 );
-                if let Some(response) = existing_turn_stream(&state, &session_id, &turn_id).await {
+                if let Some(response) =
+                    existing_turn_stream(&state, &session_id, &existing_turn_id).await
+                {
                     return Ok(response);
                 }
                 return Err(StreamTurnConflictSnafu {
                     message: "stream turn already exists but is not ready for replay",
-                    turn_id,
+                    turn_id: existing_turn_id,
                 }
                 .build());
             }
@@ -1286,6 +1241,31 @@ async fn existing_turn_stream(
     )
 }
 
+async fn replay_buffered_sse_stream(
+    state: &SessionsState,
+    session_id: &str,
+    turn_id: &str,
+) -> Option<BoxedSse> {
+    let buf = state.turn_buffer_registry.get(session_id, turn_id).await?;
+    let handle = TurnBufferHandle::new(buf);
+    let snapshot = handle.snapshot_after(0).await;
+    if snapshot.events.is_empty() {
+        return None;
+    }
+
+    let stream = tokio_stream::iter(snapshot.events.into_iter().map(|event| {
+        Ok(Event::default()
+            .event(event.event_type)
+            .data(event.data)
+            .id(event.seq.to_string()))
+    }));
+
+    Some(
+        Sse::new(boxed_event_stream(stream))
+            .keep_alive(gateway_keepalive(&state.config, "ping").await),
+    )
+}
+
 fn send_message_body_fingerprint(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"send_message\0content\0");
@@ -1330,7 +1310,15 @@ fn stream_turn_idempotency_key(turn_id: &str) -> String {
     format!("stream_turn:{turn_id}")
 }
 
+fn send_message_idempotency_body(turn_id: &str, status: &str) -> String {
+    turn_idempotency_body(turn_id, status)
+}
+
 fn stream_turn_idempotency_body(turn_id: &str, status: &str) -> String {
+    turn_idempotency_body(turn_id, status)
+}
+
+fn turn_idempotency_body(turn_id: &str, status: &str) -> String {
     serde_json::json!({
         "turn_id": turn_id,
         "status": status,
@@ -1338,7 +1326,15 @@ fn stream_turn_idempotency_body(turn_id: &str, status: &str) -> String {
     .to_string()
 }
 
+fn cached_send_message_turn_id(body: &str) -> Option<String> {
+    cached_turn_id(body)
+}
+
 fn cached_stream_turn_id(body: &str) -> Option<String> {
+    cached_turn_id(body)
+}
+
+fn cached_turn_id(body: &str) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(body)
         .ok()
         .and_then(|value| {
