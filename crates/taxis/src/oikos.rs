@@ -155,6 +155,12 @@ impl Oikos {
         self.root.join("data").join("knowledge.fjall")
     }
 
+    /// The working checkpoint store directory (fjall persistent storage).
+    #[must_use]
+    pub fn working_checkpoint_db(&self) -> PathBuf {
+        self.root.join("data").join("working-checkpoints.fjall")
+    }
+
     /// The knowledge store directory for a single episteme cohort.
     #[must_use]
     pub fn knowledge_cohort_db(&self, cohort: &str) -> PathBuf {

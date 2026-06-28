@@ -206,6 +206,7 @@ Air-gapped operation is possible with:
 ### What stays local
 
 - **Session history** -> fjall (`instance/data/sessions.db`, directory name kept for compatibility)
+- **Working checkpoints** → fjall (`instance/data/working-checkpoints.fjall`)
 - **Knowledge graphs and vectors** → mneme (embedded Datalog engine)
 - **Embeddings** → computed locally by candle
 - **Agent workspaces** → local filesystem (`instance/nous/`)

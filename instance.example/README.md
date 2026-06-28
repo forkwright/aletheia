@@ -38,6 +38,8 @@ instance/
 │
 ├── data/                       # Runtime data stores
 │   ├── sessions.db/            # fjall-backed session store (directory, not a file)
+│   ├── working-checkpoints.fjall/
+│   │                           # fjall-backed <key_info> checkpoint store
 │   ├── knowledge.fjall/        # fjall-backed knowledge store
 │   ├── backups/                # Daemon-managed backup snapshots
 │   └── archive/                # Archived sessions exported as JSON
@@ -114,7 +116,7 @@ Tools, templates, hooks, and config all resolve through this cascade.
 | Shared tools & scripts | `shared/tools/`, `shared/bin/` | Runtime infrastructure |
 | Coordination state | `shared/coordination/` | Runtime traces, status |
 | API keys, OAuth tokens | `config/credentials/` | Deployment secrets |
-| Runtime databases | `data/` | fjall-backed session and knowledge stores |
+| Runtime databases | `data/` | fjall-backed session, working-checkpoint, and knowledge stores |
 
 ## Key Principles
 

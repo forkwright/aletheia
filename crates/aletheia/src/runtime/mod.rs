@@ -310,6 +310,32 @@ impl RuntimeBuilder {
         ));
         info!(path = %db_path.display(), "session store opened");
 
+        let working_checkpoint_store: Option<Arc<dyn organon::types::WorkingCheckpointStore>> =
+            if self.tool_services {
+                let store_path = self.oikos.working_checkpoint_db();
+                if let Some(parent) = store_path.parent() {
+                    std::fs::create_dir_all(parent).with_whatever_context(|_| {
+                        format!(
+                            "failed to CREATE working checkpoint data dir {}",
+                            parent.display()
+                        )
+                    })?;
+                }
+                let store: Arc<dyn organon::types::WorkingCheckpointStore> = Arc::new(
+                    nous::working_memory::FjallWorkingCheckpointStore::open(&store_path)
+                        .with_whatever_context(|_| {
+                            format!(
+                                "failed to open working checkpoint store at {}",
+                                store_path.display()
+                            )
+                        })?,
+                );
+                info!(path = %store_path.display(), "working checkpoint store opened");
+                Some(store)
+            } else {
+                None
+            };
+
         let auth_store_path = self.oikos.data().join("auth.fjall");
         let auth_facade = AuthFacade::new(
             AuthConfig {
@@ -595,7 +621,7 @@ impl RuntimeBuilder {
             });
 
         let tool_services = Arc::new(ToolServices {
-            working_checkpoint_store: None,
+            working_checkpoint_store,
             cross_nous,
             messenger,
             note_store,

@@ -1,8 +1,9 @@
 //! `aletheia backup`: whole-instance backup management.
 //!
 //! Operates on the instance backup set covering `knowledge.fjall`,
-//! `sessions.db`, configuration, and workspace data. The legacy fjall-only
-//! `backup verify <path>` path is still supported for existing backups.
+//! `sessions.db`, present `working-checkpoints.fjall`, configuration, and
+//! workspace data. The legacy fjall-only `backup verify <path>` path is still
+//! supported for existing backups.
 
 use std::path::{Path, PathBuf};
 

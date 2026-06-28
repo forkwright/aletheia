@@ -1,8 +1,10 @@
-//! Whole-instance backup: coherent snapshot of knowledge, sessions, config, and workspace data.
+//! Whole-instance backup: coherent snapshot of knowledge, sessions, working
+//! checkpoints, config, and workspace data.
 //!
 //! WHY(#4856): the legacy `FjallBackup` only copied `knowledge.fjall`. The
 //! `aletheia backup` command and the daemon's scheduled backup task now produce
-//! a backup *set* that includes `sessions.db`, configuration, and workspace data
+//! a backup *set* that includes `sessions.db`, configuration, workspace data,
+//! and present optional runtime stores such as `working-checkpoints.fjall`
 //! needed for run replay/review. A JSON manifest records every covered store,
 //! its source path, snapshot time, byte count, and verification status.
 
@@ -297,6 +299,7 @@ impl InstanceBackup {
     /// - `manifest.json` describing every covered store.
     /// - `stores/knowledge.fjall/` (required).
     /// - `stores/sessions.db/` (required).
+    /// - `stores/working-checkpoints.fjall/` when present.
     /// - `config/` copy of `instance/config/`.
     /// - `workspace/nous/`, `workspace/shared/`, `workspace/theke/` if present.
     /// - `workspace/configured/<agent>/` for configured agent workspaces inside the instance root.
@@ -312,6 +315,7 @@ impl InstanceBackup {
         let mut build = BackupBuild::new();
 
         self.copy_required_stores(&staging_path, &mut build)?;
+        self.copy_optional_fjall_stores(&staging_path, &mut build)?;
         self.copy_config(&staging_path, &mut build)?;
         self.copy_workspace_dirs(&staging_path, &mut build)?;
         self.copy_configured_agent_workspaces(&staging_path, &mut build)?;
@@ -481,6 +485,26 @@ impl InstanceBackup {
                     set_files_restrictive(&dst);
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn copy_optional_fjall_stores(
+        &self,
+        backup_path: &Path,
+        build: &mut BackupBuild,
+    ) -> error::Result<()> {
+        let name = "working-checkpoints.fjall";
+        let src = self.config.instance_root.join("data").join(name);
+        if src.exists() {
+            let backup_path_rel = PathBuf::from("stores").join(name);
+            build.copy_entry(
+                name,
+                src,
+                &backup_path.join(&backup_path_rel),
+                backup_path_rel,
+                true,
+            )?;
         }
         Ok(())
     }
@@ -1264,7 +1288,7 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
                 .unwrap();
         assert_eq!(manifest.version, MANIFEST_VERSION);
-        assert_eq!(manifest.stores.len(), 3); // knowledge, sessions, config
+        assert_eq!(manifest.stores.len(), 3); // required stores plus config
         assert!(manifest.stores.iter().any(|s| s.name == "knowledge.fjall"));
         assert!(manifest.stores.iter().any(|s| s.name == "sessions.db"));
         assert!(manifest.stores.iter().any(|s| s.name == "config"));
@@ -1682,6 +1706,71 @@ workspace = "{}"
         let result = InstanceBackup::verify_backup(&backup_path).unwrap();
         assert!(result.first_error.is_none());
         assert_eq!(result.total_keys, 2);
+    }
+
+    #[test]
+    fn create_backup_includes_working_checkpoint_store_when_present() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+
+        make_fjall_store_with_data(&instance_root.join("data").join("knowledge.fjall"), "k1");
+        make_fjall_store_with_data(&instance_root.join("data").join("sessions.db"), "s1");
+        make_fjall_store_with_data(
+            &instance_root.join("data").join("working-checkpoints.fjall"),
+            "w1",
+        );
+
+        let backup_dir = tmp.path().join("backups");
+        let config = InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir,
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        };
+
+        let manager = InstanceBackup::new(config);
+        let report = manager.create_backup().expect("backup succeeds");
+        let backup_path = report.backup_path.expect("backup path set");
+
+        let manifest: BackupManifest =
+            serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+                .unwrap();
+        assert!(
+            manifest.optional_stores.iter().any(|store| {
+                store.name == "working-checkpoints.fjall"
+                    && store.backup_path.as_path()
+                        == std::path::Path::new("stores/working-checkpoints.fjall")
+                    && store.status == "ok"
+            }),
+            "manifest should record working checkpoint store coverage"
+        );
+        assert!(
+            backup_path
+                .join("stores")
+                .join("working-checkpoints.fjall")
+                .join("version")
+                .is_file(),
+            "working checkpoint fjall store should be copied under stores/"
+        );
+
+        let result = InstanceBackup::verify_backup(&backup_path).unwrap();
+        assert!(result.first_error.is_none());
+        assert!(
+            result
+                .store_generations
+                .contains_key("working-checkpoints.fjall"),
+            "verification should capture working checkpoint store generation"
+        );
+        assert!(
+            result
+                .store_results
+                .iter()
+                .any(|(name, result)| name == "working-checkpoints.fjall" && result.is_ok()),
+            "verification should cover working checkpoint store"
+        );
     }
 
     /// #4950 regression: in-progress staging directories must never be listed

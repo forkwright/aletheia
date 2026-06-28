@@ -73,6 +73,10 @@ fn oikos_data_subpaths_are_under_data_directory() {
         PathBuf::from("/srv/instance/data/knowledge.fjall")
     );
     assert_eq!(
+        oikos.working_checkpoint_db(),
+        PathBuf::from("/srv/instance/data/working-checkpoints.fjall")
+    );
+    assert_eq!(
         oikos.knowledge_cohort_db("shared"),
         PathBuf::from("/srv/instance/data/knowledge.fjall/shared")
     );

@@ -109,8 +109,9 @@ journalctl --user -u aletheia-health --since "30 minutes ago"
 
 The daemon's backup maintenance task creates local whole-instance backup sets.
 Each set contains `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
-configuration, workspace directories, and optional local audit/archive data when
-present. Configure it in `instance/config/aletheia.toml`:
+`stores/working-checkpoints.fjall` when present, configuration, workspace
+directories, and optional local audit/archive data when present. Configure it
+in `instance/config/aletheia.toml`:
 
 ```toml
 [maintenance.backup]
@@ -376,7 +377,8 @@ aletheia backup --list --json    # machine-readable
 ## Restore from backup
 
 Restoring requires a complete instance backup set. Always stop the service,
-verify the set, move live stores aside, then copy both required stores back.
+verify the set, move live stores aside, then copy the required stores and any
+present optional working-checkpoint store back.
 
 ```bash
 systemctl --user stop aletheia
@@ -385,8 +387,12 @@ aletheia backup verify "$BACKUP"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mv instance/data/knowledge.fjall "instance/data/knowledge.fjall.pre-restore.$STAMP"
 mv instance/data/sessions.db     "instance/data/sessions.db.pre-restore.$STAMP"
+mv instance/data/working-checkpoints.fjall \
+  "instance/data/working-checkpoints.fjall.pre-restore.$STAMP" 2>/dev/null || true
 cp -a "$BACKUP/stores/knowledge.fjall" instance/data/knowledge.fjall
 cp -a "$BACKUP/stores/sessions.db"     instance/data/sessions.db
+cp -a "$BACKUP/stores/working-checkpoints.fjall" \
+  instance/data/working-checkpoints.fjall 2>/dev/null || true
 cp -a "$BACKUP/config/." instance/config/ 2>/dev/null || true
 cp -a "$BACKUP/workspace/." instance/ 2>/dev/null || true
 systemctl --user start aletheia
@@ -402,7 +408,12 @@ aletheia backup --prune --keep 5 --yes    # skip confirmation
 
 ## Export sessions as JSON (before deletion)
 
-No built-in JSON export exists since the SQLite-to-fjall migration (#3446). Archived sessions are already JSON in `instance/data/archive/sessions/`. The `aletheia backup --export-json` command referenced in older docs and in `scripts/backup-cron.sh` is removed; do not use it.
+No built-in JSON export exists for sessions or working checkpoints since the
+SQLite-to-fjall migration (#3446). Archived sessions are already JSON in
+`instance/data/archive/sessions/`. Working checkpoints are covered by
+whole-instance backups when `instance/data/working-checkpoints.fjall` is
+present. The `aletheia backup --export-json` command referenced in older docs
+and in `scripts/backup-cron.sh` is removed; do not use it.
 
 ## Verify backup integrity
 

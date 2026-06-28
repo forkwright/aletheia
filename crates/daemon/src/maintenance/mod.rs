@@ -11,7 +11,8 @@ pub(crate) mod db_monitor;
 pub(crate) mod drift_detection;
 /// Fjall knowledge store file-level backup with timestamped snapshots.
 pub mod fjall_backup;
-/// Whole-instance backup set covering knowledge, sessions, config, and workspace data.
+/// Whole-instance backup set covering knowledge, sessions, working checkpoints,
+/// config, and workspace data.
 pub mod instance_backup;
 /// Knowledge graph maintenance bridge trait and report types.
 pub(crate) mod knowledge;

@@ -7,6 +7,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Data | Location | Format | Description |
 |------|----------|--------|-------------|
 | Sessions & messages | `instance/data/sessions.db` | fjall LSM-tree | Conversation history, usage stats, agent notes (path name is historical) |
+| Working checkpoints | `instance/data/working-checkpoints.fjall` | fjall LSM-tree | Agent-curated `<key_info>` continuity written by `update_working_checkpoint` |
 | Knowledge graph | `instance/data/engine/` | Embedded Datalog engine | Entities, relationships, facts, embeddings |
 | Workspace files | `instance/nous/{id}/` | Mixed | Per-agent identity, memory, tools, hooks |
 | Shared resources | `instance/shared/` | Mixed | Cross-agent tools, skills, coordination |
@@ -15,7 +16,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Credentials | `instance/config/credentials/` | Various | API keys, OAuth tokens |
 | Signal data | `instance/signal/` | signal-cli | Phone account, contacts, message state |
 | Logs | `instance/logs/` | Text | Runtime logs |
-| Backups | `instance/data/backups/instance/` | Local files | Whole-instance backup sets with manifest, knowledge, sessions, config, and workspace data |
+| Backups | `instance/data/backups/instance/` | Local files | Whole-instance backup sets with manifest, knowledge, sessions, working checkpoints, config, and workspace data |
 | Archives | `instance/data/archive/` | JSON | Retained session exports before deletion |
 
 ## Storage locations
@@ -28,6 +29,8 @@ instance/
 ├── config/credentials/      # API keys
 ├── data/
 │   ├── sessions.db          # Session store (fjall LSM-tree; .db suffix is historical)
+│   ├── working-checkpoints.fjall
+│   │                        # Working checkpoint store for <key_info> continuity
 │   ├── engine/              # Knowledge graph (embedded Datalog engine)
 │   ├── backups/instance/    # Whole-instance backup sets
 │   └── archive/sessions/    # Archived session JSON files
@@ -70,6 +73,12 @@ The retention policy only deletes **closed** sessions (archived or distilled). A
 When `archiveBeforeDelete` is true, sessions deleted by age or by the cap are
 exported to `instance/data/archive/sessions/{session_id}.json` before removal.
 
+Working checkpoints are session-scoped runtime state. Production startup opens
+`instance/data/working-checkpoints.fjall`; the `update_working_checkpoint` tool
+writes agent-curated `<key_info>` there, and the turn-start hook reads it back
+on later turns and after process restart. The store prunes old entries on write
+and keeps the latest 20 checkpoints per session.
+
 ### Session cap
 
 `maxSessionsPerNous` (also accepted as the alias `max_sessions_per_nous`) controls the
@@ -99,9 +108,10 @@ aletheia backup
 
 Creates a local whole-instance backup set at `instance/data/backups/instance/{timestamp}/`.
 Each set includes `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
-`config/`, and present workspace directories (`workspace/nous`, `workspace/shared`,
-`workspace/theke`). Optional local data such as archives and prompt/prosoche audit
-logs is copied when present. The command does not upload data to cloud storage.
+`stores/working-checkpoints.fjall` when present, `config/`, and present workspace
+directories (`workspace/nous`, `workspace/shared`, `workspace/theke`). Optional
+local data such as archives and prompt/prosoche audit logs is copied when
+present. The command does not upload data to cloud storage.
 
 Verify a set before relying on it for recovery:
 
@@ -125,7 +135,9 @@ Keeps the 5 most recent backups, deletes the rest.
 
 ### Export as JSON
 
-No built-in JSON export exists for the session store since the SQLite-to-fjall migration (#3446). Archived sessions are already JSON in `instance/data/archive/sessions/`.
+No built-in JSON export exists for the session store or working-checkpoint store
+since the SQLite-to-fjall migration (#3446). Archived sessions are already JSON
+in `instance/data/archive/sessions/`.
 
 ## Deletion
 
@@ -152,6 +164,7 @@ rm -rf instance/nous/AGENT_ID/
 
 ```bash
 rm -rf instance/data/sessions.db
+rm -rf instance/data/working-checkpoints.fjall
 rm -rf instance/data/engine/
 rm -rf instance/nous/*/memory/
 ```
