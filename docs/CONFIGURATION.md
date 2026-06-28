@@ -203,10 +203,10 @@ HTTP gateway serving the API.
 | `headerName` | string | `"x-requested-with"` | Required header name |
 | `headerValue` | secret string | `"aletheia"` | Required header value; redacted from config API responses |
 
-The documented bootstrap header for first-party clients and curl is
-`X-Requested-With: aletheia`. Operators who set a custom `headerValue` must
-provision the same value into their clients through local config or deployment
-secrets; the runtime config API redacts it.
+First-party clients and curl workflows should discover the active header from
+`GET /api/v1/client/contract` and include it on state-changing requests. The
+runtime config API redacts `headerValue`; the client-contract endpoint is
+authenticated and returns only the header material needed by API clients.
 
 ### gateway.rate_limit
 

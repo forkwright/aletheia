@@ -110,6 +110,12 @@ pub struct ConnectionConfig {
     /// Maximum time in seconds to wait for a connection attempt before timing out.
     #[serde(default = "default_connect_timeout_secs")]
     pub connect_timeout_secs: u64,
+    /// Discovered CSRF header name for mutating API requests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csrf_header_name: Option<String>,
+    /// Discovered CSRF header value for mutating API requests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub csrf_header_value: Option<String>,
 }
 
 impl std::fmt::Debug for ConnectionConfig {
@@ -122,6 +128,11 @@ impl std::fmt::Debug for ConnectionConfig {
             )
             .field("auto_reconnect", &self.auto_reconnect)
             .field("connect_timeout_secs", &self.connect_timeout_secs)
+            .field("csrf_header_name", &self.csrf_header_name)
+            .field(
+                "csrf_header_value",
+                &self.csrf_header_value.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }
@@ -144,6 +155,8 @@ impl Default for ConnectionConfig {
             auth_token: None,
             auto_reconnect: true,
             connect_timeout_secs: DEFAULT_CONNECT_TIMEOUT.as_secs(),
+            csrf_header_name: None,
+            csrf_header_value: None,
         }
     }
 }
@@ -154,6 +167,31 @@ impl ConnectionConfig {
     #[must_use]
     pub(crate) fn connect_timeout(&self) -> Duration {
         Duration::from_secs(self.connect_timeout_secs)
+    }
+
+    /// Discovered CSRF header material, if CSRF is enabled on the server.
+    #[must_use]
+    pub(crate) fn csrf_header(&self) -> Option<skene::api::client::CsrfHeader> {
+        let name = self.csrf_header_name.as_ref()?.trim();
+        let value = self.csrf_header_value.as_ref()?.trim();
+        if name.is_empty() || value.is_empty() {
+            return None;
+        }
+        Some(skene::api::client::CsrfHeader {
+            name: name.to_owned(),
+            value: value.to_owned(),
+        })
+    }
+
+    /// Store discovered CSRF material from the server contract.
+    pub(crate) fn apply_client_contract(&mut self, contract: &skene::api::client::ClientContract) {
+        if let Some(header) = contract.csrf.required_header() {
+            self.csrf_header_name = Some(header.name);
+            self.csrf_header_value = Some(header.value);
+        } else {
+            self.csrf_header_name = None;
+            self.csrf_header_value = None;
+        }
     }
 }
 
@@ -287,6 +325,7 @@ mod tests {
         assert!(cfg.auth_token.is_none());
         assert!(cfg.auto_reconnect);
         assert_eq!(cfg.connect_timeout_secs, 30);
+        assert!(cfg.csrf_header().is_none());
     }
 
     #[test]
@@ -305,6 +344,8 @@ mod tests {
             auth_token: Some("secret-token".to_string()),
             auto_reconnect: false,
             connect_timeout_secs: 45,
+            csrf_header_name: None,
+            csrf_header_value: None,
         };
         let serialized = toml::to_string(&cfg).unwrap();
         let deserialized: ConnectionConfig = toml::from_str(&serialized).unwrap();

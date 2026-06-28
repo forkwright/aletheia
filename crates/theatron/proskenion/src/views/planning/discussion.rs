@@ -1,9 +1,7 @@
 //! Discussion panel: gray-area questions, option cards, and answer flow.
 
 use dioxus::prelude::*;
-use skene::api::routes::planning::{
-    project_discussion_answer_url, project_discussion_reopen_url,
-};
+use skene::api::routes::planning::{project_discussion_answer_url, project_discussion_reopen_url};
 
 use crate::api::client::authenticated_client;
 use crate::components::option_card::OptionCard;

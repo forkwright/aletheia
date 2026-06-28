@@ -72,18 +72,7 @@ pub(crate) fn SetupWizard() -> Element {
                                     } else {
                                         Some(data.auth_token.expose_secret().to_owned())
                                     };
-
-                                    {
-                                        let mut store = server_store.write();
-                                        let id = store.add(
-                                            "My Aletheia".to_string(),
-                                            data.server_url.clone(),
-                                            token.clone(),
-                                        );
-                                        store.set_active(&id);
-                                    }
-
-                                    let new_config = ConnectionConfig {
+                                    let mut new_config = ConnectionConfig {
                                         server_url: data.server_url.clone(),
                                         auth_token: token,
                                         auto_reconnect: true,
@@ -94,32 +83,48 @@ pub(crate) fn SetupWizard() -> Element {
                                     let density = data.selected_density;
                                     drop(data);
 
-                                    // WHY: unrecognized slugs fall back
-                                    // to System rather than erroring.
-                                    let new_mode =
-                                        ThemeMode::from_slug(selected_theme.as_str())
-                                            .unwrap_or(ThemeMode::System);
-                                    theme_mode.set(new_mode);
-                                    {
-                                        let mut app = appearance.write();
-                                        app.theme = selected_theme;
-                                        app.density = density;
-                                        if !selected_accent.is_empty() {
-                                            app.accent_color = selected_accent;
+                                    spawn(async move {
+                                        crate::services::connection::refresh_client_contract(
+                                            &mut new_config,
+                                        )
+                                        .await;
+
+                                        {
+                                            let mut store = server_store.write();
+                                            let id = store.add_connection(
+                                                "My Aletheia".to_string(),
+                                                &new_config,
+                                            );
+                                            store.set_active(&id);
                                         }
-                                    }
 
-                                    // WHY: The canonical settings store owns the active
-                                    // connection; write it once and update the shared signal.
-                                    {
-                                        let store = server_store.read();
-                                        let app = appearance.read();
-                                        let keys = keybindings.read();
-                                        settings_config::save_state(&store, &app, &keys);
-                                    }
-                                    connection_config.set(new_config);
+                                        // WHY: unrecognized slugs fall back
+                                        // to System rather than erroring.
+                                        let new_mode =
+                                            ThemeMode::from_slug(selected_theme.as_str())
+                                                .unwrap_or(ThemeMode::System);
+                                        theme_mode.set(new_mode);
+                                        {
+                                            let mut app = appearance.write();
+                                            app.theme = selected_theme;
+                                            app.density = density;
+                                            if !selected_accent.is_empty() {
+                                                app.accent_color = selected_accent;
+                                            }
+                                        }
 
-                                    is_first_run.set(false);
+                                        // WHY: The canonical settings store owns the active
+                                        // connection; write it once and update the shared signal.
+                                        {
+                                            let store = server_store.read();
+                                            let app = appearance.read();
+                                            let keys = keybindings.read();
+                                            settings_config::save_state(&store, &app, &keys);
+                                        }
+                                        connection_config.set(new_config);
+
+                                        is_first_run.set(false);
+                                    });
                                 }
                             }
                         },

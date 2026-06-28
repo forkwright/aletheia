@@ -26,6 +26,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     },
     ClientRouteContract {
         method: "GET",
+        path_template: "/api/v1/client/contract",
+    },
+    ClientRouteContract {
+        method: "GET",
         path_template: "/api/v1/nous",
     },
     ClientRouteContract {

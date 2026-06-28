@@ -3,7 +3,6 @@
 use std::time::Duration;
 
 use reqwest::Client;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use snafu::{ResultExt, Snafu};
 
 use crate::state::commands::ServerCommandDescriptor;
@@ -315,23 +314,16 @@ pub(crate) fn authenticated_streaming_client(config: &ConnectionConfig) -> Clien
 }
 
 fn build_authenticated_client(config: &ConnectionConfig, timeout: Option<Duration>) -> Client {
-    let mut headers = HeaderMap::new();
-
-    if let Some(ref token) = config.auth_token
-        && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}"))
-    {
-        headers.insert(AUTHORIZATION, val);
-    }
+    let csrf = config.csrf_header();
+    let result = if timeout.is_some() {
+        skene::api::client::build_http_client(config.auth_token.as_deref(), csrf.as_ref())
+    } else {
+        skene::api::client::build_streaming_client(config.auth_token.as_deref(), csrf.as_ref())
+    };
 
     // WHY: fall back to default client if builder fails (e.g. no TLS provider
     // installed yet); views already handle HTTP errors gracefully.
-    let mut builder = Client::builder()
-        .default_headers(headers)
-        .connect_timeout(Duration::from_secs(30));
-    if let Some(timeout) = timeout {
-        builder = builder.timeout(timeout);
-    }
-    builder.build().unwrap_or_else(|err| {
+    result.unwrap_or_else(|err| {
         tracing::warn!(error = %err, "failed to build authenticated HTTP client");
         Client::new()
     })
@@ -476,6 +468,62 @@ mod tests {
         Ok((format!("http://{addr}"), handle))
     }
 
+    async fn spawn_csrf_required_endpoint(
+        header_name: &'static str,
+        header_value: &'static str,
+    ) -> std::io::Result<(String, JoinHandle<std::io::Result<()>>)> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let handle = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+
+            loop {
+                let n = stream.read(&mut chunk).await?;
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..n]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+
+            let request = String::from_utf8_lossy(&request);
+            let has_csrf = request.lines().any(|line| {
+                line.split_once(':').is_some_and(|(name, value)| {
+                    name.eq_ignore_ascii_case(header_name) && value.trim() == header_value
+                })
+            });
+            let lacks_bootstrap_header = request.lines().all(|line| {
+                line.split_once(':').is_none_or(|(name, value)| {
+                    !name.eq_ignore_ascii_case("x-requested-with") || value.trim() != "aletheia"
+                })
+            });
+
+            let body = if has_csrf && lacks_bootstrap_header {
+                r#"{"ok":true}"#
+            } else {
+                r#"{"error":{"code":"csrf_rejected","message":"missing or invalid CSRF header"}}"#
+            };
+            let status_line = if has_csrf && lacks_bootstrap_header {
+                "HTTP/1.1 200 OK"
+            } else {
+                "HTTP/1.1 403 Forbidden"
+            };
+            let response = format!(
+                "{status_line}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+
+            stream.write_all(response.as_bytes()).await?;
+            Ok(())
+        });
+
+        Ok((format!("http://{addr}"), handle))
+    }
+
     #[tokio::test]
     async fn fetch_agent_roster_sends_bearer_token() -> Result<(), Box<dyn Error>> {
         install_crypto();
@@ -514,6 +562,32 @@ mod tests {
             err.connection_failure_reason(),
             "Authentication failed while loading the agent roster. Check the server auth token."
         );
+        server.await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn authenticated_client_sends_configured_csrf_header() -> Result<(), Box<dyn Error>> {
+        install_crypto();
+        let (server_url, server) =
+            spawn_csrf_required_endpoint("x-custom-csrf", "custom-csrf-value").await?;
+        let config = ConnectionConfig {
+            server_url,
+            csrf_header_name: Some("x-custom-csrf".to_string()),
+            csrf_header_value: Some("custom-csrf-value".to_string()),
+            ..ConnectionConfig::default()
+        };
+
+        let resp = authenticated_client(&config)
+            .post(format!(
+                "{}/api/v1/sessions",
+                config.server_url.trim_end_matches('/')
+            ))
+            .body("{}")
+            .send()
+            .await?;
+
+        assert!(resp.status().is_success());
         server.await??;
         Ok(())
     }

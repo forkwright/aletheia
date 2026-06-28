@@ -30,7 +30,6 @@
 
 use std::time::{Duration, Instant};
 
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use snafu::{ResultExt, Snafu};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -88,6 +87,13 @@ pub enum ConnectionError {
         /// Underlying HTTP error.
         source: reqwest::Error,
     },
+
+    /// Client configuration is not valid for HTTP headers.
+    #[snafu(display("invalid client configuration: {message}"))]
+    ClientConfig {
+        /// Human-readable configuration error.
+        message: String,
+    },
 }
 
 /// Readiness reported by a pylon health check.
@@ -128,28 +134,18 @@ impl PylonClient {
     /// Returns `InvalidToken` if the auth token contains non-ASCII characters.
     /// Returns `ClientBuild` if the reqwest client cannot be constructed.
     pub(crate) fn new(config: &ConnectionConfig) -> Result<Self, ConnectionError> {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        // CSRF mitigation: documented default bootstrap header for pylon.
-        headers.insert("x-requested-with", HeaderValue::from_static("aletheia"));
-
-        if let Some(ref token) = config.auth_token {
-            let value = format!("Bearer {token}");
-            // SAFETY: log only the error kind, not the token value.
-            let header_value = HeaderValue::from_str(&value).map_err(|e| {
-                tracing::debug!(kind = %e, "auth token contains invalid header characters"); // kanon:ignore SECURITY/credential-logging -- logs only the error kind, not the token
-                ConnectionError::InvalidToken
-            })?;
-            headers.insert(AUTHORIZATION, header_value);
-        }
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(30))
-            .cookie_store(true)
-            .build()
-            .context(ClientBuildSnafu)?;
+        let csrf = config.csrf_header();
+        let client =
+            skene::api::client::build_http_client(config.auth_token.as_deref(), csrf.as_ref())
+                .map_err(|err| match err {
+                    skene::api::ApiError::InvalidToken => ConnectionError::InvalidToken,
+                    skene::api::ApiError::Http { source, .. } => {
+                        ConnectionError::ClientBuild { source }
+                    }
+                    other => ConnectionError::ClientConfig {
+                        message: other.to_string(),
+                    },
+                })?;
 
         Ok(Self {
             client,
@@ -190,6 +186,26 @@ impl PylonClient {
     #[must_use]
     pub(crate) fn base_url(&self) -> &str {
         &self.base_url
+    }
+}
+
+/// Discover and apply the server's first-party client contract.
+///
+/// Best-effort by design: connection reachability is still determined by the
+/// health path, and auth errors are surfaced by authenticated API requests.
+pub(crate) async fn refresh_client_contract(config: &mut ConnectionConfig) {
+    match skene::api::client::discover_client_contract(
+        &config.server_url,
+        config.auth_token.as_deref(),
+    )
+    .await
+    {
+        Ok(contract) => config.apply_client_contract(&contract),
+        Err(err) => {
+            config.csrf_header_name = None;
+            config.csrf_header_value = None;
+            tracing::warn!(error = %err, "failed to discover pylon client contract");
+        }
     }
 }
 

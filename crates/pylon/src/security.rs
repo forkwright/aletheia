@@ -161,7 +161,7 @@ mod tests {
         assert_eq!(
             sec.csrf.header_value.expose_secret(),
             "aletheia",
-            "default CSRF bootstrap header value must match the documented client header"
+            "default CSRF header value must remain stable for config compatibility"
         );
     }
 

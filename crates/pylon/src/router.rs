@@ -18,8 +18,8 @@ use koina::http::{API_HEALTH, API_V1};
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
-    config, credentials, events, health, insights, knowledge, metrics, nous, ops, planning,
-    providers, sessions, workspace,
+    client_contract, config, credentials, events, health, insights, knowledge, metrics, nous, ops,
+    planning, providers, sessions, workspace,
 };
 use crate::middleware::{
     CsrfState, DeprecationLayer, ETagLayer, RateLimiter, RequestId, UserRateLimiter, deprecate,
@@ -155,6 +155,7 @@ pub fn build_router_with(
         .route("/events", get(sessions::events))
         .route("/events/subscribe", get(events::subscribe))
         .route("/events/discovery", get(events::discovery))
+        .route("/client/contract", get(client_contract::get))
         .route("/ops/tools", get(ops::tools))
         .route(
             "/system/credentials",
@@ -365,6 +366,7 @@ async fn fallback_handler(uri: axum::http::Uri) -> Response {
 fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
     let is_permissive = security.cors.allowed_origins.is_empty()
         || security.cors.allowed_origins.iter().any(|o| o == "*");
+    let allow_headers = cors_allowed_headers(security);
 
     if is_permissive {
         // WHY: `CorsLayer::permissive()` sets `Access-Control-Allow-Credentials: true`
@@ -380,15 +382,7 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
                 Method::DELETE,
                 Method::OPTIONS,
             ])
-            .allow_headers([
-                HeaderName::from_static("content-type"),
-                HeaderName::from_static("authorization"),
-                HeaderName::from_static("x-requested-with"),
-                // WHY(#5166): Browser API clients send these headers on mutations
-                // and SSE reconnects; include them in preflight responses.
-                HeaderName::from_static("idempotency-key"),
-                HeaderName::from_static("last-event-id"),
-            ]);
+            .allow_headers(allow_headers);
     }
 
     let origins: Vec<HeaderValue> = security
@@ -407,16 +401,28 @@ fn build_cors_layer(security: &SecurityConfig) -> CorsLayer {
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers([
-            HeaderName::from_static("content-type"),
-            HeaderName::from_static("authorization"),
-            HeaderName::from_static("x-requested-with"),
-            // WHY(#5166): Browser API clients send these headers on mutations
-            // and SSE reconnects; include them in preflight responses.
-            HeaderName::from_static("idempotency-key"),
-            HeaderName::from_static("last-event-id"),
-        ])
+        .allow_headers(allow_headers)
         .max_age(Duration::from_secs(security.cors.max_age_secs))
+}
+
+fn cors_allowed_headers(security: &SecurityConfig) -> Vec<HeaderName> {
+    let mut headers = vec![
+        HeaderName::from_static("content-type"),
+        HeaderName::from_static("authorization"),
+        HeaderName::from_static("x-requested-with"),
+        // WHY(#5166): Browser API clients send these headers on mutations
+        // and SSE reconnects; include them in preflight responses.
+        HeaderName::from_static("idempotency-key"),
+        HeaderName::from_static("last-event-id"),
+    ];
+
+    if let Ok(name) = HeaderName::from_bytes(security.csrf.header_name.as_bytes())
+        && !headers.contains(&name)
+    {
+        headers.push(name);
+    }
+
+    headers
 }
 
 /// Apply standard security response headers.

@@ -170,10 +170,19 @@ pub(crate) fn ServersPanel() -> Element {
                             },
                             on_update_url: move |_| {
                                 if let Some(u) = update_url_apply.clone() {
+                                    let csrf_header_name =
+                                        connection_config.read().csrf_header_name.clone();
+                                    let csrf_header_value =
+                                        connection_config.read().csrf_header_value.clone();
                                     server_store.write().update_identity(
                                         &sid_update,
                                         name_update.clone(),
                                         u,
+                                    );
+                                    server_store.write().update_csrf(
+                                        &sid_update,
+                                        csrf_header_name,
+                                        csrf_header_value,
                                     );
                                     health_map.write().remove(&sid_update);
                                     let store = server_store.read();
@@ -194,9 +203,13 @@ pub(crate) fn ServersPanel() -> Element {
                                     if let Some(entry) = store.active() {
                                         let url = entry.url.clone();
                                         let token = entry.auth_token.clone();
+                                        let csrf_header_name = entry.csrf_header_name.clone();
+                                        let csrf_header_value = entry.csrf_header_value.clone();
                                         drop(store);
                                         connection_config.write().server_url = url;
                                         connection_config.write().auth_token = token;
+                                        connection_config.write().csrf_header_name = csrf_header_name;
+                                        connection_config.write().csrf_header_value = csrf_header_value;
                                     }
                                 }
                                 connection_state.set(ConnectionState::Disconnected);

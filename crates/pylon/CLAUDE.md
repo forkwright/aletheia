@@ -47,7 +47,7 @@ All handlers: `async fn(State(Arc<AppState>), Claims, ...) -> Result<impl IntoRe
 - **Middleware order** (outermost first): security headers, CORS, request ID, trace, compression, metrics, error enrichment, body limit, CSRF, rate limiting, then routes.
 - **SSE streaming**: spawns tokio task subscribing to nous turn stream, converts to SseEvent, wraps in `Sse<Stream>` with KeepAlive.
 - **Idempotency**: `Idempotency-Key` header on POST /messages. Cache hit replays response. In-flight returns 409.
-- **CSRF**: custom header required on POST/PUT/DELETE/PATCH. Default header is `X-Requested-With: aletheia`; custom values are secrets.
+- **CSRF**: custom header required on POST/PUT/DELETE/PATCH. First-party clients discover the active header through `GET /api/v1/client/contract`; custom values are secrets.
 - **5xx errors**: generic message to clients, real detail logged internally only.
 - **OpenAPI**: utoipa derive on handlers, served at `GET /api/docs/openapi.json`.
 - **Config hot-reload**: SIGHUP handler re-reads config, validates, swaps via watch channel.

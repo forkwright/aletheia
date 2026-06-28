@@ -135,6 +135,10 @@ struct SerializedServer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     auth_token_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    csrf_header_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    csrf_header_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     last_connected: Option<String>,
 }
 
@@ -150,6 +154,8 @@ impl From<&ServerEntry> for SerializedServer {
             url: e.url.clone(),
             auth_token: e.auth_token.clone(),
             auth_token_ref,
+            csrf_header_name: e.csrf_header_name.clone(),
+            csrf_header_value: e.csrf_header_value.clone(),
             last_connected: e.last_connected.clone(),
         }
     }
@@ -163,6 +169,8 @@ impl From<SerializedServer> for ServerEntry {
             url: s.url,
             auth_token_ref: s.auth_token_ref,
             auth_token: s.auth_token,
+            csrf_header_name: s.csrf_header_name,
+            csrf_header_value: s.csrf_header_value,
             last_connected: s.last_connected,
         }
     }
@@ -467,6 +475,18 @@ pub(crate) fn upsert_active_server_in(
     server_url: String,
     auth_token: Option<String>,
 ) -> Result<(), SettingsConfigError> {
+    let config = crate::state::connection::ConnectionConfig {
+        server_url,
+        auth_token,
+        ..crate::state::connection::ConnectionConfig::default()
+    };
+    upsert_active_connection_in(base, &config)
+}
+
+pub(crate) fn upsert_active_connection_in(
+    base: &Path,
+    connection: &crate::state::connection::ConnectionConfig,
+) -> Result<(), SettingsConfigError> {
     let settings_path = settings_path_from(base);
     let mut config = if settings_path.exists() {
         load_in(base)?
@@ -478,24 +498,34 @@ pub(crate) fn upsert_active_server_in(
     let existing_id = store
         .servers
         .iter()
-        .find(|s| s.url == server_url)
+        .find(|s| s.url == connection.server_url)
         .map(|s| s.id.clone());
 
     if let Some(id) = existing_id {
         if let Some(entry) = store.servers.iter_mut().find(|s| s.id == id) {
-            entry.auth_token_ref = auth_token.as_ref().map(|_| server_token_ref(&id));
-            entry.auth_token = auth_token;
+            entry.auth_token_ref = connection
+                .auth_token
+                .as_ref()
+                .map(|_| server_token_ref(&id));
+            entry.auth_token = connection.auth_token.clone();
+            entry.csrf_header_name = connection.csrf_header_name.clone();
+            entry.csrf_header_value = connection.csrf_header_value.clone();
         }
         store.set_active(&id);
     } else {
         let id = unique_server_id(&store);
-        let auth_token_ref = auth_token.as_ref().map(|_| server_token_ref(&id));
+        let auth_token_ref = connection
+            .auth_token
+            .as_ref()
+            .map(|_| server_token_ref(&id));
         store.servers.push(ServerEntry {
             id: id.clone(),
             name: "My Aletheia".to_string(),
-            url: server_url,
+            url: connection.server_url.clone(),
             auth_token_ref,
-            auth_token,
+            auth_token: connection.auth_token.clone(),
+            csrf_header_name: connection.csrf_header_name.clone(),
+            csrf_header_value: connection.csrf_header_value.clone(),
             last_connected: None,
         });
         store.set_active(&id);
@@ -577,6 +607,35 @@ mod tests {
         assert_eq!(
             restored.servers[0].auth_token_ref.as_deref(),
             Some(expected_ref.as_str())
+        );
+    }
+
+    #[test]
+    fn server_store_round_trips_csrf_contract_via_config() {
+        let mut store = ServerConfigStore::default();
+        let config = crate::state::connection::ConnectionConfig {
+            server_url: "http://csrf:3000".to_string(),
+            csrf_header_name: Some("x-custom-csrf".to_string()),
+            csrf_header_value: Some("custom-csrf-value".to_string()),
+            ..crate::state::connection::ConnectionConfig::default()
+        };
+        let id = store.add_connection("CSRF".to_string(), &config);
+        store.set_active(&id);
+
+        let config = SettingsConfig::from_state(
+            &store,
+            &AppearanceSettings::default(),
+            &KeybindingStore::default(),
+        );
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let restored: SettingsConfig = toml::from_str(&toml_str).unwrap();
+        let restored_store = restored.server_store();
+        let active = restored_store.active().expect("active server");
+
+        assert_eq!(active.csrf_header_name.as_deref(), Some("x-custom-csrf"));
+        assert_eq!(
+            active.csrf_header_value.as_deref(),
+            Some("custom-csrf-value")
         );
     }
 
@@ -719,6 +778,28 @@ mod tests {
         let active = store.active().expect("active server after upsert");
         assert_eq!(active.url, "http://remote.example.com:18789");
         assert_eq!(active.auth_token.as_deref(), Some(raw_token));
+    }
+
+    #[test]
+    fn upsert_active_connection_persists_csrf_contract() {
+        let (_dir, base) = temp_base();
+        let config = crate::state::connection::ConnectionConfig {
+            server_url: "http://remote.example.com:18789".to_string(),
+            csrf_header_name: Some("x-custom-csrf".to_string()),
+            csrf_header_value: Some("custom-csrf-value".to_string()),
+            ..crate::state::connection::ConnectionConfig::default()
+        };
+
+        upsert_active_connection_in(&base, &config).unwrap();
+
+        let restored = load_in(&base).unwrap();
+        let store = restored.server_store();
+        let active = store.active().expect("active server after upsert");
+        assert_eq!(active.csrf_header_name.as_deref(), Some("x-custom-csrf"));
+        assert_eq!(
+            active.csrf_header_value.as_deref(),
+            Some("custom-csrf-value")
+        );
     }
 
     #[test]

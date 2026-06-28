@@ -115,6 +115,8 @@ fn connection_from_settings(
         .map(|entry| ConnectionConfig {
             server_url: entry.url.clone(),
             auth_token: entry.auth_token.clone(),
+            csrf_header_name: entry.csrf_header_name.clone(),
+            csrf_header_value: entry.csrf_header_value.clone(),
             auto_reconnect: true,
             ..ConnectionConfig::default()
         })
@@ -214,12 +216,7 @@ pub(crate) fn save(config: &ConnectionConfig) -> Result<(), ConfigError> {
 }
 
 fn save_in(base: &Path, config: &ConnectionConfig) -> Result<(), ConfigError> {
-    settings_config::upsert_active_server_in(
-        base,
-        config.server_url.clone(),
-        config.auth_token.clone(),
-    )
-    .context(PersistSettingsSnafu)
+    settings_config::upsert_active_connection_in(base, config).context(PersistSettingsSnafu)
 }
 
 /// Load notification preferences from the config file.
@@ -471,6 +468,8 @@ server_url = "http://custom:9000"
             auth_token: Some("session-token".to_string()),
             auto_reconnect: false,
             connect_timeout_secs: 60,
+            csrf_header_name: None,
+            csrf_header_value: None,
         };
         let desktop = DesktopConfig {
             connection: config.clone(),
@@ -640,6 +639,8 @@ auth_token = "{legacy_token}"
         let config = ConnectionConfig {
             server_url: "http://save-me:18789".to_string(),
             auth_token: Some(raw_token.to_string()),
+            csrf_header_name: Some("x-custom-csrf".to_string()),
+            csrf_header_value: Some("custom-csrf-value".to_string()),
             ..ConnectionConfig::default()
         };
 
@@ -650,11 +651,18 @@ auth_token = "{legacy_token}"
         assert!(!raw_settings.contains(raw_token));
         assert!(!raw_settings.contains("auth_token ="));
         assert!(raw_settings.contains("auth_token_ref"));
+        assert!(raw_settings.contains("csrf_header_name"));
+        assert!(raw_settings.contains("custom-csrf-value"));
 
         let settings = settings_config::load_in(&base).unwrap();
         let store = settings.server_store();
         let active = store.active().unwrap();
         assert_eq!(active.url, "http://save-me:18789");
         assert_eq!(active.auth_token.as_deref(), Some(raw_token));
+        assert_eq!(active.csrf_header_name.as_deref(), Some("x-custom-csrf"));
+        assert_eq!(
+            active.csrf_header_value.as_deref(),
+            Some("custom-csrf-value")
+        );
     }
 }

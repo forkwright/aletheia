@@ -530,7 +530,7 @@ mod tests {
             "data: {\"type\":\"message_complete\",\"outcome\":{\"text\":\"\",\"nous_id\":\"syn\",\"session_id\":\"s1\",\"model\":\"mock\",\"tool_calls\":0,\"input_tokens\":7,\"output_tokens\":3,\"cache_read_tokens\":2,\"cache_write_tokens\":1,\"stop_reason\":\"error\",\"error\":\"provider unavailable\"}}\n\n",
         );
         let (base_url, server) = serve_sse_once(body);
-        let client = build_streaming_client(None).expect("build streaming test client");
+        let client = build_streaming_client(None, None).expect("build streaming test client");
         let mut rx = stream_message(client, &base_url, "syn", "main", "hello");
         let mut events = Vec::new();
 
@@ -564,7 +564,7 @@ mod tests {
     async fn stream_message_http_error_preserves_pylon_envelope() {
         let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
         let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", body);
-        let client = build_streaming_client(None).expect("build streaming test client");
+        let client = build_streaming_client(None, None).expect("build streaming test client");
         let mut rx = stream_message(client, &base_url, "syn", "main", "hello");
 
         let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())

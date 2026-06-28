@@ -172,22 +172,25 @@ checks.
 Create a session, then send a message:
 
 ```bash
+CSRF_CONTRACT=$(curl -s http://localhost:18789/api/v1/client/contract)
+CSRF_HEADER=$(printf '%s' "$CSRF_CONTRACT" | jq -r '.csrf | "\(.headerName): \(.headerValue)"')
+
 # Create a session
 curl -s http://localhost:18789/api/v1/sessions \
   -H "Content-Type: application/json" \
-  -H "X-Requested-With: aletheia" \
+  -H "$CSRF_HEADER" \
   -d '{"nous_id": "pronoea"}' | jq .  # jq is optional; omit or install it for pretty-printing
 
 # Send a message (replace SESSION_ID with the id from the session creation response)
 curl -N http://localhost:18789/api/v1/sessions/SESSION_ID/messages \
   -H "Content-Type: application/json" \
-  -H "X-Requested-With: aletheia" \
+  -H "$CSRF_HEADER" \
   -d '{"content": "Hello, who are you?"}'
 ```
 
 The messages endpoint streams the response as Server-Sent Events (SSE).
 
-**Note:** CSRF is enabled by default. Include the documented bootstrap header `X-Requested-With: aletheia` on all state-changing requests (POST, PUT, DELETE). Read-only GET requests do not require it.
+**Note:** CSRF is enabled by default. Discover the active CSRF header with `GET /api/v1/client/contract` and include it on state-changing requests (POST, PUT, DELETE). Read-only GET requests do not require it.
 
 ---
 
@@ -358,7 +361,7 @@ mode = "none"
 
 ### API requests rejected with 403 / missing CSRF header
 
-CSRF protection is enabled by default, so state-changing requests require the header `X-Requested-With: aletheia`. Add `-H "X-Requested-With: aletheia"` to your curl commands. The TUI handles this automatically.
+CSRF protection is enabled by default, so state-changing requests require the active CSRF header from `GET /api/v1/client/contract`. Add that header to your curl commands. First-party UI clients handle this automatically.
 
 ### Server can't find the instance directory
 

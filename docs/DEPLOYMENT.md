@@ -191,11 +191,14 @@ This displays the current token or a way to generate one. Tokens are managed by 
 ### POST/PUT/DELETE CSRF protection
 
 CSRF protection is enabled by default. All state-changing requests (POST, PUT,
-DELETE, PATCH) to `/api/v1/` must include the configured header. The default
-bootstrap value is:
+DELETE, PATCH) to `/api/v1/` must include the configured header. First-party
+clients discover the active header with `GET /api/v1/client/contract`:
 
-```
-X-Requested-With: aletheia
+```bash
+CSRF_CONTRACT=$(curl -s \
+  -H "Authorization: Bearer your-token" \
+  http://127.0.0.1:18789/api/v1/client/contract)
+CSRF_HEADER=$(printf '%s' "$CSRF_CONTRACT" | jq -r '.csrf | "\(.headerName): \(.headerValue)"')
 ```
 
 Include this header on every mutating curl call when CSRF is enabled:
@@ -203,7 +206,7 @@ Include this header on every mutating curl call when CSRF is enabled:
 ```bash
 curl -X POST \
   -H "Authorization: Bearer your-token" \
-  -H "X-Requested-With: aletheia" \
+  -H "$CSRF_HEADER" \
   -H "Content-Type: application/json" \
   -d '{"nous_id": "main", "session_key": "default"}' \
   http://127.0.0.1:18789/api/v1/sessions
@@ -400,10 +403,15 @@ Displays agent count, active sessions, uptime, and provider status.
 Create a session and send a message to verify the full request path. Replace `YOUR_TOKEN` with the token from `aletheia credential status`.
 
 ```bash
+CSRF_CONTRACT=$(curl -s \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://127.0.0.1:18789/api/v1/client/contract)
+CSRF_HEADER=$(printf '%s' "$CSRF_CONTRACT" | jq -r '.csrf | "\(.headerName): \(.headerValue)"')
+
 # Create a session (nous_id and session_key are both required)
 curl -s -X POST \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "X-Requested-With: aletheia" \
+  -H "$CSRF_HEADER" \
   -H "Content-Type: application/json" \
   -d '{"nous_id": "main", "session_key": "smoke-test"}' \
   http://127.0.0.1:18789/api/v1/sessions | jq .id
@@ -414,7 +422,7 @@ Use the returned session ID to send a message (the response is an SSE stream):
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "X-Requested-With: aletheia" \
+  -H "$CSRF_HEADER" \
   -H "Content-Type: application/json" \
   -d '{"content": "Hello"}' \
   http://127.0.0.1:18789/api/v1/sessions/SESSION_ID/messages

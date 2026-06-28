@@ -30,10 +30,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 // letting a hung request run forever.
 const REQUEST_TIMEOUT: Duration = Duration::from_mins(2);
 
-// WHY: first-party clients identify themselves with the same header value the
-// gateway CSRF layer expects, so mutating routes work even when CSRF is on.
-const CSRF_HEADER_NAME: &str = "x-requested-with";
-const CSRF_HEADER_VALUE: &str = "aletheia";
+const REQUEST_ID_HEADER_NAME: &str = "x-request-id";
 
 /// Error returned by [`GatewayClient`] operations.
 #[derive(Debug, Snafu)]
@@ -178,10 +175,6 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap, Error> {
     }
 
     headers.insert(
-        CSRF_HEADER_NAME,
-        header::HeaderValue::from_static(CSRF_HEADER_VALUE),
-    );
-    headers.insert(
         header::CONTENT_TYPE,
         header::HeaderValue::from_static("application/json"),
     );
@@ -189,6 +182,10 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap, Error> {
         header::ACCEPT,
         header::HeaderValue::from_static("application/json"),
     );
+    let request_id = koina::ulid::Ulid::new().to_string();
+    let request_id_value =
+        header::HeaderValue::from_str(&request_id).map_err(|_source| InvalidTokenSnafu.build())?;
+    headers.insert(REQUEST_ID_HEADER_NAME, request_id_value);
 
     Ok(headers)
 }

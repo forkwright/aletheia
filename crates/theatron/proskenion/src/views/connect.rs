@@ -186,39 +186,50 @@ pub(crate) fn ConnectView(
         let token = token_input.read().clone();
         let token_opt = if token.is_empty() { None } else { Some(token) };
 
-        let new_config = ConnectionConfig {
+        let mut new_config = ConnectionConfig {
             server_url: url,
             auth_token: token_opt,
             auto_reconnect: true,
             ..ConnectionConfig::default()
         };
 
-        // WHY: Persist the active server to the canonical settings store so
-        // the connection survives app restarts.
-        if let Err(e) = config::save(&new_config) {
-            tracing::warn!("failed to save active server: {e}");
-        }
-
-        // NOTE: Update the shared config signal so other components see the new values.
-        connection_config.write().clone_from(&new_config);
-
         // NOTE: Set up channel for background to UI communication.
         let (tx, mut rx) = mpsc::unbounded_channel::<ConnectionState>();
         let cancel = CancellationToken::new();
         active_cancel.set(Some(cancel.clone()));
-        let svc = ConnectionService::new(new_config, cancel, tx);
+        connection_state.set(ConnectionState::Connecting);
 
-        // WHY: Spawn the connection service on the tokio runtime so it runs
-        // concurrently without blocking the Dioxus UI thread.
-        tokio::spawn(
-            svc.run()
-                .instrument(tracing::info_span!("connection_service")),
-        );
-
-        // WHY: Spawn a Dioxus-side task to read state updates from the channel
-        // and write them to the signal on the UI thread.
         let mut state_signal = connection_state;
+        let mut config_signal = connection_config;
         spawn(async move {
+            crate::services::connection::refresh_client_contract(&mut new_config).await;
+
+            // WHY: Persist the active server to the canonical settings store so
+            // the connection survives app restarts with discovered client contract
+            // metadata intact.
+            if let Err(e) = config::save(&new_config) {
+                tracing::warn!("failed to save active server: {e}");
+            }
+
+            // NOTE: Update the shared config signal before the connected UI mounts.
+            config_signal.write().clone_from(&new_config);
+
+            if cancel.is_cancelled() {
+                state_signal.set(ConnectionState::Disconnected);
+                return;
+            }
+
+            let svc = ConnectionService::new(new_config, cancel, tx);
+
+            // WHY: Spawn the connection service on the tokio runtime so it runs
+            // concurrently without blocking the Dioxus UI thread.
+            tokio::spawn(
+                svc.run()
+                    .instrument(tracing::info_span!("connection_service")),
+            );
+
+            // WHY: Read state updates from the channel and write them to the
+            // signal on the UI thread.
             while let Some(new_state) = rx.recv().await {
                 state_signal.set(new_state);
             }

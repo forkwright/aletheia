@@ -18,8 +18,58 @@ use super::types::{
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const REST_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const CLIENT_CONTRACT_PATH: &str = "/api/v1/client/contract";
+const REQUEST_ID_HEADER_NAME: &str = "x-request-id";
 
-fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
+/// CSRF header material required by a running pylon instance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CsrfHeader {
+    /// Header name to send on mutating requests.
+    pub name: String,
+    /// Header value to send on mutating requests.
+    pub value: String,
+}
+
+/// First-party client contract returned by pylon.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientContract {
+    /// CSRF settings for first-party clients.
+    pub csrf: ClientCsrfContract,
+}
+
+/// CSRF portion of the first-party client contract.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientCsrfContract {
+    /// Whether mutating requests must include the CSRF header.
+    pub enabled: bool,
+    /// Header name to send when CSRF is enabled.
+    pub header_name: String,
+    /// Header value to send when CSRF is enabled.
+    #[serde(default)]
+    pub header_value: Option<String>,
+}
+
+impl ClientCsrfContract {
+    /// Convert this contract into request header material.
+    #[must_use]
+    pub fn required_header(&self) -> Option<CsrfHeader> {
+        if !self.enabled {
+            return None;
+        }
+        let value = self.header_value.as_ref()?.trim();
+        if self.header_name.trim().is_empty() || value.is_empty() {
+            return None;
+        }
+        Some(CsrfHeader {
+            name: self.header_name.clone(),
+            value: value.to_owned(),
+        })
+    }
+}
+
+fn default_headers(token: Option<&str>, csrf: Option<&CsrfHeader>) -> Result<header::HeaderMap> {
     let mut headers = header::HeaderMap::new();
 
     if let Some(t) = token {
@@ -28,10 +78,13 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
         headers.insert(header::AUTHORIZATION, auth_value);
     }
 
-    headers.insert(
-        "x-requested-with",
-        header::HeaderValue::from_static("aletheia"),
-    );
+    if let Some(csrf) = csrf {
+        let name = header::HeaderName::from_bytes(csrf.name.as_bytes())
+            .map_err(|_invalid| ApiError::InvalidToken)?;
+        let value = header::HeaderValue::from_str(&csrf.value)
+            .map_err(|_invalid| ApiError::InvalidToken)?;
+        headers.insert(name, value);
+    }
     headers.insert(
         header::CONTENT_TYPE,
         header::HeaderValue::from_static("application/json"),
@@ -40,17 +93,21 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
         header::ACCEPT,
         header::HeaderValue::from_static("application/json"),
     );
+    let request_id = koina::ulid::Ulid::new().to_string();
+    let request_id_value =
+        header::HeaderValue::from_str(&request_id).map_err(|_invalid| ApiError::InvalidToken)?;
+    headers.insert(REQUEST_ID_HEADER_NAME, request_id_value);
 
     Ok(headers)
 }
 
 /// Build the reqwest client used for short REST API calls.
-pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
+pub fn build_http_client(token: Option<&str>, csrf: Option<&CsrfHeader>) -> Result<Client> {
     Client::builder()
         .cookie_store(true)
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REST_REQUEST_TIMEOUT)
-        .default_headers(default_headers(token)?)
+        .default_headers(default_headers(token, csrf)?)
         .build()
         .context(HttpSnafu {
             operation: "build REST HTTP client",
@@ -58,12 +115,12 @@ pub(crate) fn build_http_client(token: Option<&str>) -> Result<Client> {
 }
 
 /// Build the reqwest client used for long-lived SSE/streaming connections.
-pub(crate) fn build_streaming_client(token: Option<&str>) -> Result<Client> {
+pub fn build_streaming_client(token: Option<&str>, csrf: Option<&CsrfHeader>) -> Result<Client> {
     // kanon:ignore RUST/missing-http-timeout — SSE connections are long-lived; a request-level timeout would terminate the stream prematurely; connect_timeout guards against connection hang
     Client::builder()
         .cookie_store(true)
         .connect_timeout(CONNECT_TIMEOUT)
-        .default_headers(default_headers(token)?)
+        .default_headers(default_headers(token, csrf)?)
         .build()
         .context(HttpSnafu {
             operation: "build streaming HTTP client",
@@ -102,8 +159,29 @@ impl ApiClient {
     )]
     pub fn new(base_url: &str, token: Option<String>) -> Result<Self> {
         // kanon:ignore RUST/pub-visibility
-        let client = build_http_client(token.as_deref())?;
-        let streaming_client = build_streaming_client(token.as_deref())?;
+        Self::new_with_csrf(base_url, token, None)
+    }
+
+    /// Create a new API client with discovered CSRF header material.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::InvalidToken`] if `token` or the CSRF material contains
+    /// characters invalid in HTTP headers. Returns [`ApiError::Http`] if either
+    /// HTTP client cannot be constructed.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    pub fn new_with_csrf(
+        base_url: &str,
+        token: Option<String>,
+        csrf: Option<&CsrfHeader>,
+    ) -> Result<Self> {
+        // kanon:ignore RUST/pub-visibility
+        let client = build_http_client(token.as_deref(), csrf)?;
+        let streaming_client = build_streaming_client(token.as_deref(), csrf)?;
 
         Ok(Self {
             client,
@@ -820,15 +898,53 @@ impl ApiClient {
     }
 }
 
+/// Discover the first-party client contract from a running pylon instance.
+///
+/// The endpoint is a GET so it is exempt from CSRF. Token-authenticated
+/// deployments still require the bearer token before returning CSRF material.
+///
+/// # Errors
+///
+/// Returns [`ApiError`] when the request fails, auth is rejected, or the
+/// response body does not match the expected contract.
+#[must_use]
+#[expect(
+    clippy::double_must_use,
+    reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+)]
+pub async fn discover_client_contract(
+    base_url: &str,
+    token: Option<&str>,
+) -> Result<ClientContract> {
+    let client = build_http_client(token, None)?;
+    let base = base_url.trim_end_matches('/');
+    let resp = client
+        .get(format!("{base}{CLIENT_CONTRACT_PATH}"))
+        .send()
+        .await
+        .context(HttpSnafu {
+            operation: "client contract",
+        })?;
+    let resp = ApiClient::check_status(resp, "client contract request").await?;
+    resp.json().await.context(HttpSnafu {
+        operation: "client contract response",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(clippy::expect_used, reason = "test helper failures should panic")]
 
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::sync::mpsc;
     use std::time::Duration;
 
     use super::*;
+
+    fn install_crypto() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
 
     fn serve_http_error_once(
         status_line: &'static str,
@@ -854,23 +970,151 @@ mod tests {
         (format!("http://{addr}"), handle)
     }
 
+    fn capture_request_once() -> (String, mpsc::Receiver<String>, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let (tx, rx) = mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 4096];
+            let n = stream.read(&mut buf).expect("read test request");
+            let request = String::from_utf8_lossy(
+                buf.get(..n)
+                    .expect("read byte count fits request capture buffer"),
+            )
+            .into_owned();
+            tx.send(request).expect("send captured request");
+            let body = "{}";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write capture test response");
+        });
+        (format!("http://{addr}"), rx, handle)
+    }
+
+    fn captured_header<'a>(request: &'a str, name: &str) -> Option<&'a str> {
+        request.lines().find_map(|line| {
+            line.split_once(':')
+                .and_then(|(header, value)| header.eq_ignore_ascii_case(name).then(|| value.trim()))
+        })
+    }
+
     #[test]
     fn rest_client_builds_with_timeout() {
-        let client = build_http_client(None);
+        let client = build_http_client(None, None);
         assert!(client.is_ok(), "REST client must build");
     }
 
     #[test]
     fn streaming_client_builds_without_total_timeout() {
-        let client = build_streaming_client(None);
+        let client = build_streaming_client(None, None);
         assert!(client.is_ok(), "streaming client must build");
     }
 
     #[test]
     fn invalid_token_fails_for_rest_and_streaming() {
         let invalid = "\n";
-        assert!(build_http_client(Some(invalid)).is_err());
-        assert!(build_streaming_client(Some(invalid)).is_err());
+        assert!(build_http_client(Some(invalid), None).is_err());
+        assert!(build_streaming_client(Some(invalid), None).is_err());
+    }
+
+    #[test]
+    fn csrf_contract_maps_enabled_header() {
+        let contract = ClientCsrfContract {
+            enabled: true,
+            header_name: "x-aletheia-csrf".to_string(),
+            header_value: Some("custom-value".to_string()),
+        };
+
+        let header = contract.required_header().expect("enabled contract");
+
+        assert_eq!(header.name, "x-aletheia-csrf");
+        assert_eq!(header.value, "custom-value");
+    }
+
+    #[test]
+    fn csrf_contract_disabled_requires_no_header() {
+        let contract = ClientCsrfContract {
+            enabled: false,
+            header_name: "x-aletheia-csrf".to_string(),
+            header_value: Some("custom-value".to_string()),
+        };
+
+        assert!(contract.required_header().is_none());
+    }
+
+    #[tokio::test]
+    async fn client_builder_sends_configured_csrf_header() {
+        install_crypto();
+        let (base_url, request_rx, server) = capture_request_once();
+        let csrf = CsrfHeader {
+            name: "x-aletheia-csrf".to_string(),
+            value: "custom-csrf-value".to_string(),
+        };
+        let client = build_http_client(Some("secret-token"), Some(&csrf)).expect("build client");
+
+        let resp = client
+            .post(format!("{base_url}/api/v1/sessions"))
+            .body("{}")
+            .send()
+            .await
+            .expect("send request");
+        assert!(resp.status().is_success());
+        let request = request_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("captured request");
+        server.join().expect("test server thread should finish");
+
+        assert_eq!(
+            captured_header(&request, "authorization"),
+            Some("Bearer secret-token")
+        );
+        assert_eq!(
+            captured_header(&request, "x-aletheia-csrf"),
+            Some("custom-csrf-value")
+        );
+        assert_eq!(
+            captured_header(&request, "accept"),
+            Some("application/json")
+        );
+        assert_eq!(
+            captured_header(&request, "content-type"),
+            Some("application/json")
+        );
+        assert!(captured_header(&request, "x-request-id").is_some());
+        assert!(
+            captured_header(&request, "x-requested-with").is_none(),
+            "client must not hardcode the published bootstrap CSRF value"
+        );
+    }
+
+    #[tokio::test]
+    async fn client_builder_without_csrf_omits_bootstrap_header() {
+        install_crypto();
+        let (base_url, request_rx, server) = capture_request_once();
+        let client = build_http_client(None, None).expect("build client");
+
+        let resp = client
+            .post(format!("{base_url}/api/v1/sessions"))
+            .body("{}")
+            .send()
+            .await
+            .expect("send request");
+        assert!(resp.status().is_success());
+        let request = request_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("captured request");
+        server.join().expect("test server thread should finish");
+
+        assert!(captured_header(&request, "x-request-id").is_some());
+        assert!(captured_header(&request, "x-requested-with").is_none());
     }
 
     #[test]

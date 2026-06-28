@@ -11,6 +11,8 @@ pub(crate) struct ServerEntry {
     pub(crate) url: String,
     pub(crate) auth_token_ref: Option<String>,
     pub(crate) auth_token: Option<String>,
+    pub(crate) csrf_header_name: Option<String>,
+    pub(crate) csrf_header_value: Option<String>,
     pub(crate) last_connected: Option<String>,
 }
 
@@ -32,6 +34,29 @@ impl ServerConfigStore {
             url,
             auth_token_ref,
             auth_token,
+            csrf_header_name: None,
+            csrf_header_value: None,
+            last_connected: None,
+        });
+        id
+    }
+
+    /// Add a new server from a full connection config; returns the assigned id.
+    pub(crate) fn add_connection(
+        &mut self,
+        name: String,
+        config: &crate::state::connection::ConnectionConfig,
+    ) -> String {
+        let id = gen_server_id();
+        let auth_token_ref = config.auth_token.as_ref().map(|_| server_token_ref(&id));
+        self.servers.push(ServerEntry {
+            id: id.clone(),
+            name,
+            url: config.server_url.clone(),
+            auth_token_ref,
+            auth_token: config.auth_token.clone(),
+            csrf_header_name: config.csrf_header_name.clone(),
+            csrf_header_value: config.csrf_header_value.clone(),
             last_connected: None,
         });
         id
@@ -63,6 +88,8 @@ impl ServerConfigStore {
             entry.url = url;
             entry.auth_token_ref = auth_token.as_ref().map(|_| server_token_ref(id));
             entry.auth_token = auth_token;
+            entry.csrf_header_name = None;
+            entry.csrf_header_value = None;
             true
         } else {
             false
@@ -76,6 +103,26 @@ impl ServerConfigStore {
         if let Some(entry) = self.servers.iter_mut().find(|s| s.id == id) {
             entry.name = name;
             entry.url = url;
+            entry.csrf_header_name = None;
+            entry.csrf_header_value = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Store discovered CSRF material for an existing server.
+    ///
+    /// Returns false if `id` is not found.
+    pub(crate) fn update_csrf(
+        &mut self,
+        id: &str,
+        csrf_header_name: Option<String>,
+        csrf_header_value: Option<String>,
+    ) -> bool {
+        if let Some(entry) = self.servers.iter_mut().find(|s| s.id == id) {
+            entry.csrf_header_name = csrf_header_name;
+            entry.csrf_header_value = csrf_header_value;
             true
         } else {
             false
@@ -573,6 +620,26 @@ mod tests {
         assert_eq!(entry.url, "http://new");
         assert_eq!(entry.auth_token.as_deref(), Some("tok"));
         assert_eq!(entry.auth_token_ref, original_ref);
+    }
+
+    #[test]
+    fn server_store_add_connection_carries_csrf_contract() {
+        let mut store = ServerConfigStore::default();
+        let config = crate::state::connection::ConnectionConfig {
+            server_url: "http://with-csrf".to_string(),
+            csrf_header_name: Some("x-custom-csrf".to_string()),
+            csrf_header_value: Some("custom-csrf-value".to_string()),
+            ..crate::state::connection::ConnectionConfig::default()
+        };
+
+        let id = store.add_connection("With CSRF".to_string(), &config);
+        let entry = store.servers.iter().find(|s| s.id == id).unwrap();
+
+        assert_eq!(entry.csrf_header_name.as_deref(), Some("x-custom-csrf"));
+        assert_eq!(
+            entry.csrf_header_value.as_deref(),
+            Some("custom-csrf-value")
+        );
     }
 
     #[test]

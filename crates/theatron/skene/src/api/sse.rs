@@ -645,7 +645,7 @@ mod tests {
             "data: {\"nous_id\":\"syn\",\"event\":\"created\",\"restart_required\":true}\n\n",
         );
         let (base_url, server) = serve_sse_once(body);
-        let client = build_streaming_client(None).expect("build streaming test client");
+        let client = build_streaming_client(None, None).expect("build streaming test client");
         let mut conn = SseConnection::connect(client, &base_url);
 
         let mut events = Vec::new();

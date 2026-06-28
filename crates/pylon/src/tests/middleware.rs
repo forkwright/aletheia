@@ -573,7 +573,7 @@ fn security_config_default_values() {
     assert_eq!(
         config.csrf.header_value.expose_secret(),
         "aletheia",
-        "default CSRF header value must match the documented bootstrap header"
+        "default CSRF header value must remain stable for config compatibility"
     );
     assert!(!config.tls.enabled);
     assert!(config.tls.cert_path.is_none());

@@ -43,7 +43,7 @@ mode = "token"            # token | jwt | none
 # allowedOrigins = ["https://my-dashboard.local"]
 
 [gateway.csrf]
-enabled = true            # Require X-Requested-With: aletheia on state-changing requests
+enabled = true            # Require the configured CSRF header on state-changing requests
 # disableAcknowledged = true  # Required only when enabled = false
 # headerName = "x-requested-with"
 # headerValue = "aletheia"

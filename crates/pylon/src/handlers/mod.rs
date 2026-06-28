@@ -16,6 +16,8 @@
 //! }
 //! ```
 
+/// First-party client runtime contract discovery.
+pub mod client_contract;
 /// Runtime configuration read/write.
 pub mod config;
 /// Operator credential management.
