@@ -15,6 +15,7 @@
 //! | `messages`      | `{session_id}:{seq_padded_20}`                         | JSON `Message`           |
 //! | `messages`      | `next_seq:{session_id}`                                | big-endian `u64`         |
 //! | `usage`         | `{session_id}:{turn_seq_padded_20}`                    | JSON `UsageRecord`       |
+//! | `tool_audit`    | `{global_id_padded_20}`                                | JSON `ToolAuditRecord`   |
 //! | `distillations` | `{session_id}:{auto_id_padded_20}`                     | JSON distillation record |
 //! | `notes`         | `{session_id}:{auto_id_padded_20}`                     | JSON `AgentNote`         |
 //! | `notes`         | `gid:{global_note_id_padded_20}`                       | `{session_id}:{auto_id}` |
@@ -55,7 +56,7 @@ use crate::error::{self, Result};
 use crate::metrics;
 use crate::types::{
     AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
-    SessionType, UsageRecord,
+    SessionType, ToolAuditRecord, UsageRecord,
 };
 
 fn storage_error(message: impl Into<String>) -> error::Error {
@@ -123,6 +124,7 @@ const PARTITIONS: &[&str] = &[
     "sessions",
     "messages",
     "usage",
+    "tool_audit",
     "distillations",
     "notes",
     "blackboard",
@@ -177,6 +179,29 @@ pub struct FinalizeNote<'a> {
     pub content: &'a str,
 }
 
+/// One structured tool audit row to persist with a finalized turn.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeToolAuditRecord<'a> {
+    /// Turn sequence shared with the usage row.
+    pub turn_seq: i64,
+    /// Provider/tool-use identifier for this call.
+    pub tool_call_id: &'a str,
+    /// Registered tool name.
+    pub tool_name: &'a str,
+    /// Execution duration in milliseconds.
+    pub duration_ms: u64,
+    /// Whether the call produced an error result.
+    pub is_error: bool,
+    /// Stable outcome label, currently `"success"` or `"error"`.
+    pub outcome: &'a str,
+    /// Bounded tool result text captured from the execution path.
+    pub result: Option<&'a str>,
+    /// Approval outcome applied before execution, when known.
+    pub approval: Option<&'a str>,
+    /// HMAC receipt token emitted for this tool result, when present.
+    pub receipt: Option<&'a str>,
+}
+
 /// Request to persist a complete conversational turn in a single transaction.
 ///
 /// WHY: grouping session creation, message appends, usage recording, and the
@@ -200,6 +225,8 @@ pub struct FinalizeTurnRequest<'a> {
     pub messages: &'a [FinalizeMessage<'a>],
     /// Token-usage record for the turn, when usage recording is enabled.
     pub usage: Option<&'a UsageRecord>,
+    /// Structured tool audit rows to append with this turn.
+    pub tool_audit_records: &'a [FinalizeToolAuditRecord<'a>],
     /// Terminal lifecycle note to commit atomically with the turn, when known.
     pub completion_note: Option<FinalizeNote<'a>>,
 }
@@ -211,6 +238,8 @@ pub struct FinalizeTurnResult {
     pub messages_persisted: usize,
     /// Whether a usage record was written.
     pub usage_recorded: bool,
+    /// Number of structured tool audit records appended.
+    pub tool_audit_records_persisted: usize,
 }
 
 // WHY: the counter is thread-local so concurrent unit tests do not interfere;
@@ -284,6 +313,11 @@ struct NoteTxParts<'a> {
     notes: &'a fjall::SingleWriterTxKeyspace,
     counters: &'a fjall::SingleWriterTxKeyspace,
     sessions: &'a fjall::SingleWriterTxKeyspace,
+}
+
+struct NoteDeleteKeys {
+    gid_keys: Vec<Vec<u8>>,
+    gid_idx_keys: Vec<Vec<u8>>,
 }
 
 #[derive(Clone, Copy)]
@@ -605,6 +639,61 @@ impl SessionStore {
             b"",
         );
         Ok(())
+    }
+
+    fn tool_audit_keys_for_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        tool_audit_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+    ) -> Result<Vec<Vec<u8>>> {
+        use fjall::Readable;
+
+        let mut keys = Vec::new();
+        for guard in tx.range::<&str, _>(tool_audit_part, ..) {
+            let (k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall delete_session tool_audit scan: {e}")))?;
+            let record =
+                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?;
+            if record.session_id == session_id {
+                keys.push(k.to_vec());
+            }
+        }
+        Ok(keys)
+    }
+
+    fn note_gid_delete_keys_for_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        notes_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+    ) -> Result<NoteDeleteKeys> {
+        use fjall::Readable;
+
+        // WHY: use the per-session reverse index so deletion is O(notes in
+        // session), not O(total notes across all sessions) (issue #5698).
+        let gid_idx_prefix = format!("note_gid_idx:{session_id}:");
+        let gid_idx_upper = format!("note_gid_idx:{session_id};\x00");
+        let mut gid_keys = Vec::new();
+        let mut gid_idx_keys = Vec::new();
+        for guard in tx.range(notes_part, gid_idx_prefix.as_str()..gid_idx_upper.as_str()) {
+            let (idx_key, _v) = guard.into_inner().map_err(|e| {
+                storage_error(format!("fjall delete_session note_gid_idx scan: {e}"))
+            })?;
+            let idx_str = String::from_utf8_lossy(&idx_key);
+            let global_id = idx_str
+                .rsplit(':')
+                .next()
+                .and_then(|s| s.parse::<u64>().ok())
+                .ok_or_else(|| {
+                    storage_error("corrupt note_gid_idx key: missing global_id".to_owned())
+                })?;
+            gid_idx_keys.push(idx_key.to_vec());
+            gid_keys.push(format!("gid:{}", pad_u64(global_id)).into_bytes());
+        }
+        Ok(NoteDeleteKeys {
+            gid_keys,
+            gid_idx_keys,
+        })
     }
 
     /// Find or create an active session inside an existing write transaction.
@@ -1138,6 +1227,7 @@ impl SessionStore {
 
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
+        let tool_audit_part = self.partition("tool_audit")?;
         let distillations_part = self.partition("distillations")?;
         let notes_part = self.partition("notes")?;
 
@@ -1166,6 +1256,9 @@ impl SessionStore {
             })
             .collect::<Result<_>>()?;
 
+        let tool_audit_keys =
+            Self::tool_audit_keys_for_session_in_tx(&mut tx, &tool_audit_part, id)?;
+
         let dist_keys: Vec<Vec<u8>> = tx
             .range(
                 &distillations_part,
@@ -1187,28 +1280,8 @@ impl SessionStore {
             })
             .collect::<Result<_>>()?;
 
-        // WHY: use the per-session `note_gid_idx:` reverse index so deletion is
-        // O(notes in session) rather than O(total notes across all sessions)
-        // (issue #5698).
-        let gid_idx_prefix = format!("note_gid_idx:{id}:");
-        let gid_idx_upper = format!("note_gid_idx:{id};\x00");
-        let mut gid_keys: Vec<Vec<u8>> = Vec::new();
-        let mut gid_idx_keys: Vec<Vec<u8>> = Vec::new();
-        for guard in tx.range(&notes_part, gid_idx_prefix.as_str()..gid_idx_upper.as_str()) {
-            let (idx_key, _v) = guard.into_inner().map_err(|e| {
-                storage_error(format!("fjall delete_session note_gid_idx scan: {e}"))
-            })?;
-            let idx_str = String::from_utf8_lossy(&idx_key);
-            let global_id = idx_str
-                .rsplit(':')
-                .next()
-                .and_then(|s| s.parse::<u64>().ok())
-                .ok_or_else(|| {
-                    storage_error("corrupt note_gid_idx key: missing global_id".to_owned())
-                })?;
-            gid_idx_keys.push(idx_key.to_vec());
-            gid_keys.push(format!("gid:{}", pad_u64(global_id)).into_bytes());
-        }
+        let note_delete_keys =
+            Self::note_gid_delete_keys_for_session_in_tx(&mut tx, &notes_part, id)?;
 
         for key in &msg_keys {
             tx.remove(&messages_part, key.as_slice());
@@ -1218,11 +1291,18 @@ impl SessionStore {
         for key in &usage_keys {
             tx.remove(&usage_part, key.as_slice());
         }
+        for key in &tool_audit_keys {
+            tx.remove(&tool_audit_part, key.as_slice());
+        }
 
         for key in &dist_keys {
             tx.remove(&distillations_part, key.as_slice());
         }
-        for key in note_keys.iter().chain(&gid_keys).chain(&gid_idx_keys) {
+        for key in note_keys
+            .iter()
+            .chain(&note_delete_keys.gid_keys)
+            .chain(&note_delete_keys.gid_idx_keys)
+        {
             tx.remove(&notes_part, key.as_slice());
         }
 
@@ -1965,6 +2045,47 @@ impl SessionStore {
         Ok(())
     }
 
+    fn append_tool_audit_record_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        tool_audit_part: &fjall::SingleWriterTxKeyspace,
+        counters_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+        nous_id: &str,
+        spec: &FinalizeToolAuditRecord<'_>,
+    ) -> Result<()> {
+        use fjall::Readable;
+
+        let id_counter = match tx
+            .get(counters_part, "tool_audit_id")
+            .map_err(|e| storage_error(format!("fjall tool_audit_id counter: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "tool_audit_id")?,
+        } + 1;
+
+        let record = ToolAuditRecord {
+            id: id_counter as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+            session_id: session_id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            turn_seq: spec.turn_seq,
+            tool_call_id: spec.tool_call_id.to_owned(),
+            tool_name: spec.tool_name.to_owned(),
+            duration_ms: spec.duration_ms,
+            is_error: spec.is_error,
+            outcome: spec.outcome.to_owned(),
+            result: spec.result.map(str::to_owned),
+            approval: spec.approval.map(str::to_owned),
+            receipt: spec.receipt.map(str::to_owned),
+            created_at: now_iso(),
+        };
+        let key = pad_u64(id_counter);
+        let data = serde_json::to_vec(&record).context(error::StoredJsonSnafu)?;
+
+        tx.insert(tool_audit_part, key.as_str(), data.as_slice());
+        tx.insert(counters_part, "tool_audit_id", encode_u64(id_counter));
+        Ok(())
+    }
+
     /// Persist a complete conversational turn in a single transaction.
     ///
     /// This batches session creation, message appends, usage recording, and
@@ -1986,6 +2107,7 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
+        let tool_audit_part = self.partition("tool_audit")?;
         let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
 
@@ -2020,6 +2142,19 @@ impl SessionStore {
         if let Some(usage) = request.usage {
             Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, usage)?;
             usage_recorded = true;
+        }
+
+        let mut tool_audit_records_persisted = 0usize;
+        for spec in request.tool_audit_records {
+            Self::append_tool_audit_record_in_tx(
+                &mut tx,
+                &tool_audit_part,
+                &counters_part,
+                session.id.as_str(),
+                request.nous_id,
+                spec,
+            )?;
+            tool_audit_records_persisted += 1;
         }
 
         if let Some(note) = request.completion_note {
@@ -2059,7 +2194,38 @@ impl SessionStore {
         Ok(FinalizeTurnResult {
             messages_persisted,
             usage_recorded,
+            tool_audit_records_persisted,
         })
+    }
+
+    /// Get recent tool audit records, newest first bounded by `limit`.
+    #[instrument(skip(self))]
+    pub fn recent_tool_audit_records(&self, limit: usize) -> Result<Vec<ToolAuditRecord>> {
+        use fjall::Readable;
+
+        const MAX_RECENT_TOOL_AUDIT_RECORDS: usize = 200;
+        let limit = limit.min(MAX_RECENT_TOOL_AUDIT_RECORDS);
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let tool_audit_part = self.partition("tool_audit")?;
+        let snap = self.db.read_tx();
+
+        let mut records = Vec::with_capacity(limit);
+        for guard in snap.range::<&str, _>(&tool_audit_part, ..).rev() {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall recent_tool_audit_records: {e}")))?;
+            records.push(
+                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?,
+            );
+            if records.len() >= limit {
+                break;
+            }
+        }
+
+        Ok(records)
     }
 
     /// Get all usage records for a session, ordered by turn sequence.

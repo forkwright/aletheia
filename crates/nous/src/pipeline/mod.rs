@@ -732,6 +732,9 @@ pub struct ToolCall {
     pub is_error: bool,
     /// Execution duration in milliseconds.
     pub duration_ms: u64,
+    /// Approval outcome applied before execution, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<String>,
     /// HMAC-SHA256 receipt for hallucination-resistant attestation.
     pub receipt: Option<String>,
 }

@@ -123,7 +123,8 @@ pub mod portability {
 /// Session store — fjall LSM-tree backend.
 pub mod store {
     pub use graphe::store::{
-        FinalizeMessage, FinalizeNote, FinalizeTurnRequest, FinalizeTurnResult, SessionStore,
+        FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
+        FinalizeTurnResult, SessionStore,
     };
 }
 
@@ -131,7 +132,7 @@ pub mod store {
 pub mod types {
     pub use graphe::types::{
         AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin,
-        SessionStatus, SessionType, UsageRecord,
+        SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
     };
     pub use graphe::types::{
         ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,

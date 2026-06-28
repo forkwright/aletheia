@@ -15,7 +15,9 @@ use koina::ulid::Ulid;
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
 
-use mneme::store::{FinalizeMessage, FinalizeNote, FinalizeTurnRequest, SessionStore};
+use mneme::store::{
+    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore,
+};
 use mneme::types::{Role, UsageRecord};
 
 use crate::error;
@@ -190,6 +192,36 @@ fn build_finalize_messages<'a>(
     messages
 }
 
+fn tool_outcome(is_error: bool) -> &'static str {
+    if is_error { "error" } else { "success" }
+}
+
+fn build_tool_audit_records(
+    result: &TurnResult,
+    persist_messages: bool,
+    turn_seq: i64,
+) -> Vec<FinalizeToolAuditRecord<'_>> {
+    if !persist_messages {
+        return Vec::new();
+    }
+
+    result
+        .tool_calls
+        .iter()
+        .map(|tc| FinalizeToolAuditRecord {
+            turn_seq,
+            tool_call_id: tc.id.as_str(),
+            tool_name: tc.name.as_str(),
+            duration_ms: tc.duration_ms,
+            is_error: tc.is_error,
+            outcome: tool_outcome(tc.is_error),
+            result: tc.result.as_deref(),
+            approval: tc.approval.as_deref(),
+            receipt: tc.receipt.as_deref(),
+        })
+        .collect()
+}
+
 fn usage_record(session: &SessionState, result: &TurnResult, turn_seq: i64) -> UsageRecord {
     UsageRecord {
         session_id: session.id.clone(),
@@ -272,6 +304,8 @@ pub(crate) fn finalize(
     }
 
     let pending_messages = build_finalize_messages(input_content, result, config.persist_messages);
+    let pending_tool_audit_records =
+        build_tool_audit_records(result, config.persist_messages, turn_seq);
     let expected_messages = pending_messages.len();
 
     // WHY: ensure the session row exists before the pending note; the batched
@@ -328,6 +362,7 @@ pub(crate) fn finalize(
             parent_session_id: None,
             messages: &finalize_messages,
             usage: usage.as_ref(),
+            tool_audit_records: &pending_tool_audit_records,
             completion_note: Some(FinalizeNote {
                 category: crate::turn_record::TURN_NOTE_CATEGORY,
                 content: &completed_content,
@@ -432,6 +467,7 @@ mod tests {
                 result: Some("file contents here".to_owned()),
                 is_error: false,
                 duration_ms: 42,
+                approval: None,
                 receipt: None,
             }],
             usage: TurnUsage {
@@ -544,6 +580,73 @@ mod tests {
         assert!(history[2].content.contains("file contents here"));
         assert_eq!(history[3].role, Role::Assistant);
         assert_eq!(history[3].content, "Done.");
+    }
+
+    #[test]
+    fn finalize_persists_structured_tool_audit_records() {
+        let (store, session) = make_store_and_session();
+        let mut result = result_with_tools();
+        result.tool_calls = vec![
+            ToolCall {
+                id: "tc-failed".to_owned(),
+                name: "exec".to_owned(),
+                input: serde_json::json!({"cmd": "false"}),
+                result: Some("Tool error: failed".to_owned()),
+                is_error: true,
+                duration_ms: 17,
+                approval: Some("auto_approved".to_owned()),
+                receipt: None,
+            },
+            ToolCall {
+                id: "tc-approved".to_owned(),
+                name: "write_file".to_owned(),
+                input: serde_json::json!({"path": "/tmp/test.txt"}),
+                result: Some("ok".to_owned()),
+                is_error: false,
+                duration_ms: 29,
+                approval: Some("approved".to_owned()),
+                receipt: None,
+            },
+            ToolCall {
+                id: "tc-receipt".to_owned(),
+                name: "read_file".to_owned(),
+                input: serde_json::json!({"path": "/tmp/test.txt"}),
+                result: Some("file contents\n\n[receipt:receipt-token]".to_owned()),
+                is_error: false,
+                duration_ms: 31,
+                approval: Some("auto_approved".to_owned()),
+                receipt: Some("receipt-token".to_owned()),
+            },
+        ];
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Run tools", &result, &config).expect("finalize");
+
+        let audit = store
+            .recent_tool_audit_records(10)
+            .expect("tool audit records");
+        assert_eq!(audit.len(), 3);
+        let failed = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-failed")
+            .expect("failed call audit record");
+        assert!(failed.is_error);
+        assert_eq!(failed.outcome, "error");
+        assert_eq!(failed.result.as_deref(), Some("Tool error: failed"));
+
+        let approved = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-approved")
+            .expect("approved call audit record");
+        assert_eq!(approved.approval.as_deref(), Some("approved"));
+        assert!(!approved.is_error);
+
+        let receipt = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-receipt")
+            .expect("receipt call audit record");
+        assert_eq!(receipt.receipt.as_deref(), Some("receipt-token"));
+        assert_eq!(receipt.outcome, "success");
     }
 
     #[test]
