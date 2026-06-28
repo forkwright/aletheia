@@ -9,9 +9,12 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write as _;
+use std::io::{Read as _, Write as _};
+use std::net::{TcpStream, ToSocketAddrs as _};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use sha2::{Digest as _, Sha256};
 use snafu::ResultExt;
 use tracing::{info, warn};
 
@@ -32,6 +35,12 @@ const SNAPSHOT_PROTOCOL_VERSION: &str = "aletheia-instance-backup-v1-snapshot-1"
 /// WHY(#4950): `list_backups` skips these so an in-progress backup is never
 /// listed as a valid backup set.
 const STAGING_DIR_PREFIX: &str = ".aletheia-backup-staging.";
+
+/// Prefix for hidden restore staging directories inside the instance root.
+const RESTORE_STAGING_DIR_PREFIX: &str = ".aletheia-restore-staging.";
+
+/// Prefix for hidden restore rollback directories inside the instance root.
+const RESTORE_ROLLBACK_DIR_PREFIX: &str = ".aletheia-restore-rollback.";
 
 /// Configuration for whole-instance backups.
 #[derive(Debug, Clone)]
@@ -102,6 +111,12 @@ pub struct StoreEntry {
     /// Reason this store was excluded from the backup, if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exclusion_reason: Option<String>,
+    /// SHA-256 digest of the backed-up file or directory tree, if recorded.
+    ///
+    /// Older manifests may omit this field; restore verifies it when present
+    /// and still performs store-health verification for older sets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 /// Whole-instance backup manifest.
@@ -171,6 +186,39 @@ pub struct InstanceVerifyResult {
     pub store_generations: HashMap<String, u64>,
 }
 
+/// Options for restoring a whole-instance backup set.
+#[derive(Debug, Clone)]
+pub struct InstanceRestoreOptions {
+    /// Path to the backup set directory containing `manifest.json`.
+    pub backup_path: PathBuf,
+    /// Bypass live-service preflight checks.
+    ///
+    /// This is unsafe because the running server can write into stores while
+    /// restore is replacing them.
+    pub force_live: bool,
+    /// Optional selectors limiting restore to matching manifest entry names,
+    /// backup paths, or source-relative target paths.
+    pub include: Vec<String>,
+    /// Optional selectors removing matching manifest entry names, backup paths,
+    /// or source-relative target paths from the restore set.
+    pub exclude: Vec<String>,
+}
+
+/// Outcome of a whole-instance restore run.
+#[derive(Debug, Clone, Default)]
+pub struct InstanceRestoreReport {
+    /// Path to the restored backup set.
+    pub backup_path: PathBuf,
+    /// Manifest entries copied back into the instance.
+    pub entries_restored: usize,
+    /// Manifest entries skipped because they were excluded or duplicate targets.
+    pub entries_skipped: usize,
+    /// Existing live entries moved aside and later discarded after success.
+    pub live_entries_replaced: usize,
+    /// Bytes copied into the restore staging directory.
+    pub bytes_copied: u64,
+}
+
 /// Manages whole-instance backup sets.
 pub struct InstanceBackup {
     config: InstanceBackupConfig,
@@ -184,6 +232,29 @@ struct BackupBuild {
     total_bytes: u64,
     total_files: u32,
     snapshot_time: String,
+}
+
+#[derive(Debug, Clone)]
+struct RestorePlanEntry {
+    name: String,
+    backup_path: PathBuf,
+    backup_source: PathBuf,
+    target_rel: PathBuf,
+    target_path: PathBuf,
+    sha256: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct RestorePlan {
+    entries: Vec<RestorePlanEntry>,
+    entries_skipped: usize,
+}
+
+#[derive(Debug, Clone)]
+struct RollbackEntry {
+    target_path: PathBuf,
+    rollback_path: Option<PathBuf>,
+    published: bool,
 }
 
 /// Arguments for recording an optional store entry without copying.
@@ -219,6 +290,7 @@ impl BackupBuild {
         optional: bool,
     ) -> error::Result<()> {
         let (bytes, files) = copy_path(&src, dst)?;
+        let sha256 = Some(hash_path(dst)?);
         self.total_bytes += bytes;
         self.total_files += files;
         let entry = StoreEntry {
@@ -231,6 +303,7 @@ impl BackupBuild {
             agent_id: None,
             workspace_source_class: None,
             exclusion_reason: None,
+            sha256,
         };
         if optional {
             self.optional_stores.push(entry);
@@ -251,6 +324,7 @@ impl BackupBuild {
         workspace_source_class: String,
     ) -> error::Result<()> {
         let (bytes, files) = copy_path(&src, dst)?;
+        let sha256 = Some(hash_path(dst)?);
         self.total_bytes += bytes;
         self.total_files += files;
         let entry = StoreEntry {
@@ -263,6 +337,7 @@ impl BackupBuild {
             agent_id: Some(agent_id),
             workspace_source_class: Some(workspace_source_class),
             exclusion_reason: None,
+            sha256,
         };
         self.optional_stores.push(entry);
         Ok(())
@@ -280,6 +355,7 @@ impl BackupBuild {
             agent_id: record.agent_id,
             workspace_source_class: record.workspace_source_class,
             exclusion_reason: record.exclusion_reason,
+            sha256: None,
         };
         self.optional_stores.push(entry);
     }
@@ -877,7 +953,21 @@ impl InstanceBackup {
                 continue;
             }
 
-            let store_path = path.join("stores").join(name);
+            let Some(store) = manifest.stores.iter().find(|store| store.name == name) else {
+                continue;
+            };
+            let store_path = match join_manifest_backup_path(path, &store.backup_path) {
+                Ok(store_path) => store_path,
+                Err(err) => {
+                    result
+                        .store_results
+                        .push((String::from(name), Err(err.clone())));
+                    if result.first_error.is_none() {
+                        result.first_error = Some(err);
+                    }
+                    continue;
+                }
+            };
             if !store_path.exists() {
                 let err = format!("required store directory missing: {}", store_path.display());
                 result
@@ -891,9 +981,19 @@ impl InstanceBackup {
 
             match verify_store_path(name, &store_path) {
                 Ok((total, generations)) => {
-                    result.total_keys += total;
-                    result.store_results.push((String::from(name), Ok(total)));
-                    insert_generations(&mut result.store_generations, generations);
+                    if let Err(err) = verify_store_hash(name, &store_path, store.sha256.as_deref())
+                    {
+                        result
+                            .store_results
+                            .push((String::from(name), Err(err.clone())));
+                        if result.first_error.is_none() {
+                            result.first_error = Some(err);
+                        }
+                    } else {
+                        result.total_keys += total;
+                        result.store_results.push((String::from(name), Ok(total)));
+                        insert_generations(&mut result.store_generations, generations);
+                    }
                 }
                 Err(err) => {
                     result
@@ -937,11 +1037,33 @@ impl InstanceBackup {
                 continue;
             }
 
-            let store_path = path.join(&store.backup_path);
+            let store_path = match join_manifest_backup_path(path, &store.backup_path) {
+                Ok(store_path) => store_path,
+                Err(err) => {
+                    result
+                        .store_results
+                        .push((store.name.clone(), Err(err.clone())));
+                    if result.first_error.is_none() {
+                        result.first_error = Some(err);
+                    }
+                    continue;
+                }
+            };
             match verify_manifest_store(&store.name, &store_path) {
                 Ok((total, generations)) => {
-                    result.store_results.push((store.name.clone(), Ok(total)));
-                    insert_generations(&mut result.store_generations, generations);
+                    if let Err(err) =
+                        verify_store_hash(&store.name, &store_path, store.sha256.as_deref())
+                    {
+                        result
+                            .store_results
+                            .push((store.name.clone(), Err(err.clone())));
+                        if result.first_error.is_none() {
+                            result.first_error = Some(err);
+                        }
+                    } else {
+                        result.store_results.push((store.name.clone(), Ok(total)));
+                        insert_generations(&mut result.store_generations, generations);
+                    }
                 }
                 Err(err) => {
                     result
@@ -955,6 +1077,277 @@ impl InstanceBackup {
         }
 
         Ok(result)
+    }
+
+    /// Restore a whole-instance backup set into this manager's instance root.
+    ///
+    /// The restore reads and verifies `manifest.json`, stages all selected
+    /// entries into a temporary directory under the target instance, then swaps
+    /// each entry into place. If any publish step fails after live data has been
+    /// moved aside, the method attempts to roll all moved entries back.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the backup set is invalid, selected manifest paths
+    /// are unsafe, the service appears to be running and `force_live` is false,
+    /// staging fails, publish fails, or rollback fails.
+    pub fn restore_backup(
+        &self,
+        options: &InstanceRestoreOptions,
+    ) -> error::Result<InstanceRestoreReport> {
+        self.ensure_restore_preflight(options.force_live)?;
+
+        let verify = InstanceBackup::verify_backup(&options.backup_path)?;
+        if let Some(err) = verify.first_error {
+            return error::MaintenanceInvariantSnafu {
+                context: format!("backup verification failed before restore: {err}"),
+            }
+            .fail();
+        }
+        let Some(manifest) = verify.manifest else {
+            return error::MaintenanceInvariantSnafu {
+                context: String::from("backup verification did not return a manifest"),
+            }
+            .fail();
+        };
+        if manifest.version != MANIFEST_VERSION {
+            return error::MaintenanceInvariantSnafu {
+                context: format!("unsupported backup manifest version: {}", manifest.version),
+            }
+            .fail();
+        }
+
+        let restore_plan = self.build_restore_plan(&options.backup_path, &manifest, options)?;
+        if restore_plan.entries.is_empty() {
+            return error::MaintenanceInvariantSnafu {
+                context: String::from("restore selection did not include any manifest entries"),
+            }
+            .fail();
+        }
+
+        let staging_dir = self.prepare_restore_tempdir(RESTORE_STAGING_DIR_PREFIX)?;
+        let mut bytes_copied = 0u64;
+        for entry in &restore_plan.entries {
+            let staged_path = staging_dir.path().join(&entry.target_rel);
+            let (bytes, _) = copy_path(&entry.backup_source, &staged_path)?;
+            bytes_copied += bytes;
+            verify_staged_restore_entry(entry, &staged_path)?;
+        }
+
+        let rollback_dir = self.prepare_restore_tempdir(RESTORE_ROLLBACK_DIR_PREFIX)?;
+        let mut rollback_entries = Vec::new();
+        if let Err(err) = publish_restore_plan(
+            &restore_plan.entries,
+            staging_dir.path(),
+            rollback_dir.path(),
+            &mut rollback_entries,
+        ) {
+            if let Err(rollback_err) = rollback_restore(&rollback_entries) {
+                let rollback_path = rollback_dir.keep();
+                return error::MaintenanceInvariantSnafu {
+                    context: format!(
+                        "restore failed after live data was moved aside: {err}; \
+                         automatic rollback failed: {rollback_err}; rollback data kept at {}",
+                        rollback_path.display()
+                    ),
+                }
+                .fail();
+            }
+            return error::MaintenanceInvariantSnafu {
+                context: format!(
+                    "restore failed after live data was moved aside: {err}; live data rolled back"
+                ),
+            }
+            .fail();
+        }
+
+        let live_entries_replaced = rollback_entries
+            .iter()
+            .filter(|entry| entry.rollback_path.is_some())
+            .count();
+
+        info!(
+            backup = %options.backup_path.display(),
+            restored = restore_plan.entries.len(),
+            replaced = live_entries_replaced,
+            bytes = bytes_copied,
+            "instance backup restored"
+        );
+
+        Ok(InstanceRestoreReport {
+            backup_path: options.backup_path.clone(),
+            entries_restored: restore_plan.entries.len(),
+            entries_skipped: restore_plan.entries_skipped,
+            live_entries_replaced,
+            bytes_copied,
+        })
+    }
+
+    fn ensure_restore_preflight(&self, force_live: bool) -> error::Result<()> {
+        if force_live {
+            warn!(
+                instance = %self.config.instance_root.display(),
+                "force-live restore requested; skipping live-service preflight"
+            );
+            return Ok(());
+        }
+
+        if let Some(pid) = live_pid_from_pid_file(&self.config.instance_root)? {
+            return error::MaintenanceInvariantSnafu {
+                context: format!(
+                    "aletheia appears to be running with PID {pid}; stop the service before restore \
+                     or pass --force-live to accept unsafe live restore"
+                ),
+            }
+            .fail();
+        }
+
+        if configured_gateway_accepts_connections(&self.config.instance_root) {
+            return error::MaintenanceInvariantSnafu {
+                context: String::from(
+                    "aletheia gateway appears to be accepting connections; stop the service before \
+                     restore or pass --force-live to accept unsafe live restore",
+                ),
+            }
+            .fail();
+        }
+
+        Ok(())
+    }
+
+    fn prepare_restore_tempdir(&self, prefix: &str) -> error::Result<tempfile::TempDir> {
+        fs::create_dir_all(&self.config.instance_root).context(error::MaintenanceIoSnafu {
+            context: format!(
+                "creating instance root {}",
+                self.config.instance_root.display()
+            ),
+        })?;
+        let tempdir = tempfile::Builder::new()
+            .prefix(prefix)
+            .tempdir_in(&self.config.instance_root)
+            .context(error::MaintenanceIoSnafu {
+                context: format!(
+                    "creating restore temp dir in {}",
+                    self.config.instance_root.display()
+                ),
+            })?;
+        set_dir_restrictive(tempdir.path());
+        Ok(tempdir)
+    }
+
+    fn build_restore_plan(
+        &self,
+        backup_root: &Path,
+        manifest: &BackupManifest,
+        options: &InstanceRestoreOptions,
+    ) -> error::Result<RestorePlan> {
+        validate_restore_selectors(manifest, options)?;
+
+        let mut candidates = Vec::new();
+        let mut entries_skipped = 0usize;
+        for store in manifest
+            .stores
+            .iter()
+            .chain(manifest.optional_stores.iter())
+        {
+            if store.status == "excluded" {
+                entries_skipped += 1;
+                continue;
+            }
+            if store.status != "ok" {
+                return error::MaintenanceInvariantSnafu {
+                    context: format!(
+                        "manifest entry {} has non-restorable status {}",
+                        store.name, store.status
+                    ),
+                }
+                .fail();
+            }
+
+            let target_rel = restore_target_rel(manifest, store).map_err(|err| {
+                error::MaintenanceInvariantSnafu {
+                    context: format!("invalid restore target for {}: {err}", store.name),
+                }
+                .build()
+            })?;
+
+            if !options.include.is_empty()
+                && !selector_set_matches(manifest, store, &options.include, Some(&target_rel))
+            {
+                entries_skipped += 1;
+                continue;
+            }
+            if selector_set_matches(manifest, store, &options.exclude, Some(&target_rel)) {
+                entries_skipped += 1;
+                continue;
+            }
+
+            let backup_source = join_manifest_backup_path(backup_root, &store.backup_path)
+                .map_err(|err| {
+                    error::MaintenanceInvariantSnafu {
+                        context: format!("invalid backup path for {}: {err}", store.name),
+                    }
+                    .build()
+                })?;
+            if !backup_source.exists() {
+                return error::MaintenanceInvariantSnafu {
+                    context: format!(
+                        "manifest entry {} is missing from backup set at {}",
+                        store.name,
+                        backup_source.display()
+                    ),
+                }
+                .fail();
+            }
+
+            let target_path = self.config.instance_root.join(&target_rel);
+            candidates.push(RestorePlanEntry {
+                name: store.name.clone(),
+                backup_path: store.backup_path.clone(),
+                backup_source,
+                target_rel,
+                target_path,
+                sha256: store.sha256.clone(),
+            });
+        }
+
+        candidates.sort_by_key(|entry| path_component_count(&entry.target_rel));
+
+        let mut entries = Vec::new();
+        let mut seen_targets: HashMap<PathBuf, PathBuf> = HashMap::new();
+        for candidate in candidates {
+            if let Some(existing_backup_path) = seen_targets.get(&candidate.target_rel) {
+                if existing_backup_path == &candidate.backup_path {
+                    entries_skipped += 1;
+                    continue;
+                }
+                return error::MaintenanceInvariantSnafu {
+                    context: format!(
+                        "restore target collision at {} between {} and {}",
+                        candidate.target_rel.display(),
+                        existing_backup_path.display(),
+                        candidate.backup_path.display()
+                    ),
+                }
+                .fail();
+            }
+
+            if entries
+                .iter()
+                .any(|entry: &RestorePlanEntry| candidate.target_rel.starts_with(&entry.target_rel))
+            {
+                entries_skipped += 1;
+                continue;
+            }
+
+            seen_targets.insert(candidate.target_rel.clone(), candidate.backup_path.clone());
+            entries.push(candidate);
+        }
+
+        Ok(RestorePlan {
+            entries,
+            entries_skipped,
+        })
     }
 
     /// Remove old whole-instance backups beyond the configured retention count.
@@ -979,6 +1372,290 @@ impl InstanceBackup {
         }
 
         Ok(pruned)
+    }
+}
+
+fn validate_restore_selectors(
+    manifest: &BackupManifest,
+    options: &InstanceRestoreOptions,
+) -> error::Result<()> {
+    for selector in options.include.iter().chain(options.exclude.iter()) {
+        if !manifest
+            .stores
+            .iter()
+            .chain(manifest.optional_stores.iter())
+            .any(|store| selector_matches_entry(manifest, store, selector, None))
+        {
+            return error::MaintenanceInvariantSnafu {
+                context: format!("restore selector did not match any manifest entry: {selector}"),
+            }
+            .fail();
+        }
+    }
+    Ok(())
+}
+
+fn selector_set_matches(
+    manifest: &BackupManifest,
+    store: &StoreEntry,
+    selectors: &[String],
+    target_rel: Option<&Path>,
+) -> bool {
+    !selectors.is_empty()
+        && selectors
+            .iter()
+            .any(|selector| selector_matches_entry(manifest, store, selector, target_rel))
+}
+
+fn selector_matches_entry(
+    manifest: &BackupManifest,
+    store: &StoreEntry,
+    selector: &str,
+    target_rel: Option<&Path>,
+) -> bool {
+    if selector == store.name || selector == path_to_selector(&store.backup_path) {
+        return true;
+    }
+
+    if let Some(target_rel) = target_rel
+        && selector == path_to_selector(target_rel)
+    {
+        return true;
+    }
+
+    restore_target_rel(manifest, store).is_ok_and(|rel| selector == path_to_selector(&rel))
+}
+
+fn restore_target_rel(
+    manifest: &BackupManifest,
+    store: &StoreEntry,
+) -> std::result::Result<PathBuf, String> {
+    let rel = store
+        .source_path
+        .strip_prefix(&manifest.source_root)
+        .map_err(|_strip_err| {
+            format!(
+                "source path {} is outside manifest source root {}",
+                store.source_path.display(),
+                manifest.source_root.display()
+            )
+        })?;
+    validate_relative_manifest_path(rel, "source-relative target path")?;
+    Ok(rel.to_path_buf())
+}
+
+fn join_manifest_backup_path(
+    backup_root: &Path,
+    backup_path: &Path,
+) -> std::result::Result<PathBuf, String> {
+    validate_relative_manifest_path(backup_path, "backup path")?;
+    Ok(backup_root.join(backup_path))
+}
+
+fn validate_relative_manifest_path(path: &Path, label: &str) -> std::result::Result<(), String> {
+    let mut has_component = false;
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(_) => has_component = true,
+            std::path::Component::CurDir
+            | std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!(
+                    "{label} must be a clean relative path: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    if !has_component {
+        return Err(format!("{label} must not be empty"));
+    }
+    Ok(())
+}
+
+fn path_to_selector(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn path_component_count(path: &Path) -> usize {
+    path.components()
+        .filter(|component| matches!(component, std::path::Component::Normal(_)))
+        .count()
+}
+
+fn verify_staged_restore_entry(entry: &RestorePlanEntry, staged_path: &Path) -> error::Result<()> {
+    let (_, _) = verify_manifest_store(&entry.name, staged_path).map_err(|err| {
+        error::MaintenanceInvariantSnafu {
+            context: format!(
+                "staged restore verification failed for {}: {err}",
+                entry.name
+            ),
+        }
+        .build()
+    })?;
+    verify_store_hash(&entry.name, staged_path, entry.sha256.as_deref()).map_err(|err| {
+        error::MaintenanceInvariantSnafu {
+            context: format!("staged restore hash verification failed: {err}"),
+        }
+        .build()
+    })
+}
+
+fn publish_restore_plan(
+    entries: &[RestorePlanEntry],
+    staging_root: &Path,
+    rollback_root: &Path,
+    rollback_entries: &mut Vec<RollbackEntry>,
+) -> error::Result<()> {
+    for entry in entries {
+        let staged_path = staging_root.join(&entry.target_rel);
+        if !staged_path.exists() {
+            return error::MaintenanceInvariantSnafu {
+                context: format!(
+                    "staged restore entry missing before publish: {}",
+                    staged_path.display()
+                ),
+            }
+            .fail();
+        }
+
+        if let Some(parent) = entry.target_path.parent() {
+            fs::create_dir_all(parent).context(error::MaintenanceIoSnafu {
+                context: format!("creating restore target parent {}", parent.display()),
+            })?;
+        }
+
+        let rollback_path = if entry.target_path.exists() {
+            let rollback_path = rollback_root.join(&entry.target_rel);
+            if let Some(parent) = rollback_path.parent() {
+                fs::create_dir_all(parent).context(error::MaintenanceIoSnafu {
+                    context: format!("creating rollback parent {}", parent.display()),
+                })?;
+            }
+            fs::rename(&entry.target_path, &rollback_path).context(error::MaintenanceIoSnafu {
+                context: format!(
+                    "moving live entry {} to rollback {}",
+                    entry.target_path.display(),
+                    rollback_path.display()
+                ),
+            })?;
+            Some(rollback_path)
+        } else {
+            None
+        };
+
+        rollback_entries.push(RollbackEntry {
+            target_path: entry.target_path.clone(),
+            rollback_path,
+            published: false,
+        });
+
+        fs::rename(&staged_path, &entry.target_path).context(error::MaintenanceIoSnafu {
+            context: format!(
+                "publishing staged restore {} to {}",
+                staged_path.display(),
+                entry.target_path.display()
+            ),
+        })?;
+
+        if let Some(last) = rollback_entries.last_mut() {
+            last.published = true;
+        }
+    }
+    Ok(())
+}
+
+fn rollback_restore(entries: &[RollbackEntry]) -> error::Result<()> {
+    for entry in entries.iter().rev() {
+        if entry.published && entry.target_path.exists() {
+            remove_path(&entry.target_path)?;
+        }
+        if let Some(rollback_path) = &entry.rollback_path {
+            if let Some(parent) = entry.target_path.parent() {
+                fs::create_dir_all(parent).context(error::MaintenanceIoSnafu {
+                    context: format!("creating rollback restore parent {}", parent.display()),
+                })?;
+            }
+            fs::rename(rollback_path, &entry.target_path).context(error::MaintenanceIoSnafu {
+                context: format!(
+                    "restoring rollback entry {} to {}",
+                    rollback_path.display(),
+                    entry.target_path.display()
+                ),
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_path(path: &Path) -> error::Result<()> {
+    let metadata = fs::symlink_metadata(path).context(error::MaintenanceIoSnafu {
+        context: format!("reading path metadata for removal {}", path.display()),
+    })?;
+    if metadata.is_dir() {
+        fs::remove_dir_all(path).context(error::MaintenanceIoSnafu {
+            context: format!("removing directory {}", path.display()),
+        })
+    } else {
+        fs::remove_file(path).context(error::MaintenanceIoSnafu {
+            context: format!("removing file {}", path.display()),
+        })
+    }
+}
+
+fn live_pid_from_pid_file(instance_root: &Path) -> error::Result<Option<u32>> {
+    let pid_path = instance_root.join("aletheia.pid");
+    if !pid_path.is_file() {
+        return Ok(None);
+    }
+    let pid_text = fs::read_to_string(&pid_path).context(error::MaintenanceIoSnafu {
+        context: format!("reading PID file {}", pid_path.display()),
+    })?;
+    let Ok(pid) = pid_text.trim().parse::<u32>() else {
+        return Ok(None);
+    };
+    if process_id_is_live(pid) {
+        Ok(Some(pid))
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(unix)]
+fn process_id_is_live(pid: u32) -> bool {
+    Path::new("/proc").join(pid.to_string()).exists()
+}
+
+#[cfg(not(unix))]
+fn process_id_is_live(_pid: u32) -> bool {
+    false
+}
+
+fn configured_gateway_accepts_connections(instance_root: &Path) -> bool {
+    let oikos = taxis::oikos::Oikos::from_root(instance_root);
+    let config = taxis::loader::load_config(&oikos).unwrap_or_default();
+    let host = gateway_probe_host(&config.gateway.bind);
+    let Ok(addrs) = (host.as_str(), config.gateway.port).to_socket_addrs() else {
+        return false;
+    };
+
+    for addr in addrs {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
+fn gateway_probe_host(bind: &str) -> String {
+    match bind {
+        "lan" | "0.0.0.0" | "localhost" => String::from("127.0.0.1"),
+        "::" => String::from("::1"),
+        other => String::from(other),
     }
 }
 
@@ -1032,6 +1709,98 @@ fn verify_manifest_store(
         usize::try_from(dir_size(path)).unwrap_or(usize::MAX),
         Vec::new(),
     ))
+}
+
+fn verify_store_hash(
+    name: &str,
+    path: &Path,
+    expected: Option<&str>,
+) -> std::result::Result<(), String> {
+    let Some(expected) = expected else {
+        return Ok(());
+    };
+    let actual = hash_path(path).map_err(|err| format!("{name}: failed to hash payload: {err}"))?;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{name}: sha256 mismatch for {} (expected {expected}, got {actual})",
+            path.display()
+        ))
+    }
+}
+
+fn hash_path(path: &Path) -> error::Result<String> {
+    let mut hasher = Sha256::new();
+    hash_path_inner(path, path, &mut hasher)?;
+    let digest = hasher.finalize();
+    Ok(hex_digest(&digest))
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "WHY(#4951): restore hashing is synchronous maintenance/CLI work and must read regular files by path"
+)]
+fn hash_path_inner(root: &Path, path: &Path, hasher: &mut Sha256) -> error::Result<()> {
+    let rel = path.strip_prefix(root).unwrap_or(path);
+    let rel_selector = path_to_selector(rel);
+
+    if path.is_dir() {
+        hasher.update(b"dir\0");
+        hasher.update(rel_selector.as_bytes());
+        hasher.update(b"\0");
+
+        let mut entries = fs::read_dir(path)
+            .context(error::MaintenanceIoSnafu {
+                context: format!("reading directory for hashing {}", path.display()),
+            })?
+            .map(|entry| {
+                entry
+                    .map(|entry| entry.path())
+                    .context(error::MaintenanceIoSnafu {
+                        context: format!("reading directory entry for hashing {}", path.display()),
+                    })
+            })
+            .collect::<error::Result<Vec<_>>>()?;
+        entries.sort();
+        for entry in entries {
+            hash_path_inner(root, &entry, hasher)?;
+        }
+        return Ok(());
+    }
+
+    hasher.update(b"file\0");
+    hasher.update(rel_selector.as_bytes());
+    hasher.update(b"\0");
+
+    let mut file = fs::File::open(path).context(error::MaintenanceIoSnafu {
+        context: format!("opening file for hashing {}", path.display()),
+    })?;
+    let mut buffer = [0u8; 8192];
+    loop {
+        let read = file.read(&mut buffer).context(error::MaintenanceIoSnafu {
+            context: format!("reading file for hashing {}", path.display()),
+        })?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(buffer.get(..read).unwrap_or(&[]));
+    }
+    Ok(())
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    const HEX: [char; 16] = [
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+    ];
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let high = usize::from(byte >> 4);
+        let low = usize::from(byte & 0x0f);
+        out.push(HEX.get(high).copied().unwrap_or('0'));
+        out.push(HEX.get(low).copied().unwrap_or('0'));
+    }
+    out
 }
 
 fn verify_fjall_tree(
@@ -1726,6 +2495,7 @@ workspace = "{}"
                 agent_id: None,
                 workspace_source_class: None,
                 exclusion_reason: None,
+                sha256: None,
             }],
             optional_stores: Vec::new(),
             workspace_omissions: Vec::new(),
@@ -1859,6 +2629,239 @@ workspace = "{}"
                 .store_results
                 .iter()
                 .any(|(name, result)| name == "sessions.db" && result.is_ok())
+        );
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "WHY(#4951): one behavioral fixture proves restore covers required stores plus optional archive/audit/log entries"
+    )]
+    fn restore_backup_restores_all_manifest_entries_by_default() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        fs::create_dir_all(instance_root.join("config")).unwrap();
+
+        make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
+        write_text_file(
+            &instance_root.join("config").join("aletheia.toml"),
+            "original",
+        )
+        .unwrap();
+        write_text_file(
+            &instance_root.join("nous").join("alice").join("SOUL.md"),
+            "soul",
+        )
+        .unwrap();
+        write_text_file(&instance_root.join("shared").join("NOTE.md"), "shared").unwrap();
+        write_text_file(&instance_root.join("theke").join("Page.md"), "theke").unwrap();
+        write_text_file(
+            &instance_root
+                .join("data")
+                .join("archive")
+                .join("sessions")
+                .join("alice.json"),
+            "archive",
+        )
+        .unwrap();
+        write_text_file(
+            &instance_root
+                .join("data")
+                .join("prosoche-audits")
+                .join("audit.json"),
+            "prosoche",
+        )
+        .unwrap();
+        write_text_file(
+            &instance_root
+                .join("data")
+                .join("prompt-audit")
+                .join("data.log"),
+            "prompt-data",
+        )
+        .unwrap();
+        write_text_file(
+            &instance_root
+                .join("logs")
+                .join("prompt-audit")
+                .join("llm.log"),
+            "prompt-log",
+        )
+        .unwrap();
+
+        let backup_dir = tmp.path().join("backups");
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root: instance_root.clone(),
+            backup_dir,
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let report = manager.create_backup().expect("backup succeeds");
+        let backup_path = report.backup_path.expect("backup path set");
+
+        fs::remove_dir_all(instance_root.join("config")).unwrap();
+        fs::remove_dir_all(instance_root.join("nous")).unwrap();
+        fs::remove_dir_all(instance_root.join("shared")).unwrap();
+        fs::remove_dir_all(instance_root.join("theke")).unwrap();
+        fs::remove_dir_all(instance_root.join("data").join("archive")).unwrap();
+        fs::remove_dir_all(instance_root.join("data").join("prosoche-audits")).unwrap();
+        fs::remove_dir_all(instance_root.join("data").join("prompt-audit")).unwrap();
+        fs::remove_dir_all(instance_root.join("logs")).unwrap();
+        write_text_file(
+            &instance_root.join("config").join("aletheia.toml"),
+            "mutated",
+        )
+        .unwrap();
+        write_text_file(
+            &instance_root.join("nous").join("alice").join("SOUL.md"),
+            "mutated",
+        )
+        .unwrap();
+        write_text_file(
+            &instance_root
+                .join("data")
+                .join("archive")
+                .join("sessions")
+                .join("alice.json"),
+            "mutated",
+        )
+        .unwrap();
+
+        let restore = manager
+            .restore_backup(&InstanceRestoreOptions {
+                backup_path: backup_path.clone(),
+                force_live: true,
+                include: Vec::new(),
+                exclude: Vec::new(),
+            })
+            .expect("restore succeeds");
+
+        assert!(restore.entries_restored >= 9, "restore report: {restore:?}");
+        assert!(
+            restore.live_entries_replaced >= 3,
+            "restore should replace mutated live entries: {restore:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(instance_root.join("config").join("aletheia.toml")).unwrap(),
+            "original"
+        );
+        assert_eq!(
+            fs::read_to_string(instance_root.join("nous").join("alice").join("SOUL.md")).unwrap(),
+            "soul"
+        );
+        assert_eq!(
+            fs::read_to_string(instance_root.join("shared").join("NOTE.md")).unwrap(),
+            "shared"
+        );
+        assert_eq!(
+            fs::read_to_string(instance_root.join("theke").join("Page.md")).unwrap(),
+            "theke"
+        );
+        assert_eq!(
+            fs::read_to_string(
+                instance_root
+                    .join("data")
+                    .join("archive")
+                    .join("sessions")
+                    .join("alice.json")
+            )
+            .unwrap(),
+            "archive"
+        );
+        assert_eq!(
+            fs::read_to_string(
+                instance_root
+                    .join("data")
+                    .join("prosoche-audits")
+                    .join("audit.json")
+            )
+            .unwrap(),
+            "prosoche"
+        );
+        assert_eq!(
+            fs::read_to_string(
+                instance_root
+                    .join("data")
+                    .join("prompt-audit")
+                    .join("data.log")
+            )
+            .unwrap(),
+            "prompt-data"
+        );
+        assert_eq!(
+            fs::read_to_string(
+                instance_root
+                    .join("logs")
+                    .join("prompt-audit")
+                    .join("llm.log")
+            )
+            .unwrap(),
+            "prompt-log"
+        );
+        assert_fjall_marker(&instance_root, &["data", "knowledge.fjall"]);
+        assert_fjall_marker(&instance_root, &["data", "sessions.db"]);
+    }
+
+    #[test]
+    fn rollback_restore_restores_moved_live_entry_after_publish_failure() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let live_root = tmp.path().join("live");
+        let staging_root = tmp.path().join("staging");
+        let rollback_root = tmp.path().join("rollback");
+        fs::create_dir_all(&live_root).unwrap();
+        fs::create_dir_all(&staging_root).unwrap();
+        fs::create_dir_all(&rollback_root).unwrap();
+        write_text_file(&live_root.join("one.txt"), "live-one").unwrap();
+        write_text_file(&live_root.join("two.txt"), "live-two").unwrap();
+        write_text_file(&staging_root.join("one.txt"), "restored-one").unwrap();
+
+        let entries = vec![
+            RestorePlanEntry {
+                name: String::from("one"),
+                backup_path: PathBuf::from("one.txt"),
+                backup_source: staging_root.join("one.txt"),
+                target_rel: PathBuf::from("one.txt"),
+                target_path: live_root.join("one.txt"),
+                sha256: None,
+            },
+            RestorePlanEntry {
+                name: String::from("two"),
+                backup_path: PathBuf::from("two.txt"),
+                backup_source: staging_root.join("two.txt"),
+                target_rel: PathBuf::from("two.txt"),
+                target_path: live_root.join("two.txt"),
+                sha256: None,
+            },
+        ];
+        let mut rollback_entries = Vec::new();
+
+        let publish_error = publish_restore_plan(
+            &entries,
+            &staging_root,
+            &rollback_root,
+            &mut rollback_entries,
+        )
+        .expect_err("missing staged entry should fail publish");
+        assert!(
+            publish_error
+                .to_string()
+                .contains("staged restore entry missing"),
+            "unexpected publish error: {publish_error}"
+        );
+
+        rollback_restore(&rollback_entries).expect("rollback succeeds");
+
+        assert_eq!(
+            fs::read_to_string(live_root.join("one.txt")).unwrap(),
+            "live-one"
+        );
+        assert_eq!(
+            fs::read_to_string(live_root.join("two.txt")).unwrap(),
+            "live-two"
         );
     }
 

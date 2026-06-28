@@ -29,7 +29,8 @@ pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};
 pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport, FjallVerifyResult};
 pub use instance_backup::{
     BackupManifest, InstanceBackup, InstanceBackupConfig, InstanceBackupReport,
-    InstanceVerifyResult, StoreEntry, WorkspaceOmission,
+    InstanceRestoreOptions, InstanceRestoreReport, InstanceVerifyResult, StoreEntry,
+    WorkspaceOmission,
 };
 pub use knowledge::{
     AutoDreamConfig, DerivedRulesConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor,

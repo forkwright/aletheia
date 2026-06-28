@@ -66,32 +66,21 @@ echo "Restoring from: $LATEST"
 ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 BACKUP="$ROOT/data/backups/instance/$LATEST"
 
-# 4. Verify the backup set before replacing live stores
+# 4. Verify the backup set before replacing live data
 aletheia backup verify "$BACKUP"
 
-# 5. Move corrupted stores aside (do not delete until recovery is confirmed)
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-mv "$ROOT/data/knowledge.fjall" "$ROOT/data/knowledge.fjall.corrupt.$STAMP"
-mv "$ROOT/data/sessions.db"     "$ROOT/data/sessions.db.corrupt.$STAMP"
-mv "$ROOT/data/auth.fjall"      "$ROOT/data/auth.fjall.corrupt.$STAMP" 2>/dev/null || true
-mv "$ROOT/data/daemon-task-state" "$ROOT/data/daemon-task-state.corrupt.$STAMP" 2>/dev/null || true
-mv "$ROOT/data/cron-locks.fjall" "$ROOT/data/cron-locks.fjall.corrupt.$STAMP" 2>/dev/null || true
+# 5. Restore the full manifest by staging, verifying, swapping, and rolling back on failure
+aletheia backup restore "$BACKUP"
 
-# 6. Restore required and present runtime stores from the backup set
-cp -a "$BACKUP/stores/knowledge.fjall" "$ROOT/data/knowledge.fjall"
-cp -a "$BACKUP/stores/sessions.db"     "$ROOT/data/sessions.db"
-cp -a "$BACKUP/stores/auth.fjall"      "$ROOT/data/auth.fjall" 2>/dev/null || true
-cp -a "$BACKUP/stores/daemon-task-state" "$ROOT/data/daemon-task-state" 2>/dev/null || true
-cp -a "$BACKUP/stores/cron-locks.fjall" "$ROOT/data/cron-locks.fjall" 2>/dev/null || true
-
-# 7. Restore config/workspace if corruption or an upgrade touched them
-cp -a "$BACKUP/config/." "$ROOT/config/" 2>/dev/null || true
-cp -a "$BACKUP/workspace/." "$ROOT/" 2>/dev/null || true
-
-# 8. Start and verify
+# 6. Start and verify
 systemctl --user start aletheia
 aletheia health
 ```
+
+Use `--force-live` only when the instance cannot be stopped and you accept
+unsafe concurrent writes during restore. For intentional partial recovery, pass
+manifest entry selectors such as `--include sessions.db` or
+`--exclude logs/prompt-audit`.
 
 ### Session-store corruption
 
@@ -105,8 +94,7 @@ ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
 BACKUP="$ROOT/data/backups/instance/$LATEST"
 aletheia backup verify "$BACKUP"
-mv "$ROOT/data/sessions.db" "$ROOT/data/sessions.db.corrupt.$(date -u +%Y%m%dT%H%M%SZ)"
-cp -a "$BACKUP/stores/sessions.db" "$ROOT/data/sessions.db"
+aletheia backup restore "$BACKUP" --include sessions.db
 systemctl --user start aletheia
 aletheia health
 ```
@@ -236,14 +224,7 @@ TMP_INSTANCE=$(mktemp -d)
 LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
 BACKUP="$ALETHEIA_ROOT/data/backups/instance/$LATEST"
 aletheia backup verify "$BACKUP"
-mkdir -p "$TMP_INSTANCE/data"
-cp -a "$BACKUP/stores/knowledge.fjall" "$TMP_INSTANCE/data/knowledge.fjall"
-cp -a "$BACKUP/stores/sessions.db"     "$TMP_INSTANCE/data/sessions.db"
-cp -a "$BACKUP/stores/auth.fjall"      "$TMP_INSTANCE/data/auth.fjall" 2>/dev/null || true
-cp -a "$BACKUP/stores/daemon-task-state" "$TMP_INSTANCE/data/daemon-task-state" 2>/dev/null || true
-cp -a "$BACKUP/stores/cron-locks.fjall" "$TMP_INSTANCE/data/cron-locks.fjall" 2>/dev/null || true
-cp -a "$BACKUP/config/." "$TMP_INSTANCE/config/" 2>/dev/null || true
-cp -a "$BACKUP/workspace/." "$TMP_INSTANCE/" 2>/dev/null || true
+aletheia -r "$TMP_INSTANCE" backup restore "$BACKUP"
 
 # 3. Start aletheia against the test instance
 aletheia -r "$TMP_INSTANCE" --port 28789 &
@@ -275,3 +256,27 @@ rm -rf "$TMP_INSTANCE"
 | `crates/daemon/src/maintenance/instance_backup.rs` | Whole-instance backup set implementation |
 | `crates/daemon/src/maintenance/fjall_backup.rs` | Legacy fjall store verification and snapshot helper |
 | `instance.example/services/aletheia.service` | Systemd unit template |
+
+## Emergency manual restore appendix
+
+Use this only if the `aletheia backup restore` command is unavailable. Stop the
+service first. This fallback copies every `ok` manifest entry to the same
+source-relative path under the target root, but it does not provide staged
+rollback.
+
+```bash
+systemctl --user stop aletheia
+ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
+BACKUP="$ROOT/data/backups/instance/<timestamp>"
+SOURCE_ROOT=$(jq -r '.source_root' "$BACKUP/manifest.json")
+
+jq -r '(.stores + .optional_stores)[] | select(.status == "ok") |
+       [.backup_path, .source_path] | @tsv' "$BACKUP/manifest.json" |
+while IFS=$'\t' read -r backup_rel source_abs; do
+  rel="${source_abs#"$SOURCE_ROOT"/}"
+  test "$rel" != "$source_abs" || { echo "refusing outside-root path: $source_abs" >&2; exit 1; }
+  mkdir -p "$(dirname "$ROOT/$rel")"
+  rm -rf "$ROOT/$rel"
+  cp -a "$BACKUP/$backup_rel" "$ROOT/$rel"
+done
+```
