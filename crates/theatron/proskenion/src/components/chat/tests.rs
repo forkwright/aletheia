@@ -292,6 +292,10 @@ fn turn_abort_preserves_partial_text() {
     assert_eq!(state.messages.len(), 1);
     assert_eq!(state.messages[0].content, "partial\n");
     assert!(!state.streaming.is_streaming);
+    assert_eq!(
+        state.streaming.error.as_deref(),
+        Some("stream aborted: cancelled")
+    );
 }
 
 #[test]
@@ -315,6 +319,10 @@ fn turn_abort_with_no_text_adds_no_message() {
     );
 
     assert!(state.messages.is_empty());
+    assert_eq!(
+        state.streaming.error.as_deref(),
+        Some("stream aborted: cancelled")
+    );
 }
 
 #[test]

@@ -400,6 +400,7 @@ impl ChatStateManager {
                 self.flush_text(state);
                 self.flush_thinking(state);
                 tracing::info!(reason, "turn aborted");
+                let error = Some(format!("stream aborted: {reason}"));
                 // Preserve partial text in history if any was generated.
                 if !state.streaming.text.is_empty() {
                     let thinking = if state.streaming.thinking.is_empty() {
@@ -420,7 +421,10 @@ impl ChatStateManager {
                     };
                     state.messages.push(message);
                 }
-                state.streaming = StreamingState::default();
+                state.streaming = StreamingState {
+                    error,
+                    ..StreamingState::default()
+                };
                 true
             }
             StreamEvent::Error(msg) => {

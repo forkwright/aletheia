@@ -8,6 +8,7 @@
 use std::time::{Duration, Instant};
 
 use dioxus::prelude::*;
+use skene::events::StreamEvent;
 use tokio_util::sync::CancellationToken;
 
 use crate::api::client::authenticated_streaming_client;
@@ -50,6 +51,9 @@ const HISTORY_PAGE_SIZE_QUERY: u32 = 100;
 
 /// Scroll threshold in pixels from the top to trigger loading older messages.
 const LOAD_MORE_THRESHOLD: f64 = 200.0;
+
+/// Outer UI guard for a turn stream that has not reached a terminal event.
+const UI_STREAM_TIMEOUT: Duration = Duration::from_secs(600);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ChatHistoryStatus {
@@ -526,7 +530,7 @@ pub(crate) fn Chat() -> Element {
 
             let mut manager = ChatStateManager::new();
             let mut file_tracker = FileChangeTracker::new();
-            let timeout = tokio::time::sleep(Duration::from_secs(600));
+            let timeout = tokio::time::sleep(UI_STREAM_TIMEOUT);
             tokio::pin!(timeout);
 
             // WHY: Derive agent display name for the routing indicator.
@@ -550,12 +554,28 @@ pub(crate) fn Chat() -> Element {
             loop {
                 let event = tokio::select! {
                     biased;
-                    _ = new_token.cancelled() => break,
-                    _ = &mut timeout => {
+                    _ = new_token.cancelled() => {
                         let mut state = legacy_state.write();
-                        state.streaming.error =
-                            Some("stream timed out after 10 minutes".to_string());
-                        state.streaming.is_streaming = false;
+                        if manager.apply(
+                            StreamEvent::TurnAbort {
+                                reason: "cancelled by user".to_string(),
+                            },
+                            &mut state,
+                        ) {
+                            tracing::trace!("applied chat stream cancellation");
+                        }
+                        break;
+                    }
+                    _ = &mut timeout => {
+                        new_token.cancel();
+                        let message = format!(
+                            "stream timed out after {} minutes; stream task cancelled",
+                            UI_STREAM_TIMEOUT.as_secs() / 60
+                        );
+                        let mut state = legacy_state.write();
+                        if manager.apply(StreamEvent::Error(message), &mut state) {
+                            tracing::trace!("applied chat stream timeout");
+                        }
                         break;
                     }
                     event = rx.recv() => event,
@@ -591,7 +611,6 @@ pub(crate) fn Chat() -> Element {
                 // WHY: Update routing indicator stage from stream events.
                 // This gives the operator real-time visibility into what
                 // the pipeline is doing (#2411 transparent routing).
-                use skene::events::StreamEvent;
                 let new_stage = match &event {
                     StreamEvent::TurnStart { .. } => Some(PipelineStage::Recalling),
                     StreamEvent::TextDelta(_) => Some(PipelineStage::Thinking),
