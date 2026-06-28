@@ -5,7 +5,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use tokio::sync::mpsc;
 
@@ -256,6 +256,27 @@ fn approval_risk(approval: ApprovalRequirement) -> &'static str {
 
 fn approval_reason(tool_name: &str, approval: ApprovalRequirement) -> String {
     format!("Tool '{tool_name}' requires {approval} approval because of its reversibility metadata")
+}
+
+const APPROVAL_OUTCOME_AUTO_APPROVED: &str = "auto_approved";
+const APPROVAL_OUTCOME_ADVISORY_AUTO: &str = "advisory_auto";
+const APPROVAL_OUTCOME_NO_GATE_DENIED: &str = "no_gate_denied";
+
+fn record_approval_policy_outcome(
+    tool_id: &str,
+    tool_name: &str,
+    approval: ApprovalRequirement,
+    gate_wired: bool,
+    outcome: &str,
+) {
+    info!(
+        tool = tool_name,
+        tool_id = tool_id,
+        approval_requirement = %approval,
+        approval_gate_wired = gate_wired,
+        approval_policy_outcome = outcome,
+        "tool approval policy outcome"
+    );
 }
 
 fn record_stream_send_error<T>(
@@ -920,37 +941,70 @@ pub(super) async fn dispatch_tools(
         // fallback, and batch dispatch. Unknown future requirements block.
         match approval {
             ApprovalRequirement::None => {
-                emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, "auto_approved");
-            }
-            ApprovalRequirement::Advisory => {
-                emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, "advisory_auto");
-            }
-            ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
-                emit_approval_required(
-                    stream_tx, tool_ctx, tool_id, tool_name, tool_input, approval,
+                record_approval_policy_outcome(
+                    tool_id,
+                    tool_name,
+                    approval,
+                    approval_gate.is_some(),
+                    APPROVAL_OUTCOME_AUTO_APPROVED,
                 );
-                let choice = match approval_gate {
-                    Some(gate) => gate.await_decision(tool_id).await,
-                    None => match approval {
-                        ApprovalRequirement::Mandatory => {
-                            warn!(
-                                tool = tool_name.as_str(),
-                                tool_id = tool_id.as_str(),
-                                "mandatory tool call with no approval gate wired - default-deny"
-                            );
-                            ApprovalChoice::Denied
-                        }
-                        _ => ApprovalChoice::Approved,
-                    },
-                };
                 emit_approval_resolved(
                     stream_tx,
                     tool_ctx,
                     tool_id,
                     tool_name,
-                    choice.as_wire_str(),
+                    APPROVAL_OUTCOME_AUTO_APPROVED,
                 );
+            }
+            ApprovalRequirement::Advisory => {
+                record_approval_policy_outcome(
+                    tool_id,
+                    tool_name,
+                    approval,
+                    approval_gate.is_some(),
+                    APPROVAL_OUTCOME_ADVISORY_AUTO,
+                );
+                emit_approval_resolved(
+                    stream_tx,
+                    tool_ctx,
+                    tool_id,
+                    tool_name,
+                    APPROVAL_OUTCOME_ADVISORY_AUTO,
+                );
+            }
+            ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
+                emit_approval_required(
+                    stream_tx, tool_ctx, tool_id, tool_name, tool_input, approval,
+                );
+                let (choice, outcome) = if let Some(gate) = approval_gate {
+                    let choice = gate.await_decision(tool_id).await;
+                    (choice, choice.as_wire_str())
+                } else {
+                    warn!(
+                        tool = tool_name.as_str(),
+                        tool_id = tool_id.as_str(),
+                        approval_requirement = %approval,
+                        "approval-required tool call with no approval gate wired - default-deny"
+                    );
+                    (ApprovalChoice::Denied, APPROVAL_OUTCOME_NO_GATE_DENIED)
+                };
+                record_approval_policy_outcome(
+                    tool_id,
+                    tool_name,
+                    approval,
+                    approval_gate.is_some(),
+                    outcome,
+                );
+                emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, outcome);
                 if matches!(choice, ApprovalChoice::Denied) {
+                    let message = if outcome == APPROVAL_OUTCOME_NO_GATE_DENIED {
+                        format!(
+                            "Tool '{tool_name}' execution denied by approval policy: \
+                             {approval} approval requires an approval gate."
+                        )
+                    } else {
+                        format!("Tool '{tool_name}' execution denied by user.")
+                    };
                     record_denied_call(
                         all_tool_calls,
                         &mut tool_results,
@@ -960,7 +1014,7 @@ pub(super) async fn dispatch_tools(
                             id: tool_id,
                             name: tool_name,
                             input: tool_input,
-                            message: format!("Tool '{tool_name}' execution denied by user."),
+                            message,
                         },
                     );
                     continue;

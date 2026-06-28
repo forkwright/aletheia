@@ -92,9 +92,9 @@ fn make_side_effect_tool_def(name: &str) -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
-        // WHY(#4713): PartiallyReversible maps to Required (auto-approved without a gate);
-        // Irreversible would map to Mandatory (auto-denied) and the tool would never execute.
-        reversibility: Reversibility::PartiallyReversible,
+        // WHY(#4828): this timeout test needs the tool to execute without an
+        // approval gate; approval-required tools now fail closed when no gate is wired.
+        reversibility: Reversibility::FullyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read],
         tags: vec![],

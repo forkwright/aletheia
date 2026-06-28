@@ -724,7 +724,9 @@ impl DiaporeiaServer {
 
         // WHY: drain stream events in the background so the channel doesn't
         // back-pressure the actor; MCP has no server-push, so events are
-        // discarded.
+        // discarded. No approval gate is wired for this MCP request-response
+        // path; shared dispatch auto-executes None/Advisory tools and
+        // policy-denies Required/Mandatory tools.
         let drain = tokio::spawn(
             async move { while stream_rx.recv().await.is_some() {} }
                 .instrument(tracing::info_span!("diaporeia.mcp.stream_drain")),

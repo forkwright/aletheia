@@ -46,6 +46,12 @@ impl NousHandle {
     /// Not cancel-safe. If cancelled after `mpsc::send` completes but before
     /// `oneshot::recv` returns, the message is consumed by the actor but the
     /// reply is lost. Callers should not use this in `select!` branches.
+    ///
+    /// # Approval gate
+    ///
+    /// Non-streaming turns do not carry an operator approval gate. Shared tool
+    /// dispatch auto-executes `None`/`Advisory` calls and policy-denies
+    /// `Required`/`Mandatory` calls when no gate is wired.
     pub async fn send_turn(
         &self,
         session_key: impl Into<String>,
@@ -66,6 +72,11 @@ impl NousHandle {
     /// Not cancel-safe. If cancelled after `mpsc::send` completes but before
     /// `oneshot::recv` returns, the message is consumed by the actor but the
     /// reply is lost. Do not use this in `select!` branches.
+    ///
+    /// # Approval gate
+    ///
+    /// This non-streaming entrypoint has no operator approval channel. Approval-
+    /// required tools fail closed under the shared no-gate dispatch policy.
     pub async fn send_turn_with_session_id(
         &self,
         session_key: impl Into<String>,
@@ -92,6 +103,9 @@ impl NousHandle {
     }
 
     /// Send a turn with an explicit request-scoped cancellation token.
+    ///
+    /// Approval behavior matches [`send_turn_with_session_id`](Self::send_turn_with_session_id):
+    /// no gate is wired, so approval-required tools fail closed.
     pub async fn send_turn_with_cancel(
         &self,
         session_key: impl Into<String>,
@@ -175,10 +189,10 @@ impl NousHandle {
     ///
     /// This method passes `approval_gate: None` — intentional for batch/headless
     /// callers (e.g. `diaporeia`'s memory-MCP tool turns) where no interactive
-    /// operator is present to approve reversibility-class tools. The gate's
-    /// `None` contract (see shared execute dispatch) is: Mandatory →
-    /// default-deny, Required → approve. Callers that DO have an interactive
-    /// operator session must use [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval)
+    /// operator is present. The no-gate contract in shared dispatch is:
+    /// `None`/`Advisory` execute, `Required`/`Mandatory` policy-deny. Callers
+    /// that have an interactive operator session must use
+    /// [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval)
     /// so the approval event is surfaced to the operator and the gate is wired.
     pub async fn send_turn_streaming_with_session_id(
         &self,
@@ -210,6 +224,10 @@ impl NousHandle {
     }
 
     /// Send a streaming turn with an explicit request-scoped cancellation token.
+    ///
+    /// Approval behavior matches
+    /// [`send_turn_streaming_with_session_id`](Self::send_turn_streaming_with_session_id):
+    /// no gate is wired, so approval-required tools fail closed.
     pub async fn send_turn_streaming_with_cancel(
         &self,
         session_key: impl Into<String>,
@@ -244,7 +262,8 @@ impl NousHandle {
     ///
     /// When `approval_gate` is `Some`, every Required/Mandatory tool call
     /// blocks on a decision from the gate's receiver before executing.
-    /// When `None`, the default policy applies: Mandatory denies, Required allows.
+    /// When `None`, the shared no-gate policy denies Required/Mandatory calls
+    /// and records a `no_gate_denied` approval outcome.
     ///
     /// # Cancel safety
     ///
@@ -289,6 +308,9 @@ impl NousHandle {
     ///
     /// Used by the HTTP streaming endpoint so the public `turn_id` emitted in
     /// SSE also keys durable turn-attempt records and finalize idempotency.
+    /// The HTTP caller wires an approval gate for operator decisions; callers
+    /// that pass `None` get the same fail-closed no-gate behavior as
+    /// [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval).
     ///
     /// # Cancel safety
     ///
@@ -337,6 +359,9 @@ impl NousHandle {
     /// Not cancel-safe. Delegates to [`send_turn_streaming_with_session_id`](Self::send_turn_streaming_with_session_id):
     /// if cancelled after the inbox send but before the reply is received, the
     /// streaming turn runs but the result is discarded. Do not use in `select!` branches.
+    ///
+    /// Approval behavior matches
+    /// [`send_turn_streaming_with_session_id`](Self::send_turn_streaming_with_session_id).
     pub async fn send_turn_streaming_with_timeout(
         &self,
         session_key: impl Into<String>,
