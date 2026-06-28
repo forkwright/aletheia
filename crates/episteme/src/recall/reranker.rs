@@ -10,6 +10,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -54,6 +55,41 @@ pub trait Reranker: Send + Sync {
 
     /// Human-readable name for diagnostics and metrics.
     fn name(&self) -> &'static str;
+
+    /// Optional call-site timeout override for this reranker.
+    fn timeout(&self) -> Option<Duration> {
+        None
+    }
+}
+
+/// Timeout configuration for HTTP reranking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RerankerTimeouts {
+    /// TCP connect timeout for the HTTP client.
+    pub connect_timeout: Duration,
+    /// End-to-end request timeout configured on the HTTP client.
+    pub request_timeout: Duration,
+    /// Upper bound applied by [`RecallEngine`](super::RecallEngine) around the reranker call.
+    pub call_timeout: Duration,
+}
+
+impl RerankerTimeouts {
+    /// Defaults requested for remote cross-encoder backends.
+    pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+    /// Defaults requested for remote cross-encoder backends.
+    pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+    /// Defaults requested for remote cross-encoder backends.
+    pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(30);
+}
+
+impl Default for RerankerTimeouts {
+    fn default() -> Self {
+        Self {
+            connect_timeout: Self::DEFAULT_CONNECT_TIMEOUT,
+            request_timeout: Self::DEFAULT_REQUEST_TIMEOUT,
+            call_timeout: Self::DEFAULT_CALL_TIMEOUT,
+        }
+    }
 }
 
 /// A lightweight BM25-ish keyword-match reranker.
@@ -183,12 +219,19 @@ struct RerankResponse {
 pub struct HttpReranker {
     client: reqwest::Client,
     url: String,
+    timeouts: RerankerTimeouts,
 }
 
 impl HttpReranker {
     /// Create a new HTTP reranker pointing at `url`.
     #[must_use]
     pub fn new(url: impl Into<String>) -> Self {
+        Self::with_timeouts(url, RerankerTimeouts::default())
+    }
+
+    /// Create a new HTTP reranker with explicit timeout configuration.
+    #[must_use]
+    pub fn with_timeouts(url: impl Into<String>, timeouts: RerankerTimeouts) -> Self {
         // WHY: workspace reqwest uses rustls-no-provider, so callers must install
         // the crypto provider before constructing an HTTP client.
         if let Err(err) = rustls::crypto::ring::default_provider().install_default() {
@@ -198,15 +241,22 @@ impl HttpReranker {
         // WHY: without a timeout, a slow or hung cross-encoder backend stalls
         // the recall actor unboundedly; match the pattern in openai.rs.
         let client = reqwest::ClientBuilder::new()
-            .connect_timeout(std::time::Duration::from_secs(5))
-            .timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(timeouts.connect_timeout)
+            .timeout(timeouts.request_timeout)
             .build()
             .unwrap_or_default();
 
         Self {
             client,
             url: url.into(),
+            timeouts,
         }
+    }
+
+    /// Return the timeout values used to build this reranker.
+    #[must_use]
+    pub fn timeouts(&self) -> RerankerTimeouts {
+        self.timeouts
     }
 }
 
@@ -302,6 +352,10 @@ impl Reranker for HttpReranker {
     fn name(&self) -> &'static str {
         "http-reranker"
     }
+
+    fn timeout(&self) -> Option<Duration> {
+        Some(self.timeouts.call_timeout)
+    }
 }
 
 #[cfg(test)]
@@ -317,6 +371,24 @@ mod tests {
     use super::*;
     use crate::knowledge::FactSensitivity;
     use crate::recall::{FactorScores, RecallEngine, ScoredResult};
+
+    struct PendingReranker;
+
+    impl Reranker for PendingReranker {
+        fn rerank<'a>(
+            &'a self,
+            _query: &'a str,
+            _candidates: Vec<RecallCandidate>,
+        ) -> RerankFuture<'a> {
+            Box::pin(std::future::pending::<
+                Result<Vec<RecallCandidate>, EpistemeError>,
+            >())
+        }
+
+        fn name(&self) -> &'static str {
+            "pending-reranker"
+        }
+    }
 
     fn make_candidate(content: &str, vector_similarity: f64) -> ScoredResult {
         ScoredResult {
@@ -546,6 +618,18 @@ mod tests {
         assert!(result.is_empty());
     }
 
+    #[test]
+    fn http_reranker_uses_configurable_timeouts() {
+        let timeouts = RerankerTimeouts {
+            connect_timeout: std::time::Duration::from_millis(250),
+            request_timeout: std::time::Duration::from_millis(500),
+            call_timeout: std::time::Duration::from_millis(750),
+        };
+        let reranker = HttpReranker::with_timeouts("http://localhost:9999/rerank", timeouts);
+
+        assert_eq!(reranker.timeouts(), timeouts);
+    }
+
     #[tokio::test]
     async fn recall_pipeline_with_reranker_http_falls_back_on_error() {
         use wiremock::matchers::method;
@@ -559,6 +643,27 @@ mod tests {
 
         let engine = RecallEngine::new()
             .with_reranker(Some(Arc::new(HttpReranker::new(server.uri()))))
+            .with_reranker_top_k(20);
+
+        let candidates = vec![
+            make_candidate("foo bar baz", 0.9),
+            make_candidate("query term exact match", 0.1),
+        ];
+
+        let baseline = engine.rank(candidates.clone());
+        let reranked = engine.rank_and_rerank("query term", candidates).await;
+
+        assert_eq!(baseline.len(), reranked.len());
+        for (b, r) in baseline.iter().zip(reranked.iter()) {
+            assert_eq!(b.source_id, r.source_id);
+        }
+    }
+
+    #[tokio::test]
+    async fn recall_pipeline_reranker_timeout_falls_back_to_baseline() {
+        let engine = RecallEngine::new()
+            .with_reranker(Some(Arc::new(PendingReranker)))
+            .with_reranker_timeout(std::time::Duration::from_millis(10))
             .with_reranker_top_k(20);
 
         let candidates = vec![

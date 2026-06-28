@@ -247,6 +247,9 @@ pub struct RecallEngine {
     /// Number of top candidates to pass to the reranker.
     #[cfg(feature = "reranker")]
     pub reranker_top_k: usize,
+    /// Upper bound for a single reranker pass before falling back to baseline ranking.
+    #[cfg(feature = "reranker")]
+    pub reranker_timeout: std::time::Duration,
 }
 
 impl std::fmt::Debug for RecallEngine {
@@ -258,6 +261,7 @@ impl std::fmt::Debug for RecallEngine {
         {
             d.field("reranker", &self.reranker.as_ref().map(|r| r.name()));
             d.field("reranker_top_k", &self.reranker_top_k);
+            d.field("reranker_timeout", &self.reranker_timeout);
         }
         d.finish()
     }
@@ -275,6 +279,8 @@ impl RecallEngine {
             reranker: None,
             #[cfg(feature = "reranker")]
             reranker_top_k: 20,
+            #[cfg(feature = "reranker")]
+            reranker_timeout: reranker::RerankerTimeouts::DEFAULT_CALL_TIMEOUT,
         }
     }
 
@@ -318,6 +324,15 @@ impl RecallEngine {
         self
     }
 
+    /// Set the wall-clock timeout for the reranker call site.
+    #[cfg(feature = "reranker")]
+    #[must_use]
+    #[instrument(skip(self))]
+    pub fn with_reranker_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.reranker_timeout = timeout;
+        self
+    }
+
     /// Baseline rank followed by an optional reranker pass.
     ///
     /// When [`Self::reranker`] is `None` this is identical to [`Self::rank`].
@@ -340,16 +355,27 @@ impl RecallEngine {
             }
             let tail = ranked.split_off(top_k);
             let top_for_rerank = ranked.clone();
-            match reranker.rerank(query, top_for_rerank).await {
-                Ok(mut reranked_top) => {
+            let reranker_timeout = reranker.timeout().unwrap_or(self.reranker_timeout);
+            match tokio::time::timeout(reranker_timeout, reranker.rerank(query, top_for_rerank))
+                .await
+            {
+                Ok(Ok(mut reranked_top)) => {
                     reranked_top.extend(tail);
                     ranked = reranked_top;
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     tracing::warn!(
                         error = ?e,
                         reranker = reranker.name(),
                         "reranker failed; falling back to baseline ranking for top-k"
+                    );
+                    ranked.extend(tail);
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        reranker = reranker.name(),
+                        timeout_ms = reranker_timeout.as_millis(),
+                        "reranker timed out; falling back to baseline ranking for top-k"
                     );
                     ranked.extend(tail);
                 }
