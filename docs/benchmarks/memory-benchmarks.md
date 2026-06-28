@@ -53,8 +53,11 @@ Per-question ingestion errors are surfaced in the question result instead
 of being silently ignored. Other per-question errors are logged and scored
 as zero - a network hiccup does not abort the entire run. The runner
 produces a `BenchmarkReport` tagged with `eval_run_id` and per-question
-`id`, plus `exact_match_rate()`, `mean_f1()`, and a `per_category()`
-breakdown.
+`id`. Primary answer metrics (`exact_match_rate()`, `mean_f1()`, and
+`per_category()`) use every attempted question as the denominator, so
+errors, timeouts, ingestion failures, and empty answers count as zero.
+Scored-only EM/F1 remain available as secondary diagnostics via
+`scored_exact_match_rate()` and `scored_mean_f1()`.
 
 ### Test coverage (already passing)
 
@@ -212,6 +215,12 @@ Configure `BenchmarkRunnerConfig` for production runs:
 | `judge` | `None` | Set to an `LlmJudgeConfig` for LLM-as-judge scoring |
 | `retrieval_k` | `None` | Set to `Some(k)` to compute Recall@k / NDCG@k from the knowledge store |
 
+The CLI also applies reliability gates before writing compact baseline
+summaries. By default the publishing gate is strict: `--max-error-rate`,
+`--max-ingestion-error-rate`, `--max-timeout-rate`, and
+`--max-no-answer-rate` all default to `0.0`. Raise those ceilings only when
+the run is explicitly allowed to publish with failed attempts.
+
 ### Execution modes
 
 The runner supports two explicitly separated modes, controlled by
@@ -241,7 +250,8 @@ RUST_LOG=info cargo run -p dokimion ... 2>&1 | tee results/run.log
 Key log lines to watch:
 - `"starting benchmark run"` - includes `total` and `limit` counts
 - `"benchmark question failed"` - per-question errors with cause
-- `"benchmark run complete"` - final `em_rate` and `mean_f1`
+- `"benchmark run complete"` - final attempted-question `em_rate` and
+  `mean_f1`
 
 ---
 
@@ -251,13 +261,20 @@ Record the following for each run and add to the Results table:
 
 | Metric | Description |
 |---|---|
-| `exact_match_rate` | Fraction of questions where normalized answer = normalized expected |
-| `mean_f1` | Average token-level F1 across all questions |
-| Per-category EM | EM rate broken down by `question_type` / `category` |
-| Per-category F1 | F1 broken down by `question_type` / `category` |
+| `metrics.attempted_exact_match_rate` / `exact_match_rate()` | Primary EM: exact matches divided by all attempted questions; errors, timeouts, ingestion failures, and no-answer results count as zero |
+| `metrics.attempted_mean_f1` / `mean_f1()` | Primary mean token-level F1 divided by all attempted questions |
+| `metrics.scored_exact_match_rate` / `scored_exact_match_rate()` | Diagnostic EM over only questions that produced non-empty answers |
+| `metrics.scored_mean_f1` / `scored_mean_f1()` | Diagnostic mean F1 over only questions that produced non-empty answers |
+| Per-category attempted EM | Primary EM broken down by `question_type` / `category`, with attempted and scored counts shown |
+| Per-category attempted F1 | Primary F1 broken down by `question_type` / `category`, with attempted and scored counts shown |
 | Runtime | Wall time for the full run |
-| Timeout rate | Fraction of questions that hit `question_timeout` |
-| Error rate | Fraction of questions logged as `"scored as no-answer"` |
+| `metrics.timeout_rate` | Fraction of attempted questions that hit `question_timeout` |
+| `metrics.error_rate` | Fraction of attempted questions that failed outside transcript ingestion |
+| `metrics.ingestion_error_rate` | Fraction of attempted questions whose transcript ingestion failed before the question was asked |
+| `metrics.no_answer_rate` | Fraction of attempted questions that returned an empty answer |
+| `ingestion_inserted_facts` | Facts inserted by transcript ingestion across attempted questions |
+| `ingestion_skipped_facts` | Facts skipped by transcript ingestion across attempted questions |
+| `filtered_turns` | Empty source turns filtered out before transcript ingestion |
 | Aletheia version | `git rev-parse HEAD` at time of run |
 | Nous model | Model ID from `GET /api/v1/nous/{id}` |
 | `eval_run_id` | Run identifier from `BenchmarkReport.provenance.eval_run_id` |
@@ -331,15 +348,15 @@ When results are available, record them here:
 
 ### LongMemEval
 
-| Date | Aletheia version | Model | EM (%) | Mean F1 | Notes |
-|---|---|---|---|---|---|
-| - | - | - | - | - | Awaiting run |
+| Date | Aletheia version | Model | Attempted EM (%) | Attempted mean F1 | Reliability rates | Notes |
+|---|---|---|---|---|---|---|
+| - | - | - | - | - | - | Awaiting run |
 
 ### LoCoMo
 
-| Date | Aletheia version | Model | F1 (%) | Notes |
-|---|---|---|---|---|
-| - | - | - | - | Awaiting run |
+| Date | Aletheia version | Model | Attempted F1 (%) | Reliability rates | Notes |
+|---|---|---|---|---|---|
+| - | - | - | - | - | Awaiting run |
 
 ---
 
@@ -366,9 +383,11 @@ When results land, compare against the [Published SOTA baselines](#published-sot
 
 **Regression gate:**
 Once a baseline run is recorded, add a CI check that runs `--max-questions 20`
-and asserts `em_rate >= baseline - 0.05`. The wiremock-based integration
-tests already validate the scoring pipeline; this would validate the live
-memory pipeline.
+and asserts attempted-question `em_rate >= baseline - 0.05`. Keep the
+reliability gates enabled as part of that check so a run with strong scored-only
+answers cannot pass while hiding errors, ingestion failures, timeouts, or empty
+answers outside the denominator. The wiremock-based integration tests already
+validate the scoring pipeline; this would validate the live memory pipeline.
 
 ---
 

@@ -116,6 +116,27 @@ struct QuestionExecution {
     answer: String,
     status: QuestionStatus,
     error_message: Option<String>,
+    ingestion: QuestionIngestionStats,
+}
+
+struct AnsweredQuestion {
+    answer: String,
+    ingestion: QuestionIngestionStats,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct QuestionIngestionStats {
+    inserted_facts: usize,
+    skipped_facts: usize,
+    filtered_turns: usize,
+}
+
+enum QuestionFailure {
+    Error(String),
+    Ingestion {
+        message: String,
+        stats: QuestionIngestionStats,
+    },
 }
 
 type RetrievalMetrics = (
@@ -214,6 +235,9 @@ impl BenchmarkRunner {
             expected_answers: question.expected_answers,
             expected_evidence_refs: question.expected_evidence_refs,
             score,
+            ingestion_inserted_facts: execution.ingestion.inserted_facts,
+            ingestion_skipped_facts: execution.ingestion.skipped_facts,
+            filtered_turns: execution.ingestion.filtered_turns,
             judge_score,
             retrieved_facts,
             retrieval_scoring,
@@ -234,27 +258,46 @@ impl BenchmarkRunner {
         )
         .await
         {
-            Ok(Ok(answer)) if answer.trim().is_empty() => QuestionExecution {
-                answer,
+            Ok(Ok(answered)) if answered.answer.trim().is_empty() => QuestionExecution {
+                answer: answered.answer,
                 status: QuestionStatus::NoAnswer,
                 error_message: Some("empty answer".to_owned()),
+                ingestion: answered.ingestion,
             },
-            Ok(Ok(answer)) => QuestionExecution {
-                answer,
+            Ok(Ok(answered)) => QuestionExecution {
+                answer: answered.answer,
                 status: QuestionStatus::Scored,
                 error_message: None,
+                ingestion: answered.ingestion,
             },
-            Ok(Err(e)) => {
+            Ok(Err(QuestionFailure::Error(message))) => {
                 warn!(
                     id = %question.id,
                     eval_run_id = %self.config.provenance.eval_run_id,
-                    error = %e,
+                    error = %message,
                     "benchmark question failed before producing a scorable answer"
                 );
                 QuestionExecution {
                     answer: String::new(),
                     status: QuestionStatus::Error,
-                    error_message: Some(e.to_string()),
+                    error_message: Some(message),
+                    ingestion: QuestionIngestionStats::default(),
+                }
+            }
+            Ok(Err(QuestionFailure::Ingestion { message, stats })) => {
+                warn!(
+                    id = %question.id,
+                    eval_run_id = %self.config.provenance.eval_run_id,
+                    error = %message,
+                    skipped_facts = stats.skipped_facts,
+                    filtered_turns = stats.filtered_turns,
+                    "benchmark question failed during transcript ingestion"
+                );
+                QuestionExecution {
+                    answer: String::new(),
+                    status: QuestionStatus::IngestionError,
+                    error_message: Some(message),
+                    ingestion: stats,
                 }
             }
             Err(_) => {
@@ -272,6 +315,7 @@ impl BenchmarkRunner {
                     answer: String::new(),
                     status: QuestionStatus::Timeout,
                     error_message: Some(e.to_string()),
+                    ingestion: QuestionIngestionStats::default(),
                 }
             }
         }
@@ -397,7 +441,7 @@ impl BenchmarkRunner {
         question: &BenchmarkQuestion,
         session_key: &str,
         shared_session: &mut Option<String>,
-    ) -> Result<String> {
+    ) -> std::result::Result<AnsweredQuestion, QuestionFailure> {
         // Create a new session for official parity, or reuse the single
         // continuous-memory session.
         let session_id = if let (BenchmarkMode::ContinuousMemory, Some(id)) =
@@ -408,7 +452,8 @@ impl BenchmarkRunner {
             let session = self
                 .client
                 .create_session(&self.config.nous_id, session_key)
-                .await?;
+                .await
+                .map_err(|error| QuestionFailure::Error(error.to_string()))?;
             let id = session.id;
             if self.config.mode() == BenchmarkMode::ContinuousMemory {
                 *shared_session = Some(id.clone());
@@ -420,12 +465,22 @@ impl BenchmarkRunner {
         // replaying every retained turn as a user message. This preserves
         // historical assistant/system/tool/speaker evidence while keeping the
         // final answer turn free of contamination from the haystack.
-        let transcript = build_transcript_markdown(question);
-        if !transcript.trim().is_empty() {
+        let transcript = build_transcript(question);
+        let mut ingestion = QuestionIngestionStats {
+            filtered_turns: transcript.filtered_turns,
+            ..QuestionIngestionStats::default()
+        };
+        if !transcript.markdown.trim().is_empty() {
             let response = self
                 .client
-                .ingest_transcript(&self.config.nous_id, &transcript)
-                .await?;
+                .ingest_transcript(&self.config.nous_id, &transcript.markdown)
+                .await
+                .map_err(|error| QuestionFailure::Ingestion {
+                    message: error.to_string(),
+                    stats: ingestion,
+                })?;
+            ingestion.inserted_facts = response.inserted;
+            ingestion.skipped_facts = response.skipped;
 
             if !response.errors.is_empty() {
                 let summary = response
@@ -438,22 +493,23 @@ impl BenchmarkRunner {
                     })
                     .collect::<Vec<_>>()
                     .join("; ");
-                return crate::error::BenchmarkSnafu {
+                return Err(QuestionFailure::Ingestion {
                     message: format!(
                         "transcript ingestion failed ({} errors, {} inserted, {} skipped): {summary}",
                         response.errors.len(),
                         response.inserted,
                         response.skipped
                     ),
-                }
-                .fail();
+                    stats: ingestion,
+                });
             }
         }
 
         let events = self
             .client
             .send_message(&session_id, &question.question)
-            .await?;
+            .await
+            .map_err(|error| QuestionFailure::Error(error.to_string()))?;
 
         let answer = crate::sse::extract_text(&events);
 
@@ -466,8 +522,13 @@ impl BenchmarkRunner {
             }
         }
 
-        Ok(answer)
+        Ok(AnsweredQuestion { answer, ingestion })
     }
+}
+
+struct TranscriptMarkdown {
+    markdown: String,
+    filtered_turns: usize,
 }
 
 /// Build a markdown document that preserves every turn and its original role.
@@ -475,18 +536,28 @@ impl BenchmarkRunner {
 /// The document is sent to `POST /api/v1/knowledge/ingest` so the memory
 /// pipeline can extract facts from the full conversation without the turns
 /// being replayed as user messages.
+#[cfg(test)]
 fn build_transcript_markdown(question: &BenchmarkQuestion) -> String {
+    build_transcript(question).markdown
+}
+
+fn build_transcript(question: &BenchmarkQuestion) -> TranscriptMarkdown {
     let mut out = String::new();
+    let mut filtered_turns = 0;
     for (session_idx, session) in question.sessions.iter().enumerate() {
         let _ = write!(out, "## Session {session_idx}\n\n");
         for (turn_idx, (role, content)) in session.iter().enumerate() {
             if content.trim().is_empty() {
+                filtered_turns += 1;
                 continue;
             }
             let _ = write!(out, "### turn {turn_idx} — {role}\n\n{content}\n\n");
         }
     }
-    out
+    TranscriptMarkdown {
+        markdown: out,
+        filtered_turns,
+    }
 }
 
 fn millis_from_duration(duration: Duration) -> u64 {

@@ -10,8 +10,9 @@ use serde::Serialize;
 use snafu::prelude::*;
 
 use dokimion::benchmarks::{
-    BenchmarkMetadata, BenchmarkReport, BenchmarkRunner, BenchmarkRunnerConfig,
-    BenchmarkValidationOptions, BenchmarkValidationReport, EvalClient, MemoryBenchmark,
+    BenchmarkMetadata, BenchmarkReliabilityGate, BenchmarkReliabilityThresholds, BenchmarkReport,
+    BenchmarkRunner, BenchmarkRunnerConfig, BenchmarkValidationOptions, BenchmarkValidationReport,
+    EvalClient, MemoryBenchmark,
 };
 use episteme::rl::{LongMemEvalReward, MemoryOutcome, RewardFn};
 
@@ -74,6 +75,18 @@ pub(crate) struct RunArgs {
     /// Allow incomplete benchmark records and report validation warnings.
     #[arg(long)]
     pub best_effort_dataset: bool,
+    /// Maximum generic error rate allowed before the publishing gate fails.
+    #[arg(long, default_value_t = 0.0)]
+    pub max_error_rate: f64,
+    /// Maximum transcript-ingestion error rate allowed before the publishing gate fails.
+    #[arg(long, default_value_t = 0.0)]
+    pub max_ingestion_error_rate: f64,
+    /// Maximum timeout rate allowed before the publishing gate fails.
+    #[arg(long, default_value_t = 0.0)]
+    pub max_timeout_rate: f64,
+    /// Maximum no-answer rate allowed before the publishing gate fails.
+    #[arg(long, default_value_t = 0.0)]
+    pub max_no_answer_rate: f64,
     /// LLM-as-judge endpoint (OpenAI-compatible). If set, each answer is judged.
     #[arg(long, env = "ALETHEIA_JUDGE_ENDPOINT")]
     pub judge_endpoint: Option<String>,
@@ -128,6 +141,17 @@ fn validate_args(args: &RunArgs) -> Result<()> {
     if let Err(e) = reqwest::Url::parse(&args.url) {
         whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
     }
+    validate_rate_arg("--max-error-rate", args.max_error_rate)?;
+    validate_rate_arg("--max-ingestion-error-rate", args.max_ingestion_error_rate)?;
+    validate_rate_arg("--max-timeout-rate", args.max_timeout_rate)?;
+    validate_rate_arg("--max-no-answer-rate", args.max_no_answer_rate)?;
+    Ok(())
+}
+
+fn validate_rate_arg(name: &str, value: f64) -> Result<()> {
+    if !(0.0..=1.0).contains(&value) {
+        whatever!("{name} must be between 0.0 and 1.0 inclusive (got {value})");
+    }
     Ok(())
 }
 
@@ -169,7 +193,7 @@ async fn run_benchmark(
     // Collect system metadata before running.
     let metadata = collect_metadata(&client, benchmark, args, validation).await;
     let config_hash = dokimion::provenance::sha256_hex_str(&format!(
-        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
+        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\nmax_error_rate={}\nmax_ingestion_error_rate={}\nmax_timeout_rate={}\nmax_no_answer_rate={}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
         benchmark.name(),
         args.dataset.display(),
         args.url,
@@ -179,6 +203,10 @@ async fn run_benchmark(
         args.json,
         args.retrieval_k,
         args.best_effort_dataset,
+        args.max_error_rate,
+        args.max_ingestion_error_rate,
+        args.max_timeout_rate,
+        args.max_no_answer_rate,
         args.judge_endpoint.is_some(),
         args.judge_model,
         args.judge_api_key.is_some(),
@@ -222,6 +250,7 @@ async fn run_benchmark(
         .await
         .whatever_context("benchmark run failed")?;
     report.metadata = Some(metadata);
+    report = report.with_reliability_gate(reliability_thresholds(args));
 
     // Write to file if --output was provided.
     if let Some(ref path) = args.output {
@@ -231,6 +260,18 @@ async fn run_benchmark(
             .await
             .whatever_context("failed to write report file")?;
         println!("Report written to {}", path.display());
+    }
+
+    let gate_failure = reliability_gate_failure(&report);
+    if gate_failure.is_some() {
+        if args.json {
+            print_report_json(&report).whatever_context("failed to serialize report")?;
+        } else {
+            print_report_human(&report, None);
+        }
+    }
+    if let Some(message) = gate_failure {
+        whatever!("benchmark reliability gate failed: {message}");
     }
 
     if let Some(ref path) = args.baseline_out {
@@ -258,15 +299,38 @@ async fn run_benchmark(
     Ok(())
 }
 
+fn reliability_thresholds(args: &RunArgs) -> BenchmarkReliabilityThresholds {
+    BenchmarkReliabilityThresholds {
+        max_error_rate: args.max_error_rate,
+        max_ingestion_error_rate: args.max_ingestion_error_rate,
+        max_timeout_rate: args.max_timeout_rate,
+        max_no_answer_rate: args.max_no_answer_rate,
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct BenchmarkBaselineSummary {
     benchmark: String,
     total_questions: usize,
     scored_questions: usize,
     error_questions: usize,
+    ingestion_error_questions: usize,
     timeout_questions: usize,
     no_answer_questions: usize,
+    ingestion_inserted_facts: usize,
+    ingestion_skipped_facts: usize,
+    filtered_turns: usize,
+    attempted_exact_match_rate: f64,
+    attempted_mean_f1: f64,
+    scored_exact_match_rate: f64,
+    scored_mean_f1: f64,
+    error_rate: f64,
+    ingestion_error_rate: f64,
+    timeout_rate: f64,
+    no_answer_rate: f64,
+    /// Backward-compatible alias for `attempted_exact_match_rate`.
     exact_match_rate: f64,
+    /// Backward-compatible alias for `attempted_mean_f1`.
     mean_f1: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     judge_accuracy: Option<f64>,
@@ -285,8 +349,20 @@ impl BenchmarkBaselineSummary {
             total_questions: report.total,
             scored_questions: report.scored,
             error_questions: report.errors,
+            ingestion_error_questions: report.ingestion_errors,
             timeout_questions: report.timeouts,
             no_answer_questions: report.no_answers,
+            ingestion_inserted_facts: report.ingestion_inserted_facts,
+            ingestion_skipped_facts: report.ingestion_skipped_facts,
+            filtered_turns: report.filtered_turns,
+            attempted_exact_match_rate: report.exact_match_rate(),
+            attempted_mean_f1: report.mean_f1(),
+            scored_exact_match_rate: report.scored_exact_match_rate(),
+            scored_mean_f1: report.scored_mean_f1(),
+            error_rate: report.error_rate(),
+            ingestion_error_rate: report.ingestion_error_rate(),
+            timeout_rate: report.timeout_rate(),
+            no_answer_rate: report.no_answer_rate(),
             exact_match_rate: report.exact_match_rate(),
             mean_f1: report.mean_f1(),
             judge_accuracy: report.judge_accuracy(),
@@ -327,6 +403,50 @@ fn format_reward_surface(surface: &RewardSurface) -> String {
         surface.outcome.exact_match_rate * 100.0,
         surface.baseline_exact_match_rate * 100.0,
     )
+}
+
+fn reliability_gate_failure(report: &BenchmarkReport) -> Option<String> {
+    let gate = report.reliability_gate?;
+    if gate.passed {
+        return None;
+    }
+
+    let mut failures = Vec::new();
+    push_gate_failure(
+        &mut failures,
+        "error",
+        gate.error_rate,
+        gate.thresholds.max_error_rate,
+    );
+    push_gate_failure(
+        &mut failures,
+        "ingestion-error",
+        gate.ingestion_error_rate,
+        gate.thresholds.max_ingestion_error_rate,
+    );
+    push_gate_failure(
+        &mut failures,
+        "timeout",
+        gate.timeout_rate,
+        gate.thresholds.max_timeout_rate,
+    );
+    push_gate_failure(
+        &mut failures,
+        "no-answer",
+        gate.no_answer_rate,
+        gate.thresholds.max_no_answer_rate,
+    );
+    Some(failures.join(", "))
+}
+
+fn push_gate_failure(failures: &mut Vec<String>, label: &str, observed: f64, max: f64) {
+    if observed > max {
+        failures.push(format!(
+            "{label} rate {:.1}% > max {:.1}%",
+            observed * 100.0,
+            max * 100.0
+        ));
+    }
 }
 
 async fn collect_metadata(
@@ -382,14 +502,7 @@ async fn dataset_hash(path: &Path) -> Option<String> {
 fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSurface>) {
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
 
-    let header = if let Some(ref meta) = report.metadata {
-        format!(
-            "{} Benchmark \u{2014} {} ({})",
-            report.benchmark, meta.nous_id, meta.model
-        )
-    } else {
-        format!("{} Benchmark", report.benchmark)
-    };
+    let header = report_header(report);
     if use_color {
         println!("{}", header.bold());
     } else {
@@ -397,67 +510,11 @@ fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSu
     }
     println!("{}", "\u{2550}".repeat(header.len()));
 
-    if let Some(ref meta) = report.metadata {
-        println!(
-            "Version: {} | Questions: {}/{} | Timeout: {}s",
-            meta.aletheia_version,
-            meta.evaluated_questions,
-            meta.total_questions,
-            meta.timeout_secs
-        );
-        if meta.dataset_best_effort {
-            let warnings = meta
-                .dataset_validation
-                .as_ref()
-                .map_or(0, |validation| validation.warnings.len());
-            println!("Dataset validation: best-effort ({warnings} warning(s))");
-        }
-    } else {
-        println!("Questions: {}", report.total);
-    }
-    println!(
-        "Attempted: {} | Scored: {} | Errors: {} | Timeouts: {} | No answer: {}\n",
-        report.total, report.scored, report.errors, report.timeouts, report.no_answers
-    );
+    print_report_summary(report);
+    print_primary_results(report, use_color);
 
-    // Table header
-    println!("Results:");
-    println!("  {:<30} {:>6} {:>6}", "Category", "EM%", "F1%");
-    println!("  {}", "\u{2500}".repeat(44));
-
-    // Per-category rows
-    let categories = report.per_category();
-    for (cat, em, f1) in &categories {
-        let em_pct = em * 100.0;
-        let f1_pct = f1 * 100.0;
-        if use_color {
-            println!(
-                "  {:<30} {:>5.1}  {:>5.1}",
-                cat,
-                em_pct.yellow(),
-                f1_pct.yellow()
-            );
-        } else {
-            println!("  {cat:<30} {em_pct:>5.1}  {f1_pct:>5.1}");
-        }
-    }
-
-    // Overall row
-    let overall_em = report.exact_match_rate() * 100.0;
-    let overall_f1 = report.mean_f1() * 100.0;
-    println!("  {}", "\u{2500}".repeat(44));
-    if use_color {
-        println!(
-            "  {:<30} {:>5.1}  {:>5.1}",
-            "Overall".bold(),
-            format!("{overall_em:.1}").green().bold(),
-            format!("{overall_f1:.1}").green().bold()
-        );
-    } else {
-        println!(
-            "  {:<30} {:>5.1}  {:>5.1}",
-            "Overall", overall_em, overall_f1
-        );
+    if let Some(gate) = report.reliability_gate {
+        print_reliability_gate(gate);
     }
 
     // Optional retrieval metrics
@@ -485,6 +542,127 @@ fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSu
 
     // Peer baseline comparison
     print_baselines(report, use_color);
+}
+
+fn report_header(report: &BenchmarkReport) -> String {
+    if let Some(ref meta) = report.metadata {
+        format!(
+            "{} Benchmark \u{2014} {} ({})",
+            report.benchmark, meta.nous_id, meta.model
+        )
+    } else {
+        format!("{} Benchmark", report.benchmark)
+    }
+}
+
+fn print_report_summary(report: &BenchmarkReport) {
+    if let Some(ref meta) = report.metadata {
+        println!(
+            "Version: {} | Questions: {}/{} | Timeout: {}s",
+            meta.aletheia_version,
+            meta.evaluated_questions,
+            meta.total_questions,
+            meta.timeout_secs
+        );
+        if meta.dataset_best_effort {
+            let warnings = meta
+                .dataset_validation
+                .as_ref()
+                .map_or(0, |validation| validation.warnings.len());
+            println!("Dataset validation: best-effort ({warnings} warning(s))");
+        }
+    } else {
+        println!("Questions: {}", report.total);
+    }
+    println!(
+        "Attempted: {} | Scored answers: {} | Errors: {} | Ingestion errors: {} | Timeouts: {} | No answer: {}",
+        report.total,
+        report.scored,
+        report.errors,
+        report.ingestion_errors,
+        report.timeouts,
+        report.no_answers
+    );
+    println!(
+        "Reliability rates: error {:.1}% | ingestion {:.1}% | timeout {:.1}% | no-answer {:.1}%",
+        report.error_rate() * 100.0,
+        report.ingestion_error_rate() * 100.0,
+        report.timeout_rate() * 100.0,
+        report.no_answer_rate() * 100.0
+    );
+    println!(
+        "Ingestion: {} inserted facts | {} skipped facts | {} filtered turns\n",
+        report.ingestion_inserted_facts, report.ingestion_skipped_facts, report.filtered_turns
+    );
+}
+
+fn print_primary_results(report: &BenchmarkReport, use_color: bool) {
+    // Table header
+    println!("Primary results (attempted-question denominator):");
+    println!(
+        "  {:<30} {:>9} {:>7} {:>6} {:>6}",
+        "Category", "Attempted", "Scored", "EM%", "F1%"
+    );
+    println!("  {}", "\u{2500}".repeat(63));
+
+    // Per-category rows
+    let categories = report.per_category();
+    for category in &categories {
+        let em_pct = category.attempted_exact_match_rate * 100.0;
+        let f1_pct = category.attempted_mean_f1 * 100.0;
+        if use_color {
+            println!(
+                "  {:<30} {:>9} {:>7} {:>5.1}  {:>5.1}",
+                category.category,
+                category.attempted,
+                category.scored,
+                em_pct.yellow(),
+                f1_pct.yellow()
+            );
+        } else {
+            println!(
+                "  {:<30} {:>9} {:>7} {:>5.1}  {:>5.1}",
+                category.category, category.attempted, category.scored, em_pct, f1_pct
+            );
+        }
+    }
+
+    // Overall row
+    let overall_em = report.exact_match_rate() * 100.0;
+    let overall_f1 = report.mean_f1() * 100.0;
+    println!("  {}", "\u{2500}".repeat(63));
+    if use_color {
+        println!(
+            "  {:<30} {:>9} {:>7} {:>5.1}  {:>5.1}",
+            "Overall".bold(),
+            report.total,
+            report.scored,
+            format!("{overall_em:.1}").green().bold(),
+            format!("{overall_f1:.1}").green().bold()
+        );
+    } else {
+        println!(
+            "  {:<30} {:>9} {:>7} {:>5.1}  {:>5.1}",
+            "Overall", report.total, report.scored, overall_em, overall_f1
+        );
+    }
+    println!(
+        "\nScored-only diagnostics: EM {:.1}% | F1 {:.1}% over {} answered question(s)",
+        report.scored_exact_match_rate() * 100.0,
+        report.scored_mean_f1() * 100.0,
+        report.scored
+    );
+}
+
+fn print_reliability_gate(gate: BenchmarkReliabilityGate) {
+    let status = if gate.passed { "passed" } else { "FAILED" };
+    println!(
+        "\nReliability gate: {status} (max error {:.1}%, ingestion {:.1}%, timeout {:.1}%, no-answer {:.1}%)",
+        gate.thresholds.max_error_rate * 100.0,
+        gate.thresholds.max_ingestion_error_rate * 100.0,
+        gate.thresholds.max_timeout_rate * 100.0,
+        gate.thresholds.max_no_answer_rate * 100.0
+    );
 }
 
 fn args_retrieval_k(report: &BenchmarkReport) -> usize {
@@ -561,6 +739,10 @@ mod tests {
             baseline_in: None,
             retrieval_k: None,
             best_effort_dataset: false,
+            max_error_rate: 0.0,
+            max_ingestion_error_rate: 0.0,
+            max_timeout_rate: 0.0,
+            max_no_answer_rate: 0.0,
             judge_endpoint: None,
             judge_model: "gpt-4o".to_owned(),
             judge_api_key: None,
@@ -622,6 +804,22 @@ mod tests {
     }
 
     #[test]
+    fn validate_rejects_reliability_rate_outside_unit_range() {
+        let mut a = base_args();
+        a.max_timeout_rate = 1.1;
+        let err = validate_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--max-timeout-rate"), "got: {err}");
+
+        let mut a = base_args();
+        a.max_no_answer_rate = f64::NAN;
+        let err = validate_args(&a).unwrap_err();
+        assert!(
+            err.to_string().contains("--max-no-answer-rate"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
     fn validate_accepts_well_formed_args() {
         validate_args(&base_args()).unwrap();
         let mut a = base_args();
@@ -649,6 +847,9 @@ mod tests {
                         f1: 1.0,
                         contains: true,
                     },
+                    ingestion_inserted_facts: 0,
+                    ingestion_skipped_facts: 0,
+                    filtered_turns: 0,
                     judge_score: None,
                     retrieved_facts: None,
                     retrieval_scoring: None,
@@ -668,6 +869,9 @@ mod tests {
                         f1: 0.0,
                         contains: false,
                     },
+                    ingestion_inserted_facts: 0,
+                    ingestion_skipped_facts: 0,
+                    filtered_turns: 0,
                     judge_score: None,
                     retrieved_facts: None,
                     retrieval_scoring: None,
@@ -702,6 +906,21 @@ mod tests {
         assert_eq!(
             format_reward_surface(&surface),
             "Reward vs baseline: +0.150 (EM 50.0% vs baseline 35.0%)"
+        );
+    }
+
+    #[test]
+    fn reliability_gate_failure_lists_failed_thresholds() {
+        let mut report = sample_report();
+        let question = report.questions.get_mut(1).unwrap();
+        question.status = QuestionStatus::NoAnswer;
+        report = BenchmarkReport::new("LongMemEval", report.questions)
+            .with_reliability_gate(BenchmarkReliabilityThresholds::strict());
+
+        let failure = reliability_gate_failure(&report).unwrap();
+        assert!(
+            failure.contains("no-answer rate 50.0% > max 0.0%"),
+            "got: {failure}"
         );
     }
 }

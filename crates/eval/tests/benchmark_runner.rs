@@ -8,9 +8,10 @@
 
 use dokimion::benchmarks::longmemeval::LongMemEvalDataset;
 use dokimion::benchmarks::{
-    BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, RetrievalScoringMode,
+    BenchmarkRunner, BenchmarkRunnerConfig, BenchmarkValidationOptions, EvalClient, QuestionStatus,
+    RetrievalScoringMode,
 };
-use wiremock::matchers::{method, path, path_regex};
+use wiremock::matchers::{body_string_contains, method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // kanon:ignore RUST/box-dyn-error — integration test uses Box<dyn Error> for ergonomic test result propagation
@@ -153,6 +154,32 @@ const SAMPLE_DATASET: &str = r#"[
     }
 ]"#;
 
+const TWO_QUESTION_DATASET_WITH_BLANK_TURN: &str = r#"[
+    {
+        "question_id": "q1",
+        "question_type": "single-session-user",
+        "question": "What color did the user mention?",
+        "answer": "blue",
+        "haystack_sessions": [
+            [
+                {"role": "user", "content": "My favorite color is blue"}
+            ]
+        ]
+    },
+    {
+        "question_id": "q2",
+        "question_type": "single-session-user",
+        "question": "What failed?",
+        "answer": "ingestion",
+        "haystack_sessions": [
+            [
+                {"role": "user", "content": "This transcript fails ingestion"},
+                {"role": "assistant", "content": "   "}
+            ]
+        ]
+    }
+]"#;
+
 #[tokio::test]
 async fn runner_scores_perfect_answer() -> TestResult {
     init_crypto();
@@ -214,6 +241,54 @@ async fn runner_scores_timed_out_question_as_zero() -> TestResult {
 }
 
 #[tokio::test]
+async fn runner_counts_ingestion_failures_in_attempted_metrics() -> TestResult {
+    init_crypto();
+    let server = setup_mock_server("blue").await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/knowledge/ingest"))
+        .and(body_string_contains("This transcript fails ingestion"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "inserted": 1,
+            "skipped": 2,
+            "errors": [
+                { "index": 0, "id": "fact-bad", "message": "synthetic ingestion failure" }
+            ]
+        })))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+
+    let client = EvalClient::new(server.uri(), None);
+    let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
+    let options = BenchmarkValidationOptions {
+        dataset_path: None,
+        allow_best_effort: true,
+        require_retrieval_evidence: false,
+    };
+    let (dataset, validation) = LongMemEvalDataset::from_bytes_with_options(
+        TWO_QUESTION_DATASET_WITH_BLANK_TURN.as_bytes(),
+        &options,
+    )?;
+    assert_eq!(validation.warnings.len(), 1);
+
+    let report = runner.run(&dataset).await?;
+
+    assert_eq!(report.total, 2);
+    assert_eq!(report.scored, 1);
+    assert_eq!(report.ingestion_errors, 1);
+    assert_eq!(report.ingestion_inserted_facts, 2);
+    assert_eq!(report.ingestion_skipped_facts, 2);
+    assert_eq!(report.filtered_turns, 1);
+    assert_eq!(report.questions[1].status, QuestionStatus::IngestionError);
+    assert!((report.exact_match_rate() - 0.5).abs() < f64::EPSILON);
+    assert!((report.mean_f1() - 0.5).abs() < f64::EPSILON);
+    assert!((report.scored_exact_match_rate() - 1.0).abs() < f64::EPSILON);
+    assert!((report.scored_mean_f1() - 1.0).abs() < f64::EPSILON);
+    assert!((report.ingestion_error_rate() - 0.5).abs() < f64::EPSILON);
+    Ok(())
+}
+
+#[tokio::test]
 async fn runner_respects_max_questions_limit() -> TestResult {
     init_crypto();
     let server = setup_mock_server("blue").await;
@@ -260,8 +335,12 @@ async fn runner_produces_per_category_breakdown() -> TestResult {
 
     let per_cat = report.per_category();
     assert_eq!(per_cat.len(), 1);
-    assert_eq!(per_cat[0].0, "single-session-user");
-    assert!(per_cat[0].1 > 0.99, "single-session-user EM should be 1.0");
+    assert_eq!(per_cat[0].category, "single-session-user");
+    assert_eq!(per_cat[0].attempted, 1);
+    assert!(
+        per_cat[0].attempted_exact_match_rate > 0.99,
+        "single-session-user EM should be 1.0"
+    );
     Ok(())
 }
 
