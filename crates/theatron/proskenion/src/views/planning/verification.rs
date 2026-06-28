@@ -156,7 +156,13 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
         fetch_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    fetch_state.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let url = project_verification_url(&cfg.server_url, &pid);
 
             match client.get(&url).send().await {
@@ -195,7 +201,21 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
         reverifying.set(true);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    if let Some(mut store) = toast_store {
+                        store.write().push_full(
+                            ToastSeverity::Error,
+                            "Re-verify failed".to_owned(),
+                            Some(err.to_string()),
+                            None,
+                        );
+                    }
+                    reverifying.set(false);
+                    return;
+                }
+            };
             let url = project_verification_refresh_url(&cfg.server_url, &pid);
 
             match client.post(&url).send().await {

@@ -295,7 +295,13 @@ pub(crate) fn Ops() -> Element {
         dash_fetch.set(FetchState::Loading);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    dash_fetch.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let base = cfg.server_url.trim_end_matches('/');
 
             let agents_url = format!("{base}/api/v1/nous");
@@ -426,7 +432,13 @@ pub(crate) fn Ops() -> Element {
         tools_fetch.set(FetchState::Loading);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    tools_fetch.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let url = format!("{}/api/v1/ops/tools", cfg.server_url.trim_end_matches('/'));
 
             match client.get(&url).send().await {

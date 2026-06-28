@@ -301,7 +301,13 @@ pub(crate) fn CredentialsView() -> Element {
         fetch_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    fetch_state.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let url = credentials_url(&cfg.server_url);
             match client.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {
@@ -361,7 +367,13 @@ pub(crate) fn CredentialsView() -> Element {
         add_key.set(String::new());
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    add_error.set(Some(err.to_string()));
+                    return;
+                }
+            };
             let url = credentials_url(&cfg.server_url);
             match client.post(&url).json(&payload).send().await {
                 Ok(resp) if resp.status().is_success() => {
@@ -541,7 +553,14 @@ fn CredentialCard(
             card_error.set(None);
 
             spawn(async move {
-                let client = authenticated_client(&cfg);
+                let client = match authenticated_client(&cfg) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        is_validating.set(false);
+                        card_error.set(Some(err.to_string()));
+                        return;
+                    }
+                };
                 let url = credential_validate_url(&cfg.server_url, &id_v);
                 match client.post(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
@@ -571,7 +590,13 @@ fn CredentialCard(
             card_error.set(None);
 
             spawn(async move {
-                let client = authenticated_client(&cfg);
+                let client = match authenticated_client(&cfg) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        card_error.set(Some(err.to_string()));
+                        return;
+                    }
+                };
                 let url = credential_rotate_url(&cfg.server_url, &prov);
                 match client.post(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
@@ -598,7 +623,13 @@ fn CredentialCard(
             card_error.set(None);
 
             spawn(async move {
-                let client = authenticated_client(&cfg);
+                let client = match authenticated_client(&cfg) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        card_error.set(Some(err.to_string()));
+                        return;
+                    }
+                };
                 let url = credential_url(&cfg.server_url, &id_r);
                 match client.delete(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {

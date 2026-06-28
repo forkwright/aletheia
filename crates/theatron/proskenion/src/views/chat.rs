@@ -379,7 +379,17 @@ fn fetch_chat_history_page(
     }
 
     spawn(async move {
-        let client = crate::api::client::authenticated_client(&cfg);
+        let client = match crate::api::client::authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                history_state.set(ChatHistoryState::failed(
+                    err.to_string(),
+                    total_count,
+                    before,
+                ));
+                return;
+            }
+        };
         let url = chat_history_url(&cfg.server_url, &session_id, before);
 
         let result = match client.get(&url).send().await {
@@ -673,7 +683,17 @@ pub(crate) fn Chat() -> Element {
         cancel_token.set(new_token.clone());
 
         spawn(async move {
-            let client = authenticated_streaming_client(&cfg);
+            let client = match authenticated_streaming_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    let mut state = legacy_state.write();
+                    let mut manager = ChatStateManager::new();
+                    if manager.apply(StreamEvent::Error(err.to_string()), &mut state) {
+                        tracing::trace!("applied chat stream client-build failure");
+                    }
+                    return;
+                }
+            };
 
             // WHY: Use agent_store.active_id (set by topbar pill clicks) instead
             // of legacy_state.agent_id (which is always None). Without this,

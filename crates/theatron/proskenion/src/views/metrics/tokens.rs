@@ -101,7 +101,13 @@ pub(crate) fn Tokens() -> Element {
 
         spawn(async move {
             fetch_state.set(FetchState::Loading);
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    fetch_state.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let (from, to) = range.to_query_dates();
             let url = format!(
                 "{}/api/v1/metrics/tokens?granularity={}&from={}&to={}",

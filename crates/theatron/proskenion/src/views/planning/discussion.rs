@@ -1,9 +1,7 @@
 //! Discussion panel: gray-area questions, option cards, and answer flow.
 
 use dioxus::prelude::*;
-use skene::api::routes::planning::{
-    project_discussion_answer_url, project_discussion_reopen_url,
-};
+use skene::api::routes::planning::{project_discussion_answer_url, project_discussion_reopen_url};
 
 use crate::api::client::authenticated_client;
 use crate::components::option_card::OptionCard;
@@ -282,7 +280,14 @@ fn DiscussionCard(
         error_msg.set(None);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    error_msg.set(Some(err.to_string()));
+                    submitting.set(false);
+                    return;
+                }
+            };
             let url = project_discussion_answer_url(&cfg.server_url, &pid, &did);
             let req = DiscussionAnswerRequest {
                 option_id: opt_id,
@@ -314,7 +319,14 @@ fn DiscussionCard(
         error_msg.set(None);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    error_msg.set(Some(err.to_string()));
+                    submitting.set(false);
+                    return;
+                }
+            };
             let url = project_discussion_reopen_url(&cfg.server_url, &pid, &did);
             match client.post(&url).send().await {
                 Ok(resp) if resp.status().is_success() => {

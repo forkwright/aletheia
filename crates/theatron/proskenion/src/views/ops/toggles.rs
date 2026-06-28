@@ -639,7 +639,14 @@ fn fire_agent_toggle(
     let agent_id = id.clone();
 
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                tracing::warn!("agent toggle client error: {err}");
+                store.write().resolve_agent(&id, false, prev_val);
+                return;
+            }
+        };
         let new_enabled = !prev_val;
         let url = agent_url(&cfg.server_url, agent_id.as_ref());
 
@@ -699,7 +706,16 @@ fn fire_tool_toggle(
     let tname = tool_name.clone();
 
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                tracing::warn!("tool toggle client error: {err}");
+                store
+                    .write()
+                    .resolve_tool(&agent_id, &tool_name, false, prev_val);
+                return;
+            }
+        };
         let new_enabled = !prev_val;
         let url = agent_tools_url(&cfg.server_url, aid.as_ref());
 
@@ -756,7 +772,19 @@ fn fire_feature_toggle(
     let flag_key = key.clone();
 
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                store.write().resolve_feature(
+                    &flag_key,
+                    false,
+                    prev_val,
+                    Some(err.to_string()),
+                    Vec::new(),
+                );
+                return;
+            }
+        };
         let url = feature_flags_url(&cfg.server_url);
 
         // WHY: Send the complete feature_flags section so the server replaces

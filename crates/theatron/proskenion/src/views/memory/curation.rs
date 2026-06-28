@@ -97,6 +97,12 @@ const BTN_DANGER_STYLE: &str = "\
                 border-color var(--transition-quick);\
 ";
 
+fn push_error_toast(message: String) {
+    if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+        ts.write().push(ToastSeverity::Error, message);
+    }
+}
+
 const SELECT_STYLE: &str = "\
     width: 100%; \
     background: var(--bg-surface-dim); \
@@ -164,7 +170,14 @@ pub(crate) fn ForgetFactDialog(
                                 let cfg = config.read().clone();
                                 let id = id.clone();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
+                                    let client = match authenticated_client(&cfg) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            push_error_toast(format!("Forget error: {err}"));
+                                            is_submitting.set(false);
+                                            return;
+                                        }
+                                    };
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
                                         keryx::url::encode_path_segment(&id);
@@ -260,7 +273,14 @@ pub(crate) fn RestoreFactDialog(
                                 let cfg = config.read().clone();
                                 let id = id.clone();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
+                                    let client = match authenticated_client(&cfg) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            push_error_toast(format!("Restore error: {err}"));
+                                            is_submitting.set(false);
+                                            return;
+                                        }
+                                    };
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
                                         keryx::url::encode_path_segment(&id);
@@ -378,7 +398,14 @@ pub(crate) fn AdjustConfidenceDialog(
                                 let id = id.clone();
                                 let conf = *value.read();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
+                                    let client = match authenticated_client(&cfg) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            push_error_toast(format!("Update error: {err}"));
+                                            is_submitting.set(false);
+                                            return;
+                                        }
+                                    };
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
                                         keryx::url::encode_path_segment(&id);
@@ -492,7 +519,14 @@ pub(crate) fn ChangeSensitivityDialog(
                                 let id = id.clone();
                                 let sens = *selected.read();
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
+                                    let client = match authenticated_client(&cfg) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            push_error_toast(format!("Update error: {err}"));
+                                            is_submitting.set(false);
+                                            return;
+                                        }
+                                    };
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
                                         keryx::url::encode_path_segment(&id);

@@ -548,7 +548,10 @@ fn AccordionSection(
 // ── Data fetch ──
 
 async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
-    let client = authenticated_client(cfg);
+    let client = match authenticated_client(cfg) {
+        Ok(client) => client,
+        Err(err) => return FetchState::Error(err.to_string()),
+    };
     let base = cfg.server_url.trim_end_matches('/');
 
     let health_url = format!("{base}/api/health");

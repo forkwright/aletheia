@@ -380,7 +380,13 @@ fn load_file(
 
     let cfg = config.read().clone();
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                state.set(ViewerState::Error(err.to_string()));
+                return;
+            }
+        };
         let base = cfg.server_url.trim_end_matches('/');
         let encoded: String = keryx::url::encode_path_segment(&path);
         let url = format!("{base}/api/v1/workspace/files/content?path={encoded}");

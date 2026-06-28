@@ -43,7 +43,14 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
     let base_url = config.server_url.trim_end_matches('/').to_string();
     let cancel = CancellationToken::new();
 
-    let client = crate::api::client::authenticated_streaming_client(config);
+    let client = match crate::api::client::authenticated_streaming_client(config) {
+        Ok(client) => client,
+        Err(err) => {
+            crate::api::client::log_authenticated_client_error(&err);
+            sse_connection_state.set(SseConnectionState::Disconnected);
+            return;
+        }
+    };
 
     spawn(async move {
         let mut sse = SseConnection::connect(client, &base_url, cancel);

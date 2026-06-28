@@ -325,7 +325,6 @@ pub(crate) fn Sessions() -> Element {
             list_store.write().mark_loading();
 
             spawn(async move {
-                let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
 
                 let mut path = format!("/api/v1/sessions?limit={}", SessionListStore::PAGE_SIZE);
@@ -351,6 +350,16 @@ pub(crate) fn Sessions() -> Element {
                 }
 
                 let url = format!("{base}{path}");
+                let client = match authenticated_client(&cfg) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        let failure = make_failure(path, None, None, err.to_string());
+                        list_store
+                            .write()
+                            .mark_failed(SessionLoadState::TransportError(failure));
+                        return;
+                    }
+                };
 
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
@@ -474,11 +483,18 @@ pub(crate) fn Sessions() -> Element {
             detail_state.set(SessionLoadState::Loading);
 
             spawn(async move {
-                let client = authenticated_client(&cfg);
                 let base = cfg.server_url.trim_end_matches('/');
                 let encoded: String = keryx::url::encode_path_segment(session_id.as_ref());
                 let path = format!("/api/v1/sessions/{encoded}/history");
                 let url = format!("{base}{path}");
+                let client = match authenticated_client(&cfg) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        let failure = make_failure(path, None, None, err.to_string());
+                        detail_state.set(SessionLoadState::TransportError(failure));
+                        return;
+                    }
+                };
 
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
@@ -580,7 +596,15 @@ pub(crate) fn Sessions() -> Element {
             let id = session_id.clone();
 
             spawn(async move {
-                let client = authenticated_client(&cfg);
+                let client = match authenticated_client(&cfg) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                            ts.write().push(ToastSeverity::Error, err.to_string());
+                        }
+                        return;
+                    }
+                };
                 let base = cfg.server_url.trim_end_matches('/');
                 let encoded: String = keryx::url::encode_path_segment(id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/archive");
@@ -615,7 +639,15 @@ pub(crate) fn Sessions() -> Element {
             let id = session_id.clone();
 
             spawn(async move {
-                let client = authenticated_client(&cfg);
+                let client = match authenticated_client(&cfg) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        if let Some(mut ts) = try_consume_context::<Signal<ToastStore>>() {
+                            ts.write().push(ToastSeverity::Error, err.to_string());
+                        }
+                        return;
+                    }
+                };
                 let base = cfg.server_url.trim_end_matches('/');
                 let encoded: String = keryx::url::encode_path_segment(id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/unarchive");
