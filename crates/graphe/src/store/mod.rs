@@ -6,4 +6,6 @@
 //! reach into backend-specific sub-modules.
 
 mod fjall_store;
-pub use fjall_store::{FinalizeMessage, FinalizeTurnRequest, FinalizeTurnResult, SessionStore};
+pub use fjall_store::{
+    FinalizeMessage, FinalizeNote, FinalizeTurnRequest, FinalizeTurnResult, SessionStore,
+};

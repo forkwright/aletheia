@@ -168,11 +168,22 @@ pub struct FinalizeMessage<'a> {
     pub token_estimate: i64,
 }
 
+/// Agent note to append as part of batched turn finalization.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeNote<'a> {
+    /// Note category.
+    pub category: &'a str,
+    /// Serialized note payload.
+    pub content: &'a str,
+}
+
 /// Request to persist a complete conversational turn in a single transaction.
 ///
-/// WHY: grouping session creation, message appends, and usage recording under
-/// one `tx.commit()` followed by one [`SessionStore::ensure_durable`] call
-/// removes the hard fsync-per-write latency floor described in issue #5675.
+/// WHY: grouping session creation, message appends, usage recording, and the
+/// completion marker under one `tx.commit()` followed by one
+/// [`SessionStore::ensure_durable`] call makes retries safe after any
+/// intra-turn write failure (#4614) and removes the hard fsync-per-write
+/// latency floor described in issue #5675.
 #[derive(Debug, Clone, Copy)]
 pub struct FinalizeTurnRequest<'a> {
     /// Session identifier for the turn.
@@ -187,8 +198,10 @@ pub struct FinalizeTurnRequest<'a> {
     pub parent_session_id: Option<&'a str>,
     /// Messages to append, in order.
     pub messages: &'a [FinalizeMessage<'a>],
-    /// Token-usage record for the turn.
-    pub usage: &'a UsageRecord,
+    /// Token-usage record for the turn, when usage recording is enabled.
+    pub usage: Option<&'a UsageRecord>,
+    /// Terminal lifecycle note to commit atomically with the turn, when known.
+    pub completion_note: Option<FinalizeNote<'a>>,
 }
 
 /// Result of a batched turn finalization.
@@ -224,12 +237,62 @@ pub(crate) mod test_persist_counter {
     }
 }
 
+#[cfg(test)]
+pub(crate) mod test_finalize_failure {
+    use std::cell::Cell;
+
+    use super::{Result, storage_error};
+
+    thread_local! {
+        static FAIL_AFTER_MESSAGES: Cell<Option<usize>> = const { Cell::new(None) };
+    }
+
+    pub fn fail_after_messages(count: usize) {
+        FAIL_AFTER_MESSAGES.with(|cell| cell.set(Some(count)));
+    }
+
+    pub fn clear() {
+        FAIL_AFTER_MESSAGES.with(|cell| cell.set(None));
+    }
+
+    pub fn maybe_fail_after_messages(messages_persisted: usize) -> Result<()> {
+        FAIL_AFTER_MESSAGES.with(|cell| {
+            let Some(limit) = cell.get() else {
+                return Ok(());
+            };
+            if messages_persisted < limit {
+                return Ok(());
+            }
+            cell.set(None);
+            Err(storage_error(format!(
+                "injected finalize_turn failure after {messages_persisted} messages"
+            )))
+        })
+    }
+}
+
 /// Options passed to the private [`SessionStore::put_note`] write path.
 #[derive(Clone, Copy)]
 struct PutNoteOpts<'a> {
     created_at: Option<&'a str>,
     provided_id: Option<i64>,
     validate_category: bool,
+}
+
+#[derive(Clone, Copy)]
+struct NoteTxParts<'a> {
+    notes: &'a fjall::SingleWriterTxKeyspace,
+    counters: &'a fjall::SingleWriterTxKeyspace,
+    sessions: &'a fjall::SingleWriterTxKeyspace,
+}
+
+#[derive(Clone, Copy)]
+struct PutNoteSpec<'a> {
+    session_id: &'a str,
+    nous_id: &'a str,
+    category: &'a str,
+    content: &'a str,
+    opts: PutNoteOpts<'a>,
 }
 
 impl SessionStore {
@@ -401,6 +464,106 @@ impl SessionStore {
         // global note ids with a prefix scan instead of scanning the entire `gid:`
         // key space (issue #5698).
         format!("note_gid_idx:{session_id}:{}", pad_u64(global_id))
+    }
+
+    fn put_note_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        parts: NoteTxParts<'_>,
+        spec: PutNoteSpec<'_>,
+    ) -> Result<i64> {
+        use fjall::Readable;
+        let PutNoteSpec {
+            session_id,
+            nous_id,
+            category,
+            content,
+            opts,
+        } = spec;
+        let PutNoteOpts {
+            created_at,
+            provided_id,
+            validate_category,
+        } = opts;
+
+        if validate_category && !Self::VALID_CATEGORIES.contains(&category) {
+            return Err(error::StorageSnafu {
+                message: format!(
+                    "CHECK constraint failed: category '{category}' is not valid; \
+                     allowed: {:?}",
+                    Self::VALID_CATEGORIES
+                ),
+            }
+            .build());
+        }
+
+        // WHY: read from the write transaction so batched turn finalization can
+        // create the session row and terminal note atomically.
+        if tx
+            .get(parts.sessions, session_id)
+            .map_err(|e| storage_error(format!("fjall put_note session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: session_id.to_owned(),
+            }
+            .build());
+        }
+
+        let current_local_id = match tx
+            .get(parts.counters, "note_local_id")
+            .map_err(|e| storage_error(format!("fjall note_local_id counter read: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "note_local_id")?,
+        };
+        let current_global_id = match tx
+            .get(parts.counters, "note_global_id")
+            .map_err(|e| storage_error(format!("fjall note_global_id counter read: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "note_global_id")?,
+        };
+
+        // WHY: a non-positive provided id means the caller wants a fresh id,
+        // matching the legacy `add_note` allocation behaviour.
+        let local_id = provided_id
+            .and_then(|id| u64::try_from(id).ok())
+            .filter(|&id| id > 0)
+            .unwrap_or(current_local_id + 1);
+        let global_id = provided_id
+            .and_then(|id| u64::try_from(id).ok())
+            .filter(|&id| id > 0)
+            .unwrap_or(current_global_id + 1);
+
+        let note = AgentNote {
+            id: global_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+            session_id: session_id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            category: category.to_owned(),
+            content: content.to_owned(),
+            created_at: created_at.map_or_else(now_iso, str::to_owned),
+        };
+        let note_data = serde_json::to_vec(&note).context(error::StoredJsonSnafu)?;
+        let local_key = format!("{session_id}:{}", pad_u64(local_id));
+        let gid_key = format!("gid:{}", pad_u64(global_id));
+        let gid_val = format!("{session_id}:{}", pad_u64(local_id));
+        let gid_idx_key = Self::note_gid_index_key(session_id, global_id);
+
+        tx.insert(parts.notes, local_key.as_str(), note_data.as_slice());
+        tx.insert(parts.notes, gid_key.as_str(), gid_val.as_bytes());
+        tx.insert(parts.notes, gid_idx_key.as_str(), b"");
+        tx.insert(
+            parts.counters,
+            "note_local_id",
+            encode_u64(local_id.max(current_local_id)),
+        );
+        tx.insert(
+            parts.counters,
+            "note_global_id",
+            encode_u64(global_id.max(current_global_id)),
+        );
+
+        Ok(global_id as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
     }
 
     fn write_session(&self, session: &Session) -> Result<()> {
@@ -1804,9 +1967,11 @@ impl SessionStore {
 
     /// Persist a complete conversational turn in a single transaction.
     ///
-    /// This batches session creation, message appends, and usage recording so
-    /// the hot path issues exactly one `ensure_durable()` fsync per logical
-    /// turn instead of one per individual write (issue #5675).
+    /// This batches session creation, message appends, usage recording, and
+    /// the terminal lifecycle marker so a retry can never observe a committed
+    /// prefix of the turn and append it again (#4614). The hot path still
+    /// issues exactly one `ensure_durable()` fsync per logical turn instead of
+    /// one per individual write (issue #5675).
     ///
     /// # Errors
     /// Returns an error if any partition operation, transaction commit, or
@@ -1821,6 +1986,7 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
+        let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
 
         let mut tx = self.db.write_tx();
@@ -1846,9 +2012,37 @@ impl SessionStore {
                 spec,
             )?;
             messages_persisted += 1;
+            #[cfg(test)]
+            test_finalize_failure::maybe_fail_after_messages(messages_persisted)?;
         }
 
-        Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, request.usage)?;
+        let mut usage_recorded = false;
+        if let Some(usage) = request.usage {
+            Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, usage)?;
+            usage_recorded = true;
+        }
+
+        if let Some(note) = request.completion_note {
+            Self::put_note_in_tx(
+                &mut tx,
+                NoteTxParts {
+                    notes: &notes_part,
+                    counters: &counters_part,
+                    sessions: &sessions_part,
+                },
+                PutNoteSpec {
+                    session_id: session.id.as_str(),
+                    nous_id: request.nous_id,
+                    category: note.category,
+                    content: note.content,
+                    opts: PutNoteOpts {
+                        created_at: None,
+                        provided_id: None,
+                        validate_category: true,
+                    },
+                },
+            )?;
+        }
 
         tx.commit().map_err(|e| {
             error::StorageSnafu {
@@ -1864,7 +2058,7 @@ impl SessionStore {
         );
         Ok(FinalizeTurnResult {
             messages_persisted,
-            usage_recorded: true,
+            usage_recorded,
         })
     }
 
@@ -1934,101 +2128,29 @@ impl SessionStore {
         content: &str,
         opts: PutNoteOpts<'_>,
     ) -> Result<i64> {
-        use fjall::Readable;
-        let PutNoteOpts {
-            created_at,
-            provided_id,
-            validate_category,
-        } = opts;
-
-        if validate_category && !Self::VALID_CATEGORIES.contains(&category) {
-            return Err(error::StorageSnafu {
-                message: format!(
-                    "CHECK constraint failed: category '{category}' is not valid; \
-                     allowed: {:?}",
-                    Self::VALID_CATEGORIES
-                ),
-            }
-            .build());
-        }
-
         let _guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
-
-        let snap = self.db.read_tx();
-
-        // WHY: referential integrity — reject notes for non-existent sessions (#5027).
         let sessions_part = self.partition("sessions")?;
-        if snap
-            .get(&sessions_part, session_id.as_bytes())
-            .map_err(|e| storage_error(format!("fjall put_note session check: {e}")))?
-            .is_none()
-        {
-            return Err(error::SessionNotFoundSnafu {
-                id: session_id.to_owned(),
-            }
-            .build());
-        }
-
-        let current_local_id = match snap
-            .get(&counters_part, "note_local_id")
-            .map_err(|e| storage_error(format!("fjall note_local_id counter read: {e}")))?
-        {
-            None => 0u64,
-            Some(b) => try_decode_u64(&b, "note_local_id")?,
-        };
-        let current_global_id = match snap
-            .get(&counters_part, "note_global_id")
-            .map_err(|e| storage_error(format!("fjall note_global_id counter read: {e}")))?
-        {
-            None => 0u64,
-            Some(b) => try_decode_u64(&b, "note_global_id")?,
-        };
-        drop(snap);
-
-        // WHY: a non-positive provided id means the caller wants a fresh id,
-        // matching the legacy `add_note` allocation behaviour.
-        let local_id = provided_id
-            .and_then(|id| u64::try_from(id).ok())
-            .filter(|&id| id > 0)
-            .unwrap_or(current_local_id + 1);
-        let global_id = provided_id
-            .and_then(|id| u64::try_from(id).ok())
-            .filter(|&id| id > 0)
-            .unwrap_or(current_global_id + 1);
-
-        let note = AgentNote {
-            id: global_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
-            session_id: session_id.to_owned(),
-            nous_id: nous_id.to_owned(),
-            category: category.to_owned(),
-            content: content.to_owned(),
-            created_at: created_at.map_or_else(now_iso, str::to_owned),
-        };
-        let note_data = serde_json::to_vec(&note).context(error::StoredJsonSnafu)?;
-        let local_key = format!("{session_id}:{}", pad_u64(local_id));
-        let gid_key = format!("gid:{}", pad_u64(global_id));
-        let gid_val = format!("{session_id}:{}", pad_u64(local_id));
-        let gid_idx_key = Self::note_gid_index_key(session_id, global_id);
-
         let mut tx = self.db.write_tx();
-        tx.insert(&notes_part, local_key.as_str(), note_data.as_slice());
-        tx.insert(&notes_part, gid_key.as_str(), gid_val.as_bytes());
-        tx.insert(&notes_part, gid_idx_key.as_str(), b"");
-        tx.insert(
-            &counters_part,
-            "note_local_id",
-            encode_u64(local_id.max(current_local_id)),
-        );
-        tx.insert(
-            &counters_part,
-            "note_global_id",
-            encode_u64(global_id.max(current_global_id)),
-        );
+        let note_id = Self::put_note_in_tx(
+            &mut tx,
+            NoteTxParts {
+                notes: &notes_part,
+                counters: &counters_part,
+                sessions: &sessions_part,
+            },
+            PutNoteSpec {
+                session_id,
+                nous_id,
+                category,
+                content,
+                opts,
+            },
+        )?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
                 message: format!("fjall put_note: {e}"),
@@ -2036,7 +2158,7 @@ impl SessionStore {
             .build()
         })?;
 
-        Ok(global_id as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+        Ok(note_id)
     }
 
     /// Get notes for a session.
