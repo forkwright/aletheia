@@ -33,6 +33,56 @@ pub(super) struct DispatchResult {
 }
 
 #[derive(Debug, Clone)]
+pub(super) enum ToolDispatchItem {
+    Ready {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    Denied {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+        message: String,
+        outcome: &'static str,
+    },
+}
+
+impl ToolDispatchItem {
+    pub(super) fn ready(id: String, name: String, input: serde_json::Value) -> Self {
+        Self::Ready { id, name, input }
+    }
+
+    pub(super) fn denied_by_hook(
+        id: String,
+        name: String,
+        input: serde_json::Value,
+        message: String,
+    ) -> Self {
+        Self::Denied {
+            id,
+            name,
+            input,
+            message,
+            outcome: TOOL_OUTCOME_DENIED_BY_HOOK,
+        }
+    }
+
+    pub(super) fn ready_input_for(&self, tool_id: &str) -> Option<&serde_json::Value> {
+        match self {
+            Self::Ready { id, input, .. } if id == tool_id => Some(input),
+            Self::Ready { .. } | Self::Denied { .. } => None,
+        }
+    }
+}
+
+impl From<(String, String, serde_json::Value)> for ToolDispatchItem {
+    fn from((id, name, input): (String, String, serde_json::Value)) -> Self {
+        Self::ready(id, name, input)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct ToolDispatchPolicy {
     surface: Arc<EffectiveToolSurface>,
 }
@@ -80,6 +130,16 @@ impl ToolPolicyDenial {
             Self::Inactive => "activation policy",
             Self::ServerTool => "server tool",
             Self::ParseError { .. } => "parse error",
+        }
+    }
+
+    const fn outcome(&self) -> &'static str {
+        match self {
+            Self::Unknown | Self::ServerTool => TOOL_OUTCOME_NOT_FOUND,
+            Self::Allowlist { .. } => TOOL_OUTCOME_DENIED_BY_ROLE,
+            Self::Group { .. } => TOOL_OUTCOME_DENIED_BY_GROUP,
+            Self::Inactive => TOOL_OUTCOME_DENIED_INACTIVE,
+            Self::ParseError { .. } => TOOL_OUTCOME_FAILED,
         }
     }
 }
@@ -138,12 +198,8 @@ impl ToolDispatchPolicy {
         &self,
         tool_uses: Vec<(String, String, serde_json::Value)>,
         tools: &ToolRegistry,
-        tool_ctx: &ToolContext,
-        stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
-        all_tool_calls: &mut Vec<ToolCall>,
-        denied_blocks: &mut Vec<ContentBlock>,
-    ) -> Vec<(String, String, serde_json::Value)> {
-        let mut allowed = Vec::with_capacity(tool_uses.len());
+    ) -> Vec<ToolDispatchItem> {
+        let mut items = Vec::with_capacity(tool_uses.len());
         for (id, name, input) in tool_uses {
             let denial = self
                 .denial_for(tools, &id, &name, &input)
@@ -155,24 +211,18 @@ impl ToolDispatchPolicy {
                     reason = denial.log_reason(),
                     "tool call denied by dispatch policy"
                 );
-                record_denied_call(
-                    all_tool_calls,
-                    denied_blocks,
-                    stream_tx,
-                    tool_ctx,
-                    DeniedToolCall {
-                        id: &id,
-                        name: &name,
-                        input: &input,
-                        message: denial.message(&name),
-                        approval: Some(APPROVAL_OUTCOME_POLICY_DENIED),
-                    },
-                );
+                items.push(ToolDispatchItem::Denied {
+                    id,
+                    name: name.clone(),
+                    input,
+                    message: denial.message(&name),
+                    outcome: denial.outcome(),
+                });
             } else {
-                allowed.push((id, name, input));
+                items.push(ToolDispatchItem::Ready { id, name, input });
             }
         }
-        allowed
+        items
     }
 
     fn denial_for(
@@ -262,7 +312,12 @@ fn approval_reason(tool_name: &str, approval: ApprovalRequirement) -> String {
 const APPROVAL_OUTCOME_AUTO_APPROVED: &str = "auto_approved";
 const APPROVAL_OUTCOME_ADVISORY_AUTO: &str = "advisory_auto";
 const APPROVAL_OUTCOME_NO_GATE_DENIED: &str = "no_gate_denied";
-const APPROVAL_OUTCOME_POLICY_DENIED: &str = "policy_denied";
+const TOOL_OUTCOME_DENIED_BY_ROLE: &str = "denied_by_role";
+const TOOL_OUTCOME_DENIED_BY_GROUP: &str = "denied_by_group";
+pub(super) const TOOL_OUTCOME_DENIED_BY_HOOK: &str = "denied_by_hook";
+const TOOL_OUTCOME_DENIED_INACTIVE: &str = "denied_inactive";
+const TOOL_OUTCOME_NOT_FOUND: &str = "not_found";
+const TOOL_OUTCOME_FAILED: &str = "failed";
 
 fn record_approval_policy_outcome(
     tool_id: &str,
@@ -806,16 +861,12 @@ async fn dispatch_single_tool(
 /// status is known). On [`LoopVerdict::Warn`], stops processing remaining
 /// tools and returns the warning. On [`LoopVerdict::Halt`], returns an error.
 ///
-/// Per-tool work lives in [`dispatch_single_tool`]; this function owns the
-/// iteration over `tool_uses` and the loop-detection branch that can halt
-/// or warn before subsequent tools run.
+/// Legacy tuple adapter used by direct dispatch tests and callers that have no
+/// pre-dispatch denials to preserve.
+#[cfg(test)]
 #[expect(
     clippy::too_many_arguments,
     reason = "dispatch needs tool uses, registry, context, detector, calls, iterations, limits, and receipt infra"
-)]
-#[expect(
-    clippy::too_many_lines,
-    reason = "single approval-aware dispatch loop owns the full per-tool lifecycle"
 )]
 pub(super) async fn dispatch_tools(
     tool_uses: &[(String, String, serde_json::Value)],
@@ -831,10 +882,79 @@ pub(super) async fn dispatch_tools(
     receipt_signer: Option<&organon::receipts::ReceiptSigner>,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<DispatchResult> {
+    let items: Vec<ToolDispatchItem> = tool_uses.iter().cloned().map(Into::into).collect();
+    dispatch_tool_items(
+        &items,
+        tools,
+        tool_ctx,
+        loop_detector,
+        all_tool_calls,
+        iterations,
+        stream_tx,
+        approval_gate,
+        policy,
+        max_tool_result_bytes,
+        receipt_signer,
+        receipt_ledger,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "dispatch needs tool items, registry, context, detector, calls, iterations, limits, and receipt infra"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single approval-aware dispatch loop owns the full per-tool lifecycle"
+)]
+pub(super) async fn dispatch_tool_items(
+    tool_items: &[ToolDispatchItem],
+    tools: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    loop_detector: &mut LoopDetector,
+    all_tool_calls: &mut Vec<ToolCall>,
+    iterations: u32,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    approval_gate: Option<&ApprovalGate>,
+    policy: &ToolDispatchPolicy,
+    max_tool_result_bytes: u32,
+    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
+    receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
+) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
-    for (tool_id, tool_name, tool_input) in tool_uses {
-        if let Some(denial) = policy.denial_for(tools, tool_id, tool_name, tool_input) {
+    for item in tool_items {
+        let (tool_id, tool_name, tool_input) = match item {
+            ToolDispatchItem::Ready { id, name, input } => (id, name, input),
+            ToolDispatchItem::Denied {
+                id,
+                name,
+                input,
+                message,
+                outcome,
+            } => {
+                record_denied_call(
+                    all_tool_calls,
+                    &mut tool_results,
+                    stream_tx,
+                    tool_ctx,
+                    DeniedToolCall {
+                        id,
+                        name,
+                        input,
+                        message: message.clone(),
+                        approval: Some(outcome),
+                    },
+                );
+                continue;
+            }
+        };
+
+        if let Some(denial) = policy
+            .denial_for(tools, tool_id, tool_name, tool_input)
+            .or_else(|| parse_error_denial(tool_input))
+        {
             warn!(
                 tool = %tool_name,
                 tool_id = %tool_id,
@@ -851,7 +971,7 @@ pub(super) async fn dispatch_tools(
                     name: tool_name,
                     input: tool_input,
                     message: denial.message(tool_name),
-                    approval: Some(APPROVAL_OUTCOME_POLICY_DENIED),
+                    approval: Some(denial.outcome()),
                 },
             );
             continue;
@@ -938,7 +1058,7 @@ pub(super) async fn dispatch_tools(
                         name: tool_name,
                         input: tool_input,
                         message: format!("tool_policy: Tool '{tool_name}' call rejected: {e}"),
-                        approval: Some(APPROVAL_OUTCOME_POLICY_DENIED),
+                        approval: Some(TOOL_OUTCOME_DENIED_BY_GROUP),
                     },
                 );
                 continue;

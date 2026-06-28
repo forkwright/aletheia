@@ -22,14 +22,15 @@ use hermeneus::fallback::FallbackConfig;
 use hermeneus::provider::{DeploymentTarget, ProviderRegistry};
 use hermeneus::types::{
     CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
-    ServerToolDefinition, StopReason, ThinkingConfig, ToolResultContent,
+    ServerToolDefinition, StopReason, ThinkingConfig,
 };
 use organon::registry::ToolRegistry;
 use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
 
 use self::dispatch::{
-    DispatchResult, ToolDispatchPolicy, build_messages, classify_signals, dispatch_tools,
+    DispatchResult, ToolDispatchItem, ToolDispatchPolicy, build_messages, classify_signals,
+    dispatch_tool_items,
 };
 use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
@@ -408,51 +409,49 @@ pub(crate) async fn execute_with_deadline(
             cache_breakpoint: false,
         });
 
-        let effective_tool_uses = dispatch_policy.filter_tool_uses(
-            extracted.tool_uses,
-            tools,
-            tool_ctx,
-            stream_tx,
-            &mut all_tool_calls,
-            &mut denied_blocks,
-        );
+        let dispatch_items = dispatch_policy.filter_tool_uses(extracted.tool_uses, tools);
 
         // WHY: before_tool hooks run after allowlist filtering but before dispatch,
         // so hooks can deny individual tool calls based on budget/scope/policy.
-        let effective_tool_uses = if let Some(hook_registry) = hooks {
+        let dispatch_items = if let Some(hook_registry) = hooks {
             let hook_ctx = ToolHookContext {
                 nous_id: &session.nous_id,
                 turn_usage: &total_usage,
                 tool_allowlist: config.tool_allowlist.as_deref(),
             };
-            let mut hook_allowed = Vec::with_capacity(effective_tool_uses.len());
-            for (id, name, input) in effective_tool_uses {
-                match hook_registry
-                    .run_before_tool(&name, &input, &hook_ctx)
-                    .await
-                {
-                    ToolHookResult::Allow => hook_allowed.push((id, name, input)),
-                    ToolHookResult::Deny { reason } => {
-                        warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
-                        denied_blocks.push(ContentBlock::ToolResult {
-                            tool_use_id: id,
-                            content: ToolResultContent::Text(reason),
-                            is_error: Some(true),
-                        });
+            let mut hook_filtered = Vec::with_capacity(dispatch_items.len());
+            for item in dispatch_items {
+                match item {
+                    ToolDispatchItem::Ready { id, name, input } => {
+                        match hook_registry
+                            .run_before_tool(&name, &input, &hook_ctx)
+                            .await
+                        {
+                            ToolHookResult::Allow => {
+                                hook_filtered.push(ToolDispatchItem::ready(id, name, input));
+                            }
+                            ToolHookResult::Deny { reason } => {
+                                warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
+                                hook_filtered.push(ToolDispatchItem::denied_by_hook(
+                                    id, name, input, reason,
+                                ));
+                            }
+                        }
                     }
+                    ToolDispatchItem::Denied { .. } => hook_filtered.push(item),
                 }
             }
-            hook_allowed
+            hook_filtered
         } else {
-            effective_tool_uses
+            dispatch_items
         };
 
         let all_tool_calls_before = all_tool_calls.len();
         let DispatchResult {
             mut blocks,
             loop_warning,
-        } = dispatch_tools(
-            &effective_tool_uses,
+        } = dispatch_tool_items(
+            &dispatch_items,
             tools,
             tool_ctx,
             &mut loop_detector,
@@ -471,13 +470,19 @@ pub(crate) async fn execute_with_deadline(
         // Hooks run in priority order but do not short-circuit (tool is already executed).
         if let Some(hook_registry) = hooks {
             for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
+                if !dispatch_items
+                    .iter()
+                    .any(|item| item.ready_input_for(&tool_call.id).is_some())
+                {
+                    continue;
+                }
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
                     tool_name: &tool_call.name,
-                    tool_input: effective_tool_uses
+                    tool_input: dispatch_items
                         .iter()
-                        .find(|(_, name, _)| name == &tool_call.name)
-                        .map_or(&serde_json::Value::Null, |(_, _, input)| input),
+                        .find_map(|item| item.ready_input_for(&tool_call.id))
+                        .unwrap_or(&serde_json::Value::Null),
                     tool_result: ToolResultRecord::from_option(tool_call.result.as_deref()),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
@@ -1015,50 +1020,48 @@ pub(crate) async fn execute_streaming_with_deadline(
             cache_breakpoint: false,
         });
 
-        let effective_tool_uses = dispatch_policy.filter_tool_uses(
-            extracted.tool_uses,
-            tools,
-            tool_ctx,
-            Some(stream_tx),
-            &mut all_tool_calls,
-            &mut denied_blocks,
-        );
+        let dispatch_items = dispatch_policy.filter_tool_uses(extracted.tool_uses, tools);
 
         // WHY: before_tool hooks filter tool calls before streaming dispatch
-        let effective_tool_uses = if let Some(hook_registry) = hooks {
+        let dispatch_items = if let Some(hook_registry) = hooks {
             let hook_ctx = ToolHookContext {
                 nous_id: &session.nous_id,
                 turn_usage: &total_usage,
                 tool_allowlist: config.tool_allowlist.as_deref(),
             };
-            let mut hook_allowed = Vec::with_capacity(effective_tool_uses.len());
-            for (id, name, input) in effective_tool_uses {
-                match hook_registry
-                    .run_before_tool(&name, &input, &hook_ctx)
-                    .await
-                {
-                    ToolHookResult::Allow => hook_allowed.push((id, name, input)),
-                    ToolHookResult::Deny { reason } => {
-                        warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
-                        denied_blocks.push(ContentBlock::ToolResult {
-                            tool_use_id: id,
-                            content: ToolResultContent::Text(reason),
-                            is_error: Some(true),
-                        });
+            let mut hook_filtered = Vec::with_capacity(dispatch_items.len());
+            for item in dispatch_items {
+                match item {
+                    ToolDispatchItem::Ready { id, name, input } => {
+                        match hook_registry
+                            .run_before_tool(&name, &input, &hook_ctx)
+                            .await
+                        {
+                            ToolHookResult::Allow => {
+                                hook_filtered.push(ToolDispatchItem::ready(id, name, input));
+                            }
+                            ToolHookResult::Deny { reason } => {
+                                warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
+                                hook_filtered.push(ToolDispatchItem::denied_by_hook(
+                                    id, name, input, reason,
+                                ));
+                            }
+                        }
                     }
+                    ToolDispatchItem::Denied { .. } => hook_filtered.push(item),
                 }
             }
-            hook_allowed
+            hook_filtered
         } else {
-            effective_tool_uses
+            dispatch_items
         };
 
         let all_tool_calls_before = all_tool_calls.len();
         let DispatchResult {
             mut blocks,
             loop_warning,
-        } = dispatch_tools(
-            &effective_tool_uses,
+        } = dispatch_tool_items(
+            &dispatch_items,
             tools,
             tool_ctx,
             &mut loop_detector,
@@ -1077,13 +1080,19 @@ pub(crate) async fn execute_streaming_with_deadline(
         // Hooks run in priority order but do not short-circuit (tool is already executed).
         if let Some(hook_registry) = hooks {
             for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
+                if !dispatch_items
+                    .iter()
+                    .any(|item| item.ready_input_for(&tool_call.id).is_some())
+                {
+                    continue;
+                }
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
                     tool_name: &tool_call.name,
-                    tool_input: effective_tool_uses
+                    tool_input: dispatch_items
                         .iter()
-                        .find(|(_, name, _)| name == &tool_call.name)
-                        .map_or(&serde_json::Value::Null, |(_, _, input)| input),
+                        .find_map(|item| item.ready_input_for(&tool_call.id))
+                        .unwrap_or(&serde_json::Value::Null),
                     tool_result: ToolResultRecord::from_option(tool_call.result.as_deref()),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
