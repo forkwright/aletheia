@@ -218,7 +218,9 @@ fn entity_relationships_projects_view_fields() {
         event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
     };
 
-    let relationships = get_entity_relationships(&state, "entity-a").unwrap();
+    let claims = operator_claims();
+    let policy = KnowledgeReadPolicy::from_single_nous(&claims, None).unwrap();
+    let relationships = get_entity_relationships(&state, &policy, "entity-a").unwrap();
     assert_eq!(relationships.len(), 2);
     assert!(relationships.iter().any(|r| {
         r.entity_id == "entity-b"
@@ -326,7 +328,7 @@ async fn list_entities_honors_filters_and_relationship_counts() {
         agent: vec!["test-nous".to_owned()],
     };
 
-    let response = match list_entities(State(state), Query(query)).await {
+    let response = match list_entities(State(state), operator_claims(), Query(query)).await {
         Ok(response) => response,
         Err(err) => panic!("list entities: {err:?}"),
     };
@@ -354,7 +356,13 @@ async fn get_entity_missing_returns_404() {
         event_bus: Arc::new(crate::event_bus::EventBus::new(16)),
     };
 
-    let Err(err) = get_entity(State(state), Path("missing-entity".to_owned())).await else {
+    let Err(err) = get_entity(
+        State(state),
+        operator_claims(),
+        Path("missing-entity".to_owned()),
+    )
+    .await
+    else {
         panic!("missing entity should return an error");
     };
     match err {
@@ -412,6 +420,7 @@ async fn update_sensitivity_handler_persists_to_fact_list_path() {
 
     let listed = match list_facts(
         State(state),
+        operator_claims(),
         Query(FactsQuery {
             nous_id: Some("test-nous".to_owned()),
             sort: "confidence".to_owned(),
@@ -542,6 +551,15 @@ fn readonly_claims() -> Claims {
 }
 
 #[cfg(feature = "knowledge-store")]
+fn scoped_agent_claims(nous_id: &str) -> Claims {
+    Claims {
+        sub: format!("{nous_id}-user"),
+        role: Role::Agent,
+        nous_id: Some(nous_id.to_owned()),
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
 fn knowledge_state_with_store(
     store: std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> KnowledgeState {
@@ -553,6 +571,226 @@ fn knowledge_state_with_store(
         )),
         event_bus: std::sync::Arc::new(EventBus::new(16)),
     }
+}
+
+#[cfg(feature = "knowledge-store")]
+fn make_fact_for(
+    id: &str,
+    nous_id: &str,
+    content: &str,
+    visibility: mneme::knowledge::Visibility,
+) -> mneme::knowledge::Fact {
+    let mut fact = make_fact(id, content, 0.9);
+    fact.nous_id = nous_id.to_owned();
+    fact.visibility = visibility;
+    fact
+}
+
+#[cfg(feature = "knowledge-store")]
+fn default_facts_query(nous_id: Option<&str>) -> FactsQuery {
+    FactsQuery {
+        nous_id: nous_id.map(ToOwned::to_owned),
+        sort: "confidence".to_owned(),
+        order: "desc".to_owned(),
+        filter: None,
+        fact_type: None,
+        tier: None,
+        limit: 50,
+        offset: 0,
+        include_forgotten: false,
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+fn seed_policy_store() -> (
+    std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    KnowledgeState,
+) {
+    use mneme::id::{EntityId, FactId};
+    use mneme::knowledge::{Entity, Visibility};
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    for entity in [
+        Entity {
+            id: EntityId::new("entity-alice").unwrap(),
+            name: "Alice Memory".to_owned(),
+            entity_type: "person".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+        Entity {
+            id: EntityId::new("entity-bob").unwrap(),
+            name: "Bob Memory".to_owned(),
+            entity_type: "person".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+        Entity {
+            id: EntityId::new("entity-shared").unwrap(),
+            name: "Shared Memory".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        },
+    ] {
+        store.insert_entity(&entity).unwrap();
+    }
+
+    for (fact, entity_id) in [
+        (
+            make_fact_for(
+                "fact-alice-private",
+                "alice-nous",
+                "zebra alice private memory",
+                Visibility::Private,
+            ),
+            "entity-alice",
+        ),
+        (
+            make_fact_for(
+                "fact-bob-private",
+                "bob-nous",
+                "zebra bob private memory",
+                Visibility::Private,
+            ),
+            "entity-bob",
+        ),
+        (
+            make_fact_for(
+                "fact-bob-shared",
+                "bob-nous",
+                "zebra bob shared memory",
+                Visibility::Shared,
+            ),
+            "entity-shared",
+        ),
+    ] {
+        store.insert_fact(&fact).unwrap();
+        store
+            .insert_fact_entity(
+                &FactId::new(fact.id.as_str()).unwrap(),
+                &EntityId::new(entity_id).unwrap(),
+            )
+            .unwrap();
+    }
+
+    let state = knowledge_state_with_store(std::sync::Arc::clone(&store));
+    (store, state)
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn knowledge_read_policy_applies_across_fact_search_timeline_and_entity_reads() {
+    use axum::extract::{Path, Query, State};
+    use mneme::knowledge::Visibility;
+
+    let (_store, state) = seed_policy_store();
+
+    let operator_list = list_facts(
+        State(state.clone()),
+        operator_claims(),
+        Query(default_facts_query(None)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(operator_list.0.facts.len(), 3);
+
+    let readonly_list = list_facts(
+        State(state.clone()),
+        readonly_claims(),
+        Query(default_facts_query(None)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(readonly_list.0.facts.len(), 1);
+    assert_eq!(readonly_list.0.facts[0].id.as_str(), "fact-bob-shared");
+
+    let alice_claims = scoped_agent_claims("alice-nous");
+    let alice_list = list_facts(
+        State(state.clone()),
+        alice_claims.clone(),
+        Query(default_facts_query(None)),
+    )
+    .await
+    .unwrap();
+    assert_eq!(alice_list.0.facts.len(), 1);
+    assert_eq!(alice_list.0.facts[0].id.as_str(), "fact-alice-private");
+
+    let override_err = list_facts(
+        State(state.clone()),
+        alice_claims.clone(),
+        Query(default_facts_query(Some("bob-nous"))),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(override_err, ApiError::Forbidden { .. }));
+
+    let private_fact_err = get_fact(
+        State(state.clone()),
+        alice_claims.clone(),
+        Path("fact-bob-private".to_owned()),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(private_fact_err, ApiError::Forbidden { .. }));
+
+    let shared_fact = get_fact(
+        State(state.clone()),
+        alice_claims.clone(),
+        Path("fact-bob-shared".to_owned()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(shared_fact.0.fact.visibility, Visibility::Shared);
+
+    let search_err = search(
+        State(state.clone()),
+        alice_claims.clone(),
+        Query(SearchQuery {
+            q: "zebra".to_owned(),
+            nous_id: Some("bob-nous".to_owned()),
+            limit: 10,
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(search_err, ApiError::Forbidden { .. }));
+
+    let timeline_response = timeline(
+        State(state.clone()),
+        alice_claims.clone(),
+        Query(TimelineQuery {
+            nous_id: None,
+            limit: 20,
+            offset: 0,
+        }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(timeline_response.0.events.len(), 1);
+    assert_eq!(timeline_response.0.events[0].fact_id, "fact-alice-private");
+
+    let entity_err = list_entities(
+        State(state),
+        alice_claims,
+        Query(EntitiesQuery {
+            limit: 20,
+            offset: 0,
+            q: None,
+            sort: "name".to_owned(),
+            order: "asc".to_owned(),
+            entity_type: Vec::new(),
+            min_confidence: None,
+            agent: vec!["bob-nous".to_owned()],
+        }),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(entity_err, ApiError::Forbidden { .. }));
 }
 
 fn knowledge_state_without_store() -> KnowledgeState {
