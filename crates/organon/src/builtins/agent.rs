@@ -116,17 +116,32 @@ impl ToolExecutor for SessionsDispatchExecutor {
 
             let mut join_set = tokio::task::JoinSet::new();
 
-            for task_val in tasks {
-                let role = task_val
-                    .get("role")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("coder")
-                    .to_owned();
-                let task_text = task_val
-                    .get("task")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_owned();
+            for (index, task_val) in tasks.iter().enumerate() {
+                let Some(task_obj) = task_val.as_object() else {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}]: expected task object"
+                    )));
+                };
+                let Some(role) = dispatch_task_string(task_obj, "role") else {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].role: missing or invalid field"
+                    )));
+                };
+                if role.is_empty() {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].role: field must not be empty"
+                    )));
+                }
+                let Some(task_text) = dispatch_task_string(task_obj, "task") else {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].task: missing or invalid field"
+                    )));
+                };
+                if task_text.is_empty() {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].task: field must not be empty"
+                    )));
+                }
                 let model = task_val
                     .get("model")
                     .and_then(|v| v.as_str())
@@ -137,8 +152,8 @@ impl ToolExecutor for SessionsDispatchExecutor {
                     .unwrap_or(default_timeout);
 
                 let request = SpawnRequest {
-                    role,
-                    task: task_text,
+                    role: role.to_owned(),
+                    task: task_text.to_owned(),
                     model,
                     allowed_tools: None,
                     timeout_secs: timeout,
@@ -156,6 +171,13 @@ impl ToolExecutor for SessionsDispatchExecutor {
             Ok(aggregate_dispatch_results(join_set, parent_cancel).await)
         })
     }
+}
+
+fn dispatch_task_string<'a>(
+    task_obj: &'a serde_json::Map<String, serde_json::Value>,
+    field: &str,
+) -> Option<&'a str> {
+    task_obj.get(field).and_then(serde_json::Value::as_str)
 }
 
 /// Drain a `JoinSet` of sub-agent spawn futures into a single
@@ -453,7 +475,7 @@ mod tests {
     use koina::id::{NousId, SessionId, ToolName};
     use taxis::config::ToolLimitsConfig;
 
-    use crate::registry::ToolRegistry;
+    use crate::registry::{ToolExecutor, ToolRegistry};
     use crate::testing::install_crypto_provider;
     use crate::types::{
         ServerToolConfig, SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolContext,
@@ -675,6 +697,56 @@ mod tests {
             err.to_string().contains("above maximum 10"),
             "expected schema error about max items: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn dispatch_executor_rejects_missing_and_empty_task_fields() {
+        let spawn = Arc::new(MockSpawnService);
+        let ctx = mock_ctx_with_spawn(spawn);
+        let executor = super::SessionsDispatchExecutor;
+
+        let input = ToolInput {
+            name: ToolName::from_static("sessions_dispatch"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"tasks": [{}, {"role": "coder", "task": ""}]}),
+        };
+        let result = executor.execute(&input, &ctx).await.expect("execute");
+        assert!(result.is_error, "expected result.is_error to be true");
+        assert!(
+            result.content.text_summary().contains("tasks[0].role"),
+            "expected error to name first invalid field, got: {}",
+            result.content.text_summary()
+        );
+
+        let cases = [
+            (
+                serde_json::json!({"tasks": [{"role": "coder"}]}),
+                "tasks[0].task",
+            ),
+            (
+                serde_json::json!({"tasks": [{"role": "", "task": "write code"}]}),
+                "tasks[0].role",
+            ),
+            (
+                serde_json::json!({"tasks": [{"role": "coder", "task": ""}]}),
+                "tasks[0].task",
+            ),
+        ];
+
+        for (arguments, expected) in cases {
+            let input = ToolInput {
+                name: ToolName::from_static("sessions_dispatch"),
+                tool_use_id: "tu_1".to_owned(),
+                arguments,
+            };
+            let result = executor.execute(&input, &ctx).await.expect("execute");
+            assert!(result.is_error, "expected {expected} to fail");
+            assert!(
+                result.content.text_summary().contains(expected),
+                "expected error to contain {expected}, got: {}",
+                result.content.text_summary()
+            );
+        }
     }
 
     #[tokio::test]
