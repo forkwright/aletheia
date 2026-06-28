@@ -757,6 +757,34 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Update the data-sovereignty sensitivity for a knowledge fact.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_update_sensitivity(
+        &self,
+        fact_id: &str,
+        sensitivity: &str,
+    ) -> Result<()> {
+        let encoded = keryx::url::encode_path_segment(fact_id);
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/api/v1/knowledge/facts/{encoded}/sensitivity"),
+            )
+            .json(&serde_json::json!({ "sensitivity": sensitivity }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update sensitivity",
+            })?;
+        Self::check_status(resp, "sensitivity request").await?;
+        Ok(())
+    }
+
     /// Consumes a response, returning it unchanged if 2xx.
     ///
     /// On non-2xx:
@@ -854,6 +882,54 @@ mod tests {
             stream
                 .write_all(response.as_bytes())
                 .expect("write HTTP error test response");
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn request_body_complete(request: &str) -> bool {
+        let Some((headers, body)) = request.split_once("\r\n\r\n") else {
+            return false;
+        };
+        let content_length = headers.lines().find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        });
+        content_length.is_none_or(|expected| body.len() >= expected)
+    }
+
+    fn serve_http_no_content_once() -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 4096];
+            let mut request_bytes = Vec::new();
+            loop {
+                let read = stream.read(&mut buf).expect("read test request");
+                if read == 0 {
+                    break;
+                }
+                request_bytes
+                    .extend_from_slice(buf.get(..read).expect("read length should be in bounds"));
+                let request = String::from_utf8_lossy(&request_bytes);
+                if request_body_complete(&request) {
+                    break;
+                }
+            }
+            let request = String::from_utf8_lossy(&request_bytes).into_owned();
+            let response =
+                "HTTP/1.1 204 No Content\r\nconnection: close\r\ncontent-length: 0\r\n\r\n";
+            stream
+                .write_all(response.as_bytes())
+                .expect("write HTTP success test response");
+            request
         });
         (format!("http://{addr}"), handle)
     }
@@ -956,5 +1032,22 @@ mod tests {
             panic!("expected legacy RateLimited error");
         };
         assert_eq!(retry_after_secs, Some(7));
+    }
+
+    #[tokio::test]
+    async fn knowledge_update_sensitivity_sends_put_with_body() {
+        let (base_url, server) = serve_http_no_content_once();
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .knowledge_update_sensitivity("fact-sensitive", "confidential")
+            .await
+            .expect("sensitivity update should succeed");
+        let request = server.join().expect("test server thread should finish");
+
+        assert!(
+            request.starts_with("PUT /api/v1/knowledge/facts/fact-sensitive/sensitivity HTTP/1.1")
+        );
+        assert!(request.contains(r#""sensitivity":"confidential""#));
     }
 }

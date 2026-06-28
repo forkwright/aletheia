@@ -411,7 +411,7 @@ async fn update_sensitivity_handler_persists_to_fact_list_path() {
     assert_eq!(response.0["sensitivity"], "confidential");
 
     let listed = match list_facts(
-        State(state),
+        State(state.clone()),
         Query(FactsQuery {
             nous_id: Some("test-nous".to_owned()),
             sort: "confidence".to_owned(),
@@ -433,6 +433,16 @@ async fn update_sensitivity_handler_persists_to_fact_list_path() {
     assert_eq!(listed.0.facts.len(), 1);
     assert_eq!(
         listed.0.facts[0].sensitivity,
+        mneme::knowledge::FactSensitivity::Confidential
+    );
+
+    let detail = match get_fact(State(state), Path("fact-sensitive".to_owned())).await {
+        Ok(response) => response,
+        Err(error) => panic!("get fact detail: {error:?}"),
+    };
+
+    assert_eq!(
+        detail.0.fact.sensitivity,
         mneme::knowledge::FactSensitivity::Confidential
     );
 }

@@ -119,6 +119,11 @@ pub struct NousAnnotateParams {
     pub fact_id: String,
     /// Annotation content — agent-authored note or observation.
     pub content: String,
+    /// Optional classification for the created annotation. If omitted, the
+    /// annotation inherits the target fact's sensitivity; supplied values can
+    /// raise but not lower the target fact's classification.
+    #[serde(default)]
+    pub sensitivity: Option<String>,
 }
 
 /// Parameters for `nous_supersede`.
@@ -136,6 +141,11 @@ pub struct NousSupersedeParams {
     pub nous_id: String,
     /// Reason for supersession.
     pub reason: String,
+    /// Optional classification for the created supersession record. If omitted,
+    /// the record uses the maximum sensitivity of the old and new facts;
+    /// supplied values can raise but not lower that inherited classification.
+    #[serde(default)]
+    pub sensitivity: Option<String>,
 }
 
 /// Parameters for `nous_forget`.
@@ -193,6 +203,21 @@ fn parse_sensitivity(
         Some(s) if !s.is_empty() => s.parse().map(Some).map_err(|e| {
             InvalidInputSnafu {
                 message: format!("invalid sensitivity filter: {e}"),
+            }
+            .build()
+        }),
+        _ => Ok(None),
+    }
+}
+
+/// Parse an optional write-side sensitivity classification.
+fn parse_write_sensitivity(
+    raw: Option<&str>,
+) -> crate::error::Result<Option<mneme::knowledge::FactSensitivity>> {
+    match raw {
+        Some(s) if !s.is_empty() => s.parse().map(Some).map_err(|e| {
+            InvalidInputSnafu {
+                message: format!("invalid sensitivity: {e}"),
             }
             .build()
         }),
@@ -1035,6 +1060,7 @@ impl MemoryServer {
     ///     "fact_id": "f-abc-123",
     ///     "content": "This fact was verified against external source X",
     ///     "session_id": "agent-uuid",
+    ///     "sensitivity": "internal"
     ///   }
     /// }
     /// ```
@@ -1079,6 +1105,7 @@ impl MemoryServer {
         let fact_id = params.fact_id.clone();
         let content = params.content.clone();
         let owner_nous_id = params.session_id.clone();
+        let requested_sensitivity = parse_write_sensitivity(params.sensitivity.as_deref())?;
 
         let result = self
             .run_blocking(move |store| {
@@ -1117,6 +1144,10 @@ impl MemoryServer {
                 })?;
                 let annotation_id_str = annotation_id.to_string();
                 let now = jiff::Timestamp::now();
+                let annotation_sensitivity = requested_sensitivity
+                    .map_or(target.sensitivity, |sensitivity| {
+                        sensitivity.max(target.sensitivity)
+                    });
 
                 let annotation_fact = mneme::knowledge::Fact {
                     id: annotation_id.clone(),
@@ -1125,7 +1156,7 @@ impl MemoryServer {
                     content,
                     scope: target.scope,
                     project_id: target.project_id.clone(),
-                    sensitivity: target.sensitivity,
+                    sensitivity: annotation_sensitivity,
                     visibility: target.visibility,
                     temporal: mneme::knowledge::FactTemporal {
                         valid_from: now,
@@ -1164,7 +1195,7 @@ impl MemoryServer {
                 })?;
                 link_annotation_to_target(&store, &annotation_id, &target_id, now)?;
 
-                Ok(annotation_id_str)
+                Ok((annotation_id_str, annotation_sensitivity))
             })
             .await
             .map_err(rmcp::ErrorData::from)?;
@@ -1173,13 +1204,15 @@ impl MemoryServer {
         tracing::info!(
             tool = "nous_annotate",
             target_fact_id = %params.fact_id,
-            annotation_id = %result,
+            annotation_id = %result.0,
+            sensitivity = result.1.as_str(),
             "memory-mcp write"
         );
 
         let json = serde_json::to_string_pretty(&serde_json::json!({
-            "annotation_id": result,
+            "annotation_id": result.0,
             "target_fact_id": params.fact_id,
+            "sensitivity": result.1.as_str(),
         }))
         .context(SerializationSnafu)
         .map_err(rmcp::ErrorData::from)?;
@@ -1204,6 +1237,7 @@ impl MemoryServer {
     ///     "new_fact_id": "f-abc-124",
     ///     "nous_id": "alice",
     ///     "reason": "Updated with more recent information",
+    ///     "sensitivity": "confidential"
     ///   }
     /// }
     /// ```
@@ -1257,6 +1291,7 @@ impl MemoryServer {
         let new_id = params.new_fact_id.clone();
         let reason = params.reason.clone();
         let owner_nous_id = params.nous_id.clone();
+        let requested_sensitivity = parse_write_sensitivity(params.sensitivity.as_deref())?;
 
         let record_id = self
             .run_blocking(move |store| {
@@ -1324,6 +1359,11 @@ impl MemoryServer {
                 let now = jiff::Timestamp::now();
                 let record_content =
                     format!("Supersession: {old_id} was superseded by {new_id} — {reason}");
+                let inherited_sensitivity = old_fact.sensitivity.max(new_fact.sensitivity);
+                let record_sensitivity = requested_sensitivity
+                    .map_or(inherited_sensitivity, |sensitivity| {
+                        sensitivity.max(inherited_sensitivity)
+                    });
 
                 let record_fact = mneme::knowledge::Fact {
                     id: record_id.clone(),
@@ -1332,7 +1372,7 @@ impl MemoryServer {
                     content: record_content,
                     scope: old_fact.scope,
                     project_id: old_fact.project_id.clone(),
-                    sensitivity: old_fact.sensitivity,
+                    sensitivity: record_sensitivity,
                     visibility: old_fact.visibility,
                     temporal: mneme::knowledge::FactTemporal {
                         valid_from: now,
@@ -1364,7 +1404,7 @@ impl MemoryServer {
                     .build()
                 })?;
 
-                Ok(record_id.to_string())
+                Ok((record_id.to_string(), record_sensitivity))
             })
             .await
             .map_err(rmcp::ErrorData::from)?;
@@ -1374,14 +1414,16 @@ impl MemoryServer {
             tool = "nous_supersede",
             old_fact_id = %params.old_fact_id,
             new_fact_id = %params.new_fact_id,
-            record_id = %record_id,
+            record_id = %record_id.0,
+            sensitivity = record_id.1.as_str(),
             "memory-mcp write"
         );
 
         let json = serde_json::to_string_pretty(&serde_json::json!({
-            "record_id": record_id,
+            "record_id": record_id.0,
             "old_fact_id": params.old_fact_id,
             "new_fact_id": params.new_fact_id,
+            "sensitivity": record_id.1.as_str(),
         }))
         .context(SerializationSnafu)
         .map_err(rmcp::ErrorData::from)?;
@@ -2021,6 +2063,7 @@ mod tests {
             session_id: "alice".to_owned(),
             fact_id: "f-target-1".to_owned(),
             content: "verified by external source".to_owned(),
+            sensitivity: None,
         };
         let result = server.nous_annotate(Parameters(params)).await.unwrap();
         let text = result
@@ -2050,6 +2093,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn annotate_accepts_non_public_sensitivity_override() {
+        let store = open_store();
+        let target = sample_fact(
+            "f-target-public",
+            "alice",
+            "public note",
+            "note",
+            Visibility::Shared,
+            FactSensitivity::Public,
+            None,
+        );
+        store.insert_fact(&target).unwrap();
+
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
+        let params = NousAnnotateParams {
+            session_id: "alice".to_owned(),
+            fact_id: "f-target-public".to_owned(),
+            content: "contains confidential correction".to_owned(),
+            sensitivity: Some("confidential".to_owned()),
+        };
+        let result = server.nous_annotate(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["sensitivity"], "confidential");
+        let annotation_id = parsed["annotation_id"].as_str().unwrap();
+
+        let annotation = store
+            .read_facts_by_id(annotation_id)
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("annotation fact should exist");
+        assert_eq!(annotation.sensitivity, FactSensitivity::Confidential);
+    }
+
+    #[tokio::test]
     async fn annotate_rejects_foreign_owned_fact() {
         let store = open_store();
         store
@@ -2069,13 +2155,14 @@ mod tests {
             session_id: "alice".to_owned(),
             fact_id: "f-bob-1".to_owned(),
             content: "verified by external source".to_owned(),
+            sensitivity: None,
         };
         let result = server.nous_annotate(Parameters(params)).await;
         assert!(result.is_err(), "alice must not annotate bob's fact");
     }
 
     #[tokio::test]
-    async fn supersede_uses_explicit_owner_not_mcp_server() {
+    async fn supersede_uses_explicit_owner_and_max_target_sensitivity() {
         let store = open_store();
         let old_fact = sample_fact(
             "f-old-1",
@@ -2092,7 +2179,7 @@ mod tests {
             "new value",
             "note",
             Visibility::Shared,
-            FactSensitivity::Public,
+            FactSensitivity::Confidential,
             Some(MemoryScope::Project),
         );
         store.insert_fact(&old_fact).unwrap();
@@ -2104,6 +2191,7 @@ mod tests {
             new_fact_id: "f-new-1".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
+            sensitivity: None,
         };
         let result = server.nous_supersede(Parameters(params)).await.unwrap();
         let text = result
@@ -2129,6 +2217,62 @@ mod tests {
         );
         assert_eq!(record.visibility, Visibility::Shared);
         assert_eq!(record.scope, Some(MemoryScope::Project));
+        assert_eq!(record.sensitivity, FactSensitivity::Confidential);
+        assert_eq!(parsed["sensitivity"], "confidential");
+    }
+
+    #[tokio::test]
+    async fn supersede_accepts_non_public_sensitivity_override() {
+        let store = open_store();
+        let old_fact = sample_fact(
+            "f-old-public",
+            "alice",
+            "old value",
+            "note",
+            Visibility::Shared,
+            FactSensitivity::Public,
+            None,
+        );
+        let new_fact = sample_fact(
+            "f-new-public",
+            "alice",
+            "new value",
+            "note",
+            Visibility::Shared,
+            FactSensitivity::Public,
+            None,
+        );
+        store.insert_fact(&old_fact).unwrap();
+        store.insert_fact(&new_fact).unwrap();
+
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
+        let params = NousSupersedeParams {
+            old_fact_id: "f-old-public".to_owned(),
+            new_fact_id: "f-new-public".to_owned(),
+            nous_id: "alice".to_owned(),
+            reason: "contains internal details".to_owned(),
+            sensitivity: Some("internal".to_owned()),
+        };
+        let result = server.nous_supersede(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed["sensitivity"], "internal");
+        let record_id = parsed["record_id"].as_str().unwrap();
+
+        let record = store
+            .read_facts_by_id(record_id)
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("supersession record should exist");
+        assert_eq!(record.sensitivity, FactSensitivity::Internal);
     }
 
     #[tokio::test]
@@ -2161,6 +2305,7 @@ mod tests {
             new_fact_id: "f-new-alice".to_owned(),
             nous_id: "alice".to_owned(),
             reason: "updated".to_owned(),
+            sensitivity: None,
         };
         let result = server.nous_supersede(Parameters(params)).await;
         assert!(
