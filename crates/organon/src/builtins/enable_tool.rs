@@ -56,7 +56,15 @@ impl ToolExecutor for EnableToolExecutor {
                 .find(|entry| entry.name == tool_name);
 
             let (description, source) = match (local_entry, server_entry) {
-                (Some((_, desc)), _) => (desc.clone(), ToolSource::LocalLazy),
+                (Some((_, local_desc)), Some(server)) => {
+                    return Ok(ToolResult::error(format!(
+                        "tool '{name}' is ambiguous across multiple candidates: \
+                         local:{name} ({local_desc}); provider_server:{name} ({}). \
+                         Configure unique tool names before activation.",
+                        server.description
+                    )));
+                }
+                (Some((_, desc)), None) => (desc.clone(), ToolSource::LocalLazy),
                 (None, Some(entry)) => (
                     entry.description,
                     ToolSource::ProviderServer {
@@ -122,6 +130,14 @@ fn activate_from_surface(
     surface: &crate::surface::EffectiveToolSurface,
 ) -> ToolResult {
     let description = match surface.lookup(tool_name) {
+        SurfaceLookup::Ambiguous { first, second } => {
+            return ToolResult::error(format!(
+                "tool '{raw_name}' is ambiguous across multiple candidates: {}; {}. \
+                 Configure unique tool names before activation.",
+                first.diagnostic_label(),
+                second.diagnostic_label()
+            ));
+        }
         SurfaceLookup::Inactive(entry) => entry.description.clone(),
         SurfaceLookup::Callable(_) => {
             return ToolResult::text(format!("'{raw_name}' is already active."));
@@ -223,6 +239,13 @@ mod tests {
     use super::*;
 
     fn mock_ctx_with_catalog(catalog: Vec<(ToolName, String)>) -> ToolContext {
+        mock_ctx_with_catalog_and_server_tools(catalog, ServerToolConfig::default())
+    }
+
+    fn mock_ctx_with_catalog_and_server_tools(
+        catalog: Vec<(ToolName, String)>,
+        server_tool_config: ServerToolConfig,
+    ) -> ToolContext {
         install_crypto_provider();
         ToolContext {
             nous_id: NousId::new("test-agent").expect("valid"),
@@ -242,7 +265,7 @@ mod tests {
                 http_clients: ToolHttpClients::for_tests(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: catalog,
-                server_tool_config: ServerToolConfig::default(),
+                server_tool_config,
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),
             tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
@@ -342,6 +365,48 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn service_catalog_rejects_local_and_provider_name_collision() {
+        let ctx = mock_ctx_with_catalog_and_server_tools(
+            vec![(
+                ToolName::from_static("web_search"),
+                "Search the web locally".to_owned(),
+            )],
+            ServerToolConfig {
+                web_search: true,
+                web_search_max_uses: Some(5),
+                code_execution: false,
+            },
+        );
+
+        let executor = EnableToolExecutor;
+        let result = executor
+            .execute(&make_input("web_search"), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.is_error, "expected result.is_error to be true");
+        let text = result.content.text_summary();
+        assert!(
+            text.contains("ambiguous"),
+            "expected text.contains(\"ambiguous\") to be true"
+        );
+        assert!(
+            text.contains("local:web_search"),
+            "expected text.contains(\"local:web_search\") to be true"
+        );
+        assert!(
+            text.contains("provider_server:web_search"),
+            "expected text.contains(\"provider_server:web_search\") to be true"
+        );
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let active = ctx.active_tools.read().expect("lock poisoned");
+        assert!(active.is_empty());
+    }
+
     fn mock_ctx_with_server_tools(config: ServerToolConfig) -> ToolContext {
         install_crypto_provider();
         ToolContext {
@@ -437,6 +502,60 @@ mod tests {
         )]
         let active = ctx.active_tools.read().expect("lock poisoned");
         assert!(active.contains(&ToolName::from_static("web_search")));
+    }
+
+    #[tokio::test]
+    async fn enable_tool_rejects_local_and_provider_web_search_collision() {
+        let ctx = mock_ctx_with_server_tools(ServerToolConfig {
+            web_search: true,
+            web_search_max_uses: Some(5),
+            code_execution: false,
+        });
+        let active = HashSet::new();
+        let policy = ToolGroupPolicy::AllowAll {
+            reason: "test".to_owned(),
+        };
+        let mut registry = ToolRegistry::new();
+        crate::builtins::web_search::register(&mut registry).expect("register web_search");
+        let services = ctx.services.as_ref().expect("services");
+        let surface = Arc::new(registry.effective_surface(SurfaceInputs {
+            policy: &policy,
+            allowlist: None,
+            active: &active,
+            server_tools: &[],
+            server_tool_config: Some(&services.server_tool_config),
+        }));
+        let _binding = ctx.bind_effective_surface(surface);
+
+        let executor = EnableToolExecutor;
+        let result = executor
+            .execute(&make_input("web_search"), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(result.is_error, "expected result.is_error to be true");
+        let text = result.content.text_summary();
+        assert!(
+            text.contains("ambiguous"),
+            "expected text.contains(\"ambiguous\") to be true"
+        );
+        assert!(
+            text.contains("local:web_search"),
+            "expected text.contains(\"local:web_search\") to be true"
+        );
+        assert!(
+            text.contains("provider_server:web_search"),
+            "expected text.contains(\"provider_server:web_search\") to be true"
+        );
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let active = ctx.active_tools.read().expect("lock poisoned");
+        assert!(
+            active.is_empty(),
+            "ambiguous activation must not mutate active_tools"
+        );
     }
 
     #[tokio::test]

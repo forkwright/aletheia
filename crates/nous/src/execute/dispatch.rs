@@ -90,6 +90,7 @@ pub(super) struct ToolDispatchPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ToolPolicyDenial {
     Unknown,
+    NameCollision,
     Allowlist { available: String },
     Group { message: String },
     Inactive,
@@ -102,6 +103,11 @@ impl ToolPolicyDenial {
         match self {
             Self::Unknown => {
                 format!("unknown_tool: tool '{tool_name}' is not in the effective tool surface")
+            }
+            Self::NameCollision => {
+                format!(
+                    "Tool '{tool_name}' is ambiguous across multiple tool planes. Configure unique tool names before calling it."
+                )
             }
             Self::Allowlist { available } => {
                 format!(
@@ -125,6 +131,7 @@ impl ToolPolicyDenial {
     const fn log_reason(&self) -> &'static str {
         match self {
             Self::Unknown => "unknown_tool",
+            Self::NameCollision => "name collision",
             Self::Allowlist { .. } => "role policy",
             Self::Group { .. } => "group policy",
             Self::Inactive => "activation policy",
@@ -136,7 +143,7 @@ impl ToolPolicyDenial {
     const fn outcome(&self) -> &'static str {
         match self {
             Self::Unknown | Self::ServerTool => TOOL_OUTCOME_NOT_FOUND,
-            Self::Allowlist { .. } => TOOL_OUTCOME_DENIED_BY_ROLE,
+            Self::NameCollision | Self::Allowlist { .. } => TOOL_OUTCOME_DENIED_BY_ROLE,
             Self::Group { .. } => TOOL_OUTCOME_DENIED_BY_GROUP,
             Self::Inactive => TOOL_OUTCOME_DENIED_INACTIVE,
             Self::ParseError { .. } => TOOL_OUTCOME_FAILED,
@@ -237,6 +244,7 @@ impl ToolDispatchPolicy {
         };
 
         match self.surface.lookup(&tool_name_id) {
+            SurfaceLookup::Ambiguous { .. } => return Some(ToolPolicyDenial::NameCollision),
             SurfaceLookup::Unknown => return Some(ToolPolicyDenial::Unknown),
             SurfaceLookup::Denied(entry) => {
                 return Some(denial_for_availability(&entry.availability, &self.surface));
@@ -291,6 +299,7 @@ fn denial_for_availability(
                 surface.policy().description()
             ),
         },
+        Some(DenialReason::NameCollision) => ToolPolicyDenial::NameCollision,
         None => ToolPolicyDenial::Group {
             message: "Tool call denied by policy".to_owned(),
         },
