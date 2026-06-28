@@ -970,7 +970,8 @@ async fn run_background_distillation(
     session_id: String,
     nous_id: String,
     config: crate::distillation::DistillTriggerConfig,
-    project_id: Option<mneme::workspace::ProjectId>,
+    #[cfg(feature = "knowledge-store")] project_id: Option<mneme::workspace::ProjectId>,
+    #[cfg(not(feature = "knowledge-store"))] _project_id: Option<mneme::workspace::ProjectId>,
 ) {
     let Some(provider) = providers.find_provider(&config.model) else {
         warn!(

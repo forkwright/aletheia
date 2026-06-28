@@ -21,6 +21,8 @@ struct FallbackSequenceProvider {
 
 struct ArcProvider(Arc<FallbackSequenceProvider>);
 
+struct ArcMockProvider(Arc<MockProvider>);
+
 struct DeploymentTargetProvider {
     inner: MockProvider,
     target: DeploymentTarget,
@@ -112,6 +114,75 @@ impl LlmProvider for ArcProvider {
     fn name(&self) -> &str {
         self.0.name()
     }
+}
+
+impl LlmProvider for ArcMockProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.0.complete(request)
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        self.0.supported_models()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+}
+
+fn make_multi_tool_response(tool_uses: Vec<(&str, &str, serde_json::Value)>) -> CompletionResponse {
+    CompletionResponse {
+        id: "resp-tools".to_owned(),
+        model: "test-model".to_owned(),
+        stop_reason: StopReason::ToolUse,
+        content: tool_uses
+            .into_iter()
+            .map(|(name, id, input)| ContentBlock::ToolUse {
+                id: id.to_owned(),
+                name: name.to_owned(),
+                input,
+            })
+            .collect(),
+        usage: Usage {
+            input_tokens: 80,
+            output_tokens: 30,
+            ..Usage::default()
+        },
+        cost_usd: None,
+        duration_ms: None,
+    }
+}
+
+fn make_exec_and_read_registry() -> ToolRegistry {
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(make_tool_def("exec"), Box::new(EchoExecutor))
+        .expect("register exec");
+    tools
+        .register(make_tool_def("read_file"), Box::new(EchoExecutor))
+        .expect("register read_file");
+    tools
+}
+
+fn tool_result_ids_from_second_request(mock: &MockProvider) -> Vec<String> {
+    let requests = mock.captured_requests();
+    assert_eq!(requests.len(), 2, "tool loop should make two LLM requests");
+    let second = requests.get(1).expect("second request should exist");
+    let last_message = second.messages.last().expect("second request has messages");
+    let hermeneus::types::Content::Blocks(blocks) = &last_message.content else {
+        panic!("second request should end with tool result blocks");
+    };
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::ToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[tokio::test]
@@ -553,6 +624,132 @@ async fn deny_all_tool_policy_blocks_tool_dispatch() {
             .unwrap_or_default()
             .contains("allowed tool groups"),
         "deny-all policy should be recorded as a dispatch denial"
+    );
+}
+
+#[tokio::test]
+async fn denied_first_allowed_second_preserves_tool_outcome_order() {
+    let mock = Arc::new(
+        MockProvider::with_responses(vec![
+            make_multi_tool_response(vec![
+                (
+                    "read_file",
+                    "toolu_denied",
+                    serde_json::json!({"path": "notes.md"}),
+                ),
+                (
+                    "exec",
+                    "toolu_allowed",
+                    serde_json::json!({"input": "date"}),
+                ),
+            ]),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&mock))));
+
+    let tools = make_exec_and_read_registry();
+    let mut config = test_config();
+    config.tool_allowlist = Some(vec!["exec".to_owned()]);
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    let tool_call_ids: Vec<_> = result
+        .tool_calls
+        .iter()
+        .map(|call| call.id.as_str())
+        .collect();
+    assert_eq!(
+        tool_call_ids,
+        vec!["toolu_denied", "toolu_allowed"],
+        "TurnResult tool_calls should preserve provider tool_use order"
+    );
+    assert!(result.tool_calls[0].is_error);
+    assert_eq!(
+        result.tool_calls[0].approval.as_deref(),
+        Some("denied_by_role")
+    );
+    assert!(!result.tool_calls[1].is_error);
+
+    assert_eq!(
+        tool_result_ids_from_second_request(&mock),
+        vec!["toolu_denied", "toolu_allowed"],
+        "LLM-facing tool_result blocks should preserve provider tool_use order"
+    );
+}
+
+#[tokio::test]
+async fn allowed_first_denied_second_preserves_tool_outcome_order() {
+    let mock = Arc::new(
+        MockProvider::with_responses(vec![
+            make_multi_tool_response(vec![
+                (
+                    "exec",
+                    "toolu_allowed",
+                    serde_json::json!({"input": "date"}),
+                ),
+                (
+                    "read_file",
+                    "toolu_denied",
+                    serde_json::json!({"path": "notes.md"}),
+                ),
+            ]),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&mock))));
+
+    let tools = make_exec_and_read_registry();
+    let mut config = test_config();
+    config.tool_allowlist = Some(vec!["exec".to_owned()]);
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    let tool_call_ids: Vec<_> = result
+        .tool_calls
+        .iter()
+        .map(|call| call.id.as_str())
+        .collect();
+    assert_eq!(
+        tool_call_ids,
+        vec!["toolu_allowed", "toolu_denied"],
+        "TurnResult tool_calls should preserve provider tool_use order"
+    );
+    assert!(!result.tool_calls[0].is_error);
+    assert!(result.tool_calls[1].is_error);
+    assert_eq!(
+        result.tool_calls[1].approval.as_deref(),
+        Some("denied_by_role")
+    );
+
+    assert_eq!(
+        tool_result_ids_from_second_request(&mock),
+        vec!["toolu_allowed", "toolu_denied"],
+        "LLM-facing tool_result blocks should preserve provider tool_use order"
     );
 }
 
