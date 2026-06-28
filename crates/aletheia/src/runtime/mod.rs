@@ -41,6 +41,32 @@ use crate::daemon_bridge;
 use crate::error::Result;
 use crate::planning_adapter;
 
+#[derive(Clone)]
+struct RuntimeSessionStoreHealthProbe {
+    session_store: Arc<Mutex<SessionStore>>,
+}
+
+impl std::fmt::Debug for RuntimeSessionStoreHealthProbe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuntimeSessionStoreHealthProbe")
+            .finish_non_exhaustive()
+    }
+}
+
+impl oikonomos::maintenance::SessionStoreHealthProbe for RuntimeSessionStoreHealthProbe {
+    fn check_session_store(&self) -> oikonomos::maintenance::DbHealth {
+        match self.session_store.try_lock() {
+            Ok(store) => match store.ping() {
+                Ok(()) => oikonomos::maintenance::DbHealth::Healthy,
+                Err(error) => oikonomos::maintenance::DbHealth::Unhealthy(error.to_string()),
+            },
+            Err(_) => oikonomos::maintenance::DbHealth::Locked(
+                "active session store mutex is busy".to_owned(),
+            ),
+        }
+    }
+}
+
 #[expect(
     clippy::struct_excessive_bools,
     reason = "builder flags are independent capability toggles; a bitfield would obscure semantics"
@@ -684,6 +710,10 @@ impl RuntimeBuilder {
         );
         maintenance_config.after_action_store = Some(Arc::clone(&after_action_store));
         maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
+        maintenance_config.session_store_health_probe =
+            Some(Arc::new(RuntimeSessionStoreHealthProbe {
+                session_store: Arc::clone(&session_store),
+            }));
         let task_state_root = self.oikos.data().join("daemon-task-state");
 
         if self.daemons {

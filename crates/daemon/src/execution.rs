@@ -412,9 +412,13 @@ pub(crate) async fn execute_builtin_with_behavior(
             let config = maintenance
                 .map(|m| m.db_monitoring.clone())
                 .unwrap_or_default();
+            let session_store_health_probe =
+                maintenance.and_then(|m| m.session_store_health_probe.clone());
             let report = tokio::task::spawn_blocking(move || {
                 let _span = tracing::info_span!("db_size_monitor").entered();
-                DbMonitor::new(config).check()
+                DbMonitor::new(config)
+                    .with_session_store_health_probe(session_store_health_probe)
+                    .check()
             })
             .await
             .context(error::BlockingJoinSnafu {
@@ -426,10 +430,12 @@ pub(crate) async fn execute_builtin_with_behavior(
                 .iter()
                 .map(|db| {
                     format!(
-                        "{} {}MB ({})",
+                        "{} {}MB ({}, {}, {})",
                         db.name,
                         db.size_bytes / (1024 * 1024),
-                        db.status
+                        db.status,
+                        db.shape,
+                        db.health
                     )
                 })
                 .collect();
