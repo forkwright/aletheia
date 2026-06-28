@@ -1068,6 +1068,19 @@ fn finalize_turn_persists_structured_tool_audit_records() {
     assert_eq!(recent[0].result.as_deref(), Some("file contents"));
     assert_eq!(recent[0].approval.as_deref(), Some("approved"));
     assert_eq!(recent[0].receipt.as_deref(), Some("receipt-token"));
+
+    let session_records = store
+        .tool_audit_records_for_session(session_id)
+        .expect("session tool audit records");
+    assert_eq!(session_records.len(), 1);
+    assert_eq!(session_records[0].tool_call_id, "toolu_audit_1");
+    assert!(
+        store
+            .tool_audit_records_for_session("other-session")
+            .expect("other session audit records")
+            .is_empty(),
+        "session-scoped audit read must not leak records from other sessions"
+    );
 }
 
 #[test]

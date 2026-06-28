@@ -4,8 +4,9 @@
 mod types_dto;
 pub use types_dto::{
     CreateSessionRequest, HistoryMessage, HistoryParams, HistoryResponse, ListSessionsParams,
-    ListSessionsResponse, RenameSessionRequest, SendMessageRequest, SessionListItem,
-    SessionResponse, StreamTurnRequest,
+    ListSessionsResponse, RenameSessionRequest, ReplayMessage, ReplaySession,
+    ReplayToolAuditRecord, ReplayTurnAttempt, ReplayUsageRecord, SendMessageRequest,
+    SessionListItem, SessionReplayResponse, SessionResponse, StreamTurnRequest,
 };
 
 fn default_session_key() -> String {

@@ -2228,6 +2228,31 @@ impl SessionStore {
         Ok(records)
     }
 
+    /// Get all tool audit records for a session, ordered by turn sequence and
+    /// audit insertion order.
+    #[instrument(skip(self))]
+    pub fn tool_audit_records_for_session(&self, session_id: &str) -> Result<Vec<ToolAuditRecord>> {
+        use fjall::Readable;
+
+        let tool_audit_part = self.partition("tool_audit")?;
+        let snap = self.db.read_tx();
+
+        let mut records = Vec::new();
+        for guard in snap.range::<&str, _>(&tool_audit_part, ..) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall tool_audit_records_for_session: {e}")))?;
+            let record =
+                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?;
+            if record.session_id == session_id {
+                records.push(record);
+            }
+        }
+
+        records.sort_by(|a, b| a.turn_seq.cmp(&b.turn_seq).then_with(|| a.id.cmp(&b.id)));
+        Ok(records)
+    }
+
     /// Get all usage records for a session, ordered by turn sequence.
     #[instrument(skip(self))]
     pub fn get_usage_for_session(&self, session_id: &str) -> Result<Vec<UsageRecord>> {
