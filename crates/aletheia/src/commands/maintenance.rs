@@ -252,14 +252,17 @@ async fn run_task(
         }
         ManualMaintenanceTask::DbMonitor => {
             let report = DbMonitor::new(maint.db_monitoring.clone())
+                .with_session_store_health_probe(maint.session_store_health_probe.clone())
                 .check()
                 .whatever_context("db monitor failed")?;
             for db in &report.databases {
                 println!(
-                    "db-monitor: {} {}MB ({})",
+                    "db-monitor: {} {}MB ({}, {}, {})",
                     db.name,
                     db.size_bytes / (1024 * 1024),
-                    db.status
+                    db.status,
+                    db.shape,
+                    db.health
                 );
             }
         }
@@ -639,6 +642,7 @@ pub(crate) fn build_config(
             warn_threshold_mb: settings.db_monitoring.warn_threshold_mb,
             alert_threshold_mb: settings.db_monitoring.alert_threshold_mb,
         },
+        session_store_health_probe: None,
         retention: oikonomos::maintenance::RetentionConfig {
             enabled: settings.retention.enabled,
         },

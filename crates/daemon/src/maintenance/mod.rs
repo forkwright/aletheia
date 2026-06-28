@@ -24,7 +24,10 @@ pub(crate) mod retention;
 /// Trace file rotation, gzip compression, and archive pruning.
 pub(crate) mod trace_rotation;
 
-pub use db_monitor::{DbInfo, DbMonitor, DbMonitoringConfig, DbSizeReport, DbStatus};
+pub use db_monitor::{
+    DbHealth, DbInfo, DbMonitor, DbMonitoringConfig, DbShape, DbSizeReport, DbStatus,
+    SessionStoreHealthProbe,
+};
 pub use drift_detection::{DriftDetectionConfig, DriftDetector, DriftReport};
 pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport, FjallVerifyResult};
 pub use instance_backup::{
@@ -95,6 +98,8 @@ pub struct MaintenanceConfig {
     pub instance_backup: InstanceBackupConfig,
     /// Runtime metrics hook for backup freshness alerting.
     pub backup_metrics: Option<Arc<dyn BackupMetricsRecorder>>,
+    /// Runtime hook for probing the active session store without reopening the fjall path.
+    pub session_store_health_probe: Option<Arc<dyn SessionStoreHealthProbe>>,
     /// Directory where prosoche self-audit reports are written.
     pub prosoche_audit_dir: PathBuf,
     /// Cron task configuration (evolution, reflection, graph cleanup).
@@ -121,6 +126,7 @@ impl Default for MaintenanceConfig {
             knowledge_maintenance: KnowledgeMaintenanceConfig::default(),
             instance_backup: InstanceBackupConfig::default(),
             backup_metrics: None,
+            session_store_health_probe: None,
             prosoche_audit_dir: root.join("data").join("prosoche-audits"),
             cron: crate::cron::CronConfig::default(),
             propose_rules: ProposeRulesConfig::default(),
