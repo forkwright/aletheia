@@ -649,10 +649,7 @@ mod tests {
         );
 
         let toggle = &store.agent_toggles[0];
-        assert!(
-            !toggle.enabled,
-            "persisted desired state must stay visible"
-        );
+        assert!(!toggle.enabled, "persisted desired state must stay visible");
         assert!(!toggle.pending);
         assert_eq!(toggle.apply_state, ToggleApplyState::RestartRequired);
         assert_eq!(toggle.live_status.as_deref(), Some("unknown"));

@@ -9,6 +9,7 @@ pub(crate) struct ServerEntry {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) url: String,
+    pub(crate) auth_token_ref: Option<String>,
     pub(crate) auth_token: Option<String>,
     pub(crate) last_connected: Option<String>,
 }
@@ -24,10 +25,12 @@ impl ServerConfigStore {
     /// Add a new server; returns the assigned id.
     pub(crate) fn add(&mut self, name: String, url: String, auth_token: Option<String>) -> String {
         let id = gen_server_id();
+        let auth_token_ref = auth_token.as_ref().map(|_| server_token_ref(&id));
         self.servers.push(ServerEntry {
             id: id.clone(),
             name,
             url,
+            auth_token_ref,
             auth_token,
             last_connected: None,
         });
@@ -58,7 +61,21 @@ impl ServerConfigStore {
         if let Some(entry) = self.servers.iter_mut().find(|s| s.id == id) {
             entry.name = name;
             entry.url = url;
+            entry.auth_token_ref = auth_token.as_ref().map(|_| server_token_ref(id));
             entry.auth_token = auth_token;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update name and URL while preserving the saved auth token reference.
+    ///
+    /// Returns false if `id` is not found.
+    pub(crate) fn update_identity(&mut self, id: &str, name: String, url: String) -> bool {
+        if let Some(entry) = self.servers.iter_mut().find(|s| s.id == id) {
+            entry.name = name;
+            entry.url = url;
             true
         } else {
             false
@@ -81,6 +98,11 @@ impl ServerConfigStore {
             .as_deref()
             .and_then(|id| self.servers.iter().find(|s| s.id == id))
     }
+}
+
+/// Build the stable non-secret reference used for a server's bearer token.
+pub(crate) fn server_token_ref(server_id: &str) -> String {
+    format!("server-{server_id}")
 }
 
 /// Transient health status for the server management panel.
@@ -530,6 +552,27 @@ mod tests {
         assert_eq!(entry.name, "New");
         assert_eq!(entry.url, "http://new");
         assert_eq!(entry.auth_token.as_deref(), Some("tok"));
+        let expected_ref = server_token_ref(&id);
+        assert_eq!(entry.auth_token_ref.as_deref(), Some(expected_ref.as_str()));
+    }
+
+    #[test]
+    fn server_store_update_identity_preserves_auth_reference() {
+        let mut store = ServerConfigStore::default();
+        let id = store.add(
+            "Old".to_string(),
+            "http://old".to_string(),
+            Some("tok".to_string()),
+        );
+        let original_ref = store.servers[0].auth_token_ref.clone();
+
+        assert!(store.update_identity(&id, "New".to_string(), "http://new".to_string()));
+
+        let entry = store.servers.iter().find(|s| s.id == id).unwrap();
+        assert_eq!(entry.name, "New");
+        assert_eq!(entry.url, "http://new");
+        assert_eq!(entry.auth_token.as_deref(), Some("tok"));
+        assert_eq!(entry.auth_token_ref, original_ref);
     }
 
     #[test]
