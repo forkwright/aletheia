@@ -85,6 +85,9 @@ static TOOL_FAILURES_TOTAL: LazyLock<Family<NousToolLabels, Counter>> =
 static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<StreamEventDroppedLabels, Counter>> =
     LazyLock::new(Family::default);
 
+static NOUS_INBOX_SATURATION_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> =
+    LazyLock::new(Family::default);
+
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
     LazyLock::new(Family::default);
 
@@ -137,6 +140,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_stream_events_dropped",
         "Total streaming events dropped due to full channel or disconnected receiver",
         STREAM_EVENTS_DROPPED_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_nous_inbox_saturation",
+        "Total nous actor inbox saturation events by reason",
+        NOUS_INBOX_SATURATION_TOTAL.clone(),
     );
     registry.register(
         "aletheia_dpo_pairs_captured",
@@ -257,6 +265,21 @@ pub(crate) fn record_stream_event_dropped(nous_id: &str, event_type: &str, reaso
         .inc();
 }
 
+/// Record actor inbox saturation.
+///
+/// WHY(#4644): Bounded actor inboxes intentionally fail with service-busy
+/// errors under sustained overload. Operators need a Prometheus signal before
+/// client-facing failures become the only evidence of saturation.
+pub(crate) fn record_inbox_saturation(nous_id: &str, reason: &str) {
+    tracing::warn!(nous_id, reason, "nous actor inbox saturated");
+    NOUS_INBOX_SATURATION_TOTAL
+        .get_or_create(&NousReasonLabels {
+            nous_id: nous_id.to_owned(),
+            reason: reason.to_owned(),
+        })
+        .inc();
+}
+
 /// Record a captured DPO preference pair.
 ///
 /// WHY: DPO pair capture is a training pipeline signal. Operators need
@@ -364,6 +387,7 @@ mod tests {
         record_background_failure("n1", "extract");
         record_tool_failure("n1", "read");
         record_stream_event_dropped("n1", "text_delta", "full");
+        record_inbox_saturation("n1", "send_timeout");
         record_training_capture_rejected("n1", "non_authored");
         record_dpo_pair("n1");
         record_health_poller_restart();
@@ -378,6 +402,7 @@ mod tests {
             "aletheia_nous_background_task_failures_total",
             "aletheia_tool_failures_total",
             "aletheia_stream_events_dropped_total",
+            "aletheia_nous_inbox_saturation_total",
             "aletheia_training_capture_rejected_total",
             "aletheia_dpo_pairs_captured_total",
             "aletheia_nous_health_poller_restarts_total",

@@ -433,11 +433,14 @@ impl NousHandle {
                 message: format!("actor '{}' inbox closed", self.id),
             }
             .build()),
-            Err(_) => Err(InboxFullSnafu {
-                nous_id: self.id.clone(),
-                timeout_secs: timeout.as_secs(),
+            Err(_) => {
+                crate::metrics::record_inbox_saturation(&self.id, "send_timeout");
+                Err(InboxFullSnafu {
+                    nous_id: self.id.clone(),
+                    timeout_secs: timeout.as_secs(),
+                }
+                .build())
             }
-            .build()),
         }
     }
 
@@ -548,9 +551,16 @@ impl NousHandle {
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
+    use koina::metrics::MetricsRegistry;
     use tracing::Instrument;
 
     use super::*;
+
+    fn encode_metrics(registry: &MetricsRegistry) -> String {
+        let mut buf = String::new();
+        registry.encode(&mut buf).unwrap();
+        buf
+    }
 
     #[test]
     fn handle_id_returns_correct_value() {
@@ -617,6 +627,37 @@ mod tests {
 
         let err = handle.shutdown().await;
         assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn timed_out_send_records_inbox_saturation_metric() {
+        let registry = MetricsRegistry::new();
+        registry.with_registry(crate::metrics::register);
+
+        let (tx, _rx) = mpsc::channel(1);
+        let (reply, _reply_rx) = oneshot::channel();
+        assert!(
+            tx.try_send(NousMessage::Ping { reply }).is_ok(),
+            "test setup should fill the actor inbox"
+        );
+        let handle = NousHandle::new("agent-inbox-timeout".to_owned(), tx);
+
+        let err = handle
+            .ping(Duration::from_millis(1))
+            .await
+            .expect_err("full inbox should time out");
+
+        assert!(
+            matches!(err, error::Error::InboxFull { .. }),
+            "expected InboxFull, got {err:?}"
+        );
+        let out = encode_metrics(&registry);
+        assert!(
+            out.contains(
+                "aletheia_nous_inbox_saturation_total{nous_id=\"agent-inbox-timeout\",reason=\"send_timeout\"} 1"
+            ),
+            "missing inbox saturation metric: {out}"
+        );
     }
 
     #[tokio::test]
