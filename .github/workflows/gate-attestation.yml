@@ -105,6 +105,14 @@ jobs:
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: scripts/check-proskenion-flake.py
 
+      - name: Poiesis feature gates
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: |
+          cargo check -p poiesis-slides
+          cargo check -p poiesis-slides --no-default-features
+          cargo check -p poiesis-sheet
+          cargo check -p poiesis-sheet --no-default-features --features workbook
+
       - name: cargo clippy
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo clippy --workspace --all-targets -- -D warnings
