@@ -37,10 +37,44 @@ jobs:
           (steps.metadata.outputs.update-type == 'version-update:semver-minor' &&
            steps.metadata.outputs.dependency-type == 'direct:development')
         run: |
+          set -euo pipefail
+
           if ! gh pr checks "$PR_URL" --watch --interval 30 --required; then
-            echo "Required CI checks did not pass — skipping auto-merge"
-            exit 0
+            echo "Required CI checks did not pass; refusing auto-merge." >&2
+            exit 1
           fi
+
+          failed=0
+
+          require_passed_check() {
+            local label="$1"
+            local jq_filter="$2"
+            local bucket
+
+            bucket=$(gh pr checks "$PR_URL" --json name,bucket,workflow --jq "$jq_filter" | head -n 1)
+            if [ -z "$bucket" ]; then
+              echo "::error::Required verification check '${label}' was not reported."
+              failed=1
+              return
+            fi
+
+            if [ "$bucket" != "pass" ]; then
+              echo "::error::Required verification check '${label}' finished in bucket '${bucket}'."
+              failed=1
+            fi
+          }
+
+          require_passed_check "gate-attestation" '.[] | select(.name == "gate-attestation") | .bucket'
+          require_passed_check "cargo deny" '.[] | select(.name == "cargo deny") | .bucket'
+          require_passed_check "cargo audit" '.[] | select(.name == "cargo audit") | .bucket'
+          require_passed_check "osv scanner" '.[] | select((.name | ascii_downcase | contains("osv")) or (.workflow == "Security" and (.name | ascii_downcase | contains("scan")))) | .bucket'
+
+          if [ "$failed" -ne 0 ]; then
+            echo "Real verification checks were missing or unsuccessful; refusing auto-merge." >&2
+            exit 1
+          fi
+
+          echo "Required real verification checks passed."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

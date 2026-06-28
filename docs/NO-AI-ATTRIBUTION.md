@@ -14,7 +14,9 @@ case-insensitive `grep -E -f`. To update the policy, edit that file and keep the
 workflow unchanged unless the scan surfaces or enforcement behavior also need to
 change.
 
-Trusted dependency and release automation PRs are waived by author login because
-their metadata is controlled by repository automation. Human-authored PRs are
-not waived; if the workflow fails, remove the reported marker from the PR title,
-PR body, or offending commit message before merge.
+Trusted dependency and release automation PRs are waived by author login for
+this attribution-only check because their metadata is controlled by repository
+automation. This is not a build, test, or security waiver; see
+[AUTOMATION-PR-GATES.md](AUTOMATION-PR-GATES.md). Human-authored PRs are not
+waived; if the workflow fails, remove the reported marker from the PR title, PR
+body, or offending commit message before merge.
