@@ -641,7 +641,10 @@ mod health_tests;
 
 #[cfg(test)]
 #[cfg(feature = "storage-fjall")]
-#[expect(clippy::expect_used, reason = "INVARIANT: temp dir and fjall open only fail on resource exhaustion; panicking is correct in test setup")]
+#[expect(
+    clippy::expect_used,
+    reason = "INVARIANT: temp dir and fjall open only fail on resource exhaustion; panicking is correct in test setup"
+)]
 mod window_tests {
     use super::*;
     use crate::store::EnergeiaStore;
