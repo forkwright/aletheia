@@ -1,7 +1,7 @@
 // kanon:ignore RUST/file-too-long — module contains tightly-coupled agent I/O CLI command implementations; splitting would hurt cohesion
 //! Agent import/export and skill management commands.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -773,16 +773,6 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         });
     }
 
-    // WHY(#5102): binary workspace files are enumerated but their contents are
-    // not serialized; record them as omitted so importers can warn/reject.
-    if !workspace.binary_files.is_empty() {
-        omitted_sections.push(OmittedSection {
-            section: "workspace_binary_files".to_owned(),
-            reason: "binary_content_not_exported".to_owned(),
-            count: Some(workspace.binary_files.len()),
-        });
-    }
-
     let (knowledge, has_unexported_vectors) = match export_knowledge(&oikos, &args.nous_id) {
         Ok(pair) => pair,
         Err(err) => {
@@ -871,7 +861,11 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         .with_whatever_context(|_| format!("failed to write {}", output.display()))?;
 
     println!("Exported agent '{}' to {}", args.nous_id, output.display());
-    println!("  Workspace: {} files", agent_file.workspace.files.len());
+    println!(
+        "  Workspace: {} text files, {} binary files",
+        agent_file.workspace.files.len(),
+        agent_file.workspace.binary_files.len()
+    );
     println!("  Sessions: {}", agent_file.sessions.len());
     if let Some(k) = &agent_file.knowledge {
         println!("  Facts: {}", k.facts.len());
@@ -914,6 +908,53 @@ fn default_export_path(nous_id: &str, exported_at: &str) -> PathBuf {
     PathBuf::from(format!("{nous_id}-{date}.agent.json"))
 }
 
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    fn hex_char(nibble: u8) -> char {
+        match nibble {
+            0 => '0',
+            1 => '1',
+            2 => '2',
+            3 => '3',
+            4 => '4',
+            5 => '5',
+            6 => '6',
+            7 => '7',
+            8 => '8',
+            9 => '9',
+            10 => 'a',
+            11 => 'b',
+            12 => 'c',
+            13 => 'd',
+            14 => 'e',
+            15 => 'f',
+            _ => '?',
+        }
+    }
+
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        hex.push(hex_char(byte >> 4));
+        hex.push(hex_char(byte & 0x0f));
+    }
+    hex
+}
+
+fn read_binary_file(path: &Path) -> Result<Vec<u8>> {
+    use std::io::Read as _;
+
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .with_whatever_context(|_| format!("failed to open binary file {}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .with_whatever_context(|_| format!("failed to read binary file {}", path.display()))?;
+    Ok(bytes)
+}
+
 fn resolve_workspace_path(oikos: &Oikos, workspace: &str) -> PathBuf {
     let path = Path::new(workspace);
     if path.is_absolute() {
@@ -926,19 +967,29 @@ fn resolve_workspace_path(oikos: &Oikos, workspace: &str) -> PathBuf {
 fn export_workspace(root: &Path) -> Result<mneme::portability::WorkspaceData> {
     let mut files = HashMap::new();
     let mut binary_files = Vec::new();
+    let mut binary_file_contents = Vec::new();
     if !root.exists() {
         return Ok(mneme::portability::WorkspaceData {
             files,
             binary_files,
+            binary_file_contents,
         });
     }
-    collect_workspace_entries(root, root, &mut files, &mut binary_files)?;
+    collect_workspace_entries(
+        root,
+        root,
+        &mut files,
+        &mut binary_files,
+        &mut binary_file_contents,
+    )?;
     // INVARIANT: binary_files must be sorted so that two exports of the same
     // workspace produce identical arrays regardless of read_dir traversal order.
     binary_files.sort();
+    binary_file_contents.sort_by(|left, right| left.path.cmp(&right.path));
     Ok(mneme::portability::WorkspaceData {
         files,
         binary_files,
+        binary_file_contents,
     })
 }
 
@@ -947,6 +998,7 @@ fn collect_workspace_entries(
     dir: &Path,
     files: &mut HashMap<String, String>,
     binary_files: &mut Vec<String>,
+    binary_file_contents: &mut Vec<mneme::portability::BinaryFileData>,
 ) -> Result<()> {
     for entry in std::fs::read_dir(dir)
         .with_whatever_context(|_| format!("failed to read {}", dir.display()))?
@@ -955,7 +1007,7 @@ fn collect_workspace_entries(
             .with_whatever_context(|_| format!("failed to read entry in {}", dir.display()))?;
         let path = entry.path();
         if path.is_dir() {
-            collect_workspace_entries(root, &path, files, binary_files)?;
+            collect_workspace_entries(root, &path, files, binary_files, binary_file_contents)?;
             continue;
         }
         if !path.is_file() {
@@ -971,7 +1023,16 @@ fn collect_workspace_entries(
                 files.insert(relative, content);
             }
             Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
-                binary_files.push(relative);
+                let bytes = read_binary_file(&path)?;
+                let size_bytes = u64::try_from(bytes.len())
+                    .whatever_context("binary workspace file length does not fit in u64")?;
+                binary_files.push(relative.clone());
+                binary_file_contents.push(mneme::portability::BinaryFileData {
+                    path: relative,
+                    size_bytes,
+                    sha256: sha256_hex(&bytes),
+                    contents_base64: koina::base64::encode(&bytes),
+                });
             }
             Err(e) => {
                 return Err(crate::error::Error::msg(format!(
@@ -1111,6 +1172,72 @@ fn preflight_agent_file(file: &mneme::portability::AgentFile) -> Result<()> {
     Ok(())
 }
 
+/// Decode and verify binary workspace payloads before import mutates disk state.
+fn decode_binary_workspace_files(
+    file: &mneme::portability::AgentFile,
+) -> Result<HashMap<String, Vec<u8>>> {
+    let mut listed_paths = HashSet::new();
+    for path in &file.workspace.binary_files {
+        if file.workspace.files.contains_key(path) {
+            whatever!("workspace file {path:?} is listed as both text and binary");
+        }
+        if !listed_paths.insert(path.as_str()) {
+            whatever!("duplicate binary workspace file path {path:?}");
+        }
+    }
+
+    let mut decoded = HashMap::new();
+    for payload in &file.workspace.binary_file_contents {
+        if !listed_paths.contains(payload.path.as_str()) {
+            whatever!(
+                "binary workspace payload {:?} is not listed in workspace.binaryFiles",
+                payload.path
+            );
+        }
+        if decoded.contains_key(&payload.path) {
+            whatever!(
+                "duplicate binary workspace file payload for {:?}",
+                payload.path
+            );
+        }
+
+        let bytes =
+            koina::base64::decode(&payload.contents_base64).with_whatever_context(|_| {
+                format!("failed to decode binary workspace file {:?}", payload.path)
+            })?;
+        let decoded_size = u64::try_from(bytes.len())
+            .whatever_context("decoded binary workspace file length does not fit in u64")?;
+        if decoded_size != payload.size_bytes {
+            whatever!(
+                "binary workspace file {:?} size mismatch: metadata says {} bytes, decoded {} bytes",
+                payload.path,
+                payload.size_bytes,
+                decoded_size
+            );
+        }
+        let actual_sha256 = sha256_hex(&bytes);
+        if !payload.sha256.eq_ignore_ascii_case(&actual_sha256) {
+            whatever!(
+                "binary workspace file {:?} sha256 mismatch: metadata says {}, decoded {}",
+                payload.path,
+                payload.sha256,
+                actual_sha256
+            );
+        }
+        decoded.insert(payload.path.clone(), bytes);
+    }
+
+    for path in &file.workspace.binary_files {
+        if !decoded.contains_key(path) {
+            whatever!(
+                "binary workspace file {path:?} has no serialized contents; re-export with a version that preserves binary workspace file bytes"
+            );
+        }
+    }
+
+    Ok(decoded)
+}
+
 /// Report partial-export metadata before any filesystem or store mutation.
 ///
 /// WHY(#5102/#4965): the import must not silently restore an export that the
@@ -1196,10 +1323,14 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     for path in &agent_file.workspace.binary_files {
         validate_workspace_relative_path(path)?;
     }
+    for payload in &agent_file.workspace.binary_file_contents {
+        validate_workspace_relative_path(&payload.path)?;
+    }
     // WHY: preflight before any I/O so a corrupt export is rejected without
     // leaving partial state on disk (no workspace files partially written,
     // no config half-updated, no orphaned session records).
     preflight_agent_file(&agent_file)?;
+    let binary_workspace_files = decode_binary_workspace_files(&agent_file)?;
 
     // WHY(#5102/#4965): validate/report partial sections before any mutation.
     report_partial_export(&agent_file);
@@ -1280,16 +1411,19 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
             summary.workspace_files += 1;
         }
 
-        // WHY(#5102): binary workspace files are recorded by path but their
-        // contents are not carried in the portability format. Report the omission
-        // clearly instead of silently dropping them.
-        if !agent_file.workspace.binary_files.is_empty() {
-            eprintln!(
-                "  WARN: skipping {} binary workspace file(s) (contents not included in export): {:?}",
-                agent_file.workspace.binary_files.len(),
-                agent_file.workspace.binary_files
-            );
-            summary.skipped_categories.push("workspace_binary_files");
+        for path in &agent_file.workspace.binary_files {
+            let Some(bytes) = binary_workspace_files.get(path) else {
+                whatever!("binary workspace file {path:?} was not decoded during preflight");
+            };
+            let target = nous_dir.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).with_whatever_context(|_| {
+                    format!("failed to create directory: {}", parent.display())
+                })?;
+            }
+            koina::fs::write_restricted(&target, bytes)
+                .with_whatever_context(|_| format!("failed to write {}", target.display()))?;
+            summary.workspace_files += 1;
         }
     }
 
@@ -2435,6 +2569,7 @@ mod tests {
                     "# Imported Agent\n\nYou are imported.\n".to_owned(),
                 )]),
                 binary_files: vec![],
+                binary_file_contents: vec![],
             },
             sessions: vec![ExportedSession {
                 id: "ses-001".to_owned(),
@@ -2618,6 +2753,12 @@ workspace = "nous/{agent_id}"
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
         std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        let avatar_bytes = [0x89, 0x50, 0x4e, 0x47, 0x00, 0xff];
+        std::fs::write(
+            source_oikos.nous_dir("alice").join("avatar.png"),
+            avatar_bytes,
+        )
+        .unwrap();
 
         let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
         let session = source_store
@@ -2642,6 +2783,17 @@ workspace = "nous/{agent_id}"
             },
         )
         .unwrap();
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
+        assert_eq!(exported.workspace.binary_files, vec!["avatar.png"]);
+        let avatar_payload = exported
+            .workspace
+            .binary_file_contents
+            .iter()
+            .find(|payload| payload.path == "avatar.png")
+            .expect("binary payload must be exported");
+        assert_eq!(avatar_payload.size_bytes, 6);
+        assert_eq!(avatar_payload.sha256, sha256_hex(&avatar_bytes));
 
         let dest = tempfile::tempdir().unwrap();
         let dest_oikos = Oikos::from_root(dest.path());
@@ -2668,6 +2820,10 @@ workspace = "nous/{agent_id}"
         let history = dest_store.get_history(&sessions[0].id, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].content, "round trip");
+        assert_eq!(
+            std::fs::read(dest_oikos.nous_dir("alice").join("avatar.png")).unwrap(),
+            avatar_bytes.to_vec()
+        );
     }
 
     #[test]
@@ -4027,6 +4183,7 @@ workspace = "nous/{agent_id}"
             workspace: WorkspaceData {
                 files: HashMap::new(),
                 binary_files: vec![],
+                binary_file_contents: vec![],
             },
             sessions: vec![],
             memory: None,
@@ -4103,7 +4260,7 @@ workspace = "nous/{agent_id}"
     }
 
     #[test]
-    fn import_accepts_v1_file() {
+    fn import_accepts_older_agent_file() {
         // WHY(#5782): an older-version file must upgrade transparently rather than
         // hard-reject — additive fields carry serde(default).
         let dir = tempfile::tempdir().unwrap();
@@ -4114,7 +4271,7 @@ workspace = "nous/{agent_id}"
         let mut agent_file = minimal_agent_file();
         agent_file.version = mneme::portability::AGENT_FILE_VERSION - 1;
         let json = serde_json::to_string(&agent_file).unwrap();
-        let agent_path = dir.path().join("v1.agent.json");
+        let agent_path = dir.path().join("older.agent.json");
         std::fs::write(&agent_path, json).unwrap();
 
         let args = ImportArgs {
@@ -4753,21 +4910,18 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    /// WHY(#5102): binary workspace files are enumerated but not serialized, so
-    /// the export metadata must record the omission instead of claiming losslessness.
+    /// WHY(#4590): binary workspace files must carry payload bytes, not just
+    /// path names, so an export/import round-trip can restore them.
     #[test]
-    fn export_records_binary_workspace_files_and_memory_omissions_5102() {
+    fn export_records_binary_workspace_file_payloads_4590() {
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         write_agent_config(dir.path(), "alice", "Alice");
         std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
         // WHY: PNG magic bytes are not valid UTF-8, so the collector treats this
-        // as a binary file and records only its path.
-        std::fs::write(
-            oikos.nous_dir("alice").join("avatar.png"),
-            [0x89, 0x50, 0x4e, 0x47],
-        )
-        .unwrap();
+        // as a binary file and records a payload record for import.
+        let avatar_bytes = [0x89, 0x50, 0x4e, 0x47];
+        std::fs::write(oikos.nous_dir("alice").join("avatar.png"), avatar_bytes).unwrap();
 
         let output = dir.path().join("alice.agent.json");
         let args = ExportArgs {
@@ -4784,27 +4938,30 @@ workspace = "nous/{agent_id}"
         let exported: AgentFile =
             serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
         assert_eq!(exported.workspace.binary_files, vec!["avatar.png"]);
-        let meta = exported
-            .export_metadata
-            .expect("metadata must be present for a partial export");
-        assert!(
-            !meta.lossless,
-            "export with known gaps must not claim lossless"
-        );
-        // WHY: no knowledge store exists in this test, so there are no embeddings
-        // to omit; only the binary workspace file makes this export non-lossless.
-        let binary = meta
-            .omitted_sections
+        let payload = exported
+            .workspace
+            .binary_file_contents
             .iter()
-            .find(|s| s.section == "workspace_binary_files")
-            .expect("binary file omission must be recorded");
-        assert_eq!(binary.count, Some(1));
+            .find(|payload| payload.path == "avatar.png")
+            .expect("binary payload must be exported");
+        assert_eq!(payload.size_bytes, 4);
+        assert_eq!(payload.sha256, sha256_hex(&avatar_bytes));
+        assert_eq!(
+            koina::base64::decode(&payload.contents_base64).unwrap(),
+            avatar_bytes.to_vec()
+        );
+        let meta = exported.export_metadata.expect("metadata must be present");
+        assert!(
+            meta.lossless,
+            "binary workspace payloads must not make export partial"
+        );
+        assert!(meta.omitted_sections.is_empty());
     }
 
-    /// WHY(#5102): importers must not silently drop binary workspace files.
-    /// They are reported as skipped and are not written to disk.
+    /// WHY(#4590): importers must not silently drop path-only binary entries
+    /// from older or malformed exports.
     #[test]
-    fn import_skips_binary_workspace_files_5102() {
+    fn import_rejects_path_only_binary_workspace_files_4590() {
         let dest = tempfile::tempdir().unwrap();
         let dest_oikos = Oikos::from_root(dest.path());
         std::fs::create_dir_all(dest_oikos.config()).unwrap();
@@ -4812,15 +4969,6 @@ workspace = "nous/{agent_id}"
 
         let mut agent_file = sample_agent_file();
         agent_file.workspace.binary_files = vec!["avatar.png".to_owned()];
-        agent_file.export_metadata = Some(mneme::portability::ExportMetadata {
-            lossless: false,
-            omitted_sections: vec![mneme::portability::OmittedSection {
-                section: "workspace_binary_files".to_owned(),
-                reason: "binary_content_not_exported".to_owned(),
-                count: Some(1),
-            }],
-            truncations: vec![],
-        });
         let import_path = dest.path().join("agent.agent.json");
         std::fs::write(
             &import_path,
@@ -4828,7 +4976,7 @@ workspace = "nous/{agent_id}"
         )
         .unwrap();
 
-        import_agent(
+        let err = import_agent(
             Some(&dest.path().to_path_buf()),
             &ImportArgs {
                 file: import_path,
@@ -4841,13 +4989,12 @@ workspace = "nous/{agent_id}"
                 allow_unknown_values: false,
             },
         )
-        .unwrap();
-
-        let nous_dir = dest_oikos.nous_dir("imported-agent");
-        assert!(nous_dir.join("SOUL.md").exists());
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("has no serialized contents"), "got: {msg}");
         assert!(
-            !nous_dir.join("avatar.png").exists(),
-            "binary file must not be created"
+            !dest_oikos.nous_dir("imported-agent").exists(),
+            "path-only binary import must fail before workspace writes"
         );
     }
 
