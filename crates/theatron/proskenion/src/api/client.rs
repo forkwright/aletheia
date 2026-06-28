@@ -130,6 +130,48 @@ pub(crate) async fn fetch_agent_roster(
     Ok(wrapper.nous)
 }
 
+/// Fetch the server's discoverable global event topics.
+///
+/// # Errors
+///
+/// Returns a human-readable error when the request fails, the server returns a
+/// non-success status, or the response cannot be decoded as a topic list.
+pub(crate) async fn fetch_event_topics(config: &ConnectionConfig) -> Result<Vec<String>, String> {
+    let client = authenticated_client(config);
+    let base = config.server_url.trim_end_matches('/');
+    let url = format!("{base}/api/v1/events/discovery");
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|err| format!("failed to request event discovery: {err}"))?;
+    let status = resp.status();
+
+    if !status.is_success() {
+        let detail = match resp.text().await {
+            Ok(text) => text,
+            Err(err) => err.to_string(),
+        };
+        let message = skene::api::error::parse_pylon_error_body(&detail).map_or_else(
+            || {
+                let trimmed = detail.trim();
+                if trimmed.is_empty() {
+                    status.to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            },
+            |detail| detail.message,
+        );
+        return Err(format!("event discovery returned {status}: {message}"));
+    }
+
+    resp.json::<Vec<String>>()
+        .await
+        .map_err(|err| format!("failed to decode event discovery response: {err}"))
+}
+
 /// Persist `content` to the workspace file at `path` (relative to the vault
 /// root) via the workspace content write endpoint.
 ///

@@ -114,6 +114,49 @@ async fn subscribe_filters_unwanted_topics() {
 }
 
 #[tokio::test]
+async fn subscribe_returns_tool_approval_required_without_tool_input() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events/subscribe?topics=tool.approval.required");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "tool.approval.required",
+            serde_json::json!({
+                "session_id": "s1",
+                "nous_id": "syn",
+                "turn_id": "t1",
+                "tool_id": "tool-1",
+                "tool_name": "write_file",
+                "risk": "high",
+                "reason": "Tool 'write_file' requires required approval",
+            }),
+        ))
+        .await;
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: tool.approval.required"),
+        "expected tool approval event, got: {text}"
+    );
+    assert!(
+        text.contains("\"tool_name\":\"write_file\""),
+        "expected tool name in payload, got: {text}"
+    );
+    assert!(
+        !text.contains("\"input\""),
+        "global approval event must not expose raw tool input, got: {text}"
+    );
+}
+
+#[tokio::test]
 async fn subscribe_heartbeat_keeps_connection_alive() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
@@ -166,6 +209,14 @@ async fn discovery_returns_current_pylon_topics() {
     let expected: std::collections::HashSet<_> = DISCOVERABLE_TOPICS.iter().copied().collect();
 
     assert_eq!(returned, expected);
+    assert!(
+        returned.contains("tool.approval.required"),
+        "approval-needed domain events must be discoverable"
+    );
+    assert!(
+        returned.contains("tool.approval.resolved"),
+        "approval-resolved domain events must be discoverable"
+    );
 
     // WHY: These topics were previously advertised but have no current pylon
     // publisher, so they must not appear in discovery.

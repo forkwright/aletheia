@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use koina::secret::SecretString;
 
-use crate::id::{GitSha, NousId, PlanId, SessionId, TurnId};
+use crate::id::{GitSha, NousId, PlanId, SessionId, ToolId, TurnId};
 
 /// A registered agent (nous) in the system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,6 +285,40 @@ pub enum SseEvent {
         event: String,
         /// Whether the server requires a restart to activate the change.
         restart_required: bool,
+    },
+    /// A domain event reporting that a tool approval is required, emitted on
+    /// the `EventBus` topic `tool.approval.required`.
+    ToolApprovalRequired {
+        /// Session the approval belongs to.
+        session_id: SessionId,
+        /// Agent requesting the approval.
+        nous_id: NousId,
+        /// Turn that owns the tool call.
+        turn_id: TurnId,
+        /// Tool call awaiting approval.
+        tool_id: ToolId,
+        /// Name of the tool awaiting approval.
+        tool_name: String,
+        /// Server-assigned risk label.
+        risk: String,
+        /// Human-readable reason for the approval requirement.
+        reason: String,
+    },
+    /// A domain event reporting that a tool approval was resolved, emitted on
+    /// the `EventBus` topic `tool.approval.resolved`.
+    ToolApprovalResolved {
+        /// Session the approval belongs to.
+        session_id: SessionId,
+        /// Agent that requested the approval.
+        nous_id: NousId,
+        /// Turn that owns the tool call.
+        turn_id: TurnId,
+        /// Tool call whose approval was resolved.
+        tool_id: ToolId,
+        /// Name of the resolved tool.
+        tool_name: String,
+        /// Approval decision label.
+        decision: String,
     },
     /// A tool was invoked during a turn.
     ToolCalled {

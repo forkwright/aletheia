@@ -20,7 +20,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use skene::api::types::SseEvent;
-use skene::id::NousId;
+use skene::id::{NousId, SessionId, ToolId, TurnId};
 
 use crate::platform::native_notify::send_native;
 use crate::platform::notifications::{NotificationPayload, NotificationUrgency};
@@ -118,6 +118,29 @@ impl NotificationDispatch {
                     prefs,
                     dnd,
                     window_focused,
+                    on_sent,
+                    toast_fallback,
+                );
+            }
+            SseEvent::ToolApprovalRequired {
+                session_id,
+                nous_id,
+                turn_id,
+                tool_id,
+                tool_name,
+                risk,
+                reason,
+            } => {
+                self.on_tool_approval_required(
+                    session_id,
+                    nous_id,
+                    turn_id,
+                    tool_id,
+                    tool_name,
+                    risk,
+                    reason,
+                    prefs,
+                    dnd,
                     on_sent,
                     toast_fallback,
                 );
@@ -289,6 +312,50 @@ impl NotificationDispatch {
         );
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "approval notifications need all routing identifiers and delivery state (#4871)"
+    )]
+    fn on_tool_approval_required(
+        &mut self,
+        session_id: &SessionId,
+        nous_id: &NousId,
+        turn_id: &TurnId,
+        tool_id: &ToolId,
+        tool_name: &str,
+        risk: &str,
+        reason: &str,
+        prefs: &NotificationPreferences,
+        dnd: &DndState,
+        on_sent: &mut impl FnMut(NotificationEntry),
+        fallback: &mut impl FnMut(ToastSeverity, &str),
+    ) {
+        if !prefs.category_enabled(NotificationCategory::ToolApproval) {
+            return;
+        }
+        let title = format!("Tool approval required: {tool_name}");
+        let body = format!(
+            "agent={} session={} turn={} tool_id={} risk={} reason={}",
+            nous_id.as_str(),
+            session_id.as_str(),
+            turn_id.as_ref(),
+            tool_id.as_ref(),
+            risk,
+            reason,
+        );
+        self.send(
+            NotificationCategory::ToolApproval,
+            title,
+            body,
+            NotificationUrgency::Critical,
+            None,
+            prefs,
+            dnd,
+            on_sent,
+            fallback,
+        );
+    }
+
     // ── Grouping ──
 
     /// Dispatch with coalescing: the first notification in a 3s window fires
@@ -446,7 +513,7 @@ fn truncate_chars(s: &str, max_chars: usize) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use skene::id::{NousId, SessionId};
+    use skene::id::{NousId, SessionId, ToolId, TurnId};
 
     use super::*;
     use crate::state::notifications::{DndDuration, NotificationHistory};
@@ -465,6 +532,26 @@ mod tests {
 
     fn session(id: &str) -> SessionId {
         SessionId::from(id)
+    }
+
+    fn turn(id: &str) -> TurnId {
+        TurnId::from(id)
+    }
+
+    fn tool(id: &str) -> ToolId {
+        ToolId::from(id)
+    }
+
+    fn approval_required_event() -> SseEvent {
+        SseEvent::ToolApprovalRequired {
+            session_id: session("s1"),
+            nous_id: nous("syn"),
+            turn_id: turn("t1"),
+            tool_id: tool("tool-1"),
+            tool_name: "write_file".to_string(),
+            risk: "high".to_string(),
+            reason: "Tool 'write_file' requires required approval".to_string(),
+        }
     }
 
     fn no_fallback(_sev: ToastSeverity, _title: &str) {}
@@ -540,6 +627,53 @@ mod tests {
             &prefs,
             &dnd_off(),
             true, // focused
+            &mut |e| history.push(e),
+            &mut no_fallback,
+        );
+
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn tool_approval_required_dispatches_with_context() {
+        let mut dispatch = NotificationDispatch::new();
+        let mut history = NotificationHistory::default();
+
+        dispatch.process_event(
+            &approval_required_event(),
+            &prefs(),
+            &dnd_off(),
+            true,
+            &mut |e| history.push(e),
+            &mut no_fallback,
+        );
+
+        assert_eq!(history.len(), 1);
+        let entry = &history.entries()[0];
+        assert_eq!(entry.category, NotificationCategory::ToolApproval);
+        assert_eq!(entry.title, "Tool approval required: write_file");
+        assert!(entry.body.contains("agent=syn"));
+        assert!(entry.body.contains("session=s1"));
+        assert!(entry.body.contains("turn=t1"));
+        assert!(entry.body.contains("tool_id=tool-1"));
+        assert!(entry.body.contains("risk=high"));
+        assert!(!entry.body.contains("input"));
+    }
+
+    #[test]
+    fn tool_approval_preference_suppresses_notification() {
+        let mut dispatch = NotificationDispatch::new();
+        let mut history = NotificationHistory::default();
+        let prefs = NotificationPreferences {
+            tool_approval: false,
+            ..Default::default()
+        };
+
+        dispatch.process_event(
+            &approval_required_event(),
+            &prefs,
+            &dnd_off(),
+            false,
             &mut |e| history.push(e),
             &mut no_fallback,
         );
@@ -644,6 +778,49 @@ mod tests {
         assert!(
             history.is_empty(),
             "DND should suppress completion notification"
+        );
+    }
+
+    #[test]
+    fn tool_approval_bypasses_dnd() {
+        let mut dispatch = NotificationDispatch::new();
+        let mut history = NotificationHistory::default();
+        let mut dnd = dnd_off();
+        dnd.activate(DndDuration::FifteenMinutes);
+
+        dispatch.process_event(
+            &approval_required_event(),
+            &prefs(),
+            &dnd,
+            false,
+            &mut |e| history.push(e),
+            &mut no_fallback,
+        );
+
+        assert_eq!(history.len(), 1);
+        assert_eq!(
+            history.entries()[0].category,
+            NotificationCategory::ToolApproval
+        );
+    }
+
+    #[test]
+    fn no_approval_event_means_no_approval_notification() {
+        let mut dispatch = NotificationDispatch::new();
+        let mut history = NotificationHistory::default();
+
+        dispatch.process_event(
+            &SseEvent::Connected,
+            &prefs(),
+            &dnd_off(),
+            false,
+            &mut |e| history.push(e),
+            &mut no_fallback,
+        );
+
+        assert!(
+            history.is_empty(),
+            "backends without approval events must not produce approval notifications"
         );
     }
 

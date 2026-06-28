@@ -13,20 +13,53 @@ use serde::{Deserialize, Serialize};
 /// Maximum entries retained in [`NotificationHistory`].
 const MAX_HISTORY: usize = 50;
 
+/// Global event topic emitted when a tool approval is required.
+pub(crate) const TOOL_APPROVAL_REQUIRED_TOPIC: &str = "tool.approval.required";
+
+/// Global event topic emitted when a tool approval decision is resolved.
+pub(crate) const TOOL_APPROVAL_RESOLVED_TOPIC: &str = "tool.approval.resolved";
+
 /// Category of notification, used for per-event toggles and rate limiting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) enum NotificationCategory {
     /// Agent turn completed (triggered by `TurnAfter` SSE event).
     AgentCompletion,
     /// Tool approval required.
-    ///
-    /// NOTE: Awaiting `ToolApprovalNeeded` global SSE event type. Currently
-    /// not fired from the dispatch layer -- placeholder for future wiring.
     ToolApproval,
     /// Agent error or tool failure (triggered by `ToolFailed` SSE event).
     Error,
     /// SSE connection lost or restored.
     ConnectionStatus,
+}
+
+/// Notification event sources advertised by the connected server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct NotificationCapabilities {
+    /// Whether the server emits global tool-approval-required events.
+    pub tool_approval_events: bool,
+    /// Whether the server emits global tool-approval-resolved events.
+    pub tool_approval_resolved_events: bool,
+}
+
+impl NotificationCapabilities {
+    /// Build capabilities from `/api/v1/events/discovery` topic names.
+    #[must_use]
+    pub(crate) fn from_event_topics(topics: &[String]) -> Self {
+        Self {
+            tool_approval_events: topics
+                .iter()
+                .any(|topic| topic == TOOL_APPROVAL_REQUIRED_TOPIC),
+            tool_approval_resolved_events: topics
+                .iter()
+                .any(|topic| topic == TOOL_APPROVAL_RESOLVED_TOPIC),
+        }
+    }
+
+    /// Whether the tool approval preference can be presented as active.
+    #[must_use]
+    pub(crate) fn tool_approval_available(&self) -> bool {
+        self.tool_approval_events && self.tool_approval_resolved_events
+    }
 }
 
 /// Duration preset for activating Do Not Disturb mode.
@@ -160,10 +193,10 @@ pub(crate) struct NotificationEntry {
     )]
     pub category: NotificationCategory,
     /// Title displayed in the notification.
-    #[expect(dead_code, reason = "public API")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "public API"))]
     pub title: String,
     /// Body text.
-    #[expect(dead_code, reason = "public API")]
+    #[cfg_attr(not(test), expect(dead_code, reason = "public API"))]
     pub body: String,
     /// When this notification was sent.
     #[expect(dead_code, reason = "public API")]
@@ -272,5 +305,45 @@ mod tests {
         };
         assert!(!prefs.category_enabled(NotificationCategory::AgentCompletion));
         assert!(prefs.category_enabled(NotificationCategory::Error));
+    }
+
+    #[test]
+    fn notification_capabilities_default_to_unavailable() {
+        let caps = NotificationCapabilities::default();
+        assert!(!caps.tool_approval_available());
+    }
+
+    #[test]
+    fn notification_capabilities_detect_approval_topic() {
+        let topics = vec![
+            "fact.created".to_string(),
+            TOOL_APPROVAL_REQUIRED_TOPIC.to_string(),
+            TOOL_APPROVAL_RESOLVED_TOPIC.to_string(),
+        ];
+        let caps = NotificationCapabilities::from_event_topics(&topics);
+        assert!(caps.tool_approval_available());
+        assert!(caps.tool_approval_resolved_events);
+    }
+
+    #[test]
+    fn notification_capabilities_reject_resolved_without_required_topic() {
+        let topics = vec![TOOL_APPROVAL_RESOLVED_TOPIC.to_string()];
+        let caps = NotificationCapabilities::from_event_topics(&topics);
+        assert!(caps.tool_approval_resolved_events);
+        assert!(
+            !caps.tool_approval_available(),
+            "the preference is unavailable without the approval-needed source"
+        );
+    }
+
+    #[test]
+    fn notification_capabilities_reject_required_without_resolved_topic() {
+        let topics = vec![TOOL_APPROVAL_REQUIRED_TOPIC.to_string()];
+        let caps = NotificationCapabilities::from_event_topics(&topics);
+        assert!(caps.tool_approval_events);
+        assert!(
+            !caps.tool_approval_available(),
+            "the preference is unavailable without the full approval event contract"
+        );
     }
 }

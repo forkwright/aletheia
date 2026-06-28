@@ -7,7 +7,9 @@
 use dioxus::prelude::*;
 
 use crate::services::config;
-use crate::state::notifications::{DndDuration, DndState, NotificationPreferences};
+use crate::state::notifications::{
+    DndDuration, DndState, NotificationCapabilities, NotificationPreferences,
+};
 
 const SECTION_STYLE: &str = "\
     background: var(--bg-surface); \
@@ -92,10 +94,12 @@ const WARNING_STYLE: &str = "\
 pub(crate) fn NotificationSettings() -> Element {
     let mut prefs: Signal<NotificationPreferences> = use_context();
     let mut dnd: Signal<DndState> = use_context();
+    let caps: Signal<NotificationCapabilities> = use_context();
 
     let enabled = prefs.read().enabled;
     let agent_completion = prefs.read().agent_completion;
     let tool_approval = prefs.read().tool_approval;
+    let tool_approval_supported = caps.read().tool_approval_available();
     let errors = prefs.read().errors;
     let connection_status = prefs.read().connection_status;
     let sound_enabled = prefs.read().sound_enabled;
@@ -142,19 +146,29 @@ pub(crate) fn NotificationSettings() -> Element {
                 span {
                     style: "{LABEL_STYLE}",
                     "Tool approval requests"
-                    if !tool_approval {
+                    if !tool_approval_supported {
+                        div { style: "{WARNING_STYLE}", "Unavailable: server does not advertise approval events" }
+                    } else if !tool_approval {
                         div { style: "{WARNING_STYLE}", "Warning: you may miss approval requests" }
                     }
                 }
                 button {
-                    style: if tool_approval { TOGGLE_ON } else { TOGGLE_OFF },
+                    disabled: !tool_approval_supported,
+                    style: if tool_approval_supported && tool_approval { TOGGLE_ON } else { TOGGLE_OFF },
                     onclick: move |_| {
+                        if !tool_approval_supported {
+                            return;
+                        }
                         prefs.write().tool_approval = !tool_approval;
                         if let Err(e) = config::save_notification_prefs(&prefs.read()) {
                             tracing::warn!(error = %e, "failed to save notification preferences");
                         }
                     },
-                    if tool_approval { "On" } else { "Off" }
+                    if tool_approval_supported {
+                        if tool_approval { "On" } else { "Off" }
+                    } else {
+                        "Unavailable"
+                    }
                 }
             }
 

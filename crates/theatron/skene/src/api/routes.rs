@@ -78,6 +78,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
     },
     ClientRouteContract {
         method: "GET",
+        path_template: "/api/v1/events/discovery",
+    },
+    ClientRouteContract {
+        method: "GET",
         path_template: "/api/v1/config",
     },
     ClientRouteContract {

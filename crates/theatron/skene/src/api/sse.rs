@@ -1,9 +1,11 @@
 //! Domain-event SSE subscription to `GET /api/v1/events/subscribe`.
 //!
-//! Subscribes to the `EventBus` topics `fact.created`, `turn.complete`, and
-//! `nous.lifecycle`, providing cross-session awareness: newly created facts,
-//! completed turns, and agent lifecycle changes. The legacy `GET /api/v1/events`
-//! endpoint is keepalive-only and is not used here.
+//! Subscribes to the `EventBus` topics `fact.created`, `turn.complete`,
+//! `nous.lifecycle`, `tool.approval.required`, and
+//! `tool.approval.resolved`, providing cross-session awareness for newly
+//! created facts, completed turns, agent lifecycle changes, and approval
+//! control-plane events. The legacy `GET /api/v1/events` endpoint is
+//! keepalive-only and is not used here.
 //!
 //! Auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
 //! silence as a stale connection.
@@ -17,7 +19,7 @@ use reqwest::Client;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
-use crate::id::{NousId, SessionId, TurnId};
+use crate::id::{NousId, SessionId, ToolId, TurnId};
 use crate::sse::SseStream;
 
 use super::error::{format_error_fields_for_display, format_http_error_body};
@@ -30,7 +32,8 @@ use super::types::SseEvent;
 const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// Topics subscribed to on the domain-event SSE endpoint.
-const SUBSCRIBE_TOPICS: &str = "fact.created,turn.complete,nous.lifecycle";
+const SUBSCRIBE_TOPICS: &str =
+    "fact.created,turn.complete,nous.lifecycle,tool.approval.required,tool.approval.resolved";
 
 /// Manages the global SSE connection to `/api/v1/events/subscribe`.
 /// Runs in a background task, sends parsed events through a channel.
@@ -190,6 +193,12 @@ fn bool_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option
         })
 }
 
+fn event_payload(json: &serde_json::Value) -> &serde_json::Value {
+    json.get("payload")
+        .filter(|payload| payload.is_object())
+        .unwrap_or(json)
+}
+
 /// Parse a raw SSE event into a domain `SseEvent`.
 ///
 /// Returns `None` only when `data` is empty or contains only a comment.
@@ -229,9 +238,11 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
-        "turn.complete" => turn_complete_event(&json, event_type),
-        "fact.created" => fact_created_event(&json, event_type),
-        "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
+        "turn.complete" => turn_complete_event(event_payload(&json), event_type),
+        "fact.created" => fact_created_event(event_payload(&json), event_type),
+        "nous.lifecycle" => nous_lifecycle_event(event_payload(&json), event_type),
+        "tool.approval.required" => tool_approval_required_event(event_payload(&json), event_type),
+        "tool.approval.resolved" => tool_approval_resolved_event(event_payload(&json), event_type),
         "tool:called" => Some(SseEvent::ToolCalled {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
@@ -341,6 +352,29 @@ fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<Ss
         nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
         event: str_field(json, "event", event_type)?.to_string(),
         restart_required: bool_field(json, "restart_required", event_type)?,
+    })
+}
+
+fn tool_approval_required_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::ToolApprovalRequired {
+        session_id: SessionId::from(str_field(json, "session_id", event_type)?.to_string()),
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
+        tool_id: ToolId::from(str_field(json, "tool_id", event_type)?.to_string()),
+        tool_name: str_field(json, "tool_name", event_type)?.to_string(),
+        risk: str_field(json, "risk", event_type)?.to_string(),
+        reason: str_field(json, "reason", event_type)?.to_string(),
+    })
+}
+
+fn tool_approval_resolved_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::ToolApprovalResolved {
+        session_id: SessionId::from(str_field(json, "session_id", event_type)?.to_string()),
+        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
+        tool_id: ToolId::from(str_field(json, "tool_id", event_type)?.to_string()),
+        tool_name: str_field(json, "tool_name", event_type)?.to_string(),
+        decision: str_field(json, "decision", event_type)?.to_string(),
     })
 }
 
@@ -612,6 +646,58 @@ mod tests {
         let data = r#"{"nous_id":"syn","event":"created"}"#;
         let result = parse_sse_event("nous.lifecycle", data);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_tool_approval_required_domain_event() {
+        let data = r#"{"id":1,"topic":"tool.approval.required","payload":{"session_id":"s1","nous_id":"syn","turn_id":"t1","tool_id":"tool-1","tool_name":"write_file","risk":"high","reason":"Tool 'write_file' requires required approval"},"at":"2026-06-28T00:00:00Z"}"#;
+        let result = parse_sse_event("tool.approval.required", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::ToolApprovalRequired {
+            session_id,
+            nous_id,
+            turn_id,
+            tool_id,
+            tool_name,
+            risk,
+            reason,
+        }) = result
+        {
+            assert_eq!(&*session_id, "s1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*turn_id, "t1");
+            assert_eq!(&*tool_id, "tool-1");
+            assert_eq!(tool_name, "write_file");
+            assert_eq!(risk, "high");
+            assert!(reason.contains("write_file"));
+        } else {
+            panic!("expected ToolApprovalRequired");
+        }
+    }
+
+    #[test]
+    fn parse_tool_approval_resolved_domain_event() {
+        let data = r#"{"id":2,"topic":"tool.approval.resolved","payload":{"session_id":"s1","nous_id":"syn","turn_id":"t1","tool_id":"tool-1","tool_name":"write_file","decision":"approved"},"at":"2026-06-28T00:00:01Z"}"#;
+        let result = parse_sse_event("tool.approval.resolved", data);
+        assert!(result.is_some());
+        if let Some(SseEvent::ToolApprovalResolved {
+            session_id,
+            nous_id,
+            turn_id,
+            tool_id,
+            tool_name,
+            decision,
+        }) = result
+        {
+            assert_eq!(&*session_id, "s1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*turn_id, "t1");
+            assert_eq!(&*tool_id, "tool-1");
+            assert_eq!(tool_name, "write_file");
+            assert_eq!(decision, "approved");
+        } else {
+            panic!("expected ToolApprovalResolved");
+        }
     }
 
     fn serve_sse_once(body: &'static str) -> (String, std::thread::JoinHandle<()>) {

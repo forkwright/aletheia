@@ -1,5 +1,6 @@
 //! SSE streaming handlers for session message delivery.
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -89,6 +90,44 @@ fn turn_complete_event_payload(
         "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
         "model": result.model_used.as_str(),
+    })
+}
+
+fn approval_required_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    tool_id: &str,
+    tool_name: &str,
+    risk: &str,
+    reason: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "tool_id": tool_id,
+        "tool_name": tool_name,
+        "risk": risk,
+        "reason": reason,
+    })
+}
+
+fn approval_resolved_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    tool_id: &str,
+    tool_name: &str,
+    decision: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "tool_id": tool_id,
+        "tool_name": tool_name,
+        "decision": decision,
     })
 }
 
@@ -913,8 +952,11 @@ pub async fn stream_turn(
     let approval_session_id = session_id.clone();
     let approval_turn_id = turn_id.clone();
     let approval_tx_for_bridge = approval_tx.clone();
+    let approval_event_bus = Arc::clone(&state.event_bus);
+    let approval_nous_id = aid.clone();
     let bridge_handle = tokio::spawn(
         async move {
+            let mut approval_tool_names = HashMap::<String, String>::new();
             while let Some(event) = nous_rx.recv().await {
                 let turn_event = match event {
                     TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
@@ -939,8 +981,8 @@ pub async fn stream_turn(
                         input,
                         risk,
                         reason,
-                    } => PylonTurnStreamEvent::ToolApprovalRequired {
-                        turn_id: {
+                    } => {
+                        let turn_id = {
                             approval_registry
                                 .register_tool(
                                     &approval_session_id,
@@ -950,14 +992,50 @@ pub async fn stream_turn(
                                 )
                                 .await;
                             approval_turn_id.clone()
-                        },
-                        tool_name,
-                        tool_id,
-                        input,
-                        risk,
-                        reason,
-                    },
+                        };
+                        approval_tool_names.insert(tool_id.clone(), tool_name.clone());
+                        approval_event_bus
+                            .publish(crate::event_bus::DomainEvent::new(
+                                approval_event_bus.next_id(),
+                                "tool.approval.required",
+                                approval_required_event_payload(
+                                    &approval_session_id,
+                                    &approval_nous_id,
+                                    &turn_id,
+                                    &tool_id,
+                                    &tool_name,
+                                    &risk,
+                                    &reason,
+                                ),
+                            ))
+                            .await;
+                        PylonTurnStreamEvent::ToolApprovalRequired {
+                            turn_id,
+                            tool_name,
+                            tool_id,
+                            input,
+                            risk,
+                            reason,
+                        }
+                    }
                     TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
+                        let tool_name = approval_tool_names
+                            .remove(&tool_id)
+                            .unwrap_or_else(|| tool_id.clone());
+                        approval_event_bus
+                            .publish(crate::event_bus::DomainEvent::new(
+                                approval_event_bus.next_id(),
+                                "tool.approval.resolved",
+                                approval_resolved_event_payload(
+                                    &approval_session_id,
+                                    &approval_nous_id,
+                                    &approval_turn_id,
+                                    &tool_id,
+                                    &tool_name,
+                                    &decision,
+                                ),
+                            ))
+                            .await;
                         PylonTurnStreamEvent::ToolApprovalResolved { tool_id, decision }
                     }
                     TurnStreamEvent::ToolResult {

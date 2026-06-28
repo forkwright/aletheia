@@ -16,7 +16,7 @@ use crate::state::app::TabBar;
 use crate::state::chat::ChatSelection;
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
-use crate::state::notifications::{DndState, NotificationHistory};
+use crate::state::notifications::{DndState, NotificationCapabilities, NotificationHistory};
 use crate::state::planning::PlanningCapabilities;
 use crate::state::platform::{QuickInputState, WindowState};
 use crate::state::tool_metrics::DateRange;
@@ -159,6 +159,7 @@ fn ConnectedApp() -> Element {
     use_context_provider(|| Signal::new(config::load_notification_prefs()));
     use_context_provider(|| Signal::new(NotificationHistory::default()));
     use_context_provider(|| Signal::new(DndState::default()));
+    use_context_provider(|| Signal::new(NotificationCapabilities::default()));
 
     // WHY: AgentStore must be provided before the Router because layout.rs
     // needs it for the agent roster.
@@ -196,6 +197,25 @@ fn ConnectedApp() -> Element {
                     }
                     Err(err) => {
                         tracing::warn!(error = %err, "failed to load startup agent roster");
+                    }
+                }
+            }
+        });
+    }
+
+    {
+        let cfg = config.read().clone();
+        let mut notification_caps: Signal<NotificationCapabilities> = use_context();
+        use_future(move || {
+            let cfg = cfg.clone();
+            async move {
+                match crate::api::client::fetch_event_topics(&cfg).await {
+                    Ok(topics) => {
+                        notification_caps.set(NotificationCapabilities::from_event_topics(&topics));
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to load event discovery topics");
+                        notification_caps.set(NotificationCapabilities::default());
                     }
                 }
             }

@@ -573,5 +573,33 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
     );
 }
 
+#[test]
+fn approval_required_event_payload_omits_tool_input() {
+    let payload = approval_required_event_payload(
+        "ses-1",
+        "nous-1",
+        "turn-1",
+        "tool-1",
+        "write_file",
+        "high",
+        "Tool 'write_file' requires required approval",
+    );
+
+    assert_eq!(
+        payload
+            .get("session_id")
+            .and_then(serde_json::Value::as_str),
+        Some("ses-1")
+    );
+    assert_eq!(
+        payload.get("tool_name").and_then(serde_json::Value::as_str),
+        Some("write_file")
+    );
+    assert!(
+        payload.get("input").is_none(),
+        "global approval-required events must not include raw tool input"
+    );
+}
+
 #[path = "streaming_reconnect_tests.rs"]
 mod reconnect_tests;
