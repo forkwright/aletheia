@@ -107,7 +107,8 @@ pub struct QualityMetricsResponse {
 /// Query parameters shared by desktop metrics views.
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct MetricsQuery {
-    /// Series granularity: daily, weekly, or monthly.
+    /// Series granularity: daily (`YYYY-MM-DD`), weekly (ISO 8601 `YYYY-Www`),
+    /// or monthly (`YYYY-MM`).
     #[serde(default)]
     pub granularity: Option<String>,
     /// Inclusive start date (`YYYY-MM-DD`).
@@ -121,7 +122,7 @@ pub struct MetricsQuery {
 /// A single token time-series point.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TokenSeriesPoint {
-    /// Bucket date (`YYYY-MM-DD`, ISO week, or `YYYY-MM`).
+    /// Bucket key (`YYYY-MM-DD`, ISO 8601 week `YYYY-Www`, or `YYYY-MM`).
     pub date: String,
     /// Input tokens in this bucket.
     pub input_tokens: u64,
@@ -195,7 +196,7 @@ pub struct TokenMetricsResponse {
 /// A single cost time-series point.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CostSeriesPoint {
-    /// Bucket date (`YYYY-MM-DD`, ISO week, or `YYYY-MM`).
+    /// Bucket key (`YYYY-MM-DD`, ISO 8601 week `YYYY-Www`, or `YYYY-MM`).
     pub date: String,
     /// Estimated cost in USD for this bucket.
     pub cost_usd: f64,

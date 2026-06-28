@@ -8,6 +8,7 @@ use axum::extract::{Path, Query, State};
 use tracing::warn;
 
 use jiff::ToSpan;
+use jiff::civil::Date;
 use mneme::types::{Message, Role, Session, UsageRecord};
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
@@ -202,7 +203,18 @@ pub async fn get_quality_metrics(
         // pattern used by load_token_metrics (store lacks a date-query API).
         let sessions: Vec<Session> = all_sessions
             .into_iter()
-            .filter(|s| date_in_range(&s.created_at, &query))
+            .filter(|s| match parse_timestamp_date(&s.created_at) {
+                Ok(date) => date_in_range(date, &query),
+                Err(err) => {
+                    warn!(
+                        session_id = %s.id,
+                        created_at = %s.created_at,
+                        error = %err,
+                        "skipping session with malformed quality metrics timestamp"
+                    );
+                    false
+                }
+            })
             .collect();
 
         // WHY(#5668): cap per-session history at 500 messages; quality series
@@ -511,6 +523,13 @@ struct SessionUsage {
     usage_records: Vec<UsageRecord>,
 }
 
+#[derive(Debug)]
+struct MetricSessionUsage<'a> {
+    session: &'a Session,
+    date: Date,
+    usage_records: &'a [UsageRecord],
+}
+
 async fn load_token_metrics(state: InsightsState, query: MetricsQuery) -> TokenMetricsResponse {
     let agent_configs: Vec<(String, String, String)> = state
         .nous_manager
@@ -585,8 +604,9 @@ fn build_token_metrics_at(
     model_by_agent: &HashMap<String, String>,
     session_rows: &[SessionUsage],
     query: &MetricsQuery,
-    today: jiff::civil::Date,
+    today: Date,
 ) -> TokenMetricsResponse {
+    let metric_rows = parse_metric_session_rows(session_rows);
     let mut total = TokenTotals::default();
     let mut agents: HashMap<String, (String, TokenTotals)> = agent_configs
         .iter()
@@ -598,16 +618,16 @@ fn build_token_metrics_at(
         .collect();
     let mut series: HashMap<String, TokenTotals> = HashMap::new();
 
-    for row in session_rows {
-        let session = &row.session;
-        if !date_in_range(&session.created_at, query) {
+    for row in &metric_rows {
+        let session = row.session;
+        if !date_in_range(row.date, query) {
             continue;
         }
         if row.usage_records.is_empty() {
             continue;
         }
 
-        let (input_tokens, output_tokens) = usage_token_split(&row.usage_records);
+        let (input_tokens, output_tokens) = usage_token_split(row.usage_records);
         total.add_tokens(input_tokens, output_tokens);
         total.add_session();
 
@@ -618,7 +638,7 @@ fn build_token_metrics_at(
         agent_entry.1.add_session();
 
         let mut models_for_session = HashSet::new();
-        for usage in &row.usage_records {
+        for usage in row.usage_records {
             let model = usage
                 .model
                 .clone()
@@ -636,14 +656,14 @@ fn build_token_metrics_at(
             models.entry(model).or_default().add_session();
         }
 
-        let bucket = bucket_date(&session.created_at, query.granularity.as_deref());
+        let bucket = bucket_date(row.date, query.granularity.as_deref());
         series
             .entry(bucket)
             .or_default()
             .add_tokens(input_tokens, output_tokens);
     }
 
-    let windows = token_period_windows(session_rows, today);
+    let windows = token_period_windows(&metric_rows, today);
     TokenMetricsResponse {
         series: series_points(series),
         agents: agent_rows(agents),
@@ -663,6 +683,28 @@ fn build_token_metrics_at(
     }
 }
 
+fn parse_metric_session_rows(session_rows: &[SessionUsage]) -> Vec<MetricSessionUsage<'_>> {
+    let mut rows = Vec::with_capacity(session_rows.len());
+    for row in session_rows {
+        match parse_timestamp_date(&row.session.created_at) {
+            Ok(date) => rows.push(MetricSessionUsage {
+                session: &row.session,
+                date,
+                usage_records: &row.usage_records,
+            }),
+            Err(err) => {
+                warn!(
+                    session_id = %row.session.id,
+                    created_at = %row.session.created_at,
+                    error = %err,
+                    "skipping session with malformed token metrics timestamp"
+                );
+            }
+        }
+    }
+    rows
+}
+
 #[derive(Debug, Default)]
 struct TokenPeriodWindows {
     today: TokenTotals,
@@ -674,8 +716,8 @@ struct TokenPeriodWindows {
 }
 
 fn token_period_windows(
-    session_rows: &[SessionUsage],
-    today: jiff::civil::Date,
+    session_rows: &[MetricSessionUsage<'_>],
+    today: Date,
 ) -> TokenPeriodWindows {
     let week_start = today.checked_sub(6.days()).unwrap_or(today);
     let prev_week_end = week_start.checked_sub(1.days()).unwrap_or(week_start);
@@ -695,13 +737,11 @@ fn token_period_windows(
 
     let mut windows = TokenPeriodWindows::default();
     for row in session_rows {
-        let Some(date) = session_date(&row.session) else {
-            continue;
-        };
+        let date = row.date;
         if row.usage_records.is_empty() {
             continue;
         }
-        let (input_tokens, output_tokens) = usage_token_split(&row.usage_records);
+        let (input_tokens, output_tokens) = usage_token_split(row.usage_records);
         if date == today {
             windows.today.add_tokens(input_tokens, output_tokens);
         }
@@ -724,10 +764,6 @@ fn token_period_windows(
     windows
 }
 
-fn session_date(session: &Session) -> Option<jiff::civil::Date> {
-    session.created_at.get(..10)?.parse().ok()
-}
-
 fn usage_token_split(records: &[UsageRecord]) -> (u64, u64) {
     let input_tokens = records
         .iter()
@@ -744,35 +780,45 @@ fn token_i64_to_u64(tokens: i64) -> u64 {
     u64::try_from(tokens).unwrap_or(0)
 }
 
-fn date_in_range(timestamp: &str, query: &MetricsQuery) -> bool {
+fn parse_timestamp_date(timestamp: &str) -> Result<Date, String> {
     let Some(date) = timestamp.get(..10) else {
-        return true;
+        return Err(format!(
+            "timestamp `{timestamp}` is shorter than YYYY-MM-DD"
+        ));
     };
-    if let Some(from) = query.from.as_deref()
-        && !from.is_empty()
-        && date < from
-    {
-        return false;
+    date.parse::<Date>().map_err(|err| {
+        format!("timestamp `{timestamp}` does not start with a valid ISO date: {err}")
+    })
+}
+
+fn date_in_range(date: Date, query: &MetricsQuery) -> bool {
+    if let Some(from) = query.from.as_deref().filter(|from| !from.is_empty()) {
+        let Ok(from) = from.parse::<Date>() else {
+            return false;
+        };
+        if date < from {
+            return false;
+        }
     }
-    if let Some(to) = query.to.as_deref()
-        && !to.is_empty()
-        && date > to
-    {
-        return false;
+    if let Some(to) = query.to.as_deref().filter(|to| !to.is_empty()) {
+        let Ok(to) = to.parse::<Date>() else {
+            return false;
+        };
+        if date > to {
+            return false;
+        }
     }
     true
 }
 
-fn bucket_date(timestamp: &str, granularity: Option<&str>) -> String {
-    let date = timestamp.get(..10).unwrap_or("1970-01-01");
+fn bucket_date(date: Date, granularity: Option<&str>) -> String {
     match granularity {
-        Some("monthly") => date.get(..7).unwrap_or(date).to_owned(),
+        Some("monthly") => format!("{:04}-{:02}", date.year(), date.month()),
         Some("weekly") => {
-            let year = date.get(..4).unwrap_or("1970");
-            let month_day = date.get(5..10).unwrap_or("01-01");
-            format!("{year}-W{month_day}")
+            let week = date.iso_week_date();
+            format!("{:04}-W{:02}", week.year(), week.week())
         }
-        _ => date.to_owned(),
+        _ => date.to_string(),
     }
 }
 
@@ -866,8 +912,18 @@ fn compute_sessions_per_day(sessions: &[&Session]) -> f64 {
     }
     let mut unique_dates = std::collections::HashSet::new();
     for s in sessions {
-        if let Some(date) = s.created_at.get(..10) {
-            unique_dates.insert(date.to_string());
+        match parse_timestamp_date(&s.created_at) {
+            Ok(date) => {
+                unique_dates.insert(date.to_string());
+            }
+            Err(err) => {
+                warn!(
+                    session_id = %s.id,
+                    created_at = %s.created_at,
+                    error = %err,
+                    "skipping session with malformed agent performance timestamp"
+                );
+            }
         }
     }
     if unique_dates.is_empty() {
@@ -883,7 +939,18 @@ where
 {
     let mut by_date: HashMap<String, Vec<f64>> = HashMap::new();
     for s in sessions {
-        let date = s.created_at.get(..10).unwrap_or("1970-01-01").to_owned();
+        let date = match parse_timestamp_date(&s.created_at) {
+            Ok(date) => date.to_string(),
+            Err(err) => {
+                warn!(
+                    session_id = %s.id,
+                    created_at = %s.created_at,
+                    error = %err,
+                    "skipping session with malformed daily series timestamp"
+                );
+                continue;
+            }
+        };
         by_date.entry(date).or_default().push(extract(s));
     }
 
@@ -908,7 +975,18 @@ fn compute_quality_series(sessions: &[Session], messages: &[Message]) -> Quality
     // Group sessions by date for avg_turn_length.
     let mut session_counts_by_date: HashMap<String, Vec<u64>> = HashMap::new();
     for s in sessions {
-        let date = s.created_at.get(..10).unwrap_or("1970-01-01").to_owned();
+        let date = match parse_timestamp_date(&s.created_at) {
+            Ok(date) => date.to_string(),
+            Err(err) => {
+                warn!(
+                    session_id = %s.id,
+                    created_at = %s.created_at,
+                    error = %err,
+                    "skipping session with malformed quality metrics timestamp"
+                );
+                continue;
+            }
+        };
         let count = u64::try_from(s.metrics.message_count).unwrap_or(0);
         session_counts_by_date.entry(date).or_default().push(count);
     }
@@ -929,7 +1007,19 @@ fn compute_quality_series(sessions: &[Session], messages: &[Message]) -> Quality
     // Group messages by date for ratios and density.
     let mut msgs_by_date: HashMap<String, MessageCounts> = HashMap::new();
     for m in messages {
-        let date = m.created_at.get(..10).unwrap_or("1970-01-01").to_owned();
+        let date = match parse_timestamp_date(&m.created_at) {
+            Ok(date) => date.to_string(),
+            Err(err) => {
+                warn!(
+                    message_id = m.id,
+                    session_id = %m.session_id,
+                    created_at = %m.created_at,
+                    error = %err,
+                    "skipping message with malformed quality metrics timestamp"
+                );
+                continue;
+            }
+        };
         let entry = msgs_by_date.entry(date).or_default();
         entry.total += 1;
         match m.role {
@@ -1080,6 +1170,13 @@ mod tests {
         }
     }
 
+    fn session_with_created_at(id: &str, created_at: &str) -> Session {
+        let mut session = session(id, "2026-01-01");
+        session.created_at = created_at.to_owned();
+        session.updated_at = created_at.to_owned();
+        session
+    }
+
     fn usage(session_id: &str, input_tokens: i64, output_tokens: i64) -> UsageRecord {
         UsageRecord {
             session_id: session_id.to_owned(),
@@ -1104,6 +1201,110 @@ mod tests {
             Some(item) => item,
             None => panic!("{label} should contain at least one item"),
         }
+    }
+
+    #[test]
+    fn weekly_token_metrics_bucket_by_iso_week() {
+        let rows = vec![
+            SessionUsage {
+                session: session("same-week-mon", "2026-06-08"),
+                usage_records: vec![usage("same-week-mon", 10, 1)],
+            },
+            SessionUsage {
+                session: session("same-week-fri", "2026-06-12"),
+                usage_records: vec![usage("same-week-fri", 20, 2)],
+            },
+            SessionUsage {
+                session: session("adjacent-week", "2026-06-15"),
+                usage_records: vec![usage("adjacent-week", 30, 3)],
+            },
+            SessionUsage {
+                session: session("month-boundary-june", "2026-06-30"),
+                usage_records: vec![usage("month-boundary-june", 40, 4)],
+            },
+            SessionUsage {
+                session: session("month-boundary-july", "2026-07-01"),
+                usage_records: vec![usage("month-boundary-july", 50, 5)],
+            },
+            SessionUsage {
+                session: session("year-boundary-2020", "2020-12-31"),
+                usage_records: vec![usage("year-boundary-2020", 60, 6)],
+            },
+            SessionUsage {
+                session: session("year-boundary-2021", "2021-01-01"),
+                usage_records: vec![usage("year-boundary-2021", 70, 7)],
+            },
+            SessionUsage {
+                session: session("next-iso-year-week", "2021-01-04"),
+                usage_records: vec![usage("next-iso-year-week", 80, 8)],
+            },
+            SessionUsage {
+                session: session("leap-day", "2024-02-29"),
+                usage_records: vec![usage("leap-day", 90, 9)],
+            },
+            SessionUsage {
+                session: session("leap-week", "2024-03-01"),
+                usage_records: vec![usage("leap-week", 100, 10)],
+            },
+        ];
+        let agent_configs = vec![("alice".to_owned(), "Alice".to_owned(), "model-a".to_owned())];
+        let model_by_agent = HashMap::from([("alice".to_owned(), "model-a".to_owned())]);
+
+        let response = build_token_metrics_at(
+            &agent_configs,
+            &model_by_agent,
+            &rows,
+            &query(Some("weekly"), None, None),
+            fixed_date("2026-07-01"),
+        );
+        let by_date: HashMap<&str, u64> = response
+            .series
+            .iter()
+            .map(|point| (point.date.as_str(), point.input_tokens))
+            .collect();
+
+        assert_eq!(response.series.len(), 6);
+        assert_eq!(by_date.get("2020-W53").copied(), Some(130));
+        assert_eq!(by_date.get("2021-W01").copied(), Some(80));
+        assert_eq!(by_date.get("2024-W09").copied(), Some(190));
+        assert_eq!(by_date.get("2026-W24").copied(), Some(30));
+        assert_eq!(by_date.get("2026-W25").copied(), Some(30));
+        assert_eq!(by_date.get("2026-W27").copied(), Some(90));
+    }
+
+    #[test]
+    fn token_metrics_skip_malformed_timestamps_instead_of_epoch_bucket() {
+        let rows = vec![
+            SessionUsage {
+                session: session("valid", "2026-06-12"),
+                usage_records: vec![usage("valid", 10, 5)],
+            },
+            SessionUsage {
+                session: session_with_created_at("invalid", "not-a-date"),
+                usage_records: vec![usage("invalid", 20, 10)],
+            },
+        ];
+        let agent_configs = vec![("alice".to_owned(), "Alice".to_owned(), "model-a".to_owned())];
+        let model_by_agent = HashMap::from([("alice".to_owned(), "model-a".to_owned())]);
+
+        let response = build_token_metrics_at(
+            &agent_configs,
+            &model_by_agent,
+            &rows,
+            &query(Some("daily"), None, None),
+            fixed_date("2026-06-12"),
+        );
+
+        assert_eq!(response.series.len(), 1);
+        assert_eq!(first_item(&response.series, "series").date, "2026-06-12");
+        assert_eq!(first_item(&response.series, "series").input_tokens, 10);
+        assert!(
+            response
+                .series
+                .iter()
+                .all(|point| point.date != "1970-01-01")
+        );
+        assert_eq!(first_item(&response.agents, "agents").input_tokens, 10);
     }
 
     #[test]
