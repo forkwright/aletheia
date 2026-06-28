@@ -119,8 +119,5 @@ Workarounds:
 2. **Use X11 forwarding.** `ssh -X` works with X11/Xwayland, though performance is limited.
 3. **Use the TUI.** The terminal interface works over any SSH session.
 
-This is a WebKit/GTK limitation, not an Aletheia issue. Global hotkey registration is also unavailable on Wayland without the portal API - the app handles this gracefully by falling back to in-window shortcuts.
-
-### Global hotkeys
-
-On Wayland, the `KeyRegistration::Unavailable` path activates because Wayland security prevents applications from registering global hotkeys without portal support. The app continues to function; only the global shortcut is unavailable.
+This is a WebKit/GTK limitation, not an Aletheia issue. Proskenion currently
+uses in-window shortcuts only; it does not register native global hotkeys.

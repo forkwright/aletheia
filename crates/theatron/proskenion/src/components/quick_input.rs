@@ -1,9 +1,7 @@
 //! Quick input overlay -- a floating input for sending messages to agents.
 //!
-//! Opened via global hotkey (`Ctrl+Shift+Space`) or the tray context menu.
-//! Provides a minimal input field with agent selector that sends a message
-//! to the selected agent's active session. Designed to feel like a
-//! Spotlight/Raycast-style launcher.
+//! The current desktop build does not register a global hotkey or tray menu
+//! launcher. This component renders only when in-window state marks it visible.
 
 use dioxus::prelude::*;
 
