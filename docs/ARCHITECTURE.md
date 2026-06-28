@@ -38,6 +38,9 @@ Key substrate properties as of the 2026-05-08 refresh:
   are intentionally separate from the in-process `organon::registry::ToolRegistry`.
 - **Auth facade:** `symbolon::AuthFacade` is the admin-token verification and
   revocation boundary shared by `pylon` and `diaporeia`.
+- **MCP/HTTP RBAC parity:** `diaporeia` must preserve verified caller claims,
+  including `nous_id` scope, and enforce the same target-agent boundaries as
+  `pylon` for sessions, agent workspace resources, and knowledge operations.
 - **Bounded stages:** `nous` carries per-stage timeout configuration for LLM
   execution and actor-manager operations.
 - **Knowledge schema v11:** `eidos::Visibility` and `eidos::MemoryScope` travel
