@@ -608,9 +608,7 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                parsed
-                    .into_response()
-                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+                parsed.into_response()
             }
             OpenAiApiFamily::Responses => {
                 let parsed: ResponsesResponse = serde_json::from_str(text).map_err(|e| {
@@ -619,9 +617,7 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                parsed
-                    .into_response()
-                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+                parsed.into_response()
             }
         }
     }
