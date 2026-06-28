@@ -596,6 +596,8 @@ pub struct KnowledgeStore {
     dim: usize,
     embedding_model: String,
     allow_assumed_embedding_meta: bool,
+    #[cfg(test)]
+    read_query_count: std::sync::atomic::AtomicUsize,
     /// Serializes read-modify-write access counter increments to prevent races.
     access_lock: std::sync::Mutex<()>,
     /// Serializes admission-check + insert so concurrent writers for the same
@@ -648,6 +650,8 @@ impl KnowledgeStore {
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
+            #[cfg(test)]
+            read_query_count: std::sync::atomic::AtomicUsize::new(0),
             access_lock: std::sync::Mutex::new(()),
             insert_lock: std::sync::Mutex::new(()),
             admission_policy: config.admission_policy,
@@ -684,6 +688,8 @@ impl KnowledgeStore {
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
+            #[cfg(test)]
+            read_query_count: std::sync::atomic::AtomicUsize::new(0),
             access_lock: std::sync::Mutex::new(()),
             insert_lock: std::sync::Mutex::new(()),
             admission_policy: config.admission_policy,
@@ -1512,6 +1518,9 @@ impl KnowledgeStore {
         params: std::collections::BTreeMap<String, crate::engine::DataValue>,
     ) -> crate::error::Result<crate::engine::NamedRows> {
         use crate::engine::ScriptMutability;
+        #[cfg(test)]
+        self.read_query_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // WHY: A failing read query (e.g. a CozoScript parse error on the recall
         // path, #4156) is otherwise invisible — the error carries only the engine
         // message, not the script that produced it. Capture the script text and
@@ -1534,5 +1543,19 @@ impl KnowledgeStore {
                 }
                 .build()
             })
+    }
+
+    /// Reset the test-only read query counter used by search complexity tests.
+    #[cfg(test)]
+    pub(crate) fn reset_read_query_count_for_test(&self) {
+        self.read_query_count
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Return the test-only read query count used by search complexity tests.
+    #[cfg(test)]
+    pub(crate) fn read_query_count_for_test(&self) -> usize {
+        self.read_query_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 }

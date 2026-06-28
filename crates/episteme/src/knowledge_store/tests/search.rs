@@ -5,7 +5,7 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::knowledge::{EmbeddedChunk, ForgetReason, Visibility};
+use crate::knowledge::{EmbeddedChunk, FactSensitivity, ForgetReason, MemoryScope, Visibility};
 use crate::test_fixtures::{make_entity, make_fact, make_store, test_ts};
 
 fn extraction_entity(name: &str, entity_type: &str) -> eidos::bookkeeping::ExtractedEntity {
@@ -44,6 +44,27 @@ fn result_ids(results: &[crate::knowledge::RecallResult]) -> Vec<&str> {
         .iter()
         .map(|result| result.source_id.as_str())
         .collect()
+}
+
+fn recall_result(source_id: &str) -> crate::knowledge::RecallResult {
+    crate::knowledge::RecallResult {
+        content: format!("content for {source_id}"),
+        distance: 0.1,
+        source_type: "fact".to_owned(),
+        source_id: source_id.to_owned(),
+        nous_id: "alice".to_owned(),
+        sensitivity: FactSensitivity::Public,
+        graph_importance: 0.0,
+        scope: None,
+        project_id: None,
+        visibility: Visibility::Private,
+        source_count: 0,
+    }
+}
+
+fn batch_graph_score(idx: usize) -> f64 {
+    let idx = u32::try_from(idx).expect("small fixture index fits u32");
+    f64::from(idx + 1) / 10.0
 }
 
 /// #3380 integration: when the real embedding provider fails to initialize,
@@ -485,6 +506,110 @@ fn cluster_expansion_hydrates_scope_project_and_sensitivity() {
         Visibility::Shared,
         "expansion must hydrate real visibility, not default to Private"
     );
+}
+
+#[test]
+fn recall_enrichment_uses_one_read_query_per_pass() {
+    let store = make_store();
+    let mut graph_ctx = crate::graph_intelligence::GraphContext::default();
+    let mut fact_ids = Vec::new();
+
+    for idx in 0..12 {
+        let fact_id = format!("batch-fact-{idx}");
+        let entity_id = format!("batch-entity-{idx}");
+        let mut fact = make_fact(
+            &fact_id,
+            "alice",
+            &format!("batched recall enrichment fact {idx}"),
+        );
+        fact.scope = Some(MemoryScope::Project);
+        fact.visibility = Visibility::Shared;
+        fact.sensitivity = FactSensitivity::Confidential;
+        store.insert_fact(&fact).expect("insert fact");
+
+        let entity = make_entity(&entity_id, &format!("Batch Entity {idx}"), "topic");
+        store.insert_entity(&entity).expect("insert entity");
+        store
+            .insert_fact_entity(&fact.id, &entity.id)
+            .expect("link fact entity");
+        graph_ctx
+            .pageranks
+            .insert(entity_id, batch_graph_score(idx));
+        fact_ids.push(fact_id);
+    }
+
+    let multiplicity_rows = fact_ids
+        .iter()
+        .enumerate()
+        .map(|(idx, fact_id)| {
+            format!(
+                r#"["{fact_id}", {}, "2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", 86400, "2026-01-03T00:00:00Z"]"#,
+                idx + 2
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let multiplicity_script = format!(
+        r"
+        ?[fact_id, source_count, first_observed, last_observed, time_spread_seconds, recorded_at] <- [
+            {multiplicity_rows}
+        ]
+        :put fact_multiplicity {{
+            fact_id => source_count, first_observed, last_observed, time_spread_seconds, recorded_at
+        }}
+        "
+    );
+    store
+        .run_mut_query(&multiplicity_script, std::collections::BTreeMap::new())
+        .expect("seed multiplicity");
+
+    let mut results = fact_ids
+        .iter()
+        .map(|fact_id| recall_result(fact_id))
+        .collect::<Vec<_>>();
+
+    store.reset_read_query_count_for_test();
+    store.hydrate_recall_scope_visibility(&mut results);
+    assert_eq!(store.read_query_count_for_test(), 1);
+    assert!(
+        results
+            .iter()
+            .all(|result| result.scope == Some(MemoryScope::Project)),
+        "batch hydration must preserve fact scope"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|result| result.visibility == Visibility::Shared),
+        "batch hydration must preserve fact visibility"
+    );
+    assert!(
+        results
+            .iter()
+            .all(|result| result.sensitivity == FactSensitivity::Confidential),
+        "batch hydration must preserve fact sensitivity"
+    );
+
+    store.reset_read_query_count_for_test();
+    store.enrich_source_counts(&mut results);
+    assert_eq!(store.read_query_count_for_test(), 1);
+    for (idx, result) in results.iter().enumerate() {
+        assert_eq!(
+            result.source_count,
+            u32::try_from(idx + 2).expect("small fixture count fits u32")
+        );
+    }
+
+    store.reset_read_query_count_for_test();
+    store.enrich_recall_results(&mut results, &graph_ctx);
+    assert_eq!(store.read_query_count_for_test(), 1);
+    for (idx, result) in results.iter().enumerate() {
+        let expected = batch_graph_score(idx);
+        assert!(
+            (result.graph_importance - expected).abs() < f64::EPSILON,
+            "graph importance mismatch for {idx}"
+        );
+    }
 }
 
 #[test]

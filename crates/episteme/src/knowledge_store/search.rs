@@ -1,7 +1,9 @@
+use std::collections::{BTreeMap, HashMap, HashSet};
+
 use snafu::ResultExt;
 
 use super::marshal::{
-    build_hybrid_query, build_scoped_hybrid_query, embedding_to_params, extract_str,
+    build_hybrid_query, build_scoped_hybrid_query, embedding_to_params, extract_int, extract_str,
     rows_to_hybrid_results, rows_to_recall_results, sanitize_fts_query, scoped_visibility_rules,
 };
 use tracing::instrument;
@@ -12,6 +14,40 @@ use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 fn truncate_recall_results(results: &mut Vec<crate::knowledge::RecallResult>, k: i64) {
     let limit = usize::try_from(k.max(0)).unwrap_or(usize::MAX);
     results.truncate(limit);
+}
+
+#[cfg(feature = "mneme-engine")]
+fn fact_result_ids(results: &[crate::knowledge::RecallResult]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut ids = Vec::new();
+    for result in results.iter().filter(|r| r.source_type == "fact") {
+        if seen.insert(result.source_id.clone()) {
+            ids.push(result.source_id.clone());
+        }
+    }
+    ids
+}
+
+#[cfg(feature = "mneme-engine")]
+fn datalog_string_literal(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_owned())
+}
+
+#[cfg(feature = "mneme-engine")]
+fn datalog_string_list(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| datalog_string_literal(value))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(feature = "mneme-engine")]
+struct RecallPolicyFields {
+    scope: Option<crate::knowledge::MemoryScope>,
+    project_id: Option<eidos::workspace::ProjectId>,
+    visibility: crate::knowledge::Visibility,
+    sensitivity: Option<crate::knowledge::FactSensitivity>,
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -344,14 +380,13 @@ impl KnowledgeStore {
     /// WHY (#5663): accepts a pre-loaded `GraphContext` so callers can load it once
     /// and share it across `enrich_recall_results` + `expand_recall_by_cluster`,
     /// eliminating redundant full-table scans of `graph_scores` per search call.
-    fn enrich_recall_results(
+    pub(super) fn enrich_recall_results(
         &self,
         results: &mut [crate::knowledge::RecallResult],
         graph_ctx: &crate::graph_intelligence::GraphContext,
     ) {
-        let fact_results: Vec<&crate::knowledge::RecallResult> =
-            results.iter().filter(|r| r.source_type == "fact").collect();
-        if fact_results.is_empty() {
+        let fact_ids = fact_result_ids(results);
+        if fact_ids.is_empty() {
             return;
         }
 
@@ -360,23 +395,36 @@ impl KnowledgeStore {
             return;
         }
 
-        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(entity_rows) = self.run_read(script, params) else {
+        let id_list = datalog_string_list(&fact_ids);
+        let script = format!(
+            r"
+            ?[fact_id, entity_id] :=
+                *fact_entities{{fact_id, entity_id}},
+                fact_id in [{id_list}]
+            "
+        );
+        let Ok(entity_rows) = self.run_read(&script, BTreeMap::new()) else {
+            return;
+        };
+        let mut max_by_fact = HashMap::<String, f64>::new();
+        for row in &entity_rows.rows {
+            let Some(fact_id) = row.first().and_then(|v| v.get_str()) else {
                 continue;
             };
-            let max_pr = entity_rows
-                .rows
-                .iter()
-                .filter_map(|row| row.first().and_then(|v| v.get_str()))
-                .filter_map(|entity_id| pageranks.get(entity_id).copied())
-                .fold(0.0_f64, f64::max);
-            result.graph_importance = max_pr;
+            let Some(entity_id) = row.get(1).and_then(|v| v.get_str()) else {
+                continue;
+            };
+            let Some(score) = pageranks.get(entity_id).copied() else {
+                continue;
+            };
+            let current = max_by_fact.entry(fact_id.to_owned()).or_insert(0.0);
+            *current = (*current).max(score);
+        }
+
+        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
+            if let Some(max_pr) = max_by_fact.get(&result.source_id) {
+                result.graph_importance = *max_pr;
+            }
         }
     }
 
@@ -384,17 +432,42 @@ impl KnowledgeStore {
     /// side-index so the recall pipeline can score the convergence factor (#4415).
     ///
     /// Non-consolidated / legacy facts have no multiplicity record and keep
-    /// `source_count` 0 (convergence scores 0 for them). NOTE: this issues one
-    /// indexed point-query per fact result; the convergence recall weight
-    /// defaults to 0 so the score — and thus ranking — is unchanged when the
-    /// feature is off. A batched side-index load is a future optimisation.
-    fn enrich_source_counts(&self, results: &mut [crate::knowledge::RecallResult]) {
-        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let Ok(fact_id) = crate::id::FactId::new(&result.source_id) else {
+    /// `source_count` 0 (convergence scores 0 for them).
+    pub(super) fn enrich_source_counts(&self, results: &mut [crate::knowledge::RecallResult]) {
+        let fact_ids = fact_result_ids(results);
+        if fact_ids.is_empty() {
+            return;
+        }
+
+        let id_list = datalog_string_list(&fact_ids);
+        let script = format!(
+            r"
+            ?[fact_id, source_count] :=
+                *fact_multiplicity{{fact_id, source_count}},
+                fact_id in [{id_list}]
+            "
+        );
+        let Ok(rows) = self.run_read(&script, BTreeMap::new()) else {
+            return;
+        };
+        let mut counts_by_fact = HashMap::<String, u32>::new();
+        for row in &rows.rows {
+            let Some(fact_id) = row.first().and_then(|v| v.get_str()) else {
                 continue;
             };
-            if let Ok(Some(multiplicity)) = self.get_fact_multiplicity(&fact_id) {
-                result.source_count = multiplicity.source_count;
+            let Some(source_count) = row
+                .get(1)
+                .and_then(|value| extract_int(value).ok())
+                .and_then(|count| u32::try_from(count).ok())
+            else {
+                continue;
+            };
+            counts_by_fact.insert(fact_id.to_owned(), source_count);
+        }
+
+        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
+            if let Some(source_count) = counts_by_fact.get(&result.source_id) {
+                result.source_count = *source_count;
             }
         }
     }
@@ -405,64 +478,92 @@ impl KnowledgeStore {
     /// carry these fields. This enrichment looks them up from `facts` for
     /// `source_type == "fact"` results so downstream quota and visibility
     /// filters see accurate values.
-    fn hydrate_recall_scope_visibility(&self, results: &mut [crate::knowledge::RecallResult]) {
-        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let script = r"
-                ?[scope, project_id, visibility, sensitivity] :=
-                    *facts{id: $fid, scope, project_id, visibility, sensitivity}
-            ";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(rows) = self.run_read(script, params) else {
+    pub(super) fn hydrate_recall_scope_visibility(
+        &self,
+        results: &mut [crate::knowledge::RecallResult],
+    ) {
+        let fact_ids = fact_result_ids(results);
+        if fact_ids.is_empty() {
+            return;
+        }
+
+        let id_list = datalog_string_list(&fact_ids);
+        let script = format!(
+            r"
+            ?[id, scope, project_id, visibility, sensitivity] :=
+                *facts{{id, scope, project_id, visibility, sensitivity}},
+                id in [{id_list}]
+            "
+        );
+        let Ok(rows) = self.run_read(&script, BTreeMap::new()) else {
+            return;
+        };
+        let mut fields_by_fact = HashMap::<String, RecallPolicyFields>::new();
+        for row in &rows.rows {
+            let Some(fact_id) = row.first().and_then(|v| v.get_str()) else {
                 continue;
             };
-            if let Some(row) = rows.rows.first() {
-                if let Some(scope_str) = row.first().and_then(|v| v.get_str())
-                    && !scope_str.is_empty()
-                {
-                    match scope_str.parse::<crate::knowledge::MemoryScope>() {
-                        Ok(scope) => result.scope = Some(scope),
-                        Err(error) => tracing::warn!(
-                            %error,
-                            fact_id = %result.source_id,
-                            scope = scope_str,
-                            "failed to parse recall result memory scope"
-                        ),
-                    }
+            let mut fields = RecallPolicyFields {
+                scope: None,
+                project_id: None,
+                visibility: crate::knowledge::Visibility::default(),
+                sensitivity: None,
+            };
+            if let Some(scope_str) = row.get(1).and_then(|v| v.get_str())
+                && !scope_str.is_empty()
+            {
+                match scope_str.parse::<crate::knowledge::MemoryScope>() {
+                    Ok(scope) => fields.scope = Some(scope),
+                    Err(error) => tracing::warn!(
+                        %error,
+                        fact_id,
+                        scope = scope_str,
+                        "failed to parse recall result memory scope"
+                    ),
                 }
-                if let Some(project_id) = row
-                    .get(1)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok())
-                {
-                    result.project_id = Some(project_id);
+            }
+            if let Some(project_id) = row
+                .get(2)
+                .and_then(|v| v.get_str())
+                .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok())
+            {
+                fields.project_id = Some(project_id);
+            }
+            if let Some(vis_str) = row.get(3).and_then(|v| v.get_str())
+                && !vis_str.is_empty()
+            {
+                // kanon:ignore RUST/no-result-unwrap-or-default — Visibility::default() IS the documented
+                // fallback for unknown/legacy values from storage; clippy::manual_unwrap_or rejects an
+                // explicit Ok/Err match here.
+                fields.visibility = vis_str
+                    .parse::<crate::knowledge::Visibility>()
+                    .unwrap_or_default();
+            }
+            if let Some(sensitivity_str) = row.get(4).and_then(|v| v.get_str())
+                && !sensitivity_str.is_empty()
+            {
+                if let Ok(s) = sensitivity_str.parse::<crate::knowledge::FactSensitivity>() {
+                    fields.sensitivity = Some(s);
+                } else {
+                    tracing::warn!(
+                        sensitivity = sensitivity_str,
+                        fact_id,
+                        "hydrated fact has undecodable sensitivity; leaving as-is to avoid widening to Public"
+                    );
                 }
-                if let Some(vis_str) = row.get(2).and_then(|v| v.get_str())
-                    && !vis_str.is_empty()
-                {
-                    // kanon:ignore RUST/no-result-unwrap-or-default — Visibility::default() IS the documented
-                    // fallback for unknown/legacy values from storage; clippy::manual_unwrap_or rejects an
-                    // explicit Ok/Err match here.
-                    result.visibility = vis_str
-                        .parse::<crate::knowledge::Visibility>()
-                        .unwrap_or_default();
-                }
-                if let Some(sensitivity_str) = row.get(3).and_then(|v| v.get_str())
-                    && !sensitivity_str.is_empty()
-                {
-                    if let Ok(s) = sensitivity_str.parse::<crate::knowledge::FactSensitivity>() {
-                        result.sensitivity = s;
-                    } else {
-                        tracing::warn!(
-                            sensitivity = sensitivity_str,
-                            fact_id = %result.source_id,
-                            "hydrated fact has undecodable sensitivity; leaving as-is to avoid widening to Public"
-                        );
-                    }
-                }
+            }
+            fields_by_fact.insert(fact_id.to_owned(), fields);
+        }
+
+        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
+            let Some(fields) = fields_by_fact.get(&result.source_id) else {
+                continue;
+            };
+            result.scope = fields.scope;
+            result.project_id = fields.project_id.clone();
+            result.visibility = fields.visibility;
+            if let Some(sensitivity) = fields.sensitivity {
+                result.sensitivity = sensitivity;
             }
         }
     }
