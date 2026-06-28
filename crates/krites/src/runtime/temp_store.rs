@@ -42,6 +42,10 @@ impl RegularTempStore {
         self.inner.contains_key(key)
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.inner.len()
+    }
+
     fn range_iter(
         &self,
         lower: &Tuple,
@@ -67,27 +71,30 @@ impl RegularTempStore {
     }
     /// Returns `true` if `prev` is guaranteed equal to `self` after this call,
     /// `false` if unsure.
-    pub(crate) fn merge_in(&mut self, prev: &mut Self, mut new: Self) -> bool {
+    pub(crate) fn merge_in(&mut self, prev: &mut Self, mut new: Self) -> (bool, usize) {
         prev.inner.clear();
         if new.inner.is_empty() {
-            return false;
+            return (false, 0);
         }
         if self.inner.is_empty() {
+            let derived_rows = new.inner.len();
             mem::swap(&mut new, self);
-            return true;
+            return (true, derived_rows);
         }
+        let mut derived_rows = 0usize;
         for (k, v) in new.inner {
             match self.inner.entry(k) {
                 Entry::Vacant(ent) => {
                     prev.inner.insert(ent.key().clone(), v);
                     ent.insert(v);
+                    derived_rows += 1;
                 }
                 Entry::Occupied(mut ent) => {
                     ent.insert(v);
                 }
             }
         }
-        false
+        (false, derived_rows)
     }
 }
 
@@ -193,20 +200,23 @@ impl MeetAggrStore {
     }
     /// returns true if prev is guaranteed to be the same as self after this function call,
     /// false if we are not sure.
-    pub(crate) fn merge_in(&mut self, prev: &mut Self, mut new: Self) -> Result<bool> {
+    pub(crate) fn merge_in(&mut self, prev: &mut Self, mut new: Self) -> Result<(bool, usize)> {
         prev.inner.clear();
         if new.inner.is_empty() {
-            return Ok(false);
+            return Ok((false, 0));
         }
         if self.inner.is_empty() {
+            let derived_rows = new.inner.len();
             mem::swap(self, &mut new);
-            return Ok(true);
+            return Ok((true, derived_rows));
         }
+        let mut derived_rows = 0usize;
         for (k, v) in new.inner {
             match self.inner.entry(k) {
                 Entry::Vacant(ent) => {
                     prev.inner.insert(ent.key().clone(), v.clone());
                     ent.insert(v);
+                    derived_rows += 1;
                 }
                 Entry::Occupied(mut ent) => {
                     let mut changed = false;
@@ -227,11 +237,12 @@ impl MeetAggrStore {
                     }
                     if changed {
                         prev.inner.insert(ent.key().clone(), ent.get().clone());
+                        derived_rows += 1;
                     }
                 }
             }
         }
-        Ok(false)
+        Ok((false, derived_rows))
     }
 }
 
@@ -295,13 +306,18 @@ impl EpochStore {
             arity: aggrs.len(),
         })
     }
-    pub(crate) fn merge_in(&mut self, new: TempStore) -> Result<()> {
+    pub(crate) fn merge_in(&mut self, new: TempStore) -> Result<usize> {
+        let derived_rows;
         match (&mut self.total, &mut self.delta, new) {
             (TempStore::Normal(total), TempStore::Normal(prev), TempStore::Normal(new)) => {
-                self.use_total_for_delta = total.merge_in(prev, new);
+                let (use_total_for_delta, rows) = total.merge_in(prev, new);
+                self.use_total_for_delta = use_total_for_delta;
+                derived_rows = rows;
             }
             (TempStore::MeetAggr(total), TempStore::MeetAggr(prev), TempStore::MeetAggr(new)) => {
-                self.use_total_for_delta = total.merge_in(prev, new)?;
+                let (use_total_for_delta, rows) = total.merge_in(prev, new)?;
+                self.use_total_for_delta = use_total_for_delta;
+                derived_rows = rows;
             }
             _ => {
                 return Err(crate::error::InternalError::Runtime {
@@ -313,7 +329,7 @@ impl EpochStore {
                 });
             }
         }
-        Ok(())
+        Ok(derived_rows)
     }
     pub(crate) fn has_delta(&self) -> bool {
         if self.use_total_for_delta {

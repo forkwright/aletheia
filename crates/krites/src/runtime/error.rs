@@ -7,6 +7,8 @@
 //! public `Error` type.
 use snafu::Snafu;
 
+use crate::runtime::db::QueryCancellationReason;
+
 /// Structured error type for the engine runtime module.
 ///
 /// Typed variants that carry context and can be matched by callers.
@@ -17,6 +19,16 @@ pub(crate) enum RuntimeError {
     /// A running query was cancelled (poison/timeout).
     #[snafu(display("Running query is killed before completion"))]
     QueryKilled {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A running query was cancelled by the query-budget model.
+    #[snafu(display("query cancelled: reason={reason}, observed={observed:?}, limit={limit:?}"))]
+    QueryCancelled {
+        reason: QueryCancellationReason,
+        observed: Option<u64>,
+        limit: Option<u64>,
         #[snafu(implicit)]
         location: snafu::Location,
     },

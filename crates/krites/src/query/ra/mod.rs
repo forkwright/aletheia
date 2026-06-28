@@ -42,6 +42,7 @@ use crate::data::value::ValidityTs;
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
 use crate::query::error::*;
+use crate::runtime::db::Poison;
 use crate::runtime::minhash_lsh::LshSearch;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::temp_store::EpochStore;
@@ -64,6 +65,14 @@ pub(crate) use search::{FtsSearchRA, HnswSearchRA, LshSearchRA};
 pub(crate) use sort::ReorderRA;
 pub(crate) use stored::{StoredRA, StoredWithValidityRA};
 pub(crate) use temp_store::TempStoreRA;
+
+pub(super) fn budgeted_iter(it: TupleIter<'_>, poison: Poison) -> TupleIter<'_> {
+    Box::new(it.map(move |tuple| {
+        let tuple = tuple?;
+        poison.account_work(1)?;
+        Ok(tuple)
+    }))
+}
 
 /// The physical query plan tree.
 ///
@@ -740,21 +749,23 @@ impl RelAlgebra {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
-        match self {
-            RelAlgebra::Fixed(f) => Ok(Box::new(f.data.iter().map(|t| Ok(t.clone())))),
-            RelAlgebra::TempStore(r) => r.iter(delta_rule, stores),
-            RelAlgebra::Stored(v) => v.iter(tx),
-            RelAlgebra::StoredWithValidity(v) => v.iter(tx),
-            RelAlgebra::Join(j) => j.iter(tx, delta_rule, stores),
-            RelAlgebra::Reorder(r) => r.iter(tx, delta_rule, stores),
-            RelAlgebra::Filter(r) => r.iter(tx, delta_rule, stores),
-            RelAlgebra::NegJoin(r) => r.iter(tx, delta_rule, stores),
-            RelAlgebra::Unification(r) => r.iter(tx, delta_rule, stores),
-            RelAlgebra::HnswSearch(r) => r.iter(tx, delta_rule, stores),
-            RelAlgebra::FtsSearch(r) => r.iter(tx, delta_rule, stores),
-            RelAlgebra::LshSearch(r) => r.iter(tx, delta_rule, stores),
-        }
+        let it = match self {
+            RelAlgebra::Fixed(f) => Box::new(f.data.iter().map(|t| Ok(t.clone()))),
+            RelAlgebra::TempStore(r) => r.iter(delta_rule, stores, poison.clone())?,
+            RelAlgebra::Stored(v) => v.iter(tx)?,
+            RelAlgebra::StoredWithValidity(v) => v.iter(tx)?,
+            RelAlgebra::Join(j) => j.iter(tx, delta_rule, stores, poison.clone())?,
+            RelAlgebra::Reorder(r) => r.iter(tx, delta_rule, stores, poison.clone())?,
+            RelAlgebra::Filter(r) => r.iter(tx, delta_rule, stores, poison.clone())?,
+            RelAlgebra::NegJoin(r) => r.iter(tx, delta_rule, stores, poison.clone())?,
+            RelAlgebra::Unification(r) => r.iter(tx, delta_rule, stores, poison.clone())?,
+            RelAlgebra::HnswSearch(r) => r.iter(tx, delta_rule, stores, poison.clone())?,
+            RelAlgebra::FtsSearch(r) => r.iter(tx, delta_rule, stores, poison.clone())?,
+            RelAlgebra::LshSearch(r) => r.iter(tx, delta_rule, stores, poison.clone())?,
+        };
+        Ok(budgeted_iter(it, poison))
     }
 }
 

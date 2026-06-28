@@ -37,6 +37,7 @@ use crate::data::tuple::{Tuple, TupleIter};
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
 use crate::query::error::*;
+use crate::runtime::db::Poison;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 use crate::utils::swap_option_result;
@@ -164,6 +165,7 @@ impl NegJoin {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         // PERF: O(L * cost(R)) where L is left tuples. For prefix join: O(L * log R).
         // For materialized join: O(L * R) to build hash table + O(L) to probe.
@@ -176,10 +178,11 @@ impl NegJoin {
                     &self.right.bindings_after_eliminate(),
                 )?;
                 r.neg_join(
-                    self.left.iter(tx, delta_rule, stores)?,
+                    self.left.iter(tx, delta_rule, stores, poison.clone())?,
                     join_indices,
                     eliminate_indices,
                     stores,
+                    poison,
                 )
             }
             RelAlgebra::Stored(v) => {
@@ -189,9 +192,10 @@ impl NegJoin {
                 )?;
                 v.neg_join(
                     tx,
-                    self.left.iter(tx, delta_rule, stores)?,
+                    self.left.iter(tx, delta_rule, stores, poison.clone())?,
                     join_indices,
                     eliminate_indices,
+                    poison,
                 )
             }
             _ => CompilationFailedSnafu {
@@ -298,6 +302,7 @@ impl InnerJoin {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let bindings = self.bindings();
         let eliminate_indices = get_eliminate_indices(&bindings, &self.to_eliminate);
@@ -308,7 +313,7 @@ impl InnerJoin {
                     &self.right.bindings_after_eliminate(),
                 )?;
                 f.join(
-                    self.left.iter(tx, delta_rule, stores)?,
+                    self.left.iter(tx, delta_rule, stores, poison.clone())?,
                     join_indices,
                     eliminate_indices,
                 )
@@ -320,14 +325,15 @@ impl InnerJoin {
                 )?;
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
-                        self.left.iter(tx, delta_rule, stores)?,
+                        self.left.iter(tx, delta_rule, stores, poison.clone())?,
                         join_indices,
                         eliminate_indices,
                         delta_rule,
                         stores,
+                        poison,
                     )
                 } else {
-                    self.materialized_join(tx, eliminate_indices, delta_rule, stores)
+                    self.materialized_join(tx, eliminate_indices, delta_rule, stores, &poison)
                 }
             }
             RelAlgebra::Stored(r) => {
@@ -338,12 +344,13 @@ impl InnerJoin {
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         tx,
-                        self.left.iter(tx, delta_rule, stores)?,
+                        self.left.iter(tx, delta_rule, stores, poison.clone())?,
                         join_indices,
                         eliminate_indices,
+                        poison,
                     )
                 } else {
-                    self.materialized_join(tx, eliminate_indices, delta_rule, stores)
+                    self.materialized_join(tx, eliminate_indices, delta_rule, stores, &poison)
                 }
             }
             RelAlgebra::StoredWithValidity(r) => {
@@ -354,12 +361,13 @@ impl InnerJoin {
                 if join_is_prefix(&join_indices.1) {
                     r.prefix_join(
                         tx,
-                        self.left.iter(tx, delta_rule, stores)?,
+                        self.left.iter(tx, delta_rule, stores, poison.clone())?,
                         join_indices,
                         eliminate_indices,
+                        poison,
                     )
                 } else {
-                    self.materialized_join(tx, eliminate_indices, delta_rule, stores)
+                    self.materialized_join(tx, eliminate_indices, delta_rule, stores, &poison)
                 }
             }
             RelAlgebra::Join(_)
@@ -368,7 +376,7 @@ impl InnerJoin {
             | RelAlgebra::HnswSearch(_)
             | RelAlgebra::FtsSearch(_)
             | RelAlgebra::LshSearch(_) => {
-                self.materialized_join(tx, eliminate_indices, delta_rule, stores)
+                self.materialized_join(tx, eliminate_indices, delta_rule, stores, &poison)
             }
             RelAlgebra::Reorder(_) => CompilationFailedSnafu {
                 message: "joining on reordered algebra is not supported",
@@ -394,6 +402,7 @@ impl InnerJoin {
         eliminate_indices: BTreeSet<usize>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: &Poison,
     ) -> Result<TupleIter<'a>> {
         debug!("using materialized join");
         let right_bindings = self.right.bindings_after_eliminate();
@@ -401,7 +410,7 @@ impl InnerJoin {
             .joiner
             .join_indices(&self.left.bindings_after_eliminate(), &right_bindings)?;
 
-        let mut left_iter = self.left.iter(tx, delta_rule, stores)?;
+        let mut left_iter = self.left.iter(tx, delta_rule, stores, (*poison).clone())?;
         let left_cache = match left_iter.next() {
             None => return Ok(Box::new(iter::empty())),
             Some(Err(err)) => return Err(err),
@@ -424,7 +433,7 @@ impl InnerJoin {
             .collect_vec();
         let cached_data = {
             let mut cache = BTreeSet::new();
-            for item in self.right.iter(tx, delta_rule, stores)? {
+            for item in self.right.iter(tx, delta_rule, stores, (*poison).clone())? {
                 match item {
                     Ok(tuple) => {
                         let stored_tuple = right_store_indices

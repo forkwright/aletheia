@@ -17,6 +17,7 @@ use crate::data::symb::Symbol;
 use crate::data::tuple::TupleIter;
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::runtime::db::Poison;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 
@@ -72,13 +73,14 @@ impl FilteredRA {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let bindings = self.parent.bindings_after_eliminate();
         let eliminate_indices = get_eliminate_indices(&bindings, &self.to_eliminate);
         let mut stack = vec![];
         Ok(Box::new(
             self.parent
-                .iter(tx, delta_rule, stores)?
+                .iter(tx, delta_rule, stores, poison)?
                 .filter_map(move |tuple| match tuple {
                     Ok(t) => {
                         for (p, span) in self.filters_bytecodes.iter() {

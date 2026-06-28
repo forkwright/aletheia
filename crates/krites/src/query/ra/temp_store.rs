@@ -27,6 +27,7 @@ use crate::data::tuple::{Tuple, TupleIter};
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::runtime::db::Poison;
 use crate::runtime::temp_store::EpochStore;
 use crate::utils::swap_option_result;
 
@@ -88,6 +89,7 @@ impl TempStoreRA {
         &'a self,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        _poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let storage = self.resolve_store(stores)?;
 
@@ -119,6 +121,7 @@ impl TempStoreRA {
         (left_join_indices, right_join_indices): (Vec<usize>, Vec<usize>),
         eliminate_indices: BTreeSet<usize>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let storage = self.resolve_store(stores)?;
         debug_assert!(!right_join_indices.is_empty());
@@ -141,6 +144,7 @@ impl TempStoreRA {
                             .collect_vec();
 
                         'outer: for found in storage.prefix_iter(&prefix) {
+                            poison.account_work(1)?;
                             for (left_idx, right_idx) in
                                 left_join_indices.iter().zip(right_join_indices.iter())
                             {
@@ -159,6 +163,7 @@ impl TempStoreRA {
         } else {
             let mut right_join_vals = BTreeSet::new();
             for tuple in storage.all_iter() {
+                poison.account_work(1)?;
                 let to_join: Box<[DataValue]> = right_join_indices
                     .iter()
                     .map(|i| tuple.get(*i).clone())
@@ -198,6 +203,7 @@ impl TempStoreRA {
         eliminate_indices: BTreeSet<usize>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let storage = self.resolve_store(stores)?;
 
@@ -220,6 +226,7 @@ impl TempStoreRA {
         let mut skip_range_check = false;
         let it = left_iter
             .map_ok(move |tuple| {
+                let poison_for_scan = poison.clone();
                 let prefix = left_to_prefix_indices
                     .iter()
                     .map(|i| tuple[*i].clone())
@@ -242,6 +249,7 @@ impl TempStoreRA {
                     };
                     return Left(
                         it.map(move |res_found| -> Result<Option<Tuple>> {
+                            poison_for_scan.account_work(1)?;
                             if self.filters.is_empty() {
                                 let mut ret = tuple.clone();
                                 ret.extend(res_found.into_iter().cloned());
@@ -271,6 +279,7 @@ impl TempStoreRA {
 
                 Right(
                     it.map(move |res_found| -> Result<Option<Tuple>> {
+                        poison_for_scan.account_work(1)?;
                         if self.filters.is_empty() {
                             let mut ret = tuple.clone();
                             ret.extend(res_found.into_iter().cloned());

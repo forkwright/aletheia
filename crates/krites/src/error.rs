@@ -1,6 +1,8 @@
 //! Error types for the Datalog engine.
 use snafu::Snafu;
 
+use crate::runtime::db::QueryCancellationReason;
+
 /// Public error type for consumers of the engine.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -29,6 +31,16 @@ pub enum Error {
     /// A running query was cancelled via poison/timeout.
     #[snafu(display("Running query was killed before completion"))]
     QueryKilled {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A running query was cancelled by a structured query budget reason.
+    #[snafu(display("query cancelled: reason={reason}, observed={observed:?}, limit={limit:?}"))]
+    QueryCancelled {
+        reason: QueryCancellationReason,
+        observed: Option<u64>,
+        limit: Option<u64>,
         #[snafu(implicit)]
         location: snafu::Location,
     },

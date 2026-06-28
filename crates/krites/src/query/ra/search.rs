@@ -27,9 +27,14 @@ use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
 use crate::query::error::*;
+use crate::runtime::db::Poison;
 use crate::runtime::minhash_lsh::LshSearch;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
+
+fn len_to_work_units(len: usize) -> u64 {
+    u64::try_from(len).unwrap_or(u64::MAX)
+}
 
 /// HNSW approximate nearest neighbor search operator.
 ///
@@ -71,6 +76,7 @@ impl HnswSearchRA {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let bindings = self.parent.bindings_after_eliminate();
         let mut bind_idx = usize::MAX;
@@ -85,8 +91,9 @@ impl HnswSearchRA {
         let mut stack = vec![];
         let it = self
             .parent
-            .iter(tx, delta_rule, stores)?
+            .iter(tx, delta_rule, stores, poison.clone())?
             .map_ok(move |tuple| -> Result<_> {
+                poison.account_work(1)?;
                 // SAFETY: `bind_idx` is validated during compilation to be within `tuple` bounds.
                 let v = match tuple[bind_idx].clone() {
                     DataValue::Vec(v) => v,
@@ -102,6 +109,7 @@ impl HnswSearchRA {
                 };
 
                 let res = tx.hnsw_knn(v, &config, &filter_code, &mut stack)?;
+                poison.account_work(len_to_work_units(res.len()))?;
                 Ok(res.into_iter().map(move |t| {
                     let mut r = tuple.clone();
                     r.extend(t);
@@ -155,6 +163,7 @@ impl FtsSearchRA {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let bindings = self.parent.bindings_after_eliminate();
         let mut bind_idx = usize::MAX;
@@ -174,8 +183,9 @@ impl FtsSearchRA {
         )?;
         let it = self
             .parent
-            .iter(tx, delta_rule, stores)?
+            .iter(tx, delta_rule, stores, poison.clone())?
             .map_ok(move |tuple| -> Result<_> {
+                poison.account_work(1)?;
                 // SAFETY: `bind_idx` is validated during compilation to be within `tuple` bounds.
                 let q = match tuple[bind_idx].clone() {
                     DataValue::Str(s) => s,
@@ -216,6 +226,7 @@ impl FtsSearchRA {
                 };
 
                 let res = tx.fts_search(&q, &config, &filter_code, &tokenizer, &mut stack)?;
+                poison.account_work(len_to_work_units(res.len()))?;
                 Ok(res.into_iter().map(move |t| {
                     let mut r = tuple.clone();
                     r.extend(t);
@@ -269,6 +280,7 @@ impl LshSearchRA {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let bindings = self.parent.bindings_after_eliminate();
         let mut bind_idx = usize::MAX;
@@ -290,8 +302,9 @@ impl LshSearchRA {
 
         let it = self
             .parent
-            .iter(tx, delta_rule, stores)?
+            .iter(tx, delta_rule, stores, poison.clone())?
             .map_ok(move |tuple| -> Result<_> {
+                poison.account_work(1)?;
                 let res = tx.lsh_search(
                     &tuple[bind_idx],
                     &config,
@@ -300,6 +313,7 @@ impl LshSearchRA {
                     &perms,
                     &tokenizer,
                 )?;
+                poison.account_work(len_to_work_units(res.len()))?;
                 Ok(res.into_iter().map(move |t| {
                     let mut r = tuple.clone();
                     r.extend(t);

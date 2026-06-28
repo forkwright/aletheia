@@ -22,6 +22,7 @@ use crate::data::tuple::{Tuple, TupleIter};
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
 use crate::query::error::*;
+use crate::runtime::db::Poison;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 
@@ -75,6 +76,7 @@ impl UnificationRA {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let mut bindings = self.parent.bindings_after_eliminate();
         bindings.push(self.binding.clone());
@@ -83,7 +85,7 @@ impl UnificationRA {
         Ok(if self.is_multi {
             let it = self
                 .parent
-                .iter(tx, delta_rule, stores)?
+                .iter(tx, delta_rule, stores, poison.clone())?
                 .map_ok(move |tuple| -> Result<Vec<Tuple>> {
                     let result_list = eval_bytecode(&self.expr_bytecode, &tuple, &mut stack)?;
                     let result_list = result_list.get_slice().ok_or_else(|| {
@@ -108,7 +110,7 @@ impl UnificationRA {
         } else {
             Box::new(
                 self.parent
-                    .iter(tx, delta_rule, stores)?
+                    .iter(tx, delta_rule, stores, poison)?
                     .map_ok(move |tuple| -> Result<Tuple> {
                         let result = eval_bytecode(&self.expr_bytecode, &tuple, &mut stack)?;
                         let mut ret = tuple;

@@ -36,8 +36,8 @@ pub use crate::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::runtime::callback::CallbackOp;
 pub use crate::runtime::db::{
-    DEFAULT_MAX_EVALUATION_EPOCHS, DbConfig, NamedRows, PersistMode, ScriptMutability,
-    TransactionPayload,
+    DEFAULT_MAX_EVALUATION_EPOCHS, DbConfig, NamedRows, PersistMode, QueryBudget,
+    QueryCancellationReason, ScriptMutability, TransactionPayload,
 };
 #[cfg(feature = "storage-fjall")]
 pub use crate::storage::fjall_backend::FjallStorage;
@@ -78,6 +78,20 @@ fn convert_internal(e: crate::error::InternalError) -> Error {
         InternalError::Runtime {
             source: crate::runtime::error::RuntimeError::QueryKilled { .. },
         } => error::QueryKilledSnafu.build(),
+        InternalError::Runtime {
+            source:
+                crate::runtime::error::RuntimeError::QueryCancelled {
+                    reason,
+                    observed,
+                    limit,
+                    ..
+                },
+        } => error::QueryCancelledSnafu {
+            reason,
+            observed,
+            limit,
+        }
+        .build(),
         InternalError::Query {
             source:
                 crate::query::error::QueryError::EpochLimitExceeded {

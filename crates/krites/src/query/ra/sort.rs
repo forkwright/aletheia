@@ -19,6 +19,7 @@ use crate::data::program::MagicSymbol;
 use crate::data::symb::Symbol;
 use crate::data::tuple::TupleIter;
 use crate::error::InternalResult as Result;
+use crate::runtime::db::Poison;
 use crate::runtime::temp_store::EpochStore;
 use crate::runtime::transact::SessionTx;
 
@@ -42,6 +43,7 @@ impl ReorderRA {
         tx: &'a SessionTx<'_>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let old_order = self.relation.bindings_after_eliminate();
         let old_order_indices: BTreeMap<_, _> = old_order
@@ -67,7 +69,7 @@ impl ReorderRA {
             .collect_vec();
         Ok(Box::new(
             self.relation
-                .iter(tx, delta_rule, stores)?
+                .iter(tx, delta_rule, stores, poison)?
                 .map_ok(move |tuple| {
                     let old = tuple;
 

@@ -28,6 +28,7 @@ use crate::data::tuple::{Tuple, TupleIter};
 use crate::data::value::{DataValue, ValidityTs};
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::runtime::db::Poison;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::utils::swap_option_result;
@@ -73,6 +74,7 @@ impl StoredRA {
         eliminate_indices: BTreeSet<usize>,
         left_join_indices: Vec<usize>,
         right_join_indices: Vec<usize>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let mut stack = vec![];
 
@@ -83,6 +85,7 @@ impl StoredRA {
                     .map(|i| tuple[*i].clone())
                     .collect_vec();
                 let key = &prefix[0..key_len];
+                poison.account_work(1)?;
                 match self.storage.get(tx, key)? {
                     None => Ok(None),
                     Some(found) => {
@@ -124,6 +127,7 @@ impl StoredRA {
         left_iter: TupleIter<'a>,
         (left_join_indices, right_join_indices): (Vec<usize>, Vec<usize>),
         eliminate_indices: BTreeSet<usize>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);
@@ -142,6 +146,7 @@ impl StoredRA {
                 eliminate_indices,
                 left_join_indices,
                 right_join_indices,
+                poison,
             );
         }
 
@@ -155,6 +160,7 @@ impl StoredRA {
         let mut skip_range_check = false;
         let it = left_iter
             .map_ok(move |tuple| {
+                let poison_for_scan = poison.clone();
                 let prefix = left_to_prefix_indices
                     .iter()
                     .map(|i| tuple[*i].clone())
@@ -170,6 +176,7 @@ impl StoredRA {
                         self.storage
                             .scan_bounded_prefix(tx, &prefix, l_bound, u_bound)
                             .map(move |res_found| -> Result<Option<Tuple>> {
+                                poison_for_scan.account_work(1)?;
                                 let found = res_found?;
                                 for (p, span) in self.filters_bytecodes.iter() {
                                     if !eval_bytecode_pred(p, &found, &mut stack, *span)? {
@@ -188,6 +195,7 @@ impl StoredRA {
                     self.storage
                         .scan_prefix(tx, &prefix)
                         .map(move |res_found| -> Result<Option<Tuple>> {
+                            poison_for_scan.account_work(1)?;
                             let found = res_found?;
                             for (p, span) in self.filters_bytecodes.iter() {
                                 if !eval_bytecode_pred(p, &found, &mut stack, *span)? {
@@ -222,6 +230,7 @@ impl StoredRA {
         left_iter: TupleIter<'a>,
         (left_join_indices, right_join_indices): (Vec<usize>, Vec<usize>),
         eliminate_indices: BTreeSet<usize>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         debug_assert!(!right_join_indices.is_empty());
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
@@ -244,6 +253,7 @@ impl StoredRA {
                             .collect_vec();
 
                         'outer: for found in self.storage.scan_prefix(tx, &prefix) {
+                            poison.account_work(1)?;
                             let found = found?;
                             for (left_idx, right_idx) in
                                 left_join_indices.iter().zip(right_join_indices.iter())
@@ -264,6 +274,7 @@ impl StoredRA {
             let mut right_join_vals = BTreeSet::new();
 
             for tuple in self.storage.scan_all(tx) {
+                poison.account_work(1)?;
                 let tuple = tuple?;
                 // SAFETY: `right_join_indices` contains indices validated to be within `tuple` bounds.
                 let to_join: Box<[DataValue]> = right_join_indices
@@ -363,6 +374,7 @@ impl StoredWithValidityRA {
         left_iter: TupleIter<'a>,
         (left_join_indices, right_join_indices): (Vec<usize>, Vec<usize>),
         eliminate_indices: BTreeSet<usize>,
+        poison: Poison,
     ) -> Result<TupleIter<'a>> {
         let mut right_invert_indices = right_join_indices.iter().enumerate().collect_vec();
         right_invert_indices.sort_by_key(|(_, b)| **b);
@@ -382,6 +394,7 @@ impl StoredWithValidityRA {
 
         let it = left_iter
             .map_ok(move |tuple| {
+                let poison_for_scan = poison.clone();
                 let prefix = left_to_prefix_indices
                     .iter()
                     .map(|i| tuple[*i].clone())
@@ -397,6 +410,7 @@ impl StoredWithValidityRA {
                         self.storage
                             .skip_scan_bounded_prefix(tx, &prefix, l_bound, u_bound, self.valid_at)
                             .map(move |res_found| -> Result<Option<Tuple>> {
+                                poison_for_scan.account_work(1)?;
                                 let found = res_found?;
                                 for (p, span) in self.filters_bytecodes.iter() {
                                     if !eval_bytecode_pred(p, &found, &mut stack, *span)? {
@@ -416,6 +430,7 @@ impl StoredWithValidityRA {
                     self.storage
                         .skip_scan_prefix(tx, &prefix, self.valid_at)
                         .map(move |res_found| -> Result<Option<Tuple>> {
+                            poison_for_scan.account_work(1)?;
                             let found = res_found?;
                             for (p, span) in self.filters_bytecodes.iter() {
                                 if !eval_bytecode_pred(p, &found, &mut stack, *span)? {

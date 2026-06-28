@@ -469,10 +469,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let program = stratified_program.magic_sets_rewrite(tx)?;
         let compiled = tx.stratified_magic_compile(program)?;
 
-        let poison = Poison::default();
-        if let Some(secs) = out_opts.timeout {
-            poison.set_timeout(secs)?;
-        }
+        let poison = Poison::new(self.config.query_budget(out_opts.timeout));
         let id = self.queries_count.fetch_add(1, Ordering::AcqRel);
 
         let since_the_epoch = seconds_since_the_epoch()?;
@@ -508,7 +505,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             store_lifetimes,
             total_num_to_take,
             num_to_skip,
-            self.config.max_evaluation_epochs,
             poison,
         )?;
 

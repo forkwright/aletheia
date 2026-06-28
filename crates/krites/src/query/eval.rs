@@ -85,7 +85,6 @@ impl<'a> SessionTx<'a> {
         store_lifetimes: BTreeMap<MagicSymbol, usize>,
         total_num_to_take: Option<usize>,
         num_to_skip: Option<usize>,
-        max_epochs: u32,
         poison: Poison,
     ) -> Result<(EpochStore, bool)> {
         let mut stores: BTreeMap<MagicSymbol, EpochStore> = BTreeMap::new();
@@ -119,7 +118,6 @@ impl<'a> SessionTx<'a> {
                 &mut stores,
                 total_num_to_take,
                 num_to_skip,
-                max_epochs,
                 stratum,
                 poison.clone(),
             )?;
@@ -177,6 +175,7 @@ impl<'a> SessionTx<'a> {
                     tx: self,
                 };
                 fixed_impl.run(payload, &mut out, poison.clone())?;
+                poison.account_work(out.len() as u64)?;
                 out.wrap()
             }
         };
@@ -343,7 +342,6 @@ impl<'a> SessionTx<'a> {
         stores: &mut BTreeMap<MagicSymbol, EpochStore>,
         total_num_to_take: Option<usize>,
         num_to_skip: Option<usize>,
-        max_epochs: u32,
         stratum: usize,
         poison: Poison,
     ) -> Result<bool> {
@@ -354,7 +352,9 @@ impl<'a> SessionTx<'a> {
         };
         let used_limiter: AtomicBool = false.into();
 
+        let max_epochs = poison.max_epochs();
         for epoch in 0..max_epochs {
+            poison.account_work(1)?;
             debug!("epoch {}", epoch);
             let borrowed_stores = stores as &BTreeMap<_, _>;
             let to_merge = if epoch == 0 {
@@ -386,7 +386,8 @@ impl<'a> SessionTx<'a> {
                         .build(),
                     )
                 })?;
-                old_store.merge_in(new_store)?;
+                let derived_rows = old_store.merge_in(new_store)?;
+                poison.account_derived_rows(derived_rows as u64)?;
                 trace!("delta for {}: {}", k, old_store.has_delta());
                 changed |= old_store.has_delta();
             }
@@ -395,6 +396,7 @@ impl<'a> SessionTx<'a> {
             }
         }
         let rule_context = prog.keys().map(ToString::to_string).join(", ");
+        poison.mark_epoch_limit();
         warn!(
             epoch_count = max_epochs,
             max_epochs,
@@ -429,7 +431,7 @@ impl<'a> SessionTx<'a> {
 
         for (rule_n, rule) in ruleset.iter().enumerate() {
             debug!("initial calculation for rule {:?}.{}", rule_symb, rule_n);
-            for item_res in rule.relation.iter(self, None, stores)? {
+            for item_res in rule.relation.iter(self, None, stores, poison.clone())? {
                 let item = item_res?;
                 trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
                 if should_check_limit {
@@ -475,7 +477,7 @@ impl<'a> SessionTx<'a> {
             for (aggr, args) in aggr.iter_mut().flatten() {
                 aggr.meet_init(args)?;
             }
-            for item_res in rule.relation.iter(self, None, stores)? {
+            for item_res in rule.relation.iter(self, None, stores, poison.clone())? {
                 let item = item_res?;
                 trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
                 out_store.meet_put(item)?;
@@ -556,7 +558,7 @@ impl<'a> SessionTx<'a> {
                 .filter_map(|(i, a)| a.as_ref().map(|aggr| (i, aggr.clone())))
                 .collect_vec();
 
-            for item_res in rule.relation.iter(self, None, stores)? {
+            for item_res in rule.relation.iter(self, None, stores, poison.clone())? {
                 let item = item_res?;
                 trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
 
@@ -745,7 +747,7 @@ impl<'a> SessionTx<'a> {
 
             if need_complete_run {
                 debug!("complete rule for rule {:?}.{}", rule_symb, rule_n);
-                for item_res in rule.relation.iter(self, None, stores)? {
+                for item_res in rule.relation.iter(self, None, stores, poison.clone())? {
                     let item = item_res?;
                     if prev_store.exists(&item) {
                         trace!(
@@ -778,7 +780,10 @@ impl<'a> SessionTx<'a> {
                         "with delta {:?} for rule {:?}.{}",
                         delta_key, rule_symb, rule_n
                     );
-                    for item_res in rule.relation.iter(self, Some(delta_key), stores)? {
+                    for item_res in
+                        rule.relation
+                            .iter(self, Some(delta_key), stores, poison.clone())?
+                    {
                         let item = item_res?;
                         if prev_store.exists(&item) {
                             trace!(
@@ -857,7 +862,7 @@ impl<'a> SessionTx<'a> {
 
             if need_complete_run {
                 debug!("complete run for rule {:?}.{}", rule_symb, rule_n);
-                for item_res in rule.relation.iter(self, None, stores)? {
+                for item_res in rule.relation.iter(self, None, stores, poison.clone())? {
                     out_store.meet_put(item_res?)?;
                 }
                 poison.check()?;
@@ -870,7 +875,10 @@ impl<'a> SessionTx<'a> {
                         "with delta {:?} for rule {:?}.{}",
                         delta_key, rule_symb, rule_n
                     );
-                    for item_res in rule.relation.iter(self, Some(delta_key), stores)? {
+                    for item_res in
+                        rule.relation
+                            .iter(self, Some(delta_key), stores, poison.clone())?
+                    {
                         out_store.meet_put(item_res?)?;
                     }
                     poison.check()?;
