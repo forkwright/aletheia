@@ -26,6 +26,13 @@ struct DeploymentTargetProvider {
     target: DeploymentTarget,
 }
 
+struct CountingDeploymentProvider {
+    calls: Arc<AtomicUsize>,
+    response: CompletionResponse,
+    provider_name: &'static str,
+    target: DeploymentTarget,
+}
+
 impl FallbackSequenceProvider {
     fn new(
         provider_name: &'static str,
@@ -48,6 +55,22 @@ impl FallbackSequenceProvider {
 impl DeploymentTargetProvider {
     fn new(inner: MockProvider, target: DeploymentTarget) -> Self {
         Self { inner, target }
+    }
+}
+
+impl CountingDeploymentProvider {
+    fn new(
+        calls: Arc<AtomicUsize>,
+        response: CompletionResponse,
+        provider_name: &'static str,
+        target: DeploymentTarget,
+    ) -> Self {
+        Self {
+            calls,
+            response,
+            provider_name,
+            target,
+        }
     }
 }
 
@@ -89,6 +112,30 @@ impl LlmProvider for DeploymentTargetProvider {
 
     fn name(&self) -> &str {
         self.inner.name()
+    }
+
+    fn deployment_target(&self) -> DeploymentTarget {
+        self.target
+    }
+}
+
+impl LlmProvider for CountingDeploymentProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let response = self.response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &str {
+        self.provider_name
     }
 
     fn deployment_target(&self) -> DeploymentTarget {
@@ -196,6 +243,108 @@ async fn primary_success_records_observed_model_used() {
     assert_eq!(
         result.model_used, "primary-model",
         "primary success should report the observed response model"
+    );
+}
+
+#[tokio::test]
+async fn internal_turn_routes_non_streaming_to_eligible_local_provider() {
+    let cloud_calls = Arc::new(AtomicUsize::new(0));
+    let local_calls = Arc::new(AtomicUsize::new(0));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(CountingDeploymentProvider::new(
+        Arc::clone(&cloud_calls),
+        make_text_response("cloud answer"),
+        "cloud-test",
+        DeploymentTarget::Cloud,
+    )));
+    providers.register(Box::new(CountingDeploymentProvider::new(
+        Arc::clone(&local_calls),
+        make_text_response("local answer"),
+        "local-test",
+        DeploymentTarget::LocalHosted,
+    )));
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.messages[0].content = "what is my internal password for the system".to_owned();
+    ctx.triage_result = Some(crate::pipeline::triage::TriageStage::classify(
+        &ctx.messages[0].content,
+    ));
+
+    let result = execute(
+        &ctx,
+        &test_session(),
+        &test_config(),
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute should route internal turn to local provider");
+
+    assert_eq!(result.content, "local answer");
+    assert_eq!(
+        cloud_calls.load(Ordering::SeqCst),
+        0,
+        "ineligible cloud provider must not see the live prompt"
+    );
+    assert_eq!(
+        local_calls.load(Ordering::SeqCst),
+        1,
+        "eligible local provider should serve the turn"
+    );
+}
+
+#[tokio::test]
+async fn internal_turn_blocks_non_streaming_cloud_provider_before_call() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(CountingDeploymentProvider::new(
+        Arc::clone(&calls),
+        make_text_response("cloud answer"),
+        "cloud-test",
+        DeploymentTarget::Cloud,
+    )));
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.messages[0].content = "what is my internal password for the system".to_owned();
+    ctx.triage_result = Some(crate::pipeline::triage::TriageStage::classify(
+        &ctx.messages[0].content,
+    ));
+
+    let err = execute(
+        &ctx,
+        &test_session(),
+        &test_config(),
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect_err("execute should block internal turn for cloud provider");
+
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "blocked provider must not be called"
+    );
+    let message = err.to_string();
+    assert!(
+        message.contains("cloud-test"),
+        "error names provider: {message}"
+    );
+    assert!(
+        message.contains("current-turn"),
+        "error names live prompt: {message}"
+    );
+    assert!(
+        message.contains("internal"),
+        "error names sensitivity: {message}"
+    );
+    assert!(
+        message.contains("cloud"),
+        "error names deployment target: {message}"
     );
 }
 
@@ -1124,7 +1273,7 @@ async fn test_routing_disabled_uses_turn_model() {
 
     assert_eq!(result.content, "ok");
     // WHY: can't inspect request model directly through ProviderRegistry, but
-    // the fact that execute() succeeded proves resolve_provider_checked found
+    // the fact that execute() succeeded proves provider resolution found
     // "test-model" — the provider is only registered for that + tier slots,
     // and routing-disabled path asks for exactly "test-model".
     assert_eq!(result.usage.llm_calls, 1);

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use hermeneus::provider::LlmProvider;
+use hermeneus::provider::{DeploymentTarget, LlmProvider};
 
 use super::*;
 use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
@@ -48,9 +48,29 @@ struct DeltaEmitter {
     response: CompletionResponse,
 }
 
+struct CountingStreamingDeploymentProvider {
+    calls: Arc<AtomicUsize>,
+    response: CompletionResponse,
+    target: DeploymentTarget,
+}
+
 impl DeltaEmitter {
     fn new(deltas: usize, response: CompletionResponse) -> Self {
         Self { deltas, response }
+    }
+}
+
+impl CountingStreamingDeploymentProvider {
+    fn new(
+        calls: Arc<AtomicUsize>,
+        response: CompletionResponse,
+        target: DeploymentTarget,
+    ) -> Self {
+        Self {
+            calls,
+            response,
+            target,
+        }
     }
 }
 
@@ -85,6 +105,48 @@ impl LlmProvider for DeltaEmitter {
 
     fn name(&self) -> &'static str {
         "delta-emitter"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+}
+
+impl LlmProvider for CountingStreamingDeploymentProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let response = self.response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        _request: &'a hermeneus::types::CompletionRequest,
+        on_event: &'a mut (dyn FnMut(hermeneus::anthropic::StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        on_event(hermeneus::anthropic::StreamEvent::TextDelta {
+            text: "should-not-send".to_owned(),
+        });
+        let response = self.response.clone();
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    fn name(&self) -> &'static str {
+        "cloud-streaming-test"
+    }
+
+    fn deployment_target(&self) -> DeploymentTarget {
+        self.target
     }
 
     fn supports_streaming(&self) -> bool {
@@ -130,6 +192,67 @@ async fn streaming_falls_back_to_non_streaming_for_mock() {
     assert!(
         rx.try_recv().is_err(),
         "no stream events for non-streaming provider"
+    );
+}
+
+#[tokio::test]
+async fn streaming_blocks_internal_turn_before_cloud_provider_call() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(CountingStreamingDeploymentProvider::new(
+        Arc::clone(&calls),
+        make_text_response("cloud streaming answer"),
+        DeploymentTarget::Cloud,
+    )));
+
+    let mut ctx = test_pipeline_ctx();
+    let user_message = "what is my internal password for the system";
+    ctx.messages
+        .first_mut()
+        .expect("test context has a user message")
+        .content = user_message.to_owned();
+    ctx.triage_result = Some(crate::pipeline::triage::TriageStage::classify(user_message));
+
+    let tools = ToolRegistry::new();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let err = execute_streaming(
+        &ctx,
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect_err("streaming execute should block internal turn for cloud provider");
+
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "blocked streaming provider must not be called"
+    );
+    let message = err.to_string();
+    assert!(
+        message.contains("cloud-streaming-test"),
+        "error names provider: {message}"
+    );
+    assert!(
+        message.contains("current-turn"),
+        "error names live prompt: {message}"
+    );
+    assert!(
+        message.contains("internal"),
+        "error names sensitivity: {message}"
+    );
+
+    drop(tx);
+    assert!(
+        rx.try_recv().is_err(),
+        "blocked streaming provider must not emit LLM deltas"
     );
 }
 

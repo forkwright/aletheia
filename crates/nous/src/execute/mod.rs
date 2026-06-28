@@ -32,8 +32,8 @@ use self::dispatch::{
     DispatchResult, ToolDispatchPolicy, build_messages, classify_signals, dispatch_tools,
 };
 use self::resolve::{
-    process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
-    resolve_turn_model,
+    process_response_blocks, resolve_active_server_tools, resolve_admitted_provider_checked,
+    resolve_admitted_streaming_provider, resolve_turn_model,
 };
 use crate::approval::ApprovalGate;
 use crate::config::NousConfig;
@@ -50,10 +50,15 @@ const STOP_REASON_MAX_TOOL_ITERATIONS: &str = "max_tool_iterations";
 const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
 const STOP_REASON_TURN_TIMEOUT: &str = "turn_timeout";
 
-type LlmCompletion = (CompletionResponse, String);
-type LlmCallFuture<'a> = std::pin::Pin<
-    Box<dyn std::future::Future<Output = hermeneus::error::Result<LlmCompletion>> + Send + 'a>,
->;
+struct LlmCompletion {
+    response: CompletionResponse,
+    model: String,
+    provider_name: String,
+    deployment_target: DeploymentTarget,
+}
+
+type LlmCallFuture<'a> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = error::Result<LlmCompletion>> + Send + 'a>>;
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -247,21 +252,42 @@ pub(crate) async fn execute_with_deadline(
             let llm_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
                 let request_ref = &request;
                 Box::pin(async move {
-                    let completion = model_fallback::complete_with_registry_fallback(
+                    let completion = model_fallback::complete_with_registry_fallback_for_context(
                         providers,
                         request_ref,
                         fallback_config,
+                        ctx,
                     )
                     .await?;
-                    Ok((completion.response, completion.model))
+                    Ok(LlmCompletion {
+                        response: completion.response,
+                        model: completion.model,
+                        provider_name: completion.provider_name,
+                        deployment_target: completion.deployment_target,
+                    })
                 })
             } else {
-                let provider = resolve_provider_checked(providers, &turn_model)?;
+                let provider = resolve_admitted_provider_checked(ctx, providers, &turn_model)?;
                 let requested_model = turn_model.clone();
+                let provider_name = provider.name().to_owned();
+                let deployment_target = provider.deployment_target();
                 let request_ref = &request;
                 Box::pin(async move {
-                    let response = provider.complete(request_ref).await?;
-                    Ok((response, requested_model))
+                    match provider.complete(request_ref).await {
+                        Ok(response) => {
+                            providers.record_success(&provider_name);
+                            Ok(LlmCompletion {
+                                response,
+                                model: requested_model,
+                                provider_name,
+                                deployment_target,
+                            })
+                        }
+                        Err(e) => {
+                            providers.record_error(&provider_name, &e);
+                            Err(e).context(error::LlmSnafu)
+                        }
+                    }
                 })
             };
             if let Some(deadline) = deadline {
@@ -284,62 +310,39 @@ pub(crate) async fn execute_with_deadline(
         };
 
         let response = match completion {
-            Ok((resp, observed)) => {
-                if fallback_config.is_none() {
-                    let provider = resolve_provider_checked(providers, &turn_model)?;
-                    providers.record_success(provider.name());
+            Ok(completion) => {
+                model_used = completion.model;
+                let provider_name = completion.provider_name;
+                let deployment_target = completion.deployment_target;
+                // WHY(#4831): log one prompt audit record per outbound CompletionRequest
+                // using the actual model/provider/route and effective tool surface for
+                // this iteration, not the top-level config defaults.
+                if let Some(log) = audit_log {
+                    let record = crate::audit::build_audit_record_for_request(
+                        crate::audit::PromptAuditRequestRecordInput {
+                            ctx,
+                            session,
+                            model: &model_used,
+                            request: &request,
+                            provider: &provider_name,
+                            deployment_target: deployment_target.as_str(),
+                            surface_hash: &surface_hash,
+                            options: log.record_options(),
+                            chars_per_token: usize::try_from(
+                                config.generation.chars_per_token.max(1),
+                            )
+                            .unwrap_or(4),
+                            request_id: Some(koina::ulid::Ulid::new().to_string()),
+                        },
+                    );
+                    if let Err(e) = log.log_request(&record) {
+                        tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
+                    }
                 }
-                model_used = observed;
-                resp
+                completion.response
             }
-            Err(e) => {
-                if fallback_config.is_none()
-                    && let Ok(provider) = resolve_provider_checked(providers, &turn_model)
-                {
-                    providers.record_error(provider.name(), &e);
-                }
-                return Err(e).context(error::LlmSnafu);
-            }
+            Err(e) => return Err(e),
         };
-
-        // WHY(#4831): log one prompt audit record per outbound CompletionRequest
-        // using the actual model/provider/route and effective tool surface for
-        // this iteration, not the top-level config defaults.
-        if let Some(log) = audit_log {
-            let (provider_name, deployment_target) =
-                providers.find_provider(&model_used).map_or_else(
-                    || {
-                        (
-                            "unknown".to_owned(),
-                            DeploymentTarget::Cloud.as_str().to_owned(),
-                        )
-                    },
-                    |provider| {
-                        (
-                            provider.name().to_owned(),
-                            provider.deployment_target().as_str().to_owned(),
-                        )
-                    },
-                );
-            let record = crate::audit::build_audit_record_for_request(
-                crate::audit::PromptAuditRequestRecordInput {
-                    ctx,
-                    session,
-                    model: &model_used,
-                    request: &request,
-                    provider: &provider_name,
-                    deployment_target: &deployment_target,
-                    surface_hash: &surface_hash,
-                    options: log.record_options(),
-                    chars_per_token: usize::try_from(config.generation.chars_per_token.max(1))
-                        .unwrap_or(4),
-                    request_id: Some(koina::ulid::Ulid::new().to_string()),
-                },
-            );
-            if let Err(e) = log.log_request(&record) {
-                tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
-            }
-        }
 
         let hermeneus::types::CompletionResponse {
             content: response_content,
@@ -710,7 +713,8 @@ pub(crate) async fn execute_streaming_with_deadline(
     let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
     let mut model_used = turn_model.clone();
 
-    let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
+    let Some(streaming_provider) = resolve_admitted_streaming_provider(ctx, providers, &turn_model)
+    else {
         return execute_with_deadline(
             ctx,
             session,
@@ -727,7 +731,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         .await;
     };
 
-    let provider = resolve_provider_checked(providers, &turn_model)?;
+    let provider = streaming_provider;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();

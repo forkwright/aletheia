@@ -6,11 +6,13 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use hermeneus::complexity::{ComplexityInput, route_model};
+use hermeneus::health::ProviderHealth;
 use hermeneus::provider::{
     DeploymentTarget, LlmProvider, ProviderRegistry, ProviderResolutionError, ProviderRoute,
 };
 use hermeneus::types::{ContentBlock, ServerToolDefinition};
 use koina::id::ToolName;
+use mneme::knowledge::FactSensitivity;
 use organon::types::ToolContext;
 
 use crate::config::NousConfig;
@@ -25,6 +27,14 @@ pub(super) struct ResponseExtract {
     pub saw_server_web_search: bool,
     pub saw_server_code_execution: bool,
     pub reasoning_parts: Vec<String>,
+}
+
+/// Result of resolving a provider against the current-turn sensitivity policy.
+pub(super) enum ProviderAdmission<'a> {
+    Admitted(&'a dyn LlmProvider),
+    Blocked(String),
+    Unavailable(String),
+    ResolutionError(error::Error),
 }
 
 /// Resolve the model to use for this turn, applying complexity-based routing when enabled.
@@ -94,28 +104,159 @@ pub(super) fn resolve_turn_model(
     decision.model
 }
 
-/// Resolve the LLM provider for `model` and verify it is not marked down.
-pub(super) fn resolve_provider_checked<'a>(
+/// Resolve a provider for `model` that may receive the current live prompt.
+pub(super) fn resolve_admitted_provider<'a>(
+    ctx: &PipelineContext,
+    providers: &'a ProviderRegistry,
+    model: &str,
+) -> ProviderAdmission<'a> {
+    let provider = match providers.resolve_provider(model, ProviderRoute::ModelOnly) {
+        Ok(provider) => provider,
+        Err(ProviderResolutionError::ProviderUnavailable { name, health }) => {
+            return ProviderAdmission::Unavailable(format!(
+                "provider '{name}' is currently unavailable: {health:?}"
+            ));
+        }
+        Err(ProviderResolutionError::NoProvider { model }) => {
+            return ProviderAdmission::ResolutionError(
+                error::PipelineStageSnafu {
+                    stage: "execute",
+                    message: format!("no provider for model: {model}"),
+                }
+                .build(),
+            );
+        }
+    };
+
+    if admits_current_turn(ctx, provider) {
+        return ProviderAdmission::Admitted(provider);
+    }
+
+    if let Some(alternative) = find_admitted_alternative(ctx, providers, model) {
+        warn!(
+            model,
+            blocked_provider = provider.name(),
+            blocked_deployment_target = provider.deployment_target().as_str(),
+            selected_provider = alternative.name(),
+            selected_deployment_target = alternative.deployment_target().as_str(),
+            sensitivity = current_turn_sensitivity(ctx).as_str(),
+            "execute: routed current-turn prompt to eligible provider"
+        );
+        return ProviderAdmission::Admitted(alternative);
+    }
+
+    let message = provider_admission_message(ctx, provider, model);
+    warn!(
+        model,
+        provider = provider.name(),
+        deployment_target = provider.deployment_target().as_str(),
+        sensitivity = current_turn_sensitivity(ctx).as_str(),
+        max_sensitivity = max_sensitivity_for_target(provider.deployment_target()).as_str(),
+        "execute: blocked provider dispatch by current-turn sensitivity policy"
+    );
+    ProviderAdmission::Blocked(message)
+}
+
+/// Resolve a provider for `model`, returning a pipeline error when policy blocks it.
+pub(super) fn resolve_admitted_provider_checked<'a>(
+    ctx: &PipelineContext,
     providers: &'a ProviderRegistry,
     model: &str,
 ) -> error::Result<&'a dyn LlmProvider> {
-    providers
-        .resolve_provider(model, ProviderRoute::ModelOnly)
-        .map_err(|err| {
-            let message = match err {
-                ProviderResolutionError::NoProvider { model } => {
-                    format!("no provider for model: {model}")
-                }
-                ProviderResolutionError::ProviderUnavailable { name, health } => {
-                    format!("provider '{name}' is currently unavailable: {health:?}")
-                }
-            };
-            error::PipelineStageSnafu {
+    match resolve_admitted_provider(ctx, providers, model) {
+        ProviderAdmission::Admitted(provider) => Ok(provider),
+        ProviderAdmission::Blocked(message) | ProviderAdmission::Unavailable(message) => {
+            Err(error::PipelineStageSnafu {
                 stage: "execute",
                 message,
             }
-            .build()
+            .build())
+        }
+        ProviderAdmission::ResolutionError(err) => Err(err),
+    }
+}
+
+/// Resolve an eligible streaming provider for the current turn.
+pub(super) fn resolve_admitted_streaming_provider<'a>(
+    ctx: &PipelineContext,
+    providers: &'a ProviderRegistry,
+    model: &str,
+) -> Option<&'a dyn LlmProvider> {
+    find_admitted_provider(ctx, providers, model, true)
+}
+
+fn find_admitted_alternative<'a>(
+    ctx: &PipelineContext,
+    providers: &'a ProviderRegistry,
+    model: &str,
+) -> Option<&'a dyn LlmProvider> {
+    find_admitted_provider(ctx, providers, model, false)
+}
+
+fn find_admitted_provider<'a>(
+    ctx: &PipelineContext,
+    providers: &'a ProviderRegistry,
+    model: &str,
+    require_streaming: bool,
+) -> Option<&'a dyn LlmProvider> {
+    let target_kind = providers
+        .providers()
+        .into_iter()
+        .filter_map(|provider| provider.match_specificity(model))
+        .max()?;
+
+    providers.providers().into_iter().find(|provider| {
+        provider.match_specificity(model) == Some(target_kind)
+            && (!require_streaming || provider.supports_streaming())
+            && provider_is_available(providers, *provider)
+            && admits_current_turn(ctx, *provider)
+    })
+}
+
+fn provider_is_available(providers: &ProviderRegistry, provider: &dyn LlmProvider) -> bool {
+    providers
+        .provider_health(provider.name())
+        .is_some_and(|health| {
+            matches!(health, ProviderHealth::Up | ProviderHealth::Degraded { .. })
         })
+}
+
+fn admits_current_turn(ctx: &PipelineContext, provider: &dyn LlmProvider) -> bool {
+    current_turn_sensitivity(ctx) <= max_sensitivity_for_target(provider.deployment_target())
+}
+
+fn provider_admission_message(
+    ctx: &PipelineContext,
+    provider: &dyn LlmProvider,
+    model: &str,
+) -> String {
+    let sensitivity = current_turn_sensitivity(ctx);
+    let target = provider.deployment_target();
+    let max_allowed = max_sensitivity_for_target(target);
+    format!(
+        "provider '{}' (model '{}', deployment target '{}') may not receive current-turn '{}' prompt; maximum allowed sensitivity is '{}'",
+        provider.name(),
+        model,
+        target.as_str(),
+        sensitivity.as_str(),
+        max_allowed.as_str()
+    )
+}
+
+fn current_turn_sensitivity(ctx: &PipelineContext) -> FactSensitivity {
+    ctx.triage_result
+        .as_ref()
+        .map_or(FactSensitivity::Public, |triage| triage.sensitivity)
+}
+
+fn max_sensitivity_for_target(target: DeploymentTarget) -> FactSensitivity {
+    // WHY(#4621): match recall's sovereignty boundary for live prompts. Future
+    // deployment targets default to Public until the policy is explicitly extended.
+    match target {
+        DeploymentTarget::LocalHosted => FactSensitivity::Internal,
+        DeploymentTarget::Embedded => FactSensitivity::Confidential,
+        _ => FactSensitivity::Public,
+    }
 }
 
 /// Read the current active-tools set and derive server-tool definitions.
