@@ -4,6 +4,7 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use koina::id::NousId;
 use nous::config::NousConfig;
 use nous::cross::AddressMask;
 use symbolon::types::Role;
@@ -70,6 +71,19 @@ fn ensure_agent_definition<'a>(
 
 fn allowlist_for_agent<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a [String]> {
     agent_definition(config, id).and_then(|agent| agent.tool_allowlist.as_deref())
+}
+
+fn normalize_agent_id_field(field: &str, raw: &str) -> Result<String, ApiError> {
+    NousId::new(raw).map(String::from).map_err(|err| {
+        ValidationFailedSnafu {
+            errors: vec![FieldError {
+                field: field.to_owned(),
+                code: "format".to_owned(),
+                message: err.to_string(),
+            }],
+        }
+        .build()
+    })
 }
 
 fn tool_summaries_for_agent(state: &NousState, allowlist: Option<&[String]>) -> Vec<ToolSummary> {
@@ -179,6 +193,7 @@ pub async fn get_status(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<NousStatus>, ApiError> {
+    let id = normalize_agent_id_field("id", &id)?;
     let config = state
         .nous_manager
         .get_config(&id)
@@ -264,6 +279,7 @@ pub async fn tools(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
+    let id = normalize_agent_id_field("id", &id)?;
     let runtime = state
         .nous_manager
         .get_config(&id)
@@ -307,6 +323,7 @@ pub async fn update_enabled(
     Path(id): Path<String>,
     Json(body): Json<NousToggleRequest>,
 ) -> Result<Json<NousSummary>, ApiError> {
+    let id = normalize_agent_id_field("id", &id)?;
     require_role(&claims, Role::Operator)?;
     require_nous_access(&claims, &id)?;
 
@@ -421,6 +438,7 @@ pub async fn update_tool(
     Path(id): Path<String>,
     Json(body): Json<ToolToggleRequest>,
 ) -> Result<Json<ToolsResponse>, ApiError> {
+    let id = normalize_agent_id_field("id", &id)?;
     require_role(&claims, Role::Operator)?;
     require_nous_access(&claims, &id)?;
 
@@ -522,6 +540,7 @@ pub async fn recover(
     claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<RecoverResponse>, ApiError> {
+    let id = normalize_agent_id_field("id", &id)?;
     require_role(&claims, Role::Operator)?;
     require_nous_access(&claims, &id)?;
     let handle = state
@@ -577,38 +596,7 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<CreateAgentResponse>), ApiError> {
     require_role(&claims, Role::Operator)?;
 
-    let mut field_errors = Vec::new();
-    if body.id.is_empty() {
-        field_errors.push(FieldError {
-            field: "id".to_owned(),
-            code: "required".to_owned(),
-            message: "must not be empty".to_owned(),
-        });
-    } else if !body
-        .id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-')
-    {
-        field_errors.push(FieldError {
-            field: "id".to_owned(),
-            code: "format".to_owned(),
-            message: "must contain only alphanumeric characters and hyphens".to_owned(),
-        });
-    } else if body.id.starts_with('-') || body.id.ends_with('-') {
-        field_errors.push(FieldError {
-            field: "id".to_owned(),
-            code: "format".to_owned(),
-            message: "cannot start or end with a hyphen".to_owned(),
-        });
-    }
-    if !field_errors.is_empty() {
-        return Err(ValidationFailedSnafu {
-            errors: field_errors,
-        }
-        .build());
-    }
-
-    let id = body.id;
+    let id = normalize_agent_id_field("id", &body.id)?;
     let name = body.name.unwrap_or_else(|| capitalize(&id));
     let model = body
         .model

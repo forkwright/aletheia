@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use koina::id::ToolName;
+use koina::id::{NousId, ToolName};
 use serde_json::Value;
 use snafu::Snafu;
 
@@ -190,6 +190,27 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
 const MAX_TOKEN_BUDGET: u64 = 1_000_000;
 
 fn validate_agents(value: &Value, errors: &mut Vec<String>) {
+    if let Some(list) = value.get("list") {
+        if let Some(agents) = list.as_array() {
+            for (idx, agent) in agents.iter().enumerate() {
+                let Some(id) = agent.get("id").and_then(Value::as_str) else {
+                    errors.push(format!("agents.list[{idx}].id must be a string"));
+                    continue;
+                };
+                match NousId::new(id) {
+                    Ok(canonical) if canonical.as_str() == id => {}
+                    Ok(canonical) => errors.push(format!(
+                        "agents.list[{idx}].id must be canonical route-safe ID {id:?}; use {:?}",
+                        canonical.as_str()
+                    )),
+                    Err(err) => errors.push(format!("agents.list[{idx}].id is invalid: {err}")),
+                }
+            }
+        } else {
+            errors.push("agents.list must be an array".to_owned());
+        }
+    }
+
     if let Some(defaults) = value.get("defaults") {
         check_positive_u32(defaults, "contextTokens", errors);
         check_positive_u32(defaults, "maxOutputTokens", errors);

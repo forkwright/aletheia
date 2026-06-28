@@ -16,40 +16,41 @@ fn validate_nous_id(nous_id: &str) -> Result<()> {
     if nous_id.trim().is_empty() {
         whatever!("--nous-id must not be empty");
     }
-    validate_agent_id_for_paths(nous_id, "--nous-id")?;
+    normalize_agent_id_for_paths(nous_id, "--nous-id")?;
     Ok(())
 }
 
-/// Validate an agent ID that will be used to derive on-disk paths.
+/// Validate and normalize an agent ID that will be used to derive on-disk paths.
 ///
 /// The ID is consumed as a directory name (`nous/<id>`) and embedded in
 /// config — any traversal segment, separator, or NUL byte makes the
-/// import able to write outside the instance root. Matches the rules
-/// `add-nous` enforces on freshly created agents.
-fn validate_agent_id_for_paths(id: &str, source: &str) -> Result<()> {
-    if id.is_empty() {
-        whatever!("{source} must not be empty");
+/// import able to write outside the instance root. The canonical ID rule
+/// matches `add-nous`, init, config load, and HTTP creation.
+fn normalize_agent_id_for_paths(id: &str, source: &str) -> Result<String> {
+    match koina::id::normalize_nous_id(id) {
+        Ok(id) => Ok(String::from(id)),
+        Err(err) => whatever!("{source} is invalid: {err}"),
     }
-    if id.contains('\0') {
-        whatever!("{source} must not contain NUL bytes");
-    }
-    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        whatever!("{source} must contain only alphanumeric characters and hyphens (got {id:?})");
-    }
-    if id.starts_with('-') || id.ends_with('-') {
-        whatever!("{source} must not start or end with a hyphen (got {id:?})");
-    }
-    Ok(())
 }
 
+#[cfg(test)]
+fn validate_agent_id_for_paths(id: &str, source: &str) -> Result<()> {
+    normalize_agent_id_for_paths(id, source).map(|_| ())
+}
+
+#[cfg(test)]
 fn validate_target_id(target_id: Option<&str>) -> Result<()> {
+    normalize_target_id(target_id).map(|_| ())
+}
+
+fn normalize_target_id(target_id: Option<&str>) -> Result<Option<String>> {
     if let Some(id) = target_id {
         if id.trim().is_empty() {
             whatever!("--target-id must not be empty");
         }
-        validate_agent_id_for_paths(id, "--target-id")?;
+        return normalize_agent_id_for_paths(id, "--target-id").map(Some);
     }
-    Ok(())
+    Ok(None)
 }
 
 /// Validate a workspace-relative file path supplied by an imported
@@ -1286,7 +1287,7 @@ const IMPORT_RESUME_MARKER: &str = ".nous-import-in-progress";
     reason = "import orchestrates config, workspace, and session store — sequential by nature"
 )]
 pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -> Result<()> {
-    validate_target_id(args.target_id.as_deref())?;
+    let normalized_target_id = normalize_target_id(args.target_id.as_deref())?;
     let json = std::fs::read_to_string(&args.file)
         .with_whatever_context(|_| format!("failed to read {}", args.file.display()))?;
     let agent_file: mneme::portability::AgentFile =
@@ -1309,10 +1310,11 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     }
 
     // WARNING(#4241): if --target-id is absent, the imported nous.id is
-    // used directly to derive on-disk paths. Validate before any I/O.
-    if args.target_id.is_none() {
-        validate_agent_id_for_paths(&agent_file.nous.id, "imported nous.id")?;
-    }
+    // used directly to derive on-disk paths. Normalize before any I/O.
+    let nous_id = match normalized_target_id {
+        Some(id) => id,
+        None => normalize_agent_id_for_paths(&agent_file.nous.id, "imported nous.id")?,
+    };
     for path in agent_file.workspace.files.keys() {
         validate_workspace_relative_path(path)?;
     }
@@ -1330,11 +1332,6 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 
     // WHY(#5102/#4965): validate/report partial sections before any mutation.
     report_partial_export(&agent_file);
-
-    let nous_id = args
-        .target_id
-        .clone()
-        .unwrap_or_else(|| agent_file.nous.id.clone());
 
     if args.dry_run {
         println!("Dry run — no changes will be made\n");
@@ -2387,6 +2384,7 @@ mod tests {
     fn validate_nous_id_accepts_well_formed() {
         assert!(validate_nous_id("pronoea").is_ok());
         assert!(validate_nous_id("agent-with-hyphens").is_ok());
+        assert!(validate_nous_id("Agent_With_Underscores").is_ok());
     }
 
     #[test]
@@ -2418,6 +2416,13 @@ mod tests {
     fn validate_target_id_accepts_well_formed() {
         assert!(validate_target_id(Some("pronoea")).is_ok());
         assert!(validate_target_id(Some("agent-with-hyphens")).is_ok());
+        assert!(validate_target_id(Some("Agent_With_Underscores")).is_ok());
+    }
+
+    #[test]
+    fn normalize_agent_id_for_paths_folds_case_and_underscores() {
+        let id = normalize_agent_id_for_paths("Agent_With_Underscores", "id").unwrap();
+        assert_eq!(id, "agent-with-underscores");
     }
 
     #[test]
@@ -3330,6 +3335,46 @@ workspace = "nous/{agent_id}"
         );
         assert_eq!(history[0].content, "hello");
         assert_eq!(history[1].content, "tool output");
+    }
+
+    #[test]
+    fn import_agent_normalizes_imported_nous_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(oikos.config()).unwrap();
+        std::fs::create_dir_all(oikos.data()).unwrap();
+
+        let mut agent_file = sample_agent_file();
+        agent_file.nous.id = "Imported_Agent".to_owned();
+        let json = serde_json::to_string(&agent_file).unwrap();
+        let agent_path = dir.path().join("test.agent.json");
+        std::fs::write(&agent_path, json).unwrap();
+
+        let args = ImportArgs {
+            file: agent_path,
+            target_id: None,
+            skip_sessions: false,
+            skip_workspace: false,
+            skip_knowledge: false,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        };
+
+        import_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
+
+        let config = std::fs::read_to_string(oikos.config().join("aletheia.toml")).unwrap();
+        assert!(config.contains(r#"id = "imported-agent""#));
+        assert!(config.contains(r#"workspace = "nous/imported-agent""#));
+        assert!(oikos.nous_dir("imported-agent").join("SOUL.md").exists());
+        assert!(
+            !oikos.nous_dir("Imported_Agent").exists(),
+            "raw mixed-case workspace must not be created"
+        );
+
+        let store = mneme::store::SessionStore::open(&oikos.sessions_db()).unwrap();
+        let sessions = store.list_sessions(Some("imported-agent")).unwrap();
+        assert_eq!(sessions.len(), 1, "session owner should be normalized");
     }
 
     #[test]

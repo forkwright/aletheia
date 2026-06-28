@@ -916,6 +916,40 @@ fn accepts_valid_agency_levels() {
 }
 
 #[test]
+fn rejects_noncanonical_agent_ids() {
+    let section = json!({
+        "list": [{
+            "id": "Research_Agent",
+            "workspace": "nous/research-agent"
+        }]
+    });
+    let result = validate_section("agents", &section);
+    assert!(result.is_err(), "noncanonical ID should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("research-agent")),
+        "error should include canonical correction, got: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_agent_ids_with_path_separators() {
+    let section = json!({
+        "list": [{
+            "id": "../escape",
+            "workspace": "nous/escape"
+        }]
+    });
+    let result = validate_section("agents", &section);
+    assert!(result.is_err(), "path separator ID should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("invalid NousId")),
+        "expected shared NousId validation error, got: {err:?}"
+    );
+}
+
+#[test]
 fn rejects_empty_model_primary() {
     let section = json!({ "defaults": { "model": { "primary": "" } } });
     let result = validate_section("agents", &section);

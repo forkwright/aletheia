@@ -7,7 +7,7 @@ use utoipa::ToSchema;
 /// Payload for creating a new nous agent via `POST /api/v1/nous`.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AgentDefinition {
-    /// Agent identifier (alphanumeric and hyphens only).
+    /// Agent identifier. Case folds to lowercase; underscores normalize to hyphens.
     pub id: String,
     /// Human-readable display name. Falls back to a capitalized `id`.
     #[serde(default)]

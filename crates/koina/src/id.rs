@@ -127,22 +127,59 @@ macro_rules! newtype_id {
     };
 }
 
-/// A nous (agent) identifier. Lowercase alphanumeric + hyphens, 1-64 chars.
+/// Maximum byte length for a canonical nous identifier.
+pub const MAX_NOUS_ID_LEN: usize = 64;
+
+/// Internal identifier namespaces that user-supplied nous IDs must not use.
+pub const RESERVED_NOUS_ID_PREFIXES: &[&str] = &["cross:"];
+
+/// Normalize a user-supplied nous identifier into its canonical route-safe form.
+///
+/// Normalization trims surrounding whitespace, folds ASCII case to lowercase,
+/// and maps underscores to hyphens. The resulting ID must be lowercase ASCII
+/// alphanumeric plus hyphens, 1-64 bytes, and must not start or end with a
+/// hyphen.
+///
+/// # Errors
+///
+/// Returns an error if the normalized ID is empty, too long, uses a reserved
+/// internal prefix, contains a path separator or other unsupported character,
+/// or is not route-safe.
+#[must_use = "returns a validated identifier that should not be discarded"]
+pub fn normalize_nous_id(id: impl AsRef<str>) -> Result<NousId, IdError> {
+    let normalized = canonical_nous_id(id.as_ref());
+    validate_id(&normalized, "NousId")?;
+    Ok(NousId(normalized))
+}
+
+fn canonical_nous_id(id: &str) -> String {
+    id.trim()
+        .chars()
+        .map(|c| {
+            if c == '_' {
+                '-'
+            } else {
+                c.to_ascii_lowercase()
+            }
+        })
+        .collect()
+}
+
+/// A nous (agent) identifier. Canonical lowercase alphanumeric + hyphens, 1-64 bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct NousId(String);
 
 impl NousId {
-    /// Create a new `NousId`, validating the format.
+    /// Create a new `NousId`, normalizing and validating the format.
     ///
     /// # Errors
-    /// Returns an error if the ID is empty, exceeds 64 characters,
-    /// or contains characters other than lowercase alphanumeric and hyphens.
+    /// Returns an error if the normalized ID is empty, exceeds 64 bytes,
+    /// contains unsupported characters, uses a reserved internal prefix, or is
+    /// not route-safe.
     #[must_use = "returns a validated identifier that should not be discarded"]
     pub fn new(id: impl Into<String>) -> Result<Self, IdError> {
-        let id = id.into();
-        validate_id(&id, "NousId")?;
-        Ok(Self(id))
+        normalize_nous_id(id.into())
     }
 
     /// The underlying string value.
@@ -396,11 +433,28 @@ fn validate_id(id: &str, kind: &'static str) -> Result<(), IdError> {
     if id.is_empty() {
         return Err(IdError::Empty { kind });
     }
-    if id.len() > 64 {
+    if id.len() > MAX_NOUS_ID_LEN {
         return Err(IdError::TooLong {
             kind,
-            max: 64,
+            max: MAX_NOUS_ID_LEN,
             actual: id.len(),
+        });
+    }
+    if let Some(prefix) = RESERVED_NOUS_ID_PREFIXES
+        .iter()
+        .find(|prefix| id.starts_with(**prefix))
+    {
+        return Err(IdError::InvalidFormat {
+            kind,
+            value: id.to_owned(),
+            reason: format!("must not use reserved internal prefix {prefix:?}"),
+        });
+    }
+    if id.contains('\0') {
+        return Err(IdError::InvalidFormat {
+            kind,
+            value: id.to_owned(),
+            reason: "must not contain NUL bytes".to_owned(),
         });
     }
     if !id
@@ -411,6 +465,13 @@ fn validate_id(id: &str, kind: &'static str) -> Result<(), IdError> {
             kind,
             value: id.to_owned(),
             reason: "must contain only lowercase alphanumeric and hyphens".to_owned(),
+        });
+    }
+    if id.starts_with('-') || id.ends_with('-') {
+        return Err(IdError::InvalidFormat {
+            kind,
+            value: id.to_owned(),
+            reason: "must not start or end with a hyphen".to_owned(),
         });
     }
     Ok(())

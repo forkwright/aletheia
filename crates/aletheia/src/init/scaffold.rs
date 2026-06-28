@@ -5,14 +5,17 @@ use std::path::Path;
 use snafu::ResultExt;
 
 use super::helpers::set_permissions;
-use super::{Answers, CreateDirSnafu, InitError, SerializeJsonSnafu, WriteFileSnafu};
+use super::{
+    Answers, CreateDirSnafu, InitError, SerializeJsonSnafu, WriteFileSnafu, normalize_agent_id,
+};
 
 pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
     let root = &answers.root;
+    let agent_id = normalize_agent_id(&answers.agent_id)?;
 
     let dirs = [
         root.join("config/credentials"),
-        root.join(format!("nous/{}", answers.agent_id)),
+        root.join(format!("nous/{agent_id}")),
         root.join("data"),
         root.join("logs/traces"),
         root.join("shared/coordination"),
@@ -21,7 +24,7 @@ pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
         std::fs::create_dir_all(dir).context(CreateDirSnafu { path: dir.clone() })?;
     }
 
-    let config_toml = render_config(answers);
+    let config_toml = render_config_for_agent_id(answers, &agent_id);
     let config_path = root.join(koina::defaults::DEFAULT_CONFIG_PATH);
     #[expect(
         clippy::disallowed_methods,
@@ -47,7 +50,7 @@ pub(super) fn scaffold(answers: &Answers) -> Result<(), InitError> {
         set_permissions(&cred_path, 0o600)?;
     }
 
-    scaffold_agent(root, &answers.agent_id, &answers.agent_name)?;
+    scaffold_agent(root, &agent_id, &answers.agent_name)?;
 
     Ok(())
 }
@@ -190,11 +193,16 @@ mod pronoea_template {
         include_str!("../../../../instance.example/nous/_default/WORKFLOWS.md");
 }
 
+#[cfg(test)]
 pub(super) fn render_config(a: &Answers) -> String {
+    render_config_for_agent_id(a, &a.agent_id)
+}
+
+fn render_config_for_agent_id(a: &Answers, agent_id: &str) -> String {
     // WHY: workspace is stored relative to the instance root so the config
     // works regardless of where the instance directory is placed on disk.
     // Oikos::validate_workspace_path resolves relative paths against the root.
-    let workspace = format!("nous/{}", a.agent_id);
+    let workspace = format!("nous/{agent_id}");
     let pricing_key = toml_edit::Key::new(&a.model).to_string();
     let mut config = format!(
         r#"# Aletheia Instance Configuration
@@ -299,7 +307,7 @@ source = "{credential_source}"
         auth_mode = a.auth_mode,
         model = a.model,
         pricing_key = pricing_key,
-        agent_id = a.agent_id,
+        agent_id = agent_id,
         agent_name = a.agent_name,
         workspace = workspace,
         credential_source = a.credential_source,
@@ -331,7 +339,7 @@ extraExecPaths = ["~"]
 mod tests {
     use std::path::PathBuf;
 
-    use super::{Answers, pronoea_template, render_config};
+    use super::{Answers, pronoea_template, render_config, scaffold};
 
     const TEMPLATE_PROSOCHE: &str =
         include_str!("../../../../instance.example/nous/_template/PROSOCHE.md");
@@ -398,6 +406,45 @@ mod tests {
                 "rendered config must parse for model id {model}"
             );
         }
+    }
+
+    #[test]
+    fn scaffold_normalizes_agent_id_for_paths_and_config() {
+        let dir = match tempfile::tempdir() {
+            Ok(dir) => dir,
+            Err(e) => panic!("tmpdir: {e}"),
+        };
+        let answers = Answers {
+            root: dir.path().to_path_buf(),
+            api_key: None,
+            api_provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-6".to_owned(),
+            agent_id: "Research_Agent".to_owned(),
+            agent_name: "Research Agent".to_owned(),
+            bind: "localhost".to_owned(),
+            auth_mode: "none".to_owned(),
+            timezone: "America/Chicago".to_owned(),
+            credential_source: "auto".to_owned(),
+        };
+
+        if let Err(e) = scaffold(&answers) {
+            panic!("scaffold: {e}");
+        }
+
+        assert!(
+            dir.path().join("nous/research-agent/SOUL.md").exists(),
+            "scaffold should write the normalized agent directory"
+        );
+        assert!(
+            !dir.path().join("nous/Research_Agent").exists(),
+            "scaffold must not leave a raw mixed-case directory"
+        );
+        let config = match std::fs::read_to_string(dir.path().join("config/aletheia.toml")) {
+            Ok(config) => config,
+            Err(e) => panic!("read config: {e}"),
+        };
+        assert!(config.contains(r#"id = "research-agent""#));
+        assert!(config.contains(r#"workspace = "nous/research-agent""#));
     }
 
     #[test]

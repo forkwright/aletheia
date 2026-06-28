@@ -54,6 +54,12 @@ pub(crate) enum InitError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+    #[snafu(display("invalid agent ID: {source}"))]
+    InvalidAgentId {
+        source: koina::id::IdError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
     #[snafu(display(
         "--non-interactive requires {missing}\n\
          Set via flag or environment variable."
@@ -215,9 +221,9 @@ fn run_inner(args: RunArgs, env_root: Option<PathBuf>) -> Result<(), InitError> 
                     return Ok(());
                 }
             }
-            let answers = wizard_answers_to_answers(&wa);
+            let answers = wizard_answers_to_answers(&wa)?;
             scaffold(&answers)?;
-            write_user_profile_from_wizard(&wa)?;
+            write_user_profile_from_wizard(&wa, &answers.agent_id)?;
             print_success_outro(&root_path)?;
             return Ok(());
         }
@@ -293,20 +299,15 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
     let agent_id: String = cliclack::input("Agent ID")
         .default_input(&answers.agent_id)
         .validate(|input: &String| {
-            if input.is_empty() {
-                Err("Agent ID cannot be empty")
-            } else if !input
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            {
-                Err("Agent ID must be alphanumeric (hyphens and underscores allowed)")
+            if koina::id::normalize_nous_id(input).is_err() {
+                Err("Agent ID must be route-safe: letters, numbers, hyphens, or underscores")
             } else {
                 Ok(())
             }
         })
         .interact()
         .context(PromptSnafu)?;
-    answers.agent_id = agent_id;
+    answers.agent_id = normalize_agent_id(&agent_id)?;
 
     let default_name = capitalize(&answers.agent_id);
     let agent_name: String = cliclack::input("Agent display name")
@@ -379,20 +380,26 @@ use helpers::set_permissions;
 use helpers::{capitalize, detect_timezone};
 use scaffold::scaffold;
 
+pub(super) fn normalize_agent_id(raw: &str) -> Result<String, InitError> {
+    koina::id::normalize_nous_id(raw)
+        .context(InvalidAgentIdSnafu)
+        .map(String::from)
+}
+
 #[cfg(feature = "tui")]
-fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Answers {
-    Answers {
+fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Result<Answers, InitError> {
+    Ok(Answers {
         root: wa.root.clone(),
         api_key: wa.api_key.clone(),
         api_provider: wa.api_provider.clone(),
         model: wa.model.clone(),
-        agent_id: wa.agent_id.clone(),
+        agent_id: normalize_agent_id(&wa.agent_id)?,
         agent_name: wa.agent_name.clone(),
         bind: wa.bind.clone(),
         auth_mode: wa.auth_mode.clone(),
         timezone: wa.timezone.clone(),
         credential_source: wa.credential_source.clone(),
-    }
+    })
 }
 
 /// Write operator profile data collected by the TUI wizard into USER.md.
@@ -405,12 +412,15 @@ fn wizard_answers_to_answers(wa: &koilon::wizard::WizardAnswers) -> Answers {
     clippy::disallowed_methods,
     reason = "sync init wizard; no async runtime"
 )]
-fn write_user_profile_from_wizard(wa: &koilon::wizard::WizardAnswers) -> Result<(), InitError> {
+fn write_user_profile_from_wizard(
+    wa: &koilon::wizard::WizardAnswers,
+    agent_id: &str,
+) -> Result<(), InitError> {
     if wa.user_name.is_empty() && wa.user_role.is_empty() {
         return Ok(());
     }
 
-    let user_md_path = wa.root.join(format!("nous/{}/USER.md", wa.agent_id));
+    let user_md_path = wa.root.join(format!("nous/{agent_id}/USER.md"));
     if !user_md_path.exists() {
         return Ok(());
     }

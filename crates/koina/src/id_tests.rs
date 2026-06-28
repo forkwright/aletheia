@@ -15,14 +15,6 @@ fn invalid_nous_id_empty() {
 }
 
 #[test]
-fn invalid_nous_id_uppercase() {
-    assert!(matches!(
-        NousId::new("Syn"),
-        Err(IdError::InvalidFormat { .. })
-    ));
-}
-
-#[test]
 fn invalid_nous_id_too_long() {
     let long = "a".repeat(65);
     assert!(matches!(NousId::new(long), Err(IdError::TooLong { .. })));
@@ -97,8 +89,31 @@ fn nous_id_max_length_accepted() {
 }
 
 #[test]
-fn nous_id_leading_hyphen() {
-    assert!(NousId::new("-syn").is_ok());
+fn nous_id_normalizes_case_and_underscores() {
+    let id = NousId::new("Research_Agent").unwrap();
+    assert_eq!(id.as_str(), "research-agent");
+}
+
+#[test]
+fn nous_id_trims_outer_whitespace() {
+    let id = NousId::new("  Syn  ").unwrap();
+    assert_eq!(id.as_str(), "syn");
+}
+
+#[test]
+fn nous_id_rejects_leading_hyphen_after_normalization() {
+    assert!(matches!(
+        NousId::new("-syn"),
+        Err(IdError::InvalidFormat { .. })
+    ));
+}
+
+#[test]
+fn nous_id_rejects_trailing_hyphen_after_normalization() {
+    assert!(matches!(
+        NousId::new("syn_"),
+        Err(IdError::InvalidFormat { .. })
+    ));
 }
 
 #[test]
@@ -109,10 +124,6 @@ fn nous_id_digits_only() {
 #[test]
 fn nous_id_special_chars_rejected() {
     assert!(matches!(
-        NousId::new("syn_1"),
-        Err(IdError::InvalidFormat { .. })
-    ));
-    assert!(matches!(
         NousId::new("syn.1"),
         Err(IdError::InvalidFormat { .. })
     ));
@@ -120,6 +131,36 @@ fn nous_id_special_chars_rejected() {
         NousId::new("syn 1"),
         Err(IdError::InvalidFormat { .. })
     ));
+}
+
+#[test]
+fn nous_id_rejects_path_separators() {
+    for raw in ["syn/one", "syn\\one", "../syn", "syn%2fone"] {
+        assert!(
+            matches!(NousId::new(raw), Err(IdError::InvalidFormat { .. })),
+            "{raw:?} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn nous_id_rejects_reserved_internal_prefix() {
+    let err = NousId::new("Cross:alice").unwrap_err();
+    assert!(
+        err.to_string().contains("reserved internal prefix"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn normalize_nous_id_returns_route_safe_id() {
+    let id = normalize_nous_id("Desk_Agent42").unwrap();
+    assert_eq!(id.as_str(), "desk-agent42");
+    assert!(
+        id.as_str()
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    );
 }
 
 #[test]

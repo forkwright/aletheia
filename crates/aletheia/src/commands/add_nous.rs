@@ -12,7 +12,7 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct AddNousArgs {
-    /// Agent identifier (alphanumeric and hyphens only).
+    /// Agent identifier. Case folds to lowercase; underscores normalize to hyphens.
     pub name: String,
 
     /// LLM provider.
@@ -25,7 +25,7 @@ pub(crate) struct AddNousArgs {
 }
 
 pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> Result<()> {
-    validate_name(&args.name)?;
+    let args = normalize_args(args)?;
     validate_provider(&args.provider)?;
     validate_model(&args.model)?;
 
@@ -41,7 +41,7 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
 
     // WHY: parse, validate, and prepare the config update before touching the
     // filesystem so bad TOML, duplicate IDs, or unwritable config fail fast.
-    let prepared = prepare_config_update(&oikos, args)?;
+    let prepared = prepare_config_update(&oikos, &args)?;
 
     let nous_dir = oikos.nous_dir(&args.name);
     if nous_dir.exists() {
@@ -51,7 +51,7 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
         );
     }
 
-    scaffold_directory(&oikos, args)?;
+    scaffold_directory(&oikos, &args)?;
 
     // WHY: apply the validated config update; rollback the scaffold if it fails.
     if let Err(e) = apply_config_update(&prepared) {
@@ -61,22 +61,27 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
     }
 
     try_register(&oikos, &args.name).await;
-    print_summary(&oikos, args);
+    print_summary(&oikos, &args);
 
     Ok(())
 }
 
+#[cfg(test)]
 fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty() {
-        whatever!("agent name cannot be empty");
+    normalize_name(name).map(|_| ())
+}
+
+fn normalize_args(args: &AddNousArgs) -> Result<AddNousArgs> {
+    let mut normalized = args.clone();
+    normalized.name = normalize_name(&args.name)?;
+    Ok(normalized)
+}
+
+fn normalize_name(name: &str) -> Result<String> {
+    match koina::id::normalize_nous_id(name) {
+        Ok(id) => Ok(String::from(id)),
+        Err(err) => whatever!("invalid agent name: {err}"),
     }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        whatever!("agent name must contain only alphanumeric characters and hyphens");
-    }
-    if name.starts_with('-') || name.ends_with('-') {
-        whatever!("agent name cannot start or end with a hyphen");
-    }
-    Ok(())
 }
 
 fn validate_provider(provider: &str) -> Result<()> {
@@ -439,6 +444,10 @@ mod tests {
             validate_name("agent42").is_ok(),
             "alphanumeric name should be valid"
         );
+        assert!(
+            validate_name("My_Agent").is_ok(),
+            "case and underscores should normalize"
+        );
     }
 
     #[test]
@@ -448,10 +457,6 @@ mod tests {
 
     #[test]
     fn validate_name_rejects_special_chars() {
-        assert!(
-            validate_name("my_agent").is_err(),
-            "underscore in name should be rejected"
-        );
         assert!(
             validate_name("my agent").is_err(),
             "space in name should be rejected"
@@ -469,9 +474,14 @@ mod tests {
             "leading hyphen in name should be rejected"
         );
         assert!(
-            validate_name("agent-").is_err(),
+            validate_name("agent_").is_err(),
             "trailing hyphen in name should be rejected"
         );
+    }
+
+    #[test]
+    fn normalize_name_folds_case_and_underscores() {
+        assert_eq!(normalize_name("My_Agent").unwrap(), "my-agent");
     }
 
     #[test]
@@ -836,6 +846,34 @@ mod tests {
         );
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("already exists"), "got: {msg}");
+    }
+
+    #[test]
+    fn run_normalizes_agent_id_before_scaffolding_and_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let _oikos = init_instance(&dir);
+
+        let args = AddNousArgs {
+            name: "Desk_Agent".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-20250514".to_owned(),
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(run(Some(&dir.path().to_path_buf()), &args))
+            .unwrap();
+
+        assert!(
+            dir.path().join("nous/desk-agent/SOUL.md").exists(),
+            "normalized directory should be scaffolded"
+        );
+        assert!(
+            !dir.path().join("nous/Desk_Agent").exists(),
+            "raw mixed-case directory must not be scaffolded"
+        );
+        let config = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        assert!(config.contains(r#"id = "desk-agent""#));
+        assert!(config.contains(r#"workspace = "nous/desk-agent""#));
     }
 
     #[test]

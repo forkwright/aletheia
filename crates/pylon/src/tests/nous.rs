@@ -243,11 +243,64 @@ async fn get_nous_tools() {
 }
 
 #[tokio::test]
+async fn post_nous_normalizes_id_before_scaffold_and_config() {
+    let (app, dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/nous",
+        Some(serde_json::json!({
+            "id": "Desk_Agent",
+            "name": "Desk Agent",
+            "model": "mock-model"
+        })),
+    );
+
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_json(resp).await;
+    assert_eq!(body["id"], "desk-agent");
+    assert_eq!(body["name"], "Desk Agent");
+    assert!(
+        dir.path().join("nous/desk-agent/SOUL.md").exists(),
+        "normalized directory should be scaffolded"
+    );
+    assert!(
+        !dir.path().join("nous/Desk_Agent").exists(),
+        "raw mixed-case directory must not be scaffolded"
+    );
+    let config = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+    assert!(config.contains(r#"id = "desk-agent""#));
+    assert!(config.contains(r#"workspace = "nous/desk-agent""#));
+}
+
+#[tokio::test]
+async fn post_nous_rejects_path_separator_and_reserved_prefix_ids() {
+    let (app, _dir) = app().await;
+
+    for id in ["../escape", "cross:agent"] {
+        let req = authed_request(
+            "POST",
+            "/api/v1/nous",
+            Some(serde_json::json!({
+                "id": id,
+                "model": "mock-model"
+            })),
+        );
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY, "{id}");
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "validation_failed");
+    }
+}
+
+#[tokio::test]
 async fn patch_nous_enabled_updates_summary() {
     let (app, _dir) = app().await;
     let req = authed_request(
         "PATCH",
-        "/api/v1/nous/syn",
+        "/api/v1/nous/SYN",
         Some(serde_json::json!({ "enabled": false })),
     );
     let resp = app.oneshot(req).await.unwrap();

@@ -113,9 +113,16 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
     let applied_env_vars = apply_env_overlay(&mut root, "ALETHEIA_", "__");
     mirror_data_retention(&mut root);
 
-    serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
+    let config = serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
         reason: deserialize_reason(&applied_env_vars),
-    })
+    })?;
+    crate::validate::validate_config(&config).map_err(|err| {
+        LoadSnafu {
+            reason: format!("validate merged config: {err}"),
+        }
+        .build()
+    })?;
+    Ok(config)
 }
 
 fn mirror_data_retention(root: &mut JsonValue) {
@@ -731,6 +738,33 @@ mod tests {
         assert_eq!(
             config.gateway.port, 4242,
             "in-memory toml port should be loaded"
+        );
+    }
+
+    #[test]
+    fn load_config_with_rejects_noncanonical_agent_id() {
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
+
+        let mut fs = TestSystem::new();
+        fs.add_file(
+            toml_path,
+            br#"
+[[agents.list]]
+id = "Research_Agent"
+workspace = "nous/research-agent"
+"#,
+        );
+
+        let err = match load_config_with(&oikos, &fs) {
+            Ok(config) => panic!("expected invalid agent id, loaded config: {config:?}"),
+            Err(err) => err,
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("research-agent"),
+            "load error should include canonical correction, got: {msg}"
         );
     }
 
