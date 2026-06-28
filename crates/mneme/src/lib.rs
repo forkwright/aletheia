@@ -113,9 +113,10 @@ pub mod knowledge_error {
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 pub mod portability {
     pub use graphe::portability::{
-        AGENT_FILE_VERSION, AgentFile, ExportMetadata, ExportedMessage, ExportedNote,
-        ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge, GraphData,
-        KnowledgeExport, MemoryData, NousInfo, OmittedSection, TruncationRecord, WorkspaceData,
+        AGENT_FILE_VERSION, AgentFile, BinaryFileData, ExportMetadata, ExportedMessage,
+        ExportedNote, ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge,
+        GraphData, KnowledgeExport, MemoryData, NousInfo, OmittedSection, TruncationRecord,
+        WorkspaceData,
     };
 }
 
