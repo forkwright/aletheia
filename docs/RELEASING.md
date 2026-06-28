@@ -24,7 +24,8 @@ scripts/check-cargo-publish-policy.py
 1. Merge conventional-commit-formatted PRs to `main`
 2. [release-please](https://github.com/googleapis/release-please) opens a
    version-bump PR that updates `.release-please-manifest.json` and `Cargo.toml`
-3. Review and merge the release PR
+3. Review and merge the release PR after the normal PR gates pass. Release
+   automation does not receive a gate waiver by author identity.
 4. release-please creates a git tag (`vX.Y.Z`) and GitHub Release
 5. The tag triggers `.github/workflows/release.yml`:
    - Verifies proskenion's standalone theatron pins match the root workspace
@@ -163,7 +164,12 @@ Per-binary SBOMs are attested and scoped to the linked binary artifact. Workspac
 
 ## Supply chain
 
-- `cargo-audit` and `cargo-deny` run on every PR (`.github/workflows/security.yml`)
+- Automation PR gate and auto-merge policy is documented in
+  [AUTOMATION-PR-GATES.md](AUTOMATION-PR-GATES.md)
+- `cargo-audit` and `cargo-deny` run on every PR
+  (`.github/workflows/security.yml`). If private dependency credentials are
+  unavailable, the checks fail closed instead of reporting a green substitute
+  status.
 - CodeQL runs before merge through `.github/workflows/codeql-pr.yml` when a PR
   touches Rust source, Cargo manifests or lockfile, GitHub workflows,
   `.github/codeql/`, Dependabot config, `.github/SECURITY.md`, or

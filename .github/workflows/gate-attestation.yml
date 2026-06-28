@@ -29,20 +29,7 @@ jobs:
       # keep usable backtraces for test failures at a fraction of the size.
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
-      # WHY: bypass keys off the PR author login, not github.actor. The actor
-      # changes to a maintainer login whenever someone re-runs the workflow
-      # (e.g. clicking "Re-run failed jobs" on a dependabot PR), which silently
-      # re-armed the trailer check on automation PRs and started rejecting them
-      # — see #4084 where a forkwright re-run flipped a dependabot PR red.
-      # The PR author is the stable identity worth waiving.
-      - name: Pass trusted automation PRs
-        if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.user.login == 'release-please[bot]' }}
-        env:
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: echo "Gate attestation waived for trusted automation PR author ${PR_AUTHOR}."
-
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -52,7 +39,6 @@ jobs:
       # that headroom when the cargo cache is cold — ENOSPC killed the gate
       # mid-nextest on 2026-06-11. Plain rm keeps this dependency-free.
       - name: Reclaim runner disk
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
             /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
@@ -60,18 +46,15 @@ jobs:
           df -h / | tail -1
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         with:
           toolchain: stable
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         with:
           key: gate-attestation
 
       - name: Configure git credentials for private fleet deps
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         env:
           FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
         run: |
@@ -84,29 +67,23 @@ jobs:
           chmod 0600 ~/.git-credentials
 
       - name: Install cargo-nextest
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
 
       - name: Check test tier features
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: scripts/check-test-tier-features.py
 
       - name: cargo fmt --check
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo fmt --all -- --check
 
       - name: Cargo publish policy
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: scripts/check-cargo-publish-policy.py
 
       - name: Proskenion flake wiring
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: scripts/check-proskenion-flake.py
 
       - name: Poiesis feature gates
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: |
           cargo check -p poiesis-slides
           cargo check -p poiesis-slides --no-default-features
@@ -114,21 +91,18 @@ jobs:
           cargo check -p poiesis-sheet --no-default-features --features workbook
 
       - name: cargo clippy
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo check fuzz targets
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         env:
           CARGO_TARGET_DIR: target
         run: cargo check --manifest-path fuzz/Cargo.toml --bins
 
       - name: cargo nextest run
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: cargo nextest run --profile ci --workspace --features test-core
 
       - name: Upload nextest failure artifacts
-        if: ${{ failure() && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nextest-gate-attestation
@@ -138,5 +112,4 @@ jobs:
           if-no-files-found: warn
 
       - name: Gate summary
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
         run: echo "gate passed — fmt clean, clippy clean, tests passed"
