@@ -13,6 +13,22 @@ use crate::store::records::{
 #[cfg(feature = "storage-fjall")]
 use crate::store::schema;
 
+#[cfg(feature = "storage-fjall")]
+fn prefix_upper_bound(prefix: &str) -> String {
+    let mut bytes = prefix.as_bytes().to_vec();
+    if let Some(last) = bytes.last_mut() {
+        *last = last.saturating_add(1);
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| prefix.to_owned())
+}
+
+#[cfg(feature = "storage-fjall")]
+fn ulid_floor_for_millisecond(ms: i64) -> String {
+    let clamped_ms = u64::try_from(ms).unwrap_or(0).min((1_u64 << 48) - 1);
+    let value = u128::from(clamped_ms) << 80;
+    koina::ulid::Ulid::from_u128(value).to_string()
+}
+
 /// Deserialize a `MessagePack` value from a fjall value slice.
 #[cfg(feature = "storage-fjall")]
 pub(crate) fn deserialize_value<T: serde::de::DeserializeOwned>(value: &[u8]) -> Result<T> {
@@ -81,6 +97,34 @@ fn prefix_scan_reverse<T: serde::de::DeserializeOwned>(
             .build()
         })?;
         results.push(deserialize_value::<T>(&value)?);
+    }
+    Ok(results)
+}
+
+#[cfg(feature = "storage-fjall")]
+fn range_scan<T: serde::de::DeserializeOwned>(
+    keyspace: &fjall::Keyspace,
+    start: &[u8],
+    end: &[u8],
+    context: &str,
+    limit: usize,
+    filter: impl Fn(&T) -> bool,
+) -> Result<Vec<T>> {
+    let mut results = Vec::new();
+    for guard in keyspace.range(start..end) {
+        if results.len() >= limit {
+            break;
+        }
+        let (_key, value) = guard.into_inner().map_err(|e| {
+            error::StoreSnafu {
+                message: format!("{context}: {e}"),
+            }
+            .build()
+        })?;
+        let record = deserialize_value::<T>(&value)?;
+        if filter(&record) {
+            results.push(record);
+        }
     }
     Ok(results)
 }
@@ -199,6 +243,31 @@ pub(crate) fn list_dispatches(
     )
 }
 
+/// Collect dispatch records whose creation time is inside the optional window.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_dispatches_since(
+    keyspace: &fjall::Keyspace,
+    cutoff_ms: Option<i64>,
+    limit: usize,
+) -> Result<Vec<crate::store::records::DispatchRecord>> {
+    let prefix = schema::dispatch_prefix();
+    let start = cutoff_ms.map_or_else(
+        || prefix.to_owned(),
+        |cutoff| format!("{prefix}{}", ulid_floor_for_millisecond(cutoff)),
+    );
+    let end = prefix_upper_bound(prefix);
+    range_scan(
+        keyspace,
+        start.as_bytes(),
+        end.as_bytes(),
+        "dispatch range scan",
+        limit,
+        |record: &DispatchRecord| {
+            cutoff_ms.is_none_or(|cutoff| record.created_at.as_millisecond() >= cutoff)
+        },
+    )
+}
+
 /// Collect newest dispatch records via reverse prefix scan.
 ///
 /// Results are ordered by ULID descending. Use `limit` to cap memory usage.
@@ -230,12 +299,36 @@ pub(crate) fn list_all_sessions(
     )
 }
 
-/// Collect all CI validation records across all sessions via prefix scan.
-///
-/// Use `limit` to cap memory usage.
+/// Collect session records whose creation time is inside the optional window.
 #[cfg(feature = "storage-fjall")]
-pub(crate) fn list_all_ci_validations(
+pub(crate) fn list_all_sessions_since(
     keyspace: &fjall::Keyspace,
+    cutoff_ms: Option<i64>,
+    limit: usize,
+) -> Result<Vec<SessionRecord>> {
+    let prefix = schema::session_prefix();
+    let start = cutoff_ms.map_or_else(
+        || prefix.to_owned(),
+        |cutoff| format!("{prefix}{}:", ulid_floor_for_millisecond(cutoff)),
+    );
+    let end = prefix_upper_bound(prefix);
+    range_scan(
+        keyspace,
+        start.as_bytes(),
+        end.as_bytes(),
+        "session range scan",
+        limit,
+        |record: &SessionRecord| {
+            cutoff_ms.is_none_or(|cutoff| record.created_at.as_millisecond() >= cutoff)
+        },
+    )
+}
+
+/// Collect CI validation records whose validation time is inside the optional window.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_all_ci_validations_since(
+    keyspace: &fjall::Keyspace,
+    cutoff_ms: Option<i64>,
     limit: usize,
 ) -> Result<Vec<CiValidationRecord>> {
     let prefix_bytes = schema::ci_validation_prefix().as_bytes();
@@ -244,7 +337,9 @@ pub(crate) fn list_all_ci_validations(
         prefix_bytes,
         "ci_validation prefix scan",
         limit,
-        |_: &CiValidationRecord| true,
+        |record: &CiValidationRecord| {
+            cutoff_ms.is_none_or(|cutoff| record.validated_at.as_millisecond() >= cutoff)
+        },
     )
 }
 
@@ -264,10 +359,11 @@ pub(crate) fn list_ci_validations_for_session(
     )
 }
 
-/// Collect all QA verdict records across all dispatches via prefix scan.
+/// Collect QA verdict records whose record time is inside the optional window.
 #[cfg(feature = "storage-fjall")]
-pub(crate) fn list_all_qa_verdicts(
+pub(crate) fn list_all_qa_verdicts_since(
     keyspace: &fjall::Keyspace,
+    cutoff_ms: Option<i64>,
     limit: usize,
 ) -> Result<Vec<QaVerdictRecord>> {
     let prefix_bytes = schema::qa_verdict_prefix().as_bytes();
@@ -276,7 +372,9 @@ pub(crate) fn list_all_qa_verdicts(
         prefix_bytes,
         "qa_verdict prefix scan",
         limit,
-        |_: &QaVerdictRecord| true,
+        |record: &QaVerdictRecord| {
+            cutoff_ms.is_none_or(|cutoff| record.recorded_at.as_millisecond() >= cutoff)
+        },
     )
 }
 

@@ -158,26 +158,19 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
         None
     };
 
-    // Load raw data — time filtering happens in-process after the scans.
-    let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
-    let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
-    let all_ci_validations = store.list_all_ci_validations(SCAN_LIMIT_CI_VALIDATIONS)?;
-    let all_qa_verdicts = store.list_all_qa_verdicts(SCAN_LIMIT_QA_VERDICTS)?;
+    let dispatches = store.list_dispatches_since(cutoff_ms, SCAN_LIMIT_DISPATCHES)?;
+    let sessions = store.list_all_sessions_since(cutoff_ms, SCAN_LIMIT_SESSIONS)?;
+    let ci_validations =
+        store.list_all_ci_validations_since(cutoff_ms, SCAN_LIMIT_CI_VALIDATIONS)?;
+    let qa_verdicts = store.list_all_qa_verdicts_since(cutoff_ms, SCAN_LIMIT_QA_VERDICTS)?;
 
-    let dispatches: Vec<&DispatchRecord> = all_dispatches
-        .iter()
-        .filter(|d| cutoff_ms.is_none_or(|cutoff| d.created_at.as_millisecond() >= cutoff))
-        .collect();
-
-    let sessions: Vec<&SessionRecord> = all_sessions
-        .iter()
-        .filter(|s| cutoff_ms.is_none_or(|cutoff| s.created_at.as_millisecond() >= cutoff))
-        .collect();
+    let dispatch_refs: Vec<&DispatchRecord> = dispatches.iter().collect();
+    let session_refs: Vec<&SessionRecord> = sessions.iter().collect();
 
     // Build session-id → CI validations map for O(1) per-session lookup.
     let ci_by_session: HashMap<String, Vec<&CiValidationRecord>> = {
         let mut map: HashMap<String, Vec<&CiValidationRecord>> = HashMap::new();
-        for v in &all_ci_validations {
+        for v in &ci_validations {
             map.entry(v.session_id.as_str().to_owned())
                 .or_default()
                 .push(v);
@@ -186,13 +179,13 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
     };
 
     let metrics = vec![
-        corrective_rate(&dispatches, &sessions, &all_qa_verdicts),
-        stuck_rate(&sessions),
-        qa_false_positive_rate(&sessions, &ci_by_session),
-        fix_agent_success_rate(&sessions, &ci_by_session),
-        cycle_time(&dispatches),
+        corrective_rate(&dispatch_refs, &session_refs, &qa_verdicts),
+        stuck_rate(&session_refs),
+        qa_false_positive_rate(&session_refs, &ci_by_session),
+        fix_agent_success_rate(&session_refs, &ci_by_session),
+        cycle_time(&dispatch_refs),
         observation_to_issue_rate(),
-        batch_parallelism(&dispatches, &sessions),
+        batch_parallelism(&dispatch_refs, &session_refs),
     ];
 
     Ok(HealthReport {

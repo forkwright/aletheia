@@ -27,6 +27,14 @@ fn sample_dispatch_spec() -> DispatchSpec {
     }
 }
 
+fn ulid_for_millisecond(ms: u64) -> String {
+    koina::ulid::Ulid::from_u128(u128::from(ms) << 80).to_string()
+}
+
+fn timestamp_ms(ms: i64) -> jiff::Timestamp {
+    jiff::Timestamp::from_millisecond(ms).unwrap()
+}
+
 // ── Dispatch tests ──
 
 #[test]
@@ -99,6 +107,38 @@ fn finish_nonexistent_dispatch_returns_not_found() {
     let id = DispatchId::new("01NONEXISTENT");
     let result = store.finish_dispatch(&id, DispatchStatus::Failed);
     assert!(result.is_err());
+}
+
+#[test]
+fn list_dispatches_since_starts_at_cutoff_ulid() {
+    let (_dir, store) = setup_test_store();
+    let old = DispatchRecord {
+        id: DispatchId::new(ulid_for_millisecond(1_000)),
+        project: "acme".to_owned(),
+        spec: "{}".to_owned(),
+        status: DispatchStatus::Completed,
+        created_at: timestamp_ms(1_000),
+        finished_at: Some(timestamp_ms(1_100)),
+        total_cost_usd: 0.0,
+        total_sessions: 0,
+    };
+    let new = DispatchRecord {
+        id: DispatchId::new(ulid_for_millisecond(3_000)),
+        project: "acme".to_owned(),
+        spec: "{}".to_owned(),
+        status: DispatchStatus::Completed,
+        created_at: timestamp_ms(3_000),
+        finished_at: Some(timestamp_ms(3_100)),
+        total_cost_usd: 0.0,
+        total_sessions: 0,
+    };
+    store.insert_dispatch_record_for_test(&old).unwrap();
+    store.insert_dispatch_record_for_test(&new).unwrap();
+
+    let dispatches = store.list_dispatches_since(Some(2_000), 100).unwrap();
+
+    assert_eq!(dispatches.len(), 1);
+    assert_eq!(dispatches[0].id, new.id);
 }
 
 // ── Session tests ──
@@ -211,6 +251,32 @@ fn update_nonexistent_session_returns_not_found() {
     let id = SessionId::new("01NONEXISTENT");
     let result = store.update_session(&id, SessionUpdate::default());
     assert!(result.is_err());
+}
+
+#[test]
+fn list_sessions_since_filters_outside_window() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+    let old_id = store.create_session(&dispatch_id, 1).unwrap();
+    let new_id = store.create_session(&dispatch_id, 2).unwrap();
+    let mut sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
+    sessions.sort_by_key(|session| session.prompt_number);
+    sessions[0].created_at = timestamp_ms(1_000);
+    sessions[0].updated_at = timestamp_ms(1_000);
+    sessions[1].created_at = timestamp_ms(3_000);
+    sessions[1].updated_at = timestamp_ms(3_000);
+    for session in &sessions {
+        let key = schema::session_key(&session.dispatch_id, session.prompt_number);
+        let value = serialize_msgpack(session, "windowed session").unwrap();
+        store.keyspace.insert(key.as_bytes(), value).unwrap();
+    }
+
+    let filtered = store.list_all_sessions_since(Some(2_000), 100).unwrap();
+
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].id, new_id);
+    assert_ne!(filtered[0].id, old_id);
 }
 
 // ── Lesson tests ──
