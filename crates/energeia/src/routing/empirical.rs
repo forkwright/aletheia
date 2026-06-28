@@ -11,7 +11,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_routing::store::AfterActionStoreError;
+use aletheia_routing::store::{AfterActionStoreError, RollingStats};
 use aletheia_routing::types::{RequestFeatures, TurnOutcome};
 use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
 use tokio::sync::mpsc;
@@ -20,6 +20,8 @@ use tracing::Instrument;
 
 use super::store::AfterActionStore;
 use super::{ProviderId, StaticRouter, TaskCategory};
+
+const ROLLING_STATS_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// Empirical provider router.
 ///
@@ -112,8 +114,7 @@ impl EmpiricalRouter {
 
         for provider in candidates {
             let stats = self
-                .store
-                .rolling_stats(provider, task_category, self.window)
+                .rolling_stats_bounded(provider, task_category)
                 .await
                 .inspect_err(|error| {
                     tracing::error!(
@@ -165,8 +166,7 @@ impl EmpiricalRouter {
         // When the static choice is allowed, preserve the existing confidence
         // threshold before switching away from it.
         let static_rate = if static_allowed {
-            self.store
-                .rolling_stats(static_choice, task_category, self.window)
+            self.rolling_stats_bounded(static_choice, task_category)
                 .await
                 .inspect_err(|error| {
                     tracing::error!(
@@ -216,11 +216,33 @@ impl EmpiricalRouter {
         provider: &ProviderId,
         task_category: &TaskCategory,
     ) -> Result<Option<f64>, AfterActionStoreError> {
-        let stats = self
-            .store
-            .rolling_stats(provider, task_category, self.window)
-            .await?;
+        let stats = self.rolling_stats_bounded(provider, task_category).await?;
         Ok(stats.and_then(|s| s.success_rate()))
+    }
+
+    async fn rolling_stats_bounded(
+        &self,
+        provider: &ProviderId,
+        task_category: &TaskCategory,
+    ) -> Result<Option<RollingStats>, AfterActionStoreError> {
+        match tokio::time::timeout(
+            ROLLING_STATS_TIMEOUT,
+            self.store
+                .rolling_stats(provider, task_category, self.window),
+        )
+        .await
+        {
+            Ok(stats) => stats,
+            Err(_elapsed) => {
+                tracing::warn!(
+                    provider = %provider,
+                    category = %task_category,
+                    timeout_ms = ROLLING_STATS_TIMEOUT.as_millis(),
+                    "empirical routing stats timed out"
+                );
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -295,11 +317,7 @@ impl Router for EmpiricalRouter {
                     self.fallback.pick(category).clone()
                 }
             };
-            let confidence = match self
-                .store
-                .rolling_stats(&chosen, &category, self.window)
-                .await
-            {
+            let confidence = match self.rolling_stats_bounded(&chosen, &category).await {
                 Ok(stats) => stats.and_then(|s| s.success_rate()),
                 Err(error) => {
                     tracing::error!(
