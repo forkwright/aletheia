@@ -2,6 +2,12 @@
 
 Every feature flag defined in the workspace, how flags interact across crates, and common build recipes.
 
+Release feature coverage is derived from `cargo metadata` by
+`scripts/release-feature-policy.py`. The only hand-maintained release policy is
+`scripts/release-feature-policy.toml`, which records documented exclusions
+such as network-only test tiers and the no-default feature combinations that
+Cargo metadata cannot infer.
+
 ## Feature Table
 
 | Crate | Feature | Default? | Enables | Depends on |
@@ -49,7 +55,6 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **episteme** | `default` | **yes** | `graph-algo`, `reranker` | - |
 | **episteme** | `graph-algo` | no | Graph algorithms | - |
 | **episteme** | `reranker` | no | HTTP cross-encoder reranker | `dep:reqwest`, `dep:rustls`, `dep:tokio` |
-| **episteme** | `local-reranker` | no | Local reranker on the reranker plumbing | `reranker` |
 | **episteme** | `gliner` | no | GLiNER ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `nuextract` | no | NuExtract ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `openai-embed` | no | OpenAI-compatible embedding provider | `dep:reqwest`, `dep:tokio`, `dep:rustls` |

@@ -1,0 +1,51 @@
+# Release feature gates are derived from Cargo metadata. This manifest only
+# records intentional policy exceptions and feature combinations that metadata
+# cannot infer by itself.
+
+[[feature_exclusions]]
+crate = "*"
+feature = "default"
+category = "covered-by-default-gates"
+reason = "Default feature sets are covered by the workspace test and release build jobs; the release feature matrix focuses on optional feature surfaces."
+
+[[feature_exclusions]]
+crate = "*"
+feature = "online-tests"
+category = "network"
+reason = "Network-dependent test features are exercised by .github/workflows/online-tests.yml instead of release tag builds."
+
+[[feature_exclusions]]
+crate = "*"
+feature = "test-full"
+category = "expensive"
+reason = "Full ML/network test tiers are scheduled and label-triggered in .github/workflows/online-tests.yml; release tags keep deterministic test-core coverage."
+
+[[no_default_recipes]]
+name = "bare-minimum"
+crate = "aletheia"
+features = []
+reason = "Bare minimum: no TUI, no recall wiring, no ML, no Claude Code provider."
+
+[[no_default_recipes]]
+name = "minimal-headless-tls"
+crate = "aletheia"
+features = ["tls"]
+reason = "Minimal headless deployment: HTTP API plus TLS, no recall wiring or ML stack."
+
+[[no_default_recipes]]
+name = "headless-tls-keyring"
+crate = "aletheia"
+features = ["tls", "keyring"]
+reason = "Headless deployment with keyring-backed auth, still without ML."
+
+[[no_default_recipes]]
+name = "minimal-mcp"
+crate = "aletheia"
+features = ["mcp"]
+reason = "Minimal MCP server recipe with the recall wiring required by knowledge tools."
+
+[[no_default_recipes]]
+name = "full-headless"
+crate = "aletheia"
+features = ["recall", "storage-fjall", "embed-candle", "cc-provider", "tls"]
+reason = "Full headless deployment: recall plus ML plus Claude Code provider and TLS, no TUI."
