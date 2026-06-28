@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
@@ -137,12 +137,28 @@ pub(super) async fn test_state_with_error_provider(
     .await
 }
 
+async fn test_state_with_mock_provider(
+    provider: Option<MockProvider>,
+    include_private_nous: bool,
+    auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_llm_provider(
+        provider.map(|p| {
+            let boxed: Box<dyn LlmProvider> = Box::new(p);
+            boxed
+        }),
+        include_private_nous,
+        auth_mode,
+    )
+    .await
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "WHY(#4872): test harness AppState construction with per-provider fixture setup is inherently long; inner expect(disallowed_methods) annotations inflate line count"
 )]
-async fn test_state_with_mock_provider(
-    provider: Option<MockProvider>,
+pub(super) async fn test_state_with_llm_provider(
+    provider: Option<Box<dyn LlmProvider>>,
     include_private_nous: bool,
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
@@ -225,7 +241,7 @@ bind = "localhost"
 
     let mut provider_registry = ProviderRegistry::new();
     if let Some(provider) = provider {
-        provider_registry.register(Box::new(provider));
+        provider_registry.register(provider);
     }
     let provider_registry = Arc::new(provider_registry);
     let tool_registry = Arc::new(ToolRegistry::new());

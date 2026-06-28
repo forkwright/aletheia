@@ -52,6 +52,48 @@ type AxumEventStream =
     Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send + 'static>>;
 type BoxedSse = Sse<KeepAliveStream<AxumEventStream>>;
 
+fn usage_data_from_provider(usage: hermeneus::types::Usage) -> UsageData {
+    UsageData {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        cache_write_tokens: usage.cache_write_tokens,
+    }
+}
+
+fn provider_stream_event_to_turn_event(event: LlmStreamEvent) -> PylonTurnStreamEvent {
+    match event {
+        LlmStreamEvent::TextDelta { text } => PylonTurnStreamEvent::TextDelta { text },
+        LlmStreamEvent::ThinkingDelta { thinking } => {
+            PylonTurnStreamEvent::ThinkingDelta { text: thinking }
+        }
+        LlmStreamEvent::InputJsonDelta { partial_json } => {
+            PylonTurnStreamEvent::ProviderInputJsonDelta { partial_json }
+        }
+        LlmStreamEvent::ContentBlockStart { index, block_type } => {
+            PylonTurnStreamEvent::ProviderContentBlockStart { index, block_type }
+        }
+        LlmStreamEvent::ContentBlockStop { index } => {
+            PylonTurnStreamEvent::ProviderContentBlockStop { index }
+        }
+        LlmStreamEvent::MessageStart { usage } => PylonTurnStreamEvent::ProviderMessageStart {
+            usage: usage_data_from_provider(usage),
+        },
+        LlmStreamEvent::MessageStop { stop_reason, usage } => {
+            PylonTurnStreamEvent::ProviderMessageStop {
+                stop_reason: stop_reason.as_str().to_owned(),
+                usage: usage_data_from_provider(usage),
+            }
+        }
+        LlmStreamEvent::UnsupportedEvent { event_type } => {
+            PylonTurnStreamEvent::ProviderUnsupportedEvent { event_type }
+        }
+        _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
+            event_type: "unknown".to_owned(),
+        },
+    }
+}
+
 fn boxed_event_stream<S>(stream: S) -> AxumEventStream
 where
     S: tokio_stream::Stream<Item = Result<Event, Infallible>> + Send + 'static,
@@ -620,8 +662,8 @@ pub async fn send_message(
 ///
 /// Accepts a `StreamTurnRequest` (`nous_id`, `message`, `session_key`, `client_turn_id`) and
 /// returns SSE events in `TurnStreamEvent` format (used by TUI and desktop clients):
-/// `message_start`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`,
-/// `message_complete`, `error`.
+/// `message_start`, provider lifecycle events, `text_delta`, `thinking_delta`, `tool_use`,
+/// `tool_result`, `message_complete`, `error`.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/stream",
@@ -872,11 +914,8 @@ pub async fn stream_turn(
         async move {
             while let Some(event) = nous_rx.recv().await {
                 let turn_event = match event {
-                    TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
-                        PylonTurnStreamEvent::TextDelta { text }
-                    }
-                    TurnStreamEvent::LlmDelta(LlmStreamEvent::ThinkingDelta { thinking }) => {
-                        PylonTurnStreamEvent::ThinkingDelta { text: thinking }
+                    TurnStreamEvent::LlmDelta(llm_event) => {
+                        provider_stream_event_to_turn_event(llm_event)
                     }
                     TurnStreamEvent::ToolStart {
                         tool_id,
@@ -928,7 +967,9 @@ pub async fn stream_turn(
                         is_error,
                         duration_ms,
                     },
-                    _ => continue,
+                    _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
+                        event_type: "unknown_turn_stream_event".to_owned(),
+                    },
                 };
                 let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
                     continue;
