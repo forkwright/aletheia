@@ -137,7 +137,8 @@ intentionally excluded — they are internal development context, not runtime ar
 The tarball is self-describing:
 
 `PACKAGE-MANIFEST.txt` records the version, target triple, source commit,
-feature set, provenance/SBOM asset names, and SHA256, mode, and size for each
+feature set, provenance/SBOM asset names, the pinned release/security/gate tool
+versions from `.github/tool-versions.sh`, and SHA256, mode, and size for each
 packaged file except the manifest itself.
 
 ```bash
@@ -173,5 +174,8 @@ Per-binary SBOMs are attested and scoped to the linked binary artifact. Workspac
   permission failures as green.
 - `deny.toml` enforces license policy and advisory checks
 - `Cargo.lock` is committed and pinned
-- All GitHub Actions are pinned to version tags (no `@main` references)
+- Release/security/gate tool installs are pinned in `.github/tool-versions.sh`
+  and checked by `scripts/check-tool-versions.py`; upgrades should review the
+  relevant tool changelogs.
+- GitHub Actions used in release/security/gate paths are pinned by SHA.
 - Anchore SBOM generated on every release

@@ -65,10 +65,18 @@ jobs:
           printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
           chmod 0600 ~/.git-credentials
 
+      - name: Load tool versions
+        id: tool-versions
+        run: |
+          set -euo pipefail
+          . .github/tool-versions.sh
+          echo "cargo-nextest=${CARGO_NEXTEST_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
         with:
-          tool: nextest
+          tool: cargo-nextest@${{ steps.tool-versions.outputs.cargo-nextest }}
+          fallback: none
 
       - name: Check proskenion theatron pins
         run: scripts/check-proskenion-pins.py

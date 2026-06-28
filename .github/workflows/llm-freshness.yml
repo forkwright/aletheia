@@ -34,10 +34,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Load tool versions
+        id: tool-versions
+        run: |
+          set -euo pipefail
+          . .github/tool-versions.sh
+          echo "uv=${UV_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Set up uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
-          version: "latest"
+          version: ${{ steps.tool-versions.outputs.uv }}
 
       # WHY: gate on the extractor's own fixture test so a broken extractor
       # (which would silently drop pub items) can't produce a false-positive

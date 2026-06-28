@@ -53,7 +53,10 @@ jobs:
           workspaces: fuzz
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: |
+          set -euo pipefail
+          . .github/tool-versions.sh
+          cargo install cargo-fuzz --version "${CARGO_FUZZ_VERSION}" --locked
 
       - name: Run ${{ matrix.target }}
         working-directory: fuzz

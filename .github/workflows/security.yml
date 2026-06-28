@@ -96,10 +96,17 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: cargo-audit
+      - name: Load tool versions
+        id: tool-versions
+        run: |
+          set -euo pipefail
+          . .github/tool-versions.sh
+          echo "cargo-audit=${CARGO_AUDIT_VERSION}" >> "$GITHUB_OUTPUT"
       - name: Install cargo-audit
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
         with:
-          tool: cargo-audit
+          tool: cargo-audit@${{ steps.tool-versions.outputs.cargo-audit }}
+          fallback: none
       - name: cargo audit
         # WHY: -D unmaintained,unsound,yanked escalates those categories
         # to errors (default is warning only). Suppressions go through

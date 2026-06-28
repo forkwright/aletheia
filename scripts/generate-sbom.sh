@@ -11,10 +11,18 @@ set -euo pipefail
 #
 # Usage: ./scripts/generate-sbom.sh
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/.." && pwd)"
+
+# shellcheck source=../.github/tool-versions.sh
+. "${repo_root}/.github/tool-versions.sh"
+
+cd "${repo_root}"
+
 # Check if cargo-cyclonedx is installed
 if ! command -v cargo-cyclonedx &>/dev/null; then
-    echo "cargo-cyclonedx not found. Installing..."
-    cargo install cargo-cyclonedx --version ^0.5 --locked
+    echo "cargo-cyclonedx not found. Installing ${CARGO_CYCLONEDX_VERSION}..."
+    cargo install cargo-cyclonedx --version "${CARGO_CYCLONEDX_VERSION}" --locked
 fi
 
 echo "Generating CycloneDX SBOMs for all workspace crates..."

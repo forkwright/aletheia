@@ -253,13 +253,29 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
+      - name: Load tool versions
+        id: tool-versions
+        run: |
+          set -euo pipefail
+          . .github/tool-versions.sh
+          {
+            echo "cross=${CROSS_VERSION}"
+            echo "cargo-auditable=${CARGO_AUDITABLE_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Install cross
         if: matrix.cross
-        run: cargo install cross --locked
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          tool: cross@${{ steps.tool-versions.outputs.cross }}
+          fallback: none
 
       - name: Install cargo-auditable
         if: ${{ !matrix.cross }}
-        run: cargo install cargo-auditable --locked --version 0.7.4
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          tool: cargo-auditable@${{ steps.tool-versions.outputs.cargo-auditable }}
+          fallback: none
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
@@ -302,6 +318,15 @@ jobs:
           artifact = os.environ["PACKAGE_ARTIFACT"]
           features = os.environ["PACKAGE_FEATURES"]
           source_commit = os.environ.get("GITHUB_SHA", "")
+          tool_versions_path = Path(os.environ["PACKAGE_TOOL_VERSIONS_MANIFEST"])
+          tool_versions_bytes = tool_versions_path.read_bytes()
+          tool_versions = {}
+          for raw_line in tool_versions_bytes.decode("utf-8").splitlines():
+              line = raw_line.strip()
+              if not line or line.startswith("#"):
+                  continue
+              key, value = line.split("=", 1)
+              tool_versions[key] = value
 
           lines = [
               "Aletheia binary package manifest",
@@ -312,6 +337,15 @@ jobs:
               f"provenance_asset={artifact}-{version}.provenance.intoto.jsonl",
               f"cyclonedx_sbom_asset={artifact}-{version}.cdx.json",
               f"spdx_sbom_asset={artifact}-{version}.spdx.json",
+              "release_tool_versions_manifest=.github/tool-versions.sh",
+              f"release_tool_versions_sha256={hashlib.sha256(tool_versions_bytes).hexdigest()}",
+              f"tool_cargo-nextest={tool_versions['CARGO_NEXTEST_VERSION']}",
+              f"tool_cargo-audit={tool_versions['CARGO_AUDIT_VERSION']}",
+              f"tool_cargo-fuzz={tool_versions['CARGO_FUZZ_VERSION']}",
+              f"tool_cross={tool_versions['CROSS_VERSION']}",
+              f"tool_cargo-cyclonedx={tool_versions['CARGO_CYCLONEDX_VERSION']}",
+              f"tool_cargo-auditable={tool_versions['CARGO_AUDITABLE_VERSION']}",
+              f"tool_uv={tool_versions['UV_VERSION']}",
               "",
               "sha256 mode bytes path",
           ]
@@ -334,6 +368,7 @@ jobs:
           ARTIFACT: ${{ matrix.artifact }}
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_TARGET: ${{ matrix.target }}
+          PACKAGE_TOOL_VERSIONS_MANIFEST: .github/tool-versions.sh
 
       - name: Inspect tarball contents
         run: scripts/check-release-tarball.sh "$TARBALL" "$VERSION" "$BUILD_TARGET"
@@ -469,8 +504,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
+      - name: Load tool versions
+        id: tool-versions
+        run: |
+          set -euo pipefail
+          . .github/tool-versions.sh
+          echo "cargo-cyclonedx=${CARGO_CYCLONEDX_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx --version ^0.5 --locked
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
+        with:
+          tool: cargo-cyclonedx@${{ steps.tool-versions.outputs.cargo-cyclonedx }}
+          fallback: none
 
       - name: Generate CycloneDX SBOM
         run: |

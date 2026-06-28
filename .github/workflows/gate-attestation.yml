@@ -83,11 +83,24 @@ jobs:
           printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
           chmod 0600 ~/.git-credentials
 
+      - name: Load tool versions
+        id: tool-versions
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: |
+          set -euo pipefail
+          . .github/tool-versions.sh
+          echo "cargo-nextest=${CARGO_NEXTEST_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Install cargo-nextest
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@bffeee26d4db9be238a4ea78d8826604ebcb594d # v2.82.5
         with:
-          tool: nextest
+          tool: cargo-nextest@${{ steps.tool-versions.outputs.cargo-nextest }}
+          fallback: none
+
+      - name: Check tool version pins
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
+        run: scripts/check-tool-versions.py
 
       - name: Check test tier features
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' }}
