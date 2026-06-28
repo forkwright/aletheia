@@ -2,6 +2,28 @@ use tracing::instrument;
 
 use super::marshal::{extract_str, fact_to_params, rows_to_facts, scoped_visibility_rules};
 use super::{KnowledgeStore, queries};
+
+#[cfg(feature = "mneme-engine")]
+#[derive(Default)]
+struct FactAccessLogStats {
+    count: u32,
+    latest_accessed_at: Option<String>,
+}
+
+#[cfg(feature = "mneme-engine")]
+fn datalog_string_literal(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_owned())
+}
+
+#[cfg(feature = "mneme-engine")]
+fn datalog_string_list(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| datalog_string_literal(value))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Recompute and persist embeddings for every fact in the store.
@@ -76,12 +98,15 @@ impl KnowledgeStore {
             }
         );
 
-        // Admission + insert must be atomic: hold the lock so a concurrent insert
-        // of the same fact cannot pass the gate and write independently.
-        let _guard = self.insert_lock.lock().unwrap_or_else(|e| {
-            tracing::warn!("insert_lock was poisoned, recovering");
-            e.into_inner()
-        });
+        // WHY (#5673): admission + insert remains atomic within a nous shard,
+        // while unrelated nouses no longer serialize behind one global mutex.
+        let Some(insert_lock) = self.insert_lock_for_nous(&fact.nous_id) else {
+            return Err(crate::error::EngineQuerySnafu {
+                message: "insert lock shards are not initialized".to_owned(),
+            }
+            .build());
+        };
+        let _guard = insert_lock.lock();
 
         // Admission control gate: check policy before persisting.
         let decision = self.admission_policy.should_admit(fact);
@@ -109,6 +134,104 @@ impl KnowledgeStore {
             self.invalidate_derived_facts()?;
         }
         result
+    }
+
+    /// Overlay append-only access events onto decoded facts.
+    pub(super) fn apply_access_log_to_facts(
+        &self,
+        facts: &mut [crate::knowledge::Fact],
+    ) -> crate::error::Result<()> {
+        if facts.is_empty() {
+            return Ok(());
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        let mut fact_ids = Vec::new();
+        for fact in facts.iter() {
+            let fact_id = fact.id.as_str().to_owned();
+            if seen.insert(fact_id.clone()) {
+                fact_ids.push(fact_id);
+            }
+        }
+        let id_list = datalog_string_list(&fact_ids);
+        let script = format!(
+            r"
+            ?[fact_id, event_id, accessed_at] :=
+                *fact_access_log{{event_id, fact_id, accessed_at}},
+                fact_id in [{id_list}]
+            "
+        );
+        let rows = self.run_read(&script, std::collections::BTreeMap::new())?;
+        let mut stats_by_fact = std::collections::HashMap::<String, FactAccessLogStats>::new();
+        for row in &rows.rows {
+            let Some(fact_id) = row.first().and_then(crate::engine::DataValue::get_str) else {
+                continue;
+            };
+            let Some(accessed_at) = row.get(2).and_then(crate::engine::DataValue::get_str) else {
+                continue;
+            };
+            let stats = stats_by_fact.entry(fact_id.to_owned()).or_default();
+            stats.count = stats.count.saturating_add(1);
+            let should_replace = match stats.latest_accessed_at.as_deref() {
+                Some(latest) => accessed_at > latest,
+                None => true,
+            };
+            if should_replace {
+                stats.latest_accessed_at = Some(accessed_at.to_owned());
+            }
+        }
+
+        for fact in facts {
+            let Some(stats) = stats_by_fact.get(fact.id.as_str()) else {
+                continue;
+            };
+            fact.access.access_count = fact.access.access_count.saturating_add(stats.count);
+            if let Some(accessed_at) = stats
+                .latest_accessed_at
+                .as_deref()
+                .and_then(crate::knowledge::parse_timestamp)
+            {
+                let should_replace = match fact.access.last_accessed_at {
+                    Some(existing) => accessed_at > existing,
+                    None => true,
+                };
+                if should_replace {
+                    fact.access.last_accessed_at = Some(accessed_at);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Decode fact rows and overlay append-only access events.
+    pub(super) fn rows_to_facts_with_access(
+        &self,
+        rows: crate::engine::NamedRows,
+        nous_id: &str,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        let mut facts = rows_to_facts(rows, nous_id)?;
+        self.apply_access_log_to_facts(&mut facts)?;
+        Ok(facts)
+    }
+
+    /// Decode raw fact rows and overlay append-only access events.
+    pub(super) fn rows_to_raw_facts_with_access(
+        &self,
+        rows: crate::engine::NamedRows,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        let mut facts = super::marshal::rows_to_raw_facts(rows)?;
+        self.apply_access_log_to_facts(&mut facts)?;
+        Ok(facts)
+    }
+
+    /// Decode partial fact rows and overlay append-only access events.
+    pub(super) fn rows_to_partial_facts_with_access(
+        &self,
+        rows: crate::engine::NamedRows,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        let mut facts = super::marshal::rows_to_facts_partial(rows)?;
+        self.apply_access_log_to_facts(&mut facts)?;
+        Ok(facts)
     }
 
     /// Rebuild fact embeddings after a restore/import.
@@ -414,7 +537,7 @@ impl KnowledgeStore {
         params.insert(String::from("limit"), DataValue::from(limit));
 
         let rows = self.run_read(&queries::full_current_facts(), params)?;
-        rows_to_facts(rows, nous_id)
+        self.rows_to_facts_with_access(rows, nous_id)
     }
 
     /// Query current facts visible to a requesting nous at a given time.
@@ -463,7 +586,7 @@ impl KnowledgeStore {
         params.insert(String::from("now"), DataValue::Str(now.into()));
         params.insert(String::from("limit"), DataValue::from(limit));
         let rows = self.run_read(&script, params)?;
-        super::marshal::rows_to_raw_facts(rows)
+        self.rows_to_raw_facts_with_access(rows)
     }
 
     /// Point-in-time fact query.
@@ -483,12 +606,13 @@ impl KnowledgeStore {
         params.insert(String::from("time"), DataValue::Str(time.into()));
 
         let rows = self.run_read(&queries::facts_at_time(), params)?;
-        super::marshal::rows_to_facts_partial(rows)
+        self.rows_to_partial_facts_with_access(rows)
     }
 
     /// Increment access count and update last-accessed timestamp for the given fact IDs.
     ///
-    /// Serialized via `access_lock` to prevent concurrent read-modify-write races.
+    /// Appends access events; fact reads lazily aggregate those events into
+    /// `FactAccess`.
     #[instrument(skip(self), fields(count = fact_ids.len()))]
     pub(crate) fn increment_access(
         &self,
@@ -497,30 +621,30 @@ impl KnowledgeStore {
         if fact_ids.is_empty() {
             return Ok(());
         }
-        let _guard = self.access_lock.lock().unwrap_or_else(|e| {
-            tracing::warn!("access_lock was poisoned, recovering");
-            e.into_inner()
-        });
-        let now = jiff::Timestamp::now();
-        for id in fact_ids {
-            // WHY: a single Datalog read-modify-write rule does not reflect
-            // the mutation in subsequent reads, so we read-increment-write in Rust.
-            let facts = match self.read_facts_by_id(id.as_str()) {
-                Ok(f) => f,
-                Err(e) => {
-                    tracing::warn!(error = %e, fact_id = %id, "failed to read fact for access increment");
-                    continue;
-                }
-            };
-            for mut fact in facts {
-                fact.access.access_count = fact.access.access_count.saturating_add(1);
-                fact.access.last_accessed_at = Some(now);
-                if let Err(e) = self.insert_fact(&fact) {
-                    tracing::warn!(error = %e, fact_id = %id, "failed to write incremented access count");
-                }
-            }
-        }
-        Ok(())
+        let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
+        let rows = fact_ids
+            .iter()
+            .map(|id| {
+                let event_id = self.next_access_event_id();
+                format!(
+                    "[{}, {}, {}]",
+                    datalog_string_literal(id.as_str()),
+                    datalog_string_literal(&event_id),
+                    datalog_string_literal(&now)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let script = format!(
+            r"
+            access_events[fact_id, event_id, accessed_at] <- [{rows}]
+            ?[event_id, fact_id, accessed_at] :=
+                access_events[fact_id, event_id, accessed_at],
+                *facts{{id: fact_id}}
+            :put fact_access_log {{event_id => fact_id, accessed_at}}
+            "
+        );
+        self.run_mut(&script, std::collections::BTreeMap::new())
     }
 
     /// Async `increment_access`: wraps sync call in `spawn_blocking`.
@@ -563,7 +687,7 @@ impl KnowledgeStore {
         reason: crate::knowledge::ForgetReason,
         new_content: Option<&str>,
     ) -> crate::error::Result<crate::knowledge::Fact> {
-        let existing = self.read_facts_by_id(fact_id.as_str())?;
+        let existing = self.read_facts_by_id_raw(fact_id.as_str())?;
         let Some(current) = existing.first() else {
             return Err(crate::error::FactNotFoundSnafu {
                 id: fact_id.as_str(),
@@ -690,7 +814,7 @@ impl KnowledgeStore {
         params.insert(String::from("nous_id"), DataValue::Str(nous_id.into()));
         params.insert(String::from("limit"), DataValue::from(limit));
         let rows = self.run_read(&queries::forgotten_facts(), params)?;
-        rows_to_facts(rows, nous_id)
+        self.rows_to_facts_with_access(rows, nous_id)
     }
 
     /// Async `list_forgotten`: wraps sync call in `spawn_blocking`.
@@ -806,7 +930,7 @@ impl KnowledgeStore {
             DataValue::Str(requester_nous_id.into()),
         );
         let rows = self.run_read(&script, params)?;
-        super::marshal::rows_to_raw_facts(rows)
+        self.rows_to_raw_facts_with_access(rows)
     }
 
     pub(super) fn visible_fact_ids_for_entity(
@@ -865,7 +989,7 @@ impl KnowledgeStore {
             }
             _ => self.run_read(&queries::temporal_facts(), params)?,
         };
-        rows_to_facts(rows, nous_id)
+        self.rows_to_facts_with_access(rows, nous_id)
     }
 
     /// Query facts that changed between two timestamps.
@@ -886,10 +1010,10 @@ impl KnowledgeStore {
         params.insert(String::from("to_time"), DataValue::Str(to_time.into()));
 
         let added_rows = self.run_read(queries::TEMPORAL_DIFF_ADDED, params.clone())?;
-        let added = rows_to_facts(added_rows, nous_id)?;
+        let added = self.rows_to_facts_with_access(added_rows, nous_id)?;
 
         let removed_rows = self.run_read(queries::TEMPORAL_DIFF_REMOVED, params)?;
-        let removed = rows_to_facts(removed_rows, nous_id)?;
+        let removed = self.rows_to_facts_with_access(removed_rows, nous_id)?;
 
         // NOTE: A fact in "removed" whose superseded_by points to one in "added" is a
         // modification, not a pure removal.
@@ -982,7 +1106,7 @@ impl KnowledgeStore {
             :limit $limit
         ";
         let rows = self.run_read(script, params)?;
-        super::marshal::rows_to_raw_facts(rows)
+        self.rows_to_raw_facts_with_access(rows)
     }
 
     /// Async `list_all_facts` wrapper.
@@ -1013,7 +1137,7 @@ impl KnowledgeStore {
         params.insert(String::from("limit"), DataValue::from(limit));
 
         let rows = self.run_read(&queries::audit_all_facts(), params)?;
-        rows_to_facts(rows, nous_id)
+        self.rows_to_facts_with_access(rows, nous_id)
     }
 
     // NOTE: Async wrappers use spawn_blocking because Krites query execution is synchronous.
@@ -1087,8 +1211,8 @@ impl KnowledgeStore {
             .build());
         }
 
-        // WHY: read the record, change the field in Rust, then upsert it back.
-        // Same read-increment-write pattern as increment_access.
+        // WHY (#5673): use raw rows for write-back so append-only access events
+        // are not folded into `facts.access_count` and then counted again.
         for mut fact in existing {
             fact.provenance.confidence = confidence;
             self.insert_fact(&fact)?;
@@ -1130,7 +1254,7 @@ impl KnowledgeStore {
         fact_id: &crate::id::FactId,
         sensitivity: crate::knowledge::FactSensitivity,
     ) -> crate::error::Result<crate::knowledge::Fact> {
-        let existing = self.read_facts_by_id(fact_id.as_str())?;
+        let existing = self.read_facts_by_id_raw(fact_id.as_str())?;
         if existing.is_empty() {
             return Err(crate::error::FactNotFoundSnafu {
                 id: fact_id.as_str(),
@@ -1217,7 +1341,7 @@ impl KnowledgeStore {
             :limit $limit
         ";
         let rows = self.run_read(script, params)?;
-        super::marshal::rows_to_raw_facts(rows)
+        self.rows_to_raw_facts_with_access(rows)
     }
 
     /// Async `query_facts_by_type`: wraps sync call in `spawn_blocking`.

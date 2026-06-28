@@ -2,7 +2,7 @@ use snafu::ResultExt;
 use tracing::instrument;
 
 use super::KnowledgeStore;
-use super::marshal::{rows_to_facts, sanitize_fts_query};
+use super::marshal::sanitize_fts_query;
 use crate::utils::{compute_name_similarity, compute_tool_overlap};
 
 #[cfg(feature = "mneme-engine")]
@@ -104,7 +104,7 @@ impl KnowledgeStore {
         :limit $limit";
 
         let rows = self.run_read(script, params)?;
-        rows_to_facts(rows, nous_id)
+        self.rows_to_facts_with_access(rows, nous_id)
     }
 
     /// Semantic search for skills matching a task description.
@@ -160,7 +160,7 @@ impl KnowledgeStore {
             :limit $limit";
 
         let rows = self.run_read(script, params)?;
-        rows_to_facts(rows, nous_id)
+        self.rows_to_facts_with_access(rows, nous_id)
     }
 
     /// Check if a skill with the given name already exists for this nous.
@@ -214,7 +214,7 @@ impl KnowledgeStore {
         :order -recorded_at";
 
         let rows = self.run_read(script, params)?;
-        rows_to_facts(rows, nous_id)
+        self.rows_to_facts_with_access(rows, nous_id)
     }
 
     /// Approve a pending skill: move it from `skill_pending` to `skill`.

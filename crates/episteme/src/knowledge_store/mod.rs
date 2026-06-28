@@ -109,6 +109,13 @@ pub const FACTS_DDL: &str = r":create facts {
     sensitivity: String default 'public'
 }";
 
+/// Datalog DDL for append-only fact access events.
+pub const FACT_ACCESS_LOG_DDL: &str = r":create fact_access_log {
+    event_id: String =>
+    fact_id: String,
+    accessed_at: String
+}";
+
 /// Datalog DDL for the relationships relation.
 pub const RELATIONSHIPS_DDL: &str = r":create relationships {
     src: String, dst: String =>
@@ -586,6 +593,12 @@ impl crate::query_rewrite::HasRrfScore for HybridResult {
     }
 }
 
+#[cfg(feature = "mneme-engine")]
+const INSERT_LOCK_SHARDS: usize = 64;
+
+#[cfg(feature = "mneme-engine")]
+const INSERT_LOCK_SHARD_MASK: u64 = 63;
+
 /// Typed wrapper around the Datalog engine providing domain-level knowledge operations.
 ///
 /// Holds an `Arc<Db>` internally. Callers share via `Arc<KnowledgeStore>`.
@@ -596,29 +609,62 @@ pub struct KnowledgeStore {
     dim: usize,
     embedding_model: String,
     allow_assumed_embedding_meta: bool,
+    access_event_sequence: std::sync::atomic::AtomicU64,
     #[cfg(test)]
     read_query_count: std::sync::atomic::AtomicUsize,
-    /// Serializes read-modify-write access counter increments to prevent races.
-    access_lock: std::sync::Mutex<()>,
-    /// Serializes admission-check + insert so concurrent writers for the same
-    /// fact cannot both pass the admission gate and write independently.
+    /// Sharded admission-check + insert locks.
     ///
-    /// WHY: `should_admit` reads store state (or inspects the fact) and then
-    /// `run_mut` writes. Without this lock a second concurrent insert of the
-    /// same fact could pass `should_admit` before the first write lands.
-    /// The `:put` upsert means the end-state is still correct (one row), but
-    /// the admission gate would have fired twice — potentially consuming policy
-    /// budget (e.g. rate counters) or triggering side effects on both paths.
-    insert_lock: std::sync::Mutex<()>,
+    /// WHY (#5673): `should_admit` and the following write must remain atomic
+    /// for facts in the same shard, but a global lock serialized unrelated
+    /// nouses. Sharding by `nous_id` preserves the admission invariant while
+    /// allowing different shards to ingest concurrently.
+    insert_locks: Vec<parking_lot::Mutex<()>>,
     /// Admission policy gate: checked before every fact insertion.
     admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
 }
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    pub(crate) const SCHEMA_VERSION: i64 = 20;
+    pub(crate) const SCHEMA_VERSION: i64 = 21;
     const MIN_SCHEMA_VERSION: i64 = 1;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
+
+    fn new_insert_locks() -> Vec<parking_lot::Mutex<()>> {
+        (0..INSERT_LOCK_SHARDS)
+            .map(|_| parking_lot::Mutex::new(()))
+            .collect()
+    }
+
+    fn insert_lock_for_nous(&self, nous_id: &str) -> Option<&parking_lot::Mutex<()>> {
+        let shard = Self::insert_lock_shard(nous_id);
+        self.insert_locks
+            .iter()
+            .enumerate()
+            .find_map(|(idx, lock)| (idx == shard).then_some(lock))
+    }
+
+    fn insert_lock_shard(nous_id: &str) -> usize {
+        let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+        for byte in nous_id.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        usize::try_from(hash & INSERT_LOCK_SHARD_MASK).unwrap_or(0)
+    }
+
+    /// Return the insert-lock shard for tests that assert sharding behavior.
+    #[cfg(test)]
+    pub(crate) fn insert_lock_shard_for_test(nous_id: &str) -> usize {
+        Self::insert_lock_shard(nous_id)
+    }
+
+    /// Allocate a unique access-log event ID for this store process.
+    pub(super) fn next_access_event_id(&self) -> String {
+        let sequence = self
+            .access_event_sequence
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        format!("{}-{sequence}", koina::ulid::Ulid::new())
+    }
 
     /// Open an in-memory knowledge store with default configuration.
     ///
@@ -650,10 +696,10 @@ impl KnowledgeStore {
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
+            access_event_sequence: std::sync::atomic::AtomicU64::new(0),
             #[cfg(test)]
             read_query_count: std::sync::atomic::AtomicUsize::new(0),
-            access_lock: std::sync::Mutex::new(()),
-            insert_lock: std::sync::Mutex::new(()),
+            insert_locks: Self::new_insert_locks(),
             admission_policy: config.admission_policy,
         };
         store.init_schema()?;
@@ -688,10 +734,10 @@ impl KnowledgeStore {
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
+            access_event_sequence: std::sync::atomic::AtomicU64::new(0),
             #[cfg(test)]
             read_query_count: std::sync::atomic::AtomicUsize::new(0),
-            access_lock: std::sync::Mutex::new(()),
-            insert_lock: std::sync::Mutex::new(()),
+            insert_locks: Self::new_insert_locks(),
             admission_policy: config.admission_policy,
         };
         store.init_schema()?;
@@ -855,6 +901,7 @@ impl KnowledgeStore {
         };
 
         run_ddl(FACTS_DDL, "init_schema facts")?;
+        run_ddl(FACT_ACCESS_LOG_DDL, "init_schema fact_access_log")?;
         run_ddl(RELATIONSHIPS_DDL, "init_schema relationships")?;
         run_ddl(FACT_ENTITIES_DDL, "init_schema fact_entities")?;
         run_ddl(MERGE_AUDIT_DDL, "init_schema merge_audit")?;
@@ -1465,14 +1512,11 @@ impl KnowledgeStore {
         self.run_read(script, params).map(QueryResult::from)
     }
 
-    /// Read a single fact by its ID (all temporal records matching).
-    /// Returns all fields; does not apply time/validity filters.
-    ///
-    /// # Complexity
-    ///
-    /// O(T) where T is temporal versions of the fact. Typically O(1) for
-    /// non-versioned facts, O(log V) for versioned with time-travel indices.
-    pub fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+    /// Read fact rows by ID without overlaying append-only access events.
+    pub(super) fn read_facts_by_id_raw(
+        &self,
+        id: &str,
+    ) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
@@ -1493,6 +1537,19 @@ impl KnowledgeStore {
         params.insert("id".to_owned(), DataValue::Str(id.into()));
         let rows = self.run_read(script, params)?;
         marshal::rows_to_raw_facts(rows)
+    }
+
+    /// Read a single fact by its ID (all temporal records matching).
+    /// Returns all fields; does not apply time/validity filters.
+    ///
+    /// # Complexity
+    ///
+    /// O(T + A) where T is temporal versions of the fact and A is access events
+    /// for those fact IDs. Typically O(1) for non-versioned facts.
+    pub fn read_facts_by_id(&self, id: &str) -> crate::error::Result<Vec<crate::knowledge::Fact>> {
+        let mut facts = self.read_facts_by_id_raw(id)?;
+        self.apply_access_log_to_facts(&mut facts)?;
+        Ok(facts)
     }
 
     pub(super) fn run_mut(

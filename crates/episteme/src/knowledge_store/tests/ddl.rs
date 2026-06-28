@@ -15,6 +15,7 @@ fn ddl_templates_are_valid_strings() {
     // silently shift positional indices in migration.rs.
     let ddls: &[(&str, &str)] = &[
         (FACTS_DDL, "facts"),
+        (FACT_ACCESS_LOG_DDL, "fact_access_log"),
         (RELATIONSHIPS_DDL, "relationships"),
         (FACT_ENTITIES_DDL, "fact_entities"),
         (MERGE_AUDIT_DDL, "merge_audit"),
@@ -32,8 +33,8 @@ fn ddl_templates_are_valid_strings() {
     ];
     assert_eq!(
         ddls.len(),
-        15,
-        "expected 15 non-sentinel DDL entries (entity DDL is dim-parameterized and created separately)"
+        16,
+        "expected 16 non-sentinel DDL entries (entity DDL is dim-parameterized and created separately)"
     );
     for (ddl, name) in ddls {
         assert!(

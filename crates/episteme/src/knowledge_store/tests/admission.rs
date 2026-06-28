@@ -127,10 +127,9 @@ fn structured_policy_admits_high_quality_fact() {
 
 #[test]
 fn concurrent_insert_same_fact_admits_exactly_once() {
-    // WHY: the insert_lock prevents concurrent admission-then-write races.
-    // Both goroutines race to insert the same fact; the first wins the lock and
-    // inserts. The second's insert is also admitted (same fact, upsert semantics),
-    // but what matters is: after both complete, the store contains exactly one row.
+    // WHY (#5673): the sharded insert lock prevents admission-then-write races
+    // within the fact's nous shard. Both threads race to insert the same fact;
+    // after both complete, the store must still contain exactly one row.
     let store = make_default_store();
     let store2 = Arc::clone(&store);
 
@@ -195,5 +194,20 @@ fn concurrent_insert_same_fact_store_contains_one_row() {
     assert_eq!(
         count, 1,
         "concurrent upsert of same fact must result in exactly one row; got {count}"
+    );
+}
+
+#[test]
+fn insert_lock_sharding_distinguishes_different_nous_ids() {
+    let alice_shard = KnowledgeStore::insert_lock_shard_for_test("alice");
+    let peer_shard = (0..128)
+        .map(|idx| format!("peer-{idx}"))
+        .map(|nous_id| KnowledgeStore::insert_lock_shard_for_test(&nous_id))
+        .find(|shard| *shard != alice_shard)
+        .expect("fixture must find a different insert-lock shard");
+
+    assert_ne!(
+        alice_shard, peer_shard,
+        "different nous IDs must be able to map to different insert-lock shards"
     );
 }

@@ -636,3 +636,58 @@ async fn increment_access_async_works() {
         "async increment should update access count to 1"
     );
 }
+
+#[tokio::test]
+async fn increment_access_async_different_fact_sets_complete_together() {
+    let store = make_store();
+    for id in [
+        "f-access-left-a",
+        "f-access-left-b",
+        "f-access-right-a",
+        "f-access-right-b",
+    ] {
+        store
+            .insert_fact_async(make_fact(id, "agent-a", &format!("Async access {id}")))
+            .await
+            .expect("insert fact");
+    }
+
+    let left = store.increment_access_async(vec![
+        crate::id::FactId::new("f-access-left-a").expect("valid test id"),
+        crate::id::FactId::new("f-access-left-b").expect("valid test id"),
+    ]);
+    let right = store.increment_access_async(vec![
+        crate::id::FactId::new("f-access-right-a").expect("valid test id"),
+        crate::id::FactId::new("f-access-right-b").expect("valid test id"),
+    ]);
+    let (left_result, right_result) =
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::join!(left, right)
+        })
+        .await
+        .expect("concurrent access increments must not block indefinitely");
+
+    left_result.expect("left increment");
+    right_result.expect("right increment");
+
+    let results = store
+        .query_facts_async("agent-a".to_owned(), "2026-06-01".to_owned(), 10)
+        .await
+        .expect("query");
+    for id in [
+        "f-access-left-a",
+        "f-access-left-b",
+        "f-access-right-a",
+        "f-access-right-b",
+    ] {
+        let found = results
+            .iter()
+            .find(|f| f.id.as_str() == id)
+            .expect("found incremented fact");
+        assert_eq!(found.access.access_count, 1);
+        assert!(
+            found.access.last_accessed_at.is_some(),
+            "last_accessed_at should be populated for {id}"
+        );
+    }
+}

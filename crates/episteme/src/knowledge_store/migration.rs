@@ -1,8 +1,8 @@
 use super::{
     CAUSAL_EDGES_DDL, DEFAULTS_DDL, DERIVED_FACTS_DDL, DERIVED_RULE_WATERMARKS_DDL,
-    DERIVED_SOURCE_REVISION_DDL, EMBEDDING_META_DDL, ENTITY_FLAGS_DDL, FACT_ENTITIES_DDL,
-    FACTS_DDL, KnowledgeStore, MERGE_AUDIT_DDL, PENDING_MERGES_DDL, PROVENANCE_DDL,
-    PUBLISHED_FACTS_DDL, TYPE_HIERARCHY_DDL, entities_ddl, fts_ddl,
+    DERIVED_SOURCE_REVISION_DDL, EMBEDDING_META_DDL, ENTITY_FLAGS_DDL, FACT_ACCESS_LOG_DDL,
+    FACT_ENTITIES_DDL, FACTS_DDL, KnowledgeStore, MERGE_AUDIT_DDL, PENDING_MERGES_DDL,
+    PROVENANCE_DDL, PUBLISHED_FACTS_DDL, TYPE_HIERARCHY_DDL, entities_ddl, fts_ddl,
 };
 
 pub(super) struct MigrationStep {
@@ -86,6 +86,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep {
         target_version: 20,
         run: KnowledgeStore::migrate_v19_to_v20,
+    },
+    MigrationStep {
+        target_version: 21,
+        run: KnowledgeStore::migrate_v20_to_v21,
     },
 ];
 
@@ -1500,6 +1504,20 @@ impl KnowledgeStore {
         self.stamp_schema_version(20, "v19->v20")?;
 
         tracing::info!("knowledge schema migration v19 -> v20 complete");
+        Ok(())
+    }
+
+    /// Migrate v20 -> v21: add append-only fact access events (#5673).
+    pub(super) fn migrate_v20_to_v21(&self) -> crate::error::Result<()> {
+        tracing::info!("migrating knowledge schema v20 -> v21");
+
+        if !self.relation_exists("fact_access_log")? {
+            self.run_ddl(FACT_ACCESS_LOG_DDL, "v20->v21 create fact_access_log")?;
+        }
+
+        self.stamp_schema_version(21, "v20->v21")?;
+
+        tracing::info!("knowledge schema migration v20 -> v21 complete");
         Ok(())
     }
 }
