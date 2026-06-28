@@ -168,19 +168,32 @@ async fn execute_command_failure_returns_error() {
 }
 
 #[tokio::test]
-async fn execute_command_failure_uses_stderr_in_reason() {
-    // WHY: When a command writes to stderr and exits non-zero, the error
-    // reason should contain the stderr output rather than the bare exit code.
+async fn execute_command_failure_summarizes_stderr_in_reason() {
+    // WHY(#4948): command stderr may contain secrets or private paths. Failures
+    // report metadata and digests instead of carrying raw stderr forward.
     let err = execute_command(
-        "echo 'something failed' >&2; exit 1",
+        "echo 'something failed sk-proj-abcdefghijklmnopqrstuvwxyz123456 /tmp/acme.corp/private' >&2; exit 1", // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction regression test
         CancellationToken::new(),
         Duration::from_mins(1),
     )
     .await
     .expect_err("should fail");
+    let msg = err.to_string();
     assert!(
-        err.to_string().contains("something failed"),
-        "expected stderr in reason, got: {err}"
+        msg.contains("process output summary"),
+        "expected stderr metadata in reason, got: {msg}"
+    );
+    assert!(
+        !msg.contains("something failed"),
+        "stderr text leaked: {msg}"
+    );
+    assert!(
+        !msg.contains("sk-proj-abcdefghijklmnopqrstuvwxyz123456"),
+        "secret leaked: {msg}"
+    );
+    assert!(
+        !msg.contains("/tmp/acme.corp/private"),
+        "private path leaked: {msg}"
     );
 }
 

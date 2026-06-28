@@ -271,6 +271,11 @@ fn deployment_defaults_match_original_constants() {
         "prosoche_anomaly_sample_size"
     );
     assert_eq!(
+        db.runner_output_mode,
+        DaemonRunnerOutputMode::Summary,
+        "runner_output_mode"
+    );
+    assert_eq!(
         db.runner_output_brief_head_lines, 5,
         "runner_output_brief_head_lines"
     );

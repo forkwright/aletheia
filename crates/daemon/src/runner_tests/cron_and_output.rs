@@ -1,9 +1,102 @@
 //! Cron scheduling + metrics + output + persistence tests (split from `runner_tests.rs`).
 
+use std::fmt::Write as FmtWrite;
+use std::io::Write as IoWrite;
+use std::sync::{Arc, Mutex};
+
 use tracing::Instrument;
+use tracing::field::{Field, Visit};
+use tracing::{Event, Subscriber};
+use tracing_subscriber::Layer;
+use tracing_subscriber::fmt::{self, MakeWriter};
+use tracing_subscriber::layer::{Context, SubscriberExt};
 
 use super::super::*;
 use super::make_echo_task;
+
+#[derive(Clone)]
+struct SharedWriter {
+    buffer: Arc<Mutex<Vec<u8>>>,
+}
+
+impl SharedWriter {
+    fn new(buffer: Arc<Mutex<Vec<u8>>>) -> Self {
+        Self { buffer }
+    }
+}
+
+struct SharedWriteGuard {
+    buffer: Arc<Mutex<Vec<u8>>>,
+}
+
+impl<'a> MakeWriter<'a> for SharedWriter {
+    type Writer = SharedWriteGuard;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        SharedWriteGuard {
+            buffer: Arc::clone(&self.buffer),
+        }
+    }
+}
+
+impl IoWrite for SharedWriteGuard {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut guard = self.buffer.lock().expect("log buffer lock");
+        guard.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Default)]
+struct TraceCaptureLayer {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl TraceCaptureLayer {
+    fn text(&self) -> String {
+        self.events.lock().expect("trace capture lock").join("\n")
+    }
+}
+
+impl<S> Layer<S> for TraceCaptureLayer
+where
+    S: Subscriber,
+{
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = FieldCapture::default();
+        event.record(&mut visitor);
+        self.events
+            .lock()
+            .expect("trace capture lock")
+            .push(visitor.fields);
+    }
+}
+
+#[derive(Default)]
+struct FieldCapture {
+    fields: String,
+}
+
+impl Visit for FieldCapture {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        writeln!(&mut self.fields, "{}={value:?}", field.name())
+            .expect("writing to String cannot fail");
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        writeln!(&mut self.fields, "{}={value}", field.name())
+            .expect("writing to String cannot fail");
+    }
+}
+
+fn buffer_text(buffer: &Arc<Mutex<Vec<u8>>>) -> String {
+    let bytes = buffer.lock().expect("log buffer lock").clone();
+    String::from_utf8(bytes).expect("captured logs should be utf-8")
+}
 
 #[test]
 fn missed_cron_catchup_fires_on_startup() {
@@ -200,10 +293,17 @@ async fn unsuccessful_in_flight_result_records_failure_status_and_metrics() {
         statuses[0].consecutive_failures, 1,
         "failed result should increment consecutive_failures"
     );
-    assert_eq!(
-        statuses[0].last_error,
-        Some("probe detected violation".to_owned()),
-        "failed result output should become last_error"
+    let last_error = statuses[0]
+        .last_error
+        .as_deref()
+        .expect("failed result output should become summarized last_error");
+    assert!(
+        last_error.contains("output summary"),
+        "failed result output should be summarized, got: {last_error}"
+    );
+    assert!(
+        !last_error.contains("probe detected violation"),
+        "raw failed output should not be persisted, got: {last_error}"
     );
 
     let mut buf = String::new();
@@ -288,10 +388,17 @@ async fn repeated_unsuccessful_in_flight_results_accumulate_failures() {
         statuses[0].consecutive_failures, 2,
         "two failed results should yield two consecutive failures"
     );
-    assert_eq!(
-        statuses[0].last_error,
-        Some("failure number 2".to_owned()),
-        "last_error should reflect the most recent failure output"
+    let last_error = statuses[0]
+        .last_error
+        .as_deref()
+        .expect("last failure should be summarized");
+    assert!(
+        last_error.contains("output summary"),
+        "last_error should summarize the most recent failure output, got: {last_error}"
+    );
+    assert!(
+        !last_error.contains("failure number 2"),
+        "raw failed output should not be persisted, got: {last_error}"
     );
 }
 
@@ -374,6 +481,133 @@ fn truncate_output_long_shows_head_and_tail() {
 }
 
 #[test]
+fn summary_output_mode_omits_excerpt() {
+    let raw = "api_key=sk-proj-abcdefghijklmnopqrstuvwxyz123456\npath=/tmp/acme.corp/private"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction regression test
+    let safe = safe_output_for_mode(
+        raw,
+        DaemonOutputMode::Summary,
+        &taxis::config::DaemonBehaviorConfig::default(),
+    );
+
+    assert!(safe.contains("output summary"));
+    assert!(safe.contains("sha256="));
+    assert!(
+        !safe.contains("sk-proj-abcdefghijklmnopqrstuvwxyz123456"),
+        "summary output must not contain secrets: {safe}"
+    );
+    assert!(
+        !safe.contains("/tmp/acme.corp/private"),
+        "summary output must not contain private paths: {safe}"
+    );
+    assert!(
+        !safe.contains("redacted_excerpt"),
+        "summary output must not include excerpts: {safe}"
+    );
+}
+
+#[tokio::test]
+async fn task_output_boundary_sanitizes_subscribers_and_persisted_state() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state");
+
+    let token = CancellationToken::new();
+    let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+    let mut runner = TaskRunner::new("test-nous", token)
+        .with_output_mode(DaemonOutputMode::Brief)
+        .with_state_store(store);
+    runner.register(make_echo_task("sensitive-output"));
+
+    let secret = "sk-proj-abcdefghijklmnopqrstuvwxyz123456"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction regression test
+    let private_path = "/tmp/acme.corp/private/session.txt";
+    let output = format!("probe failed\napi_key={secret}\nprivate_path={private_path}\n");
+    let handle = tokio::spawn(async move {
+        Ok(ExecutionResult {
+            outcome: TaskOutcome::Failed,
+            errors: 0,
+            output: Some(output),
+        })
+    });
+    runner.in_flight.insert(
+        "sensitive-output".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: CancellationToken::new(),
+            started_at: Instant::now(),
+            timeout: Duration::from_mins(5),
+            warned: false,
+        },
+    );
+
+    let console_buffer = Arc::new(Mutex::new(Vec::new()));
+    let file_json_buffer = Arc::new(Mutex::new(Vec::new()));
+    let trace_capture = TraceCaptureLayer::default();
+    let subscriber = tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_ansi(false)
+                .with_target(false)
+                .with_writer(SharedWriter::new(Arc::clone(&console_buffer))),
+        )
+        .with(
+            fmt::layer()
+                .json()
+                .with_ansi(false)
+                .with_target(true)
+                .with_writer(SharedWriter::new(Arc::clone(&file_json_buffer))),
+        )
+        .with(trace_capture.clone());
+
+    let guard = tracing::subscriber::set_default(subscriber);
+    tokio::task::yield_now().await;
+    runner.check_in_flight().await;
+    drop(guard);
+
+    let console = buffer_text(&console_buffer);
+    let file_json = buffer_text(&file_json_buffer);
+    let trace_ingest = trace_capture.text();
+    let states = runner
+        .state_store
+        .as_ref()
+        .expect("runner should keep attached store")
+        .load_all()
+        .expect("load persisted state");
+    let persisted = states
+        .iter()
+        .find(|state| state.task_id == "sensitive-output")
+        .and_then(|state| state.last_error.as_deref())
+        .expect("failed task should persist safe last_error")
+        .to_owned();
+
+    for (surface, text) in [
+        ("console", console),
+        ("file_json", file_json),
+        ("trace_ingest", trace_ingest),
+        ("persisted", persisted),
+    ] {
+        assert!(
+            !text.contains(secret),
+            "{surface} leaked synthetic API key: {text}"
+        );
+        assert!(
+            !text.contains(private_path),
+            "{surface} leaked private path: {text}"
+        );
+        assert!(
+            text.contains("***"),
+            "{surface} should contain a redaction marker: {text}"
+        );
+        assert!(
+            text.contains("[PATH REDACTED]"),
+            "{surface} should contain a path redaction marker: {text}"
+        );
+        assert!(
+            text.contains("sha256="),
+            "{surface} should include stable output digest metadata: {text}"
+        );
+    }
+}
+
+#[test]
 fn with_output_mode_sets_mode() {
     let token = CancellationToken::new();
     let runner = TaskRunner::new("test-nous", token).with_output_mode(DaemonOutputMode::Brief);
@@ -381,10 +615,10 @@ fn with_output_mode_sets_mode() {
 }
 
 #[test]
-fn default_output_mode_is_full() {
+fn default_output_mode_is_summary() {
     let token = CancellationToken::new();
     let runner = TaskRunner::new("test-nous", token);
-    assert_eq!(runner.output_mode, DaemonOutputMode::Full);
+    assert_eq!(runner.output_mode, DaemonOutputMode::Summary);
 }
 
 // -- Jitter integration test in runner --

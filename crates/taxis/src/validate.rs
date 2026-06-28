@@ -850,6 +850,15 @@ fn validate_daemon_behavior(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "prosocheAnomalySampleSize", 2, 1000, errors);
     check_range_u64(value, "runnerOutputBriefHeadLines", 1, 100, errors);
     check_range_u64(value, "runnerOutputBriefTailLines", 1, 100, errors);
+    if let Some(mode) = value.get("runnerOutputMode") {
+        match mode.as_str() {
+            Some("summary" | "brief" | "full") => {}
+            Some(other) => errors.push(format!(
+                "runnerOutputMode must be one of summary, brief, full (got {other})"
+            )),
+            None => errors.push("runnerOutputMode must be a string".to_owned()),
+        }
+    }
 
     // INVARIANT: backoff base must be <= backoff cap.
     let base = value.get("watchdogBackoffBaseSecs").and_then(Value::as_u64);

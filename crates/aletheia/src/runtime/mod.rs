@@ -23,13 +23,14 @@ use mneme::embedding::DegradedEmbeddingProvider;
 use mneme::store::SessionStore;
 use nous::cross::CrossNousRouter;
 use nous::manager::NousManager;
-use oikonomos::runner::TaskRunner;
+use oikonomos::runner::{DaemonOutputMode, TaskRunner};
 use organon::registry::ToolRegistry;
 use organon::types::{ToolHttpClients, ToolServices};
 use pylon::state::AppState;
 use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::config::AletheiaConfig;
+use taxis::config::DaemonRunnerOutputMode;
 #[cfg(feature = "recall")]
 use taxis::config::resolve_nous;
 use taxis::oikos::Oikos;
@@ -75,6 +76,16 @@ fn resolve_pack_path(oikos: &Oikos, configured: &Path) -> PathBuf {
     } else {
         let absolute = oikos.root().join(configured);
         absolute.canonicalize().unwrap_or(absolute)
+    }
+}
+
+fn daemon_output_mode(mode: DaemonRunnerOutputMode) -> DaemonOutputMode {
+    match mode {
+        DaemonRunnerOutputMode::Brief => DaemonOutputMode::Brief,
+        DaemonRunnerOutputMode::Full => DaemonOutputMode::Full,
+        // WHY: taxis keeps config enums non-exhaustive. Unknown future modes
+        // and the current default fail closed to metadata-only output.
+        _ => DaemonOutputMode::Summary,
     }
 }
 
@@ -676,11 +687,14 @@ impl RuntimeBuilder {
         let task_state_root = self.oikos.data().join("daemon-task-state");
 
         if self.daemons {
+            let runner_output_mode =
+                daemon_output_mode(self.config.daemon_behavior.runner_output_mode);
             let daemon_token = shutdown_token.child_token();
             let system_state_store =
                 oikonomos::state::TaskStateStore::open(&task_state_root.join("system"))
                     .with_whatever_context(|_| "failed to open system daemon task-state store")?;
             let mut daemon_runner = TaskRunner::new("system", daemon_token)
+                .with_output_mode(runner_output_mode)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
                 .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(system_state_store)
@@ -803,6 +817,8 @@ impl RuntimeBuilder {
         )?;
 
         if self.daemons {
+            let runner_output_mode =
+                daemon_output_mode(self.config.daemon_behavior.runner_output_mode);
             let daemon_bridge = Arc::new(daemon_bridge::NousDaemonBridge::new(Arc::clone(
                 &nous_manager,
             )));
@@ -813,6 +829,7 @@ impl RuntimeBuilder {
                     agent_token,
                     daemon_bridge.clone(),
                 )
+                .with_output_mode(runner_output_mode)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
                 .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(
