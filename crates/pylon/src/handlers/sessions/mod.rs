@@ -241,7 +241,10 @@ pub async fn list_sessions(
             nous_id: s.nous_id,
             session_key: s.session_key,
             status: s.status.as_str().to_owned(),
+            model: s.model,
             message_count: s.metrics.message_count,
+            token_count_estimate: s.metrics.token_count_estimate,
+            created_at: s.created_at,
             updated_at: s.updated_at,
             name: s.origin.display_name,
         })

@@ -84,8 +84,15 @@ pub struct SessionListItem {
     pub session_key: String,
     /// Lifecycle status (e.g. `"active"`, `"archived"`).
     pub status: String,
+    /// LLM model associated with this session, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     /// Total messages stored in this session.
     pub message_count: i64,
+    /// Estimated total tokens across all messages.
+    pub token_count_estimate: i64,
+    /// ISO 8601 creation timestamp.
+    pub created_at: String,
     /// ISO 8601 last-updated timestamp.
     pub updated_at: String,
     /// Human-readable name, if set.

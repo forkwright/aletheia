@@ -127,12 +127,8 @@ impl SessionListStore {
     pub(crate) fn sort_sessions(&mut self) {
         match self.sort {
             SessionSort::LastActivity => {
-                self.sessions.sort_by(|a, b| {
-                    b.updated_at
-                        .as_deref()
-                        .unwrap_or("")
-                        .cmp(a.updated_at.as_deref().unwrap_or(""))
-                });
+                self.sessions
+                    .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
             }
             SessionSort::MessageCount => {
                 self.sessions
@@ -374,7 +370,7 @@ fn is_leap(y: u64) -> bool {
 pub(crate) fn session_display_status(session: &Session) -> &'static str {
     if session.is_archived() {
         "archived"
-    } else if session.status.as_deref() == Some("active") {
+    } else if session.status == "active" {
         "active"
     } else {
         "idle"
@@ -401,10 +397,12 @@ mod tests {
             id: id.into(),
             nous_id: "agent-1".into(),
             key: key.to_string(),
-            status: Some("active".to_string()),
+            status: "active".to_string(),
+            model: None,
             message_count: 10,
-            session_type: None,
-            updated_at: Some("2025-06-15T10:00:00Z".to_string()),
+            token_count_estimate: 0,
+            created_at: "2025-06-15T09:00:00Z".to_string(),
+            updated_at: "2025-06-15T10:00:00Z".to_string(),
             display_name: None,
         }
     }
@@ -467,9 +465,9 @@ mod tests {
     fn session_list_store_sort_by_last_activity() {
         let mut store = SessionListStore::new();
         let mut s1 = make_session("s1", "old");
-        s1.updated_at = Some("2025-01-01T00:00:00Z".to_string());
+        s1.updated_at = "2025-01-01T00:00:00Z".to_string();
         let mut s2 = make_session("s2", "new");
-        s2.updated_at = Some("2025-06-01T00:00:00Z".to_string());
+        s2.updated_at = "2025-06-01T00:00:00Z".to_string();
         store.load(vec![s1, s2], false);
         store.sort = SessionSort::LastActivity;
         store.sort_sessions();
@@ -587,14 +585,14 @@ mod tests {
     #[test]
     fn session_display_status_archived() {
         let mut s = make_session("s1", "chat");
-        s.status = Some("archived".to_string());
+        s.status = "archived".to_string();
         assert_eq!(session_display_status(&s), "archived");
     }
 
     #[test]
     fn session_display_status_idle() {
         let mut s = make_session("s1", "chat");
-        s.status = Some("idle".to_string());
+        s.status = "idle".to_string();
         assert_eq!(session_display_status(&s), "idle");
     }
 

@@ -205,6 +205,11 @@ async fn list_sessions_includes_created_session() {
     let sessions = body["items"].as_array().unwrap();
     assert!(!sessions.is_empty());
     assert_eq!(sessions[0]["nous_id"], "syn");
+    assert!(sessions[0]["model"].is_string());
+    assert!(sessions[0]["message_count"].is_number());
+    assert!(sessions[0]["token_count_estimate"].is_number());
+    assert!(sessions[0]["created_at"].is_string());
+    assert!(sessions[0]["updated_at"].is_string());
 }
 
 #[tokio::test]

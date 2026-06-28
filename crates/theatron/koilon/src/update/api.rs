@@ -55,8 +55,8 @@ pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>
                 role: sanitize_for_display(&m.role).into_owned(),
                 text,
                 text_lower,
-                timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
-                model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
+                timestamp: Some(sanitize_for_display(&m.created_at).into_owned()),
+                model: None,
                 tool_calls: Vec::new(),
                 kind: crate::state::MessageKind::default(),
             })
@@ -126,7 +126,7 @@ pub(crate) async fn handle_session_picker_archive(app: &mut App) {
                 && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| &a.id == agent_id)
                 && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
             {
-                session.status = Some("archived".to_string());
+                session.status = "archived".to_string();
             }
             if app.dashboard.focused_session_id.as_ref() == Some(&session_id) {
                 app.dashboard.messages.clear();
@@ -229,11 +229,11 @@ fn sanitize_sessions(sessions: Vec<Session>) -> Vec<Session> {
             id: s.id,
             nous_id: s.nous_id,
             key: sanitize_for_display(&s.key).into_owned(),
-            status: s.status.map(|st| sanitize_for_display(&st).into_owned()),
+            status: sanitize_for_display(&s.status).into_owned(),
+            model: s.model.map(|m| sanitize_for_display(&m).into_owned()),
             message_count: s.message_count,
-            session_type: s
-                .session_type
-                .map(|t| sanitize_for_display(&t).into_owned()),
+            token_count_estimate: s.token_count_estimate,
+            created_at: s.created_at,
             updated_at: s.updated_at,
             display_name: s
                 .display_name
@@ -252,31 +252,21 @@ fn chrono_compact_now() -> String {
     format!("{:x}", secs)
 }
 
-pub(crate) fn extract_text_content(content: &Option<serde_json::Value>) -> Option<String> {
-    let content = content.as_ref()?;
-
-    if let Some(s) = content.as_str() {
-        if s.is_empty() {
-            return None;
-        }
-        if s.starts_with('[')
-            && let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(s)
-        {
-            return extract_texts_from_array(&parsed);
-        }
-        // WHY: tool_use inputs are sometimes stored as JSON object strings;
-        // skip them rather than rendering raw JSON in the chat pane.
-        if s.starts_with('{') && serde_json::from_str::<serde_json::Value>(s).is_ok() {
-            return None;
-        }
-        return Some(s.to_string());
+pub(crate) fn extract_text_content(content: &str) -> Option<String> {
+    if content.is_empty() {
+        return None;
     }
-
-    if let Some(arr) = content.as_array() {
-        return extract_texts_from_array(arr);
+    if content.starts_with('[')
+        && let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(content)
+    {
+        return extract_texts_from_array(&parsed);
     }
-
-    None
+    // WHY: tool_use inputs are sometimes stored as JSON object strings;
+    // skip them rather than rendering raw JSON in the chat pane.
+    if content.starts_with('{') && serde_json::from_str::<serde_json::Value>(content).is_ok() {
+        return None;
+    }
+    Some(content.to_string())
 }
 
 fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
@@ -309,27 +299,21 @@ mod tests {
 
     #[test]
     fn extract_text_content_plain_string() {
-        let content = Some(serde_json::Value::String("hello".to_string()));
-        assert_eq!(extract_text_content(&content).as_deref(), Some("hello"));
+        assert_eq!(extract_text_content("hello").as_deref(), Some("hello"));
     }
 
     #[test]
     fn extract_text_content_empty_string() {
-        let content = Some(serde_json::Value::String(String::new()));
-        assert!(extract_text_content(&content).is_none());
-    }
-
-    #[test]
-    fn extract_text_content_none() {
-        assert!(extract_text_content(&None).is_none());
+        assert!(extract_text_content("").is_none());
     }
 
     #[test]
     fn extract_text_content_array_with_text_blocks() {
-        let content = Some(serde_json::json!([
+        let content = serde_json::json!([
             {"type": "text", "text": "hello"},
             {"type": "text", "text": "world"}
-        ]));
+        ])
+        .to_string();
         assert_eq!(
             extract_text_content(&content).as_deref(),
             Some("hello\nworld")
@@ -338,52 +322,48 @@ mod tests {
 
     #[test]
     fn extract_text_content_array_skips_non_text() {
-        let content = Some(serde_json::json!([
+        let content = serde_json::json!([
             {"type": "tool_use", "name": "test"},
             {"type": "text", "text": "result"}
-        ]));
+        ])
+        .to_string();
         assert_eq!(extract_text_content(&content).as_deref(), Some("result"));
     }
 
     #[test]
     fn extract_text_content_string_containing_json_array() {
-        let content = Some(serde_json::Value::String(
-            r#"[{"type": "text", "text": "parsed"}]"#.to_string(),
-        ));
-        assert_eq!(extract_text_content(&content).as_deref(), Some("parsed"));
+        let content = r#"[{"type": "text", "text": "parsed"}]"#;
+        assert_eq!(extract_text_content(content).as_deref(), Some("parsed"));
     }
 
     #[test]
     fn extract_text_content_empty_array() {
-        let content = Some(serde_json::json!([]));
+        let content = serde_json::json!([]).to_string();
         assert!(extract_text_content(&content).is_none());
     }
 
     #[test]
     fn extract_text_content_json_object_string_skipped() {
         // Tool use inputs stored as JSON object strings must not render as raw JSON.
-        let content = Some(serde_json::Value::String(
-            r#"{"command":"head -30 /path"}"#.to_string(),
-        ));
-        assert!(extract_text_content(&content).is_none());
+        assert!(extract_text_content(r#"{"command":"head -30 /path"}"#).is_none());
     }
 
     #[test]
     fn extract_text_content_non_json_brace_string_kept() {
         // Plain text that happens to start with '{' but is not valid JSON is kept.
-        let content = Some(serde_json::Value::String("{not json}".to_string()));
         assert_eq!(
-            extract_text_content(&content).as_deref(),
+            extract_text_content("{not json}").as_deref(),
             Some("{not json}")
         );
     }
 
     #[test]
     fn extract_text_content_array_with_empty_texts() {
-        let content = Some(serde_json::json!([
+        let content = serde_json::json!([
             {"type": "text", "text": ""},
             {"type": "text", "text": ""}
-        ]));
+        ])
+        .to_string();
         assert!(extract_text_content(&content).is_none());
     }
 
@@ -412,10 +392,12 @@ mod tests {
             id: "s1".into(),
             nous_id: "syn".into(),
             key: "main".to_string(),
-            status: None,
+            status: "active".to_string(),
+            model: None,
             message_count: 5,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
             display_name: None,
         }];
         handle_sessions_loaded(&mut app, "syn".into(), sessions);
@@ -430,10 +412,12 @@ mod tests {
             id: "s1".into(),
             nous_id: "unknown".into(),
             key: "main".to_string(),
-            status: None,
+            status: "active".to_string(),
+            model: None,
             message_count: 0,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
             display_name: None,
         }];
         handle_sessions_loaded(&mut app, "unknown".into(), sessions);
@@ -527,31 +511,31 @@ mod tests {
         let mut app = test_app();
         let messages = vec![
             HistoryMessage {
-                id: None,
-                seq: None,
+                id: 1,
+                seq: 1,
                 role: "user".to_string(),
-                content: Some(serde_json::Value::String("hello".to_string())),
-                created_at: None,
-                model: None,
+                content: "hello".to_string(),
+                tool_call_id: None,
                 tool_name: None,
+                created_at: "2025-01-01T00:00:00Z".to_string(),
             },
             HistoryMessage {
-                id: None,
-                seq: None,
+                id: 2,
+                seq: 2,
                 role: "system".to_string(),
-                content: Some(serde_json::Value::String("system prompt".to_string())),
-                created_at: None,
-                model: None,
+                content: "system prompt".to_string(),
+                tool_call_id: None,
                 tool_name: None,
+                created_at: "2025-01-01T00:00:01Z".to_string(),
             },
             HistoryMessage {
-                id: None,
-                seq: None,
+                id: 3,
+                seq: 3,
                 role: "assistant".to_string(),
-                content: Some(serde_json::Value::String("response".to_string())),
-                created_at: None,
-                model: None,
+                content: "response".to_string(),
+                tool_call_id: None,
                 tool_name: None,
+                created_at: "2025-01-01T00:00:02Z".to_string(),
             },
         ];
         handle_history_loaded(&mut app, messages);

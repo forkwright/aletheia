@@ -112,8 +112,8 @@ pub(crate) async fn handle_select(app: &mut App) {
                         role: sanitize_for_display(&m.role).into_owned(),
                         text,
                         text_lower,
-                        timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
-                        model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
+                        timestamp: Some(sanitize_for_display(&m.created_at).into_owned()),
+                        model: None,
                         tool_calls: Vec::new(),
                         kind: crate::state::MessageKind::default(),
                     })
@@ -267,10 +267,12 @@ mod tests {
             id: "s1".into(),
             nous_id: "syn".into(),
             key: "main".to_string(),
-            status: None,
+            status: "active".to_string(),
+            model: None,
             message_count: 5,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
             display_name: None,
         });
         app.dashboard.agents.push(agent);
@@ -316,10 +318,12 @@ mod tests {
             id: "s1".into(),
             nous_id: "syn".into(),
             key: "main".to_string(),
-            status: None,
+            status: "active".to_string(),
+            model: None,
             message_count: 5,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
             display_name: Some("Debug Session".to_string()),
         });
         app.dashboard.agents.push(agent);
@@ -337,10 +341,12 @@ mod tests {
             id: "s1".into(),
             nous_id: "syn".into(),
             key: "main".to_string(),
-            status: None,
+            status: "active".to_string(),
+            model: None,
             message_count: 5,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
             display_name: None,
         });
         app.dashboard.agents.push(agent);

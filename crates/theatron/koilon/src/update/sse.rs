@@ -466,10 +466,12 @@ mod tests {
                 id: "s1".into(),
                 nous_id: "syn".into(),
                 key: "main".to_string(),
-                status: None,
+                status: "active".to_string(),
+                model: None,
                 message_count: 0,
-                session_type: None,
-                updated_at: None,
+                token_count_estimate: 0,
+                created_at: "2025-01-01T00:00:00Z".to_string(),
+                updated_at: "2025-01-01T00:00:00Z".to_string(),
                 display_name: None,
             });
 

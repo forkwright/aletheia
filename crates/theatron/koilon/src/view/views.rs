@@ -56,9 +56,9 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                     Style::default()
                 };
 
-                let status_icon = match session.status.as_deref() {
-                    Some("archived") => "◌",
-                    Some("active") => "●",
+                let status_icon = match session.status.as_str() {
+                    "archived" => "◌",
+                    "active" => "●",
                     _ => "○",
                 };
 
@@ -102,18 +102,17 @@ pub(crate) fn render_sessions(app: &App, frame: &mut Frame, area: Rect, theme: &
                     spans.push(Span::styled(format!("  {agent_label}"), theme.style_dim()));
                 }
 
-                if let Some(ref updated) = session.updated_at {
-                    let time_str = updated
-                        .split('T')
-                        .nth(1)
-                        .and_then(|t| t.split('.').next())
-                        .unwrap_or(updated);
-                    let separator = if show_agent_label { " |" } else { "" };
-                    spans.push(Span::styled(
-                        format!("{separator}  {time_str}"),
-                        theme.style_dim(),
-                    ));
-                }
+                let time_str = session
+                    .updated_at
+                    .split('T')
+                    .nth(1)
+                    .and_then(|t| t.split('.').next())
+                    .unwrap_or(&session.updated_at);
+                let separator = if show_agent_label { " |" } else { "" };
+                spans.push(Span::styled(
+                    format!("{separator}  {time_str}"),
+                    theme.style_dim(),
+                ));
 
                 lines.push(Line::from(spans));
             }

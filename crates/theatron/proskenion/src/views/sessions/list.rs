@@ -191,10 +191,9 @@ const SYSTEM_KEY_PREFIXES: &[&str] = &[
 
 /// Whether a session is a system/background session (hidden by default).
 fn is_system_session(session: &Session) -> bool {
-    session.session_type.as_deref() == Some("background")
-        || SYSTEM_KEY_PREFIXES
-            .iter()
-            .any(|prefix| session.key.starts_with(prefix))
+    SYSTEM_KEY_PREFIXES
+        .iter()
+        .any(|prefix| session.key.starts_with(prefix))
 }
 
 /// Group sessions by owning nous, preserving the store's sort order within
@@ -263,7 +262,7 @@ pub(crate) fn SessionSortBar(
 pub(crate) fn SessionRow(
     session_id: SessionId,
     title: String,
-    message_count: u32,
+    message_count: i64,
     updated_at: String,
     status: String,
     is_selected: bool,
@@ -445,7 +444,7 @@ pub(crate) fn SessionList(
                                         session_id: session.id.clone(),
                                         title: session.label().to_string(),
                                         message_count: session.message_count,
-                                        updated_at: session.updated_at.clone().unwrap_or_default(),
+                                        updated_at: session.updated_at.clone(),
                                         status: session_display_status(&session).to_string(),
                                         is_selected: selection_store.read().is_selected(&session.id),
                                         on_click: move |id: SessionId| on_select_session.call(id),
@@ -483,10 +482,12 @@ mod tests {
             id: SessionId::from(key),
             nous_id: skene::id::NousId::from(nous),
             key: key.to_string(),
-            status: Some("active".to_string()),
+            status: "active".to_string(),
+            model: None,
             message_count: 1,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
             display_name: None,
         }
     }
@@ -507,13 +508,6 @@ mod tests {
                 "{key} should classify as system"
             );
         }
-    }
-
-    #[test]
-    fn background_session_type_classifies_as_system() {
-        let mut s = session("syn", "incident-review");
-        s.session_type = Some("background".to_string());
-        assert!(is_system_session(&s));
     }
 
     #[test]

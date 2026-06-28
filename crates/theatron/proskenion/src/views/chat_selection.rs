@@ -95,7 +95,7 @@ pub(crate) fn history_messages_to_legacy(messages: &[HistoryMessage]) -> Vec<Leg
 }
 
 pub(crate) fn oldest_history_seq(messages: &[HistoryMessage]) -> Option<i64> {
-    messages.iter().filter_map(|msg| msg.seq).min()
+    messages.iter().map(|msg| msg.seq).min()
 }
 
 fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessage> {
@@ -116,8 +116,8 @@ fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessa
 
     Some(LegacyChatMessage {
         role,
-        content: history_content_to_string(message.content.as_ref()),
-        model: message.model.clone(),
+        content: history_content_to_string(&message.content),
+        model: None,
         tool_calls,
         input_tokens: 0,
         output_tokens: 0,
@@ -127,12 +127,8 @@ fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessa
     })
 }
 
-fn history_content_to_string(content: Option<&serde_json::Value>) -> String {
-    match content {
-        Some(serde_json::Value::String(text)) => text.clone(),
-        Some(value) => serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string()),
-        None => String::new(),
-    }
+fn history_content_to_string(content: &str) -> String {
+    content.to_string()
 }
 
 #[cfg(test)]
@@ -286,8 +282,24 @@ mod tests {
         );
         let json = r#"{
             "messages": [
-                {"id": 1, "seq": 1, "role": "user", "content": "What happened?"},
-                {"id": 2, "seq": 2, "role": "assistant", "content": "Recovered the transcript.", "model": "claude-opus-4-6"}
+                {
+                    "id": 1,
+                    "seq": 1,
+                    "role": "user",
+                    "content": "What happened?",
+                    "tool_call_id": null,
+                    "tool_name": null,
+                    "created_at": "2025-01-01T00:00:00Z"
+                },
+                {
+                    "id": 2,
+                    "seq": 2,
+                    "role": "assistant",
+                    "content": "Recovered the transcript.",
+                    "tool_call_id": null,
+                    "tool_name": null,
+                    "created_at": "2025-01-01T00:00:01Z"
+                }
             ]
         }"#;
 
@@ -307,10 +319,7 @@ mod tests {
         assert_eq!(chat_state.messages[0].content, "What happened?");
         assert_eq!(chat_state.messages[1].role, MessageRole::Assistant);
         assert_eq!(chat_state.messages[1].content, "Recovered the transcript.");
-        assert_eq!(
-            chat_state.messages[1].model.as_deref(),
-            Some("claude-opus-4-6")
-        );
+        assert!(chat_state.messages[1].model.is_none());
     }
 
     #[test]

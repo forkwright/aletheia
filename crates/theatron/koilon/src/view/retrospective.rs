@@ -148,7 +148,7 @@ fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &The
             let archived_count = agent
                 .sessions
                 .iter()
-                .filter(|s| s.status.as_deref() == Some("archived"))
+                .filter(|s| s.status == "archived")
                 .count();
             let active_count = session_count.saturating_sub(archived_count);
 
@@ -177,15 +177,11 @@ fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &The
             ]));
 
             // WHY: Show completed (archived) sessions as retrospective entries.
-            for session in agent
-                .sessions
-                .iter()
-                .filter(|s| s.status.as_deref() == Some("archived"))
-            {
+            for session in agent.sessions.iter().filter(|s| s.status == "archived") {
                 let time_str = session
                     .updated_at
-                    .as_ref()
-                    .and_then(|ts| ts.split('T').nth(1))
+                    .split('T')
+                    .nth(1)
                     .and_then(|t| t.split('.').next())
                     .unwrap_or("--:--:--");
 

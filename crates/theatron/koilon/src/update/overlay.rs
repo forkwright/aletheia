@@ -191,10 +191,10 @@ pub(crate) async fn handle_overlay_select(app: &mut App) {
                                     role: sanitize_for_display(&m.role).into_owned(),
                                     text,
                                     text_lower,
-                                    timestamp: m
-                                        .created_at
-                                        .map(|t| sanitize_for_display(&t).into_owned()),
-                                    model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
+                                    timestamp: Some(
+                                        sanitize_for_display(&m.created_at).into_owned(),
+                                    ),
+                                    model: None,
                                     tool_calls: Vec::new(),
                                     kind: crate::state::MessageKind::default(),
                                 })
@@ -413,17 +413,19 @@ mod tests {
             id: id.into(),
             nous_id: "syn".into(),
             key: key.to_string(),
-            status: None,
+            status: "active".to_string(),
+            model: None,
             message_count: 0,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 0,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
             display_name: None,
         }
     }
 
     fn make_archived_session(id: &str, key: &str) -> crate::api::types::Session {
         crate::api::types::Session {
-            status: Some("archived".to_string()),
+            status: "archived".to_string(),
             ..make_session(id, key)
         }
     }

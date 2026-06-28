@@ -6,7 +6,7 @@ pub(crate) mod list;
 pub(crate) mod search;
 
 use dioxus::prelude::*;
-use skene::api::types::{HistoryResponse, PaginatedSessionsResponse, Session};
+use skene::api::types::{HistoryMessage, HistoryResponse, PaginatedSessionsResponse, Session};
 use skene::id::SessionId;
 
 use crate::api::client::authenticated_client;
@@ -84,6 +84,56 @@ fn chat_selection_for_session(session: &Session) -> ChatSelection {
         session.label().to_string(),
         session.message_count,
     )
+}
+
+fn session_detail_from_history(
+    session: Session,
+    messages: &[HistoryMessage],
+) -> SessionDetailStore {
+    let mut user_count = 0u32;
+    let mut assistant_count = 0u32;
+    let mut first_ts: Option<String> = None;
+    let mut last_ts: Option<String> = None;
+    let mut previews = Vec::new();
+
+    for msg in messages {
+        match msg.role.as_str() {
+            "user" => user_count += 1,
+            "assistant" => assistant_count += 1,
+            _ => {}
+        }
+
+        if first_ts.is_none() {
+            first_ts = Some(msg.created_at.clone());
+        }
+        last_ts = Some(msg.created_at.clone());
+
+        let summary = msg
+            .content
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(120)
+            .collect::<String>();
+
+        previews.push(MessagePreview {
+            role: msg.role.clone(),
+            summary,
+            created_at: Some(msg.created_at.clone()),
+        });
+    }
+
+    SessionDetailStore {
+        model: session.model.clone(),
+        session: Some(session),
+        user_messages: user_count,
+        assistant_messages: assistant_count,
+        started_at: first_ts,
+        ended_at: last_ts,
+        message_previews: previews,
+        ..SessionDetailStore::default()
+    }
 }
 
 #[component]
@@ -235,11 +285,6 @@ pub(crate) fn Sessions() -> Element {
                 let encoded: String = keryx::url::encode_path_segment(session_id.as_ref());
                 let url = format!("{base}/api/v1/sessions/{encoded}/history");
 
-                let mut detail = SessionDetailStore {
-                    session: Some(session.clone()),
-                    ..SessionDetailStore::default()
-                };
-
                 match client.get(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
                         let text = match resp.text().await {
@@ -256,67 +301,14 @@ pub(crate) fn Sessions() -> Element {
                         {
                             wrapper.messages
                         } else {
-                            serde_json::from_str::<Vec<skene::api::types::HistoryMessage>>(&text)
+                            serde_json::from_str::<Vec<HistoryMessage>>(&text)
                                 .unwrap_or_else(|e| {
                                     tracing::warn!(error = %e, "history response is not a message array; using empty history");
                                     Vec::new()
                                 })
                         };
 
-                        let mut user_count = 0u32;
-                        let mut assistant_count = 0u32;
-                        let mut first_ts: Option<String> = None;
-                        let mut last_ts: Option<String> = None;
-                        let mut model: Option<String> = None;
-                        let mut previews = Vec::new();
-
-                        for msg in &messages {
-                            match msg.role.as_str() {
-                                "user" => user_count += 1,
-                                "assistant" => {
-                                    assistant_count += 1;
-                                    if model.is_none() {
-                                        model = msg.model.clone();
-                                    }
-                                }
-                                _ => {} // NOTE: non-assistant messages have no model to extract
-                            }
-
-                            if let Some(ref ts) = msg.created_at {
-                                if first_ts.is_none() {
-                                    first_ts = Some(ts.clone());
-                                }
-                                last_ts = Some(ts.clone());
-                            }
-
-                            let summary = msg
-                                .content
-                                .as_ref()
-                                .and_then(|c| {
-                                    c.as_str().map(|s| {
-                                        s.lines()
-                                            .next()
-                                            .unwrap_or("")
-                                            .chars()
-                                            .take(120)
-                                            .collect::<String>()
-                                    })
-                                })
-                                .unwrap_or_else(String::new);
-
-                            previews.push(MessagePreview {
-                                role: msg.role.clone(),
-                                summary,
-                                created_at: msg.created_at.clone(),
-                            });
-                        }
-
-                        detail.user_messages = user_count;
-                        detail.assistant_messages = assistant_count;
-                        detail.model = model;
-                        detail.started_at = first_ts;
-                        detail.ended_at = last_ts;
-                        detail.message_previews = previews;
+                        let detail = session_detail_from_history(session.clone(), &messages);
 
                         detail_state.set(FetchState::Loaded(detail));
                     }
@@ -582,10 +574,12 @@ mod tests {
             id: SessionId::from("session-id"),
             nous_id: NousId::from("syn"),
             key: "incident-review".to_string(),
-            status: Some("active".to_string()),
+            status: "active".to_string(),
+            model: Some("mock-model".to_string()),
             message_count: 4,
-            session_type: None,
-            updated_at: None,
+            token_count_estimate: 128,
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:01:00Z".to_string(),
             display_name: display_name.map(str::to_string),
         }
     }
@@ -606,5 +600,52 @@ mod tests {
         let selection = chat_selection_for_session(&session(None));
 
         assert_eq!(selection.title, "incident-review");
+    }
+
+    #[test]
+    fn session_detail_projection_uses_pylon_history_without_history_model() {
+        let history = r#"{
+            "messages": [
+                {
+                    "id": 1,
+                    "seq": 1,
+                    "role": "user",
+                    "content": "What happened?",
+                    "tool_call_id": null,
+                    "tool_name": null,
+                    "created_at": "2025-01-01T00:00:00Z"
+                },
+                {
+                    "id": 2,
+                    "seq": 2,
+                    "role": "assistant",
+                    "content": "Recovered the transcript.",
+                    "tool_call_id": null,
+                    "tool_name": null,
+                    "created_at": "2025-01-01T00:00:01Z"
+                },
+                {
+                    "id": 3,
+                    "seq": 3,
+                    "role": "tool",
+                    "content": "file contents",
+                    "tool_call_id": "toolu_01",
+                    "tool_name": "read_file",
+                    "created_at": "2025-01-01T00:00:02Z"
+                }
+            ]
+        }"#;
+        let response: HistoryResponse = serde_json::from_str(history).unwrap();
+
+        let detail =
+            session_detail_from_history(session(Some("Incident Review")), &response.messages);
+
+        assert_eq!(detail.user_messages, 1);
+        assert_eq!(detail.assistant_messages, 1);
+        assert_eq!(detail.model.as_deref(), Some("mock-model"));
+        assert_eq!(detail.started_at.as_deref(), Some("2025-01-01T00:00:00Z"));
+        assert_eq!(detail.ended_at.as_deref(), Some("2025-01-01T00:00:02Z"));
+        assert_eq!(detail.message_previews.len(), 3);
+        assert_eq!(detail.message_previews[2].summary, "file contents");
     }
 }

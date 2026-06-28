@@ -48,17 +48,18 @@ pub struct Session {
     #[serde(rename = "session_key")]
     pub key: String, // kanon:ignore RUST/plain-string-secret
     /// Session status (e.g. "active", "archived").
+    pub status: String,
+    /// LLM model associated with this session, if known.
     #[serde(default)]
-    pub status: Option<String>,
+    pub model: Option<String>,
     /// Number of messages in the session.
-    #[serde(default)]
-    pub message_count: u32,
-    /// Session type (e.g. "background").
-    #[serde(default)]
-    pub session_type: Option<String>,
+    pub message_count: i64,
+    /// Estimated total tokens across all messages.
+    pub token_count_estimate: i64,
+    /// Creation timestamp.
+    pub created_at: String,
     /// Last-updated timestamp.
-    #[serde(default)]
-    pub updated_at: Option<String>,
+    pub updated_at: String,
     /// User-assigned display name.
     #[serde(default, alias = "name")]
     pub display_name: Option<String>,
@@ -79,7 +80,7 @@ impl Session {
     #[must_use]
     pub fn is_archived(&self) -> bool {
         // kanon:ignore RUST/pub-visibility
-        self.status.as_deref() == Some("archived") || self.key.contains(":archived:")
+        self.status == "archived" || self.key.contains(":archived:")
     }
 
     /// Whether this session accepts interactive user input.
@@ -87,7 +88,6 @@ impl Session {
     pub fn is_interactive(&self) -> bool {
         // kanon:ignore RUST/pub-visibility
         !self.is_archived()
-            && self.session_type.as_deref() != Some("background")
             && !self.key.starts_with("cron:")
             && !self.key.starts_with("daemon:")
             && !self.key.starts_with("prosoche")
@@ -118,26 +118,22 @@ pub struct ListSessionsRequest {
 /// A single message from session history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryMessage {
-    /// Database row ID, when returned by the server.
-    #[serde(default)]
-    pub id: Option<i64>,
-    /// Sequence number within the session, when returned by the server.
-    #[serde(default)]
-    pub seq: Option<i64>,
+    /// Database row ID.
+    pub id: i64,
+    /// Sequence number within the session.
+    pub seq: i64,
     /// Role: "user", "assistant", or "tool".
     pub role: String,
-    /// Message content (text or structured).
+    /// Message content.
+    pub content: String,
+    /// Tool call ID if this is a tool result message.
     #[serde(default)]
-    pub content: Option<serde_json::Value>,
-    /// When the message was created.
-    #[serde(default)]
-    pub created_at: Option<String>,
-    /// Model that generated this message (assistant messages only).
-    #[serde(default)]
-    pub model: Option<String>,
+    pub tool_call_id: Option<String>,
     /// Tool name if this is a tool-result message.
     #[serde(default)]
     pub tool_name: Option<String>,
+    /// When the message was created.
+    pub created_at: String,
 }
 
 /// Wrapper for the history endpoint response.

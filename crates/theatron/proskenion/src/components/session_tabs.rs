@@ -81,7 +81,7 @@ type TabSnapshot = (
     NousId,
     Option<String>,
     Option<SessionId>,
-    Option<u32>,
+    Option<i64>,
     String,
     bool,
     bool,

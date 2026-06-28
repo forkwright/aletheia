@@ -74,7 +74,7 @@ pub struct TabEntry {
     /// Durable server session ID, if this tab was opened from an existing session.
     pub session_id: Option<SessionId>,
     /// Server-reported total message count, if known.
-    pub message_count: Option<u32>,
+    pub message_count: Option<i64>,
     /// Display title for the tab.
     pub title: String,
     /// Whether this tab has unread messages.
@@ -145,7 +145,7 @@ impl TabBar {
         agent_id: NousId,
         session_id: SessionId,
         session_key: String, // kanon:ignore RUST/plain-string-secret
-        message_count: Option<u32>,
+        message_count: Option<i64>,
         title: impl Into<String>,
     ) -> usize {
         let id = self.next_id;

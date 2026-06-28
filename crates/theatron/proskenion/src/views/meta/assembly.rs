@@ -38,10 +38,15 @@ pub(super) fn assemble_meta_data(
     if perf.agents.is_empty() {
         // Fallback: compute from sessions/agents when endpoint returns empty.
         for agent in &agents {
-            let agent_sessions: Vec<&SessionEntry> =
-                sessions.iter().filter(|s| s.nous_id == agent.id).collect();
+            let agent_sessions: Vec<&SessionEntry> = sessions
+                .iter()
+                .filter(|s| s.nous_id.as_ref() == agent.id.as_str())
+                .collect();
             let session_count = count_to_f64(agent_sessions.len().max(1));
-            let total_messages: u32 = agent_sessions.iter().map(|s| s.message_count).sum();
+            let total_messages: f64 = agent_sessions
+                .iter()
+                .map(|s| count_to_f64(usize::try_from(s.message_count).unwrap_or_default()))
+                .sum();
 
             scorecards.push(crate::state::meta::AgentScorecard {
                 agent_id: agent.id.clone(),
@@ -55,7 +60,7 @@ pub(super) fn assemble_meta_data(
                 tool_success_rate: 0.0,
                 distillation_frequency: 0.0,
                 avg_context_before_distill: 0.0,
-                messages_per_session: f64::from(total_messages) / session_count,
+                messages_per_session: total_messages / session_count,
                 sessions_per_day: compute_sessions_per_day(&agent_sessions),
                 errors_per_session: 0.0,
             });
@@ -365,7 +370,7 @@ pub(super) fn assemble_meta_data(
     // Parse "YYYY-MM-DDTHH:MM:SS" -> (day_of_week, hour).
     let timestamps: Vec<(u8, u8)> = sessions
         .iter()
-        .filter_map(|s| parse_timestamp_to_day_hour(s.activity_timestamp()))
+        .filter_map(|s| parse_timestamp_to_day_hour(session_activity_timestamp(s)))
         .collect();
     let heatmap = crate::state::meta::build_heatmap(&timestamps);
 
@@ -413,6 +418,14 @@ fn timestamp_is_past(timestamp: &str) -> bool {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     ts <= now
+}
+
+fn session_activity_timestamp(session: &SessionEntry) -> &str {
+    if session.created_at.is_empty() {
+        &session.updated_at
+    } else {
+        &session.created_at
+    }
 }
 
 /// Convert API time-series entries to internal `DataPoint` values.

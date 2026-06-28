@@ -511,19 +511,14 @@ impl App {
                 .sessions
                 .iter()
                 .filter(|s| {
-                    s.session_type.as_deref() != Some("background")
-                        && s.status.as_deref() != Some("archived")
+                    s.status != "archived"
                         && !s.key.contains(":archived:")
                         && !s.key.starts_with("cron:")
                         && !s.key.starts_with("daemon:")
                         && !s.key.starts_with("prosoche")
                         && !s.key.starts_with("agent:")
                 })
-                .max_by(|a, b| {
-                    let a_ts = a.updated_at.as_deref().unwrap_or("");
-                    let b_ts = b.updated_at.as_deref().unwrap_or("");
-                    a_ts.cmp(b_ts)
-                })
+                .max_by(|a, b| a.updated_at.cmp(&b.updated_at))
         }
         .or_else(|| agent.sessions.iter().find(|s| s.key == "main"))
         .or_else(|| agent.sessions.first());
@@ -559,10 +554,8 @@ impl App {
                                 role: sanitize_for_display(&m.role).into_owned(),
                                 text,
                                 text_lower,
-                                timestamp: m
-                                    .created_at
-                                    .map(|t| sanitize_for_display(&t).into_owned()),
-                                model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
+                                timestamp: Some(sanitize_for_display(&m.created_at).into_owned()),
+                                model: None,
                                 tool_calls: Vec::new(),
                                 kind: MessageKind::default(),
                             })

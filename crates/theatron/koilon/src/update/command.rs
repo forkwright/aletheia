@@ -425,7 +425,7 @@ async fn execute_archive(app: &mut App) {
                 && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| &a.id == agent_id)
                 && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
             {
-                session.status = Some("archived".to_string());
+                session.status = "archived".to_string();
             }
             app.dashboard.messages.clear();
             app.dashboard.focused_session_id = None;
@@ -455,7 +455,7 @@ async fn execute_unarchive(app: &mut App) {
                 && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| &a.id == agent_id)
                 && let Some(session) = agent.sessions.iter_mut().find(|s| s.id == session_id)
             {
-                session.status = Some("active".to_string());
+                session.status = "active".to_string();
             }
             app.viewport.error_toast = Some(ErrorToast::new("Session restored".into()));
         }

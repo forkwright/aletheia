@@ -239,11 +239,9 @@ pub(crate) fn SessionDetail(
                                                 style: "{STATUS_BADGE_STYLE} background: {status_bg}; color: {status_fg};",
                                                 "{status}"
                                             }
-                                            if let Some(ref updated) = session.updated_at {
-                                                span {
-                                                    style: "font-size: var(--text-xs); color: var(--text-muted);",
-                                                    "Last active: {format_relative_time(updated)}"
-                                                }
+                                            span {
+                                                style: "font-size: var(--text-xs); color: var(--text-muted);",
+                                                "Last active: {format_relative_time(&session.updated_at)}"
                                             }
                                         }
                                     }

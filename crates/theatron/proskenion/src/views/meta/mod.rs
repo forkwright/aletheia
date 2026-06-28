@@ -116,31 +116,7 @@ struct TimelineEntry {
     count: u32,
 }
 
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct SessionEntry {
-    #[serde(default)]
-    nous_id: String,
-    #[serde(default)]
-    message_count: u32,
-    #[serde(default)]
-    created_at: String,
-    #[serde(default)]
-    updated_at: String,
-}
-
-impl SessionEntry {
-    /// Best-available activity timestamp for day/hour bucketing.
-    ///
-    /// NOTE: the paginated session list carries only `updated_at`;
-    /// `created_at` is preferred when a future shape provides it.
-    fn activity_timestamp(&self) -> &str {
-        if self.created_at.is_empty() {
-            &self.updated_at
-        } else {
-            &self.created_at
-        }
-    }
-}
+type SessionEntry = skene::api::types::Session;
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct AgentEntry {

@@ -14,7 +14,7 @@ pub(crate) struct ChatSelection {
     /// Human-readable title shown in the chat tab bar.
     pub title: String, // kanon:ignore RUST/plain-string-secret
     /// Server-reported total message count, used to decide whether older pages exist.
-    pub message_count: Option<u32>,
+    pub message_count: Option<i64>,
 }
 
 impl ChatSelection {
@@ -41,7 +41,7 @@ impl ChatSelection {
         session_id: SessionId,
         session_key: String, // kanon:ignore RUST/plain-string-secret
         title: String,
-        message_count: u32,
+        message_count: i64,
     ) -> Self {
         Self {
             agent_id,

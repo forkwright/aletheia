@@ -59,53 +59,118 @@ fn session_deserialization() {
         "nous_id": "syn",
         "session_key": "main",
         "message_count": 5,
-        "status": "active"
+        "token_count_estimate": 128,
+        "status": "active",
+        "created_at": "2025-01-01T00:00:00Z",
+        "updated_at": "2025-01-01T00:01:00Z",
+        "model": "mock-model"
     }"#;
     let session: Session = serde_json::from_str(json).unwrap();
     assert!(session.id == *"sess-1");
     assert!(session.nous_id == *"syn");
     assert_eq!(session.key, "main");
     assert_eq!(session.message_count, 5);
-    assert_eq!(session.status.as_deref(), Some("active"));
+    assert_eq!(session.token_count_estimate, 128);
+    assert_eq!(session.status, "active");
+    assert_eq!(session.model.as_deref(), Some("mock-model"));
 }
 
 #[test]
-fn session_deserialization_defaults() {
-    let json = r#"{"id": "s1", "nous_id": "n1", "session_key": "k1"}"#;
-    let session: Session = serde_json::from_str(json).unwrap();
-    assert_eq!(session.message_count, 0);
-    assert!(session.status.is_none());
-    assert!(session.session_type.is_none());
-    assert!(session.updated_at.is_none());
+fn pylon_session_list_response_deserializes_review_contract() {
+    let json = r#"{
+        "items": [
+            {
+                "id": "sess-1",
+                "nous_id": "syn",
+                "session_key": "main",
+                "status": "active",
+                "model": "mock-model",
+                "message_count": 5,
+                "token_count_estimate": 128,
+                "created_at": "2025-01-01T00:00:00Z",
+                "updated_at": "2025-01-01T00:01:00Z",
+                "name": "Review"
+            }
+        ],
+        "has_more": false,
+        "next_cursor": null,
+        "total": 1
+    }"#;
+
+    let response: PaginatedSessionsResponse = serde_json::from_str(json).unwrap();
+    let session = response.items.first().unwrap();
+
+    assert_eq!(session.id.as_ref(), "sess-1");
+    assert_eq!(session.nous_id.as_ref(), "syn");
+    assert_eq!(session.key, "main");
+    assert_eq!(session.status, "active");
+    assert_eq!(session.model.as_deref(), Some("mock-model"));
+    assert_eq!(session.message_count, 5);
+    assert_eq!(session.token_count_estimate, 128);
+    assert_eq!(session.created_at, "2025-01-01T00:00:00Z");
+    assert_eq!(session.updated_at, "2025-01-01T00:01:00Z");
+    assert_eq!(session.display_name.as_deref(), Some("Review"));
 }
 
 #[test]
 fn history_message_deserialization() {
     let json = r#"{
+        "id": 7,
+        "seq": 42,
         "role": "user",
         "content": "hello",
+        "tool_call_id": null,
+        "tool_name": null,
         "created_at": "2025-01-01T00:00:00Z"
     }"#;
     let msg: HistoryMessage = serde_json::from_str(json).unwrap();
-    assert!(msg.id.is_none());
-    assert!(msg.seq.is_none());
+    assert_eq!(msg.id, 7);
+    assert_eq!(msg.seq, 42);
     assert_eq!(msg.role, "user");
-    assert!(msg.content.is_some());
-    assert!(msg.created_at.is_some());
+    assert_eq!(msg.content, "hello");
+    assert!(msg.tool_call_id.is_none());
+    assert!(msg.tool_name.is_none());
+    assert_eq!(msg.created_at, "2025-01-01T00:00:00Z");
 }
 
 #[test]
-fn history_message_deserializes_sequence_cursor() {
+fn pylon_history_response_deserializes_audit_contract() {
     let json = r#"{
-        "id": 7,
-        "seq": 42,
-        "role": "assistant",
-        "content": "hello",
-        "created_at": "2025-01-01T00:00:00Z"
+        "messages": [
+            {
+                "id": 1,
+                "seq": 1,
+                "role": "user",
+                "content": "What happened?",
+                "tool_call_id": null,
+                "tool_name": null,
+                "created_at": "2025-01-01T00:00:00Z"
+            },
+            {
+                "id": 2,
+                "seq": 2,
+                "role": "tool",
+                "content": "file contents",
+                "tool_call_id": "toolu_01",
+                "tool_name": "read_file",
+                "created_at": "2025-01-01T00:00:01Z"
+            }
+        ]
     }"#;
-    let msg: HistoryMessage = serde_json::from_str(json).unwrap();
-    assert_eq!(msg.id, Some(7));
-    assert_eq!(msg.seq, Some(42));
+
+    let response: HistoryResponse = serde_json::from_str(json).unwrap();
+
+    assert_eq!(response.messages.len(), 2);
+    assert_eq!(response.messages[0].id, 1);
+    assert_eq!(response.messages[0].seq, 1);
+    assert_eq!(response.messages[0].content, "What happened?");
+    assert!(response.messages[0].tool_call_id.is_none());
+    assert_eq!(
+        response.messages[1].tool_call_id.as_deref(),
+        Some("toolu_01")
+    );
+    assert_eq!(response.messages[1].tool_name.as_deref(), Some("read_file"));
+    assert_eq!(response.messages[1].created_at, "2025-01-01T00:00:01Z");
 }
 
 #[test]
@@ -203,10 +268,12 @@ fn make_session(key: &str) -> Session {
         id: "s1".into(),
         nous_id: "syn".into(),
         key: key.to_string(),
-        status: None,
+        status: "active".to_string(),
+        model: None,
         message_count: 0,
-        session_type: None,
-        updated_at: None,
+        token_count_estimate: 0,
+        created_at: "2025-01-01T00:00:00Z".to_string(),
+        updated_at: "2025-01-01T00:00:00Z".to_string(),
         display_name: None,
     }
 }
@@ -235,7 +302,7 @@ fn session_label_ignores_empty_display_name() {
 fn session_is_archived_by_status() {
     let mut s = make_session("main");
     assert!(!s.is_archived());
-    s.status = Some("archived".to_string());
+    s.status = "archived".to_string();
     assert!(s.is_archived());
 }
 
@@ -249,13 +316,6 @@ fn session_is_archived_by_key_pattern() {
 fn session_is_interactive_normal() {
     let s = make_session("main");
     assert!(s.is_interactive());
-}
-
-#[test]
-fn session_is_not_interactive_background() {
-    let mut s = make_session("bg");
-    s.session_type = Some("background".to_string());
-    assert!(!s.is_interactive());
 }
 
 #[test]
@@ -288,6 +348,11 @@ fn session_deserialization_with_display_name() {
         "id": "s1",
         "nous_id": "syn",
         "session_key": "main",
+        "status": "active",
+        "message_count": 1,
+        "token_count_estimate": 10,
+        "created_at": "2025-01-01T00:00:00Z",
+        "updated_at": "2025-01-01T00:00:00Z",
         "display_name": "My Chat"
     }"#;
     let session: Session = serde_json::from_str(json).unwrap();
@@ -301,6 +366,11 @@ fn session_deserialization_with_name_alias() {
         "id": "s1",
         "nous_id": "syn",
         "session_key": "main",
+        "status": "active",
+        "message_count": 1,
+        "token_count_estimate": 10,
+        "created_at": "2025-01-01T00:00:00Z",
+        "updated_at": "2025-01-01T00:00:00Z",
         "name": "Via Name"
     }"#;
     let session: Session = serde_json::from_str(json).unwrap();
@@ -352,7 +422,16 @@ fn list_sessions_request_serializes_only_set_fields() {
 #[test]
 fn paginated_sessions_response_deserialization() {
     let json = r#"{
-        "sessions": [{"id": "s1", "nous_id": "syn", "session_key": "main"}],
+        "sessions": [{
+            "id": "s1",
+            "nous_id": "syn",
+            "session_key": "main",
+            "status": "active",
+            "message_count": 1,
+            "token_count_estimate": 10,
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z"
+        }],
         "has_more": true,
         "next_cursor": "c2",
         "total": 42
@@ -367,7 +446,16 @@ fn paginated_sessions_response_deserialization() {
 #[test]
 fn paginated_sessions_response_accepts_items_alias() {
     let json = r#"{
-        "items": [{"id": "s2", "nous_id": "syn", "session_key": "main"}],
+        "items": [{
+            "id": "s2",
+            "nous_id": "syn",
+            "session_key": "main",
+            "status": "active",
+            "message_count": 1,
+            "token_count_estimate": 10,
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z"
+        }],
         "has_more": false
     }"#;
     let resp: PaginatedSessionsResponse = serde_json::from_str(json).unwrap();

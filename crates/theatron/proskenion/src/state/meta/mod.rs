@@ -229,7 +229,7 @@ pub(crate) struct DepthDistribution {
 
 impl DepthDistribution {
     /// Classify a session by message count into a depth bucket.
-    pub(crate) fn classify(message_count: u32) -> &'static str {
+    pub(crate) fn classify(message_count: i64) -> &'static str {
         match message_count {
             0..10 => "short",
             10..50 => "medium",
