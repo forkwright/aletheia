@@ -3,8 +3,9 @@
 use dioxus::prelude::*;
 use skene::id::SessionId;
 
-use crate::state::fetch::FetchState;
-use crate::state::sessions::{SessionDetailStore, format_relative_time, session_display_status};
+use crate::state::sessions::{
+    SessionDetailStore, SessionLoadState, format_relative_time, session_display_status,
+};
 
 const DETAIL_CONTAINER_STYLE: &str = "\
     display: flex; \
@@ -189,26 +190,41 @@ pub(crate) fn SessionDetailEmpty() -> Element {
 /// Session detail panel showing stats, distillation history, and message preview.
 #[component]
 pub(crate) fn SessionDetail(
-    detail_state: Signal<FetchState<SessionDetailStore>>,
+    detail_state: Signal<SessionLoadState<SessionDetailStore>>,
     on_open_chat: EventHandler<SessionId>,
     on_archive: EventHandler<SessionId>,
     on_restore: EventHandler<SessionId>,
+    on_retry: EventHandler<()>,
 ) -> Element {
+    let state = detail_state.read();
+    let history_empty = matches!(&*state, SessionLoadState::Empty(_));
+
     rsx! {
-        match &*detail_state.read() {
-            FetchState::Loading => rsx! {
+        match &*state {
+            SessionLoadState::Loading => rsx! {
                 div {
                     style: "{EMPTY_DETAIL_STYLE}",
                     "Loading session details..."
                 }
             },
-            FetchState::Error(err) => rsx! {
+            SessionLoadState::TransportError(failure)
+            | SessionLoadState::HttpError(failure)
+            | SessionLoadState::ContractError(failure) => rsx! {
                 div {
                     style: "{EMPTY_DETAIL_STYLE} color: var(--status-error);",
-                    "Error: {err}"
+                    div { style: "font-size: var(--text-md);", "Session detail failed" }
+                    div {
+                        style: "font-size: var(--text-sm); max-width: 520px; text-align: center; word-break: break-word;",
+                        "{failure.display_message()}"
+                    }
+                    button {
+                        style: "{ARCHIVE_BTN}",
+                        onclick: move |_| on_retry.call(()),
+                        "Retry"
+                    }
                 }
             },
-            FetchState::Loaded(detail) => {
+            SessionLoadState::Loaded(detail) | SessionLoadState::Empty(detail) => {
                 match &detail.session {
                     None => rsx! { SessionDetailEmpty {} },
                     Some(session) => {
@@ -347,7 +363,16 @@ pub(crate) fn SessionDetail(
                                         }
                                     }
                                 }
-                                if !detail.message_previews.is_empty() {
+                                if history_empty {
+                                    div {
+                                        style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                                        h3 { style: "{SECTION_TITLE_STYLE}", "Messages" }
+                                        div {
+                                            style: "font-size: var(--text-sm); color: var(--text-muted);",
+                                            "No messages recorded for this session."
+                                        }
+                                    }
+                                } else if !detail.message_previews.is_empty() {
                                     div {
                                         style: "display: flex; flex-direction: column; gap: var(--space-1);",
                                         h3 { style: "{SECTION_TITLE_STYLE}", "Messages" }

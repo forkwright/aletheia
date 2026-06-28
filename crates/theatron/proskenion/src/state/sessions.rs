@@ -5,6 +5,54 @@ use std::collections::HashSet;
 use skene::api::types::Session;
 use skene::id::SessionId;
 
+/// Operator-facing failure metadata for a sessions API request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SessionLoadFailure {
+    /// Request path, including query parameters when present.
+    pub path: String,
+    /// HTTP status, when the server returned a response.
+    pub status: Option<u16>,
+    /// Server request ID for log correlation, when available.
+    pub request_id: Option<String>,
+    /// Human-readable failure summary.
+    pub message: String,
+}
+
+impl SessionLoadFailure {
+    /// Format a failure for operator-facing UI surfaces.
+    #[must_use]
+    pub(crate) fn display_message(&self) -> String {
+        let mut fields = Vec::new();
+        fields.push(format!("path {}", self.path));
+        if let Some(status) = self.status {
+            fields.push(format!("status {status}"));
+        }
+        if let Some(request_id) = self.request_id.as_deref() {
+            fields.push(format!("request_id {request_id}"));
+        }
+
+        format!("{} ({})", self.message, fields.join("; "))
+    }
+}
+
+/// Load lifecycle for the Sessions list and detail views.
+#[derive(Debug, Clone, Default)]
+pub(crate) enum SessionLoadState<T> {
+    /// A request is in flight.
+    #[default]
+    Loading,
+    /// Data loaded and the result set has content.
+    Loaded(T),
+    /// Data loaded successfully and the result set is legitimately empty.
+    Empty(T),
+    /// The request failed before receiving a complete response.
+    TransportError(SessionLoadFailure),
+    /// The server returned a non-success HTTP status.
+    HttpError(SessionLoadFailure),
+    /// The server response did not match the expected API contract.
+    ContractError(SessionLoadFailure),
+}
+
 /// Sort field for session list ordering.
 ///
 /// WHY: Only options that are backed by data in the Pylon session DTO are
@@ -68,6 +116,8 @@ impl StatusFilter {
 pub(crate) struct SessionListStore {
     /// Currently loaded sessions.
     pub sessions: Vec<Session>,
+    /// Last load state for the list request.
+    pub load_state: SessionLoadState<()>,
     /// Current sort field.
     pub sort: SessionSort,
     /// Current status filter.
@@ -96,6 +146,11 @@ impl SessionListStore {
 
     /// Replace the session list with fresh data.
     pub(crate) fn load(&mut self, sessions: Vec<Session>, has_more: bool) {
+        self.load_state = if sessions.is_empty() {
+            SessionLoadState::Empty(())
+        } else {
+            SessionLoadState::Loaded(())
+        };
         self.sessions = sessions;
         self.has_more = has_more;
     }
@@ -104,7 +159,23 @@ impl SessionListStore {
     pub(crate) fn append(&mut self, sessions: Vec<Session>, has_more: bool) {
         self.sessions.extend(sessions);
         self.has_more = has_more;
+        self.load_state = if self.sessions.is_empty() {
+            SessionLoadState::Empty(())
+        } else {
+            SessionLoadState::Loaded(())
+        };
         self.page += 1;
+    }
+
+    /// Mark the current list request as loading.
+    pub(crate) fn mark_loading(&mut self) {
+        self.load_state = SessionLoadState::Loading;
+    }
+
+    /// Mark the current list request as failed.
+    pub(crate) fn mark_failed(&mut self, load_state: SessionLoadState<()>) {
+        self.load_state = load_state;
+        self.has_more = false;
     }
 
     /// Reset filters and pagination.
@@ -413,6 +484,7 @@ mod tests {
     fn session_list_store_defaults() {
         let store = SessionListStore::new();
         assert!(store.sessions.is_empty());
+        assert!(matches!(store.load_state, SessionLoadState::Loading));
         assert_eq!(store.sort, SessionSort::LastActivity);
         assert_eq!(store.status_filter, StatusFilter::All);
         assert!(!store.has_active_filters());
@@ -423,7 +495,39 @@ mod tests {
         let mut store = SessionListStore::new();
         store.load(vec![make_session("s1", "chat")], false);
         assert_eq!(store.sessions.len(), 1);
+        assert!(matches!(store.load_state, SessionLoadState::Loaded(())));
         assert!(!store.has_more);
+    }
+
+    #[test]
+    fn session_list_store_marks_empty_success() {
+        let mut store = SessionListStore::new();
+        store.load(Vec::new(), false);
+
+        assert!(store.sessions.is_empty());
+        assert!(matches!(store.load_state, SessionLoadState::Empty(())));
+    }
+
+    #[test]
+    fn session_list_store_marks_failed_request() {
+        let mut store = SessionListStore::new();
+        store.load(vec![make_session("s1", "chat")], true);
+        store.mark_failed(SessionLoadState::HttpError(SessionLoadFailure {
+            path: "/api/v1/sessions".to_string(),
+            status: Some(500),
+            request_id: Some("req-500".to_string()),
+            message: "session list failed".to_string(),
+        }));
+
+        assert_eq!(store.sessions.len(), 1);
+        assert!(!store.has_more);
+        assert!(matches!(
+            store.load_state,
+            SessionLoadState::HttpError(SessionLoadFailure {
+                status: Some(500),
+                ..
+            })
+        ));
     }
 
     #[test]
