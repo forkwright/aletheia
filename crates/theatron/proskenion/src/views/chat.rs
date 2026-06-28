@@ -9,9 +9,11 @@ use std::time::{Duration, Instant};
 
 use dioxus::prelude::*;
 use skene::events::StreamEvent;
+use themelion::ThemeMode;
 use tokio_util::sync::CancellationToken;
 
 use crate::api::client::authenticated_streaming_client;
+use crate::app::Route;
 use crate::components::chat::{
     ChatMessage as LegacyChatMessage, ChatState, ChatStateManager, MessageRole,
 };
@@ -24,15 +26,20 @@ use crate::components::planning_card::PlanningCard;
 use crate::components::routing_indicator::{RoutingIndicator, update_routing_stage};
 use crate::components::session_tabs::SessionTabsView;
 use crate::components::tool_panel::ToolPanel;
+use crate::services::export::messages_to_markdown;
 use crate::services::file_watcher::{self, FileChangeTracker};
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
 use crate::state::chat::{ChatMessage, ChatSelection};
-use crate::state::commands::CommandStore;
-use crate::state::connection::ConnectionConfig;
+use crate::state::commands::{
+    CommandAction, CommandDestination, CommandExecutionState, CommandResolution, CommandStore,
+    CommandUiState,
+};
+use crate::state::connection::{ConnectionConfig, ConnectionState};
 use crate::state::input::InputState;
 use crate::state::pipeline::{PipelineStage, RoutingState};
 use crate::state::platform::WindowState;
+use crate::state::settings::{AppearanceSettings, KeybindingStore, ServerConfigStore};
 use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::chat_helpers::{format_tool_call, render_approval};
@@ -172,6 +179,181 @@ fn chat_history_url(
     url
 }
 
+fn route_for_command_destination(destination: CommandDestination) -> Route {
+    match destination {
+        CommandDestination::Chat => Route::Chat {},
+        CommandDestination::Files => Route::Files {},
+        CommandDestination::Planning => Route::Planning {},
+        CommandDestination::Memory => Route::Memory {},
+        CommandDestination::Metrics => Route::Metrics {},
+        CommandDestination::Ops => Route::Ops {},
+        CommandDestination::Sessions => Route::Sessions {},
+        CommandDestination::Settings => Route::Settings {},
+    }
+}
+
+fn command_destination_label(destination: CommandDestination) -> &'static str {
+    match destination {
+        CommandDestination::Chat => "Chat",
+        CommandDestination::Files => "Theke",
+        CommandDestination::Planning => "Planning",
+        CommandDestination::Memory => "Memory",
+        CommandDestination::Metrics => "Metrics",
+        CommandDestination::Ops => "Ops",
+        CommandDestination::Sessions => "Sessions",
+        CommandDestination::Settings => "Settings",
+    }
+}
+
+fn command_state_toast(state: &CommandExecutionState) -> (ToastSeverity, String) {
+    match state {
+        CommandExecutionState::Succeeded { message, .. } => {
+            (ToastSeverity::Success, message.clone())
+        }
+        CommandExecutionState::Failed { message, .. } => (ToastSeverity::Error, message.clone()),
+        CommandExecutionState::Disabled { name, reason } => (
+            ToastSeverity::Warning,
+            format!("/{name} is disabled: {reason}"),
+        ),
+        CommandExecutionState::Unknown { name } => {
+            (ToastSeverity::Warning, format!("Unknown command: /{name}"))
+        }
+    }
+}
+
+fn push_command_toast(severity: ToastSeverity, message: impl Into<String>) {
+    if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
+        toast_store.write().push(severity, message.into());
+    }
+}
+
+#[derive(Clone, Copy)]
+struct CommandRuntime {
+    command_ui: Signal<CommandUiState>,
+    cmd_store: Signal<CommandStore>,
+    legacy_state: Signal<ChatState>,
+    connection_state: Signal<ConnectionState>,
+    theme_mode: Signal<ThemeMode>,
+    appearance: Signal<AppearanceSettings>,
+    server_store: Signal<ServerConfigStore>,
+    keybindings: Signal<KeybindingStore>,
+    nav: dioxus_router::Navigator,
+}
+
+fn execute_command_input(raw: String, runtime: CommandRuntime) {
+    let mut command_ui = runtime.command_ui;
+    let mut cmd_store = runtime.cmd_store;
+    let mut legacy_state = runtime.legacy_state;
+    let mut connection_state = runtime.connection_state;
+    let mut theme_mode = runtime.theme_mode;
+    let mut appearance = runtime.appearance;
+    let server_store = runtime.server_store;
+    let keybindings = runtime.keybindings;
+    let nav = runtime.nav;
+
+    command_ui.write().palette_open = false;
+
+    let resolution = cmd_store.write().resolve_slash(&raw);
+    let invocation = match resolution {
+        CommandResolution::Ready(invocation) => invocation,
+        CommandResolution::Rejected(state) => {
+            let (severity, message) = command_state_toast(&state);
+            push_command_toast(severity, message);
+            return;
+        }
+    };
+
+    let name = invocation.command.name.clone();
+    match invocation.command.action.clone() {
+        CommandAction::ShowHelp => {
+            command_ui.write().help_visible = true;
+            let message = "Opened keyboard shortcuts";
+            cmd_store.write().record_success(&name, message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::ClearChat => {
+            legacy_state.write().messages.clear();
+            let message = "Cleared visible chat history";
+            cmd_store.write().record_success(&name, message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::ToggleTheme => {
+            let next = if *theme_mode.read() == ThemeMode::Dark {
+                ThemeMode::Light
+            } else {
+                ThemeMode::Dark
+            };
+            theme_mode.set(next);
+            appearance.write().theme = next.slug().to_string();
+            crate::services::settings_config::save_state(
+                &server_store.read(),
+                &appearance.read(),
+                &keybindings.read(),
+            );
+            let message = format!("Theme set to {}", next.label());
+            cmd_store.write().record_success(&name, &message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::Disconnect => {
+            let message = "Disconnected from server";
+            cmd_store.write().record_success(&name, message);
+            push_command_toast(ToastSeverity::Success, message);
+            connection_state.set(ConnectionState::Disconnected);
+        }
+        CommandAction::ExportMarkdown => {
+            let messages: Vec<ChatMessage> = legacy_state.read().project_messages(None);
+            if messages.is_empty() {
+                let message = "Nothing to export — start a conversation first";
+                cmd_store.write().record_failure(&name, message);
+                push_command_toast(ToastSeverity::Warning, message);
+                return;
+            }
+
+            let md = messages_to_markdown(&messages);
+            let Ok(escaped) = serde_json::to_string(&md) else {
+                let message = "Could not prepare conversation export";
+                cmd_store.write().record_failure(&name, message);
+                push_command_toast(ToastSeverity::Error, message);
+                return;
+            };
+
+            let js = format!("navigator.clipboard.writeText({escaped})");
+            let mut command_store = cmd_store;
+            spawn(async move {
+                if let Err(error) = document::eval(&js).await {
+                    tracing::warn!(%error, "failed to copy conversation markdown to clipboard");
+                    let message = "Could not copy conversation to clipboard";
+                    command_store.write().record_failure("export", message);
+                    push_command_toast(ToastSeverity::Error, message);
+                    return;
+                }
+
+                let message = "Conversation copied to clipboard";
+                command_store.write().record_success("export", message);
+                push_command_toast(ToastSeverity::Success, message);
+            });
+        }
+        CommandAction::Navigate(destination) => {
+            let label = command_destination_label(destination);
+            nav.push(route_for_command_destination(destination));
+            let message = format!("Opened {label}");
+            cmd_store.write().record_success(&name, &message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::OpenToolDetails {
+            agent_id,
+            tool_name,
+        } => {
+            nav.push(Route::MetricsToolDetail {
+                tool_name: tool_name.clone(),
+            });
+            let message = format!("Opened {tool_name} details for {agent_id}");
+            cmd_store.write().record_success(&name, &message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+    }
+}
+
 fn fetch_chat_history_page(
     cfg: ConnectionConfig,
     selection: ChatSelection,
@@ -252,14 +434,20 @@ pub(crate) fn Chat() -> Element {
     let mut history_state = use_signal(ChatHistoryState::default);
     let mut input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
-    let mut palette_open = use_signal(|| false);
     let config: Signal<ConnectionConfig> = use_context();
     let cmd_store = use_context::<Signal<CommandStore>>();
+    let command_ui = use_context::<Signal<CommandUiState>>();
     let mut agent_store = use_context::<Signal<AgentStore>>();
     let mut tab_bar = use_context::<Signal<TabBar>>();
     let mut routing_signal = use_context::<Signal<Option<RoutingState>>>();
     let mut pending_chat_selection = use_context::<Signal<Option<ChatSelection>>>();
     let mut window_state = use_context::<Signal<WindowState>>();
+    let connection_state = use_context::<Signal<ConnectionState>>();
+    let theme_mode = use_context::<Signal<ThemeMode>>();
+    let appearance = use_context::<Signal<AppearanceSettings>>();
+    let server_store = use_context::<Signal<ServerConfigStore>>();
+    let keybindings = use_context::<Signal<KeybindingStore>>();
+    let nav = use_navigator();
 
     // WHY: Track last user message to enable retry on stream failure.
     let mut last_user_message = use_signal(String::new);
@@ -423,23 +611,6 @@ pub(crate) fn Chat() -> Element {
         // WHY: Set streaming flag BEFORE spawning to prevent double-submit race.
         // Without this, rapid Ctrl+Enter could spawn two concurrent tasks.
         legacy_state.write().streaming.is_streaming = true;
-
-        // WHY: Slash commands beginning with `/` are intercepted here so the
-        // palette can handle them. Unrecognised commands get a toast warning
-        // so the operator knows the input was not silently eaten.
-        if let Some(command_text) = text.strip_prefix('/') {
-            let cmd_name = command_text.split_whitespace().next().unwrap_or("");
-            let known = cmd_store.read().filtered.iter().any(|c| c.name == cmd_name);
-            if !known && let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
-                toast_store.write().push(
-                    ToastSeverity::Warning,
-                    format!("Unknown command: /{cmd_name}"),
-                );
-            }
-            palette_open.set(false);
-            legacy_state.write().streaming.is_streaming = false;
-            return;
-        }
 
         // WHY: Clear any previous error so the retry banner disappears
         // when the user sends a new message.
@@ -655,7 +826,25 @@ pub(crate) fn Chat() -> Element {
         });
     };
 
-    let on_submit = move |text: String| send_message(text, false);
+    let command_runtime = CommandRuntime {
+        command_ui,
+        cmd_store,
+        legacy_state,
+        connection_state,
+        theme_mode,
+        appearance,
+        server_store,
+        keybindings,
+        nav,
+    };
+
+    let on_submit = move |text: String| {
+        if text.trim_start().starts_with('/') {
+            execute_command_input(text, command_runtime);
+        } else {
+            send_message(text, false);
+        }
+    };
 
     let on_abort = move |()| {
         cancel_token.read().cancel();
@@ -1034,10 +1223,9 @@ pub(crate) fn Chat() -> Element {
             RoutingIndicator {}
 
             CommandPaletteView {
-                is_open: *palette_open.read(),
-                on_execute: move |_cmd: String| {
-                    palette_open.set(false);
-                    // NOTE: Command execution feeds back into the input bar.
+                is_open: command_ui.read().palette_open,
+                on_execute: move |cmd: String| {
+                    execute_command_input(cmd, command_runtime);
                 },
             }
 

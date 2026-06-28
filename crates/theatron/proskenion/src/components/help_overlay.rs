@@ -155,15 +155,15 @@ const CHAT_SHORTCUTS: &[ShortcutEntry] = &[
 ];
 
 #[component]
-pub(crate) fn HelpOverlay(visible: Signal<bool>) -> Element {
-    if !*visible.read() {
+pub(crate) fn HelpOverlay(visible: bool, on_close: EventHandler<()>) -> Element {
+    if !visible {
         return rsx! {};
     }
 
     rsx! {
         div {
             style: "{OVERLAY_BACKDROP}",
-            onclick: move |_| visible.set(false),
+            onclick: move |_| on_close.call(()),
             "aria-label": "Help overlay backdrop",
 
             div {
