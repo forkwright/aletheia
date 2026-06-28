@@ -183,6 +183,42 @@ impl CodexProvider {
     }
 
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        let retry_policy = crate::retry::subprocess_retry_policy();
+        let mut last_error = None;
+
+        for attempt in 0..=retry_policy.max_retries {
+            if attempt > 0 {
+                warn!(
+                    provider = %self.name,
+                    attempt,
+                    max = retry_policy.max_retries,
+                    "retrying Codex subprocess completion after transient error"
+                );
+                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
+            }
+
+            match self.execute_once(request).await {
+                Ok(response) => return Ok(response),
+                Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    warn!(
+                        provider = %self.name,
+                        attempt,
+                        error = %err,
+                        "Codex subprocess completion failed with retryable error"
+                    );
+                    last_error = Some(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: "Codex subprocess completion failed after retry loop".to_owned(),
+        }
+        .build())
+    }
+
+    async fn execute_once(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let model = self.resolve_model(&request.model);
         Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
@@ -215,6 +251,46 @@ impl CodexProvider {
     /// is functionally equivalent and avoids the caller having to special-case
     /// non-streaming codex responses.
     async fn execute_streaming(
+        &self,
+        request: &CompletionRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<CompletionResponse> {
+        let retry_policy = crate::retry::subprocess_retry_policy();
+        let mut last_error = None;
+
+        for attempt in 0..=retry_policy.max_retries {
+            if attempt > 0 {
+                warn!(
+                    provider = %self.name,
+                    attempt,
+                    max = retry_policy.max_retries,
+                    "retrying Codex streaming subprocess after transient error"
+                );
+                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
+            }
+
+            match self.execute_streaming_once(request, on_event).await {
+                Ok(response) => return Ok(response),
+                Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    warn!(
+                        provider = %self.name,
+                        attempt,
+                        error = %err,
+                        "Codex streaming subprocess failed with retryable error"
+                    );
+                    last_error = Some(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: "Codex streaming subprocess failed after retry loop".to_owned(),
+        }
+        .build())
+    }
+
+    async fn execute_streaming_once(
         &self,
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
@@ -434,6 +510,58 @@ mod tests {
     use crate::types::{
         CompletionRequest, Content, ContentBlock, Message, Role, ToolResultContent,
     };
+
+    fn retry_test_script_path(name: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NONCE: AtomicU64 = AtomicU64::new(0);
+        let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "hermeneus_codex_provider_{name}_{}_{nonce}.sh",
+            std::process::id()
+        ))
+    }
+
+    fn write_executable_script(path: &Path, body: &str) -> std::io::Result<()> {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let script = format!("#!/bin/sh\n{body}\n");
+        let mut file = std::fs::File::create(path)?;
+        file.write_all(script.as_bytes())?;
+        file.sync_all()?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+    }
+
+    fn remove_if_exists(path: &Path) -> std::io::Result<()> {
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn one_message_request(model: String) -> CompletionRequest {
+        CompletionRequest {
+            model,
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_owned()),
+                cache_breakpoint: false,
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn assert_text_response(response: &CompletionResponse, expected: &str) {
+        assert!(
+            response
+                .content
+                .iter()
+                .any(|block| matches!(block, ContentBlock::Text { text, .. } if text == expected)),
+            "response should contain text {expected:?}: {response:?}"
+        );
+    }
 
     #[test]
     fn format_prompt_single_message() {
@@ -686,6 +814,41 @@ mod tests {
             provider.supports_streaming(),
             "CodexProvider must report supports_streaming=true after #3980"
         );
+    }
+
+    #[tokio::test]
+    async fn retries_fluke_spawn_failure_before_returning_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        const SCRIPT: &str = r#"cat > /dev/null
+printf '{"type":"item.completed","item":{"type":"agent_message","text":"retried ok"}}\n'
+printf '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}\n'"#;
+
+        let script_path = retry_test_script_path("spawn_retry");
+        write_executable_script(&script_path, SCRIPT)?;
+        let provider = CodexProvider::new(&CodexProviderConfig {
+            codex_binary: Some(script_path.clone()),
+            timeout: Duration::from_secs(5),
+            ..CodexProviderConfig::default()
+        })?;
+        remove_if_exists(&script_path)?;
+
+        let restore_path = script_path.clone();
+        let restore = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            write_executable_script(&restore_path, SCRIPT)
+        });
+
+        let request = one_message_request(format!(
+            "{CODEX_MODEL_PREFIX}{}",
+            koina::models::names::codex()
+        ));
+        let result = provider.execute(&request).await;
+        restore.await??;
+        let response = result?;
+
+        assert_text_response(&response, "retried ok");
+        remove_if_exists(&script_path)?;
+        Ok(())
     }
 
     #[test]

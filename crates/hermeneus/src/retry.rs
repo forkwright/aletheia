@@ -8,6 +8,24 @@ use crate::error;
 use crate::models::{BACKOFF_BASE_MS, BACKOFF_MAX_MS, DEFAULT_MAX_RETRIES};
 
 const MIN_BACKOFF_MS: u64 = 100;
+#[cfg(any(
+    feature = "cc-provider",
+    feature = "codex-provider",
+    feature = "kimi-provider"
+))]
+const SUBPROCESS_MAX_RETRIES: u32 = 2;
+#[cfg(any(
+    feature = "cc-provider",
+    feature = "codex-provider",
+    feature = "kimi-provider"
+))]
+const SUBPROCESS_BACKOFF_BASE_MS: u64 = 500;
+#[cfg(any(
+    feature = "cc-provider",
+    feature = "codex-provider",
+    feature = "kimi-provider"
+))]
+const SUBPROCESS_BACKOFF_MAX_MS: u64 = 1_000;
 
 /// Runtime retry attempts and exponential backoff policy for LLM providers.
 ///
@@ -60,5 +78,24 @@ impl RetryPolicy {
             retry_after,
             Some(Duration::from_millis(MIN_BACKOFF_MS)),
         )
+    }
+}
+
+/// Retry policy for local subprocess providers.
+///
+/// WHY(#5763): local CLI spawn failures and one-off timeouts are transient but
+/// should recover quickly; use a short fixed policy instead of the longer
+/// network-provider defaults.
+#[must_use]
+#[cfg(any(
+    feature = "cc-provider",
+    feature = "codex-provider",
+    feature = "kimi-provider"
+))]
+pub(crate) const fn subprocess_retry_policy() -> RetryPolicy {
+    RetryPolicy {
+        max_retries: SUBPROCESS_MAX_RETRIES,
+        backoff_base_ms: SUBPROCESS_BACKOFF_BASE_MS,
+        backoff_max_ms: SUBPROCESS_BACKOFF_MAX_MS,
     }
 }

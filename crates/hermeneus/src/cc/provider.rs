@@ -5,8 +5,8 @@
 //!
 //! # Errors
 //!
-//! Spawn failures produce [`Error::ProviderInit`]; subprocess errors and
-//! timeouts produce [`Error::ApiRequest`].
+//! Runtime spawn failures, subprocess exits, and timeouts produce
+//! [`Error::SubprocessFailure`](crate::error::Error::SubprocessFailure).
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -193,6 +193,42 @@ impl CcProvider {
 
     /// Execute a non-streaming completion via CC subprocess.
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        let retry_policy = crate::retry::subprocess_retry_policy();
+        let mut last_error = None;
+
+        for attempt in 0..=retry_policy.max_retries {
+            if attempt > 0 {
+                warn!(
+                    provider = %self.name,
+                    attempt,
+                    max = retry_policy.max_retries,
+                    "retrying CC subprocess completion after transient error"
+                );
+                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
+            }
+
+            match self.execute_once(request).await {
+                Ok(response) => return Ok(response),
+                Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    warn!(
+                        provider = %self.name,
+                        attempt,
+                        error = %err,
+                        "CC subprocess completion failed with retryable error"
+                    );
+                    last_error = Some(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: "CC subprocess completion failed after retry loop".to_owned(),
+        }
+        .build())
+    }
+
+    async fn execute_once(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let model = self.resolve_model(&request.model);
         Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
@@ -228,6 +264,46 @@ impl CcProvider {
 
     /// Execute a streaming completion, emitting `StreamEvent`s.
     async fn execute_streaming(
+        &self,
+        request: &CompletionRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<CompletionResponse> {
+        let retry_policy = crate::retry::subprocess_retry_policy();
+        let mut last_error = None;
+
+        for attempt in 0..=retry_policy.max_retries {
+            if attempt > 0 {
+                warn!(
+                    provider = %self.name,
+                    attempt,
+                    max = retry_policy.max_retries,
+                    "retrying CC streaming subprocess after transient error"
+                );
+                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
+            }
+
+            match self.execute_streaming_once(request, on_event).await {
+                Ok(response) => return Ok(response),
+                Err(err) if err.is_retryable() && attempt < retry_policy.max_retries => {
+                    warn!(
+                        provider = %self.name,
+                        attempt,
+                        error = %err,
+                        "CC streaming subprocess failed with retryable error"
+                    );
+                    last_error = Some(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(error::ApiRequestSnafu {
+            message: "CC streaming subprocess failed after retry loop".to_owned(),
+        }
+        .build())
+    }
+
+    async fn execute_streaming_once(
         &self,
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
@@ -456,6 +532,58 @@ mod tests {
     use super::*;
     use crate::types::{CompletionRequest, Content, Message, Role};
 
+    fn retry_test_script_path(name: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NONCE: AtomicU64 = AtomicU64::new(0);
+        let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "hermeneus_cc_provider_{name}_{}_{nonce}.sh",
+            std::process::id()
+        ))
+    }
+
+    fn write_executable_script(path: &Path, body: &str) -> std::io::Result<()> {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let script = format!("#!/bin/sh\n{body}\n");
+        let mut file = std::fs::File::create(path)?;
+        file.write_all(script.as_bytes())?;
+        file.sync_all()?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+    }
+
+    fn remove_if_exists(path: &Path) -> std::io::Result<()> {
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn one_message_request(model: String) -> CompletionRequest {
+        CompletionRequest {
+            model,
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_owned()),
+                cache_breakpoint: false,
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn assert_text_response(response: &CompletionResponse, expected: &str) {
+        assert!(
+            response
+                .content
+                .iter()
+                .any(|block| matches!(block, ContentBlock::Text { text, .. } if text == expected)),
+            "response should contain text {expected:?}: {response:?}"
+        );
+    }
+
     #[test]
     fn format_prompt_single_message() {
         let request = CompletionRequest {
@@ -594,6 +722,40 @@ mod tests {
         assert!(!CcProvider::warn_dropped_tools(0));
         assert!(CcProvider::warn_dropped_tools(1));
         assert!(!CcProvider::warn_dropped_tools(2));
+    }
+
+    #[tokio::test]
+    async fn retries_fluke_spawn_failure_before_returning_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        const SCRIPT: &str = r#"cat > /dev/null
+printf '{"type":"result","subtype":"success","result":"retried ok","is_error":false}\n'"#;
+
+        let script_path = retry_test_script_path("spawn_retry");
+        write_executable_script(&script_path, SCRIPT)?;
+        let provider = CcProvider::new(&CcProviderConfig {
+            cc_binary: Some(script_path.clone()),
+            timeout: Duration::from_secs(5),
+            ..CcProviderConfig::default()
+        })?;
+        remove_if_exists(&script_path)?;
+
+        let restore_path = script_path.clone();
+        let restore = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            write_executable_script(&restore_path, SCRIPT)
+        });
+
+        let request = one_message_request(format!(
+            "{CC_MODEL_PREFIX}{}",
+            crate::models::names::sonnet()
+        ));
+        let result = provider.execute(&request).await;
+        restore.await??;
+        let response = result?;
+
+        assert_text_response(&response, "retried ok");
+        remove_if_exists(&script_path)?;
+        Ok(())
     }
 
     #[test]
