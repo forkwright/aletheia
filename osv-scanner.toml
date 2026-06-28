@@ -1,31 +1,30 @@
-# WHY: This file is DERIVED from deny.toml [[advisories.ignore]].
-# Do not edit the ignore list here; edit deny.toml and run
-# `kanon audit derive-ignores --apply`. See standards/SUPPLY-CHAIN.md.
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0320"
-reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade"
+# WHY: OSV-Scanner does not read cargo-audit's .cargo/audit.toml or
+# cargo-deny's deny.toml. Keep this ignore list in sync with both files.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0141"
-reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade"
+# WHY: bincode 1.x informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0436"
-reason = "paste unmaintained, transitive via tokenizers; no safe upgrade"
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0052"
-reason = "async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7"
+# WHY: paste proc-macro informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0134"
-reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. Tracked for removal when qdrant-client/tonic migrate to the rustls-pki-types PemObject API"
+# WHY: rustls-pemfile 2.2.0 informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0320"
+# WHY: yaml-rust 0.4.5 unmaintained advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0052"
+# WHY: async-std unmaintained; transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7. Mirrors deny.toml + .cargo/audit.toml.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0097"
-reason = "rand 0.8 unsound — transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Re-syncs deny.toml with .cargo/audit.toml + osv-scanner.toml"
+# WHY: rand 0.8 unsound; transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Mirrors .cargo/audit.toml + deny.toml.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0186"
-reason = "memmap2 unsound (unchecked pointer offset); reached transitively via candle-core (safetensors mmap weight load) + grep-searcher, both pin memmap2 ^0.9 with no compatible upgrade; the unsound offset path is not exercised by these consumers. review-by: 2026-12-01"
+# WHY: memmap2 unsound; transitive via candle-core (safetensors mmap) + grep-searcher; no upgrade (pinned ^0.9). Mirrors deny.toml + .cargo/audit.toml. review-by: 2026-12-01.
