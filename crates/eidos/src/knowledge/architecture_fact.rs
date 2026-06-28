@@ -9,9 +9,10 @@
 //! # Storage
 //!
 //! [`FactStore`] uses flat JSON files under a configurable directory
-//! (default: `~/aletheia/instance/facts/`).  Each fact is serialised to
-//! `<dir>/<id>.json` where `<id>` is the dot-separated fact identifier
-//! with path separators replaced by `-` to produce a safe filename.  No
+//! (default: `~/aletheia/instance/facts/`).  Each fact is serialised to a
+//! collision-checked safe filename derived from its id: short ids use
+//! percent-encoded UTF-8 bytes, while ids too long for common filename limits
+//! use a SHA-256 stem.  The original id remains inside the JSON payload. No
 //! external database is required — the directory is created on first write.
 //!
 //! # Design constraints
@@ -29,13 +30,21 @@
 //! substring scanning is sufficient for the tracked v1 size limit (<1 000
 //! facts).
 
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 use tokio::sync::Mutex;
+
+const ENCODED_FILENAME_PREFIX: &str = "id-";
+const HASH_FILENAME_PREFIX: &str = "hash-";
+const JSON_SUFFIX: &str = ".json";
+const MAX_SAFE_FILENAME_BYTES: usize = 240;
 
 /// Errors from [`FactStore`] operations.
 #[derive(Debug, Snafu)]
@@ -78,6 +87,17 @@ pub enum FactError {
     Serialise {
         id: String,
         source: serde_json::Error,
+    },
+
+    /// A mapped fact file contains a different embedded id.
+    #[snafu(display(
+        "fact id {requested_id} maps to {}, but that file stores fact id {stored_id}",
+        path.display()
+    ))]
+    FilenameCollision {
+        path: PathBuf,
+        requested_id: String,
+        stored_id: String,
     },
 }
 
@@ -167,8 +187,8 @@ impl ArchitectureFact {
 
 /// Flat-JSON-file backed store for [`ArchitectureFact`]s.
 ///
-/// One file per fact: `<dir>/<safe_id>.json` where `<safe_id>` is the fact's
-/// `id` with `/` and `\` replaced by `-`. Dots are preserved.
+/// One file per fact: `<dir>/<safe_id>.json` where `<safe_id>` is a
+/// collision-checked filename derived from the fact's `id`.
 ///
 /// The store is created lazily: the directory is created on first [`put`].
 ///
@@ -232,6 +252,19 @@ impl FactStore {
 
     /// Translate a fact `id` to a safe filename (no path separators).
     fn id_to_filename(id: &str) -> String {
+        let encoded = Self::percent_encode_id(id);
+        let encoded_len = ENCODED_FILENAME_PREFIX.len() + encoded.len() + JSON_SUFFIX.len();
+        if encoded_len <= MAX_SAFE_FILENAME_BYTES {
+            format!("{ENCODED_FILENAME_PREFIX}{encoded}{JSON_SUFFIX}")
+        } else {
+            format!(
+                "{HASH_FILENAME_PREFIX}{}{JSON_SUFFIX}",
+                Self::sha256_hex(id)
+            )
+        }
+    }
+
+    fn legacy_id_to_filename(id: &str) -> String {
         let mut name: String = id
             .chars()
             .map(|c| match c {
@@ -239,12 +272,108 @@ impl FactStore {
                 _ => c,
             })
             .collect();
-        name.push_str(".json");
+        name.push_str(JSON_SUFFIX);
         name
+    }
+
+    fn percent_encode_id(id: &str) -> String {
+        let mut encoded = String::with_capacity(id.len());
+        for byte in id.bytes() {
+            if Self::is_filename_literal(byte) {
+                encoded.push(char::from(byte));
+            } else {
+                encoded.push('%');
+                encoded.push(Self::upper_hex_digit(byte >> 4));
+                encoded.push(Self::upper_hex_digit(byte & 0x0f));
+            }
+        }
+        encoded
+    }
+
+    fn is_filename_literal(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')
+    }
+
+    fn sha256_hex(id: &str) -> String {
+        let digest = Sha256::digest(id.as_bytes());
+        let mut hex = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            hex.push(Self::lower_hex_digit(byte >> 4));
+            hex.push(Self::lower_hex_digit(byte & 0x0f));
+        }
+        hex
+    }
+
+    fn upper_hex_digit(nibble: u8) -> char {
+        match nibble {
+            0..=9 => char::from(b'0' + nibble),
+            10..=15 => char::from(b'A' + (nibble - 10)),
+            _ => '?',
+        }
+    }
+
+    fn lower_hex_digit(nibble: u8) -> char {
+        match nibble {
+            0..=9 => char::from(b'0' + nibble),
+            10..=15 => char::from(b'a' + (nibble - 10)),
+            _ => '?',
+        }
     }
 
     fn fact_path(&self, id: &str) -> PathBuf {
         self.dir.join(Self::id_to_filename(id))
+    }
+
+    fn legacy_fact_path(&self, id: &str) -> PathBuf {
+        self.dir.join(Self::legacy_id_to_filename(id))
+    }
+
+    async fn fact_path_exists(path: &Path) -> Result<bool, FactError> {
+        tokio::fs::try_exists(path)
+            .await
+            .with_context(|_| ReadFileSnafu {
+                path: path.to_path_buf(),
+            })
+    }
+
+    async fn read_fact_file(path: &Path) -> Result<ArchitectureFact, FactError> {
+        let bytes = tokio::fs::read(path)
+            .await
+            .with_context(|_| ReadFileSnafu {
+                path: path.to_path_buf(),
+            })?;
+        serde_json::from_slice(&bytes).with_context(|_| DeserialiseSnafu {
+            path: path.to_path_buf(),
+        })
+    }
+
+    fn require_embedded_id(
+        path: &Path,
+        requested_id: &str,
+        fact: ArchitectureFact,
+    ) -> Result<ArchitectureFact, FactError> {
+        if fact.id == requested_id {
+            return Ok(fact);
+        }
+        FilenameCollisionSnafu {
+            path: path.to_path_buf(),
+            requested_id: requested_id.to_owned(),
+            stored_id: fact.id,
+        }
+        .fail()
+    }
+
+    async fn read_fact_for_id(path: &Path, id: &str) -> Result<ArchitectureFact, FactError> {
+        let fact = Self::read_fact_file(path).await?;
+        Self::require_embedded_id(path, id, fact)
+    }
+
+    async fn require_path_available_for_id(path: &Path, id: &str) -> Result<(), FactError> {
+        if !Self::fact_path_exists(path).await? {
+            return Ok(());
+        }
+        let fact = Self::read_fact_file(path).await?;
+        Self::require_embedded_id(path, id, fact).map(|_| ())
     }
 
     /// Retrieve a fact by exact `id`.  Returns `None` if no fact with that id
@@ -256,18 +385,16 @@ impl FactStore {
     #[tracing::instrument(skip(self))]
     pub async fn get(&self, id: &str) -> Result<Option<ArchitectureFact>, FactError> {
         let path = self.fact_path(id);
-        if !tokio::fs::try_exists(&path)
-            .await
-            .with_context(|_| ReadFileSnafu { path: path.clone() })?
-        {
-            return Ok(None);
+        if Self::fact_path_exists(&path).await? {
+            return Self::read_fact_for_id(&path, id).await.map(Some);
         }
-        let bytes = tokio::fs::read(&path)
-            .await
-            .with_context(|_| ReadFileSnafu { path: path.clone() })?;
-        let fact = serde_json::from_slice(&bytes)
-            .with_context(|_| DeserialiseSnafu { path: path.clone() })?;
-        Ok(Some(fact))
+
+        let legacy_path = self.legacy_fact_path(id);
+        if legacy_path != path && Self::fact_path_exists(&legacy_path).await? {
+            return Self::read_fact_for_id(&legacy_path, id).await.map(Some);
+        }
+
+        Ok(None)
     }
 
     /// Write a fact to the store.  Creates the directory if it does not exist.
@@ -285,6 +412,7 @@ impl FactStore {
                 dir: self.dir.clone(),
             })?;
         let path = self.fact_path(&fact.id);
+        Self::require_path_available_for_id(&path, &fact.id).await?;
         let json = serde_json::to_vec_pretty(&fact).with_context(|_| SerialiseSnafu {
             id: fact.id.clone(),
         })?;
@@ -394,7 +522,7 @@ impl FactStore {
             .with_context(|_| ReadDirSnafu {
                 dir: self.dir.clone(),
             })?;
-        let mut facts = Vec::new();
+        let mut facts = BTreeMap::new();
         while let Some(entry) = entries.next_entry().await.with_context(|_| DirEntrySnafu {
             dir: self.dir.clone(),
         })? {
@@ -402,14 +530,21 @@ impl FactStore {
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
             }
-            let bytes = tokio::fs::read(&path)
-                .await
-                .with_context(|_| ReadFileSnafu { path: path.clone() })?;
-            let fact: ArchitectureFact = serde_json::from_slice(&bytes)
-                .with_context(|_| DeserialiseSnafu { path: path.clone() })?;
-            facts.push(fact);
+            let fact = Self::read_fact_file(&path).await?;
+            let filename = path.file_name().and_then(|name| name.to_str());
+            let canonical = Self::id_to_filename(&fact.id);
+            let is_canonical = filename == Some(canonical.as_str());
+            match facts.entry(fact.id.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert((is_canonical, fact));
+                }
+                Entry::Occupied(mut entry) if is_canonical && !entry.get().0 => {
+                    entry.insert((true, fact));
+                }
+                Entry::Occupied(_) => {}
+            }
         }
-        Ok(facts)
+        Ok(facts.into_values().map(|(_, fact)| fact).collect())
     }
 }
 
@@ -766,7 +901,7 @@ mod tests {
         assert_eq!(first.len(), 1, "expected fact before removal");
 
         // Remove the backing file. A second list that re-reads disk would return empty.
-        let path = dir.path().join("test.cache.one.json");
+        let path = dir.path().join(FactStore::id_to_filename("test.cache.one"));
         tokio::fs::remove_file(&path).await.expect("remove file");
 
         let second = store.list(None).await.expect("list cached");
@@ -791,7 +926,9 @@ mod tests {
         let first = store.search("find").await.expect("search");
         assert_eq!(first.len(), 1);
 
-        let path = dir.path().join("test.cache.search.json");
+        let path = dir
+            .path()
+            .join(FactStore::id_to_filename("test.cache.search"));
         tokio::fs::remove_file(&path).await.expect("remove file");
 
         let second = store.search("FIND").await.expect("search cached");
@@ -890,10 +1027,108 @@ mod tests {
     }
 
     #[test]
-    fn id_to_filename_replaces_slashes() {
+    fn id_to_filename_percent_encodes_separators_without_collapsing_dash() {
         let name = FactStore::id_to_filename("aletheia/spawn/model");
-        assert_eq!(name, "aletheia-spawn-model.json");
-        let name2 = FactStore::id_to_filename("aletheia.spawn.model");
-        assert_eq!(name2, "aletheia.spawn.model.json");
+        assert_eq!(name, "id-aletheia%2Fspawn%2Fmodel.json");
+        let backslash = FactStore::id_to_filename("aletheia\\spawn\\model");
+        assert_eq!(backslash, "id-aletheia%5Cspawn%5Cmodel.json");
+        let dash = FactStore::id_to_filename("aletheia-spawn-model");
+        assert_eq!(dash, "id-aletheia-spawn-model.json");
+
+        assert_ne!(name, dash, "slash id must not collapse into dash id");
+        assert_ne!(
+            backslash, dash,
+            "backslash id must not collapse into dash id"
+        );
+        assert_ne!(
+            name, backslash,
+            "slash and backslash ids must not collapse together"
+        );
+    }
+
+    #[test]
+    fn id_to_filename_percent_encodes_unicode_bytes() {
+        let unicode_id = "aletheia.\u{03b4}\u{03bf}\u{03ba}\u{03b9}\u{03bc}\u{03ae}";
+        let name = FactStore::id_to_filename(unicode_id);
+
+        assert_eq!(
+            name,
+            "id-aletheia.%CE%B4%CE%BF%CE%BA%CE%B9%CE%BC%CE%AE.json"
+        );
+    }
+
+    #[test]
+    fn id_to_filename_hashes_long_ids_to_bounded_filename() {
+        let long_id = format!("aletheia.{}", "long-segment.".repeat(40));
+        let name = FactStore::id_to_filename(&long_id);
+
+        assert!(name.starts_with(HASH_FILENAME_PREFIX));
+        assert!(name.ends_with(JSON_SUFFIX));
+        assert_eq!(
+            name.len(),
+            HASH_FILENAME_PREFIX.len() + 64 + JSON_SUFFIX.len()
+        );
+        assert!(
+            !name.contains('/') && !name.contains('\\'),
+            "hashed filename must not contain path separators"
+        );
+    }
+
+    #[tokio::test]
+    async fn put_get_keeps_separator_dash_unicode_and_long_ids_distinct() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = FactStore::new(dir.path());
+        let long_id = format!("aletheia.{}", "long-segment.".repeat(40));
+        let ids = [
+            "a/b".to_owned(),
+            "a\\b".to_owned(),
+            "a-b".to_owned(),
+            "aletheia.\u{03b4}\u{03bf}\u{03ba}\u{03b9}\u{03bc}\u{03ae}".to_owned(),
+            long_id,
+        ];
+
+        for id in &ids {
+            store
+                .put(test_fact(id, FactScope::Concept, id))
+                .await
+                .expect("put distinct fact");
+        }
+
+        for id in &ids {
+            let got = store
+                .get(id)
+                .await
+                .expect("get distinct fact")
+                .expect("fact should exist");
+            assert_eq!(got.id, *id);
+            assert_eq!(got.claim, *id);
+        }
+
+        let all = store.list(None).await.expect("list");
+        assert_eq!(all.len(), ids.len(), "all distinct ids should be stored");
+    }
+
+    #[tokio::test]
+    async fn put_rejects_mapped_file_with_different_embedded_id() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = FactStore::new(dir.path());
+        let target_id = "a/b";
+        let path = dir.path().join(FactStore::id_to_filename(target_id));
+        let existing = test_fact("a-b", FactScope::Concept, "Existing fact.");
+        let existing_json = serde_json::to_vec_pretty(&existing).expect("serialise");
+        tokio::fs::write(&path, existing_json)
+            .await
+            .expect("write existing file");
+
+        let err = store
+            .put(test_fact(target_id, FactScope::Concept, "New fact."))
+            .await
+            .expect_err("put should reject mapped file with a different id");
+
+        assert!(matches!(err, FactError::FilenameCollision { .. }));
+        let persisted = FactStore::read_fact_file(&path)
+            .await
+            .expect("read persisted fact");
+        assert_eq!(persisted.id, "a-b", "collision must not overwrite file");
     }
 }
