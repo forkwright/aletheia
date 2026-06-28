@@ -109,6 +109,19 @@ fn build_hook_config(behavior: &AgentBehaviorDefaults) -> HookConfig {
     }
 }
 
+fn build_complexity_config(
+    config: &AletheiaConfig,
+    sonnet_model: &str,
+) -> hermeneus::complexity::ComplexityConfig {
+    hermeneus::complexity::ComplexityConfig {
+        enabled: config.provider_behavior.complexity_routing_enabled,
+        low_threshold: config.provider_behavior.complexity_low_threshold,
+        high_threshold: config.provider_behavior.complexity_high_threshold,
+        sonnet_model: sonnet_model.to_owned(),
+        ..hermeneus::complexity::ComplexityConfig::default()
+    }
+}
+
 pub(super) fn build_nous_runtime_config(
     config: &AletheiaConfig,
     oikos: &Oikos,
@@ -149,6 +162,7 @@ pub(super) fn build_nous_runtime_config(
     let workspace = resolve_config_path(oikos, &resolved.workspace);
     let project_id = detect_project_id(&workspace);
     let behavior = resolved.behavior.clone();
+    let complexity = build_complexity_config(config, &model);
     let mut nous_config = NousConfig {
         id: resolved.id,
         name: resolved.name,
@@ -168,7 +182,7 @@ pub(super) fn build_nous_runtime_config(
             thinking_budget: resolved.limits.thinking_budget,
             chars_per_token: resolved.limits.chars_per_token,
             prosoche_model: resolved.prosoche_model.to_string(),
-            complexity: hermeneus::complexity::ComplexityConfig::default(),
+            complexity,
             extraction_model: None,
             distillation_model: None,
         },
@@ -222,11 +236,22 @@ pub(super) fn build_nous_runtime_config(
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test setup assertions")]
 mod tests {
+    use hermeneus::complexity::{ComplexityConfig, ComplexityInput, ModelTier, route_model};
     use taxis::config::{AgentBehaviorDefaults, AletheiaConfig, NousDefinition};
     use taxis::oikos::Oikos;
     use tempfile::TempDir;
 
     use super::build_nous_runtime_config;
+
+    fn build_complexity_from_config(config: &AletheiaConfig) -> ComplexityConfig {
+        let instance = TempDir::new().expect("create instance temp directory");
+        let oikos = Oikos::from_root(instance.path());
+
+        let (nous_config, _pipeline_config) =
+            build_nous_runtime_config(config, &oikos, &[], "custom");
+
+        nous_config.generation.complexity
+    }
 
     #[test]
     fn resolved_behavior_drives_runtime_limits_and_hooks() {
@@ -277,6 +302,66 @@ mod tests {
         assert_eq!(
             nous_config.behavior.safety_loop_detection_threshold,
             behavior.safety_loop_detection_threshold
+        );
+    }
+
+    #[test]
+    fn provider_behavior_maps_to_runtime_complexity_config() {
+        let mut config = AletheiaConfig::default();
+        config.agents.defaults.model_defaults.model.primary = "balanced-tier".to_owned();
+        config.provider_behavior.complexity_routing_enabled = true;
+        config.provider_behavior.complexity_low_threshold = 41;
+        config.provider_behavior.complexity_high_threshold = 82;
+
+        let complexity = build_complexity_from_config(&config);
+
+        assert!(
+            complexity.enabled,
+            "providerBehavior.complexityRoutingEnabled should drive Nous complexity routing"
+        );
+        assert_eq!(complexity.low_threshold, 41);
+        assert_eq!(complexity.high_threshold, 82);
+        assert_eq!(
+            complexity.sonnet_model, "balanced-tier",
+            "balanced tier should preserve the resolved turn model"
+        );
+    }
+
+    #[test]
+    fn provider_behavior_thresholds_change_boundary_route_decisions() {
+        let mut config = AletheiaConfig::default();
+        config.provider_behavior.complexity_routing_enabled = true;
+        config.provider_behavior.complexity_low_threshold = 5;
+        config.provider_behavior.complexity_high_threshold = 95;
+        let baseline = build_complexity_from_config(&config);
+
+        config.provider_behavior.complexity_low_threshold = 4;
+        let lowered_low = build_complexity_from_config(&config);
+
+        let routine = ComplexityInput::new("quick question: what port does the server use?");
+        assert_eq!(
+            route_model(&routine, &baseline).complexity.tier,
+            ModelTier::Haiku
+        );
+        assert_eq!(
+            route_model(&routine, &lowered_low).complexity.tier,
+            ModelTier::Sonnet,
+            "score 5 should leave Haiku once low threshold drops below the boundary"
+        );
+
+        config.provider_behavior.complexity_low_threshold = 5;
+        config.provider_behavior.complexity_high_threshold = 96;
+        let raised_high = build_complexity_from_config(&config);
+
+        let complex = ComplexityInput::new("think hard about the migration strategy");
+        assert_eq!(
+            route_model(&complex, &baseline).complexity.tier,
+            ModelTier::Opus
+        );
+        assert_eq!(
+            route_model(&complex, &raised_high).complexity.tier,
+            ModelTier::Sonnet,
+            "score 95 should leave Opus once high threshold rises above the boundary"
         );
     }
 }

@@ -38,6 +38,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [credential](#credential)
 - [providers](#providers)
 - [provider capability matrix](#provider-capability-matrix)
+- [providerBehavior](#providerbehavior)
 - [data](#data)
 - [nous_behavior](#nous_behavior)
 - [daemon_behavior](#daemon_behavior)
@@ -473,6 +474,41 @@ models = ["llama3.1-70b"]
 | Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); declare this provider in `[[providers]]` to place it in the routing order. |
 
 The `aletheia add-nous` scaffolding command supports `anthropic` and `openai` provider strings. It checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` and creates or updates the matching `[[providers]]` entry when the generated agent needs declarative provider routing. Other provider kinds must be configured manually in `aletheia.toml`.
+
+---
+
+## providerBehavior
+
+Provider behavior controls timeouts, stream retry defaults, adaptive concurrency,
+and opt-in per-turn complexity routing.
+
+Complexity routing is disabled by default. When `complexityRoutingEnabled` is
+`false`, `complexityLowThreshold` and `complexityHighThreshold` are retained in
+the effective runtime config and status output for diagnostics, but they do not
+change the selected turn model. When enabled, scores at or below the low
+threshold route to the fast tier and scores at or above the high threshold route
+to the high-capability tier.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `nonStreamingTimeoutSecs` | u64 | `120` | Timeout in seconds for non-streaming LLM requests. |
+| `sseDefaultRetryMs` | u64 | `1000` | Default retry delay from SSE stream retry fields. |
+| `concurrencyEwmaAlpha` | f64 | `0.8` | EWMA smoothing factor for adaptive provider concurrency. |
+| `concurrencyLatencyThresholdSecs` | f64 | `30.0` | Latency threshold above which adaptive concurrency is reduced. |
+| `complexityRoutingEnabled` | bool | `false` | Enable per-turn complexity scoring to choose tier models. |
+| `complexityLowThreshold` | u32 | `30` | Enabled-routing score at or below which the fast tier is selected. |
+| `complexityHighThreshold` | u32 | `70` | Enabled-routing score at or above which the high-capability tier is selected. |
+
+```toml
+[providerBehavior]
+complexityRoutingEnabled = true
+complexityLowThreshold = 25
+complexityHighThreshold = 80
+```
+
+The effective thresholds for a running agent are exposed by
+`GET /api/v1/nous/{id}` as `complexity_no_llm_threshold`,
+`complexity_low_threshold`, and `complexity_high_threshold`.
 
 ---
 

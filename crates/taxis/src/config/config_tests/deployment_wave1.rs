@@ -229,6 +229,7 @@ fn deployment_defaults_match_original_constants() {
         (pb.concurrency_latency_threshold_secs - 30.0).abs() < f64::EPSILON,
         "concurrency_latency_threshold_secs"
     );
+    assert!(!pb.complexity_routing_enabled, "complexity_routing_enabled");
     assert_eq!(pb.complexity_low_threshold, 30, "complexity_low_threshold");
     assert_eq!(
         pb.complexity_high_threshold, 70,
