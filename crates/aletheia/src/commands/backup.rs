@@ -158,13 +158,6 @@ fn run_verify(path: &Path) -> Result<()> {
     run_verify_fjall(path)
 }
 
-pub(crate) fn verify_backup(path: &Path) -> Result<oikonomos::maintenance::FjallVerifyResult> {
-    use oikonomos::maintenance::FjallBackup;
-
-    FjallBackup::verify_store(path)
-        .map_err(|e| crate::error::Error::msg(format!("failed to verify backup: {e}")))
-}
-
 fn run_verify_instance(path: &Path) -> Result<()> {
     use oikonomos::maintenance::InstanceBackup;
 

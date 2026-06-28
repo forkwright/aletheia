@@ -30,7 +30,7 @@ pub use fjall_backup::{FjallBackup, FjallBackupConfig, FjallBackupReport, FjallV
 pub use instance_backup::{
     BackupManifest, InstanceBackup, InstanceBackupConfig, InstanceBackupReport,
     InstanceRestoreOptions, InstanceRestoreReport, InstanceVerifyResult, StoreEntry,
-    WorkspaceOmission,
+    StoreVerifyReport, WorkspaceOmission,
 };
 pub use knowledge::{
     AutoDreamConfig, DerivedRulesConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor,
