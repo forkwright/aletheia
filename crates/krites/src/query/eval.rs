@@ -387,7 +387,7 @@ impl<'a> SessionTx<'a> {
                     )
                 })?;
                 let derived_rows = old_store.merge_in(new_store)?;
-                poison.account_derived_rows(derived_rows as u64)?;
+                poison.account_derived_rows(u64::try_from(derived_rows).unwrap_or(u64::MAX))?;
                 trace!("delta for {}: {}", k, old_store.has_delta());
                 changed |= old_store.has_delta();
             }

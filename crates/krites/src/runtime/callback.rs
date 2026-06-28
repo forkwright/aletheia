@@ -60,7 +60,7 @@ impl<'s, S: Storage<'s>> Db<S> {
     pub(crate) fn current_callback_targets(&self) -> BTreeSet<CompactString> {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            self.event_callbacks
+            self.callbacks.registry
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .1
@@ -81,7 +81,8 @@ impl<'s, S: Storage<'s>> Db<S> {
         for (table, vals) in collector {
             for (op, new, old) in vals {
                 let (cbs, cb_dir) = &*self
-                    .event_callbacks
+                    .callbacks
+                    .registry
                     .read()
                     .unwrap_or_else(|e| e.into_inner());
                 if let Some(cb_ids) = cb_dir.get(&table) {
@@ -112,7 +113,8 @@ impl<'s, S: Storage<'s>> Db<S> {
 
         if !to_remove.is_empty() {
             let (cbs, cb_dir) = &mut *self
-                .event_callbacks
+                .callbacks
+                .registry
                 .write()
                 .unwrap_or_else(|e| e.into_inner());
             for removing_id in &to_remove {

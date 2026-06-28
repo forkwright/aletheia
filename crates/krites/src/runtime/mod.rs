@@ -18,6 +18,7 @@
     reason = "engine callback wiring — pedantic style lints"
 )]
 pub(crate) mod callback;
+pub(crate) mod poison;
 #[expect(
     dead_code,
     private_interfaces,

@@ -88,7 +88,7 @@ impl Joiner {
             let l_pos = left_binding_map.get(l).ok_or_else(|| {
                 crate::error::InternalError::from(
                     CompilationFailedSnafu {
-                        message: format!("left join key '{l}' not found in bindings"),
+                        message: format!("join key '{l}' missing from left-side bindings"),
                     }
                     .build(),
                 )
@@ -96,7 +96,7 @@ impl Joiner {
             let r_pos = right_binding_map.get(r).ok_or_else(|| {
                 crate::error::InternalError::from(
                     CompilationFailedSnafu {
-                        message: format!("right join key '{r}' not found in bindings"),
+                        message: format!("join key '{r}' missing from right-side bindings"),
                     }
                     .build(),
                 )

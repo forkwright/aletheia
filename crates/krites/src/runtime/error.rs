@@ -7,7 +7,7 @@
 //! public `Error` type.
 use snafu::Snafu;
 
-use crate::runtime::db::QueryCancellationReason;
+use crate::runtime::poison::QueryCancellationReason;
 
 /// Structured error type for the engine runtime module.
 ///
