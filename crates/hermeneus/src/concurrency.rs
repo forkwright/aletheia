@@ -49,7 +49,7 @@ pub enum RequestOutcome {
 }
 
 /// Configuration for the [`AdaptiveConcurrencyLimiter`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConcurrencyConfig {
     /// Starting concurrency limit. Default: 10.
     pub initial_limit: u32,

@@ -126,6 +126,34 @@ fn openai_compatible_allows_missing_api_key() {
     assert!(provider.supports_model("qwen"));
 }
 
+#[tokio::test]
+async fn configured_concurrency_threshold_changes_provider_limiter_behavior() {
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "limited".to_owned(),
+        base_url: "http://127.0.0.1:8088/v1".to_owned(),
+        concurrency: crate::concurrency::ConcurrencyConfig {
+            initial_limit: 10,
+            min_limit: 1,
+            max_limit: 20,
+            increase_step: 1,
+            decrease_factor: 0.5,
+            ewma_alpha: 0.0,
+            latency_threshold_secs: 0.1,
+        },
+        ..Default::default()
+    })
+    .unwrap();
+
+    let permit = provider.concurrency.acquire().await;
+    permit.finish_with_latency(RequestOutcome::Success, Duration::from_millis(500));
+
+    assert_eq!(
+        provider.concurrency.limit(),
+        5,
+        "latency above configured threshold should reduce the provider limiter"
+    );
+}
+
 #[test]
 fn first_party_openai_accepts_api_key() {
     let config = OpenAiProviderConfig {
@@ -146,7 +174,7 @@ fn backoff_delay_respects_retry_after() {
         retry_after_ms: 5000_u64,
     }
     .build();
-    let delay = crate::retry::backoff_delay(1, Some(&err));
+    let delay = crate::RetryPolicy::default().delay(1, Some(&err));
     assert_eq!(
         delay,
         Duration::from_secs(5),
@@ -156,9 +184,10 @@ fn backoff_delay_respects_retry_after() {
 
 #[test]
 fn backoff_delay_exponential_growth() {
-    let d1 = crate::retry::backoff_delay(1, None);
-    let d2 = crate::retry::backoff_delay(2, None);
-    let d3 = crate::retry::backoff_delay(3, None);
+    let policy = crate::RetryPolicy::default();
+    let d1 = policy.delay(1, None);
+    let d2 = policy.delay(2, None);
+    let d3 = policy.delay(3, None);
     assert!(d1 < d2, "attempt 2 delay should exceed attempt 1");
     assert!(d2 < d3, "attempt 3 delay should exceed attempt 2");
     assert!(
