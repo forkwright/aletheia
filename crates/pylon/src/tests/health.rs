@@ -325,6 +325,7 @@ async fn openapi_spec_has_all_paths() {
     assert!(paths.contains_key("/api/v1/nous/{id}"));
     assert!(paths.contains_key("/api/v1/nous/{id}/tools"));
     assert!(paths.contains_key("/api/v1/nous/{id}/recover"));
+    assert!(paths.contains_key("/api/v1/events"));
     assert!(paths.contains_key("/api/v1/events/subscribe"));
     assert!(paths.contains_key("/api/v1/events/discovery"));
     let nous_path = paths["/api/v1/nous"].as_object().unwrap();

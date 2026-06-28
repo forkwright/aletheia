@@ -151,7 +151,7 @@ pub fn build_router_with(
             get(sessions::reconnect_turn),
         )
         .route("/sessions/{id}/history", get(sessions::history))
-        .route("/events", get(sessions::events))
+        .route("/events", get(events::stream))
         .route("/events/subscribe", get(events::subscribe))
         .route("/events/discovery", get(events::discovery))
         .route("/ops/tools", get(ops::tools))

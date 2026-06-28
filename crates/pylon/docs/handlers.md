@@ -420,8 +420,24 @@ streams the turn as `TurnStreamEvent` SSE events (used by TUI and desktop client
 
 ### `GET /api/v1/events`
 
-Global SSE channel used by the TUI dashboard. Streams server-side events across all sessions
-for the authenticated user. No request body.
+Canonical global SSE channel used by first-party clients. Streams domain events across sessions
+for the authenticated user.
+
+Each delivered event uses the SSE topic as the `event:` name, the EventBus cursor as the `id:`,
+and the topic payload as `data:`:
+
+```text
+event: turn.complete
+id: 42
+data: {"session_id":"...","nous_id":"...","turn_id":"...","input_tokens":1,"output_tokens":2}
+```
+
+The optional `topics` query parameter narrows delivery to a comma-separated topic list. When it
+is omitted, the stream includes all discoverable global topics. The server sends periodic
+`: heartbeat` comments using the configured gateway SSE heartbeat interval. Clients reconnect
+with the standard `Last-Event-ID` header, or the `last_event_id` query parameter where headers
+are unavailable. If the requested cursor has fallen out of the in-memory journal, the stream
+first emits a `stream_gap` control event; slow live subscribers receive `stream_lagged`.
 
 **Response `200 OK`** - `text/event-stream`
 
@@ -429,8 +445,7 @@ for the authenticated user. No request body.
 
 ### `GET /api/v1/events/subscribe`
 
-Persistent SSE subscription endpoint for reconnect-capable clients. Accepts an optional
-`last_event_id` query parameter for replay. Requires JWT auth.
+Compatibility alias for `GET /api/v1/events`. New first-party clients use `/api/v1/events`.
 
 **Response `200 OK`** - `text/event-stream`
 

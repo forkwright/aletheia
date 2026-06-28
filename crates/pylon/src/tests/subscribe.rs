@@ -55,7 +55,7 @@ async fn subscribe_returns_matching_events() {
 }
 
 #[tokio::test]
-async fn subscribe_includes_event_id_and_timestamp() {
+async fn subscribe_uses_sse_id_and_payload_data() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
 
@@ -77,12 +77,12 @@ async fn subscribe_includes_event_id_and_timestamp() {
     let text = String::from_utf8_lossy(&bytes);
     assert!(text.contains("id: 1"), "expected SSE id field, got: {text}");
     assert!(
-        text.contains("\"at\":"),
-        "expected event timestamp in payload, got: {text}"
+        text.contains("data: {\"fact_id\":\"f-1\",\"nous_id\":\"syn\"}"),
+        "expected topic payload as SSE data, got: {text}"
     );
     assert!(
-        text.contains("\"id\":1"),
-        "expected event id in payload, got: {text}"
+        !text.contains("\"payload\""),
+        "SSE data must not wrap the payload in a DomainEvent envelope, got: {text}"
     );
 }
 
@@ -132,6 +132,166 @@ async fn subscribe_heartbeat_keeps_connection_alive() {
 }
 
 #[tokio::test]
+async fn canonical_events_defaults_to_discoverable_topics() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "background.progress",
+            serde_json::json!({
+                "nous_id": "syn",
+                "task_type": "distillation",
+                "stage": "started",
+                "message": "distillation started"
+            }),
+        ))
+        .await;
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: background.progress"),
+        "default canonical stream must include background progress, got: {text}"
+    );
+    assert!(
+        text.contains("\"task_type\":\"distillation\""),
+        "expected background progress payload, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn canonical_events_reports_session_created_and_archived_from_handlers() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events?topics=session.created,session.archived");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().expect("session id");
+    let archive = router
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            &format!("/api/v1/sessions/{id}/archive"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(archive.status(), StatusCode::NO_CONTENT);
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: session.created"),
+        "expected session.created from create handler, got: {text}"
+    );
+    assert!(
+        text.contains("event: session.archived"),
+        "expected session.archived from archive handler, got: {text}"
+    );
+    assert!(
+        text.contains(id),
+        "expected session id in lifecycle payload"
+    );
+}
+
+fn stream_turn_req(
+    session_key: &str,
+    message: &str,
+    client_turn_id: &str,
+) -> axum::http::Request<axum::body::Body> {
+    authed_request(
+        "POST",
+        "/api/v1/sessions/stream",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "message": message,
+            "session_key": session_key,
+            "client_turn_id": client_turn_id,
+        })),
+    )
+}
+
+#[tokio::test]
+async fn canonical_events_reports_turn_complete_from_stream_handler() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events?topics=turn.complete");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    let turn = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "global-turn-complete",
+            "complete this streamed turn",
+            "01ARZ3NDEKTSV4RRFFQ69G5FB0",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(turn.status(), StatusCode::OK);
+    let _turn_body = body_string(turn).await;
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: turn.complete"),
+        "expected turn.complete from streaming handler, got: {text}"
+    );
+    assert!(
+        text.contains("\"turn_id\":\"01ARZ3NDEKTSV4RRFFQ69G5FB0\""),
+        "expected client turn id in payload, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn canonical_events_reports_turn_error_from_stream_handler() {
+    let (state, _dir) = test_state_with_error_provider("simulated provider failure").await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events?topics=turn.error");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    let turn = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "global-turn-error",
+            "trigger provider failure",
+            "01ARZ3NDEKTSV4RRFFQ69G5FB1",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(turn.status(), StatusCode::OK);
+    let _turn_body = body_string(turn).await;
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: turn.error"),
+        "expected turn.error from streaming handler, got: {text}"
+    );
+    assert!(
+        text.contains("\"code\":\"provider_unavailable\""),
+        "expected sanitized turn error code, got: {text}"
+    );
+}
+
+#[tokio::test]
 async fn subscribe_auth_required() {
     let (app, _dir) = app().await;
     let resp = app
@@ -167,16 +327,15 @@ async fn discovery_returns_current_pylon_topics() {
 
     assert_eq!(returned, expected);
 
-    // WHY: These topics were previously advertised but have no current pylon
-    // publisher, so they must not appear in discovery.
-    assert!(
-        !returned.contains("session.started"),
-        "session.started has no current pylon publisher"
-    );
-    assert!(
-        !returned.contains("session.ended"),
-        "session.ended has no current pylon publisher"
-    );
+    for topic in [
+        "background.progress",
+        "session.archived",
+        "session.created",
+        "turn.complete",
+        "turn.error",
+    ] {
+        assert!(returned.contains(topic), "discovery must include {topic}");
+    }
 }
 
 #[tokio::test]

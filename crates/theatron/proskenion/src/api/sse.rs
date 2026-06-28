@@ -1,12 +1,11 @@
-//! Global SSE connection to `GET /api/v1/events/subscribe`.
+//! Global SSE connection to `GET /api/v1/events`.
 //!
-//! Subscribes to the domain event stream for `fact.created`, `turn.complete`,
-//! and `nous.lifecycle`, providing cross-session awareness for newly created
-//! facts, completed turns, and agent lifecycle changes. The connection
-//! auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
-//! *byte-level* silence as a stale connection (server keepalives are SSE comments
-//! the parser never surfaces as events). Losses are reported to the UI only once
-//! confirmed; clean reconnects are silent.
+//! Subscribes to the canonical domain event stream for session lifecycle, turn
+//! lifecycle, knowledge, agent lifecycle, and background progress events. The
+//! connection auto-reconnects with exponential backoff (1s to 30s) and treats
+//! 45s of *byte-level* silence as a stale connection (server keepalives are SSE
+//! comments the parser never surfaces as events). Losses are reported to the UI
+//! only once confirmed; clean reconnects are silent.
 //!
 //! # Dioxus integration
 //!
@@ -60,7 +59,7 @@ const LOSS_CONFIRM_ATTEMPTS: u32 = 2;
 /// Minimum elapsed time since the stream dropped before the loss is reported.
 const LOSS_CONFIRM_WINDOW: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Manages the global SSE connection to `/api/v1/events/subscribe`.
+/// Manages the global SSE connection to `/api/v1/events`.
 ///
 /// Runs in a background tokio task. Parsed domain events flow through an
 /// mpsc channel. The connection automatically reconnects with exponential
@@ -78,17 +77,13 @@ impl SseConnection {
     /// embedded in the client. `Accept: text/event-stream` is set
     /// per-request to override any client-level JSON default.
     ///
-    /// Connects to `/api/v1/events/subscribe` and filters for the domain
-    /// topics `fact.created`, `turn.complete`, and `nous.lifecycle`. The
-    /// returned `SseConnection` emits `Connected`/`Disconnected` lifecycle
-    /// events in addition to parsed server events.
+    /// Connects to `/api/v1/events`. The returned `SseConnection` emits
+    /// `Connected`/`Disconnected` lifecycle events in addition to parsed server
+    /// events.
     #[tracing::instrument(skip_all)]
     pub(crate) fn connect(client: Client, base_url: &str, cancel: CancellationToken) -> Self {
         let (tx, rx) = mpsc::channel(256);
-        let url = format!(
-            "{}/api/v1/events/subscribe?topics=fact.created,turn.complete,nous.lifecycle",
-            base_url.trim_end_matches('/')
-        );
+        let url = format!("{}/api/v1/events", base_url.trim_end_matches('/'));
         let child = cancel.child_token();
 
         let span = tracing::info_span!("sse_connection");
@@ -360,6 +355,8 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
+        "session.created" => session_lifecycle_event(&json, event_type, false),
+        "session.archived" => session_lifecycle_event(&json, event_type, true),
         "session:created" => Some(SseEvent::SessionCreated {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
@@ -379,13 +376,13 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
         "turn.complete" => turn_complete_event(&json, event_type),
+        "turn.error" | "error" => Some(SseEvent::Error {
+            message: sse_error_message(&json),
+        }),
         "fact.created" => fact_created_event(&json, event_type),
         "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
         "ping" => Some(SseEvent::Ping),
         "stream_lagged" => stream_lagged_event(&json),
-        "error" => Some(SseEvent::Error {
-            message: sse_error_message(&json),
-        }),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
             None
@@ -444,6 +441,26 @@ fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<Ss
         event: str_field(json, "event", event_type)?.to_string(),
         restart_required: bool_field(json, "restart_required", event_type)?,
     })
+}
+
+fn session_lifecycle_event(
+    json: &serde_json::Value,
+    event_type: &str,
+    archived: bool,
+) -> Option<SseEvent> {
+    let nous_id = NousId::from(str_field(json, "nous_id", event_type)?.to_string());
+    let session_id = SessionId::from(str_field(json, "session_id", event_type)?.to_string());
+    if archived {
+        Some(SseEvent::SessionArchived {
+            nous_id,
+            session_id,
+        })
+    } else {
+        Some(SseEvent::SessionCreated {
+            nous_id,
+            session_id,
+        })
+    }
 }
 
 #[cfg(test)]

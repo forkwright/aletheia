@@ -223,7 +223,7 @@ pub struct Plan {
     pub status: String,
 }
 
-/// Application-level SSE events from `GET /api/v1/events/subscribe`.
+/// Application-level SSE events from `GET /api/v1/events`.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum SseEvent {
@@ -309,14 +309,16 @@ pub enum SseEvent {
         /// New status value.
         status: String,
     },
-    /// A new session was created.
+    /// A new session was created, emitted on the `EventBus` topic
+    /// `session.created`.
     SessionCreated {
         /// Agent the session was created for.
         nous_id: NousId,
         /// New session identifier.
         session_id: SessionId,
     },
-    /// A session was archived.
+    /// A session was archived, emitted on the `EventBus` topic
+    /// `session.archived`.
     SessionArchived {
         /// Agent the session belongs to.
         nous_id: NousId,

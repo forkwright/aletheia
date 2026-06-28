@@ -6,7 +6,7 @@ pub(crate) mod streaming;
 pub(crate) mod types;
 
 pub use approvals::{approve_tool, deny_tool, resolve as resolve_approval};
-pub use streaming::{events, reconnect_turn, send_message, stream_turn};
+pub use streaming::{reconnect_turn, send_message, stream_turn};
 
 use types::{
     CreateSessionRequest, HistoryMessage, HistoryParams, HistoryResponse, ListSessionsParams,
@@ -19,7 +19,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use tracing::{info, instrument};
 
-use mneme::types::SessionStatus;
+use mneme::types::{Session, SessionStatus};
 
 use symbolon::types::Role;
 
@@ -43,6 +43,31 @@ fn session_matches_search(session: &mneme::types::Session, search: &str) -> bool
     fields
         .into_iter()
         .any(|field| field.to_lowercase().contains(&search))
+}
+
+fn session_lifecycle_payload(session: &Session, status: SessionStatus) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session.id.as_str(),
+        "nous_id": session.nous_id.as_str(),
+        "session_key": session.session_key.as_str(),
+        "status": status.as_str(),
+    })
+}
+
+async fn publish_session_lifecycle_event(
+    state: &SessionsState,
+    topic: &'static str,
+    session: &Session,
+    status: SessionStatus,
+) {
+    state
+        .event_bus
+        .publish(crate::event_bus::DomainEvent::new(
+            state.event_bus.next_id(),
+            topic,
+            session_lifecycle_payload(session, status),
+        ))
+        .await;
 }
 
 /// POST /api/v1/sessions: create a new session.
@@ -147,6 +172,8 @@ pub async fn create(
     .await??;
 
     info!(session_id = %session.id, nous_id, "session created");
+    publish_session_lifecycle_event(&state, "session.created", &session, SessionStatus::Active)
+        .await;
 
     Ok((
         StatusCode::CREATED,
@@ -391,7 +418,8 @@ pub async fn archive(
 
 /// Shared archive logic for both DELETE and POST archive routes.
 async fn archive_session_by_id(state: &SessionsState, id: &str) -> Result<StatusCode, ApiError> {
-    let _ = find_session(state, id).await?;
+    let session = find_session(state, id).await?;
+    let was_archived = session.status == SessionStatus::Archived;
 
     let state_clone = state.clone();
     let id_clone = id.to_owned();
@@ -404,6 +432,15 @@ async fn archive_session_by_id(state: &SessionsState, id: &str) -> Result<Status
     .await??;
 
     info!(session_id = %id, "session archived");
+    if !was_archived {
+        publish_session_lifecycle_event(
+            state,
+            "session.archived",
+            &session,
+            SessionStatus::Archived,
+        )
+        .await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -618,7 +655,14 @@ pub(crate) async fn resolve_session(
     })
     .await??;
 
-    Ok(session.id)
+    let created = session.id == id;
+    let session_id = session.id.clone();
+    if created {
+        publish_session_lifecycle_event(state, "session.created", &session, SessionStatus::Active)
+            .await;
+    }
+
+    Ok(session_id)
 }
 
 /// Returns `true` when a mneme error indicates a duplicate session-key

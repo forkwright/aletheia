@@ -1,9 +1,10 @@
-//! Domain-event SSE subscription to `GET /api/v1/events/subscribe`.
+//! Domain-event SSE subscription to `GET /api/v1/events`.
 //!
-//! Subscribes to the `EventBus` topics `fact.created`, `turn.complete`, and
-//! `nous.lifecycle`, providing cross-session awareness: newly created facts,
-//! completed turns, and agent lifecycle changes. The legacy `GET /api/v1/events`
-//! endpoint is keepalive-only and is not used here.
+//! Subscribes to the canonical global `EventBus` stream, providing
+//! cross-session awareness for session lifecycle, turn lifecycle, knowledge,
+//! agent lifecycle, and background progress events. The compatibility
+//! `GET /api/v1/events/subscribe` endpoint remains server-side for older
+//! clients, but first-party clients use `/events`.
 //!
 //! Auto-reconnects with exponential backoff (1s to 30s) and treats 45s of
 //! silence as a stale connection.
@@ -29,10 +30,7 @@ use super::types::SseEvent;
 /// `HEARTBEAT_TIMEOUT` and provides 3× margin over the server ping interval.
 const READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
-/// Topics subscribed to on the domain-event SSE endpoint.
-const SUBSCRIBE_TOPICS: &str = "fact.created,turn.complete,nous.lifecycle";
-
-/// Manages the global SSE connection to `/api/v1/events/subscribe`.
+/// Manages the global SSE connection to `/api/v1/events`.
 /// Runs in a background task, sends parsed events through a channel.
 pub struct SseConnection {
     // kanon:ignore RUST/pub-visibility
@@ -48,11 +46,7 @@ impl SseConnection {
     pub fn connect(client: Client, base_url: &str) -> Self {
         // kanon:ignore RUST/pub-visibility
         let (tx, rx) = mpsc::channel(256);
-        let url = format!(
-            "{}?topics={}",
-            keryx::url::join_base_path(base_url, "/api/v1/events/subscribe"),
-            SUBSCRIBE_TOPICS
-        );
+        let url = keryx::url::join_base_path(base_url, "/api/v1/events");
 
         let span = tracing::info_span!("sse_connection", %url);
         // kanon:ignore RUST/spawn-no-instrument — future is instrumented with `.instrument(span)` before being passed to spawn
@@ -230,6 +224,9 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
         "turn.complete" => turn_complete_event(&json, event_type),
+        "turn.error" | "error" => Some(SseEvent::Error {
+            message: sse_error_message(&json),
+        }),
         "fact.created" => fact_created_event(&json, event_type),
         "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
         "tool:called" => Some(SseEvent::ToolCalled {
@@ -249,6 +246,8 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
+        "session.created" => session_lifecycle_event(&json, event_type, false),
+        "session.archived" => session_lifecycle_event(&json, event_type, true),
         "session:created" => Some(SseEvent::SessionCreated {
             nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
@@ -278,9 +277,6 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         }),
         "ping" => Some(SseEvent::Ping),
         "stream_lagged" => stream_lagged_event(&json),
-        "error" => Some(SseEvent::Error {
-            message: sse_error_message(&json),
-        }),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
             Some(SseEvent::UnknownEvent {
@@ -342,6 +338,26 @@ fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<Ss
         event: str_field(json, "event", event_type)?.to_string(),
         restart_required: bool_field(json, "restart_required", event_type)?,
     })
+}
+
+fn session_lifecycle_event(
+    json: &serde_json::Value,
+    event_type: &str,
+    archived: bool,
+) -> Option<SseEvent> {
+    let nous_id = NousId::from(str_field(json, "nous_id", event_type)?.to_string());
+    let session_id = SessionId::from(str_field(json, "session_id", event_type)?.to_string());
+    if archived {
+        Some(SseEvent::SessionArchived {
+            nous_id,
+            session_id,
+        })
+    } else {
+        Some(SseEvent::SessionCreated {
+            nous_id,
+            session_id,
+        })
+    }
 }
 
 #[cfg(test)]

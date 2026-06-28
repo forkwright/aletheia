@@ -60,6 +60,7 @@ impl EndpointCategory {
         // mutations are control-plane operations with outsized backend impact;
         // they should not share a bucket with low-risk general traffic.
         if path.contains("/approvals")
+            || path == "/api/v1/events"
             || path.contains("/events/subscribe")
             || path.contains("/knowledge/ingest")
             || path.contains("/knowledge/import")

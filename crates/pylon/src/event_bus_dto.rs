@@ -2,13 +2,21 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Topic names that pylon currently publishes on its domain event bus.
+/// Topic names in the canonical global SSE event contract.
 ///
-/// WHY: Discovery and subscription tests share a single source of truth so the
-/// advertised topic list cannot drift from the topics actually emitted by pylon
-/// handlers.
-pub(crate) const DISCOVERABLE_TOPICS: &[&str] =
-    &["fact.created", "turn.complete", "nous.lifecycle"];
+/// WHY(#4613): Discovery, subscription defaults, and contract tests share a
+/// single source of truth so first-party clients see one stable global event
+/// schema across `/api/v1/events` and the compatibility `/events/subscribe`
+/// alias.
+pub(crate) const DISCOVERABLE_TOPICS: &[&str] = &[
+    "background.progress",
+    "fact.created",
+    "nous.lifecycle",
+    "session.archived",
+    "session.created",
+    "turn.complete",
+    "turn.error",
+];
 
 /// A domain event with a stable topic name, monotonic id, JSON payload, and
 /// emission timestamp.

@@ -7,7 +7,7 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{Event, KeepAlive, KeepAliveStream, Sse};
 use futures::stream::{self, StreamExt};
 use serde::Deserialize;
 use tokio_stream::wrappers::BroadcastStream;
@@ -23,7 +23,10 @@ use crate::state::EventBusState;
 #[derive(Debug, Deserialize)]
 pub struct SubscribeParams {
     /// Comma-separated list of topics to subscribe to (e.g. `fact.created,turn.complete`).
-    pub topics: String,
+    ///
+    /// When omitted, the canonical stream subscribes to every discoverable
+    /// global topic.
+    pub topics: Option<String>,
     /// Optional SSE `Last-Event-ID` value supplied as a query parameter.
     ///
     /// WHY(#4910): SSE clients send `Last-Event-ID` automatically on reconnect.
@@ -38,6 +41,9 @@ const STREAM_GAP_EVENT: &str = "stream_gap";
 
 /// SSE event name for live subscriber lag.
 const STREAM_LAGGED_EVENT: &str = "stream_lagged";
+
+type DomainSseStream = futures::stream::BoxStream<'static, Result<Event, Infallible>>;
+type DomainSse = Sse<KeepAliveStream<DomainSseStream>>;
 
 /// Parse a `Last-Event-ID` value from the `Last-Event-ID` header or the
 /// `last_event_id` query parameter.
@@ -72,7 +78,7 @@ fn domain_event_to_sse(
     }
 
     let id = event.id.to_string();
-    match serde_json::to_string(event) {
+    match serde_json::to_string(&event.payload) {
         Ok(data) => Some(Ok(Event::default().event(&event.topic).id(id).data(data))),
         Err(e) => {
             warn!(error = %e, topic = %event.topic, "failed to serialize domain event");
@@ -109,52 +115,34 @@ fn gap_event(first_missed: u64, last_missed: u64, scoped: bool) -> Result<Event,
     Ok(Event::default().event(STREAM_GAP_EVENT).data(data))
 }
 
-/// GET /api/v1/events/subscribe
-///
-/// Opens an SSE stream filtered to the requested topics.
-/// Each event is delivered as `event: <topic>\nid: <id>\ndata: <json>\n\n`.
-/// Periodic heartbeat comments keep the connection alive.
-///
-/// WHY(#4910): Reconnects with `Last-Event-ID` replay retained events from the
-/// in-memory journal. If the requested id has fallen out of the journal, a
-/// typed `stream_gap` event is emitted so the client knows it missed events.
-#[utoipa::path(
-    get,
-    path = "/api/v1/events/subscribe",
-    params(
-        ("topics" = String, Query, description = "Comma-separated topic filter"),
-        ("last_event_id" = Option<String>, Query, description = "Optional Last-Event-ID for reconnect replay"),
-    ),
-    responses(
-        (status = 200, description = "Filtered SSE event stream", content_type = "text/event-stream"),
-        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-    ),
-    security(("bearer_auth" = []))
-)]
-/// # Cancel safety
-///
-/// Cancel-safe. Axum handler; cancellation drops the future with no
-/// side effects beyond not returning a response.
-#[instrument(skip(state, claims, headers))]
-pub async fn subscribe(
-    State(state): State<EventBusState>,
-    claims: Claims,
-    Query(params): Query<SubscribeParams>,
-    headers: HeaderMap,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let topics: Vec<String> = params
+fn requested_topics(params: &SubscribeParams) -> Vec<String> {
+    let parsed: Vec<String> = params
         .topics
+        .as_deref()
+        .unwrap_or_default()
         .split(',')
-        .map(|s| s.trim().to_owned())
+        .map(str::trim)
         .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
         .collect();
 
-    if topics.is_empty() {
-        return Err(ApiError::BadRequest {
-            message: "topics query parameter must contain at least one topic".to_owned(),
-            location: snafu::location!(),
-        });
+    if parsed.is_empty() {
+        DISCOVERABLE_TOPICS
+            .iter()
+            .map(|topic| (*topic).to_owned())
+            .collect()
+    } else {
+        parsed
     }
+}
+
+async fn event_stream(
+    state: EventBusState,
+    claims: Claims,
+    params: SubscribeParams,
+    headers: HeaderMap,
+) -> Result<DomainSse, ApiError> {
+    let topics = requested_topics(&params);
 
     // SECURITY(#5341, #4994, #4617): Scoped tokens may only subscribe to
     // events for their own nous_id. Unscoped Operator/Admin tokens retain
@@ -243,18 +231,91 @@ pub async fn subscribe(
     // WHY(#4910): Stream order is: gap event (if any), replay events, live
     // events. This lets a reconnecting client learn about unrecoverable loss
     // before receiving the retained tail of the stream.
-    let stream: futures::stream::BoxStream<'static, Result<Event, Infallible>> =
-        if let Some(gap) = gap_stream {
-            gap.chain(replay_stream).chain(live_stream).boxed()
-        } else {
-            replay_stream.chain(live_stream).boxed()
-        };
+    let stream: DomainSseStream = if let Some(gap) = gap_stream {
+        gap.chain(replay_stream).chain(live_stream).boxed()
+    } else {
+        replay_stream.chain(live_stream).boxed()
+    };
 
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(heartbeat_secs))
             .text("heartbeat"),
     ))
+}
+
+/// GET /api/v1/events
+///
+/// Canonical global SSE stream for first-party clients. Events are emitted as:
+/// `event: <topic>\nid: <cursor>\ndata: <topic payload>\n\n`.
+/// The `topics` query parameter optionally narrows the stream; when omitted,
+/// all discoverable topics are included. Periodic `: heartbeat` comments keep
+/// the connection alive. Reconnects can resume with `Last-Event-ID` or the
+/// `last_event_id` query parameter; unrecoverable gaps are signaled with a
+/// typed `stream_gap` event.
+#[utoipa::path(
+    get,
+    path = "/api/v1/events",
+    params(
+        ("topics" = Option<String>, Query, description = "Optional comma-separated topic filter; omitted means all discoverable topics"),
+        ("last_event_id" = Option<String>, Query, description = "Optional Last-Event-ID for reconnect replay"),
+    ),
+    responses(
+        (status = 200, description = "Global SSE event stream", content_type = "text/event-stream"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[instrument(skip(state, claims, headers))]
+pub async fn stream(
+    State(state): State<EventBusState>,
+    claims: Claims,
+    Query(params): Query<SubscribeParams>,
+    headers: HeaderMap,
+) -> Result<DomainSse, ApiError> {
+    event_stream(state, claims, params, headers).await
+}
+
+/// GET /api/v1/events/subscribe
+///
+/// Compatibility alias for the canonical `/api/v1/events` stream.
+///
+/// WHY(#4910): Reconnects with `Last-Event-ID` replay retained events from the
+/// in-memory journal. If the requested id has fallen out of the journal, a
+/// typed `stream_gap` event is emitted so the client knows it missed events.
+///
+/// WHY(#4613): Kept as an alias so existing operators and clients using the
+/// richer pre-unification route do not break while first-party clients migrate
+/// to `/api/v1/events`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/events/subscribe",
+    params(
+        ("topics" = Option<String>, Query, description = "Optional comma-separated topic filter; omitted means all discoverable topics"),
+        ("last_event_id" = Option<String>, Query, description = "Optional Last-Event-ID for reconnect replay"),
+    ),
+    responses(
+        (status = 200, description = "Filtered SSE event stream", content_type = "text/event-stream"),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[instrument(skip(state, claims, headers))]
+pub async fn subscribe(
+    State(state): State<EventBusState>,
+    claims: Claims,
+    Query(params): Query<SubscribeParams>,
+    headers: HeaderMap,
+) -> Result<DomainSse, ApiError> {
+    event_stream(state, claims, params, headers).await
 }
 
 /// GET /api/v1/events/discovery
@@ -273,8 +334,8 @@ pub async fn subscribe(
 // kanon:ignore API/unused-auth-param — extractor enforces authentication; no per-claim RBAC needed for topic discovery
 #[instrument(skip(_claims))]
 pub async fn discovery(_claims: Claims) -> impl IntoResponse {
-    // WHY: Discovery must only advertise topics that have a current pylon
-    // publisher; the canonical list lives in `event_bus_dto` so it is shared
-    // with tests and cannot drift from the handlers that emit events.
+    // WHY(#4613): Discovery advertises the canonical global event contract.
+    // The list lives in `event_bus_dto` so subscription defaults, tests, and
+    // documentation cannot drift.
     Json(DISCOVERABLE_TOPICS)
 }

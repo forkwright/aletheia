@@ -12,7 +12,7 @@ use axum::response::sse::{Event, KeepAlive, KeepAliveStream, Sse};
 use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
-use tokio_stream::wrappers::{IntervalStream, ReceiverStream};
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, instrument, warn};
 
@@ -32,7 +32,7 @@ use crate::error::{
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::idempotency::LookupResult;
 use crate::middleware::RequestId;
-use crate::state::{EventBusState, SessionsState};
+use crate::state::SessionsState;
 use crate::stream::{SseEvent, TurnOutcome, TurnStreamEvent as PylonTurnStreamEvent, UsageData};
 use crate::turn_buffer::{
     REPLAY_GAP_REASON_BUFFER_CAPACITY, RecordOutcome, TURN_ABORT_REASON_CLIENT_DISCONNECT,
@@ -89,6 +89,24 @@ fn turn_complete_event_payload(
         "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
         "model": result.model_used.as_str(),
+    })
+}
+
+fn turn_error_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    code: &str,
+    message: &str,
+    request_id: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "code": code,
+        "message": message,
+        "request_id": request_id,
     })
 }
 
@@ -616,6 +634,20 @@ pub async fn send_message(
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
+                    event_bus
+                        .publish(crate::event_bus::DomainEvent::new(
+                            event_bus.next_id(),
+                            "turn.error",
+                            turn_error_event_payload(
+                                &sid,
+                                &session.nous_id,
+                                &turn_id,
+                                &err_code,
+                                &err_message,
+                                &request_id_str,
+                            ),
+                        ))
+                        .await;
                     let event = SseEvent::Error {
                         code: err_code,
                         message: err_message,
@@ -1102,6 +1134,20 @@ pub async fn stream_turn(
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
+                    event_bus
+                        .publish(crate::event_bus::DomainEvent::new(
+                            event_bus.next_id(),
+                            "turn.error",
+                            turn_error_event_payload(
+                                &sid,
+                                &aid,
+                                &turn_id,
+                                &err_code,
+                                &err_message,
+                                &stream_request_id,
+                            ),
+                        ))
+                        .await;
                     let event = PylonTurnStreamEvent::Error {
                         code: err_code,
                         message: err_message.clone(),
@@ -1182,43 +1228,6 @@ pub async fn stream_turn(
 
     Ok(Sse::new(boxed_event_stream(stream))
         .keep_alive(gateway_keepalive(&state.config, "heartbeat").await))
-}
-
-/// GET /api/v1/events: global SSE keep-alive channel.
-///
-/// Returns a persistent SSE connection with periodic keep-alive comments.
-/// Domain-event broadcast is served separately by `GET /api/v1/events/subscribe`
-/// (`handlers::events::subscribe` over the `EventBus`); this endpoint stays
-/// comment-only.
-#[utoipa::path(
-    get,
-    path = "/api/v1/events",
-    responses(
-        (status = 200, description = "Global SSE keep-alive stream", content_type = "text/event-stream"),
-        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
-    ),
-    security(("bearer_auth" = []))
-)]
-pub async fn events(
-    State(state): State<EventBusState>,
-    _claims: Claims,
-) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
-    // WHY: emit periodic comment-only events so the connection stays alive and
-    // proxies do not close it. Domain events flow through the EventBus stream
-    // on /api/v1/events/subscribe, not this channel.
-    let heartbeat_secs = state
-        .config
-        .read()
-        .await
-        .gateway
-        .sse_heartbeat_interval_secs;
-    // WHY(#5156): Derive the interval from gateway config so the server
-    // keepalive cadence stays in sync with the client read timeout and any
-    // reverse-proxy idle timeouts.
-    let stream = IntervalStream::new(tokio::time::interval(Duration::from_secs(heartbeat_secs)))
-        .map(|_| Ok::<Event, Infallible>(Event::default().comment("keepalive")));
-
-    Sse::new(stream).keep_alive(gateway_keepalive(&state.config, "ping").await)
 }
 
 /// Convert a `(seq, SseEvent)` pair into an Axum SSE [`Event`] with `id:` field.
