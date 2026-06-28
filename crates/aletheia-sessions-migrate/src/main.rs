@@ -22,7 +22,7 @@ use commands::report;
     name = "aletheia-sessions-migrate",
     about = "One-shot SQLite v32 → fjall sessions-store importer for legacy aletheia 0.15.x instances.",
     long_about = "Reads the legacy SQLite sessions DB read-only and writes its content to a fresh fjall keyspace whose layout matches crates/graphe/src/store/fjall_store.rs. \
-After verification, the operator swaps the live aletheia data dir at their own pace.",
+The migrator writes a staged destination, verifies it, and only then publishes it over the requested destination.",
     version
 )]
 // WHY: a one-shot migrator CLI exposes orthogonal mode flags
@@ -56,7 +56,7 @@ struct Cli {
     #[arg(long)]
     dry_run: bool,
 
-    /// After migrating, verify the fjall directory matches the source.
+    /// Print the mandatory verification report before publishing.
     #[arg(long)]
     verify: bool,
 
@@ -64,8 +64,7 @@ struct Cli {
     #[arg(long, conflicts_with = "dry_run")]
     verify_only: bool,
 
-    /// Allow writing to a non-empty destination directory. Use with care:
-    /// any data already in the directory is left in place.
+    /// Replace a non-empty destination through the staged backup path.
     #[arg(long)]
     force: bool,
 
@@ -124,13 +123,13 @@ fn run(cli: &Cli) -> Result<()> {
 
     let staged = stage_migration(&cli.source, &cli.dest, cli.force)?;
 
-    if cli.verify {
-        info!("running --verify pass against staged destination");
-        let v = staged.verify(&cli.source, cli.samples)?;
+    info!("running verification pass against staged destination");
+    let v = staged.verify(&cli.source, cli.samples)?;
+    if cli.verify || !v.ok() {
         report::print_verification(&v);
-        if !v.ok() {
-            anyhow::bail!("verification failed: {} mismatch(es)", v.mismatches.len());
-        }
+    }
+    if !v.ok() {
+        anyhow::bail!("verification failed: {} mismatch(es)", v.mismatches.len());
     }
 
     let report = staged.publish()?;

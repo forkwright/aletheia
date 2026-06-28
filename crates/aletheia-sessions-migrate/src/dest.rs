@@ -30,9 +30,9 @@
 //! When a column carries a non-default value we route it here so the data
 //! is recoverable post-migration.
 //!
-//! Source `schema_version` is enforced before any row is read; the
-//! post-write `--verify` pass computes a SHA-256 checksum of every
-//! message body on both stores and aborts on mismatch.
+//! Source `schema_version` is enforced before any row is read; the staged
+//! verification pass compares deterministic key/value hashes for every
+//! migrated partition before publish and aborts on mismatch.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -142,17 +142,18 @@ pub struct Destination {
 }
 
 impl Destination {
-    /// Open or create a fjall DB at `path`. If the directory already
-    /// holds session data and `force` is false, returns an error.
+    /// Open or create a fjall DB at `path`. The directory must be empty
+    /// or absent; replacement is handled by the staging layer in
+    /// [`crate::migrate`].
     ///
     /// # Errors
     ///
     /// Returns [`crate::error::Error::DestinationNotEmpty`] when `path`
-    /// is a non-empty directory and `force == false`,
+    /// is non-empty,
     /// [`crate::error::Error::FjallOpen`] / [`crate::error::Error::FjallPartition`]
     /// when fjall keyspace setup fails.
-    pub fn open(path: &Path, force: bool) -> Result<Self> {
-        if path.exists() && !is_empty_or_absent(path)? && !force {
+    pub fn open(path: &Path) -> Result<Self> {
+        if path.exists() && !is_empty_or_absent(path)? {
             return Err(DestinationNotEmptySnafu {
                 path: path.to_path_buf(),
             }

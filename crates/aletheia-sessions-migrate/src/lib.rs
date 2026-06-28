@@ -37,13 +37,13 @@
 //! cascade) are preserved under synthesised `orphan-recovery` sessions —
 //! see [`migrate`] for the policy.
 //!
-//! # Migration checksum
+//! # Migration verification
 //!
 //! Source `schema_version` is asserted equal to [`schema::REQUIRED_USER_VERSION`]
-//! (currently `32`). After write, `--verify` recomputes a SHA-256 checksum
-//! of every message body in `(session_id, seq)` order on both stores and
-//! compares them byte-for-byte; any mismatch aborts with a non-zero exit
-//! status. See [`verify::run_verification`].
+//! (currently `32`). After staging, verification compares deterministic
+//! key/value entry counts and SHA-256 hashes for every migrated fjall
+//! partition before the destination is published. Any mismatch aborts with a
+//! non-zero exit status. See [`verify::run_verification`].
 
 #![deny(missing_docs)]
 
