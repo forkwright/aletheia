@@ -192,6 +192,15 @@ pub struct InstanceVerifyResult {
     pub store_generations: HashMap<String, u64>,
 }
 
+/// Result of verifying one live fjall store or a tree of fjall cohorts.
+#[derive(Debug, Clone, Default)]
+pub struct StoreVerifyReport {
+    /// Total keys iterated across the store or cohort tree.
+    pub total_keys: usize,
+    /// Per-fjall-store generation (seqno) captured during verification.
+    pub store_generations: Vec<(String, u64)>,
+}
+
 /// Options for restoring a whole-instance backup set.
 #[derive(Debug, Clone)]
 pub struct InstanceRestoreOptions {
@@ -1084,6 +1093,26 @@ impl InstanceBackup {
         }
 
         Ok(result)
+    }
+
+    /// Verify a fjall store or a directory tree containing fjall cohort stores.
+    ///
+    /// Returns `Ok(None)` when `path` exists but is neither a fjall store nor a
+    /// tree containing fjall stores. Callers that require a current-format
+    /// store should turn that into a domain-specific verification failure.
+    ///
+    /// WHY(#5040): migration and whole-instance backup must share the same
+    /// read-only fjall traversal so they do not drift on cohort layouts.
+    pub fn verify_fjall_store_tree(
+        logical_name: &str,
+        path: &Path,
+    ) -> std::result::Result<Option<StoreVerifyReport>, String> {
+        verify_fjall_tree(logical_name, path).map(|outcome| {
+            outcome.map(|(total_keys, store_generations)| StoreVerifyReport {
+                total_keys,
+                store_generations,
+            })
+        })
     }
 
     /// Restore a whole-instance backup set into this manager's instance root.
