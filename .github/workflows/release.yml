@@ -164,6 +164,8 @@ jobs:
           - features: "tls"
           # Headless + keyring auth, still no ML.
           - features: "tls,keyring"
+          # Minimal MCP server: Diaporeia plus the recall wiring its knowledge tools require.
+          - features: "mcp"
           # Full headless: recall + ML + CC provider + TLS, no TUI.
           - features: "recall,storage-fjall,embed-candle,cc-provider,tls"
     steps:

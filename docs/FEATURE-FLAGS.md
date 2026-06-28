@@ -9,7 +9,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **agora** | `test-core` | no | - | - |
 | **agora** | `test-full` | no | - | - |
 | **aletheia** | `default` | **yes** | `tui`, `recall`, `storage-fjall`, `embed-candle`, `cc-provider` | - |
-| **aletheia** | `mcp` | no | MCP server (Model Context Protocol) | `dep:diaporeia`, `dep:rmcp` |
+| **aletheia** | `mcp` | no | MCP server (Model Context Protocol) with recall-backed knowledge tools | `recall`, `dep:diaporeia`, `dep:rmcp` |
 | **aletheia** | `recall` | no | KnowledgeStore vector search + extraction persistence | `nous/knowledge-store`, `mneme/mneme-engine`, `mneme/storage-fjall`, `pylon/knowledge-store` |
 | **aletheia** | `storage-fjall` | no | fjall LSM-tree backend | `mneme/storage-fjall` |
 | **aletheia** | `embed-candle` | no | Local ML embeddings via candle | `mneme/embed-candle` |
@@ -204,7 +204,7 @@ aletheia/embed-candle
 
 | Consumer feature | Dependency feature activated |
 |------------------|------------------------------|
-| `aletheia/mcp` | `dep:diaporeia`, `dep:rmcp` |
+| `aletheia/mcp` | `aletheia/recall`, `dep:diaporeia`, `dep:rmcp` |
 | `aletheia/tls` | `pylon/tls` (`dep:axum-server`) |
 | `aletheia/keyring` | `symbolon/keyring` (`dep:keyring`) |
 | `aletheia/tui` | `dep:koilon` |
@@ -298,6 +298,9 @@ cargo build -p aletheia --no-default-features --features tls
 # Add keyring auth but still skip ML
 cargo build -p aletheia --no-default-features --features tls,keyring
 
+# Minimal MCP server: stdio and HTTP MCP surfaces with recall-backed knowledge tools
+cargo build -p aletheia --no-default-features --features mcp
+
 # Full headless: everything except the TUI
 cargo build -p aletheia --no-default-features --features recall,storage-fjall,embed-candle,cc-provider,tls
 ```
@@ -323,6 +326,8 @@ cargo build -p aletheia --features mcp
 ```
 
 `mcp` is **not** in the default set because it adds auth friction and context-window overhead for local deployments.
+It implies `recall`, because Diaporeia exposes recall-backed knowledge tools and requires the same in-process
+knowledge store wiring that Pylon uses.
 
 ### "I want the desktop UI"
 

@@ -212,7 +212,21 @@ fn build_anthropic_credential_chain(
 /// `anthropic` entry appears and is placed at that entry's position.
 fn build_provider_plan<'a>(
     config: &'a AletheiaConfig,
+    #[cfg_attr(
+        not(feature = "cc-provider"),
+        expect(
+            unused_variables,
+            reason = "WHY(#4595): only the cc-provider auto-registration branch needs the credential source"
+        )
+    )]
     cred_source: &str,
+    #[cfg_attr(
+        not(feature = "cc-provider"),
+        expect(
+            unused_variables,
+            reason = "WHY(#4595): only the cc-provider auto-registration branch needs the resolved credential source"
+        )
+    )]
     resolved_source: Option<&CredentialSource>,
 ) -> Vec<ProviderPlanEntry<'a>> {
     if !config.providers.is_empty() {

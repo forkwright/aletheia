@@ -23,7 +23,7 @@ path = "src/bin/seed_psyche_facts.rs"
 default = ["tui", "recall", "storage-fjall", "embed-candle", "cc-provider"]
 # MCP server (Model Context Protocol). Disabled by default: adds context-window
 # cost and auth friction for local deployments. Enable with `--features mcp`.
-mcp = ["dep:diaporeia", "dep:rmcp"]
+mcp = ["recall", "dep:diaporeia", "dep:rmcp"]
 # Recall pipeline: enables KnowledgeStore for vector search + extraction persistence.
 recall = ["nous/knowledge-store", "mneme/mneme-engine", "mneme/storage-fjall", "pylon/knowledge-store", "oikonomos/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
