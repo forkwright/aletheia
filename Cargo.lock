@@ -7133,6 +7133,9 @@ dependencies = [
 [[package]]
 name = "poiesis-ooxml-parse"
 version = "0.31.1"
+dependencies = [
+ "quick-xml 0.39.2",
+]
 
 [[package]]
 name = "poiesis-printer-chromium"
