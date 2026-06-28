@@ -607,6 +607,7 @@ Daemon watchdog, prosoche anomaly detection, and runner output summarization.
 | `watchdog_backoff_base_secs` | u64 | `2` | Base watchdog restart backoff |
 | `watchdog_backoff_cap_secs` | u64 | `300` | Maximum watchdog restart backoff |
 | `prosoche_anomaly_sample_size` | usize | `15` | Samples used for prosoche anomaly detection |
+| `runner_output_mode` | enum | `"summary"` | Task output policy: `"summary"` emits metadata only, `"brief"` adds a redacted excerpt, `"full"` emits full redacted output and should only be used for private diagnostics |
 | `runner_output_brief_head_lines` | usize | `5` | Head lines kept in task output summaries |
 | `runner_output_brief_tail_lines` | usize | `3` | Tail lines kept in task output summaries |
 

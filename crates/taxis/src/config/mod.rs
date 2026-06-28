@@ -14,10 +14,11 @@ pub use agents::{
 };
 pub use behavior::{
     AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig,
-    CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DeploymentTarget, DispatchConfig,
-    DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
-    MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig,
-    ProviderKind, RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DaemonRunnerOutputMode,
+    DeploymentTarget, DispatchConfig, DispatchSpecConfig, ExtractionConfig, JwtSettings,
+    KnowledgeConfig, LlmProviderConfig, MessagingConfig, NousBehaviorConfig, OpenAiApiFamily,
+    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
+    ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
