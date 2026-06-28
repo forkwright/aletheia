@@ -7,18 +7,20 @@
 //! source level.
 //!
 //! Source `schema_version` is asserted by `crate::schema::validate` before
-//! these readers run; the SHA-256 checksum of message bodies is
-//! recomputed in [`crate::verify`] after migration completes.
+//! these readers run; [`crate::verify`] rebuilds expected fjall key/value
+//! entries from these rows and compares them against the destination.
 
 use graphe::types::{
     AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
     SessionType, UsageRecord,
 };
+use rusqlite::types::FromSql;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
+use snafu::IntoError as _;
 use snafu::ResultExt as _;
 
-use crate::error::{Result, SqliteSnafu};
+use crate::error::{LegacyExtraReadSnafu, Result, SqliteSnafu};
 
 /// Legacy session columns that have no analog on the new fjall `Session`
 /// type. When non-default, we route them to a `migration_legacy`
@@ -60,56 +62,69 @@ pub struct SessionRow {
     pub legacy: LegacyExtras,
 }
 
+fn session_column<T>(row: &Row<'_>, column: &'static str) -> Result<T>
+where
+    T: FromSql,
+{
+    row.get(column).context(SqliteSnafu {
+        context: format!("mapping sessions.{column}"),
+    })
+}
+
+fn legacy_column<T>(row: &Row<'_>, session_id: &str, column: &'static str) -> Result<Option<T>>
+where
+    T: FromSql,
+{
+    row.get::<_, Option<T>>(column).map_err(|source| {
+        LegacyExtraReadSnafu {
+            session_id: session_id.to_owned(),
+            column: column.to_owned(),
+        }
+        .into_error(Box::new(source))
+    })
+}
+
 /// Map one `SQLite` `sessions` row to a `Session` plus legacy extras.
-fn map_session(row: &Row<'_>) -> rusqlite::Result<SessionRow> {
-    let status_str: String = row.get("status")?;
-    let type_str: Option<String> = row.get("session_type")?;
-    // Fetch each legacy column with explicit error handling. We log a
-    // debug-level note on read failure (e.g. unexpected NULL or
-    // type mismatch) and treat as default; the test suite covers the
-    // "non-default value present" case.
-    let thinking_enabled = row
-        .get::<_, Option<i64>>("thinking_enabled")
-        .unwrap_or(None);
-    let thinking_budget = row.get::<_, Option<i64>>("thinking_budget").unwrap_or(None);
-    let working_state = row
-        .get::<_, Option<String>>("working_state")
-        .unwrap_or(None);
-    let distillation_priming = row
-        .get::<_, Option<String>>("distillation_priming")
-        .unwrap_or(None);
+fn map_session(row: &Row<'_>) -> Result<SessionRow> {
+    let session_id: String = session_column(row, "id")?;
+    let status_str: String = session_column(row, "status")?;
+    let type_str: Option<String> = session_column(row, "session_type")?;
+    let thinking_enabled = legacy_column(row, &session_id, "thinking_enabled")?;
+    let thinking_budget = legacy_column(row, &session_id, "thinking_budget")?;
+    let working_state = legacy_column(row, &session_id, "working_state")?;
+    let distillation_priming = legacy_column(row, &session_id, "distillation_priming")?;
     Ok(SessionRow {
         session: Session {
-            id: row.get("id")?,
-            nous_id: row.get("nous_id")?,
-            session_key: row.get("session_key")?,
+            id: session_id,
+            nous_id: session_column(row, "nous_id")?,
+            session_key: session_column(row, "session_key")?,
             status: match status_str.as_str() {
                 "archived" => SessionStatus::Archived,
                 "distilled" => SessionStatus::Distilled,
                 _ => SessionStatus::Active,
             },
-            model: row.get("model")?,
+            model: session_column(row, "model")?,
             session_type: match type_str.as_deref() {
                 Some("background") => SessionType::Background,
                 Some("ephemeral") => SessionType::Ephemeral,
                 _ => SessionType::Primary,
             },
-            created_at: row.get("created_at")?,
-            updated_at: row.get("updated_at")?,
+            created_at: session_column(row, "created_at")?,
+            updated_at: session_column(row, "updated_at")?,
             metrics: SessionMetrics {
-                token_count_estimate: row.get("token_count_estimate")?,
-                message_count: row.get("message_count")?,
-                last_input_tokens: row.get("last_input_tokens")?,
-                bootstrap_hash: row.get("bootstrap_hash")?,
-                distillation_count: row.get("distillation_count")?,
-                last_distilled_at: row.get("last_distilled_at")?,
-                computed_context_tokens: row.get("computed_context_tokens")?,
+                token_count_estimate: session_column(row, "token_count_estimate")?,
+                message_count: session_column(row, "message_count")?,
+                last_input_tokens: session_column(row, "last_input_tokens")?,
+                bootstrap_hash: session_column(row, "bootstrap_hash")?,
+                distillation_count: session_column(row, "distillation_count")?,
+                last_distilled_at: session_column(row, "last_distilled_at")?,
+                computed_context_tokens: session_column(row, "computed_context_tokens")?,
             },
             origin: SessionOrigin {
-                parent_session_id: row.get("parent_session_id")?,
-                thread_id: row.get("thread_id")?,
-                transport: row.get("transport")?,
-                display_name: row.get("display_name")?,
+                parent_session_id: session_column(row, "parent_session_id")?,
+                thread_id: session_column(row, "thread_id")?,
+                transport: session_column(row, "transport")?,
+                display_name: session_column(row, "display_name")?,
             },
             artefact_meta: None,
         },
@@ -134,16 +149,16 @@ pub fn read_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
         .context(SqliteSnafu {
             context: "preparing sessions select".to_owned(),
         })?;
-    let rows: Vec<SessionRow> = stmt
-        .query_map([], map_session)
-        .context(SqliteSnafu {
-            context: "querying sessions".to_owned(),
-        })?
-        .collect::<rusqlite::Result<_>>()
-        .context(SqliteSnafu {
-            context: "mapping sessions rows".to_owned(),
-        })?;
-    Ok(rows)
+    let mut rows = stmt.query([]).context(SqliteSnafu {
+        context: "querying sessions".to_owned(),
+    })?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next().context(SqliteSnafu {
+        context: "reading sessions row".to_owned(),
+    })? {
+        out.push(map_session(row)?);
+    }
+    Ok(out)
 }
 
 /// Map one `SQLite` `messages` row to a `Message`.

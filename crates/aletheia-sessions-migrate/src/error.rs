@@ -36,6 +36,17 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "legacy session column '{column}' for session '{session_id}' could not be read: {source}"
+    ))]
+    LegacyExtraRead {
+        session_id: String,
+        column: String,
+        source: Box<rusqlite::Error>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display(
         "schema mismatch: expected user_version = {expected}, found {found}; \
          this migrator only supports the final pre-fjall SQLite schema (PR #3446)"
     ))]
@@ -73,8 +84,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "destination '{}' is non-empty; pass --force to migrate over an existing fjall directory \
-         (data already there will NOT be removed)",
+        "destination '{}' is non-empty; pass --force to replace it through the staged migration path",
         path.display()
     ))]
     DestinationNotEmpty {
@@ -155,6 +165,14 @@ pub enum Error {
     NumericRange {
         field: String,
         value: i64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display("verification failed before publish: {mismatches} mismatch(es): {summary}"))]
+    VerificationFailed {
+        mismatches: usize,
+        summary: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },

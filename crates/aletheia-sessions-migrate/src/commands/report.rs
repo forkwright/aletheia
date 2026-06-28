@@ -75,6 +75,13 @@ pub fn print_verification(v: &VerificationReport) {
         v.dest_message_body_sha256
     );
     println!(" hash match: {}", v.message_body_hash_match);
+    println!(" partitions:");
+    for check in &v.partition_checks {
+        println!(
+            "   - {}: source_entries={}, dest_entries={}, hash_match={}",
+            check.partition, check.source_entry_count, check.dest_entry_count, check.ok
+        );
+    }
     println!(" samples checked: {}", v.samples_checked);
     if v.mismatches.is_empty() {
         println!(" status: OK");

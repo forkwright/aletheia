@@ -2,12 +2,12 @@
 //!
 //! `run_migration` is the single entry point: open `SQLite` read-only,
 //! validate schema, optionally read everything for a dry-run plan, then
-//! open the fjall destination and write atomically per session.
+//! open the fjall staging destination, verify it, and publish atomically.
 //!
 //! Source `schema_version` is asserted equal to
 //! [`schema::REQUIRED_USER_VERSION`] before any read and the post-write
-//! `--verify` pass computes a SHA-256 checksum over message bodies on
-//! both stores; any mismatch aborts with a non-zero exit status.
+//! verification pass compares deterministic key/value hashes for every
+//! migrated fjall partition; any mismatch aborts before publish.
 //!
 //! # Durability
 //!
@@ -44,7 +44,7 @@ use tracing::{info, warn};
 use crate::dest::{Destination, TableCounts, is_empty_or_absent};
 use crate::error::{
     AtomicRenameFailedSnafu, DestinationNotEmptySnafu, IoSnafu, MigrationIncompleteSnafu, Result,
-    SqliteOpenSnafu, SqliteSnafu,
+    SqliteOpenSnafu, SqliteSnafu, VerificationFailedSnafu,
 };
 use crate::schema;
 use crate::source::{self, DistillationRecord, LegacyExtras, SessionRow};
@@ -66,6 +66,10 @@ const STAGING_SUFFIX: &str = "staging";
 /// Suffix for the backup directory created when `--force` overwrites an
 /// existing destination.
 const BACKUP_SUFFIX: &str = "backup";
+
+/// Default deterministic per-session sample count retained for the
+/// compatibility portion of verification reports.
+const DEFAULT_VERIFY_SAMPLES: usize = 16;
 
 /// What the migrator plans to do (used by `--dry-run`).
 #[derive(Debug, Clone)]
@@ -111,13 +115,13 @@ pub struct MigrationReport {
 
 /// All data read from the source `SQLite` DB, ready for the destination
 /// writer.
-struct SourceData {
-    sessions: Vec<(Session, LegacyExtras)>,
-    messages: Vec<Message>,
-    usage: Vec<UsageRecord>,
-    distillations: Vec<DistillationRecord>,
-    notes: Vec<AgentNote>,
-    blackboard: Vec<BlackboardRow>,
+pub(crate) struct SourceData {
+    pub(crate) sessions: Vec<(Session, LegacyExtras)>,
+    pub(crate) messages: Vec<Message>,
+    pub(crate) usage: Vec<UsageRecord>,
+    pub(crate) distillations: Vec<DistillationRecord>,
+    pub(crate) notes: Vec<AgentNote>,
+    pub(crate) blackboard: Vec<BlackboardRow>,
     orphans: OrphanReport,
     legacy_extras_preserved: usize,
 }
@@ -245,7 +249,8 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
 }
 
 /// Run a full migration. Reads source, validates, writes fjall to a staging
-/// directory, then atomically renames it to `dest`.
+/// directory, verifies every migrated partition, then atomically renames it
+/// to `dest`.
 ///
 /// # Errors
 ///
@@ -254,6 +259,14 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
 /// defined in [`crate::error`].
 pub fn run_migration(source: &Path, dest: &Path, force: bool) -> Result<MigrationReport> {
     let staged = stage_migration(source, dest, force)?;
+    let verification = staged.verify(source, DEFAULT_VERIFY_SAMPLES)?;
+    if !verification.ok() {
+        return Err(VerificationFailedSnafu {
+            mismatches: verification.mismatches.len(),
+            summary: verification.mismatches.join("; "),
+        }
+        .build());
+    }
     staged.publish()
 }
 
@@ -368,7 +381,7 @@ fn rotate_destination_to_backup(dest: &Path, backup_dir: &Path) -> Result<()> {
 
 /// Read every table from the validated source connection and return the
 /// data in the shape the destination writer expects.
-fn load_source_data(conn: &Connection) -> Result<SourceData> {
+pub(crate) fn load_source_data(conn: &Connection) -> Result<SourceData> {
     info!("reading SQLite source");
     let session_rows = source::read_sessions(conn)?;
     let messages = source::read_messages(conn)?;
@@ -422,7 +435,7 @@ fn load_source_data(conn: &Connection) -> Result<SourceData> {
 
 /// Write all source data to the staging directory and flush it to disk.
 fn write_staging(staging_dir: &Path, source_data: &SourceData) -> Result<TableCounts> {
-    let dest_handle = Destination::open(staging_dir, false)?;
+    let dest_handle = Destination::open(staging_dir)?;
     let counts = dest_handle.write_all(
         &source_data.sessions,
         &source_data.messages,
