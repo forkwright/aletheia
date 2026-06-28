@@ -1,10 +1,11 @@
-//! Whole-instance backup: coherent snapshot of knowledge, sessions, config, and workspace data.
+//! Whole-instance backup: coherent snapshot of knowledge, sessions, runtime state, config, and workspace data.
 //!
 //! WHY(#4856): the legacy `FjallBackup` only copied `knowledge.fjall`. The
 //! `aletheia backup` command and the daemon's scheduled backup task now produce
-//! a backup *set* that includes `sessions.db`, configuration, and workspace data
-//! needed for run replay/review. A JSON manifest records every covered store,
-//! its source path, snapshot time, byte count, and verification status.
+//! a backup *set* that includes `sessions.db`, auth/task-state stores,
+//! configuration, and workspace data needed for run replay/review. A JSON
+//! manifest records every covered store, its source path, snapshot time, byte
+//! count, and verification status.
 
 use std::collections::HashMap;
 use std::fs;
@@ -297,6 +298,8 @@ impl InstanceBackup {
     /// - `manifest.json` describing every covered store.
     /// - `stores/knowledge.fjall/` (required).
     /// - `stores/sessions.db/` (required).
+    /// - `stores/auth.fjall/`, `stores/daemon-task-state/`, and
+    ///   `stores/cron-locks.fjall/` if present.
     /// - `config/` copy of `instance/config/`.
     /// - `workspace/nous/`, `workspace/shared/`, `workspace/theke/` if present.
     /// - `workspace/configured/<agent>/` for configured agent workspaces inside the instance root.
@@ -312,6 +315,7 @@ impl InstanceBackup {
         let mut build = BackupBuild::new();
 
         self.copy_required_stores(&staging_path, &mut build)?;
+        self.copy_runtime_state_stores(&staging_path, &mut build)?;
         self.copy_config(&staging_path, &mut build)?;
         self.copy_workspace_dirs(&staging_path, &mut build)?;
         self.copy_configured_agent_workspaces(&staging_path, &mut build)?;
@@ -459,6 +463,38 @@ impl InstanceBackup {
             PathBuf::from("stores/sessions.db"),
             false,
         )
+    }
+
+    fn copy_runtime_state_stores(
+        &self,
+        backup_path: &Path,
+        build: &mut BackupBuild,
+    ) -> error::Result<()> {
+        for (name, source_rel, backup_rel) in [
+            ("auth.fjall", "data/auth.fjall", "stores/auth.fjall"),
+            (
+                "daemon-task-state",
+                "data/daemon-task-state",
+                "stores/daemon-task-state",
+            ),
+            (
+                "cron-locks.fjall",
+                "data/cron-locks.fjall",
+                "stores/cron-locks.fjall",
+            ),
+        ] {
+            let src = self.config.instance_root.join(source_rel);
+            if src.exists() {
+                build.copy_entry(
+                    name,
+                    src,
+                    &backup_path.join(backup_rel),
+                    PathBuf::from(backup_rel),
+                    true,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     fn copy_config(&self, backup_path: &Path, build: &mut BackupBuild) -> error::Result<()> {
@@ -854,12 +890,10 @@ impl InstanceBackup {
             }
 
             match verify_store_path(name, &store_path) {
-                Ok((total, seqno)) => {
+                Ok((total, generations)) => {
                     result.total_keys += total;
                     result.store_results.push((String::from(name), Ok(total)));
-                    if let Some(seqno) = seqno {
-                        result.store_generations.insert(String::from(name), seqno);
-                    }
+                    insert_generations(&mut result.store_generations, generations);
                 }
                 Err(err) => {
                     result
@@ -905,11 +939,9 @@ impl InstanceBackup {
 
             let store_path = path.join(&store.backup_path);
             match verify_manifest_store(&store.name, &store_path) {
-                Ok((total, seqno)) => {
+                Ok((total, generations)) => {
                     result.store_results.push((store.name.clone(), Ok(total)));
-                    if let Some(seqno) = seqno {
-                        result.store_generations.insert(store.name.clone(), seqno);
-                    }
+                    insert_generations(&mut result.store_generations, generations);
                 }
                 Err(err) => {
                     result
@@ -950,19 +982,16 @@ impl InstanceBackup {
     }
 }
 
-/// Verification outcome for a single store: key count and optional fjall seqno.
+/// Verification outcome for a single store: key count and fjall generations.
 ///
-/// WHY(#4950): the seqno (generation) is captured during verify and recorded
-/// in the backup manifest so restore can detect mismatched write points.
-type VerifyStoreOutcome = (usize, Option<u64>);
+/// WHY(#4950): seqnos (generations) are captured during verify and recorded in
+/// the backup manifest so restore can detect mismatched write points. A logical
+/// store may contain several fjall cohorts, such as `knowledge.fjall/shared`.
+type VerifyStoreOutcome = (usize, Vec<(String, u64)>);
 
 fn verify_store_path(name: &str, path: &Path) -> std::result::Result<VerifyStoreOutcome, String> {
-    if path.join("version").is_file() {
-        let verify = FjallBackup::verify_store(path).map_err(|e| format!("{name}: {e}"))?;
-        if let Some(err) = verify.first_error {
-            return Err(format!("{name}: {err}"));
-        }
-        return Ok((verify.total_keys, verify.seqno));
+    if let Some(outcome) = verify_fjall_tree(name, path)? {
+        return Ok(outcome);
     }
 
     if path.is_file() {
@@ -970,11 +999,11 @@ fn verify_store_path(name: &str, path: &Path) -> std::result::Result<VerifyStore
             .metadata()
             .map(|m| usize::try_from(m.len()).unwrap_or(usize::MAX))
             .map_err(|e| format!("{name}: failed to read file metadata: {e}"))?;
-        return Ok((len, None));
+        return Ok((len, Vec::new()));
     }
 
     Err(format!(
-        "{name}: required store is not a fjall store or file: {}",
+        "{name}: required store is not a fjall store, fjall cohort root, or file: {}",
         path.display()
     ))
 }
@@ -987,12 +1016,8 @@ fn verify_manifest_store(
         return Err(format!("missing: {name}"));
     }
 
-    if path.join("version").is_file() {
-        let verify = FjallBackup::verify_store(path).map_err(|e| e.to_string())?;
-        if let Some(err) = verify.first_error {
-            return Err(err);
-        }
-        return Ok((verify.total_keys, verify.seqno));
+    if let Some(outcome) = verify_fjall_tree(name, path)? {
+        return Ok(outcome);
     }
 
     if path.is_file() {
@@ -1000,10 +1025,103 @@ fn verify_manifest_store(
             .metadata()
             .map(|m| usize::try_from(m.len()).unwrap_or(usize::MAX))
             .map_err(|e| format!("failed to read file metadata: {e}"))?;
-        return Ok((len, None));
+        return Ok((len, Vec::new()));
     }
 
-    Ok((usize::try_from(dir_size(path)).unwrap_or(usize::MAX), None))
+    Ok((
+        usize::try_from(dir_size(path)).unwrap_or(usize::MAX),
+        Vec::new(),
+    ))
+}
+
+fn verify_fjall_tree(
+    logical_name: &str,
+    path: &Path,
+) -> std::result::Result<Option<VerifyStoreOutcome>, String> {
+    if path.join("version").is_file() {
+        let verify = FjallBackup::verify_store(path).map_err(|e| format!("{logical_name}: {e}"))?;
+        if let Some(err) = verify.first_error {
+            return Err(format!("{logical_name}: {err}"));
+        }
+        let generations = verify
+            .seqno
+            .map_or_else(Vec::new, |seqno| vec![(String::from(logical_name), seqno)]);
+        return Ok(Some((verify.total_keys, generations)));
+    }
+
+    if !path.is_dir() {
+        return Ok(None);
+    }
+
+    let mut total_keys = 0usize;
+    let mut generations = Vec::new();
+    collect_fjall_tree(logical_name, path, path, &mut total_keys, &mut generations)?;
+
+    if generations.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some((total_keys, generations)))
+    }
+}
+
+fn collect_fjall_tree(
+    logical_name: &str,
+    root: &Path,
+    current: &Path,
+    total_keys: &mut usize,
+    generations: &mut Vec<(String, u64)>,
+) -> std::result::Result<(), String> {
+    let entries = fs::read_dir(current)
+        .map_err(|e| format!("{logical_name}: failed to read {}: {e}", current.display()))?;
+
+    for entry in entries {
+        let entry =
+            entry.map_err(|e| format!("{logical_name}: failed to read directory entry: {e}"))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let child_name = logical_child_name(logical_name, root, &path);
+        if path.join("version").is_file() {
+            let verify =
+                FjallBackup::verify_store(&path).map_err(|e| format!("{child_name}: {e}"))?;
+            if let Some(err) = verify.first_error {
+                return Err(format!("{child_name}: {err}"));
+            }
+            *total_keys += verify.total_keys;
+            if let Some(seqno) = verify.seqno {
+                generations.push((child_name, seqno));
+            }
+            continue;
+        }
+
+        collect_fjall_tree(logical_name, root, &path, total_keys, generations)?;
+    }
+
+    Ok(())
+}
+
+fn insert_generations(target: &mut HashMap<String, u64>, generations: Vec<(String, u64)>) {
+    for (name, seqno) in generations {
+        target.insert(name, seqno);
+    }
+}
+
+fn logical_child_name(logical_name: &str, root: &Path, path: &Path) -> String {
+    let Ok(rel) = path.strip_prefix(root) else {
+        return String::from(logical_name);
+    };
+    let suffix = rel
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    if suffix.is_empty() {
+        String::from(logical_name)
+    } else {
+        format!("{logical_name}/{suffix}")
+    }
 }
 
 /// Resolve a configured workspace string against the instance root.
@@ -1204,6 +1322,34 @@ mod tests {
         drop(db);
     }
 
+    fn assert_fjall_marker(root: &Path, rel: &[&str]) {
+        let mut path = root.to_path_buf();
+        for segment in rel {
+            path.push(segment);
+        }
+        assert!(path.join("version").is_file(), "missing {}", path.display());
+    }
+
+    fn assert_optional_store(manifest: &BackupManifest, name: &str) {
+        assert!(
+            manifest
+                .optional_stores
+                .iter()
+                .any(|entry| entry.name == name && entry.status == "ok"),
+            "manifest should include runtime store {name}"
+        );
+    }
+
+    fn assert_generations(verify: &InstanceVerifyResult, names: &[&str]) {
+        for name in names {
+            assert!(
+                verify.store_generations.contains_key(*name),
+                "missing generation for {name}: {:?}",
+                verify.store_generations
+            );
+        }
+    }
+
     #[test]
     fn create_backup_copies_required_stores_and_manifest() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -1269,6 +1415,87 @@ mod tests {
         assert!(manifest.stores.iter().any(|s| s.name == "sessions.db"));
         assert!(manifest.stores.iter().any(|s| s.name == "config"));
         assert!(manifest.optional_stores.iter().any(|s| s.name == "nous"));
+    }
+
+    #[test]
+    fn create_backup_copies_runtime_stores_and_knowledge_cohorts() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+        fs::create_dir_all(instance_root.join("config")).unwrap();
+        write_text_file(&instance_root.join("config").join("aletheia.toml"), "test").unwrap();
+
+        make_fjall_store(
+            &instance_root
+                .join("data")
+                .join("knowledge.fjall")
+                .join("shared"),
+        );
+        make_fjall_store(
+            &instance_root
+                .join("data")
+                .join("knowledge.fjall")
+                .join("identity"),
+        );
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
+        make_fjall_store(&instance_root.join("data").join("auth.fjall"));
+        make_fjall_store(
+            &instance_root
+                .join("data")
+                .join("daemon-task-state")
+                .join("system"),
+        );
+        make_fjall_store(
+            &instance_root
+                .join("data")
+                .join("daemon-task-state")
+                .join("alice"),
+        );
+        make_fjall_store(&instance_root.join("data").join("cron-locks.fjall"));
+
+        let backup_dir = tmp.path().join("backups");
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir,
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let report = manager.create_backup().expect("backup succeeds");
+        let backup_path = report.backup_path.expect("backup path set");
+
+        assert_fjall_marker(&backup_path, &["stores", "knowledge.fjall", "shared"]);
+        assert_fjall_marker(&backup_path, &["stores", "knowledge.fjall", "identity"]);
+        assert_fjall_marker(&backup_path, &["stores", "auth.fjall"]);
+        assert_fjall_marker(&backup_path, &["stores", "daemon-task-state", "system"]);
+        assert_fjall_marker(&backup_path, &["stores", "cron-locks.fjall"]);
+
+        let manifest: BackupManifest =
+            serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+                .unwrap();
+        for name in ["auth.fjall", "daemon-task-state", "cron-locks.fjall"] {
+            assert_optional_store(&manifest, name);
+        }
+
+        let verify = InstanceBackup::verify_backup(&backup_path).unwrap();
+        assert!(
+            verify.first_error.is_none(),
+            "complete runtime backup should verify: {:?}",
+            verify.first_error
+        );
+        assert_generations(
+            &verify,
+            &[
+                "knowledge.fjall/shared",
+                "knowledge.fjall/identity",
+                "sessions.db",
+                "auth.fjall",
+                "daemon-task-state/system",
+                "daemon-task-state/alice",
+                "cron-locks.fjall",
+            ],
+        );
     }
 
     #[test]
@@ -1523,6 +1750,45 @@ workspace = "{}"
         assert!(
             err.contains("sessions.db"),
             "error should mention sessions.db: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_backup_rejects_missing_included_runtime_store() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        fs::create_dir_all(instance_root.join("data")).unwrap();
+
+        make_fjall_store(
+            &instance_root
+                .join("data")
+                .join("knowledge.fjall")
+                .join("shared"),
+        );
+        make_fjall_store(&instance_root.join("data").join("sessions.db"));
+        make_fjall_store(&instance_root.join("data").join("auth.fjall"));
+
+        let backup_dir = tmp.path().join("backups");
+        let manager = InstanceBackup::new(InstanceBackupConfig {
+            enabled: true,
+            instance_root,
+            backup_dir,
+            interval_hours: 24,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        });
+        let report = manager.create_backup().expect("backup succeeds");
+        let backup_path = report.backup_path.expect("backup path set");
+
+        fs::remove_dir_all(backup_path.join("stores").join("auth.fjall")).unwrap();
+
+        let result = InstanceBackup::verify_backup(&backup_path).unwrap();
+        let err = result
+            .first_error
+            .expect("missing included auth store should fail verification");
+        assert!(
+            err.contains("auth.fjall"),
+            "error should mention missing auth store: {err}"
         );
     }
 

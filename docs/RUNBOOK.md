@@ -109,8 +109,10 @@ journalctl --user -u aletheia-health --since "30 minutes ago"
 
 The daemon's backup maintenance task creates local whole-instance backup sets.
 Each set contains `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
-configuration, workspace directories, and optional local audit/archive data when
-present. Configure it in `instance/config/aletheia.toml`:
+present runtime stores (`stores/auth.fjall`, `stores/daemon-task-state`,
+`stores/cron-locks.fjall`), configuration, workspace directories, and optional
+local audit/archive data when present. Configure it in
+`instance/config/aletheia.toml`:
 
 ```toml
 [maintenance.backup]
@@ -376,7 +378,8 @@ aletheia backup --list --json    # machine-readable
 ## Restore from backup
 
 Restoring requires a complete instance backup set. Always stop the service,
-verify the set, move live stores aside, then copy both required stores back.
+verify the set, move live stores aside, then copy the required and present
+runtime stores back.
 
 ```bash
 systemctl --user stop aletheia
@@ -385,8 +388,14 @@ aletheia backup verify "$BACKUP"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mv instance/data/knowledge.fjall "instance/data/knowledge.fjall.pre-restore.$STAMP"
 mv instance/data/sessions.db     "instance/data/sessions.db.pre-restore.$STAMP"
+mv instance/data/auth.fjall      "instance/data/auth.fjall.pre-restore.$STAMP" 2>/dev/null || true
+mv instance/data/daemon-task-state "instance/data/daemon-task-state.pre-restore.$STAMP" 2>/dev/null || true
+mv instance/data/cron-locks.fjall "instance/data/cron-locks.fjall.pre-restore.$STAMP" 2>/dev/null || true
 cp -a "$BACKUP/stores/knowledge.fjall" instance/data/knowledge.fjall
 cp -a "$BACKUP/stores/sessions.db"     instance/data/sessions.db
+cp -a "$BACKUP/stores/auth.fjall"      instance/data/auth.fjall 2>/dev/null || true
+cp -a "$BACKUP/stores/daemon-task-state" instance/data/daemon-task-state 2>/dev/null || true
+cp -a "$BACKUP/stores/cron-locks.fjall" instance/data/cron-locks.fjall 2>/dev/null || true
 cp -a "$BACKUP/config/." instance/config/ 2>/dev/null || true
 cp -a "$BACKUP/workspace/." instance/ 2>/dev/null || true
 systemctl --user start aletheia
