@@ -27,6 +27,7 @@ tokio = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 
 # Error handling
 snafu = { workspace = true }

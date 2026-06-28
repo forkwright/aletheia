@@ -22,7 +22,7 @@
 //! - `nous_search` — BM25 text search over current facts.
 //! - `nous_neighbors` — one-hop graph traversal from a fact's entities.
 //! - `nous_list_topics` — enumerate fact-type buckets with counts.
-//! - `nous_stats` — fact count, topic count, schema version, open path.
+//! - `nous_stats` — fact count, topic count, schema version, opaque store id.
 //! - `nous_annotate` — token-gated annotation linked to a target fact.
 //! - `nous_supersede` — token-gated supersession marker.
 //! - `nous_forget` — token-gated soft deletion.
@@ -35,6 +35,9 @@
 //!
 //! Write tools are registered only when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set
 //! at server startup; the capability token is never accepted as a tool argument.
+//! Full local store paths are redacted from `nous_stats` unless
+//! `ALETHEIA_MEMORY_MCP_ADMIN_DIAGNOSTICS` and the write token are both
+//! configured, and the caller explicitly requests the path.
 //!
 //! # Feature gating
 //!
