@@ -784,7 +784,12 @@ fn bucket_date(timestamp: &str, granularity: Option<&str>) -> Option<String> {
             let iso = date.iso_week_date();
             Some(format!("{:04}-W{:02}", iso.year(), iso.week()))
         }
-        _ => Some(format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day())),
+        _ => Some(format!(
+            "{:04}-{:02}-{:02}",
+            date.year(),
+            date.month(),
+            date.day()
+        )),
     }
 }
 
