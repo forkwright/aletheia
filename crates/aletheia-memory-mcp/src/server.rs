@@ -27,6 +27,8 @@ use crate::error::{self, JoinSnafu, OpenStoreSnafu, TransportSnafu};
 pub struct MemoryServer {
     pub(crate) store: Arc<KnowledgeStore>,
     pub(crate) store_path: Option<PathBuf>,
+    /// Whether `nous_stats` may expose full local store paths on explicit request.
+    pub(crate) admin_diagnostics: bool,
     /// Bound caller identity (nous) for read-tool recall scope.
     /// If `None`, read tools reject every request.
     pub(crate) nous_id: Option<String>,
@@ -41,6 +43,13 @@ impl MemoryServer {
 
     /// Minimum token length enforcing the documented 32-byte random token expectation.
     const MIN_WRITE_TOKEN_LEN: usize = 32;
+
+    /// Environment flag that enables admin-only path diagnostics.
+    ///
+    /// Full paths remain hidden unless this flag is truthy and write/admin
+    /// capability is configured, then callers still have to ask for the path
+    /// in `nous_stats`.
+    const ADMIN_DIAGNOSTICS_ENV: &str = "ALETHEIA_MEMORY_MCP_ADMIN_DIAGNOSTICS";
 
     /// Sanitize a raw caller identity read from env or provided by the caller.
     ///
@@ -88,6 +97,32 @@ impl MemoryServer {
         }
     }
 
+    fn sanitize_admin_diagnostics(raw: Option<String>, write_token: Option<&String>) -> bool {
+        let Some(raw) = raw else {
+            return false;
+        };
+        let normalized = raw.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return false;
+        }
+        let requested = matches!(normalized.as_str(), "1" | "true" | "yes" | "admin");
+        if !requested {
+            tracing::warn!(
+                env = Self::ADMIN_DIAGNOSTICS_ENV,
+                "unsupported admin diagnostics flag value; store paths will remain redacted"
+            );
+            return false;
+        }
+        if write_token.is_none() {
+            tracing::warn!(
+                env = Self::ADMIN_DIAGNOSTICS_ENV,
+                "admin diagnostics require ALETHEIA_MEMORY_MCP_WRITE_TOKEN; store paths will remain redacted"
+            );
+            return false;
+        }
+        true
+    }
+
     fn router_for(write_token: Option<&String>) -> ToolRouter<Self> {
         let mut tool_router = Self::tool_router();
         if write_token.is_none() {
@@ -100,8 +135,9 @@ impl MemoryServer {
 
     /// Build a memory server from a pre-opened knowledge store.
     ///
-    /// `store_path` is surfaced by `nous_stats` so callers can confirm which
-    /// on-disk database is being served. Pass `None` for in-memory stores.
+    /// `store_path` is fingerprinted by `nous_stats` so callers can identify
+    /// the served on-disk database without learning local filesystem layout.
+    /// Pass `None` for in-memory stores.
     ///
     /// The caller identity is read from `ALETHEIA_MEMORY_MCP_NOUS_ID`.
     /// Write tools are registered if `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set.
@@ -110,10 +146,15 @@ impl MemoryServer {
         let nous_id = Self::sanitize_nous_id(std::env::var("ALETHEIA_MEMORY_MCP_NOUS_ID").ok());
         let write_token =
             Self::sanitize_write_token(std::env::var("ALETHEIA_MEMORY_MCP_WRITE_TOKEN").ok());
+        let admin_diagnostics = Self::sanitize_admin_diagnostics(
+            std::env::var(Self::ADMIN_DIAGNOSTICS_ENV).ok(),
+            write_token.as_ref(),
+        );
         let tool_router = Self::router_for(write_token.as_ref());
         Self {
             store,
             store_path,
+            admin_diagnostics,
             nous_id,
             write_token,
             tool_router,
@@ -136,6 +177,7 @@ impl MemoryServer {
         Self {
             store,
             store_path,
+            admin_diagnostics: false,
             nous_id,
             write_token,
             tool_router,
@@ -149,6 +191,16 @@ impl MemoryServer {
     #[must_use]
     pub fn with_nous_id(mut self, nous_id: Option<String>) -> Self {
         self.nous_id = Self::sanitize_nous_id(nous_id);
+        self
+    }
+
+    /// Enable or disable full-path admin diagnostics for tests and controlled callers.
+    ///
+    /// The flag only takes effect when a write/admin capability token is also
+    /// configured; otherwise path diagnostics stay redacted.
+    #[must_use]
+    pub fn with_admin_diagnostics(mut self, enabled: bool) -> Self {
+        self.admin_diagnostics = enabled && self.write_token.is_some();
         self
     }
 
