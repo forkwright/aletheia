@@ -39,6 +39,14 @@ fn usize_to_f64(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
+fn require_unscoped_operator(claims: &Claims, scoped_message: &str) -> Result<(), ApiError> {
+    require_role(claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(scoped_message));
+    }
+    Ok(())
+}
+
 /// GET /api/v1/metrics/agents: list performance metrics for all agents.
 #[utoipa::path(
     get,
@@ -53,14 +61,10 @@ pub async fn get_agent_perf(
     State(state): State<InsightsState>,
     claims: Claims,
 ) -> Result<Json<AgentPerformanceListResponse>, ApiError> {
-    // SECURITY(#4618): Aggregate all-agent view requires unscoped Operator.
-    // Scoped tokens see nothing here — they must use the per-agent endpoint.
-    require_role(&claims, symbolon::types::Role::Operator)?;
-    if claims.nous_id.is_some() {
-        return Err(ApiError::forbidden(
-            "scoped tokens cannot access aggregate agent metrics; use /metrics/agents/{id}",
-        ));
-    }
+    require_unscoped_operator(
+        &claims,
+        "scoped tokens cannot access aggregate agent metrics; use /metrics/agents/{id}",
+    )?;
     // WHY: Collect agent configs outside spawn_blocking because configs()
     // returns references tied to the manager's lifetime.
     let agent_configs: Vec<(String, Option<String>)> = state
@@ -181,13 +185,10 @@ pub async fn get_quality_metrics(
     claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<QualityMetricsResponse>, ApiError> {
-    // SECURITY(#4618): Quality aggregate view requires unscoped Operator.
-    require_role(&claims, symbolon::types::Role::Operator)?;
-    if claims.nous_id.is_some() {
-        return Err(ApiError::forbidden(
-            "scoped tokens cannot access aggregate quality metrics",
-        ));
-    }
+    require_unscoped_operator(
+        &claims,
+        "scoped tokens cannot access aggregate quality metrics",
+    )?;
     validate_metrics_query(&query)?;
 
     let state_clone = state.clone();
@@ -301,13 +302,10 @@ pub async fn get_token_metrics(
     claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<TokenMetricsResponse>, ApiError> {
-    // SECURITY(#4618): Token aggregate view requires unscoped Operator.
-    require_role(&claims, symbolon::types::Role::Operator)?;
-    if claims.nous_id.is_some() {
-        return Err(ApiError::forbidden(
-            "scoped tokens cannot access aggregate token metrics",
-        ));
-    }
+    require_unscoped_operator(
+        &claims,
+        "scoped tokens cannot access aggregate token metrics",
+    )?;
     validate_metrics_query(&query)?;
     Ok(Json(load_token_metrics(state, query).await))
 }
@@ -329,13 +327,10 @@ pub async fn get_cost_metrics(
     claims: Claims,
     Query(query): Query<MetricsQuery>,
 ) -> Result<Json<CostMetricsResponse>, ApiError> {
-    // SECURITY(#4618): Cost aggregate view requires unscoped Operator.
-    require_role(&claims, symbolon::types::Role::Operator)?;
-    if claims.nous_id.is_some() {
-        return Err(ApiError::forbidden(
-            "scoped tokens cannot access aggregate cost metrics",
-        ));
-    }
+    require_unscoped_operator(
+        &claims,
+        "scoped tokens cannot access aggregate cost metrics",
+    )?;
     validate_metrics_query(&query)?;
     let tokens = load_token_metrics(state, query).await;
     Ok(Json(costs_from_tokens(&tokens)))
@@ -356,13 +351,7 @@ pub async fn get_journal(
     claims: Claims,
     Query(query): Query<JournalQuery>,
 ) -> Result<Json<JournalResponse>, ApiError> {
-    // SECURITY(#4618): System journal requires unscoped Operator.
-    require_role(&claims, symbolon::types::Role::Operator)?;
-    if claims.nous_id.is_some() {
-        return Err(ApiError::forbidden(
-            "scoped tokens cannot access the system journal",
-        ));
-    }
+    require_unscoped_operator(&claims, "scoped tokens cannot access the system journal")?;
     warn!(
         source = ?query.source,
         level = ?query.level,

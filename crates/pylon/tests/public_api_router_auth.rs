@@ -535,6 +535,80 @@ async fn nous_list_hides_other_agents_from_scoped_token() {
 }
 
 #[tokio::test]
+async fn insights_agent_metrics_admit_matching_scoped_agent_token() {
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let token = issue_test_token_scoped(&env.state, Role::Agent, "syn");
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .oneshot(
+            Request::get("/api/v1/metrics/agents/syn")
+                .header("authorization", bearer(&token))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_body_json(response).await;
+    assert_eq!(body["agent_id"], "syn");
+    assert!(
+        body.get("agents").is_none(),
+        "scoped per-agent metrics must not return the global agent list"
+    );
+}
+
+#[tokio::test]
+async fn insights_agent_metrics_reject_cross_agent_scoped_token() {
+    let env = TestEnv::builder().with_actor(true).build().await;
+    let token = issue_test_token_scoped(&env.state, Role::Agent, "other-agent");
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    let response = router
+        .oneshot(
+            Request::get("/api/v1/metrics/agents/syn")
+                .header("authorization", bearer(&token))
+                .body(Body::empty())
+                .expect("build request"),
+        )
+        .await
+        .expect("router response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = read_body_json(response).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+}
+
+#[tokio::test]
+async fn insights_aggregate_routes_reject_scoped_operator_token() {
+    let env = TestEnv::new().await;
+    let token = issue_test_token_scoped(&env.state, Role::Operator, "syn");
+    let router = build_router(Arc::clone(&env.state), &permissive_security());
+
+    for path in insights_aggregate_routes() {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header("authorization", bearer(&token))
+                    .body(Body::empty())
+                    .expect("build request"),
+            )
+            .await
+            .expect("router response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{path} must reject scoped tokens for aggregate telemetry"
+        );
+        let body = read_body_json(response).await;
+        assert_eq!(body["error"]["code"], "forbidden");
+    }
+}
+
+#[tokio::test]
 async fn knowledge_write_routes_with_operator_bearer_reach_handlers() {
     let env = TestEnv::new().await;
     let token = issue_test_token(&env.state);
@@ -615,6 +689,16 @@ fn unauthenticated_read_routes() -> [(Method, &'static str); 8] {
     ]
 }
 
+fn insights_aggregate_routes() -> [&'static str; 5] {
+    [
+        "/api/v1/metrics/agents",
+        "/api/v1/metrics/quality",
+        "/api/v1/metrics/tokens",
+        "/api/v1/metrics/costs",
+        "/api/v1/journal",
+    ]
+}
+
 #[tokio::test]
 async fn insights_and_planning_routes_reject_missing_bearer_token() {
     // WHY: regression guard — without Claims behind a `route_layer`, anonymous
@@ -674,19 +758,12 @@ async fn insights_and_planning_routes_reject_invalid_bearer_token() {
 }
 
 #[tokio::test]
-async fn insights_routes_admit_authenticated_bearer() {
-    // WHY: the auth gate on these handlers should be additive: a valid
-    // bearer still gets through to the handler. Asserts the new Claims
-    // extractor does not break the happy path for the GET handlers.
+async fn insights_aggregate_routes_admit_unscoped_operator_token() {
     let env = TestEnv::new().await;
     let token = issue_test_token(&env.state);
     let router = build_router(Arc::clone(&env.state), &permissive_security());
 
-    for path in [
-        "/api/v1/metrics/agents",
-        "/api/v1/metrics/quality",
-        "/api/v1/journal",
-    ] {
+    for path in insights_aggregate_routes() {
         let response = router
             .clone()
             .oneshot(
@@ -701,7 +778,7 @@ async fn insights_routes_admit_authenticated_bearer() {
         assert_eq!(
             response.status(),
             StatusCode::OK,
-            "{path} must succeed with a valid bearer"
+            "{path} must succeed with an unscoped operator bearer"
         );
     }
 }
