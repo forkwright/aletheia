@@ -7,6 +7,7 @@ use mneme::meta::Stamped as _;
 use serde::Serialize;
 use snafu::ResultExt;
 
+use crate::coverage::{self, Policy, SkipClass, SkipKind, Summary};
 use crate::error::{self, Result};
 use crate::provenance::EvalProvenance;
 use crate::runner::RunReport;
@@ -36,39 +37,106 @@ pub struct EvalRecord {
     /// Error message or skip reason, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Whether this scenario is part of the required coverage denominator.
+    pub required_for_coverage: bool,
+    /// Machine-readable skip reason, when skipped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_kind: Option<SkipKind>,
+    /// Machine-readable skip class, when skipped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_class: Option<SkipClass>,
+    /// Run-level coverage denominators, present for stamped CLI writes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<EvalRecordCoverage>,
     /// Structured sub-results for multi-probe scenarios.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub sub_results: Vec<crate::scenario::ScenarioSubResult>,
 }
 
+/// Run-level coverage context persisted beside each JSONL record.
+#[derive(Debug, Clone, Serialize)]
+pub struct EvalRecordCoverage {
+    /// Policy used for the run.
+    pub policy: Policy,
+    /// Required selected scenarios.
+    pub required_scenarios: usize,
+    /// Required scenarios that passed.
+    pub passed_required: usize,
+    /// Required scenarios that failed.
+    pub failed_required: usize,
+    /// Required scenarios that were skipped.
+    pub skipped_required: usize,
+    /// Required pass rate in basis points.
+    pub required_pass_rate_bps: u32,
+    /// Required skip ratio in basis points.
+    pub required_skip_ratio_bps: u32,
+}
+
+impl From<&Summary> for EvalRecordCoverage {
+    fn from(summary: &Summary) -> Self {
+        Self {
+            policy: summary.policy,
+            required_scenarios: summary.required_scenarios,
+            passed_required: summary.passed_required,
+            failed_required: summary.failed_required,
+            skipped_required: summary.skipped_required,
+            required_pass_rate_bps: summary.required_pass_rate_bps,
+            required_skip_ratio_bps: summary.required_skip_ratio_bps,
+        }
+    }
+}
+
 /// Convert a run report into evaluation records for JSONL output.
 #[must_use]
 pub fn records_from_report(report: &RunReport) -> Vec<EvalRecord> {
+    records_from_report_with_coverage(report, None)
+}
+
+/// Convert a run report into JSONL records with optional coverage context.
+#[must_use]
+pub fn records_from_report_with_coverage(
+    report: &RunReport,
+    coverage: Option<&Summary>,
+) -> Vec<EvalRecord> {
     let timestamp = now_iso8601();
     let eval_run_id = report.provenance.eval_run_id.clone();
     let provenance = report.provenance.clone();
+    let coverage_record = coverage.map(EvalRecordCoverage::from);
 
     report
         .results
         .iter()
         .map(|result| {
-            let (passed, duration_ms, outcome, message) = match &result.outcome {
-                ScenarioOutcome::Passed { duration } => (
-                    true,
-                    millis_from_duration(duration),
-                    "passed".to_owned(),
-                    None,
-                ),
-                ScenarioOutcome::Failed { duration, error } => (
-                    false,
-                    millis_from_duration(duration),
-                    "failed".to_owned(),
-                    Some(error.to_string()),
-                ),
-                ScenarioOutcome::Skipped { reason } => {
-                    (false, 0, "skipped".to_owned(), Some(reason.clone()))
-                }
-            };
+            let (passed, duration_ms, outcome, message, skip_kind, skip_class) =
+                match &result.outcome {
+                    ScenarioOutcome::Passed { duration } => (
+                        true,
+                        millis_from_duration(duration),
+                        "passed".to_owned(),
+                        None,
+                        None,
+                        None,
+                    ),
+                    ScenarioOutcome::Failed { duration, error } => (
+                        false,
+                        millis_from_duration(duration),
+                        "failed".to_owned(),
+                        Some(error.to_string()),
+                        None,
+                        None,
+                    ),
+                    ScenarioOutcome::Skipped { reason } => {
+                        let kind = coverage::classify_skip(reason);
+                        (
+                            false,
+                            0,
+                            "skipped".to_owned(),
+                            Some(reason.clone()),
+                            Some(kind),
+                            Some(kind.class()),
+                        )
+                    }
+                };
 
             EvalRecord {
                 timestamp: timestamp.clone(),
@@ -80,6 +148,10 @@ pub fn records_from_report(report: &RunReport) -> Vec<EvalRecord> {
                 duration_ms,
                 outcome,
                 message,
+                required_for_coverage: coverage::required_for_coverage(&result.meta),
+                skip_kind,
+                skip_class,
+                coverage: coverage_record.clone(),
                 sub_results: result.sub_results.clone(),
             }
         })
@@ -119,11 +191,25 @@ pub fn append_jsonl(path: &Path, records: &[EvalRecord]) -> Result<()> {
 /// Returns `Io` if either file cannot be opened or written to.
 /// Returns `Json` if serialization of records or metadata fails.
 pub fn append_jsonl_stamped(path: &Path, report: &RunReport) -> Result<()> {
-    let records = records_from_report(report);
+    append_jsonl_stamped_with_coverage(path, report, None)
+}
+
+/// Append evaluation records and stamped metadata with coverage denominators.
+///
+/// # Errors
+///
+/// Returns `Io` if any output file cannot be opened or written to.
+/// Returns `Json` if serialization of records or metadata fails.
+pub fn append_jsonl_stamped_with_coverage(
+    path: &Path,
+    report: &RunReport,
+    coverage: Option<&Summary>,
+) -> Result<()> {
+    let records = records_from_report_with_coverage(report, coverage);
     append_jsonl(path, &records)?;
 
     // Write the sibling .meta.json alongside the JSONL output.
-    let meta = report.stamp();
+    let meta = stamp_with_coverage(report, coverage);
     let meta_path = sibling_path(path, "meta.json");
     let meta_json = serde_json::to_vec_pretty(&meta).context(error::JsonSnafu)?;
     let mut meta_file = std::fs::OpenOptions::new()
@@ -146,7 +232,56 @@ pub fn append_jsonl_stamped(path: &Path, report: &RunReport) -> Result<()> {
         .context(error::IoSnafu)?;
     tags_file.write_all(&tags_json).context(error::IoSnafu)?;
 
+    if let Some(coverage) = coverage {
+        let coverage_path = sibling_path(path, "coverage.json");
+        let coverage_json = serde_json::to_vec_pretty(coverage).context(error::JsonSnafu)?;
+        let mut coverage_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&coverage_path)
+            .context(error::IoSnafu)?;
+        coverage_file
+            .write_all(&coverage_json)
+            .context(error::IoSnafu)?;
+    }
+
     Ok(())
+}
+
+fn stamp_with_coverage(
+    report: &RunReport,
+    coverage: Option<&Summary>,
+) -> mneme::meta::ArtefactMeta {
+    let mut meta = report.stamp();
+    if let Some(coverage) = coverage {
+        meta = meta
+            .with_count(
+                "required",
+                u64::try_from(coverage.required_scenarios).unwrap_or(u64::MAX),
+            )
+            .with_count(
+                "required_passed",
+                u64::try_from(coverage.passed_required).unwrap_or(u64::MAX),
+            )
+            .with_count(
+                "required_failed",
+                u64::try_from(coverage.failed_required).unwrap_or(u64::MAX),
+            )
+            .with_count(
+                "required_skipped",
+                u64::try_from(coverage.skipped_required).unwrap_or(u64::MAX),
+            )
+            .with_count(
+                "required_pass_rate_bps",
+                u64::from(coverage.required_pass_rate_bps),
+            )
+            .with_count(
+                "required_skip_ratio_bps",
+                u64::from(coverage.required_skip_ratio_bps),
+            );
+    }
+    meta
 }
 
 pub(crate) fn now_iso8601() -> String {
@@ -264,7 +399,7 @@ mod tests {
             results: vec![ScenarioResult {
                 meta: sample_meta("test-skip", "cognitive"),
                 outcome: ScenarioOutcome::Skipped {
-                    reason: "no auth".to_owned(),
+                    reason: coverage::SKIP_REASON_NO_AUTH_TOKEN.to_owned(),
                 },
                 sub_results: vec![],
             }],
@@ -275,6 +410,8 @@ mod tests {
         assert!(!records[0].passed, "should not be passed");
         assert_eq!(records[0].outcome, "skipped", "outcome should be 'skipped'");
         assert_eq!(records[0].duration_ms, 0, "skipped should have 0 duration");
+        assert_eq!(records[0].skip_kind, Some(SkipKind::MissingAuthToken));
+        assert_eq!(records[0].skip_class, Some(SkipClass::Environmental));
     }
 
     #[test]
@@ -289,6 +426,10 @@ mod tests {
             duration_ms: 50,
             outcome: "passed".to_owned(),
             message: None,
+            required_for_coverage: true,
+            skip_kind: None,
+            skip_class: None,
+            coverage: None,
             sub_results: vec![],
         };
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -315,6 +456,10 @@ mod tests {
             duration_ms: 100,
             outcome: "failed".to_owned(),
             message: Some("assertion failed".to_owned()),
+            required_for_coverage: true,
+            skip_kind: None,
+            skip_class: None,
+            coverage: None,
             sub_results: vec![],
         };
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -338,6 +483,10 @@ mod tests {
             duration_ms: 50,
             outcome: "passed".to_owned(),
             message: None,
+            required_for_coverage: true,
+            skip_kind: None,
+            skip_class: None,
+            coverage: None,
             sub_results: vec![],
         };
         let json = serde_json::to_string(&record).expect("should serialize");
@@ -368,6 +517,10 @@ mod tests {
             duration_ms: 10,
             outcome: "passed".to_owned(),
             message: None,
+            required_for_coverage: true,
+            skip_kind: None,
+            skip_class: None,
+            coverage: None,
             sub_results: vec![],
         }];
 
@@ -398,6 +551,10 @@ mod tests {
             duration_ms: 10,
             outcome: "passed".to_owned(),
             message: None,
+            required_for_coverage: true,
+            skip_kind: None,
+            skip_class: None,
+            coverage: None,
             sub_results: vec![],
         }];
         let record2 = vec![EvalRecord {
@@ -410,6 +567,10 @@ mod tests {
             duration_ms: 20,
             outcome: "passed".to_owned(),
             message: None,
+            required_for_coverage: true,
+            skip_kind: None,
+            skip_class: None,
+            coverage: None,
             sub_results: vec![],
         }];
 
@@ -496,6 +657,73 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&meta_path);
+    }
+
+    #[test]
+    fn append_jsonl_stamped_with_coverage_writes_denominators() {
+        let dir = std::env::temp_dir().join("aletheia-eval-coverage-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("stamped-coverage.jsonl");
+        let meta_path = dir.join("stamped-coverage.jsonl.meta.json");
+        let coverage_path = dir.join("stamped-coverage.jsonl.coverage.json");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&meta_path);
+        let _ = std::fs::remove_file(&coverage_path);
+
+        let report = RunReport {
+            passed: 1,
+            failed: 0,
+            skipped: 1,
+            total_duration: std::time::Duration::from_millis(100),
+            results: vec![
+                ScenarioResult {
+                    meta: sample_meta("coverage-pass", "health"),
+                    outcome: ScenarioOutcome::Passed {
+                        duration: std::time::Duration::from_millis(50),
+                    },
+                    sub_results: vec![],
+                },
+                ScenarioResult {
+                    meta: sample_meta("coverage-skip", "session"),
+                    outcome: ScenarioOutcome::Skipped {
+                        reason: coverage::SKIP_REASON_NO_AUTH_TOKEN.to_owned(),
+                    },
+                    sub_results: vec![],
+                },
+            ],
+            provenance: sample_provenance(),
+        };
+        let coverage = coverage::Policy::Ci.evaluate(&report);
+
+        append_jsonl_stamped_with_coverage(&path, &report, Some(&coverage))
+            .expect("stamped append should succeed");
+
+        let meta_content = std::fs::read_to_string(&meta_path).expect("should read meta file");
+        let meta: mneme::meta::ArtefactMeta =
+            serde_json::from_str(&meta_content).expect("meta should be valid JSON");
+        assert_eq!(
+            meta.row_counts.get("required").copied(),
+            Some(2),
+            "meta should carry required denominator"
+        );
+        assert_eq!(
+            meta.row_counts.get("required_skipped").copied(),
+            Some(1),
+            "meta should carry skipped required count"
+        );
+
+        let coverage_content =
+            std::fs::read_to_string(&coverage_path).expect("should read coverage file");
+        assert!(coverage_content.contains("\"policy\": \"ci\""));
+        assert!(coverage_content.contains("\"required_scenarios\": 2"));
+
+        let jsonl_content = std::fs::read_to_string(&path).expect("should read JSONL file");
+        assert!(jsonl_content.contains("\"skip_kind\":\"missing_auth_token\""));
+        assert!(jsonl_content.contains("\"coverage\""));
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&meta_path);
+        let _ = std::fs::remove_file(&coverage_path);
     }
 
     #[test]

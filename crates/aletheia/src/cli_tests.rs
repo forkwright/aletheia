@@ -130,10 +130,16 @@ fn memory_gc_parses() {
 #[test]
 fn eval_subcommand_parses() {
     let cli = Cli::parse_from(["aletheia", "eval"]);
-    assert!(
-        matches!(cli.command, Some(Command::Eval(_))),
-        "eval subcommand should parse"
-    );
+    match cli.command {
+        Some(Command::Eval(args)) => {
+            assert_eq!(
+                args.coverage_policy,
+                dokimion::coverage::Policy::Ci,
+                "eval should default to CI coverage policy"
+            );
+        }
+        _ => panic!("expected Eval command"),
+    }
 }
 
 #[test]
@@ -150,6 +156,8 @@ fn eval_with_options_parses() {
         "--json",
         "--timeout",
         "60",
+        "--coverage-policy",
+        "smoke-dev",
     ]);
     match cli.command {
         Some(Command::Eval(args)) => {
@@ -166,6 +174,11 @@ fn eval_with_options_parses() {
             );
             assert!(args.json, "json flag should be set");
             assert_eq!(args.timeout, 60, "timeout should be set");
+            assert_eq!(
+                args.coverage_policy,
+                dokimion::coverage::Policy::SmokeDev,
+                "coverage policy should be set"
+            );
         }
         _ => panic!("expected Eval command"),
     }
