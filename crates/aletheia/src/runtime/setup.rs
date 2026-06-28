@@ -17,7 +17,9 @@ use agora::router::MessageRouter;
 use agora::semeion::SignalProvider;
 use agora::semeion::client::SignalClient;
 use agora::types::ChannelProvider;
+use hermeneus::RetryPolicy;
 use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
+use hermeneus::concurrency::ConcurrencyConfig;
 use hermeneus::openai::{
     OpenAiApiFamily as HermeneusOpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig,
 };
@@ -51,6 +53,24 @@ enum ProviderPlanEntry<'a> {
     AutoCodex,
     #[cfg(feature = "kimi-provider")]
     AutoKimi,
+}
+
+fn retry_policy_from_config(config: &AletheiaConfig) -> RetryPolicy {
+    RetryPolicy {
+        max_retries: config.retry.max_attempts,
+        backoff_base_ms: config.retry.backoff_base_ms,
+        backoff_max_ms: config.retry.backoff_max_ms,
+    }
+}
+
+fn concurrency_config_from_provider_behavior(
+    behavior: &taxis::config::ProviderBehaviorConfig,
+) -> ConcurrencyConfig {
+    ConcurrencyConfig {
+        ewma_alpha: behavior.concurrency_ewma_alpha,
+        latency_threshold_secs: behavior.concurrency_latency_threshold_secs,
+        ..ConcurrencyConfig::default()
+    }
 }
 
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
@@ -101,9 +121,16 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         // the sovereignty-first policy.
         _ => hermeneus::provider::PromptCacheMode::Disabled,
     };
+    // WHY(#5044): `[retry]` is the single operator-facing owner for provider
+    // retry attempts/backoff. `providerBehavior` owns provider timing,
+    // concurrency, and routing controls.
+    let retry_policy = retry_policy_from_config(config);
+    let concurrency = concurrency_config_from_provider_behavior(&config.provider_behavior);
     let provider_config = ProviderConfig {
         pricing,
         prompt_cache_mode,
+        retry_policy,
+        concurrency,
         ..ProviderConfig::default()
     };
 
@@ -360,7 +387,7 @@ fn register_declared_provider(
 
     match entry.kind {
         ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
-            register_declared_openai(registry, entry, oikos);
+            register_declared_openai(registry, entry, oikos, provider_config, behavior);
         }
         ProviderKind::Anthropic => register_declared_anthropic(
             registry,
@@ -388,41 +415,14 @@ fn register_declared_openai(
     registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
     oikos: &Oikos,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
 ) {
-    use taxis::config::ProviderKind;
-
-    let api_family = configured_openai_api_family(entry);
-    let base_url = if entry.kind == ProviderKind::OpenAi {
-        entry
-            .base_url
-            .clone()
-            .unwrap_or_else(|| OpenAiProviderConfig::default().base_url)
-    } else if let Some(base_url) = entry.base_url.clone() {
-        base_url
-    } else {
-        warn!(
-            provider = %entry.name,
-            "OpenAI-compatible provider missing base_url — skipping"
-        );
+    let Some(cfg) = openai_config_for_entry(entry, oikos, provider_config, behavior) else {
         return;
     };
-    let api_key = openai_api_key(entry, oikos);
-    let cfg = OpenAiProviderConfig {
-        name: entry.name.clone(),
-        base_url,
-        api_key,
-        models: entry.models.clone(),
-        api_family,
-        // WHY (#3736): the operator-declared deployment target
-        // was previously logged below but never threaded to the
-        // provider, so every OpenAI-compat provider silently
-        // inherited the `Cloud` trait default. That broke the
-        // air-gap claim in `docs/AIR-GAPPED.md` — the recall
-        // filter stripped `Internal` / `Confidential` facts
-        // from traffic bound for loopback llama.cpp / logismos.
-        deployment_target: map_deployment_target(entry.deployment_target),
-        ..OpenAiProviderConfig::default()
-    };
+    let api_family = cfg.api_family;
+
     match OpenAiProvider::new(cfg) {
         Ok(provider) => {
             info!(
@@ -440,6 +440,51 @@ fn register_declared_openai(
             "failed to init OpenAI-compatible provider"
         ),
     }
+}
+
+fn openai_config_for_entry(
+    entry: &taxis::config::LlmProviderConfig,
+    oikos: &Oikos,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
+) -> Option<OpenAiProviderConfig> {
+    use taxis::config::ProviderKind;
+
+    let api_family = configured_openai_api_family(entry);
+    let base_url = if entry.kind == ProviderKind::OpenAi {
+        entry
+            .base_url
+            .clone()
+            .unwrap_or_else(|| OpenAiProviderConfig::default().base_url)
+    } else if let Some(base_url) = entry.base_url.clone() {
+        base_url
+    } else {
+        warn!(
+            provider = %entry.name,
+            "OpenAI-compatible provider missing base_url — skipping"
+        );
+        return None;
+    };
+    let api_key = openai_api_key(entry, oikos);
+    Some(OpenAiProviderConfig {
+        name: entry.name.clone(),
+        base_url,
+        api_key,
+        models: entry.models.clone(),
+        api_family,
+        request_timeout: behavior.non_streaming_timeout,
+        retry_policy: provider_config.retry_policy,
+        concurrency: provider_config.concurrency.clone(),
+        // WHY (#3736): the operator-declared deployment target
+        // was previously logged below but never threaded to the
+        // provider, so every OpenAI-compat provider silently
+        // inherited the `Cloud` trait default. That broke the
+        // air-gap claim in `docs/AIR-GAPPED.md` — the recall
+        // filter stripped `Internal` / `Confidential` facts
+        // from traffic bound for loopback llama.cpp / logismos.
+        deployment_target: map_deployment_target(entry.deployment_target),
+        ..OpenAiProviderConfig::default()
+    })
 }
 
 fn openai_api_key(entry: &taxis::config::LlmProviderConfig, oikos: &Oikos) -> Option<SecretString> {
@@ -1538,6 +1583,52 @@ mod tests {
         let oikos_dir = tempfile::tempdir().expect("create temp oikos");
         let oikos = Oikos::from_root(oikos_dir.path());
         build_provider_registry(config, &oikos)
+    }
+
+    #[test]
+    fn taxis_retry_and_provider_behavior_map_to_openai_runtime_config() {
+        let mut config = AletheiaConfig::default();
+        config.retry.max_attempts = 2;
+        config.retry.backoff_base_ms = 250;
+        config.retry.backoff_max_ms = 4_000;
+        config.provider_behavior.non_streaming_timeout_secs = 17;
+        config.provider_behavior.concurrency_ewma_alpha = 0.25;
+        config.provider_behavior.concurrency_latency_threshold_secs = 3.5;
+
+        let provider_config = ProviderConfig {
+            retry_policy: retry_policy_from_config(&config),
+            concurrency: concurrency_config_from_provider_behavior(&config.provider_behavior),
+            ..ProviderConfig::default()
+        };
+        let behavior = ProviderBehavior {
+            non_streaming_timeout: std::time::Duration::from_secs(
+                config.provider_behavior.non_streaming_timeout_secs,
+            ),
+            sse_retry_ms: config.provider_behavior.sse_default_retry_ms,
+        };
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let oikos = Oikos::from_root(oikos_dir.path());
+        let entry = local_openai_provider("local-runtime", "qwen-runtime");
+
+        let openai_config = openai_config_for_entry(&entry, &oikos, &provider_config, &behavior)
+            .expect("local OpenAI-compatible config should build");
+
+        assert_eq!(
+            openai_config.request_timeout,
+            std::time::Duration::from_secs(17),
+            "providerBehavior.nonStreamingTimeoutSecs must reach OpenAI providers"
+        );
+        assert_eq!(openai_config.retry_policy.max_retries, 2);
+        assert_eq!(openai_config.retry_policy.backoff_base_ms, 250);
+        assert_eq!(openai_config.retry_policy.backoff_max_ms, 4_000);
+        assert!(
+            (openai_config.concurrency.ewma_alpha - 0.25).abs() < f64::EPSILON,
+            "providerBehavior.concurrencyEwmaAlpha must reach the limiter config"
+        );
+        assert!(
+            (openai_config.concurrency.latency_threshold_secs - 3.5).abs() < f64::EPSILON,
+            "providerBehavior.concurrencyLatencyThresholdSecs must reach the limiter config"
+        );
     }
 
     #[test]

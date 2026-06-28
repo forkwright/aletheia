@@ -53,6 +53,8 @@ pub mod openai;
 pub mod provider;
 /// Shared retry backoff helpers for provider implementations.
 pub(crate) mod retry;
+/// Provider retry attempts and exponential backoff policy.
+pub use retry::RetryPolicy;
 /// Session-scoped secret vault and credential substitution.
 ///
 /// Provides [`SecretVault`](secret::SecretVault) for storing named secrets and
