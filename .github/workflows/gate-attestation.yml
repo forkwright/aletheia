@@ -67,7 +67,7 @@ jobs:
           chmod 0600 ~/.git-credentials
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@9bcaee1dcae34154180f412e2fa69355a7cda9f6 # v2
         with:
           tool: nextest
 

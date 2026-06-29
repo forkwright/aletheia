@@ -94,7 +94,7 @@ maximum number of retained sessions per agent. It is enforced only when
 ### Create a backup
 
 ```bash
-aletheia backup
+aletheia backup create
 ```
 
 Creates a local whole-instance backup set at `instance/data/backups/instance/{timestamp}/`.
@@ -121,13 +121,13 @@ aletheia backup restore instance/data/backups/instance/<timestamp>
 ### List backups
 
 ```bash
-aletheia backup --list
+aletheia backup list
 ```
 
 ### Prune old backups
 
 ```bash
-aletheia backup --prune --keep 5
+aletheia backup prune --keep 5
 ```
 
 Keeps the 5 most recent backups, deletes the rest.

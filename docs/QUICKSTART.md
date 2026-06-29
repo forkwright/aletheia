@@ -156,8 +156,7 @@ Opens a rich terminal UI with markdown rendering, session management, and real-t
 
 ### Optional preview: desktop
 
-The desktop app is the v1.0 target surface and currently installs separately
-from source:
+The desktop app is the v1.0 target surface and installs separately from source:
 
 ```bash
 scripts/install-proskenion.sh
@@ -196,7 +195,7 @@ The messages endpoint streams the response as Server-Sent Events (SSE).
 ```bash
 aletheia -r ./instance      # start the server
 aletheia tui                 # talk to your agent (in another terminal)
-aletheia backup              # create a whole-instance backup set
+aletheia backup create       # create a whole-instance backup set
 aletheia --help              # full command reference
 ```
 
@@ -228,7 +227,7 @@ WorkingDirectory=%h/aletheia
 
 Drift detection resolves the sibling `instance.example` template from the
 configured instance root. If the template is unavailable, the drift-detection
-task reports degraded/failed rather than clean.
+task reports degraded/failed instead of clean.
 
 The environment file is owned by the instance. Start from the checked-in
 template when you need process-manager environment variables:
@@ -311,7 +310,7 @@ systemctl --user status aletheia-health.timer
 Replace the binary. Your instance directory, config, and databases are untouched:
 
 ```bash
-aletheia backup                    # pre-upgrade backup
+aletheia backup create             # pre-upgrade backup
 # Build from source:
 git pull && cargo build --release
 cp target/release/aletheia ~/.local/bin/

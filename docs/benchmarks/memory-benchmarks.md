@@ -90,8 +90,8 @@ curl -s http://localhost:8080/api/health | jq .status
 # Expected: "healthy"
 ```
 
-The service was stopped as of 2026-04-12. Check instance configuration at
-`~/aletheia/instance/config/aletheia.toml` for the port.
+The service is stopped during teardown. Check instance configuration at
+`~/aletheia/instance/config/aletheia.toml` for the port before restarting it.
 
 ### 2. Configured nous agent
 

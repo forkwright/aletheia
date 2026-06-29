@@ -59,26 +59,27 @@ pub(crate) enum BackupAction {
     reason = "CLI flags — each bool is a distinct switch"
 )]
 #[derive(Debug, Clone, Args)]
+#[command(args_conflicts_with_subcommands = true)]
 pub(crate) struct BackupArgs {
     #[command(subcommand)]
     pub action: Option<BackupAction>,
 
-    // Legacy flags (used when no subcommand is given)
+    // Legacy flags retained for compatibility when no subcommand is given.
     /// List available backups
-    #[arg(long)]
+    #[arg(long, hide = true, conflicts_with_all = ["prune", "keep", "yes"])]
     pub list: bool,
     /// Prune old backups
-    #[arg(long)]
+    #[arg(long, hide = true, conflicts_with_all = ["list", "json"])]
     pub prune: bool,
     /// Number of backups to keep when pruning. Defaults to the configured
     /// `maintenance.backup.backup_retention_count`. (#5136)
-    #[arg(long)]
+    #[arg(long, hide = true, requires = "prune", conflicts_with = "list")]
     pub keep: Option<usize>,
     /// Output as JSON (for --list)
-    #[arg(long)]
+    #[arg(long, hide = true, requires = "list", conflicts_with_all = ["prune", "keep", "yes"])]
     pub json: bool,
     /// Skip confirmation prompt when pruning
-    #[arg(long)]
+    #[arg(long, hide = true, requires = "prune", conflicts_with_all = ["list", "json"])]
     pub yes: bool,
 }
 
@@ -382,8 +383,9 @@ fn run_instance(
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::*;
     use std::io::Write as _;
+
+    use super::*;
 
     fn make_fjall_store(path: &Path) {
         std::fs::create_dir_all(path).unwrap();

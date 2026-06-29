@@ -5,7 +5,7 @@
 1. Check current version: `aletheia health` or `aletheia --version`
 2. Back up before upgrading:
    ```bash
-   aletheia backup
+   aletheia backup create
    ```
 3. Download the tarball from [GitHub Releases](https://github.com/forkwright/aletheia/releases):
    ```bash
@@ -79,7 +79,7 @@ fjall directory that matches the layout used by current aletheia. It supports:
 
 - Source DB must have `PRAGMA user_version = 32` (the last SQLite session schema).
 - Required tables must exist: `sessions`, `messages`, `usage`, `distillations`, `agent_notes`, `blackboard`.
-- Columns with no direct fjall equivalent (`thinking_enabled`, `thinking_budget`, `working_state`, `distillation_priming`) are preserved under a `migration_legacy` partition rather than dropped.
+- Columns with no direct fjall equivalent (`thinking_enabled`, `thinking_budget`, `working_state`, `distillation_priming`) are preserved under a `migration_legacy` partition instead of dropped.
 - Messages whose parent session row is missing are recovered as synthesised `orphan-recovery` sessions.
 - The migrator does not migrate the knowledge store; `knowledge.fjall` must be created fresh or handled separately.
 
@@ -159,8 +159,8 @@ Before any upgrade:
 3. If the new version ran and modified the database schema, restore from the
    pre-upgrade whole-instance backup set:
    ```bash
-   aletheia backup --list                              # find pre-upgrade backup
-   LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+   aletheia backup list                              # find pre-upgrade backup
+   LATEST=$(aletheia backup list --json | jq -r '.[0].name')
    BACKUP="instance/data/backups/instance/${LATEST}"
    aletheia backup verify "$BACKUP"
    aletheia backup restore "$BACKUP"

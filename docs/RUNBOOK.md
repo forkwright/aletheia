@@ -124,14 +124,14 @@ backupRetentionCount = 7
 ## Manual backup
 
 ```bash
-aletheia backup          # create an instance backup set
-aletheia backup --list   # list snapshots
+aletheia backup create  # create an instance backup set
+aletheia backup list   # list snapshots
 ```
 
 ## Cron setup (daily at 02:00)
 
 ```cron
-0 2 * * * /usr/bin/aletheia backup >> /var/log/aletheia-backup.log 2>&1
+0 2 * * * /usr/bin/aletheia backup create >> /var/log/aletheia-backup.log 2>&1
 ```
 
 Use the built-in backup command for cron or timer automation.
@@ -349,7 +349,7 @@ aletheia maintenance run db-monitor --verbose
 
 Drift detection compares the live instance root against the sibling
 `instance.example` template. If the template directory is unavailable, the task
-reports degraded/failed rather than clean.
+reports degraded/failed instead of clean.
 
 ## Log latency spikes
 
@@ -364,15 +364,15 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "latency|slow|timeo
 ## Create a backup
 
 ```bash
-aletheia backup
+aletheia backup create
 # Writes instance/data/backups/instance/<timestamp>/
 ```
 
 ## List available backups
 
 ```bash
-aletheia backup --list
-aletheia backup --list --json    # machine-readable
+aletheia backup list
+aletheia backup list --json    # machine-readable
 ```
 
 ## Restore from backup
@@ -398,8 +398,8 @@ as `stores/sessions.db`, or target paths such as `data/archive`.
 ## Prune old backups
 
 ```bash
-aletheia backup --prune --keep 5    # interactive
-aletheia backup --prune --keep 5 --yes    # skip confirmation
+aletheia backup prune --keep 5    # interactive
+aletheia backup prune --keep 5 --yes    # skip confirmation
 ```
 
 ## Export sessions as JSON (before deletion)
@@ -757,7 +757,7 @@ The session history remains in the archive. Start a fresh session for new work.
 
 ### Configuration
 
-The distillation model defaults to the workspace-wide `koina::defaults::DEFAULT_MODEL` (currently `claude-sonnet-4-6`; the single source of truth, see #4235). There is no `distillation_model` config field under `[agents.defaults]` in the current typed config; per-agent model selection uses the `model.primary` / `model.fallbacks` fields documented in `docs/CONFIGURATION.md#agents`.
+The distillation model defaults to the workspace-wide `koina::defaults::DEFAULT_MODEL` (`claude-sonnet-4-6`; the single source of truth, see #4235). There is no `distillation_model` config field under `[agents.defaults]` in the typed config; per-agent model selection uses the `model.primary` / `model.fallbacks` fields documented in `docs/CONFIGURATION.md#agents`.
 
 ---
 

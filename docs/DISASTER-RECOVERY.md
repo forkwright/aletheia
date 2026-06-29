@@ -58,10 +58,10 @@ fuser -k 18789/tcp   # only if the PID is not aletheia
 systemctl --user stop aletheia
 
 # 2. List available whole-instance backups
-aletheia backup --list
+aletheia backup list
 
 # 3. Identify the most recent good backup
-LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+LATEST=$(aletheia backup list --json | jq -r '.[0].name')
 echo "Restoring from: $LATEST"
 ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 BACKUP="$ROOT/data/backups/instance/$LATEST"
@@ -91,7 +91,7 @@ do not copy a knowledge backup over `sessions.db`.
 ```bash
 systemctl --user stop aletheia
 ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
-LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+LATEST=$(aletheia backup list --json | jq -r '.[0].name')
 BACKUP="$ROOT/data/backups/instance/$LATEST"
 aletheia backup verify "$BACKUP"
 aletheia backup restore "$BACKUP" --include sessions.db
@@ -206,7 +206,7 @@ Run these checks before declaring recovery complete:
 | 5 | Metrics endpoint responds | `curl -sf http://localhost:18789/metrics \| head` |
 | 6 | Session store opens without errors | `aletheia status` shows expected session counts |
 | 7 | Instance backup directory exists | `ls -ld "$ALETHEIA_ROOT/data/backups/instance"` |
-| 8 | Latest backup verifies | `aletheia backup verify "$ALETHEIA_ROOT/data/backups/instance/$(aletheia backup --list --json \| jq -r '.[0].name')"` |
+| 8 | Latest backup verifies | `aletheia backup verify "$ALETHEIA_ROOT/data/backups/instance/$(aletheia backup list --json \| jq -r '.[0].name')"` |
 | 9 | Create a test session (if auth is enabled) | See API smoke test in [DEPLOYMENT.md](DEPLOYMENT.md) |
 | 10 | No recent errors in logs | `journalctl --user -u aletheia --since "5 minutes ago" --priority err..warning` |
 
@@ -221,7 +221,7 @@ Restore to a **test instance** at least once a month to prove the procedure and 
 TMP_INSTANCE=$(mktemp -d)
 
 # 2. Restore the latest instance backup into it
-LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+LATEST=$(aletheia backup list --json | jq -r '.[0].name')
 BACKUP="$ALETHEIA_ROOT/data/backups/instance/$LATEST"
 aletheia backup verify "$BACKUP"
 aletheia -r "$TMP_INSTANCE" backup restore "$BACKUP"

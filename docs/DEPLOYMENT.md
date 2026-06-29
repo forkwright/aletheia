@@ -190,9 +190,8 @@ This displays the current token or a way to generate one. Tokens are managed by 
 
 ### POST/PUT/DELETE CSRF protection
 
-CSRF protection is enabled by default. All state-changing requests (POST, PUT,
-DELETE, PATCH) to `/api/v1/` must include the configured header. The default
-bootstrap value is:
+State-changing requests (POST, PUT, DELETE, PATCH) to `/api/v1/` require the
+configured CSRF header by default. The default bootstrap value is:
 
 ```
 X-Requested-With: aletheia
@@ -466,7 +465,7 @@ The template sets
 `ProtectSystem=strict`; update it when you change the instance root.
 Drift detection resolves the sibling `instance.example` template from the
 configured instance root; if the template is unavailable, the task reports
-degraded/failed rather than clean.
+degraded/failed instead of clean.
 If your API key is stored in `instance/config/credentials/anthropic.json` (written by
 `aletheia init`), no extra environment setup is needed.
 
@@ -487,9 +486,9 @@ aletheia health
 ## Backup
 
 ```bash
-aletheia backup                     # create backup
-aletheia backup --list              # list available backups
-aletheia backup --prune --keep 5    # remove old backups
+aletheia backup create  # create backup
+aletheia backup list              # list available backups
+aletheia backup prune --keep 5    # remove old backups
 aletheia backup verify <path>       # verify a backup snapshot
 aletheia backup restore <path>      # restore a verified backup set
 ```
@@ -517,7 +516,7 @@ aletheia maintenance run all                    # run everything
 
 Drift detection compares the live instance root against the sibling
 `instance.example` template. If the template directory is unavailable, the task
-reports degraded/failed rather than clean.
+reports degraded/failed instead of clean.
 
 ---
 
