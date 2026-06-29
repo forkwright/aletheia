@@ -841,6 +841,7 @@ impl RuntimeBuilder {
         let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(
             &self.config,
             &nous_manager,
+            &session_store,
             ready_rx,
             signal_provider.as_ref(),
             matrix_provider.as_ref(),
