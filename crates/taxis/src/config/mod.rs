@@ -335,7 +335,7 @@ fn default_session_pattern() -> String {
 }
 
 /// Embedding provider configuration for recall pipeline.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
@@ -353,6 +353,21 @@ pub struct EmbeddingSettings {
     /// Environment variable that stores the embedding provider API key.
     #[serde(alias = "apikeyenv")]
     pub api_key_env: Option<String>,
+}
+
+impl std::fmt::Debug for EmbeddingSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmbeddingSettings")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("dimension", &self.dimension)
+            .field("base_url", &self.base_url.as_ref().map(|_| "<redacted>"))
+            .field(
+                "api_key_env",
+                &self.api_key_env.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl Default for EmbeddingSettings {
