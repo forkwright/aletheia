@@ -14,7 +14,7 @@ impl KnowledgeStore {
     ///
     /// Best case O(log n * ef) for fast path. Worst case adds query rewriting
     /// O(RW) plus enhanced search O(V * `search_hybrid`) plus graph expansion O(E).
-    pub fn search_tiered(
+    pub(crate) fn search_tiered(
         &self,
         base_query: &HybridQuery,
         rewriter: &crate::query_rewrite::QueryRewriter,
@@ -79,7 +79,7 @@ impl KnowledgeStore {
     }
 
     /// Tiered search scoped to facts visible to `requester_nous_id`.
-    pub fn search_tiered_scoped(
+    pub(crate) fn search_tiered_scoped(
         &self,
         base_query: &HybridQuery,
         rewriter: &crate::query_rewrite::QueryRewriter,
@@ -151,7 +151,11 @@ impl KnowledgeStore {
     /// This is the bridge from the low-level tiered retrieval orchestration
     /// (which operates on IDs and RRF scores) to `RecallResult` records that
     /// nous can score, filter, and inject.
-    pub fn search_tiered_for_recall(
+    #[expect(
+        dead_code,
+        reason = "unscoped recall bridge retained for crate-local callers"
+    )]
+    pub(crate) fn search_tiered_for_recall(
         &self,
         base_query: &HybridQuery,
         rewriter: &crate::query_rewrite::QueryRewriter,
@@ -198,6 +202,7 @@ impl KnowledgeStore {
     }
 
     /// Tiered search with hydrated recall rows, scoped before ranking and graph expansion.
+    // kanon:ignore RUST/pub-visibility — consumed by nous recall search integration
     pub fn search_tiered_for_recall_scoped(
         &self,
         base_query: &HybridQuery,

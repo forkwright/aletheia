@@ -18,7 +18,8 @@ impl KnowledgeStore {
     /// for callers that have no operator-configured
     /// [`DedupTuning`](crate::dedup::DedupTuning) in scope.
     #[instrument(skip(self))]
-    pub fn find_duplicate_entities(
+    #[cfg_attr(not(test), expect(dead_code, reason = "test-only convenience wrapper"))]
+    pub(crate) fn find_duplicate_entities(
         &self,
         nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>> {
@@ -44,6 +45,7 @@ impl KnowledgeStore {
     /// (#4165 D); pass [`DedupTuning::DEFAULT`](crate::dedup::DedupTuning::DEFAULT)
     /// for the historical defaults.
     #[instrument(skip(self, tuning))]
+    // kanon:ignore RUST/pub-visibility — consumed by the aletheia CLI memory dedup command
     pub fn find_duplicate_entities_with_tuning(
         &self,
         nous_id: &str,
@@ -173,6 +175,7 @@ impl KnowledgeStore {
 
     /// Get pending merge candidates (review queue) for a nous.
     #[instrument(skip(self))]
+    // kanon:ignore RUST/pub-visibility — consumed by the aletheia CLI pending-review commands
     pub fn get_pending_merges(
         &self,
         nous_id: &str,
@@ -219,6 +222,7 @@ impl KnowledgeStore {
     /// `fact_entities`, preserves the merged name as an alias, and clears
     /// the pending-merge row (#4165 Path A).
     #[instrument(skip(self))]
+    // kanon:ignore RUST/pub-visibility — consumed by aletheia CLI and pylon knowledge entity API
     pub fn approve_merge(
         &self,
         canonical_id: &crate::id::EntityId,
@@ -230,7 +234,7 @@ impl KnowledgeStore {
 
     /// Approve a pending merge for the requesting nous.
     #[instrument(skip(self))]
-    pub fn approve_merge_for_nous(
+    pub(crate) fn approve_merge_for_nous(
         &self,
         nous_id: &str,
         canonical_id: &crate::id::EntityId,
@@ -421,7 +425,11 @@ impl KnowledgeStore {
 
     /// Get the full merge history.
     #[instrument(skip(self))]
-    pub fn get_merge_history(
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "test-only merge history reader")
+    )]
+    pub(crate) fn get_merge_history(
         &self,
         nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
@@ -480,7 +488,11 @@ impl KnowledgeStore {
     /// [`KnowledgeStore::run_entity_dedup_with_embeddings`] or
     /// [`KnowledgeStore::backfill_entity_name_embeddings`].
     #[instrument(skip(self))]
-    pub fn run_entity_dedup(
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "test-only default-tuning wrapper")
+    )]
+    pub(crate) fn run_entity_dedup(
         &self,
         nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
@@ -495,6 +507,7 @@ impl KnowledgeStore {
     /// from `taxis::config::AgentBehaviorDefaults::knowledge_dedup_*` and
     /// pass it through so config knobs actually take effect.
     #[instrument(skip(self, tuning))]
+    // kanon:ignore RUST/pub-visibility — consumed by the aletheia CLI memory dedup command
     pub fn run_entity_dedup_with_tuning(
         &self,
         nous_id: &str,
@@ -573,7 +586,7 @@ impl KnowledgeStore {
     /// the name embedding once and call this method directly after
     /// `insert_entity`.
     #[instrument(skip(self, name_embedding), fields(entity_id = %entity_id))]
-    pub fn update_entity_name_embedding(
+    pub(crate) fn update_entity_name_embedding(
         &self,
         entity_id: &crate::id::EntityId,
         name_embedding: Option<Vec<f32>>,
@@ -628,7 +641,7 @@ impl KnowledgeStore {
     /// the entity predates the v13 migration). Returns `Err` when the
     /// entity does not exist.
     #[instrument(skip(self), fields(entity_id = %entity_id))]
-    pub fn get_entity_name_embedding(
+    pub(crate) fn get_entity_name_embedding(
         &self,
         entity_id: &crate::id::EntityId,
     ) -> crate::error::Result<Option<Vec<f32>>> {
@@ -673,7 +686,7 @@ impl KnowledgeStore {
     /// [`load_entity_infos`]: Self::load_entity_infos
     /// [`update_entity_name_embedding`]: Self::update_entity_name_embedding
     #[instrument(skip(self, provider))]
-    pub fn backfill_entity_name_embeddings(
+    pub(crate) fn backfill_entity_name_embeddings(
         &self,
         provider: &dyn crate::embedding::EmbeddingProvider,
         nous_id: &str,
@@ -745,7 +758,8 @@ impl KnowledgeStore {
     /// successfully embedded contribute real `embed_sim` values; the rest
     /// stay at 0.0 for this pass.
     #[instrument(skip(self, provider))]
-    pub fn run_entity_dedup_with_embeddings(
+    #[expect(dead_code, reason = "crate-local default-tuning wrapper")]
+    pub(crate) fn run_entity_dedup_with_embeddings(
         &self,
         nous_id: &str,
         provider: Option<&dyn crate::embedding::EmbeddingProvider>,
@@ -765,6 +779,7 @@ impl KnowledgeStore {
     /// [`AgentBehaviorDefaults::knowledge_dedup_*`](https://docs.rs/taxis)
     /// knobs actually flow through the merge decision (#4165 D).
     #[instrument(skip(self, provider, tuning))]
+    // kanon:ignore RUST/pub-visibility — consumed by aletheia maintenance scheduling
     pub fn run_entity_dedup_with_embeddings_and_tuning(
         &self,
         nous_id: &str,

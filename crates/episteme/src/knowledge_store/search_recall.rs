@@ -425,7 +425,7 @@ impl KnowledgeStore {
                 "requester_nous_id".to_owned(),
                 crate::engine::DataValue::Str(requester_nous_id.into()),
             );
-            let Ok(rows) = self.run_read(&script, params) else {
+            let Ok(rows) = self.run_read(script, params) else {
                 continue;
             };
             for row in &rows.rows {

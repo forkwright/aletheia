@@ -23,6 +23,7 @@ impl KnowledgeStore {
     /// O(log n * `ef_construction`) where n is index size and `ef_construction` is the
     /// HNSW construction beam width. Space: O(`dim`) for the vector storage.
     #[instrument(skip(self, chunk), fields(chunk_id = %chunk.id))]
+    // kanon:ignore RUST/pub-visibility — consumed by aletheia ingestion and integration-test crates
     pub fn insert_embedding(
         &self,
         chunk: &crate::knowledge::EmbeddedChunk,
@@ -55,6 +56,7 @@ impl KnowledgeStore {
     /// O(log n * ef + k) where n is index size, ef is search beam width, k is results.
     /// The k factor includes post-filtering for forgotten facts.
     #[instrument(skip(self, query_vec))]
+    // kanon:ignore RUST/pub-visibility — consumed by aletheia CLI and integration-test crates
     pub fn search_vectors(
         &self,
         query_vec: Vec<f32>,
@@ -142,6 +144,7 @@ impl KnowledgeStore {
     /// expansion, or final truncation so foreign private facts cannot influence
     /// returned scores or expansion seeds.
     #[instrument(skip(self, query_vec))]
+    // kanon:ignore RUST/pub-visibility — consumed by nous recall search integration
     pub fn search_vectors_scoped(
         &self,
         query_vec: Vec<f32>,
@@ -195,7 +198,7 @@ impl KnowledgeStore {
             :order dist
             :limit $k
             ";
-        let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
+        let mut results = rows_to_recall_results(self.run_read(script, params)?)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
         let graph_ctx = self.load_graph_context_for_recall();
         self.enrich_recall_results(&mut results, &graph_ctx);
@@ -252,6 +255,7 @@ impl KnowledgeStore {
     ///
     /// O(Q * (log T + D) + D log D) where Q is query terms, T is unique terms,
     /// D is matching documents. BM25 scoring adds O(D) and ranking adds O(D log D).
+    // kanon:ignore RUST/pub-visibility — consumed by diaporeia MCP tools and integration-test crates
     pub fn search_text_for_recall(
         &self,
         query_text: &str,
@@ -296,6 +300,7 @@ impl KnowledgeStore {
     }
 
     /// BM25 full-text recall scoped to facts visible to `requester_nous_id`.
+    // kanon:ignore RUST/pub-visibility — consumed by nous recall and aletheia-memory-mcp
     pub fn search_text_for_recall_scoped(
         &self,
         query_text: &str,
@@ -351,7 +356,7 @@ impl KnowledgeStore {
             :order dist
             :limit $k
             ";
-        let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
+        let mut results = rows_to_recall_results(self.run_read(script, params)?)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
         let graph_ctx = self.load_graph_context_for_recall();
         self.enrich_recall_results(&mut results, &graph_ctx);
@@ -421,7 +426,7 @@ impl KnowledgeStore {
 
     /// Hybrid search scoped to facts visible to `requester_nous_id`.
     #[instrument(skip(self, q), fields(limit = q.limit, ef = q.ef))]
-    pub fn search_hybrid_scoped(
+    pub(crate) fn search_hybrid_scoped(
         &self,
         q: &HybridQuery,
         requester_nous_id: &str,
@@ -509,7 +514,7 @@ impl KnowledgeStore {
     ///
     /// O(V * (log n * ef + Q*(log T + D))) where V is query variants. RRF merge
     /// across variants is O(V * R log R) where R is results per variant.
-    pub fn search_enhanced(
+    pub(crate) fn search_enhanced(
         &self,
         base_query: &HybridQuery,
         query_variants: &[String],
@@ -543,7 +548,7 @@ impl KnowledgeStore {
     }
 
     /// Multi-query hybrid search scoped to facts visible to `requester_nous_id`.
-    pub fn search_enhanced_scoped(
+    pub(crate) fn search_enhanced_scoped(
         &self,
         base_query: &HybridQuery,
         query_variants: &[String],
