@@ -431,11 +431,16 @@ impl ProsocheCheck for ConsistencyCheck {
             let query_hash = Self::query_hash(state);
 
             for (i, (id_a, content_a, terms_a, hash_a)) in normalised.iter().enumerate() {
+                // WHY: lowercasing content_a once per fact is cheaper than
+                // repeating it inside the term loop.
+                let content_a_lower = content_a.to_lowercase();
                 for (id_b, content_b, _, hash_b) in normalised.get(i + 1..).unwrap_or_default() {
+                    // WHY: lowercasing content_b once per (i, j) pair is
+                    // cheaper than allocating it inside the innermost term loop.
+                    let content_b_lower = content_b.to_lowercase();
                     for term in terms_a {
                         let negated = format!("not {term}");
                         let negated_alt = format!("never {term}");
-                        let content_b_lower = content_b.to_lowercase();
                         if content_b_lower.contains(&negated)
                             || content_b_lower.contains(&negated_alt)
                         {
@@ -487,7 +492,6 @@ impl ProsocheCheck for ConsistencyCheck {
                             break;
                         }
 
-                        let content_a_lower = content_a.to_lowercase();
                         let neg_in_a = content_a_lower.contains(&negated)
                             || content_a_lower.contains(&negated_alt);
                         if neg_in_a
