@@ -285,7 +285,9 @@ pub(crate) async fn execute_builtin_with_behavior(
                     }
                 }
             } else {
-                let mut check = ProsocheCheck::new(nous_id).with_daemon_behavior(daemon_behavior);
+                let mut check = ProsocheCheck::new(nous_id)
+                    .with_daemon_behavior(daemon_behavior)
+                    .with_cancel(&ctx.cancel);
                 if let Some(maintenance) = maintenance {
                     check = check
                         .with_data_dir(&maintenance.db_monitoring.data_dir)

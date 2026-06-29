@@ -2,8 +2,11 @@
 //! calendar, tasks, and system health for a nous.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 #[cfg(feature = "knowledge-store")]
 use std::sync::Arc;
+
+use tokio_util::sync::CancellationToken;
 
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +22,11 @@ pub struct ProsocheCheck {
     knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
     /// Number of recent facts sampled by anomaly detection.
     anomaly_sample_size: usize,
+    /// Cancellation token propagated from the task runner.
+    ///
+    /// WHY: a hung `df` on an NFS/automount path should not hold the in-flight
+    /// slot if the runner asks the check to stop.
+    cancel: CancellationToken,
 }
 
 impl std::fmt::Debug for ProsocheCheck {
@@ -46,6 +54,7 @@ impl Clone for ProsocheCheck {
             #[cfg(feature = "knowledge-store")]
             knowledge_store: self.knowledge_store.clone(),
             anomaly_sample_size: self.anomaly_sample_size,
+            cancel: self.cancel.clone(),
         }
     }
 }
@@ -131,6 +140,9 @@ impl ProsocheCheck {
             #[cfg(feature = "knowledge-store")]
             knowledge_store: None,
             anomaly_sample_size: DEFAULT_ANOMALY_SAMPLE_SIZE,
+            // WHY: a detached token keeps tests and one-off callers working when
+            // no runner cancellation source is wired in.
+            cancel: CancellationToken::new(),
         }
     }
 
@@ -155,6 +167,13 @@ impl ProsocheCheck {
     #[must_use]
     pub(crate) fn with_db_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.db_paths = paths;
+        self
+    }
+
+    /// Propagate the runner's cancellation token into long-running checks.
+    #[must_use]
+    pub(crate) fn with_cancel(mut self, cancel: &CancellationToken) -> Self {
+        self.cancel = cancel.clone();
         self
     }
 
@@ -189,7 +208,7 @@ impl ProsocheCheck {
         let mut items = Vec::new();
 
         if let Some(ref data_dir) = self.data_dir {
-            items.extend(check_disk_space(data_dir).await);
+            items.extend(check_disk_space(data_dir, &self.cancel).await);
         }
 
         // WHY: database metadata is a blocking syscall; offload it from the
@@ -269,12 +288,16 @@ fn check_threshold(
     })
 }
 
+/// Bound the time we wait for `df` so a hung NFS/automount path cannot occupy
+/// the prosoche in-flight slot indefinitely.
+const DF_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Check disk space usage on the filesystem containing `path`.
 ///
 /// Uses `df` command output. WARN at 80% usage, CRITICAL at 95%.
-async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
-    match disk_usage_percent(path).await {
-        Ok(percent) => {
+async fn check_disk_space(path: &Path, cancel: &CancellationToken) -> Vec<AttentionItem> {
+    match disk_usage_percent(path, cancel).await {
+        Ok(Some(percent)) => {
             let label = if percent >= 95.0 {
                 "critical"
             } else {
@@ -285,6 +308,11 @@ async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
             })
             .into_iter()
             .collect()
+        }
+        Ok(None) => {
+            // WHY: cancellation is not a failure; returning an empty vector lets
+            // the runner continue with the remaining health checks.
+            Vec::new()
         }
         Err(e) => {
             tracing::warn!(
@@ -298,15 +326,34 @@ async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
 }
 
 /// Get disk usage percentage for the filesystem containing `path` via `df`.
-async fn disk_usage_percent(path: &Path) -> std::io::Result<f64> {
+///
+/// Returns `Ok(None)` when the cancellation token fires before `df` completes.
+async fn disk_usage_percent(
+    path: &Path,
+    cancel: &CancellationToken,
+) -> std::io::Result<Option<f64>> {
     // NOTE: tokio::process::Child kills the child on Drop, providing the same
     // orphan-prevention guarantee as ProcessGuard. If this future is cancelled,
     // tokio kills the child automatically.
-    let output = tokio::process::Command::new("df")
-        .args(["--output=pcent", "--"])
-        .arg(path)
-        .output()
-        .await?;
+    let output = tokio::select! {
+        biased;
+        () = cancel.cancelled() => return Ok(None),
+        result = tokio::time::timeout(
+            DF_TIMEOUT,
+            tokio::process::Command::new("df")
+                .args(["--output=pcent", "--"])
+                .arg(path)
+                .output()
+        ) => match result {
+            Ok(output) => output,
+            Err(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "df command did not complete within 10 seconds",
+                ));
+            }
+        }
+    };
 
     if !output.status.success() {
         return Err(std::io::Error::other(
@@ -315,7 +362,7 @@ async fn disk_usage_percent(path: &Path) -> std::io::Result<f64> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_df_percent(&stdout)
+    parse_df_percent(&stdout).map(Some)
 }
 
 /// Parse the percentage from `df --output=pcent` output.
