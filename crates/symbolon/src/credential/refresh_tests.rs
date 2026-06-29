@@ -372,13 +372,13 @@ fn persist_refresh_success_writes_file_and_updates_state() {
         &path,
         &mut tracker,
         &cb,
-        RefreshSuccessPayload {
-            access_token: SecretString::from("tok-new"),
-            refresh_token: SecretString::from("rt-new"),
+        RefreshSuccessPayload::new(
+            SecretString::from("tok-new"),
+            SecretString::from("rt-new"),
             expires_in,
-            scope: Some("user:inference".to_owned()),
-            subscription_type: Some("max".to_owned()),
-        },
+            Some("user:inference".to_owned()),
+            Some("max".to_owned()),
+        ),
     );
     let after_ms = unix_epoch_ms();
 
@@ -456,13 +456,13 @@ fn persist_refresh_success_records_circuit_breaker_success() {
         &path,
         &mut tracker,
         &cb,
-        RefreshSuccessPayload {
-            access_token: SecretString::from("tok-new"),
-            refresh_token: SecretString::from("rt-new"),
-            expires_in: 3600,
-            scope: None,
-            subscription_type: None,
-        },
+        RefreshSuccessPayload::new(
+            SecretString::from("tok-new"),
+            SecretString::from("rt-new"),
+            3600,
+            None,
+            None,
+        ),
     );
 
     // WHY: record_success on Closed state clears failure history. After the
