@@ -12,12 +12,12 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
 use std::fs;
 
-use aletheia_sessions_migrate::{run_migration, stage_migration};
 use rusqlite::Connection;
+
+use crate::migrate::stage_migration;
+use crate::{common, run_migration};
 
 #[test]
 fn staging_dir_exists_before_publish_and_dest_does_not() {

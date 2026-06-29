@@ -9,12 +9,12 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
-use aletheia_sessions_migrate::{run_migration, run_verification};
 use fjall::{KeyspaceCreateOptions, PersistMode, Readable};
 use koina::fjall::FjallDb;
 use rusqlite::Connection;
+
+use crate::verify::run_verification;
+use crate::{common, run_migration};
 
 #[test]
 fn legacy_extras_are_preserved_in_sidecar() {

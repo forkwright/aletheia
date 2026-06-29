@@ -8,10 +8,9 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
-use aletheia_sessions_migrate::run_migration;
 use rusqlite::Connection;
+
+use crate::{common, run_migration};
 
 #[test]
 fn rejects_wrong_user_version() {

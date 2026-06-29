@@ -28,15 +28,15 @@ use crate::error::{LegacyExtraReadSnafu, Result, SqliteSnafu, UnknownLegacyEnumS
 /// type. When non-default, we route them to a `migration_legacy`
 /// fjall partition so the data is preserved.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LegacyExtras {
+pub(crate) struct LegacyExtras {
     /// `thinking_enabled` flag (0/1). Default: 0.
-    pub thinking_enabled: Option<i64>,
+    pub(crate) thinking_enabled: Option<i64>,
     /// `thinking_budget` token cap. Default: 10000.
-    pub thinking_budget: Option<i64>,
+    pub(crate) thinking_budget: Option<i64>,
     /// `working_state` opaque blob (TEXT JSON). Default: NULL.
-    pub working_state: Option<String>,
+    pub(crate) working_state: Option<String>,
     /// `distillation_priming` opaque blob (TEXT). Default: NULL.
-    pub distillation_priming: Option<String>,
+    pub(crate) distillation_priming: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,7 +48,7 @@ pub(crate) struct LegacySidecarEntry {
 impl LegacyExtras {
     /// Has any non-default value?
     #[must_use]
-    pub fn is_non_default(&self) -> bool {
+    pub(crate) fn is_non_default(&self) -> bool {
         // Defaults: thinking_enabled = 0 (or NULL), thinking_budget = 10000
         // (or NULL), working_state = NULL, distillation_priming = NULL.
         let thinking_flag_non_default = matches!(self.thinking_enabled, Some(v) if v != 0);
@@ -63,11 +63,11 @@ impl LegacyExtras {
 /// One row from the `sessions` table, fully mapped to the new `Session`
 /// type plus any legacy extras the migrator must preserve out-of-band.
 #[derive(Clone)]
-pub struct SessionRow {
+pub(crate) struct SessionRow {
     /// Session record in the new fjall shape.
-    pub session: Session,
+    pub(crate) session: Session,
     /// Legacy columns that don't map to the new shape.
-    pub legacy: LegacyExtras,
+    pub(crate) legacy: LegacyExtras,
 }
 
 fn session_column<T>(row: &Row<'_>, column: &'static str) -> Result<T>
@@ -188,7 +188,7 @@ fn map_session(row: &Row<'_>) -> Result<SessionRow> {
 ///
 /// Returns [`crate::error::Error::Sqlite`] if the SELECT cannot be
 /// prepared, executed, or any row fails to map.
-pub fn read_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
+pub(crate) fn read_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
     let mut stmt = conn
         .prepare("SELECT * FROM sessions ORDER BY created_at ASC")
         .context(SqliteSnafu {
@@ -250,7 +250,7 @@ fn map_message(row: &Row<'_>) -> Result<Message> {
 /// # Errors
 ///
 /// Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
-pub fn read_messages(conn: &Connection) -> Result<Vec<Message>> {
+pub(crate) fn read_messages(conn: &Connection) -> Result<Vec<Message>> {
     let mut stmt = conn
         .prepare("SELECT * FROM messages ORDER BY session_id ASC, seq ASC")
         .context(SqliteSnafu {
@@ -286,7 +286,7 @@ fn map_usage(row: &Row<'_>) -> rusqlite::Result<UsageRecord> {
 /// # Errors
 ///
 /// Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
-pub fn read_usage(conn: &Connection) -> Result<Vec<UsageRecord>> {
+pub(crate) fn read_usage(conn: &Connection) -> Result<Vec<UsageRecord>> {
     let mut stmt = conn
         .prepare("SELECT * FROM usage ORDER BY session_id ASC, turn_seq ASC")
         .context(SqliteSnafu {
@@ -308,21 +308,21 @@ pub fn read_usage(conn: &Connection) -> Result<Vec<UsageRecord>> {
 /// `DistillationRecord` shape inside `fjall_store.rs`; we mirror it byte-
 /// for-byte so deserialisation by the runtime succeeds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DistillationRecord {
+pub(crate) struct DistillationRecord {
     /// Owning session.
-    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: mirrors legacy SQLite schema byte-for-byte; newtype would break serde deserialization
+    pub(crate) session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: mirrors legacy SQLite schema byte-for-byte; newtype would break serde deserialization
     /// Message count before distillation.
-    pub messages_before: i64,
+    pub(crate) messages_before: i64,
     /// Message count after distillation.
-    pub messages_after: i64,
+    pub(crate) messages_after: i64,
     /// Token count before distillation.
-    pub tokens_before: i64,
+    pub(crate) tokens_before: i64,
     /// Token count after distillation.
-    pub tokens_after: i64,
+    pub(crate) tokens_after: i64,
     /// Model that produced the summary.
-    pub model: Option<String>,
+    pub(crate) model: Option<String>,
     /// ISO 8601 creation timestamp.
-    pub created_at: String,
+    pub(crate) created_at: String,
 }
 
 fn map_distillation(row: &Row<'_>) -> rusqlite::Result<DistillationRecord> {
@@ -343,7 +343,7 @@ fn map_distillation(row: &Row<'_>) -> rusqlite::Result<DistillationRecord> {
 /// # Errors
 ///
 /// Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
-pub fn read_distillations(conn: &Connection) -> Result<Vec<DistillationRecord>> {
+pub(crate) fn read_distillations(conn: &Connection) -> Result<Vec<DistillationRecord>> {
     let mut stmt = conn
         .prepare("SELECT * FROM distillations ORDER BY session_id ASC, id ASC")
         .context(SqliteSnafu {
@@ -379,7 +379,7 @@ fn map_note(row: &Row<'_>) -> rusqlite::Result<AgentNote> {
 /// # Errors
 ///
 /// Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
-pub fn read_notes(conn: &Connection) -> Result<Vec<AgentNote>> {
+pub(crate) fn read_notes(conn: &Connection) -> Result<Vec<AgentNote>> {
     let mut stmt = conn
         .prepare("SELECT * FROM agent_notes ORDER BY session_id ASC, id ASC")
         .context(SqliteSnafu {
@@ -416,7 +416,7 @@ fn map_blackboard(row: &Row<'_>) -> rusqlite::Result<BlackboardRow> {
 /// # Errors
 ///
 /// Returns [`crate::error::Error::Sqlite`] on prepare / query / map failure.
-pub fn read_blackboard(conn: &Connection) -> Result<Vec<BlackboardRow>> {
+pub(crate) fn read_blackboard(conn: &Connection) -> Result<Vec<BlackboardRow>> {
     let mut stmt = conn
         .prepare("SELECT key, value, author_nous_id, ttl_seconds, created_at, expires_at FROM blackboard ORDER BY key ASC")
         .context(SqliteSnafu {

@@ -41,7 +41,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use eidos::meta::Stamped as _;
-use fjall::{KeyspaceCreateOptions, Readable, SingleWriterTxKeyspace};
+use fjall::{KeyspaceCreateOptions, SingleWriterTxKeyspace};
 use graphe::types::{AgentNote, BlackboardRow, Message, Session, UsageRecord};
 use koina::fjall::FjallDb;
 use serde::Serialize;
@@ -60,7 +60,7 @@ const SEQ_WIDTH: usize = 20;
 
 /// Partitions the runtime expects (mirrors `fjall_store::PARTITIONS`)
 /// plus the migrator's `migration_legacy` sidecar.
-pub const ALL_PARTITIONS: &[&str] = &[
+pub(crate) const ALL_PARTITIONS: &[&str] = &[
     "sessions",
     "messages",
     "usage",
@@ -124,24 +124,24 @@ fn partition_err<S: Into<String>>(name: S) -> impl FnOnce(fjall::Error) -> crate
 }
 
 /// Helper that owns the fjall handle and named partitions during migration.
-pub struct Destination {
+pub(crate) struct Destination {
     db: FjallDb,
     /// `sessions` partition handle.
-    pub sessions: SingleWriterTxKeyspace,
+    sessions: SingleWriterTxKeyspace,
     /// `messages` partition handle.
-    pub messages: SingleWriterTxKeyspace,
+    messages: SingleWriterTxKeyspace,
     /// `usage` partition handle.
-    pub usage: SingleWriterTxKeyspace,
+    usage: SingleWriterTxKeyspace,
     /// `distillations` partition handle.
-    pub distillations: SingleWriterTxKeyspace,
+    distillations: SingleWriterTxKeyspace,
     /// `notes` partition handle.
-    pub notes: SingleWriterTxKeyspace,
+    notes: SingleWriterTxKeyspace,
     /// `blackboard` partition handle.
-    pub blackboard: SingleWriterTxKeyspace,
+    blackboard: SingleWriterTxKeyspace,
     /// `counters` partition handle.
-    pub counters: SingleWriterTxKeyspace,
+    counters: SingleWriterTxKeyspace,
     /// `migration_legacy` partition handle.
-    pub migration_legacy: SingleWriterTxKeyspace,
+    migration_legacy: SingleWriterTxKeyspace,
 }
 
 impl Destination {
@@ -155,7 +155,7 @@ impl Destination {
     /// is non-empty,
     /// [`crate::error::Error::FjallOpen`] / [`crate::error::Error::FjallPartition`]
     /// when fjall keyspace setup fails.
-    pub fn open(path: &Path) -> Result<Self> {
+    pub(crate) fn open(path: &Path) -> Result<Self> {
         if path.exists() && !is_empty_or_absent(path)? {
             return Err(DestinationNotEmptySnafu {
                 path: path.to_path_buf(),
@@ -222,7 +222,7 @@ impl Destination {
     /// # Errors
     ///
     /// Returns [`crate::error::Error::FjallOp`] if the persist call fails.
-    pub fn persist(&self) -> Result<()> {
+    pub(crate) fn persist(&self) -> Result<()> {
         self.db
             .db
             .persist(fjall::PersistMode::SyncAll)
@@ -592,42 +592,23 @@ impl Destination {
         tx.commit().map_err(fjall_op_err("commit counters"))?;
         Ok(())
     }
-
-    /// Sanity-check: re-read the freshly-written sessions partition and
-    /// count rows that decode as `Session`. Used by the smoke-test path.
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`crate::error::Error::FjallOp`] from the range scan.
-    pub fn count_sessions(&self) -> Result<usize> {
-        let snap = self.db.db.read_tx();
-        let mut count = 0usize;
-        let idx_prefix = b"idx:".as_slice();
-        for guard in snap.range::<&str, _>(&self.sessions, ..) {
-            let (k, v) = guard.into_inner().map_err(fjall_op_err("scan sessions"))?;
-            if !k.starts_with(idx_prefix) && serde_json::from_slice::<Session>(&v).is_ok() {
-                count += 1;
-            }
-        }
-        Ok(count)
-    }
 }
 
 /// Per-table count summary, for the migration report.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct TableCounts {
+pub(crate) struct TableCounts {
     /// Sessions written (including any synthesised orphan-recovery sessions).
-    pub sessions: usize,
+    pub(crate) sessions: usize,
     /// Messages written.
-    pub messages: usize,
+    pub(crate) messages: usize,
     /// Usage records written.
-    pub usage: usize,
+    pub(crate) usage: usize,
     /// Distillations written.
-    pub distillations: usize,
+    pub(crate) distillations: usize,
     /// Agent notes written.
-    pub notes: usize,
+    pub(crate) notes: usize,
     /// Blackboard entries written.
-    pub blackboard: usize,
+    pub(crate) blackboard: usize,
 }
 
 fn json_vec<T: Serialize>(operation: &str, v: &T) -> Result<Vec<u8>> {

@@ -8,11 +8,10 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
-use aletheia_sessions_migrate::run_migration;
 use graphe::store::SessionStore;
 use rusqlite::Connection;
+
+use crate::{common, run_migration};
 
 #[test]
 fn second_run_without_replacement_errors_loudly() {

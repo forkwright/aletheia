@@ -1,6 +1,6 @@
 //! Top-level migration orchestration.
 //!
-//! `run_migration` is the single entry point: open `SQLite` read-only,
+//! `stage_migration` is the orchestration entry point: open `SQLite` read-only,
 //! validate schema, optionally read everything for a dry-run plan, then
 //! open the fjall staging destination, verify it, and publish atomically.
 //!
@@ -45,7 +45,7 @@ use tracing::{info, warn};
 use crate::dest::{Destination, TableCounts, is_empty_or_absent};
 use crate::error::{
     AtomicRenameFailedSnafu, DestinationNotEmptySnafu, IoSnafu, MigrationIncompleteSnafu, Result,
-    SqliteOpenSnafu, SqliteSnafu, VerificationFailedSnafu,
+    SqliteOpenSnafu, SqliteSnafu,
 };
 use crate::schema;
 use crate::source::{self, DistillationRecord, LegacyExtras, SessionRow};
@@ -53,7 +53,7 @@ use crate::verify::{VerificationReport, run_verification};
 
 /// Field-mapping documentation, exported so tests can sanity-check it
 /// stays in sync with the actual mapper.
-pub const FIELD_MAPPING_DOC: &str = include_str!("../FIELD_MAPPING.md");
+pub(crate) const FIELD_MAPPING_DOC: &str = include_str!("../FIELD_MAPPING.md");
 
 /// `SQLite` busy-timeout applied to the source connection so a transient
 /// lock contender does not abort the migration. The migrator is the only
@@ -70,54 +70,48 @@ const BACKUP_SUFFIX: &str = "backup";
 
 const BACKUP_MARKER_MAGIC: &str = "aletheia-sessions-migrate backup\n";
 
-/// Default deterministic per-session sample count retained for the
-/// compatibility portion of verification reports.
-const DEFAULT_VERIFY_SAMPLES: usize = 16;
-
 /// What the migrator plans to do (used by `--dry-run`).
 #[derive(Debug, Clone)]
-pub struct MigrationPlan {
+pub(crate) struct MigrationPlan {
     /// Path to the `SQLite` source DB.
-    pub source: PathBuf,
-    /// Path the migrator would write fjall data to.
-    pub dest: PathBuf,
+    pub(crate) source: PathBuf,
     /// Per-table counts read from the source (excludes synthesised orphans).
-    pub counts: TableCounts,
+    pub(crate) counts: TableCounts,
     /// First `session_id` the migrator would touch, for log line cross-reference.
-    pub sample_session_id: Option<String>,
+    pub(crate) sample_session_id: Option<String>,
     /// Sessions that carry non-default `thinking_*` / `working_state` /
     /// `distillation_priming` columns; preserved in `migration_legacy`.
-    pub legacy_extras_present: usize,
+    pub(crate) legacy_extras_present: usize,
     /// Legacy-only field entries that would be written to `migration_legacy`.
-    pub legacy_sidecar_entries_present: usize,
+    pub(crate) legacy_sidecar_entries_present: usize,
     /// Orphan messages (session row missing) that the migrator would
     /// preserve under synthesised orphan-recovery sessions.
-    pub orphan_messages_detected: usize,
+    pub(crate) orphan_messages_detected: usize,
     /// Number of distinct orphan `session_ids` the migrator would synthesise.
-    pub orphan_sessions_to_synthesise: usize,
+    pub(crate) orphan_sessions_to_synthesise: usize,
 }
 
 /// What the migrator actually did.
 #[derive(Debug, Clone)]
-pub struct MigrationReport {
+pub(crate) struct MigrationReport {
     /// Path to the `SQLite` source DB.
-    pub source: PathBuf,
+    pub(crate) source: PathBuf,
     /// Path the migrator wrote fjall data to.
-    pub dest: PathBuf,
+    pub(crate) dest: PathBuf,
     /// Per-table counts written (sessions includes synthesised orphans).
-    pub counts: TableCounts,
+    pub(crate) counts: TableCounts,
     /// Sessions whose legacy extras were preserved in `migration_legacy`.
-    pub legacy_extras_preserved: usize,
+    pub(crate) legacy_extras_preserved: usize,
     /// Legacy-only field entries preserved in `migration_legacy`.
-    pub legacy_sidecar_entries_preserved: usize,
+    pub(crate) legacy_sidecar_entries_preserved: usize,
     /// Count of orphan messages (whose parent session row was missing in
     /// the legacy DB) that were preserved under synthesised
     /// `orphan-recovery` sessions.
-    pub orphan_messages_recovered: usize,
+    pub(crate) orphan_messages_recovered: usize,
     /// Number of synthesised orphan-recovery sessions.
-    pub orphan_sessions_synthesised: usize,
+    pub(crate) orphan_sessions_synthesised: usize,
     /// Wall time of the migration.
-    pub elapsed_secs: f64,
+    pub(crate) elapsed_secs: f64,
 }
 
 /// All data read from the source `SQLite` DB, ready for the destination
@@ -139,7 +133,7 @@ pub(crate) struct SourceData {
 ///
 /// Dropping the guard without calling [`Self::publish`] removes the staging
 /// directory and restores any backup created for replacement publishes.
-pub struct StagedMigration {
+pub(crate) struct StagedMigration {
     staging_dir: PathBuf,
     final_dir: PathBuf,
     backup: Option<BackupPaths>,
@@ -156,7 +150,7 @@ struct BackupPaths {
 impl StagedMigration {
     /// Read-only access to the migration report for the staged data.
     #[must_use]
-    pub fn report(&self) -> &MigrationReport {
+    pub(crate) fn report(&self) -> &MigrationReport {
         &self.report
     }
 
@@ -165,7 +159,7 @@ impl StagedMigration {
     /// # Errors
     ///
     /// Propagates `SQLite` and fjall scan errors.
-    pub fn verify(&self, source: &Path, samples: usize) -> Result<VerificationReport> {
+    pub(crate) fn verify(&self, source: &Path, samples: usize) -> Result<VerificationReport> {
         run_verification(source, &self.staging_dir, samples)
     }
 
@@ -175,7 +169,7 @@ impl StagedMigration {
     ///
     /// Returns [`crate::error::Error::AtomicRenameFailed`] if the final
     /// atomic rename cannot complete.
-    pub fn publish(mut self) -> Result<MigrationReport> {
+    pub(crate) fn publish(mut self) -> Result<MigrationReport> {
         if let Some(ref backup) = self.backup {
             rotate_destination_to_backup(&self.final_dir, backup)?;
         }
@@ -214,7 +208,7 @@ impl Drop for StagedMigration {
 ///
 /// Returns [`crate::error::Error::SqliteOpen`] when the source path
 /// cannot be opened or the busy-timeout PRAGMA fails to apply.
-pub fn open_source(path: &Path) -> Result<Connection> {
+pub(crate) fn open_source(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -234,7 +228,7 @@ pub fn open_source(path: &Path) -> Result<Connection> {
 /// # Errors
 ///
 /// Propagates schema validation failures and any source read errors.
-pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
+pub(crate) fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
     let conn = open_source(source)?;
     schema::validate(&conn)?;
     let session_rows = source::read_sessions(&conn)?;
@@ -251,7 +245,6 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
     let orphans = detect_orphans(&session_rows, &messages, &usage, &dists, &notes);
     let plan = MigrationPlan {
         source: source.to_path_buf(),
-        dest: PathBuf::new(),
         counts: TableCounts {
             sessions: session_rows.len(),
             messages: messages.len(),
@@ -269,32 +262,6 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
     Ok(plan)
 }
 
-/// Run a full migration. Reads source, validates, writes fjall to a staging
-/// directory, verifies every migrated partition, then atomically renames it
-/// to `dest`.
-///
-/// # Errors
-///
-/// Propagates schema validation failures, source read errors, any fjall
-/// write failure, or an atomic-rename error as the structured error type
-/// defined in [`crate::error`].
-pub fn run_migration(
-    source: &Path,
-    dest: &Path,
-    replace_existing: bool,
-) -> Result<MigrationReport> {
-    let staged = stage_migration(source, dest, replace_existing)?;
-    let verification = staged.verify(source, DEFAULT_VERIFY_SAMPLES)?;
-    if !verification.ok() {
-        return Err(VerificationFailedSnafu {
-            mismatches: verification.mismatches.len(),
-            summary: verification.mismatches.join("; "),
-        }
-        .build());
-    }
-    staged.publish()
-}
-
 /// Stage a full migration without publishing it.
 ///
 /// Returns a [`StagedMigration`] guard that owns the staging directory.
@@ -309,7 +276,7 @@ pub fn run_migration(
 /// run left a staging directory behind and `replace_existing` is false,
 /// [`crate::error::Error::DestinationNotEmpty`] when `dest` is non-empty
 /// and `replace_existing` is false, or any source/fjall error.
-pub fn stage_migration(
+pub(crate) fn stage_migration(
     source: &Path,
     dest: &Path,
     replace_existing: bool,
