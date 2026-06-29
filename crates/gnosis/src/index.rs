@@ -82,6 +82,7 @@ struct IndexVisitor<'a> {
     /// symbols; nested helpers defined inside another function body are
     /// skipped.
     scope_depth: usize,
+    trait_item_visibility: Vec<bool>,
 }
 
 impl<'a> IndexVisitor<'a> {
@@ -93,6 +94,7 @@ impl<'a> IndexVisitor<'a> {
             file_path,
             last_symbol_id: None,
             scope_depth: 0,
+            trait_item_visibility: Vec::new(),
         }
     }
 
@@ -160,6 +162,18 @@ impl<'a> IndexVisitor<'a> {
             self.module_path.clear();
         }
     }
+
+    fn trait_items_are_publicish(&self) -> bool {
+        self.trait_item_visibility.last().copied().unwrap_or(false)
+    }
+}
+
+fn is_publicish_visibility(vis: &syn::Visibility) -> bool {
+    match vis {
+        syn::Visibility::Public(_) => true,
+        syn::Visibility::Restricted(restricted) => restricted.path.is_ident("crate"),
+        syn::Visibility::Inherited => false,
+    }
 }
 
 /// Resolve a slice of path segments to (crate, module, symbol) strings.
@@ -201,7 +215,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     // ── Functions ─────────────────────────────────────────────────────────────
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
-        if self.scope_depth == 0 {
+        if self.scope_depth == 0 && is_publicish_visibility(&node.vis) {
             let name = node.sig.ident.to_string();
             let line = span_line(node.sig.ident.span());
             self.record_symbol(&name, "fn", line);
@@ -212,7 +226,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
-        if self.scope_depth == 0 {
+        if self.scope_depth == 0 && is_publicish_visibility(&node.vis) {
             let name = node.sig.ident.to_string();
             let line = span_line(node.sig.ident.span());
             self.record_symbol(&name, "fn", line);
@@ -223,7 +237,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
-        if self.scope_depth == 0 {
+        if self.scope_depth == 0 && self.trait_items_are_publicish() {
             let name = node.sig.ident.to_string();
             let line = span_line(node.sig.ident.span());
             self.record_symbol(&name, "fn", line);
@@ -236,45 +250,58 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     // ── Structs ───────────────────────────────────────────────────────────────
 
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
-        let name = node.ident.to_string();
-        let line = span_line(node.ident.span());
-        self.record_symbol(&name, "struct", line);
+        if is_publicish_visibility(&node.vis) {
+            let name = node.ident.to_string();
+            let line = span_line(node.ident.span());
+            self.record_symbol(&name, "struct", line);
+        }
         syn::visit::visit_item_struct(self, node);
     }
 
     // ── Enums ─────────────────────────────────────────────────────────────────
 
     fn visit_item_enum(&mut self, node: &'ast syn::ItemEnum) {
-        let name = node.ident.to_string();
-        let line = span_line(node.ident.span());
-        self.record_symbol(&name, "enum", line);
+        if is_publicish_visibility(&node.vis) {
+            let name = node.ident.to_string();
+            let line = span_line(node.ident.span());
+            self.record_symbol(&name, "enum", line);
+        }
         syn::visit::visit_item_enum(self, node);
     }
 
     // ── Traits ────────────────────────────────────────────────────────────────
 
     fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
-        let name = node.ident.to_string();
-        let line = span_line(node.ident.span());
-        self.record_symbol(&name, "trait", line);
+        let is_publicish = is_publicish_visibility(&node.vis);
+        if is_publicish {
+            let name = node.ident.to_string();
+            let line = span_line(node.ident.span());
+            self.record_symbol(&name, "trait", line);
+        }
+        self.trait_item_visibility.push(is_publicish);
         syn::visit::visit_item_trait(self, node);
+        self.trait_item_visibility.pop();
     }
 
     // ── Type aliases ──────────────────────────────────────────────────────────
 
     fn visit_item_type(&mut self, node: &'ast syn::ItemType) {
-        let name = node.ident.to_string();
-        let line = span_line(node.ident.span());
-        self.record_symbol(&name, "type", line);
+        if is_publicish_visibility(&node.vis) {
+            let name = node.ident.to_string();
+            let line = span_line(node.ident.span());
+            self.record_symbol(&name, "type", line);
+        }
         syn::visit::visit_item_type(self, node);
     }
 
     // ── Consts ────────────────────────────────────────────────────────────────
 
     fn visit_item_const(&mut self, node: &'ast syn::ItemConst) {
-        let name = node.ident.to_string();
-        let line = span_line(node.ident.span());
-        self.record_symbol(&name, "const", line);
+        if is_publicish_visibility(&node.vis) {
+            let name = node.ident.to_string();
+            let line = span_line(node.ident.span());
+            self.record_symbol(&name, "const", line);
+        }
         syn::visit::visit_item_const(self, node);
     }
 
@@ -302,7 +329,7 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
     // ── pub use re-exports ────────────────────────────────────────────────────
 
     fn visit_item_use(&mut self, node: &'ast syn::ItemUse) {
-        if matches!(node.vis, syn::Visibility::Public(_)) {
+        if is_publicish_visibility(&node.vis) {
             extract_reexports(&node.tree, self, &mut Vec::new());
         }
         syn::visit::visit_item_use(self, node);
