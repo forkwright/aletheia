@@ -61,6 +61,8 @@ mod entity;
 #[cfg(feature = "mneme-engine")]
 mod entity_dedup;
 #[cfg(feature = "mneme-engine")]
+mod entity_dedup_support;
+#[cfg(feature = "mneme-engine")]
 mod facts;
 #[cfg(feature = "mneme-engine")]
 pub(crate) mod marshal;
@@ -68,6 +70,10 @@ pub(crate) mod marshal;
 mod migration;
 #[cfg(feature = "mneme-engine")]
 mod search;
+#[cfg(feature = "mneme-engine")]
+mod search_recall;
+#[cfg(feature = "mneme-engine")]
+mod search_tiered;
 #[cfg(feature = "mneme-engine")]
 mod skills;
 

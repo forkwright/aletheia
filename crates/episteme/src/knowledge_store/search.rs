@@ -1,12 +1,12 @@
 use snafu::ResultExt;
 
 use super::marshal::{
-    build_hybrid_query, build_scoped_hybrid_query, embedding_to_params, extract_str,
-    rows_to_hybrid_results, rows_to_recall_results, sanitize_fts_query,
+    build_hybrid_query, build_scoped_hybrid_query, embedding_to_params, rows_to_hybrid_results,
+    rows_to_recall_results, sanitize_fts_query,
 };
 use tracing::instrument;
 
-use super::{HybridQuery, HybridResult, KnowledgeStore, queries, scoped_visibility_rules};
+use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
 
 #[cfg(feature = "mneme-engine")]
 fn truncate_recall_results(results: &mut Vec<crate::knowledge::RecallResult>, k: i64) {
@@ -107,7 +107,7 @@ impl KnowledgeStore {
         results.truncate(k as usize);
 
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
-        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        let graph_ctx = self.load_graph_context_for_recall();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
         // WHY (#5559): extract nous_id from the seed results so cluster expansion
@@ -164,26 +164,40 @@ impl KnowledgeStore {
             DataValue::Str(requester_nous_id.into()),
         );
 
-        let script = format!(
-            r"
-            {visible}
+        let script = r"
             ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
-                ~embeddings:semantic_idx {{id: embedding_id, content: _embedding_content, source_type, source_id |
+                ~embeddings:semantic_idx {id: embedding_id, content: _embedding_content, source_type, source_id |
                     query: $query_vec, k: $k, ef: $ef, bind_distance: dist}},
                 source_type == 'fact',
-                visible_fact[source_id],
-                *facts{{id: source_id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity}},
+                *facts{id: source_id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
+                nous_id == $requester_nous_id,
+                is_forgotten == false,
+                is_null(superseded_by),
+                id = source_id
+            ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
+                ~embeddings:semantic_idx {id: embedding_id, content: _embedding_content, source_type, source_id |
+                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist}},
+                source_type == 'fact',
+                *facts{id: source_id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
+                visibility == 'shared',
+                is_forgotten == false,
+                is_null(superseded_by),
+                id = source_id
+            ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
+                ~embeddings:semantic_idx {id: embedding_id, content: _embedding_content, source_type, source_id |
+                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist}},
+                source_type == 'fact',
+                *facts{id: source_id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
+                visibility == 'published',
                 is_forgotten == false,
                 is_null(superseded_by),
                 id = source_id
             :order dist
             :limit $k
-            ",
-            visible = scoped_visibility_rules()
-        );
+            ";
         let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
-        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        let graph_ctx = self.load_graph_context_for_recall();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
         self.expand_recall_by_cluster_scoped(&mut results, k, requester_nous_id, Some(&graph_ctx))?;
@@ -263,7 +277,7 @@ impl KnowledgeStore {
         let rows = self.run_read(queries::BM25_RECALL, params)?;
         let mut results = rows_to_recall_results(rows)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
-        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        let graph_ctx = self.load_graph_context_for_recall();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
         // WHY (#5559): extract nous_id from the seed results so cluster expansion
@@ -306,15 +320,29 @@ impl KnowledgeStore {
             DataValue::Str(requester_nous_id.into()),
         );
 
-        let script = format!(
-            r"
-            {visible}
-            bm25[id, score] := ~facts:content_fts{{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: score}}
-
+        let script = r"
             ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
-                bm25[id, bm25_score],
-                visible_fact[id],
-                *facts{{id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity}},
+                ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: bm25_score},
+                *facts{id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
+                nous_id == $requester_nous_id,
+                is_forgotten == false,
+                is_null(superseded_by),
+                source_type = 'fact',
+                source_id = id,
+                dist = 1.0 / bm25_score
+            ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
+                ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: bm25_score},
+                *facts{id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
+                visibility == 'shared',
+                is_forgotten == false,
+                is_null(superseded_by),
+                source_type = 'fact',
+                source_id = id,
+                dist = 1.0 / bm25_score
+            ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
+                ~facts:content_fts{id | query: $query_text, k: $k, score_kind: 'bm25', bind_score: bm25_score},
+                *facts{id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
+                visibility == 'published',
                 is_forgotten == false,
                 is_null(superseded_by),
                 source_type = 'fact',
@@ -322,499 +350,15 @@ impl KnowledgeStore {
                 dist = 1.0 / bm25_score
             :order dist
             :limit $k
-            ",
-            visible = scoped_visibility_rules()
-        );
+            ";
         let mut results = rows_to_recall_results(self.run_read(&script, params)?)?;
         // WHY (#5663): load GraphContext once and share across enrichment + cluster expansion.
-        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        let graph_ctx = self.load_graph_context_for_recall();
         self.enrich_recall_results(&mut results, &graph_ctx);
         self.enrich_source_counts(&mut results);
         self.expand_recall_by_cluster_scoped(&mut results, k, requester_nous_id, Some(&graph_ctx))?;
         truncate_recall_results(&mut results, k);
         Ok(results)
-    }
-
-    /// Enrich recall results with graph importance scores from cached `graph_scores`.
-    ///
-    /// For each fact result, looks up associated entities in `fact_entities`, then
-    /// takes the maximum `PageRank` among those entities. Non-fact results are left
-    /// unchanged (`graph_importance` stays 0.0).
-    ///
-    /// WHY (#5663): accepts a pre-loaded `GraphContext` so callers can load it once
-    /// and share it across `enrich_recall_results` + `expand_recall_by_cluster`,
-    /// eliminating redundant full-table scans of `graph_scores` per search call.
-    fn enrich_recall_results(
-        &self,
-        results: &mut [crate::knowledge::RecallResult],
-        graph_ctx: &crate::graph_intelligence::GraphContext,
-    ) {
-        let fact_results: Vec<&crate::knowledge::RecallResult> =
-            results.iter().filter(|r| r.source_type == "fact").collect();
-        if fact_results.is_empty() {
-            return;
-        }
-
-        let pageranks = &graph_ctx.pageranks;
-        if pageranks.is_empty() {
-            return;
-        }
-
-        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(entity_rows) = self.run_read(script, params) else {
-                continue;
-            };
-            let max_pr = entity_rows
-                .rows
-                .iter()
-                .filter_map(|row| row.first().and_then(|v| v.get_str()))
-                .filter_map(|entity_id| pageranks.get(entity_id).copied())
-                .fold(0.0_f64, f64::max);
-            result.graph_importance = max_pr;
-        }
-    }
-
-    /// Populate `source_count` on fact results from the `fact_multiplicity`
-    /// side-index so the recall pipeline can score the convergence factor (#4415).
-    ///
-    /// Non-consolidated / legacy facts have no multiplicity record and keep
-    /// `source_count` 0 (convergence scores 0 for them). NOTE: this issues one
-    /// indexed point-query per fact result; the convergence recall weight
-    /// defaults to 0 so the score — and thus ranking — is unchanged when the
-    /// feature is off. A batched side-index load is a future optimisation.
-    fn enrich_source_counts(&self, results: &mut [crate::knowledge::RecallResult]) {
-        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let Ok(fact_id) = crate::id::FactId::new(&result.source_id) else {
-                continue;
-            };
-            if let Ok(Some(multiplicity)) = self.get_fact_multiplicity(&fact_id) {
-                result.source_count = multiplicity.source_count;
-            }
-        }
-    }
-
-    /// Hydrate recall results with `scope`, `project_id`, `visibility`, and `sensitivity`.
-    ///
-    /// Semantic search returns from the `embeddings` relation, which does not
-    /// carry these fields. This enrichment looks them up from `facts` for
-    /// `source_type == "fact"` results so downstream quota and visibility
-    /// filters see accurate values.
-    fn hydrate_recall_scope_visibility(&self, results: &mut [crate::knowledge::RecallResult]) {
-        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let script = r"
-                ?[scope, project_id, visibility, sensitivity] :=
-                    *facts{id: $fid, scope, project_id, visibility, sensitivity}
-            ";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(rows) = self.run_read(script, params) else {
-                continue;
-            };
-            if let Some(row) = rows.rows.first() {
-                if let Some(scope_str) = row.first().and_then(|v| v.get_str())
-                    && !scope_str.is_empty()
-                {
-                    match scope_str.parse::<crate::knowledge::MemoryScope>() {
-                        Ok(scope) => result.scope = Some(scope),
-                        Err(error) => tracing::warn!(
-                            %error,
-                            fact_id = %result.source_id,
-                            scope = scope_str,
-                            "failed to parse recall result memory scope"
-                        ),
-                    }
-                }
-                if let Some(project_id) = row
-                    .get(1)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok())
-                {
-                    result.project_id = Some(project_id);
-                }
-                if let Some(vis_str) = row.get(2).and_then(|v| v.get_str())
-                    && !vis_str.is_empty()
-                {
-                    // kanon:ignore RUST/no-result-unwrap-or-default — Visibility::default() IS the documented
-                    // fallback for unknown/legacy values from storage; clippy::manual_unwrap_or rejects an
-                    // explicit Ok/Err match here.
-                    result.visibility = vis_str
-                        .parse::<crate::knowledge::Visibility>()
-                        .unwrap_or_default();
-                }
-                if let Some(sensitivity_str) = row.get(3).and_then(|v| v.get_str())
-                    && !sensitivity_str.is_empty()
-                {
-                    if let Ok(s) = sensitivity_str.parse::<crate::knowledge::FactSensitivity>() {
-                        result.sensitivity = s;
-                    } else {
-                        tracing::warn!(
-                            sensitivity = sensitivity_str,
-                            fact_id = %result.source_id,
-                            "hydrated fact has undecodable sensitivity; leaving as-is to avoid widening to Public"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    /// Expand recall results with cluster-mate facts.
-    ///
-    /// Takes the top results, finds their Louvain clusters, and queries for
-    /// additional active facts linked to entities in those clusters. Adds
-    /// new results with a neutral distance of 1.0, deduplicating by `source_id`.
-    /// Limits expansion to at most `k` additional results.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "cluster expansion keeps query, hydration, and append logic together"
-    )]
-    fn expand_recall_by_cluster(
-        &self,
-        results: &mut Vec<crate::knowledge::RecallResult>,
-        k: i64,
-        requester_nous_id: Option<&str>,
-        preloaded_ctx: Option<&crate::graph_intelligence::GraphContext>,
-    ) -> crate::error::Result<()> {
-        if results.is_empty() {
-            return Ok(());
-        }
-
-        let owned_ctx: crate::graph_intelligence::GraphContext;
-        let ctx = if let Some(c) = preloaded_ctx {
-            c
-        } else {
-            owned_ctx = self.load_graph_context()?;
-            &owned_ctx
-        };
-        if ctx.clusters.is_empty() {
-            return Ok(());
-        }
-
-        // Collect clusters from top results.
-        let top_n = results.len().min(5);
-        let mut context_clusters = std::collections::HashSet::new();
-        for result in results.iter().take(top_n) {
-            if result.source_type != "fact" {
-                continue;
-            }
-            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(entity_rows) = self.run_read(script, params) else {
-                continue;
-            };
-            for row in &entity_rows.rows {
-                if let Some(cid) = row
-                    .first()
-                    .and_then(|v| v.get_str())
-                    .and_then(|entity_id| ctx.clusters.get(entity_id))
-                {
-                    context_clusters.insert(*cid);
-                }
-            }
-        }
-
-        if context_clusters.is_empty() {
-            return Ok(());
-        }
-
-        let existing_ids: std::collections::HashSet<String> =
-            results.iter().map(|r| r.source_id.clone()).collect();
-        let mut added = 0;
-        let limit = usize::try_from(k.max(1)).unwrap_or(1);
-
-        for cluster_id in context_clusters {
-            // WHY (#5559): filter by nous_id so cross-nous facts cannot be injected
-            // via cluster expansion in a shared cohort store.
-            let nous_filter = if requester_nous_id.is_some() {
-                ", nous_id == $nous_id"
-            } else {
-                ""
-            };
-            let script = format!(
-                r"
-                ?[fact_id, content, nous_id, sensitivity, scope, project_id, visibility] :=
-                    *graph_scores{{entity_id, score_type: 'cluster', cluster_id: $cid}},
-                    *fact_entities{{fact_id: fid, entity_id}},
-                    *facts{{id: fid, content, nous_id, is_forgotten, superseded_by,
-                           sensitivity, scope, project_id, visibility}},
-                    is_forgotten == false,
-                    is_null(superseded_by){nous_filter},
-                    fact_id = fid
-                :limit $limit
-            "
-            );
-            let mut params = std::collections::BTreeMap::new();
-            params.insert("cid".to_owned(), crate::engine::DataValue::from(cluster_id));
-            params.insert(
-                "limit".to_owned(),
-                crate::engine::DataValue::from(i64::try_from(limit).unwrap_or(i64::MAX)),
-            );
-            if let Some(nid) = requester_nous_id {
-                params.insert(
-                    "nous_id".to_owned(),
-                    crate::engine::DataValue::Str(nid.into()),
-                );
-            }
-            let Ok(rows) = self.run_read(&script, params) else {
-                continue;
-            };
-            for row in &rows.rows {
-                let Some(fact_id) = row.first().and_then(|v| v.get_str()) else {
-                    continue;
-                };
-                if existing_ids.contains(fact_id) {
-                    continue;
-                }
-                let content = row
-                    .get(1)
-                    .and_then(|v| v.get_str())
-                    .unwrap_or("")
-                    .to_owned();
-                let nous_id = row
-                    .get(2)
-                    .and_then(|v| v.get_str())
-                    .unwrap_or("")
-                    .to_owned();
-                let sensitivity_str = row
-                    .get(3)
-                    .and_then(|v| v.get_str())
-                    .filter(|s| !s.is_empty());
-                let sensitivity = if let Some(s) = sensitivity_str {
-                    if let Ok(v) = s.parse::<crate::knowledge::FactSensitivity>() {
-                        v
-                    } else {
-                        tracing::warn!(
-                            sensitivity = s,
-                            fact_id = ?row.first().and_then(|v| v.get_str()),
-                            "cluster-expanded fact has undecodable sensitivity; skipping to avoid widening to Public"
-                        );
-                        continue;
-                    }
-                } else {
-                    crate::knowledge::FactSensitivity::default()
-                };
-                let scope = row
-                    .get(4)
-                    .and_then(|v| v.get_str())
-                    .filter(|s| !s.is_empty())
-                    .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
-                let project_id = row
-                    .get(5)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
-                let visibility = row
-                    .get(6)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| s.parse::<crate::knowledge::Visibility>().ok())
-                    .unwrap_or_default();
-                results.push(crate::knowledge::RecallResult {
-                    content,
-                    distance: 1.0,
-                    source_type: "fact".to_owned(),
-                    source_id: fact_id.to_owned(),
-                    nous_id,
-                    sensitivity,
-                    graph_importance: 0.0,
-                    scope,
-                    project_id,
-                    visibility,
-                    source_count: 0,
-                });
-                added += 1;
-                if added >= limit {
-                    return Ok(());
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    #[expect(
-        clippy::too_many_lines,
-        reason = "scoped cluster expansion mirrors the unscoped query, hydration, and append flow"
-    )]
-    fn expand_recall_by_cluster_scoped(
-        &self,
-        results: &mut Vec<crate::knowledge::RecallResult>,
-        k: i64,
-        requester_nous_id: &str,
-        preloaded_ctx: Option<&crate::graph_intelligence::GraphContext>,
-    ) -> crate::error::Result<()> {
-        if results.is_empty() {
-            return Ok(());
-        }
-
-        let owned_ctx: crate::graph_intelligence::GraphContext;
-        let ctx = if let Some(c) = preloaded_ctx {
-            c
-        } else {
-            owned_ctx = self.load_graph_context()?;
-            &owned_ctx
-        };
-        if ctx.clusters.is_empty() {
-            return Ok(());
-        }
-
-        let top_n = results.len().min(5);
-        let mut context_clusters = std::collections::HashSet::new();
-        for result in results.iter().take(top_n) {
-            if result.source_type != "fact" {
-                continue;
-            }
-            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(entity_rows) = self.run_read(script, params) else {
-                continue;
-            };
-            for row in &entity_rows.rows {
-                if let Some(cid) = row
-                    .first()
-                    .and_then(|v| v.get_str())
-                    .and_then(|entity_id| ctx.clusters.get(entity_id))
-                {
-                    context_clusters.insert(*cid);
-                }
-            }
-        }
-
-        if context_clusters.is_empty() {
-            return Ok(());
-        }
-
-        let existing_ids: std::collections::HashSet<String> =
-            results.iter().map(|r| r.source_id.clone()).collect();
-        let mut added = 0;
-        let limit = usize::try_from(k.max(1)).unwrap_or(1);
-
-        for cluster_id in context_clusters {
-            let script = format!(
-                r"
-                {visible}
-                ?[fact_id, content, nous_id, sensitivity, scope, project_id, visibility] :=
-                    *graph_scores{{entity_id, score_type: 'cluster', cluster_id: $cid}},
-                    *fact_entities{{fact_id: fid, entity_id}},
-                    visible_fact[fid],
-                    *facts{{id: fid, content, nous_id, is_forgotten, superseded_by,
-                           sensitivity, scope, project_id, visibility}},
-                    is_forgotten == false,
-                    is_null(superseded_by),
-                    fact_id = fid
-                :limit $limit
-                ",
-                visible = scoped_visibility_rules()
-            );
-            let mut params = std::collections::BTreeMap::new();
-            params.insert("cid".to_owned(), crate::engine::DataValue::from(cluster_id));
-            params.insert(
-                "limit".to_owned(),
-                crate::engine::DataValue::from(i64::try_from(limit).unwrap_or(i64::MAX)),
-            );
-            params.insert(
-                "requester_nous_id".to_owned(),
-                crate::engine::DataValue::Str(requester_nous_id.into()),
-            );
-            let Ok(rows) = self.run_read(&script, params) else {
-                continue;
-            };
-            for row in &rows.rows {
-                let Some(fact_id) = row.first().and_then(|v| v.get_str()) else {
-                    continue;
-                };
-                if existing_ids.contains(fact_id) {
-                    continue;
-                }
-                let content = row
-                    .get(1)
-                    .and_then(|v| v.get_str())
-                    .unwrap_or("")
-                    .to_owned();
-                let nous_id = row
-                    .get(2)
-                    .and_then(|v| v.get_str())
-                    .unwrap_or("")
-                    .to_owned();
-                let sensitivity_str = row
-                    .get(3)
-                    .and_then(|v| v.get_str())
-                    .filter(|s| !s.is_empty());
-                let sensitivity = if let Some(s) = sensitivity_str {
-                    if let Ok(v) = s.parse::<crate::knowledge::FactSensitivity>() {
-                        v
-                    } else {
-                        tracing::warn!(
-                            sensitivity = s,
-                            fact_id = ?row.first().and_then(|v| v.get_str()),
-                            "cluster-expanded fact has undecodable sensitivity; skipping to avoid widening to Public"
-                        );
-                        continue;
-                    }
-                } else {
-                    crate::knowledge::FactSensitivity::default()
-                };
-                let scope = row
-                    .get(4)
-                    .and_then(|v| v.get_str())
-                    .filter(|s| !s.is_empty())
-                    .and_then(|s| s.parse::<crate::knowledge::MemoryScope>().ok());
-                let project_id = row
-                    .get(5)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok());
-                let visibility = row
-                    .get(6)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| s.parse::<crate::knowledge::Visibility>().ok())
-                    .unwrap_or_default();
-                results.push(crate::knowledge::RecallResult {
-                    content,
-                    distance: 1.0,
-                    source_type: "fact".to_owned(),
-                    source_id: fact_id.to_owned(),
-                    nous_id,
-                    sensitivity,
-                    graph_importance: 0.0,
-                    scope,
-                    project_id,
-                    visibility,
-                    source_count: 0,
-                });
-                added += 1;
-                if added >= limit {
-                    return Ok(());
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn increment_recall_access(&self, results: &[crate::knowledge::RecallResult]) {
-        let source_ids: Vec<crate::id::FactId> = results
-            .iter()
-            .filter(|r| r.source_type == "fact")
-            .filter_map(|r| crate::id::FactId::new(&r.source_id).ok())
-            .collect();
-        if let Err(e) = self.increment_access(&source_ids) {
-            tracing::warn!(error = %e, "failed to increment access counts");
-        }
     }
 
     /// Hybrid BM25 + HNSW vector + graph retrieval fused via `ReciprocalRankFusion`.
@@ -1031,506 +575,5 @@ impl KnowledgeStore {
         }
 
         Ok(rrf_merge(&results_per_query, 60.0))
-    }
-
-    /// Tiered search: fast path -> enhanced -> graph-enhanced.
-    ///
-    /// Escalates through tiers until sufficient results are found.
-    /// Requires a `QueryRewriter` and `RewriteProvider` for tier 2+.
-    ///
-    /// # Complexity
-    ///
-    /// Best case O(log n * ef) for fast path. Worst case adds query rewriting
-    /// O(RW) plus enhanced search O(V * `search_hybrid`) plus graph expansion O(E).
-    pub fn search_tiered(
-        &self,
-        base_query: &HybridQuery,
-        rewriter: &crate::query_rewrite::QueryRewriter,
-        provider: &dyn crate::query_rewrite::RewriteProvider,
-        context: Option<&str>,
-        config: &crate::query_rewrite::TieredSearchConfig,
-    ) -> crate::error::Result<crate::query_rewrite::TieredSearchResult<HybridResult>> {
-        let start = std::time::Instant::now();
-
-        let fast_results = self.search_hybrid(base_query)?;
-        let sufficient = fast_results.len() >= config.fast_path_min_results
-            && fast_results
-                .iter()
-                .any(|r| r.rrf_score >= config.fast_path_score_threshold);
-
-        if sufficient {
-            return Ok(crate::query_rewrite::TieredSearchResult {
-                tier: crate::query_rewrite::SearchTier::Fast,
-                results: fast_results,
-                query_variants: None,
-                total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-            });
-        }
-
-        let rewrite_result = rewriter
-            .rewrite(&base_query.text, context, provider)
-            .map_err(|e| {
-                crate::error::QueryRewriteSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-        let enhanced_results = self.search_enhanced(base_query, &rewrite_result.variants)?;
-        let sufficient = enhanced_results.len() >= config.enhanced_min_results
-            && enhanced_results
-                .iter()
-                .any(|r| r.rrf_score >= config.enhanced_score_threshold);
-
-        if sufficient {
-            return Ok(crate::query_rewrite::TieredSearchResult {
-                tier: crate::query_rewrite::SearchTier::Enhanced,
-                results: enhanced_results,
-                query_variants: Some(rewrite_result.variants),
-                total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-            });
-        }
-
-        let graph_results = self.expand_via_graph(&enhanced_results, config);
-        let final_results = if graph_results.is_empty() {
-            enhanced_results
-        } else {
-            use crate::query_rewrite::rrf_merge;
-            rrf_merge(&[enhanced_results, graph_results], 60.0)
-        };
-
-        Ok(crate::query_rewrite::TieredSearchResult {
-            tier: crate::query_rewrite::SearchTier::GraphEnhanced,
-            results: final_results,
-            query_variants: Some(rewrite_result.variants),
-            total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-        })
-    }
-
-    /// Tiered search scoped to facts visible to `requester_nous_id`.
-    pub fn search_tiered_scoped(
-        &self,
-        base_query: &HybridQuery,
-        rewriter: &crate::query_rewrite::QueryRewriter,
-        provider: &dyn crate::query_rewrite::RewriteProvider,
-        context: Option<&str>,
-        config: &crate::query_rewrite::TieredSearchConfig,
-        requester_nous_id: &str,
-    ) -> crate::error::Result<crate::query_rewrite::TieredSearchResult<HybridResult>> {
-        let start = std::time::Instant::now();
-
-        let fast_results = self.search_hybrid_scoped(base_query, requester_nous_id)?;
-        let sufficient = fast_results.len() >= config.fast_path_min_results
-            && fast_results
-                .iter()
-                .any(|r| r.rrf_score >= config.fast_path_score_threshold);
-
-        if sufficient {
-            return Ok(crate::query_rewrite::TieredSearchResult {
-                tier: crate::query_rewrite::SearchTier::Fast,
-                results: fast_results,
-                query_variants: None,
-                total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-            });
-        }
-
-        let rewrite_result = rewriter
-            .rewrite(&base_query.text, context, provider)
-            .map_err(|e| {
-                crate::error::QueryRewriteSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-        let enhanced_results =
-            self.search_enhanced_scoped(base_query, &rewrite_result.variants, requester_nous_id)?;
-        let sufficient = enhanced_results.len() >= config.enhanced_min_results
-            && enhanced_results
-                .iter()
-                .any(|r| r.rrf_score >= config.enhanced_score_threshold);
-
-        if sufficient {
-            return Ok(crate::query_rewrite::TieredSearchResult {
-                tier: crate::query_rewrite::SearchTier::Enhanced,
-                results: enhanced_results,
-                query_variants: Some(rewrite_result.variants),
-                total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-            });
-        }
-
-        let graph_results =
-            self.expand_via_graph_scoped(&enhanced_results, config, requester_nous_id);
-        let final_results = if graph_results.is_empty() {
-            enhanced_results
-        } else {
-            use crate::query_rewrite::rrf_merge;
-            rrf_merge(&[enhanced_results, graph_results], 60.0)
-        };
-
-        Ok(crate::query_rewrite::TieredSearchResult {
-            tier: crate::query_rewrite::SearchTier::GraphEnhanced,
-            results: final_results,
-            query_variants: Some(rewrite_result.variants),
-            total_latency_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
-        })
-    }
-
-    /// Tiered search with hydrated recall rows for the production recall pipeline.
-    ///
-    /// This is the bridge from the low-level tiered retrieval orchestration
-    /// (which operates on IDs and RRF scores) to `RecallResult` records that
-    /// nous can score, filter, and inject.
-    pub fn search_tiered_for_recall(
-        &self,
-        base_query: &HybridQuery,
-        rewriter: &crate::query_rewrite::QueryRewriter,
-        provider: &dyn crate::query_rewrite::RewriteProvider,
-        context: Option<&str>,
-        config: &crate::query_rewrite::TieredSearchConfig,
-    ) -> crate::error::Result<
-        crate::query_rewrite::TieredSearchResult<crate::knowledge::RecallResult>,
-    > {
-        let tiered = self.search_tiered(base_query, rewriter, provider, context, config)?;
-        let mut recalled = Vec::with_capacity(tiered.results.len());
-        for result in &tiered.results {
-            for fact in self.read_facts_by_id(result.id.as_str())? {
-                if fact.lifecycle.is_forgotten || fact.lifecycle.superseded_by.is_some() {
-                    continue;
-                }
-                recalled.push(crate::knowledge::RecallResult {
-                    content: fact.content,
-                    distance: (1.0 - result.rrf_score).max(0.0),
-                    source_type: "fact".to_owned(),
-                    source_id: fact.id.as_str().to_owned(),
-                    nous_id: fact.nous_id,
-                    sensitivity: fact.sensitivity,
-                    graph_importance: 0.0,
-                    scope: fact.scope,
-                    project_id: fact.project_id,
-                    visibility: fact.visibility,
-                    source_count: self
-                        .get_fact_multiplicity(&fact.id)
-                        .ok()
-                        .flatten()
-                        .map_or(0, |m| m.source_count),
-                });
-                break;
-            }
-        }
-
-        Ok(crate::query_rewrite::TieredSearchResult {
-            tier: tiered.tier,
-            results: recalled,
-            query_variants: tiered.query_variants,
-            total_latency_ms: tiered.total_latency_ms,
-        })
-    }
-
-    /// Tiered search with hydrated recall rows, scoped before ranking and graph expansion.
-    pub fn search_tiered_for_recall_scoped(
-        &self,
-        base_query: &HybridQuery,
-        rewriter: &crate::query_rewrite::QueryRewriter,
-        provider: &dyn crate::query_rewrite::RewriteProvider,
-        context: Option<&str>,
-        config: &crate::query_rewrite::TieredSearchConfig,
-        requester_nous_id: &str,
-    ) -> crate::error::Result<
-        crate::query_rewrite::TieredSearchResult<crate::knowledge::RecallResult>,
-    > {
-        let tiered = self.search_tiered_scoped(
-            base_query,
-            rewriter,
-            provider,
-            context,
-            config,
-            requester_nous_id,
-        )?;
-        let mut recalled = Vec::with_capacity(tiered.results.len());
-        for result in &tiered.results {
-            for fact in self.read_visible_facts_by_id(result.id.as_str(), requester_nous_id)? {
-                if fact.lifecycle.is_forgotten || fact.lifecycle.superseded_by.is_some() {
-                    continue;
-                }
-                recalled.push(crate::knowledge::RecallResult {
-                    content: fact.content,
-                    distance: (1.0 - result.rrf_score).max(0.0),
-                    source_type: "fact".to_owned(),
-                    source_id: fact.id.as_str().to_owned(),
-                    nous_id: fact.nous_id,
-                    sensitivity: fact.sensitivity,
-                    graph_importance: 0.0,
-                    scope: fact.scope,
-                    project_id: fact.project_id,
-                    visibility: fact.visibility,
-                    source_count: self
-                        .get_fact_multiplicity(&fact.id)
-                        .ok()
-                        .flatten()
-                        .map_or(0, |m| m.source_count),
-                });
-                break;
-            }
-        }
-
-        Ok(crate::query_rewrite::TieredSearchResult {
-            tier: tiered.tier,
-            results: recalled,
-            query_variants: tiered.query_variants,
-            total_latency_ms: tiered.total_latency_ms,
-        })
-    }
-
-    /// Expand search results via entity graph neighborhood.
-    ///
-    /// Takes the top entity IDs from existing results, queries their neighborhoods,
-    /// and returns related facts as additional results.
-    ///
-    /// # Complexity
-    ///
-    /// O(K * N) where K is top results expanded, N is average neighborhood size.
-    /// Each entity neighborhood query is O(log E) where E is entity count.
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "rank indices fit in f64 mantissa"
-    )]
-    fn expand_via_graph(
-        &self,
-        existing: &[HybridResult],
-        config: &crate::query_rewrite::TieredSearchConfig,
-    ) -> Vec<HybridResult> {
-        let fact_ids: Vec<&str> = existing
-            .iter()
-            .take(config.graph_expansion_limit)
-            .map(|r| r.id.as_str())
-            .collect();
-
-        if fact_ids.is_empty() {
-            return vec![];
-        }
-
-        let mut expanded_ids = std::collections::HashSet::new();
-        let existing_ids: std::collections::HashSet<&str> =
-            existing.iter().map(|r| r.id.as_str()).collect();
-
-        for fact_id in &fact_ids {
-            // WHY: Query fact_entities by fact_id; FactId and EntityId are distinct types.
-            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
-            let mut fparams = std::collections::BTreeMap::new();
-            fparams.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str((*fact_id).into()),
-            );
-            let Ok(entity_rows) = self.run_read(script, fparams) else {
-                continue;
-            };
-            for entity_row in &entity_rows.rows {
-                let Some(entity_id_str) = entity_row.first().and_then(|v| v.get_str()) else {
-                    continue;
-                };
-                let Ok(entity_id) = crate::id::EntityId::new(entity_id_str) else {
-                    continue;
-                };
-                if let Ok(neighborhood) = self.entity_neighborhood(&entity_id) {
-                    for row in &neighborhood.rows {
-                        if let Some(neighbor_id) = row.first().and_then(|v| v.get_str())
-                            && !existing_ids.contains(neighbor_id)
-                        {
-                            expanded_ids.insert(neighbor_id.to_owned());
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut graph_results = Vec::new();
-        for (rank, id) in expanded_ids.iter().enumerate() {
-            let Ok(fact_id) = crate::id::FactId::new(id.as_str()) else {
-                continue;
-            };
-            graph_results.push(HybridResult {
-                id: fact_id,
-                rrf_score: 1.0 / (60.0 + rank as f64 + 1.0), // SAFETY: rank fits f64
-                bm25_rank: -1,
-                vec_rank: -1,
-                graph_rank: i64::try_from(rank + 1).unwrap_or(i64::MAX),
-            });
-        }
-
-        graph_results
-    }
-
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "rank indices fit in f64 mantissa"
-    )]
-    fn expand_via_graph_scoped(
-        &self,
-        existing: &[HybridResult],
-        config: &crate::query_rewrite::TieredSearchConfig,
-        requester_nous_id: &str,
-    ) -> Vec<HybridResult> {
-        let fact_ids: Vec<&str> = existing
-            .iter()
-            .take(config.graph_expansion_limit)
-            .map(|r| r.id.as_str())
-            .collect();
-
-        if fact_ids.is_empty() {
-            return vec![];
-        }
-
-        let mut expanded_ids = std::collections::HashSet::new();
-        let existing_ids: std::collections::HashSet<&str> =
-            existing.iter().map(|r| r.id.as_str()).collect();
-
-        for fact_id in &fact_ids {
-            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
-            let mut fparams = std::collections::BTreeMap::new();
-            fparams.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str((*fact_id).into()),
-            );
-            let Ok(entity_rows) = self.run_read(script, fparams) else {
-                continue;
-            };
-            for entity_row in &entity_rows.rows {
-                let Some(entity_id_str) = entity_row.first().and_then(|v| v.get_str()) else {
-                    continue;
-                };
-                let Ok(entity_id) = crate::id::EntityId::new(entity_id_str) else {
-                    continue;
-                };
-                let Ok(neighborhood) = self.entity_neighborhood(&entity_id) else {
-                    continue;
-                };
-                for row in &neighborhood.rows {
-                    let Some(neighbor_entity_id) = row.first().and_then(|v| v.get_str()) else {
-                        continue;
-                    };
-                    for id in self
-                        .visible_fact_ids_for_entity(neighbor_entity_id, requester_nous_id)
-                        .unwrap_or_default()
-                    {
-                        if !existing_ids.contains(id.as_str()) {
-                            expanded_ids.insert(id);
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut graph_results = Vec::new();
-        for (rank, id) in expanded_ids.iter().enumerate() {
-            let Ok(fact_id) = crate::id::FactId::new(id.as_str()) else {
-                continue;
-            };
-            graph_results.push(HybridResult {
-                id: fact_id,
-                rrf_score: 1.0 / (60.0 + rank as f64 + 1.0), // SAFETY: rank fits f64
-                bm25_rank: -1,
-                vec_rank: -1,
-                graph_rank: i64::try_from(rank + 1).unwrap_or(i64::MAX),
-            });
-        }
-
-        graph_results
-    }
-
-    /// Search for facts relevant to a query, as they existed at a specific time.
-    /// Filters hybrid search results through the temporal lens.
-    ///
-    /// # Complexity
-    ///
-    /// O(`search_hybrid` + C) where C is candidate count for temporal validation.
-    /// Temporal check is O(C) using in-clause filtering.
-    pub(crate) fn search_temporal(
-        &self,
-        q: &HybridQuery,
-        at_time: &str,
-    ) -> crate::error::Result<Vec<HybridResult>> {
-        let all_results = self.search_hybrid(q)?;
-        if all_results.is_empty() {
-            return Ok(all_results);
-        }
-
-        // WHY: Query only the O(k) candidate IDs for temporal validity rather than
-        // loading all facts in the store. This replaces the former full-scan via
-        // query_facts_at_time_all. The is_forgotten check is also inlined so there
-        // is no separate N+1 query for forgotten filtering.
-        let candidate_ids: Vec<&str> = all_results.iter().map(|r| r.id.as_str()).collect();
-        let valid_ids = self.query_ids_valid_at(at_time, &candidate_ids)?;
-
-        Ok(all_results
-            .into_iter()
-            .filter(|r| valid_ids.contains(r.id.as_str()))
-            .collect())
-    }
-
-    /// Return the subset of `ids` that are not forgotten and whose validity
-    /// window contains `at_time` (`valid_from <= at_time < valid_to`).
-    ///
-    /// # Complexity
-    ///
-    /// O(C) where C is the number of candidate IDs. Uses a single query with
-    /// an IN clause for batch validation.
-    fn query_ids_valid_at(
-        &self,
-        at_time: &str,
-        ids: &[&str],
-    ) -> crate::error::Result<std::collections::HashSet<String>> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::DataValue;
-        if ids.is_empty() {
-            return Ok(std::collections::HashSet::new());
-        }
-
-        let id_list: Vec<String> = ids
-            .iter()
-            .map(|id| format!("'{}'", id.replace('\'', "''")))
-            .collect();
-
-        let script = format!(
-            "?[id] := *facts{{id, valid_from, valid_to, is_forgotten}},
-                      is_forgotten == false,
-                      valid_from <= $at_time,
-                      valid_to > $at_time,
-                      id in [{}]",
-            id_list.join(", ")
-        );
-
-        let mut params = BTreeMap::new();
-        params.insert("at_time".to_owned(), DataValue::Str(at_time.into()));
-
-        let rows = self.run_read(&script, params)?;
-        let mut result = std::collections::HashSet::new();
-        for row in rows.rows {
-            if let Some(val) = row.first()
-                && let Ok(s) = extract_str(val)
-            {
-                result.insert(s);
-            }
-        }
-        Ok(result)
-    }
-
-    /// Async `search_temporal` wrapper.
-    ///
-    /// # Complexity
-    ///
-    /// Same as `search_temporal`: O(`search_hybrid` + C).
-    #[instrument(skip(self, q, at_time))]
-    pub async fn search_temporal_async(
-        self: &std::sync::Arc<Self>,
-        q: HybridQuery,
-        at_time: String,
-    ) -> crate::error::Result<Vec<HybridResult>> {
-        use snafu::ResultExt;
-        let this = std::sync::Arc::clone(self);
-        tokio::task::spawn_blocking(move || this.search_temporal(&q, &at_time))
-            .await
-            .context(crate::error::JoinSnafu)?
     }
 }
