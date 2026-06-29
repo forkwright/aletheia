@@ -426,13 +426,13 @@ Controls how the server discovers LLM API credentials. The `source` field select
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, then env vars, then Claude Code credentials), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer Claude Code credentials) |
-| `claude_code_credentials` | string | `null` | Override path to the Claude Code credentials file. Resolves to `~/.claude/.credentials.json` when unset. |
+| `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, keyring when enabled, then env vars), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer explicitly configured Claude Code credentials) |
+| `claudeCodeCredentials` | string | `null` | Explicit path to the Claude Code credentials file. `CLAUDE_CODE_CREDS` takes precedence. When unset, Claude Code credentials are not probed. |
 
 ```toml
 [credential]
 source = "auto"
-claude_code_credentials = "~/.claude/.credentials.json"
+claudeCodeCredentials = "~/.claude/.credentials.json"
 ```
 
 ---
@@ -958,6 +958,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_ENV_FILE` | `shared/bin/start.sh` | Env file sourced at startup. Defaults to `$ALETHEIA_ROOT/config/env`, the canonical env-file owner. |
 | `ALETHEIA_NOUS` | shared tools (`shared/bin/scholar`) | Nous workspace directory. Defaults to `$ALETHEIA_ROOT/nous`. |
 | `ALETHEIA_CREDS` | `shared/bin/start.sh`, `credential-refresh`, `scripts/health-monitor.sh` | Anthropic credential JSON path. Defaults to `$ALETHEIA_ROOT/config/credentials/anthropic.json`. |
+| `CLAUDE_CODE_CREDS` | credential provider chain, `shared/bin/start.sh`, `credential-refresh` | Opt-in path to a Claude Code credentials JSON file. Takes precedence over `credential.claudeCodeCredentials`; unset means the runtime does not probe Claude Code's private default store. |
 | `ALETHEIA_MEMORY_USER` | `shared/bin/start.sh` | Identity attributed to stored memory. Defaults to the current `whoami`. |
 | `ALETHEIA_SHARED` | instance nous templates | Shared-resources root referenced by agent templates (`$ALETHEIA_SHARED/config/...`). |
 | `ALETHEIA_THEKE` | instance nous templates | Vault (theke) root referenced by agent templates (`$ALETHEIA_THEKE/<domain>`). |

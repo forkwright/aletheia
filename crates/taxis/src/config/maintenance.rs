@@ -544,9 +544,9 @@ pub(crate) const DEFAULT_REFRESH_THRESHOLD_SECS: u64 = 3_600;
 /// Controls how the server discovers LLM API credentials. The `source` field
 /// selects the strategy:
 ///
-/// - `"auto"` (default): instance credential file → env vars → Claude Code credentials
+/// - `"auto"` (default): instance credential file → keyring → env vars
 /// - `"api-key"`: only instance credential file and env vars
-/// - `"claude-code"`: prefer Claude Code's `~/.claude/.credentials.json`
+/// - `"claude-code"`: prefer an explicit Claude Code credentials path
 // kanon:ignore RUST/no-debug-derive-on-public-types — CredentialConfig holds only env-var names and strategy strings, not actual secrets; derived Debug leaks no credentials
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -555,8 +555,8 @@ pub(crate) const DEFAULT_REFRESH_THRESHOLD_SECS: u64 = 3_600;
 pub struct CredentialConfig {
     /// Credential source strategy: `"auto"`, `"api-key"`, or `"claude-code"`.
     pub source: String,
-    /// Override path to the Claude Code credentials file.
-    /// Defaults to `~/.claude/.credentials.json`.
+    /// Explicit path to the Claude Code credentials file.
+    /// Also configurable with `CLAUDE_CODE_CREDS`.
     pub claude_code_credentials: Option<String>,
     /// Refresh when token has less than this many seconds remaining.
     pub refresh_threshold_secs: u64,

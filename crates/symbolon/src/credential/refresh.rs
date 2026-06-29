@@ -18,6 +18,8 @@ use super::providers::FileCredentialProvider;
 use super::{OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, REFRESH_CHECK_INTERVAL_SECS, unix_epoch_ms};
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
+const CLAUDE_CODE_CREDS_ENV: &str = "CLAUDE_CODE_CREDS";
+
 /// Outcome of an OAuth refresh attempt.
 pub(super) enum RefreshOutcome {
     /// Refresh succeeded.
@@ -624,17 +626,63 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
     Ok(updated)
 }
 
-/// Default path to the Claude Code credentials file.
+fn expand_tilde_path(path: &str, env: &impl Environment) -> PathBuf {
+    if path == "~" {
+        return env
+            .var_os("HOME")
+            .map_or_else(|| PathBuf::from(path), PathBuf::from);
+    }
+
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = env.var_os("HOME")
+    {
+        return PathBuf::from(home).join(rest);
+    }
+
+    PathBuf::from(path)
+}
+
+pub(super) fn claude_code_credential_path_with_env(
+    configured_path: Option<&str>,
+    env: &impl Environment,
+) -> Option<PathBuf> {
+    if let Some(path) = env
+        .var_os(CLAUDE_CODE_CREDS_ENV)
+        .filter(|path| !path.is_empty())
+    {
+        if let Some(path_str) = path.to_str() {
+            return Some(expand_tilde_path(path_str, env));
+        }
+        return Some(PathBuf::from(path));
+    }
+
+    configured_path
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(|path| expand_tilde_path(path, env))
+}
+
+/// Resolve an explicitly configured Claude Code credentials file.
 ///
-/// Returns `~/.claude/.credentials.json`, resolving `~` via `$HOME`.
-/// Returns `None` if `$HOME` is not set.
+/// Precedence is:
+///
+/// 1. `CLAUDE_CODE_CREDS`
+/// 2. `configured_path` from Aletheia configuration
+///
+/// Returns `None` when neither is set. Claude Code's private
+/// `~/.claude/.credentials.json` path is intentionally not discovered by
+/// default; operators must opt in by setting the env var or config path.
+#[must_use]
+pub fn claude_code_credential_path(configured_path: Option<&str>) -> Option<PathBuf> {
+    claude_code_credential_path_with_env(configured_path, &RealSystem)
+}
+
+/// Backward-compatible explicit Claude Code credential path lookup.
+///
+/// Returns `CLAUDE_CODE_CREDS` when set, otherwise `None`.
 #[must_use]
 pub fn claude_code_default_path() -> Option<PathBuf> {
-    RealSystem.var_os("HOME").map(|home| {
-        PathBuf::from(home)
-            .join(".claude")
-            .join(".credentials.json")
-    })
+    claude_code_credential_path(None)
 }
 
 /// Build a credential provider from a Claude Code credentials file.

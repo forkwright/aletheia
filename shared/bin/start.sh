@@ -2,13 +2,13 @@
 set -euo pipefail
 # start.sh - Template for a local Aletheia startup helper.
 # Copy to your instance host and make executable.
-# Run `claude setup-token` first to get a 1-year OAuth token, then this script
-# uses credential-refresh to keep it renewed automatically on every startup.
+# Store credentials with Aletheia or set ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN.
+# Optional Claude Code import requires CLAUDE_CODE_CREDS.
 
 export ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 ALETHEIA_ENV_FILE="${ALETHEIA_ENV_FILE:-$ALETHEIA_ROOT/config/env}"
 ALETHEIA_BIN="${ALETHEIA_BIN:-aletheia}"
-CLAUDE_CREDENTIALS="$HOME/.claude/.credentials.json"
+CLAUDE_CREDENTIALS="${CLAUDE_CODE_CREDS:-}"
 
 if [[ -f "$ALETHEIA_ENV_FILE" ]]; then
   set -a
@@ -36,10 +36,8 @@ except Exception:
   fi
 fi
 
-# Fall back to API key sync from Claude Code credentials if no OAuth token present.
-# WHY: ~/.claude/.credentials.json is the current CC credentials path; the legacy
-# ~/.claude.json with primaryApiKey is no longer used by CC.
-if [[ -f "$CLAUDE_CREDENTIALS" ]]; then
+# Fall back to API key sync from Claude Code credentials only when explicitly configured.
+if [[ -n "$CLAUDE_CREDENTIALS" && -f "$CLAUDE_CREDENTIALS" ]]; then
   api_key=$(python3 -c "
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -63,10 +61,12 @@ if not existing.get('token','').startswith('sk-ant-oat'):
     chmod 600 "$ALETHEIA_CREDS"
     echo "API key synced from Claude Code credentials"
   fi
+elif [[ -n "$CLAUDE_CREDENTIALS" ]]; then
+  echo "warn: CLAUDE_CODE_CREDS set but not readable: $CLAUDE_CREDENTIALS" >&2
 fi
 
 if [[ ! -f "$ALETHEIA_CREDS" && -z "${ANTHROPIC_API_KEY:-}" && -z "${ANTHROPIC_AUTH_TOKEN:-}" ]]; then
-  echo "error: No credentials found. Run: aletheia init, set ANTHROPIC_API_KEY in ${ALETHEIA_ENV_FILE}, or run claude setup-token" >&2
+  echo "error: No credentials found. Run: aletheia init, set ANTHROPIC_API_KEY in ${ALETHEIA_ENV_FILE}, or set CLAUDE_CODE_CREDS for explicit Claude Code import" >&2
   exit 1
 fi
 
