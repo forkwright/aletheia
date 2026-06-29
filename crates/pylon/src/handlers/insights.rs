@@ -227,7 +227,9 @@ pub async fn get_quality_metrics(
         }
         .build())
     })
-    .unwrap_or_else(|_| (Vec::new(), Vec::new()));
+    // WHY(#5760): propagate storage failures as a 500 instead of returning an
+    // empty series that looks like a healthy system with no sessions.
+    ?;
 
     let series = compute_quality_series(&sessions, &messages);
     Ok(Json(QualityMetricsResponse {
