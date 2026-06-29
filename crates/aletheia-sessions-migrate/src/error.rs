@@ -8,17 +8,13 @@ use std::path::PathBuf;
 use snafu::Snafu;
 
 /// Result alias for migrator operations.
-pub type Result<T, E = Error> = std::result::Result<T, E>;
+pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Migrator error surface.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-#[expect(
-    missing_docs,
-    reason = "snafu error variant fields (source, location, message) are self-documenting via display format"
-)]
 #[non_exhaustive]
-pub enum Error {
+pub(crate) enum Error {
     #[snafu(display("opening SQLite source at {}: {source}", path.display()))]
     SqliteOpen {
         path: PathBuf,
@@ -42,6 +38,18 @@ pub enum Error {
         session_id: String,
         column: String,
         source: Box<rusqlite::Error>,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display(
+        "unknown legacy enum value in {table}.{column} for row '{row_id}': {raw_value:?}"
+    ))]
+    UnknownLegacyEnum {
+        table: String,
+        row_id: String,
+        column: String,
+        raw_value: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -75,6 +83,17 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    #[snafu(display(
+        "schema checksum mismatch: expected sha256:{expected}, found sha256:{found}; \
+         the source DB does not match the supported v32 migration contract"
+    ))]
+    SchemaChecksum {
+        expected: String,
+        found: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     #[snafu(display("opening fjall destination at {}: {message}", path.display()))]
     FjallOpen {
         path: PathBuf,
@@ -84,7 +103,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "destination '{}' is non-empty; pass --force to replace it through the staged migration path",
+        "destination '{}' is non-empty; pass --replace-existing --i-understand-this-replaces-destination to replace it. \
+         Replacement writes and verifies staging first, moves the current destination to a temporary backup during publish, \
+         and deletes that backup after publish succeeds",
         path.display()
     ))]
     DestinationNotEmpty {
@@ -117,13 +138,6 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    #[snafu(display("graphe SessionStore error: {source}"))]
-    Graphe {
-        source: graphe::error::Error,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     #[snafu(display("io error ({context}): {source}"))]
     Io {
         context: String,
@@ -134,7 +148,7 @@ pub enum Error {
 
     #[snafu(display(
         "destination '{}' is incomplete: previous migration left {} behind. \
-         Pass --force to remove the leftover staging directory and rerun, \
+         Pass --replace-existing --i-understand-this-replaces-destination to remove the leftover staging directory and rerun, \
          or inspect it manually",
         path.display(),
         marker
