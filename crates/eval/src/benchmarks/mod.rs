@@ -71,6 +71,16 @@ pub const BENCHMARK_STAT_RESAMPLES: usize = 2000;
 
 /// Minimum scored question count required for publishable bootstrap CIs.
 pub const MIN_PUBLISHABLE_SCORED_QUESTIONS: usize = 2;
+/// Maximum generic error rate allowed for publishable benchmark reports.
+pub const MAX_PUBLISHABLE_ERROR_RATE: f64 = 0.0;
+/// Maximum timeout rate allowed for publishable benchmark reports.
+pub const MAX_PUBLISHABLE_TIMEOUT_RATE: f64 = 0.0;
+/// Maximum no-answer rate allowed for publishable benchmark reports.
+pub const MAX_PUBLISHABLE_NO_ANSWER_RATE: f64 = 0.0;
+/// Maximum complete ingestion-error rate allowed for publishable reports.
+pub const MAX_PUBLISHABLE_INGESTION_ERROR_RATE: f64 = 0.0;
+/// Maximum partial-ingestion rate allowed for publishable reports.
+pub const MAX_PUBLISHABLE_INGESTION_PARTIAL_RATE: f64 = 0.0;
 
 /// A single question/answer pair backed by prior conversation context.
 #[derive(Debug, Clone)]
@@ -292,6 +302,9 @@ pub struct BenchmarkReport {
     pub timeouts: usize,
     /// Questions that returned an empty answer.
     pub no_answers: usize,
+    /// Explicit reliability counts and rates for benchmark gates.
+    #[serde(default)]
+    pub reliability: BenchmarkReliabilitySummary,
     /// LLM judge denominator summary, when judge scoring was attempted.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub judge_summary: Option<JudgeSummary>,
@@ -328,6 +341,35 @@ pub struct BenchmarkIngestionSummary {
     pub inserted: usize,
     /// Facts skipped across haystack ingestion requests.
     pub skipped: usize,
+}
+
+/// Operational reliability counts and rates for a benchmark report.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct BenchmarkReliabilitySummary {
+    /// Total attempted questions.
+    pub attempted: usize,
+    /// Questions that produced scored answers.
+    pub scored: usize,
+    /// Questions blocked by complete haystack ingestion failure.
+    pub ingestion_errors: usize,
+    /// Questions blocked by partial haystack ingestion.
+    pub ingestion_partials: usize,
+    /// Questions that failed before producing a scorable answer.
+    pub errors: usize,
+    /// Questions that exceeded the per-question timeout.
+    pub timeouts: usize,
+    /// Questions that returned an empty answer.
+    pub no_answers: usize,
+    /// Generic error rate over attempted questions.
+    pub error_rate: f64,
+    /// Timeout rate over attempted questions.
+    pub timeout_rate: f64,
+    /// Empty-answer rate over attempted questions.
+    pub no_answer_rate: f64,
+    /// Complete ingestion-error rate over attempted questions.
+    pub ingestion_error_rate: f64,
+    /// Partial-ingestion rate over attempted questions.
+    pub ingestion_partial_rate: f64,
 }
 
 /// Aggregate denominator semantics for LLM-as-judge scoring.
@@ -544,14 +586,68 @@ impl JudgeSummary {
     }
 }
 
+impl BenchmarkReliabilitySummary {
+    #[must_use]
+    fn from_counts(total: usize, counts: BenchmarkCounts) -> Self {
+        Self {
+            attempted: total,
+            scored: counts.scored,
+            ingestion_errors: counts.ingestion_errors,
+            ingestion_partials: counts.ingestion_partials,
+            errors: counts.errors,
+            timeouts: counts.timeouts,
+            no_answers: counts.no_answers,
+            error_rate: rate(counts.errors, total),
+            timeout_rate: rate(counts.timeouts, total),
+            no_answer_rate: rate(counts.no_answers, total),
+            ingestion_error_rate: rate(counts.ingestion_errors, total),
+            ingestion_partial_rate: rate(counts.ingestion_partials, total),
+        }
+    }
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "question counts are small (<10000); f64 mantissa handles them exactly"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "usize to f64 — question counts are bounded and small"
+)]
+fn rate(count: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        count as f64 / total as f64 // SAFETY: benchmark question counts are bounded and small
+    }
+}
+
+fn push_rate_reason(
+    reasons: &mut Vec<String>,
+    label: &str,
+    observed: f64,
+    maximum: f64,
+    count: usize,
+    total: usize,
+) {
+    if observed > maximum {
+        reasons.push(format!(
+            "{label} rate {:.1}% exceeds maximum {:.1}% ({count}/{total})",
+            observed * 100.0,
+            maximum * 100.0
+        ));
+    }
+}
+
 impl BenchmarkReport {
     /// Build an aggregate report from individual question results.
     #[must_use]
     pub fn new(benchmark: impl Into<String>, questions: Vec<QuestionResult>) -> Self {
         let counts = BenchmarkCounts::from_questions(&questions);
+        let total = questions.len();
         Self {
             benchmark: benchmark.into(),
-            total: questions.len(),
+            total,
             scored: counts.scored,
             ingestion_summary: BenchmarkIngestionSummary::default(),
             ingestion_errors: counts.ingestion_errors,
@@ -559,6 +655,7 @@ impl BenchmarkReport {
             errors: counts.errors,
             timeouts: counts.timeouts,
             no_answers: counts.no_answers,
+            reliability: BenchmarkReliabilitySummary::from_counts(total, counts),
             judge_summary: JudgeSummary::from_questions(&questions),
             questions,
             provenance: None,
@@ -577,9 +674,10 @@ impl BenchmarkReport {
         metadata: BenchmarkMetadata,
     ) -> Self {
         let counts = BenchmarkCounts::from_questions(&questions);
+        let total = questions.len();
         Self {
             benchmark: benchmark.into(),
-            total: questions.len(),
+            total,
             scored: counts.scored,
             ingestion_summary: BenchmarkIngestionSummary::default(),
             ingestion_errors: counts.ingestion_errors,
@@ -587,6 +685,7 @@ impl BenchmarkReport {
             errors: counts.errors,
             timeouts: counts.timeouts,
             no_answers: counts.no_answers,
+            reliability: BenchmarkReliabilitySummary::from_counts(total, counts),
             judge_summary: JudgeSummary::from_questions(&questions),
             questions,
             provenance: None,
@@ -767,7 +866,63 @@ impl BenchmarkReport {
         if self.statistics.is_none() {
             reasons.push("missing bootstrap confidence intervals for EM and F1".to_owned());
         }
+        self.add_reliability_publishability_reasons(&mut reasons);
+        self.add_provenance_publishability_reasons(&mut reasons);
+        self.add_metadata_publishability_reasons(&mut reasons);
+        self.add_comparison_publishability_reasons(&mut reasons);
 
+        BenchmarkPublishability {
+            publishable: reasons.is_empty(),
+            minimum_scored_questions: MIN_PUBLISHABLE_SCORED_QUESTIONS,
+            reasons,
+        }
+    }
+
+    fn add_reliability_publishability_reasons(&self, reasons: &mut Vec<String>) {
+        let reliability = self.reliability_summary();
+        push_rate_reason(
+            reasons,
+            "error",
+            reliability.error_rate,
+            MAX_PUBLISHABLE_ERROR_RATE,
+            reliability.errors,
+            reliability.attempted,
+        );
+        push_rate_reason(
+            reasons,
+            "timeout",
+            reliability.timeout_rate,
+            MAX_PUBLISHABLE_TIMEOUT_RATE,
+            reliability.timeouts,
+            reliability.attempted,
+        );
+        push_rate_reason(
+            reasons,
+            "no-answer",
+            reliability.no_answer_rate,
+            MAX_PUBLISHABLE_NO_ANSWER_RATE,
+            reliability.no_answers,
+            reliability.attempted,
+        );
+        push_rate_reason(
+            reasons,
+            "ingestion-error",
+            reliability.ingestion_error_rate,
+            MAX_PUBLISHABLE_INGESTION_ERROR_RATE,
+            reliability.ingestion_errors,
+            reliability.attempted,
+        );
+        push_rate_reason(
+            reasons,
+            "ingestion-partial",
+            reliability.ingestion_partial_rate,
+            MAX_PUBLISHABLE_INGESTION_PARTIAL_RATE,
+            reliability.ingestion_partials,
+            reliability.attempted,
+        );
+    }
+
+    fn add_provenance_publishability_reasons(&self, reasons: &mut Vec<String>) {
         match &self.provenance {
             Some(provenance) => {
                 if provenance.config_hash.is_none() {
@@ -782,7 +937,9 @@ impl BenchmarkReport {
             }
             None => reasons.push("missing eval provenance".to_owned()),
         }
+    }
 
+    fn add_metadata_publishability_reasons(&self, reasons: &mut Vec<String>) {
         match &self.metadata {
             Some(metadata) => {
                 if metadata.dataset_hash.is_none() {
@@ -799,7 +956,9 @@ impl BenchmarkReport {
             }
             None => reasons.push("missing benchmark metadata".to_owned()),
         }
+    }
 
+    fn add_comparison_publishability_reasons(&self, reasons: &mut Vec<String>) {
         for comparison in &self.comparisons {
             if comparison.status != BenchmarkComparisonStatus::Complete {
                 let reason = comparison
@@ -822,12 +981,22 @@ impl BenchmarkReport {
                 ));
             }
         }
+    }
 
-        BenchmarkPublishability {
-            publishable: reasons.is_empty(),
-            minimum_scored_questions: MIN_PUBLISHABLE_SCORED_QUESTIONS,
-            reasons,
-        }
+    /// Recompute the operational reliability summary from report status counts.
+    #[must_use]
+    pub fn reliability_summary(&self) -> BenchmarkReliabilitySummary {
+        BenchmarkReliabilitySummary::from_counts(
+            self.total,
+            BenchmarkCounts {
+                scored: self.scored,
+                ingestion_errors: self.ingestion_errors,
+                ingestion_partials: self.ingestion_partials,
+                errors: self.errors,
+                timeouts: self.timeouts,
+                no_answers: self.no_answers,
+            },
+        )
     }
 
     fn scored_questions(&self) -> Vec<&QuestionResult> {
@@ -1369,6 +1538,24 @@ mod tests {
         assert_eq!(report.timeouts, 1);
         assert_eq!(report.errors, 1);
         assert_eq!(report.no_answers, 1);
+        assert_eq!(
+            report.reliability,
+            BenchmarkReliabilitySummary {
+                attempted: 4,
+                scored: 1,
+                ingestion_errors: 0,
+                ingestion_partials: 0,
+                errors: 1,
+                timeouts: 1,
+                no_answers: 1,
+                error_rate: 0.25,
+                timeout_rate: 0.25,
+                no_answer_rate: 0.25,
+                ingestion_error_rate: 0.0,
+                ingestion_partial_rate: 0.0,
+            }
+        );
+        assert_eq!(report.reliability_summary(), report.reliability);
         assert!((report.exact_match_rate() - 0.25).abs() < f64::EPSILON);
         assert!((report.mean_f1() - 0.25).abs() < f64::EPSILON);
         assert!((report.scored_only_exact_match_rate() - 1.0).abs() < f64::EPSILON);
@@ -1437,6 +1624,35 @@ mod tests {
         assert!(
             publishability.publishable,
             "expected publishable report, got reasons: {:?}",
+            publishability.reasons
+        );
+    }
+
+    #[test]
+    fn publishability_rejects_operational_failure_rates() {
+        let mut timeout = result("q3", "factual", "", &["red"]);
+        timeout.status = QuestionStatus::Timeout;
+        timeout.error_message = Some("timed out".to_owned());
+        timeout.score = BenchmarkScore::zero();
+        let questions = vec![
+            result("q1", "factual", "blue", &["blue"]),
+            result("q2", "factual", "green", &["green"]),
+            timeout,
+        ];
+
+        let report = BenchmarkReport::with_metadata("Test", questions, publishable_metadata())
+            .with_provenance(publishable_provenance())
+            .with_standard_statistics();
+
+        assert!(report.statistics.is_some());
+        let publishability = report.publishability.expect("publishability populated");
+        assert!(!publishability.publishable);
+        assert!(
+            publishability
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("timeout rate")),
+            "got reasons: {:?}",
             publishability.reasons
         );
     }
