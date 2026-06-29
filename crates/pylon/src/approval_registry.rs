@@ -58,7 +58,10 @@ impl ApprovalRegistry {
         tool_id: String,
         sender: mpsc::Sender<ApprovalDecision>,
     ) {
-        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.insert(
             ApprovalKey {
                 turn_id: turn_id.to_owned(),
@@ -91,7 +94,10 @@ impl ApprovalRegistry {
             turn_id: turn_id.to_owned(),
             tool_id: tool_id.to_owned(),
         };
-        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(entry) = map.get(&key) else {
             return false;
         };
@@ -108,7 +114,10 @@ impl ApprovalRegistry {
     }
 
     fn remove_turn(&self, session_id: &str, turn_id: &str) {
-        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.retain(|key, entry| key.turn_id != turn_id || entry.session_id != session_id);
     }
 }
@@ -188,14 +197,14 @@ mod tests {
             let _guard = reg.register_turn("sess-2".to_owned(), "turn-2".to_owned());
             reg.register_tool("sess-2", "turn-2", "t-2".to_owned(), tx)
                 .await;
-            assert!(reg.inner.lock().unwrap().contains_key(&ApprovalKey {
+            assert!(reg.inner.lock().expect("lock").contains_key(&ApprovalKey {
                 turn_id: "turn-2".to_owned(),
                 tool_id: "t-2".to_owned(),
             }));
         }
         // WHY(#5737): Removal now runs synchronously inside Drop, so the entry
         // is gone immediately; no yield/sleep is needed.
-        assert!(reg.inner.lock().unwrap().is_empty());
+        assert!(reg.inner.lock().expect("lock").is_empty());
     }
 
     #[tokio::test]
@@ -258,7 +267,7 @@ mod tests {
         tokio::task::yield_now().await;
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        let map = reg.inner.lock().unwrap();
+        let map = reg.inner.lock().expect("lock");
         assert!(!map.contains_key(&ApprovalKey {
             turn_id: "turn-a".to_owned(),
             tool_id: "tool-a".to_owned(),
