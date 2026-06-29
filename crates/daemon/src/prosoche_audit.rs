@@ -267,6 +267,21 @@ pub struct FactSnapshot {
     pub days_since_touched: Option<f64>,
 }
 
+impl FactSnapshot {
+    /// Build a fact snapshot from externally sourced audit input.
+    pub fn new(
+        fact_id: impl Into<String>,
+        content: impl Into<String>,
+        days_since_touched: Option<f64>,
+    ) -> Self {
+        Self {
+            fact_id: fact_id.into(),
+            content: content.into(),
+            days_since_touched,
+        }
+    }
+}
+
 /// A minimal session snapshot for audit checks.
 #[derive(Debug, Clone)]
 pub struct SessionSnapshot {
@@ -290,6 +305,27 @@ pub struct SessionSnapshot {
     pub session_age_days: Option<u32>,
 }
 
+impl SessionSnapshot {
+    /// Build a session snapshot from externally sourced audit input.
+    pub fn new(
+        session_id: impl Into<String>,
+        turn_count: u32,
+        error_count: u32,
+        completed: bool,
+        turn_text: impl Into<String>,
+        session_age_days: Option<u32>,
+    ) -> Self {
+        Self {
+            session_id: session_id.into(),
+            turn_count,
+            error_count,
+            completed,
+            turn_text: turn_text.into(),
+            session_age_days,
+        }
+    }
+}
+
 /// Behavioral counters for one recent session.
 #[derive(Debug, Clone, Default)]
 pub struct BehaviorPatternSnapshot {
@@ -308,6 +344,16 @@ pub struct BehaviorPatternSnapshot {
     pub avoidance_markers: u32,
     /// High-confidence assertions or tool-selection claims.
     pub confidence_claims: u32,
+}
+
+impl BehaviorPatternSnapshot {
+    /// Build an empty behavior snapshot for a session.
+    pub fn new(session_id: impl Into<String>) -> Self {
+        Self {
+            session_id: session_id.into(),
+            ..Self::default()
+        }
+    }
 }
 
 /// A single prosoche self-audit check.
@@ -407,6 +453,7 @@ impl ConsistencyCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: ProsocheAuditRunner owns the heterogeneous check list; keeping its built-in check implementations beside the trait preserves the module boundary without creating a consumer-crate cycle
 impl ProsocheCheck for ConsistencyCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -653,6 +700,7 @@ impl StalenessCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: ProsocheAuditRunner owns the heterogeneous check list; keeping its built-in check implementations beside the trait preserves the module boundary without creating a consumer-crate cycle
 impl ProsocheCheck for StalenessCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -734,9 +782,7 @@ impl ProsocheCheck for StalenessCheck {
                         claim: format!(
                             "Session '{}' has {} turns but was never completed (age: {age_days} \
                              days; threshold: {:.0}).",
-                            session.session_id,
-                            session.turn_count,
-                            self.fact_stale_days
+                            session.session_id, session.turn_count, self.fact_stale_days
                         ),
                         evidence_level: EvidenceLevel::Interpretive,
                         counter_argument:
@@ -833,6 +879,7 @@ impl GoalAlignmentCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: ProsocheAuditRunner owns the heterogeneous check list; keeping its built-in check implementations beside the trait preserves the module boundary without creating a consumer-crate cycle
 impl ProsocheCheck for GoalAlignmentCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -984,6 +1031,7 @@ impl SessionQualityCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: ProsocheAuditRunner owns the heterogeneous check list; keeping its built-in check implementations beside the trait preserves the module boundary without creating a consumer-crate cycle
 impl ProsocheCheck for SessionQualityCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -1290,6 +1338,7 @@ fn session_support(sample: &BehaviorSample, query_hash: &str) -> FindingSupport 
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: ProsocheAuditRunner owns the heterogeneous check list; keeping its built-in check implementations beside the trait preserves the module boundary without creating a consumer-crate cycle
 impl ProsocheCheck for InstinctPatternsCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(

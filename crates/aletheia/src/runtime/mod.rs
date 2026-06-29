@@ -788,9 +788,9 @@ impl RuntimeBuilder {
                             &task_tracker,
                             &shutdown_token,
                         )
-                        .with_whatever_context(|_| {
-                            "dispatch cron executor: invalid enabled cron task config"
-                        })?;
+                        .with_whatever_context(
+                            |_| "dispatch cron executor: invalid enabled cron task config",
+                        )?;
                     } else {
                         warn!(
                             cron_tasks = self.config.dispatch.cron_tasks.len(),

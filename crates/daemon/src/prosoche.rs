@@ -2,9 +2,9 @@
 //! calendar, tasks, and system health for a nous.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 #[cfg(feature = "knowledge-store")]
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
@@ -345,7 +345,7 @@ async fn disk_usage_percent(
                 .arg(path)
                 .output()
         ) => match result {
-            Ok(output) => output,
+            Ok(output) => output?,
             Err(_) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,

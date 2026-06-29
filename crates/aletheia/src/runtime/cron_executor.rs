@@ -329,8 +329,7 @@ mod tests {
         fire_task(task, orchestrator, theke.path().to_path_buf()).await;
     }
 
-    /// When the queue directory does not exist, `fire_task` must not panic; it
-    /// logs a warning and returns cleanly.
+    /// When the queue directory does not exist, `fire_task` must return cleanly.
     #[tokio::test]
     async fn fire_task_missing_queue_dir_returns_cleanly() {
         let theke = TempDir::new().expect("tempdir");
@@ -387,7 +386,10 @@ mod tests {
             &task_tracker,
             &shutdown,
         );
-        assert!(result.is_err(), "invalid enabled cron task must fail startup");
+        assert!(
+            result.is_err(),
+            "invalid enabled cron task must fail startup"
+        );
         let message = result.unwrap_err().to_string();
         assert!(
             message.contains("bad-schedule"),
