@@ -575,7 +575,7 @@ async fn write_tool_accepts_correct_token() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "nous_id": "alice",
-                    "reason": "Fact is outdated"
+                    "reason": "outdated"
                 })
                 .as_object()
                 .expect("object")

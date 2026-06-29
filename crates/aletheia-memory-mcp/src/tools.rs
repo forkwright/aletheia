@@ -159,7 +159,8 @@ pub struct NousForgetParams {
     pub fact_id: String,
     /// Owning agent (nous) requesting the forget. Must match the fact owner.
     pub nous_id: String,
-    /// Reason for forgetting.
+    /// Typed reason for forgetting; one of `user_requested`, `outdated`,
+    /// `incorrect`, `privacy`, `stale`, `superseded`, or `contradicted`.
     pub reason: String,
 }
 
@@ -167,6 +168,8 @@ pub struct NousForgetParams {
 const DEFAULT_SEARCH_LIMIT: usize = 20;
 /// Cap on per-call result size to avoid unbounded payloads.
 const MAX_SEARCH_LIMIT: usize = 200;
+const ALLOWED_FORGET_REASONS: &str =
+    "user_requested, outdated, incorrect, privacy, stale, superseded, contradicted";
 
 fn opaque_store_id(store_path: Option<&Path>) -> String {
     let Some(store_path) = store_path else {
@@ -256,6 +259,17 @@ fn ensure_fact_is_active(fact: &Fact, id: &str) -> crate::error::Result<()> {
         return Err(crate::error::FactNotFoundSnafu { id: id.to_owned() }.build());
     }
     Ok(())
+}
+
+fn parse_forget_reason(raw: &str) -> crate::error::Result<ForgetReason> {
+    raw.trim().parse().map_err(|e| {
+        InvalidInputSnafu {
+            message: format!(
+                "invalid forget reason: {e}; allowed values: {ALLOWED_FORGET_REASONS}"
+            ),
+        }
+        .build()
+    })
 }
 
 /// Apply project/scope/visibility/sensitivity filters to recall results.
@@ -1496,7 +1510,7 @@ impl MemoryServer {
     ///   "arguments": {
     ///     "fact_id": "f-abc-123",
     ///     "nous_id": "alice",
-    ///     "reason": "Fact is no longer valid",
+    ///     "reason": "outdated",
     ///   }
     /// }
     /// ```
@@ -1539,8 +1553,8 @@ impl MemoryServer {
         }
 
         let fact_id_str = params.fact_id.clone();
-        let reason_str = params.reason.clone();
         let owner_nous_id = params.nous_id.clone();
+        let forget_reason = parse_forget_reason(&params.reason)?;
 
         let forgotten_at = self
             .run_blocking(move |store| {
@@ -1571,15 +1585,6 @@ impl MemoryServer {
                     }
                     .build());
                 }
-
-                // Map the string reason to a ForgetReason enum
-                let forget_reason = match reason_str.to_lowercase().as_str() {
-                    "outdated" => mneme::knowledge::ForgetReason::Outdated,
-                    "incorrect" => mneme::knowledge::ForgetReason::Incorrect,
-                    "privacy" => mneme::knowledge::ForgetReason::Privacy,
-                    "stale" => mneme::knowledge::ForgetReason::Stale,
-                    _ => mneme::knowledge::ForgetReason::UserRequested,
-                };
 
                 let forgotten_fact =
                     forget_fact_with_current_schema(&store, &fact_id, forget_reason)?;
@@ -1692,6 +1697,21 @@ mod tests {
         assert!(
             err.message
                 .contains(&format!("fact not found: {expected_fact_id}")),
+            "unexpected error message: {}",
+            err.message
+        );
+    }
+
+    fn assert_invalid_input_contains(
+        result: Result<CallToolResult, rmcp::ErrorData>,
+        expected_fragment: &str,
+    ) {
+        let Err(err) = result else {
+            panic!("expected invalid input containing {expected_fragment}");
+        };
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert!(
+            err.message.contains(expected_fragment),
             "unexpected error message: {}",
             err.message
         );
@@ -2608,5 +2628,43 @@ mod tests {
         };
         let result = server.nous_forget(Parameters(params)).await;
         assert!(result.is_err(), "alice must not forget bob's fact");
+    }
+
+    #[tokio::test]
+    async fn forget_rejects_unknown_reason() {
+        let store = open_store();
+        store
+            .insert_fact(&sample_fact(
+                "f-forget-reason",
+                "alice",
+                "alice note",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
+        let params = NousForgetParams {
+            fact_id: "f-forget-reason".to_owned(),
+            nous_id: "alice".to_owned(),
+            reason: "privcy".to_owned(),
+        };
+        assert_invalid_input_contains(
+            server.nous_forget(Parameters(params)).await,
+            "allowed values: user_requested, outdated, incorrect, privacy, stale, superseded, contradicted",
+        );
+
+        let fact = store
+            .read_facts_by_id("f-forget-reason")
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("fact remains readable");
+        assert!(
+            !fact.lifecycle.is_forgotten,
+            "invalid forget reason must not mutate the fact"
+        );
     }
 }
