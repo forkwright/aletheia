@@ -34,7 +34,8 @@ fn export_matrix() -> Result<(), Box<dyn Error>> {
     let document = canonical_document();
     let math_document = math_document();
 
-    let ast = serde_json::from_slice::<Value>(&document_to_pandoc_json(&document))?;
+    let ast_json = document_to_pandoc_json(&document)?;
+    let ast = serde_json::from_slice::<Value>(&ast_json)?;
     assert_eq!(ast["pandoc-api-version"], json!([1, 23, 1, 1]));
     insta::assert_snapshot!("canonical_ast", serde_json::to_string_pretty(&ast)?);
 
@@ -76,7 +77,7 @@ fn export_matrix() -> Result<(), Box<dyn Error>> {
 
     let runner = PandocRunner::probe(Some(&fake_pandoc))?;
     let rendered = runner.render(
-        &document_to_pandoc_json(&document),
+        &ast_json,
         &DocOpts::markdown(),
         &[(
             "PANDOC_RUN_LOG".to_owned(),

@@ -355,7 +355,7 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
     }
 
     let runner = PandocRunner::probe(None)?;
-    let ast_json = ast::document_to_pandoc_json(doc);
+    let ast_json = ast::document_to_pandoc_json(doc)?;
     let mut render_opts = opts.clone();
     if let Some(engine) = pdf_engine {
         render_opts.pdf_engine = Some(engine);

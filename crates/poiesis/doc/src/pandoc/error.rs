@@ -93,6 +93,13 @@ pub enum PandocError {
         source: std::io::Error,
     },
 
+    /// The in-memory Pandoc AST could not be serialized to JSON.
+    #[snafu(display("failed to serialize document to Pandoc AST JSON: {source}"))]
+    AstSerialize {
+        /// Underlying JSON serialization error.
+        source: serde_json::Error,
+    },
+
     /// A chart figure could not be rendered into SVG.
     #[snafu(display("failed to render figure {figure_id}: {source}"))]
     FigureRenderFailed {
