@@ -8,8 +8,10 @@ use std::time::Instant;
 
 use sha2::{Digest as _, Sha256};
 use snafu::ResultExt;
+use tokio::runtime::Handle;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
+use tokio::task;
 use tracing::{Instrument, debug, error, info_span, warn};
 
 use hermeneus::provider::ProviderRegistry;
@@ -67,10 +69,13 @@ impl ProviderRecallBridge<'_> {
             temperature: Some(0.0),
             ..CompletionRequest::default()
         };
-        let response = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(provider.complete(&request))
-        })
-        .map_err(|e| e.to_string())?;
+        // WHY: this method is invoked from the synchronous recall trait path
+        // that now runs inside `tokio::task::spawn_blocking`. Blocking on the
+        // returned future is safe there and avoids pinning a Tokio worker
+        // thread for the full LLM round-trip. (#5665)
+        let response = Handle::current()
+            .block_on(provider.complete(&request))
+            .map_err(|e| e.to_string())?;
         let text = response
             .content
             .iter()
@@ -226,10 +231,10 @@ pub(super) async fn run_recall_stage(
     pipeline_config: &PipelineConfig,
     ctx: &mut PipelineContext,
     content: &str,
-    embedding_provider: Option<&dyn EmbeddingProvider>,
-    vector_search: Option<&dyn crate::recall::VectorSearch>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     text_search: Option<&dyn crate::recall::TextSearch>,
-    providers: &ProviderRegistry,
+    providers: Arc<ProviderRegistry>,
     emitter: &EventEmitter,
     surprise_calc: Option<mneme::surprise::SurpriseCalculator>,
 ) -> error::Result<()> {
@@ -290,24 +295,44 @@ pub(super) async fn run_recall_stage(
             });
         }
     } else if let (Some(ep), Some(vs)) = (embedding_provider, vector_search) {
-        let recall_stage = crate::recall::RecallStage::new(config.recall.clone())
-            .with_deployment_target(deployment_target)
-            .with_project_scope(project_recall_scope(pipeline_config))
-            .with_surprise_calculator(surprise_calc);
-        let recall_bridge = ProviderRecallBridge {
-            providers,
-            model: &config.generation.model,
-        };
-
-        let result = recall_stage.run_with_recall_enhancements(
-            content,
-            &config.id,
-            ep,
-            vs,
-            budget,
-            Some(&recall_bridge),
-            Some(&recall_bridge),
-        );
+        // WHY: the synchronous recall-enhancement path calls an LLM provider
+        // through a synchronous trait. Running it directly on the async worker
+        // thread blocks that thread for the entire network round-trip. Move the
+        // whole path onto a blocking thread and release the worker. (#5665)
+        let content = content.to_owned();
+        let nous_id = config.id.clone();
+        let model = config.generation.model.clone();
+        let recall_config = config.recall.clone();
+        let project_scope = project_recall_scope(pipeline_config);
+        let surprise_calc = surprise_calc.clone();
+        let providers = Arc::clone(&providers);
+        let result = task::spawn_blocking(move || {
+            let recall_stage = crate::recall::RecallStage::new(recall_config)
+                .with_deployment_target(deployment_target)
+                .with_project_scope(project_scope)
+                .with_surprise_calculator(surprise_calc);
+            let recall_bridge = ProviderRecallBridge {
+                providers: &providers,
+                model: model.as_str(),
+            };
+            recall_stage.run_with_recall_enhancements(
+                &content,
+                &nous_id,
+                ep.as_ref(),
+                vs.as_ref(),
+                budget,
+                Some(&recall_bridge),
+                Some(&recall_bridge),
+            )
+        })
+        .await
+        .map_err(|e| {
+            error::PipelineStageSnafu {
+                stage: "recall".to_owned(),
+                message: format!("recall enhancement task failed: {e}"),
+            }
+            .build()
+        })?;
         apply_recall_result(
             result,
             ctx,

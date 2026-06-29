@@ -1079,19 +1079,24 @@ async fn execute_timeout_without_distillation_returns_hard_timeout() {
 #[tokio::test(flavor = "multi_thread")]
 async fn provider_recall_bridge_bounds_rankings_to_manifest_ids() {
     // WHY(#5560): fabricated IDs must be dropped before they can bias recall.
-    let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(
-        MockProvider::new(r#"["fabricated-id", "real-id"]"#).models(&["test-model"]),
-    ));
-    let bridge = ProviderRecallBridge {
-        providers: &providers,
-        model: "test-model",
-    };
+    // WHY(#5665): the bridge now blocks on an async provider call, which is
+    // only safe from a blocking thread; run the test body inside spawn_blocking.
+    let result = tokio::task::spawn_blocking(move || {
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(
+            MockProvider::new(r#"["fabricated-id", "real-id"]"#).models(&["test-model"]),
+        ));
+        let bridge = ProviderRecallBridge {
+            providers: &providers,
+            model: "test-model",
+        };
 
-    let manifest_text = "- real-id Project conventions\n- other-id Another entry\n";
-    let result = bridge
-        .rank_memories("query", manifest_text, 5)
-        .expect("rank_memories should succeed");
+        let manifest_text = "- real-id Project conventions\n- other-id Another entry\n";
+        bridge.rank_memories("query", manifest_text, 5)
+    })
+    .await
+    .expect("spawn_blocking should succeed")
+    .expect("rank_memories should succeed");
 
     assert_eq!(
         result,

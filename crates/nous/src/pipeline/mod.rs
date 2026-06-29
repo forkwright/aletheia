@@ -1066,11 +1066,11 @@ pub(crate) async fn run_pipeline(
     oikos: &Oikos,
     config: &NousConfig,
     pipeline_config: &PipelineConfig,
-    providers: &ProviderRegistry,
+    providers: Arc<ProviderRegistry>,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
-    embedding_provider: Option<&dyn EmbeddingProvider>,
-    vector_search: Option<&dyn crate::recall::VectorSearch>,
+    embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    vector_search: Option<Arc<dyn crate::recall::VectorSearch>>,
     text_search: Option<&dyn crate::recall::TextSearch>,
     knowledge_store: Option<Arc<KnowledgeStore>>,
     session_store: Option<&Mutex<SessionStore>>,
@@ -1081,6 +1081,8 @@ pub(crate) async fn run_pipeline(
     hooks: Option<&HookRegistry>,
     bootstrap_cache: Option<&crate::bootstrap::BootstrapFileCache>,
     audit_log: Option<&crate::audit::PromptAuditLog>,
+    training_capture: Option<Arc<std::sync::Mutex<crate::training::TrainingCapture>>>,
+    dpo_writer: Option<Arc<std::sync::Mutex<crate::training::DpoWriter>>>,
 ) -> error::Result<TurnResult> {
     let default_emitter = crate::metrics::pipeline_event_emitter();
     let emitter = emitter.unwrap_or(&default_emitter);
@@ -1201,7 +1203,7 @@ pub(crate) async fn run_pipeline(
                 embedding_provider,
                 vector_search,
                 text_search,
-                providers,
+                Arc::clone(&providers),
                 emitter,
                 // WHY: pass the session surprise prior (already advanced by this
                 // turn, actor-side) for read-only per-candidate scoring. None
@@ -1266,7 +1268,7 @@ pub(crate) async fn run_pipeline(
             "full_compact",
             &mut time_budget,
             emitter,
-            run_full_compact_stage(config, &mut ctx, providers, emitter),
+            run_full_compact_stage(config, &mut ctx, providers.as_ref(), emitter),
         )
         .await?;
         stages_completed += 1;
@@ -1317,7 +1319,7 @@ pub(crate) async fn run_pipeline(
             pipeline_config,
             &ctx,
             &input,
-            providers,
+            providers.as_ref(),
             tools,
             tool_ctx,
             stream_tx,

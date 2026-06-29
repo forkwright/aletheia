@@ -476,6 +476,8 @@ impl NousActor {
         // so cached workspace reads are reused turn-to-turn (#3388).
         let bootstrap_cache = Arc::clone(&self.services.bootstrap_cache);
         let audit_log = self.services.audit_log.clone();
+        let training_capture = self.services.training_capture.clone();
+        let dpo_writer = self.services.dpo_writer.clone();
         let scoped_turn_cancel = turn_cancel.clone();
         let mut pipeline_task = tokio::spawn(
             async move {
@@ -498,11 +500,11 @@ impl NousActor {
                                     &oikos,
                                     &config,
                                     &pipeline_config,
-                                    &providers,
+                                    providers,
                                     &tools,
                                     &tool_ctx,
-                                    embedding_provider.as_deref(),
-                                    vector_search.as_deref(),
+                                    embedding_provider,
+                                    vector_search,
                                     text_search_ref,
                                     knowledge_store,
                                     session_store.as_deref(),
@@ -513,6 +515,8 @@ impl NousActor {
                                     Some(&hook_registry),
                                     Some(bootstrap_cache.as_ref()),
                                     audit_log.as_deref(),
+                                    training_capture,
+                                    dpo_writer,
                                 )
                                 .await
                             }
@@ -522,11 +526,11 @@ impl NousActor {
                                     &oikos,
                                     &config,
                                     &pipeline_config,
-                                    &providers,
+                                    providers,
                                     &tools,
                                     &tool_ctx,
-                                    embedding_provider.as_deref(),
-                                    vector_search.as_deref(),
+                                    embedding_provider,
+                                    vector_search,
                                     text_search_ref,
                                     knowledge_store,
                                     session_store.as_deref(),
@@ -537,6 +541,8 @@ impl NousActor {
                                     Some(&hook_registry),
                                     Some(bootstrap_cache.as_ref()),
                                     audit_log.as_deref(),
+                                    training_capture,
+                                    dpo_writer,
                                 )
                                 .await
                             }
