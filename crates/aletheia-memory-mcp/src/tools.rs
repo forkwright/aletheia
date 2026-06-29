@@ -242,6 +242,27 @@ fn parse_sensitivity(
     }
 }
 
+/// Parse an optional project-id filter string.
+///
+/// WHY: project filters are documented as 64-character SHA-256 hex values.
+/// Rejecting malformed values at the request boundary prevents a misspelled
+/// filter from looking like a valid empty result.
+fn parse_project_id(
+    raw: Option<&str>,
+) -> crate::error::Result<Option<mneme::workspace::ProjectId>> {
+    match raw {
+        Some(s) if !s.is_empty() => mneme::workspace::ProjectId::from_sha256_hex(s)
+            .map(Some)
+            .map_err(|e| {
+                InvalidInputSnafu {
+                    message: format!("invalid project_id filter: {e}"),
+                }
+                .build()
+            }),
+        _ => Ok(None),
+    }
+}
+
 /// Allowed `ForgetReason` strings accepted by `nous_forget`.
 const FORGET_REASON_NAMES: &str =
     "user_requested, outdated, incorrect, privacy, stale, superseded, contradicted";
@@ -262,16 +283,13 @@ fn parse_forget_reason(raw: &str) -> crate::error::Result<mneme::knowledge::Forg
 /// Apply project/scope/visibility/sensitivity filters to recall results.
 fn matches_scope_filters(
     result: &mneme::knowledge::RecallResult,
-    project_id: Option<&str>,
+    project_id: Option<&mneme::workspace::ProjectId>,
     scope: Option<mneme::knowledge::MemoryScope>,
     min_visibility: Option<mneme::knowledge::Visibility>,
     max_sensitivity: Option<mneme::knowledge::FactSensitivity>,
 ) -> bool {
     if let Some(expected) = project_id {
-        let matches = result
-            .project_id
-            .as_ref()
-            .is_some_and(|p| p.as_str() == expected);
+        let matches = result.project_id.as_ref() == Some(expected);
         if !matches {
             return false;
         }
@@ -654,7 +672,7 @@ impl MemoryServer {
         let requester = self.requester_nous_id()?.to_owned();
 
         let query = params.query.clone();
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -675,7 +693,7 @@ impl MemoryServer {
                 results.retain(|r| {
                     matches_scope_filters(
                         r,
-                        project_id.as_deref(),
+                        project_id.as_ref(),
                         scope,
                         min_visibility,
                         max_sensitivity,
@@ -732,7 +750,7 @@ impl MemoryServer {
         let requester = self.requester_nous_id()?.to_owned();
 
         let fact_id = params.fact_id.clone();
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -785,7 +803,7 @@ impl MemoryServer {
                         visibility: seed_fact.visibility,
                         source_count: 0,
                     },
-                    project_id.as_deref(),
+                    project_id.as_ref(),
                     scope,
                     min_visibility,
                     max_sensitivity,
@@ -912,7 +930,7 @@ impl MemoryServer {
         // identity, not to any model-supplied argument.
         let requester = self.requester_nous_id()?.to_owned();
 
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -937,7 +955,7 @@ impl MemoryServer {
                             visibility: row.visibility,
                             source_count: 0,
                         },
-                        project_id.as_deref(),
+                        project_id.as_ref(),
                         scope,
                         min_visibility,
                         max_sensitivity,
@@ -1013,7 +1031,7 @@ impl MemoryServer {
             None
         };
         let store_path_redacted = self.store_path.is_some() && exposed_store_path.is_none();
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -1039,7 +1057,7 @@ impl MemoryServer {
                             visibility: row.visibility,
                             source_count: 0,
                         },
-                        project_id.as_deref(),
+                        project_id.as_ref(),
                         scope,
                         min_visibility,
                         max_sensitivity,
@@ -1791,6 +1809,20 @@ mod tests {
         let err = parse_forget_reason("privcy").expect_err("typo should fail");
         assert!(err.to_string().contains("privcy"));
         assert!(err.to_string().contains("allowed:"));
+    }
+
+    #[test]
+    fn project_id_filter_rejects_malformed_hex() {
+        let err =
+            parse_project_id(Some("not-64-hex")).expect_err("malformed project id should fail");
+        assert!(err.to_string().contains("project_id"));
+    }
+
+    #[test]
+    fn project_id_filter_accepts_valid_hex() {
+        let valid = "a".repeat(64);
+        let parsed = parse_project_id(Some(&valid)).expect("valid hex should parse");
+        assert!(parsed.is_some());
     }
 
     #[test]
