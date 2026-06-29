@@ -595,29 +595,29 @@ pub(crate) fn rm_relationship() -> String {
 }
 
 /// Remove a pending-merge entry.
-/// Params: `$entity_a`, `$entity_b`.
+/// Params: `$nous_id`, `$entity_a`, `$entity_b`.
 #[must_use]
 pub(crate) fn rm_pending_merges() -> String {
-    use PendingMergesField::{EntityA, EntityB};
+    use PendingMergesField::{EntityA, EntityB, NousId};
     QueryBuilder::new()
         .rm(Relation::PendingMerges)
-        .keys(&[EntityA, EntityB])
+        .keys(&[NousId, EntityA, EntityB])
         .done()
         .build_script()
 }
 
 /// Insert or update a merge-audit record.
-/// Params: `$canonical_id`, `$merged_id`, `$merged_name`, `$merge_score`,
+/// Params: `$nous_id`, `$canonical_id`, `$merged_id`, `$merged_name`, `$merge_score`,
 /// `$facts_transferred`, `$relationships_redirected`, `$merged_at`.
 #[must_use]
 pub(crate) fn put_merge_audit() -> String {
     use MergeAuditField::{
-        CanonicalId, FactsTransferred, MergeScore, MergedAt, MergedId, MergedName,
+        CanonicalId, FactsTransferred, MergeScore, MergedAt, MergedId, MergedName, NousId,
         RelationshipsRedirected,
     };
     QueryBuilder::new()
         .put(Relation::MergeAudit)
-        .keys(&[CanonicalId, MergedId])
+        .keys(&[NousId, CanonicalId, MergedId])
         .values(&[
             MergedName,
             MergeScore,
@@ -630,17 +630,18 @@ pub(crate) fn put_merge_audit() -> String {
 }
 
 /// Insert or update a pending-merge candidate.
-/// Params: `$entity_a`, `$entity_b`, `$name_a`, `$name_b`, `$name_similarity`,
-/// `$embed_similarity`, `$type_match`, `$alias_overlap`, `$merge_score`, `$created_at`.
+/// Params: `$nous_id`, `$entity_a`, `$entity_b`, `$name_a`, `$name_b`,
+/// `$name_similarity`, `$embed_similarity`, `$type_match`, `$alias_overlap`,
+/// `$merge_score`, `$created_at`.
 #[must_use]
 pub(crate) fn put_pending_merge() -> String {
     use PendingMergesField::{
         AliasOverlap, CreatedAt, EmbedSimilarity, EntityA, EntityB, MergeScore, NameA, NameB,
-        NameSimilarity, TypeMatch,
+        NameSimilarity, NousId, TypeMatch,
     };
     QueryBuilder::new()
         .put(Relation::PendingMerges)
-        .keys(&[EntityA, EntityB])
+        .keys(&[NousId, EntityA, EntityB])
         .values(&[
             NameA,
             NameB,

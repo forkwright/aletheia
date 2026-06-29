@@ -2,7 +2,7 @@ use super::{
     CAUSAL_EDGES_DDL, DEFAULTS_DDL, DERIVED_FACTS_DDL, DERIVED_RULE_WATERMARKS_DDL,
     DERIVED_SOURCE_REVISION_DDL, EMBEDDING_META_DDL, ENTITY_FLAGS_DDL, FACT_ENTITIES_DDL,
     FACTS_DDL, KnowledgeStore, MERGE_AUDIT_DDL, PENDING_MERGES_DDL, PROVENANCE_DDL,
-    PUBLISHED_FACTS_DDL, TYPE_HIERARCHY_DDL, entities_ddl, fts_ddl,
+    PUBLISHED_FACTS_DDL, TYPE_HIERARCHY_DDL, UNOWNED_MERGE_NOUS_ID, entities_ddl, fts_ddl,
 };
 
 pub(super) struct MigrationStep {
@@ -82,6 +82,10 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
     MigrationStep {
         target_version: 19,
         run: KnowledgeStore::migrate_v18_to_v19,
+    },
+    MigrationStep {
+        target_version: 20,
+        run: KnowledgeStore::migrate_v19_to_v20,
     },
 ];
 
@@ -1405,5 +1409,190 @@ impl KnowledgeStore {
 
         tracing::info!("knowledge schema migration v18 -> v19 complete");
         Ok(())
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "sequential migration that recreates two merge review relations"
+    )]
+    pub(super) fn migrate_v19_to_v20(&self) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+        tracing::info!("migrating knowledge schema v19 -> v20");
+
+        let pending_rows = self
+            .db
+            .run(
+                r"?[entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity,
+                    type_match, alias_overlap, merge_score, created_at] :=
+                    *pending_merges{entity_a, entity_b, name_a, name_b, name_similarity,
+                        embed_similarity, type_match, alias_overlap, merge_score, created_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 read pending_merges: {e}"),
+                }
+                .build()
+            })?;
+
+        let audit_rows = self
+            .db
+            .run(
+                r"?[canonical_id, merged_id, merged_name, merge_score, facts_transferred,
+                    relationships_redirected, merged_at] :=
+                    *merge_audit{canonical_id, merged_id, merged_name, merge_score,
+                        facts_transferred, relationships_redirected, merged_at}",
+                BTreeMap::new(),
+                ScriptMutability::Immutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 read merge_audit: {e}"),
+                }
+                .build()
+            })?;
+
+        self.db
+            .run(
+                "::remove pending_merges",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 remove pending_merges: {e}"),
+                }
+                .build()
+            })?;
+        self.db
+            .run(
+                "::remove merge_audit",
+                BTreeMap::new(),
+                ScriptMutability::Mutable,
+            )
+            .map_err(|e| {
+                crate::error::EngineQuerySnafu {
+                    message: format!("v19->v20 remove merge_audit: {e}"),
+                }
+                .build()
+            })?;
+
+        self.run_ddl(PENDING_MERGES_DDL, "v19->v20 recreate pending_merges")?;
+        self.run_ddl(MERGE_AUDIT_DDL, "v19->v20 recreate merge_audit")?;
+
+        for row in &pending_rows.rows {
+            if row.len() < 10 {
+                continue;
+            }
+            let entity_a = row.first().and_then(DataValue::get_str).unwrap_or_default();
+            let entity_b = row.get(1).and_then(DataValue::get_str).unwrap_or_default();
+            let nous_id = self.infer_merge_review_nous_id(entity_a, entity_b)?;
+            let mut params = BTreeMap::new();
+            params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+            for (idx, name) in [
+                "entity_a",
+                "entity_b",
+                "name_a",
+                "name_b",
+                "name_similarity",
+                "embed_similarity",
+                "type_match",
+                "alias_overlap",
+                "merge_score",
+                "created_at",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(value) = row.get(idx) {
+                    params.insert((*name).to_owned(), value.clone());
+                }
+            }
+            self.db
+                .run(
+                    r"?[nous_id, entity_a, entity_b, name_a, name_b, name_similarity,
+                        embed_similarity, type_match, alias_overlap, merge_score, created_at] <-
+                        [[$nous_id, $entity_a, $entity_b, $name_a, $name_b, $name_similarity,
+                          $embed_similarity, $type_match, $alias_overlap, $merge_score, $created_at]]
+                      :put pending_merges {
+                          nous_id, entity_a, entity_b => name_a, name_b, name_similarity,
+                          embed_similarity, type_match, alias_overlap, merge_score, created_at
+                      }",
+                    params,
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v19->v20 reinsert pending_merge: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        for row in &audit_rows.rows {
+            if row.len() < 7 {
+                continue;
+            }
+            let canonical_id = row.first().and_then(DataValue::get_str).unwrap_or_default();
+            let merged_id = row.get(1).and_then(DataValue::get_str).unwrap_or_default();
+            let nous_id = self.infer_merge_review_nous_id(canonical_id, merged_id)?;
+            let mut params = BTreeMap::new();
+            params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+            for (idx, name) in [
+                "canonical_id",
+                "merged_id",
+                "merged_name",
+                "merge_score",
+                "facts_transferred",
+                "relationships_redirected",
+                "merged_at",
+            ]
+            .iter()
+            .enumerate()
+            {
+                if let Some(value) = row.get(idx) {
+                    params.insert((*name).to_owned(), value.clone());
+                }
+            }
+            self.db
+                .run(
+                    r"?[nous_id, canonical_id, merged_id, merged_name, merge_score,
+                        facts_transferred, relationships_redirected, merged_at] <-
+                        [[$nous_id, $canonical_id, $merged_id, $merged_name, $merge_score,
+                          $facts_transferred, $relationships_redirected, $merged_at]]
+                      :put merge_audit {
+                          nous_id, canonical_id, merged_id => merged_name, merge_score,
+                          facts_transferred, relationships_redirected, merged_at
+                      }",
+                    params,
+                    ScriptMutability::Mutable,
+                )
+                .map_err(|e| {
+                    crate::error::EngineQuerySnafu {
+                        message: format!("v19->v20 reinsert merge_audit: {e}"),
+                    }
+                    .build()
+                })?;
+        }
+
+        self.stamp_schema_version(20, "v19->v20")?;
+
+        tracing::info!("knowledge schema migration v19 -> v20 complete");
+        Ok(())
+    }
+
+    fn infer_merge_review_nous_id(
+        &self,
+        entity_a: &str,
+        entity_b: &str,
+    ) -> crate::error::Result<String> {
+        let ids = self.common_nous_ids_for_entity_pair(entity_a, entity_b)?;
+        Ok(match ids.as_slice() {
+            [nous_id] => nous_id.clone(),
+            _ => UNOWNED_MERGE_NOUS_ID.to_owned(),
+        })
     }
 }

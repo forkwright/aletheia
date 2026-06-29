@@ -573,7 +573,7 @@ fn approve_merge_drains_review_queue() {
     let e1_id = crate::id::EntityId::new("e1").expect("valid test id");
     let e2_id = crate::id::EntityId::new("e2").expect("valid test id");
     let record = store
-        .approve_merge(&e1_id, &e2_id)
+        .approve_merge_for_nous("test-nous", &e1_id, &e2_id)
         .expect("approve_merge must succeed for queued pair");
     assert_eq!(record.canonical_entity_id, e1_id);
     assert_eq!(record.merged_entity_id, e2_id);
@@ -611,6 +611,102 @@ fn approve_merge_drains_review_queue() {
         history.len(),
         1,
         "approved merge must be recorded in merge_audit"
+    );
+}
+
+#[test]
+fn pending_merge_review_queue_is_scoped_by_nous() {
+    let store = make_store();
+    let mut a1 = make_entity("a1", "Acme Corporation", "organization");
+    a1.aliases = vec!["Acme".to_owned()];
+    let mut a2 = make_entity("a2", "acme corporation", "organization");
+    a2.aliases = vec!["Acme".to_owned()];
+    let mut b1 = make_entity("b1", "Globex Corporation", "organization");
+    b1.aliases = vec!["Globex".to_owned()];
+    let mut b2 = make_entity("b2", "globex corporation", "organization");
+    b2.aliases = vec!["Globex".to_owned()];
+
+    for entity in [&a1, &a2, &b1, &b2] {
+        store.insert_entity(entity).expect("insert entity");
+    }
+    link_entity_to_nous(&store, "a1", "nous-A");
+    link_entity_to_nous(&store, "a2", "nous-A");
+    link_entity_to_nous(&store, "b1", "nous-B");
+    link_entity_to_nous(&store, "b2", "nous-B");
+
+    store.run_entity_dedup("nous-A").expect("dedup A");
+    store.run_entity_dedup("nous-B").expect("dedup B");
+
+    let pending_a = store.get_pending_merges("nous-A").expect("pending A");
+    let pending_b = store.get_pending_merges("nous-B").expect("pending B");
+    let pending_c = store.get_pending_merges("nous-C").expect("pending C");
+    assert_eq!(pending_a.len(), 1, "nous-A sees only its review row");
+    assert_eq!(pending_b.len(), 1, "nous-B sees only its review row");
+    assert!(pending_c.is_empty(), "foreign nous sees no review rows");
+    assert_eq!(pending_a[0].entity_a.as_str(), "a1");
+    assert_eq!(pending_b[0].entity_a.as_str(), "b1");
+
+    let a1_id = crate::id::EntityId::new("a1").expect("valid id");
+    let a2_id = crate::id::EntityId::new("a2").expect("valid id");
+    store
+        .approve_merge_for_nous("nous-A", &a1_id, &a2_id)
+        .expect("approve A");
+
+    let history_a = store.get_merge_history("nous-A").expect("history A");
+    let history_b = store.get_merge_history("nous-B").expect("history B");
+    assert_eq!(history_a.len(), 1, "nous-A history contains its approval");
+    assert!(
+        history_b.is_empty(),
+        "nous-B history must not include nous-A approval"
+    );
+    assert_eq!(
+        store
+            .get_pending_merges("nous-B")
+            .expect("pending B after A approval")
+            .len(),
+        1,
+        "approving nous-A must not drain nous-B review row"
+    );
+}
+
+#[test]
+fn approve_merge_for_nous_rejects_foreign_review_row() {
+    let store = make_store();
+    let mut e1 = make_entity("foreign-a", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("foreign-b", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "foreign-a", "alice");
+    link_entity_to_nous(&store, "foreign-b", "alice");
+
+    store.run_entity_dedup("alice").expect("dedup alice");
+    let e1_id = crate::id::EntityId::new("foreign-a").expect("valid id");
+    let e2_id = crate::id::EntityId::new("foreign-b").expect("valid id");
+    let err = store
+        .approve_merge_for_nous("bob", &e1_id, &e2_id)
+        .expect_err("bob must not approve alice row");
+    assert!(
+        err.to_string().contains("pending merge not found"),
+        "error should name missing scoped pending row, got: {err}"
+    );
+
+    assert_eq!(
+        store
+            .list_entities()
+            .expect("entities after rejected approve")
+            .len(),
+        2,
+        "foreign approval must not merge either entity"
+    );
+    assert_eq!(
+        store
+            .get_pending_merges("alice")
+            .expect("alice pending after rejected approve")
+            .len(),
+        1,
+        "foreign approval must leave alice review row queued"
     );
 }
 

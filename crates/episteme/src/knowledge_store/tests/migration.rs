@@ -335,6 +335,103 @@ fn v18_migration_backfills_fact_entities_from_content() {
 }
 
 #[test]
+fn v20_migration_scopes_existing_pending_merges_by_common_nous() {
+    const V19_PENDING_MERGES_DDL: &str = r":create pending_merges {
+        entity_a: String, entity_b: String =>
+        name_a: String,
+        name_b: String,
+        name_similarity: Float,
+        embed_similarity: Float,
+        type_match: Bool,
+        alias_overlap: Bool,
+        merge_score: Float,
+        created_at: String
+    }";
+    const V19_MERGE_AUDIT_DDL: &str = r":create merge_audit {
+        canonical_id: String, merged_id: String =>
+        merged_name: String,
+        merge_score: Float,
+        facts_transferred: Int,
+        relationships_redirected: Int,
+        merged_at: String
+    }";
+
+    let store = make_store();
+    let entity_a = make_entity("migration-a", "Migration A", "topic");
+    let entity_b = make_entity("migration-b", "migration a", "topic");
+    store.insert_entity(&entity_a).expect("insert entity a");
+    store.insert_entity(&entity_b).expect("insert entity b");
+    let fact_a = make_fact("migration-fact-a", "alice", "migration fact a");
+    let fact_b = make_fact("migration-fact-b", "alice", "migration fact b");
+    store.insert_fact(&fact_a).expect("insert fact a");
+    store.insert_fact(&fact_b).expect("insert fact b");
+    store
+        .insert_fact_entity(&fact_a.id, &entity_a.id)
+        .expect("link entity a");
+    store
+        .insert_fact_entity(&fact_b.id, &entity_b.id)
+        .expect("link entity b");
+
+    store
+        .run_mut_query("::remove pending_merges", std::collections::BTreeMap::new())
+        .expect("remove v20 pending_merges");
+    store
+        .run_mut_query("::remove merge_audit", std::collections::BTreeMap::new())
+        .expect("remove v20 merge_audit");
+    store
+        .run_mut_query(V19_PENDING_MERGES_DDL, std::collections::BTreeMap::new())
+        .expect("create v19 pending_merges");
+    store
+        .run_mut_query(V19_MERGE_AUDIT_DDL, std::collections::BTreeMap::new())
+        .expect("create v19 merge_audit");
+    store
+        .run_mut_query(
+            r#"?[entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity,
+                type_match, alias_overlap, merge_score, created_at] <- [[
+                    "migration-a", "migration-b", "Migration A", "migration a",
+                    1.0, 0.0, true, false, 0.70, "2026-06-01T00:00:00Z"
+                ]]
+              :put pending_merges {
+                  entity_a, entity_b => name_a, name_b, name_similarity,
+                  embed_similarity, type_match, alias_overlap, merge_score, created_at
+              }"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("insert v19 pending merge");
+    store
+        .run_mut_query(
+            r#"?[key] <- [["migration:20"]] :rm schema_version {key}"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("remove v20 stamp");
+    store
+        .stamp_schema_version(19, "test")
+        .expect("stamp v19 schema");
+
+    store.init_schema().expect("apply v20 migration");
+
+    assert_eq!(
+        store
+            .get_pending_merges("alice")
+            .expect("alice pending after migration")
+            .len(),
+        1,
+        "v19 row should migrate under its unique common nous"
+    );
+    assert!(
+        store
+            .get_pending_merges("bob")
+            .expect("bob pending after migration")
+            .is_empty(),
+        "migrated row must not be visible to a foreign nous"
+    );
+    assert_eq!(
+        store.schema_version().expect("schema version"),
+        KnowledgeStore::SCHEMA_VERSION
+    );
+}
+
+#[test]
 fn reembed_all_updates_embedding_meta() {
     let store = KnowledgeStore::open_mem_with_config(mock_config("old-model"))
         .expect("open in-memory knowledge store");

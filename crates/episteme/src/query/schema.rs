@@ -150,6 +150,7 @@ pub enum FactEntitiesField {
 )]
 #[non_exhaustive]
 pub enum MergeAuditField {
+    NousId,
     CanonicalId,
     MergedId,
     MergedName,
@@ -167,6 +168,7 @@ pub enum MergeAuditField {
 )]
 #[non_exhaustive]
 pub enum PendingMergesField {
+    NousId,
     EntityA,
     EntityB,
     NameA,

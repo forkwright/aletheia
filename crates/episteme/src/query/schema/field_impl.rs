@@ -86,6 +86,7 @@ impl Field for FactEntitiesField {
 impl Field for MergeAuditField {
     fn name(self) -> &'static str {
         match self {
+            Self::NousId => "nous_id",
             Self::CanonicalId => "canonical_id",
             Self::MergedId => "merged_id",
             Self::MergedName => "merged_name",
@@ -100,6 +101,7 @@ impl Field for MergeAuditField {
 impl Field for PendingMergesField {
     fn name(self) -> &'static str {
         match self {
+            Self::NousId => "nous_id",
             Self::EntityA => "entity_a",
             Self::EntityB => "entity_b",
             Self::NameA => "name_a",

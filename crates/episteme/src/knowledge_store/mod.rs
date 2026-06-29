@@ -125,7 +125,7 @@ pub const FACT_ENTITIES_DDL: &str = r":create fact_entities {
 
 /// Datalog DDL for the `merge_audit` relation.
 pub const MERGE_AUDIT_DDL: &str = r":create merge_audit {
-    canonical_id: String, merged_id: String =>
+    nous_id: String, canonical_id: String, merged_id: String =>
     merged_name: String,
     merge_score: Float,
     facts_transferred: Int,
@@ -135,7 +135,7 @@ pub const MERGE_AUDIT_DDL: &str = r":create merge_audit {
 
 /// Datalog DDL for the `pending_merges` relation.
 pub const PENDING_MERGES_DDL: &str = r":create pending_merges {
-    entity_a: String, entity_b: String =>
+    nous_id: String, entity_a: String, entity_b: String =>
     name_a: String,
     name_b: String,
     name_similarity: Float,
@@ -145,6 +145,8 @@ pub const PENDING_MERGES_DDL: &str = r":create pending_merges {
     merge_score: Float,
     created_at: String
 }";
+
+pub(crate) const UNOWNED_MERGE_NOUS_ID: &str = "__unowned_merge_review__";
 
 /// Datalog DDL for the `causal_edges` relation.
 pub const CAUSAL_EDGES_DDL: &str = r":create causal_edges {
@@ -649,7 +651,7 @@ pub struct KnowledgeStore {
 
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
-    pub(crate) const SCHEMA_VERSION: i64 = 19;
+    pub(crate) const SCHEMA_VERSION: i64 = 20;
     const MIN_SCHEMA_VERSION: i64 = 1;
     pub(crate) const ASSUMED_EMBEDDING_MODEL: &'static str = "assumed";
 

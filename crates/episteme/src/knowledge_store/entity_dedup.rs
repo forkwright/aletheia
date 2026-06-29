@@ -58,10 +58,28 @@ impl KnowledgeStore {
     ///
     /// The entity with `canonical_id` survives; `merged_id` is removed.
     #[instrument(skip(self))]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "low-level merge primitive is exercised by property tests"
+        )
+    )]
     pub(crate) fn execute_merge(
         &self,
         canonical_id: &crate::id::EntityId,
         merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<crate::dedup::MergeRecord> {
+        self.execute_merge_for_nous(super::UNOWNED_MERGE_NOUS_ID, canonical_id, merged_id, 0.0)
+    }
+
+    #[instrument(skip(self))]
+    pub(super) fn execute_merge_for_nous(
+        &self,
+        nous_id: &str,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+        merge_score: f64,
     ) -> crate::error::Result<crate::dedup::MergeRecord> {
         use std::collections::BTreeMap;
 
@@ -82,6 +100,7 @@ impl KnowledgeStore {
         let now = jiff::Timestamp::now();
         let now_str = crate::knowledge::format_timestamp(&now);
         let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert(
             "canonical_id".to_owned(),
             DataValue::Str(canonical_id.as_str().into()),
@@ -94,7 +113,7 @@ impl KnowledgeStore {
             "merged_name".to_owned(),
             DataValue::Str(merged.name.as_str().into()),
         );
-        params.insert("merge_score".to_owned(), DataValue::from(0.0_f64));
+        params.insert("merge_score".to_owned(), DataValue::from(merge_score));
         params.insert(
             "facts_transferred".to_owned(),
             DataValue::from(i64::from(facts_transferred)),
@@ -107,6 +126,7 @@ impl KnowledgeStore {
         self.run_mut(&queries::put_merge_audit(), params)?;
 
         let mut rm_params = BTreeMap::new();
+        rm_params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         rm_params.insert(
             "entity_a".to_owned(),
             DataValue::Str(canonical_id.as_str().into()),
@@ -123,6 +143,7 @@ impl KnowledgeStore {
             );
         }
         let mut rm_params2 = BTreeMap::new();
+        rm_params2.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         rm_params2.insert(
             "entity_a".to_owned(),
             DataValue::Str(merged_id.as_str().into()),
@@ -142,7 +163,7 @@ impl KnowledgeStore {
             canonical_entity_id: canonical.id,
             merged_entity_id: merged_id.clone(),
             merged_entity_name: merged.name,
-            merge_score: 0.0,
+            merge_score,
             facts_transferred,
             relationships_redirected,
             merged_at: now,
@@ -151,19 +172,18 @@ impl KnowledgeStore {
 
     /// Get pending merge candidates (review queue) for a nous.
     #[instrument(skip(self))]
-    #[expect(
-        clippy::used_underscore_binding,
-        reason = "nous_id reserved for future filtering"
-    )]
     pub fn get_pending_merges(
         &self,
-        _nous_id: &str,
+        nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>> {
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let script = r"?[entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score] :=
-            *pending_merges{entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score}";
-        let rows = self.run_read(script, BTreeMap::new())?;
+            *pending_merges{nous_id: $nous_id, entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score}";
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        let rows = self.run_read(script, params)?;
 
         let mut results = Vec::new();
         for row in &rows.rows {
@@ -203,24 +223,217 @@ impl KnowledgeStore {
         canonical_id: &crate::id::EntityId,
         merged_id: &crate::id::EntityId,
     ) -> crate::error::Result<crate::dedup::MergeRecord> {
-        self.execute_merge(canonical_id, merged_id)
+        let nous_id = self.unique_pending_merge_nous_id(canonical_id, merged_id)?;
+        self.approve_merge_for_nous(&nous_id, canonical_id, merged_id)
+    }
+
+    /// Approve a pending merge for the requesting nous.
+    #[instrument(skip(self))]
+    pub fn approve_merge_for_nous(
+        &self,
+        nous_id: &str,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<crate::dedup::MergeRecord> {
+        let Some(merge_score) = self.pending_merge_score(nous_id, canonical_id, merged_id)? else {
+            return Err(crate::error::EngineQuerySnafu {
+                message: format!(
+                    "pending merge not found for nous_id '{nous_id}': {canonical_id} + {merged_id}"
+                ),
+            }
+            .build());
+        };
+        self.ensure_merge_pair_belongs_to_nous(nous_id, canonical_id, merged_id)?;
+        self.execute_merge_for_nous(nous_id, canonical_id, merged_id, merge_score)
+    }
+
+    fn unique_pending_merge_nous_id(
+        &self,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<String> {
+        let ids = self.pending_merge_nous_ids(canonical_id, merged_id)?;
+        match ids.as_slice() {
+            [nous_id] => Ok(nous_id.clone()),
+            [] => Err(crate::error::EngineQuerySnafu {
+                message: format!("pending merge not found: {canonical_id} + {merged_id}"),
+            }
+            .build()),
+            _ => Err(crate::error::EngineQuerySnafu {
+                message: format!(
+                    "pending merge is ambiguous across nouses: {canonical_id} + {merged_id}"
+                ),
+            }
+            .build()),
+        }
+    }
+
+    fn pending_merge_nous_ids(
+        &self,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<Vec<String>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let script = r"
+            ?[nous_id] :=
+                *pending_merges{nous_id, entity_a: $entity_a, entity_b: $entity_b}
+            ?[nous_id] :=
+                *pending_merges{nous_id, entity_a: $entity_b, entity_b: $entity_a}
+        ";
+        let mut params = BTreeMap::new();
+        params.insert(
+            "entity_a".to_owned(),
+            DataValue::Str(canonical_id.as_str().into()),
+        );
+        params.insert(
+            "entity_b".to_owned(),
+            DataValue::Str(merged_id.as_str().into()),
+        );
+        let rows = self.run_read(script, params)?;
+        let mut ids = Vec::new();
+        for row in &rows.rows {
+            if let Some(id) = row.first().and_then(crate::engine::DataValue::get_str) {
+                ids.push(id.to_owned());
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
+
+    fn pending_merge_score(
+        &self,
+        nous_id: &str,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<Option<f64>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let script = r"
+            ?[merge_score] :=
+                *pending_merges{nous_id: $nous_id, entity_a: $entity_a, entity_b: $entity_b, merge_score}
+            ?[merge_score] :=
+                *pending_merges{nous_id: $nous_id, entity_a: $entity_b, entity_b: $entity_a, merge_score}
+        ";
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert(
+            "entity_a".to_owned(),
+            DataValue::Str(canonical_id.as_str().into()),
+        );
+        params.insert(
+            "entity_b".to_owned(),
+            DataValue::Str(merged_id.as_str().into()),
+        );
+        let rows = self.run_read(script, params)?;
+        rows.rows
+            .first()
+            .map(|row| {
+                let val = row.first().ok_or_else(|| {
+                    crate::error::EngineQuerySnafu {
+                        message: "pending merge score row is empty".to_owned(),
+                    }
+                    .build()
+                })?;
+                extract_float(val)
+            })
+            .transpose()
+    }
+
+    fn ensure_merge_pair_belongs_to_nous(
+        &self,
+        nous_id: &str,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<()> {
+        for entity_id in [canonical_id, merged_id] {
+            if !self.entity_belongs_to_nous(nous_id, entity_id)? {
+                return Err(crate::error::EngineQuerySnafu {
+                    message: format!("entity {entity_id} is not linked to nous_id '{nous_id}'"),
+                }
+                .build());
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn common_nous_ids_for_entity_pair(
+        &self,
+        entity_a: &str,
+        entity_b: &str,
+    ) -> crate::error::Result<Vec<String>> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let script = r"
+            owner_a[nous_id] :=
+                *fact_entities{fact_id, entity_id: $entity_a},
+                *facts{id: fact_id, nous_id}
+            owner_b[nous_id] :=
+                *fact_entities{fact_id, entity_id: $entity_b},
+                *facts{id: fact_id, nous_id}
+            ?[nous_id] := owner_a[nous_id], owner_b[nous_id]
+        ";
+        let mut params = BTreeMap::new();
+        params.insert("entity_a".to_owned(), DataValue::Str(entity_a.into()));
+        params.insert("entity_b".to_owned(), DataValue::Str(entity_b.into()));
+        let rows = self.run_read(script, params)?;
+        let mut ids = Vec::new();
+        for row in &rows.rows {
+            if let Some(id) = row.first().and_then(crate::engine::DataValue::get_str) {
+                ids.push(id.to_owned());
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(ids)
+    }
+
+    fn entity_belongs_to_nous(
+        &self,
+        nous_id: &str,
+        entity_id: &crate::id::EntityId,
+    ) -> crate::error::Result<bool> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+        let script = r"?[count(fact_id)] :=
+            *facts{id: fact_id, nous_id: $nous_id},
+            *fact_entities{fact_id, entity_id: $entity_id}";
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert(
+            "entity_id".to_owned(),
+            DataValue::Str(entity_id.as_str().into()),
+        );
+        let rows = self.run_read(script, params)?;
+        let count = rows
+            .rows
+            .first()
+            .and_then(|row| row.first())
+            .map(extract_int)
+            .transpose()?
+            .unwrap_or(0);
+        Ok(count > 0)
     }
 
     /// Get the full merge history.
     #[instrument(skip(self))]
-    #[expect(
-        clippy::used_underscore_binding,
-        reason = "nous_id reserved for future filtering"
-    )]
     pub fn get_merge_history(
         &self,
-        _nous_id: &str,
+        nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::MergeRecord>> {
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
         let script = r"?[canonical_id, merged_id, merged_name, merge_score, facts_transferred, relationships_redirected, merged_at] :=
-            *merge_audit{canonical_id, merged_id, merged_name, merge_score, facts_transferred, relationships_redirected, merged_at}";
-        let rows = self.run_read(script, BTreeMap::new())?;
+            *merge_audit{nous_id: $nous_id, canonical_id, merged_id, merged_name, merge_score, facts_transferred, relationships_redirected, merged_at}";
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        let rows = self.run_read(script, params)?;
 
         let mut results = Vec::new();
         for row in &rows.rows {
@@ -293,7 +506,7 @@ impl KnowledgeStore {
         let (auto_merge, review) = crate::dedup::classify_candidates(candidates, tuning);
 
         for c in &review {
-            self.store_pending_merge(c)?;
+            self.store_pending_merge(nous_id, c)?;
         }
 
         let entity_map: std::collections::HashMap<&str, &crate::dedup::EntityInfo> =
@@ -313,9 +526,13 @@ impl KnowledgeStore {
 
             if let (Some(a), Some(b)) = (info_a, info_b) {
                 let (canonical, merged_info) = crate::dedup::pick_canonical(a, b);
-                match self.execute_merge(&canonical.id, &merged_info.id) {
-                    Ok(mut record) => {
-                        record.merge_score = c.merge_score;
+                match self.execute_merge_for_nous(
+                    nous_id,
+                    &canonical.id,
+                    &merged_info.id,
+                    c.merge_score,
+                ) {
+                    Ok(record) => {
                         merged_ids.insert(merged_info.id.as_str().to_owned());
                         records.push(record);
                     }
@@ -667,6 +884,7 @@ impl KnowledgeStore {
     /// Store a pending merge candidate for review.
     fn store_pending_merge(
         &self,
+        nous_id: &str,
         candidate: &crate::dedup::EntityMergeCandidate,
     ) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
@@ -674,6 +892,7 @@ impl KnowledgeStore {
         use crate::engine::DataValue;
         let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
         params.insert(
             "entity_a".to_owned(),
             DataValue::Str(candidate.entity_a.as_str().into()),
