@@ -27,8 +27,9 @@ use crate::error::Result;
 use crate::provenance::{EvalProvenance, generate_eval_run_id};
 
 use super::{
-    BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult, QuestionStatus,
-    RetrievalScoring, RetrievalScoringMode, RetrievedFact, judge, metrics, score_answer,
+    BenchmarkIngestionSummary, BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult,
+    QuestionStatus, RetrievalScoring, RetrievalScoringMode, RetrievedFact, judge, metrics,
+    score_answer,
 };
 
 /// Benchmark execution mode.
@@ -116,6 +117,49 @@ struct QuestionExecution {
     answer: String,
     status: QuestionStatus,
     error_message: Option<String>,
+    ingestion: IngestionStats,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct IngestionStats {
+    attempts: usize,
+    failures: usize,
+    inserted: usize,
+    skipped: usize,
+}
+
+struct AnsweredQuestion {
+    answer: String,
+    ingestion: IngestionStats,
+}
+
+struct QuestionFailure {
+    status: QuestionStatus,
+    message: String,
+    ingestion: IngestionStats,
+}
+
+struct QuestionRunResult {
+    result: QuestionResult,
+    ingestion: IngestionStats,
+}
+
+impl QuestionFailure {
+    fn generic(error: &crate::error::Error, ingestion: IngestionStats) -> Self {
+        Self {
+            status: QuestionStatus::Error,
+            message: error.to_string(),
+            ingestion,
+        }
+    }
+
+    fn ingestion(status: QuestionStatus, message: String, ingestion: IngestionStats) -> Self {
+        Self {
+            status,
+            message,
+            ingestion,
+        }
+    }
 }
 
 type RetrievalMetrics = (
@@ -152,6 +196,7 @@ impl BenchmarkRunner {
         );
 
         let mut results = Vec::new();
+        let mut ingestion_summary = BenchmarkIngestionSummary::default();
         let mut shared_session: Option<String> = None;
         for (i, question) in benchmark.questions().take(limit).enumerate() {
             info!(
@@ -162,8 +207,12 @@ impl BenchmarkRunner {
                 "processing benchmark question"
             );
 
-            let result = self.run_question(i, question, &mut shared_session).await;
-            results.push(result);
+            let question_run = self.run_question(i, question, &mut shared_session).await;
+            ingestion_summary.attempts += question_run.ingestion.attempts;
+            ingestion_summary.failures += question_run.ingestion.failures;
+            ingestion_summary.inserted += question_run.ingestion.inserted;
+            ingestion_summary.skipped += question_run.ingestion.skipped;
+            results.push(question_run.result);
         }
 
         // Clean up the shared continuous-memory session at the end of the run.
@@ -172,6 +221,7 @@ impl BenchmarkRunner {
         }
 
         let report = BenchmarkReport::new(benchmark.name(), results)
+            .with_ingestion_summary(ingestion_summary)
             .with_provenance(self.config.provenance.clone().finished())
             .with_standard_statistics();
         info!(
@@ -189,7 +239,7 @@ impl BenchmarkRunner {
         index: usize,
         question: BenchmarkQuestion,
         shared_session: &mut Option<String>,
-    ) -> QuestionResult {
+    ) -> QuestionRunResult {
         let session_key = format!(
             "{}-{}-{index}-{}",
             self.config.session_key_prefix, self.config.provenance.eval_run_id, question.id
@@ -206,7 +256,7 @@ impl BenchmarkRunner {
         let (retrieved_facts, retrieval_scoring, recall_at_k, ndcg_at_k) =
             self.evaluate_retrieval(&question, status).await;
 
-        QuestionResult {
+        let result = QuestionResult {
             id: question.id,
             category: question.category,
             status,
@@ -220,6 +270,10 @@ impl BenchmarkRunner {
             retrieval_scoring,
             recall_at_k,
             ndcg_at_k,
+        };
+        QuestionRunResult {
+            result,
+            ingestion: execution.ingestion,
         }
     }
 
@@ -235,27 +289,31 @@ impl BenchmarkRunner {
         )
         .await
         {
-            Ok(Ok(answer)) if answer.trim().is_empty() => QuestionExecution {
-                answer,
+            Ok(Ok(answered)) if answered.answer.trim().is_empty() => QuestionExecution {
+                answer: answered.answer,
                 status: QuestionStatus::NoAnswer,
                 error_message: Some("empty answer".to_owned()),
+                ingestion: answered.ingestion,
             },
-            Ok(Ok(answer)) => QuestionExecution {
-                answer,
+            Ok(Ok(answered)) => QuestionExecution {
+                answer: answered.answer,
                 status: QuestionStatus::Scored,
                 error_message: None,
+                ingestion: answered.ingestion,
             },
             Ok(Err(e)) => {
                 warn!(
                     id = %question.id,
                     eval_run_id = %self.config.provenance.eval_run_id,
-                    error = %e,
+                    error = %e.message,
+                    status = ?e.status,
                     "benchmark question failed before producing a scorable answer"
                 );
                 QuestionExecution {
                     answer: String::new(),
-                    status: QuestionStatus::Error,
-                    error_message: Some(e.to_string()),
+                    status: e.status,
+                    error_message: Some(e.message),
+                    ingestion: e.ingestion,
                 }
             }
             Err(_) => {
@@ -273,6 +331,7 @@ impl BenchmarkRunner {
                     answer: String::new(),
                     status: QuestionStatus::Timeout,
                     error_message: Some(e.to_string()),
+                    ingestion: IngestionStats::default(),
                 }
             }
         }
@@ -398,7 +457,9 @@ impl BenchmarkRunner {
         question: &BenchmarkQuestion,
         session_key: &str,
         shared_session: &mut Option<String>,
-    ) -> Result<String> {
+    ) -> std::result::Result<AnsweredQuestion, QuestionFailure> {
+        let mut ingestion = IngestionStats::default();
+
         // Create a new session for official parity, or reuse the single
         // continuous-memory session.
         let session_id = if let (BenchmarkMode::ContinuousMemory, Some(id)) =
@@ -409,7 +470,8 @@ impl BenchmarkRunner {
             let session = self
                 .client
                 .create_session(&self.config.nous_id, session_key)
-                .await?;
+                .await
+                .map_err(|error| QuestionFailure::generic(&error, ingestion))?;
             let id = session.id;
             if self.config.mode() == BenchmarkMode::ContinuousMemory {
                 *shared_session = Some(id.clone());
@@ -423,10 +485,23 @@ impl BenchmarkRunner {
         // final answer turn free of contamination from the haystack.
         let transcript = build_transcript_markdown(question);
         if !transcript.trim().is_empty() {
+            ingestion.attempts = 1;
             let response = self
                 .client
                 .ingest_transcript(&self.config.nous_id, &transcript)
-                .await?;
+                .await
+                .map_err(|error| {
+                    ingestion.failures = 1;
+                    QuestionFailure::ingestion(
+                        QuestionStatus::IngestionError,
+                        format!("transcript ingestion request failed: {error}"),
+                        ingestion,
+                    )
+                })?;
+
+            ingestion.inserted = response.inserted;
+            ingestion.skipped = response.skipped;
+            ingestion.failures = response.errors.len() + response.skipped;
 
             if !response.errors.is_empty() {
                 let summary = response
@@ -439,22 +514,29 @@ impl BenchmarkRunner {
                     })
                     .collect::<Vec<_>>()
                     .join("; ");
-                return crate::error::BenchmarkSnafu {
-                    message: format!(
+                let status = if response.inserted > 0 {
+                    QuestionStatus::IngestionPartial
+                } else {
+                    QuestionStatus::IngestionError
+                };
+                return Err(QuestionFailure::ingestion(
+                    status,
+                    format!(
                         "transcript ingestion failed ({} errors, {} inserted, {} skipped): {summary}",
                         response.errors.len(),
                         response.inserted,
                         response.skipped
                     ),
-                }
-                .fail();
+                    ingestion,
+                ));
             }
         }
 
         let events = self
             .client
             .send_message(&session_id, &question.question)
-            .await?;
+            .await
+            .map_err(|error| QuestionFailure::generic(&error, ingestion))?;
 
         let answer = crate::sse::extract_text(&events);
 
@@ -467,7 +549,7 @@ impl BenchmarkRunner {
             }
         }
 
-        Ok(answer)
+        Ok(AnsweredQuestion { answer, ingestion })
     }
 }
 

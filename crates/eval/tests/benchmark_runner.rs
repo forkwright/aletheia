@@ -8,7 +8,7 @@
 
 use dokimion::benchmarks::longmemeval::LongMemEvalDataset;
 use dokimion::benchmarks::{
-    BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, RetrievalScoringMode,
+    BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, QuestionStatus, RetrievalScoringMode,
 };
 use wiremock::matchers::{method, path, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -138,6 +138,44 @@ async fn setup_slow_mock_server(answer_text: &str, delay: std::time::Duration) -
     server
 }
 
+async fn setup_ingestion_failure_server() -> MockServer {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/sessions"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+            "id": "sess_benchmark_ingest_error",
+            "nous_id": "benchmark",
+            "session_key": "bench-key",
+            "status": "active",
+            "model": null,
+            "message_count": 0,
+            "token_count_estimate": 0,
+            "created_at": "2026-04-10T00:00:00Z",
+            "updated_at": "2026-04-10T00:00:00Z"
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/api/v1/knowledge/ingest"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("ingestion unavailable"))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/api/v1/sessions/[^/]+/messages$"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse_response("blue")),
+        )
+        .mount(&server)
+        .await;
+
+    server
+}
+
 const SAMPLE_DATASET: &str = r#"[
     {
         "question_id": "q1",
@@ -209,6 +247,35 @@ async fn runner_scores_timed_out_question_as_zero() -> TestResult {
     assert!(
         report.mean_f1().abs() < f64::EPSILON,
         "timeout should be scored as a zero-answer"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn runner_marks_ingestion_failure_as_non_scored() -> TestResult {
+    init_crypto();
+    let server = setup_ingestion_failure_server().await;
+    let client = EvalClient::new(server.uri(), None);
+    let runner = BenchmarkRunner::new(client, BenchmarkRunnerConfig::default());
+
+    let dataset = LongMemEvalDataset::from_bytes(SAMPLE_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
+
+    assert_eq!(report.total, 1);
+    assert_eq!(report.scored, 0);
+    assert_eq!(report.ingestion_errors, 1);
+    assert_eq!(report.ingestion_partials, 0);
+    assert_eq!(report.ingestion_summary.attempts, 1);
+    assert_eq!(report.ingestion_summary.failures, 1);
+
+    let question = &report.questions[0];
+    assert_eq!(question.status, QuestionStatus::IngestionError);
+    assert_eq!(question.actual_answer, "");
+    assert!(
+        question
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains("transcript ingestion request failed"))
     );
     Ok(())
 }

@@ -170,6 +170,10 @@ pub enum QuestionStatus {
     /// The question produced an answer and was included in score denominators.
     #[default]
     Scored,
+    /// Haystack ingestion failed before the question could be asked.
+    IngestionError,
+    /// Haystack ingestion inserted some context but also reported errors.
+    IngestionPartial,
     /// The benchmark pipeline failed before a scorable answer was available.
     Error,
     /// The benchmark question exceeded its configured timeout.
@@ -273,6 +277,15 @@ pub struct BenchmarkReport {
     pub total: usize,
     /// Questions included in score denominators.
     pub scored: usize,
+    /// Aggregate haystack ingestion counters for this run.
+    #[serde(default)]
+    pub ingestion_summary: BenchmarkIngestionSummary,
+    /// Questions blocked by complete haystack ingestion failure.
+    #[serde(default)]
+    pub ingestion_errors: usize,
+    /// Questions blocked by partial haystack ingestion.
+    #[serde(default)]
+    pub ingestion_partials: usize,
     /// Questions that failed before producing a scorable answer.
     pub errors: usize,
     /// Questions that exceeded the per-question timeout.
@@ -302,6 +315,19 @@ pub struct BenchmarkReport {
     /// Explicit assessment of whether this report is publishable.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub publishability: Option<BenchmarkPublishability>,
+}
+
+/// Aggregate haystack ingestion counters for a benchmark run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkIngestionSummary {
+    /// Haystack ingestion requests attempted.
+    pub attempts: usize,
+    /// Haystack ingestion failures reported by request or per-fact errors.
+    pub failures: usize,
+    /// Facts inserted across haystack ingestion requests.
+    pub inserted: usize,
+    /// Facts skipped across haystack ingestion requests.
+    pub skipped: usize,
 }
 
 /// Aggregate denominator semantics for LLM-as-judge scoring.
@@ -471,6 +497,8 @@ impl BenchmarkComparisonReport {
 #[derive(Debug, Clone, Copy, Default)]
 struct BenchmarkCounts {
     scored: usize,
+    ingestion_errors: usize,
+    ingestion_partials: usize,
     errors: usize,
     timeouts: usize,
     no_answers: usize,
@@ -482,6 +510,8 @@ impl BenchmarkCounts {
         for question in questions {
             match question.status {
                 QuestionStatus::Scored => counts.scored += 1,
+                QuestionStatus::IngestionError => counts.ingestion_errors += 1,
+                QuestionStatus::IngestionPartial => counts.ingestion_partials += 1,
                 QuestionStatus::Error => counts.errors += 1,
                 QuestionStatus::Timeout => counts.timeouts += 1,
                 QuestionStatus::NoAnswer => counts.no_answers += 1,
@@ -523,6 +553,9 @@ impl BenchmarkReport {
             benchmark: benchmark.into(),
             total: questions.len(),
             scored: counts.scored,
+            ingestion_summary: BenchmarkIngestionSummary::default(),
+            ingestion_errors: counts.ingestion_errors,
+            ingestion_partials: counts.ingestion_partials,
             errors: counts.errors,
             timeouts: counts.timeouts,
             no_answers: counts.no_answers,
@@ -548,6 +581,9 @@ impl BenchmarkReport {
             benchmark: benchmark.into(),
             total: questions.len(),
             scored: counts.scored,
+            ingestion_summary: BenchmarkIngestionSummary::default(),
+            ingestion_errors: counts.ingestion_errors,
+            ingestion_partials: counts.ingestion_partials,
             errors: counts.errors,
             timeouts: counts.timeouts,
             no_answers: counts.no_answers,
@@ -565,6 +601,13 @@ impl BenchmarkReport {
     #[must_use]
     pub fn with_provenance(mut self, provenance: EvalProvenance) -> Self {
         self.provenance = Some(provenance);
+        self
+    }
+
+    /// Attach aggregate haystack ingestion counters to the report.
+    #[must_use]
+    pub(crate) fn with_ingestion_summary(mut self, summary: BenchmarkIngestionSummary) -> Self {
+        self.ingestion_summary = summary;
         self
     }
 
