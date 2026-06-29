@@ -80,6 +80,19 @@ pub(crate) struct ActorServices {
     /// instead of re-opening per turn. `None` when the feature is disabled
     /// in taxis config.
     pub(crate) audit_log: Option<Arc<crate::audit::PromptAuditLog>>,
+    /// Shared training-capture writer, initialized once per actor.
+    ///
+    /// WHY: `TrainingCapture::new` reconciles shards and reads the manifest;
+    /// doing that on every turn blocks the async worker with synchronous fs
+    /// I/O. Caching the writer on the actor moves initialization cost to
+    /// startup and lets writes run on a blocking thread. (#5676)
+    pub(crate) training_capture: Option<Arc<std::sync::Mutex<crate::training::TrainingCapture>>>,
+    /// Shared DPO pair writer, initialized once per actor.
+    ///
+    /// WHY: `DpoWriter::new` calls `create_dir_all` on every turn. Holding the
+    /// writer on the actor eliminates repeated synchronous filesystem calls
+    /// from the async turn hot path. (#5676)
+    pub(crate) dpo_writer: Option<Arc<std::sync::Mutex<crate::training::DpoWriter>>>,
     /// Empirical router for recording after-action outcomes.
     ///
     /// WHY: the router is injected into the actor (not the config) because it
@@ -249,6 +262,39 @@ impl NousActor {
                     Arc::new(crate::recall::KnowledgeTextSearch::new(Arc::clone(ks)))
                 });
 
+        // WHY: initialize training writers once per actor so the turn hot path
+        // does not pay directory creation / manifest reconciliation costs on
+        // every completed turn. (#5676)
+        let training_capture = if pipeline_config.training.enabled {
+            match crate::training::TrainingCapture::new(oikos.root(), &pipeline_config.training) {
+                Ok(capture) => Some(Arc::new(std::sync::Mutex::new(capture))),
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        "failed to initialize training capture; training writes disabled for this actor"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let dpo_writer = if pipeline_config.training.enabled {
+            let dpo_dir = oikos.root().join(&pipeline_config.training.path);
+            match crate::training::DpoWriter::new(&dpo_dir) {
+                Ok(writer) => Some(Arc::new(std::sync::Mutex::new(writer))),
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        "failed to initialize DPO writer; DPO writes disabled for this actor"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Self {
             id,
             config,
@@ -275,6 +321,8 @@ impl NousActor {
                     nous_behavior.bootstrap_cache_ttl_secs,
                 )),
                 audit_log,
+                training_capture,
+                dpo_writer,
                 // WHY: default to NoOpRouter when no empirical backend is injected.
                 // The default provider string is arbitrary for the no-op case; it
                 // is never used for routing, only satisfies the type.
