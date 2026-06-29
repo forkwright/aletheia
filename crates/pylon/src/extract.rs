@@ -38,7 +38,16 @@ impl FromRequestParts<Arc<AppState>> for Claims {
         }
 
         if state.auth_mode == "none" {
-            let role = state.none_role.parse::<Role>().unwrap_or(Role::Readonly);
+            // WHY(#5765): A misconfigured none_role must not silently degrade to
+            // Readonly. Log the fallback so operators can detect typos even if
+            // startup validation is bypassed.
+            let role = state.none_role.parse::<Role>().unwrap_or_else(|_| {
+                tracing::error!(
+                    none_role = %state.none_role,
+                    "auth.mode=none: none_role is not a valid role; falling back to readonly"
+                );
+                Role::Readonly
+            });
             return Ok(Self {
                 sub: "anonymous".to_owned(),
                 role,
