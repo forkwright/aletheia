@@ -170,7 +170,7 @@ impl KnowledgeStore {
         let script = r"
             ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
                 ~embeddings:semantic_idx {id: embedding_id, content: _embedding_content, source_type, source_id |
-                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist}},
+                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist},
                 source_type == 'fact',
                 *facts{id: source_id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
                 nous_id == $requester_nous_id,
@@ -179,7 +179,7 @@ impl KnowledgeStore {
                 id = source_id
             ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
                 ~embeddings:semantic_idx {id: embedding_id, content: _embedding_content, source_type, source_id |
-                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist}},
+                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist},
                 source_type == 'fact',
                 *facts{id: source_id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
                 visibility == 'shared',
@@ -188,7 +188,7 @@ impl KnowledgeStore {
                 id = source_id
             ?[id, content, source_type, source_id, dist, scope, project_id, visibility, nous_id, sensitivity] :=
                 ~embeddings:semantic_idx {id: embedding_id, content: _embedding_content, source_type, source_id |
-                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist}},
+                    query: $query_vec, k: $k, ef: $ef, bind_distance: dist},
                 source_type == 'fact',
                 *facts{id: source_id, content, is_forgotten, superseded_by, scope, project_id, visibility, nous_id, sensitivity},
                 visibility == 'published',

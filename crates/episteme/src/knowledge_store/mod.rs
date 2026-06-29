@@ -152,6 +152,7 @@ pub const PENDING_MERGES_DDL: &str = r":create pending_merges {
     created_at: String
 }";
 
+#[cfg(feature = "mneme-engine")]
 pub(crate) const UNOWNED_MERGE_NOUS_ID: &str = "__unowned_merge_review__";
 
 /// Datalog DDL for the `causal_edges` relation.
