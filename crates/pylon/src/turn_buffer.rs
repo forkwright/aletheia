@@ -21,10 +21,10 @@ use tokio::sync::{Mutex, Notify};
 use tracing::{Instrument as _, debug, warn};
 
 /// Default time-to-live for completed turn buffers before they are reaped.
-pub const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
+pub(crate) const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
 
 /// Maximum events retained per turn buffer to bound memory usage.
-pub const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
+pub(crate) const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
 
 /// Retained marker emitted when a turn buffer reaches its capacity limit.
 pub(crate) const REPLAY_GAP_EVENT_TYPE: &str = "replay_gap";
@@ -224,6 +224,7 @@ struct TurnKey {
 /// Registry of active and recently-completed turn buffers.
 ///
 /// Held in `SessionsState` as `Arc<TurnBufferRegistry>`.
+// kanon:ignore RUST/pub-visibility -- used by sibling crates to construct pylon AppState fixtures and runtime state.
 pub struct TurnBufferRegistry {
     buffers: Mutex<HashMap<TurnKey, Arc<Mutex<TurnBuffer>>>>,
     completed_ttl: Duration,
@@ -245,7 +246,7 @@ impl TurnBufferRegistry {
 
     /// Create a registry from gateway config values.
     #[must_use]
-    pub fn from_config(config: &taxis::config::GatewayConfig) -> Self {
+    pub(crate) fn from_config(config: &taxis::config::GatewayConfig) -> Self {
         Self::with_limits(
             Duration::from_secs(config.turn_buffer_completed_ttl_secs),
             config.turn_buffer_max_events_per_turn,
@@ -754,5 +755,18 @@ mod tests {
         tokio::time::advance(Duration::from_millis(1)).await;
         registry.reap_expired().await;
         assert!(registry.get("ses-1", "turn-1").await.is_none());
+    }
+
+    #[test]
+    fn gateway_defaults_match_turn_buffer_defaults() {
+        let config = taxis::config::GatewayConfig::default();
+        assert_eq!(
+            config.turn_buffer_completed_ttl_secs,
+            DEFAULT_COMPLETED_TTL.as_secs()
+        );
+        assert_eq!(
+            config.turn_buffer_max_events_per_turn,
+            DEFAULT_MAX_EVENTS_PER_TURN
+        );
     }
 }

@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 use koina::secret::SecretString;
 
 /// Default time-to-live for completed turn buffers before they are reaped, in seconds.
-pub const DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS: u64 = 300;
+pub(crate) const DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS: u64 = 300;
 
 /// Maximum events retained per turn buffer to bound memory usage.
-pub const DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN: usize = 10_000;
+pub(crate) const DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN: usize = 10_000;
 
 /// HTTP gateway configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,12 +247,3 @@ impl Default for PerUserRateLimitConfig {
         }
     }
 }
-
-#[cfg(test)]
-const _: () = assert!(
-    DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS == pylon::turn_buffer::DEFAULT_COMPLETED_TTL.as_secs()
-);
-#[cfg(test)]
-const _: () = assert!(
-    DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN == pylon::turn_buffer::DEFAULT_MAX_EVENTS_PER_TURN
-);

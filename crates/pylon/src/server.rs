@@ -159,6 +159,15 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let (config_tx, _config_rx) = tokio::sync::watch::channel(aletheia_config.clone());
     let workspace_root =
         crate::state::resolve_workspace_root(&oikos, aletheia_config.workspace.root.as_deref());
+    let auth_mode = aletheia_config.gateway.auth.mode.clone();
+    let none_role = aletheia_config.gateway.auth.none_role.clone();
+    let loopback_only_metrics = aletheia_config.gateway.bind == "localhost";
+    let idempotency_cache = Arc::new(crate::idempotency::IdempotencyCache::from_config(
+        &aletheia_config.api_limits,
+    ));
+    let turn_buffer_registry = Arc::new(crate::turn_buffer::TurnBufferRegistry::from_config(
+        &aletheia_config.gateway,
+    ));
 
     // WHY: pylon's standalone server only registers its own metric families.
     // The aletheia binary uses `register_all_metrics` to register every
@@ -181,25 +190,19 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         auth_facade,
         credential_runtime,
         start_time: Instant::now(),
-        auth_mode: aletheia_config.gateway.auth.mode.clone(),
-        none_role: aletheia_config.gateway.auth.none_role.clone(),
-        // WHY(#4995): Read the bind policy before moving aletheia_config
-        // into the Arc<RwLock<...>>.
-        loopback_only_metrics: aletheia_config.gateway.bind == "localhost",
+        auth_mode,
+        none_role,
+        loopback_only_metrics,
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
         config_tx,
-        idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::from_config(
-            &aletheia_config.api_limits,
-        )),
+        idempotency_cache,
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store,
         // WHY: pylon's standalone server does not configure embeddings; the
         // aletheia binary owns the embedding pipeline. Health reports "warn".
         embedding_provider: None,
-        turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::from_config(
-            &aletheia_config.gateway,
-        )),
+        turn_buffer_registry,
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
         approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),

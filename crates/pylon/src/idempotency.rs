@@ -583,12 +583,8 @@ mod tests {
         // Fill the cache to its configured capacity; the 43rd distinct key must
         // evict the oldest entry, proving capacity was wired from config.
         for i in 0..43 {
-            let _ = cache.check_or_insert(
-                "principal",
-                &format!("key-{i}"),
-                "session",
-                "sha256:body",
-            );
+            let _ =
+                cache.check_or_insert("principal", &format!("key-{i}"), "session", "sha256:body");
         }
         assert!(
             matches!(
