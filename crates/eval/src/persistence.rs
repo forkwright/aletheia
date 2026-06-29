@@ -1,10 +1,10 @@
 //! JSONL persistence for evaluation results as training data.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use mneme::meta::Stamped as _;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 
 use crate::coverage::{self, Policy, SkipClass, SkipKind, Summary};
@@ -70,6 +70,53 @@ pub struct EvalRecordCoverage {
     pub required_pass_rate_bps: u32,
     /// Required skip ratio in basis points.
     pub required_skip_ratio_bps: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StampedJsonlManifest {
+    schema_version: u32,
+    artifact_path: String,
+    runs: Vec<StampedJsonlRun>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StampedJsonlRun {
+    eval_run_id: String,
+    record_count: usize,
+    jsonl_path: String,
+    meta_path: String,
+    tags_path: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    coverage_path: Option<String>,
+    recovered_from_partial_write: bool,
+}
+
+impl StampedJsonlManifest {
+    fn new(path: &Path) -> Self {
+        Self {
+            schema_version: 1,
+            artifact_path: path.display().to_string(),
+            runs: Vec::new(),
+        }
+    }
+
+    fn contains_run(&self, eval_run_id: &str) -> bool {
+        self.runs
+            .iter()
+            .any(|entry| entry.eval_run_id == eval_run_id)
+    }
+
+    fn upsert_run(&mut self, entry: StampedJsonlRun) {
+        if let Some(existing) = self
+            .runs
+            .iter_mut()
+            .find(|run| run.eval_run_id == entry.eval_run_id)
+        {
+            *existing = entry;
+        } else {
+            self.runs.push(entry);
+        }
+    }
 }
 
 impl From<&Summary> for EvalRecordCoverage {
@@ -179,12 +226,8 @@ pub fn append_jsonl(path: &Path, records: &[EvalRecord]) -> Result<()> {
     Ok(())
 }
 
-/// Append evaluation records from a `RunReport` to a JSONL file and write a
-/// sibling `<path>.meta.json` file with provenance metadata.
-///
-/// The `.meta.json` file is always overwritten (not appended) because it
-/// reflects the provenance of the *most recent* batch of records written to
-/// the JSONL file.
+/// Append evaluation records from a `RunReport` to a JSONL file and commit
+/// sibling metadata, tags, and manifest sidecars for the same run ID.
 ///
 /// # Errors
 ///
@@ -206,45 +249,47 @@ pub fn append_jsonl_stamped_with_coverage(
     coverage: Option<&Summary>,
 ) -> Result<()> {
     let records = records_from_report_with_coverage(report, coverage);
-    append_jsonl(path, &records)?;
-
-    // Write the sibling .meta.json alongside the JSONL output.
+    let eval_run_id = report.provenance.eval_run_id.clone();
     let meta = stamp_with_coverage(report, coverage);
     let meta_path = sibling_path(path, "meta.json");
-    let meta_json = serde_json::to_vec_pretty(&meta).context(error::JsonSnafu)?;
-    let mut meta_file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&meta_path)
-        .context(error::IoSnafu)?;
-    meta_file.write_all(&meta_json).context(error::IoSnafu)?;
-
-    // Write the sibling .tags.json for fast set-membership filtering.
     let tags = tag_eval_result(report);
     let tags_path = sibling_path(path, "tags.json");
-    let tags_json = serde_json::to_vec_pretty(&tags).context(error::JsonSnafu)?;
-    let mut tags_file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&tags_path)
-        .context(error::IoSnafu)?;
-    tags_file.write_all(&tags_json).context(error::IoSnafu)?;
-
-    if let Some(coverage) = coverage {
-        let coverage_path = sibling_path(path, "coverage.json");
-        let coverage_json = serde_json::to_vec_pretty(coverage).context(error::JsonSnafu)?;
-        let mut coverage_file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&coverage_path)
-            .context(error::IoSnafu)?;
-        coverage_file
-            .write_all(&coverage_json)
-            .context(error::IoSnafu)?;
+    let coverage_path = coverage.map(|_| sibling_path(path, "coverage.json"));
+    let manifest_path = sibling_path(path, "manifest.json");
+    let mut manifest = read_manifest(path, &manifest_path)?;
+    let manifest_has_run = manifest.contains_run(&eval_run_id);
+    let jsonl_has_run = jsonl_contains_run(path, &eval_run_id)?;
+    let sidecars_complete = meta_path.exists()
+        && tags_path.exists()
+        && coverage_path
+            .as_ref()
+            .is_none_or(|coverage_path| coverage_path.exists());
+    if manifest_has_run && jsonl_has_run && sidecars_complete {
+        return Ok(());
     }
+
+    let recovered_from_partial_write = manifest_has_run || jsonl_has_run;
+
+    write_json_atomic(&meta_path, &meta)?;
+    write_json_atomic(&tags_path, &tags)?;
+    if let (Some(coverage), Some(coverage_path)) = (coverage, coverage_path.as_ref()) {
+        write_json_atomic(coverage_path, coverage)?;
+    }
+
+    if !jsonl_has_run {
+        append_jsonl_durable(path, &records)?;
+    }
+
+    manifest.upsert_run(StampedJsonlRun {
+        eval_run_id,
+        record_count: records.len(),
+        jsonl_path: path.display().to_string(),
+        meta_path: meta_path.display().to_string(),
+        tags_path: tags_path.display().to_string(),
+        coverage_path: coverage_path.map(|path| path.display().to_string()),
+        recovered_from_partial_write,
+    });
+    write_json_atomic(&manifest_path, &manifest)?;
 
     Ok(())
 }
@@ -301,6 +346,92 @@ fn sibling_path(path: &Path, suffix: &str) -> std::path::PathBuf {
     p
 }
 
+fn read_manifest(path: &Path, manifest_path: &Path) -> Result<StampedJsonlManifest> {
+    match std::fs::read_to_string(manifest_path) {
+        Ok(content) => serde_json::from_str(&content).context(error::JsonSnafu),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(StampedJsonlManifest::new(path))
+        }
+        Err(source) => Err(source).context(error::IoSnafu),
+    }
+}
+
+fn jsonl_contains_run(path: &Path, eval_run_id: &str) -> Result<bool> {
+    match std::fs::read_to_string(path) {
+        Ok(content) => {
+            for line in content.lines().filter(|line| !line.trim().is_empty()) {
+                let value: serde_json::Value =
+                    serde_json::from_str(line).context(error::JsonSnafu)?;
+                if value.get("eval_run_id").and_then(serde_json::Value::as_str) == Some(eval_run_id)
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(source) => Err(source).context(error::IoSnafu),
+    }
+}
+
+fn append_jsonl_durable(path: &Path, records: &[EvalRecord]) -> Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .context(error::IoSnafu)?;
+
+    for record in records {
+        let line = serde_json::to_string(record).context(error::JsonSnafu)?;
+        writeln!(file, "{line}").context(error::IoSnafu)?;
+    }
+    file.sync_all().context(error::IoSnafu)?;
+    Ok(())
+}
+
+fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    let json = serde_json::to_vec_pretty(value).context(error::JsonSnafu)?;
+    write_bytes_atomic(path, &json)
+}
+
+fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let tmp_path = temp_sibling_path(path);
+    {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&tmp_path)
+            .context(error::IoSnafu)?;
+        file.write_all(bytes).context(error::IoSnafu)?;
+        file.sync_all().context(error::IoSnafu)?;
+    }
+    std::fs::rename(&tmp_path, path).context(error::IoSnafu)?;
+    if let Some(parent) = path.parent() {
+        let dir = std::fs::OpenOptions::new()
+            .read(true)
+            .open(parent)
+            .context(error::IoSnafu)?;
+        dir.sync_all().context(error::IoSnafu)?;
+    }
+    Ok(())
+}
+
+fn temp_sibling_path(path: &Path) -> PathBuf {
+    let mut tmp_path = path.to_owned();
+    let extension = path.extension().map_or_else(String::new, |extension| {
+        extension.to_string_lossy().into_owned()
+    });
+    let suffix = std::process::id();
+    let tmp_extension = if extension.is_empty() {
+        format!("tmp-{suffix}")
+    } else {
+        format!("{extension}.tmp-{suffix}")
+    };
+    tmp_path.set_extension(tmp_extension);
+    tmp_path
+}
+
 fn millis_from_duration(duration: &std::time::Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
@@ -312,6 +443,7 @@ fn millis_from_duration(duration: &std::time::Duration) -> u64 {
     reason = "test: vec indices are valid after asserting len"
 )]
 mod tests {
+    use std::path::Path;
     use std::time::Duration;
 
     use super::*;
@@ -332,6 +464,18 @@ mod tests {
 
     fn sample_provenance() -> EvalProvenance {
         EvalProvenance::new("er-test", "http://localhost")
+    }
+
+    fn create_dir(path: &Path) {
+        std::fs::create_dir_all(path).expect("test directory should be created");
+    }
+
+    fn remove_file_if_exists(path: &Path) {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => panic!("failed to remove {}: {error}", path.display()),
+        }
     }
 
     #[test]
@@ -619,11 +763,13 @@ mod tests {
     #[test]
     fn append_jsonl_stamped_writes_meta_sibling() {
         let dir = std::env::temp_dir().join("aletheia-eval-stamped-test");
-        let _ = std::fs::create_dir_all(&dir);
+        create_dir(&dir);
         let path = dir.join("stamped-test.jsonl");
         let meta_path = dir.join("stamped-test.jsonl.meta.json");
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&meta_path);
+        let manifest_path = dir.join("stamped-test.jsonl.manifest.json");
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&manifest_path);
 
         let report = RunReport {
             passed: 2,
@@ -655,20 +801,23 @@ mod tests {
             "meta should carry passed count"
         );
 
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&meta_path);
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&manifest_path);
     }
 
     #[test]
     fn append_jsonl_stamped_with_coverage_writes_denominators() {
         let dir = std::env::temp_dir().join("aletheia-eval-coverage-test");
-        let _ = std::fs::create_dir_all(&dir);
+        create_dir(&dir);
         let path = dir.join("stamped-coverage.jsonl");
         let meta_path = dir.join("stamped-coverage.jsonl.meta.json");
         let coverage_path = dir.join("stamped-coverage.jsonl.coverage.json");
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&meta_path);
-        let _ = std::fs::remove_file(&coverage_path);
+        let manifest_path = dir.join("stamped-coverage.jsonl.manifest.json");
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&coverage_path);
+        remove_file_if_exists(&manifest_path);
 
         let report = RunReport {
             passed: 1,
@@ -721,19 +870,22 @@ mod tests {
         assert!(jsonl_content.contains("\"skip_kind\":\"missing_auth_token\""));
         assert!(jsonl_content.contains("\"coverage\""));
 
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&meta_path);
-        let _ = std::fs::remove_file(&coverage_path);
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&coverage_path);
+        remove_file_if_exists(&manifest_path);
     }
 
     #[test]
     fn append_jsonl_stamped_writes_tags_sibling() {
         let dir = std::env::temp_dir().join("aletheia-eval-tags-test");
-        let _ = std::fs::create_dir_all(&dir);
+        create_dir(&dir);
         let path = dir.join("stamped-tags.jsonl");
         let tags_path = dir.join("stamped-tags.jsonl.tags.json");
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&tags_path);
+        let manifest_path = dir.join("stamped-tags.jsonl.manifest.json");
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&tags_path);
+        remove_file_if_exists(&manifest_path);
 
         let report = RunReport {
             passed: 1,
@@ -768,8 +920,110 @@ mod tests {
             )),
             "tags should contain passed outcome"
         );
+        let manifest_content =
+            std::fs::read_to_string(&manifest_path).expect("should read manifest file");
+        let manifest: StampedJsonlManifest =
+            serde_json::from_str(&manifest_content).expect("manifest should be valid JSON");
+        assert_eq!(manifest.runs.len(), 1);
+        assert_eq!(manifest.runs[0].tags_path, tags_path.display().to_string());
 
-        let _ = std::fs::remove_file(&path);
-        let _ = std::fs::remove_file(&tags_path);
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&tags_path);
+        remove_file_if_exists(&manifest_path);
+    }
+
+    #[test]
+    fn append_jsonl_stamped_is_idempotent_for_run_id() {
+        let dir = std::env::temp_dir().join("aletheia-eval-idempotent-test");
+        create_dir(&dir);
+        let path = dir.join("stamped-idempotent.jsonl");
+        let meta_path = dir.join("stamped-idempotent.jsonl.meta.json");
+        let tags_path = dir.join("stamped-idempotent.jsonl.tags.json");
+        let manifest_path = dir.join("stamped-idempotent.jsonl.manifest.json");
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&tags_path);
+        remove_file_if_exists(&manifest_path);
+
+        let report = RunReport {
+            passed: 1,
+            failed: 0,
+            skipped: 0,
+            total_duration: std::time::Duration::from_millis(100),
+            results: vec![ScenarioResult {
+                meta: sample_meta("idempotent-pass", "health"),
+                outcome: ScenarioOutcome::Passed {
+                    duration: std::time::Duration::from_millis(50),
+                },
+                sub_results: vec![],
+            }],
+            provenance: sample_provenance(),
+        };
+
+        append_jsonl_stamped(&path, &report).expect("first stamped append should succeed");
+        append_jsonl_stamped(&path, &report).expect("second stamped append should be idempotent");
+
+        let jsonl_content = std::fs::read_to_string(&path).expect("should read JSONL file");
+        assert_eq!(jsonl_content.lines().count(), 1);
+        let manifest_content =
+            std::fs::read_to_string(&manifest_path).expect("should read manifest file");
+        let manifest: StampedJsonlManifest =
+            serde_json::from_str(&manifest_content).expect("manifest should be valid JSON");
+        assert_eq!(manifest.runs.len(), 1);
+        assert!(!manifest.runs[0].recovered_from_partial_write);
+
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&tags_path);
+        remove_file_if_exists(&manifest_path);
+    }
+
+    #[test]
+    fn append_jsonl_stamped_recovers_jsonl_without_sidecars() {
+        let dir = std::env::temp_dir().join("aletheia-eval-recovery-test");
+        create_dir(&dir);
+        let path = dir.join("stamped-recovery.jsonl");
+        let meta_path = dir.join("stamped-recovery.jsonl.meta.json");
+        let tags_path = dir.join("stamped-recovery.jsonl.tags.json");
+        let manifest_path = dir.join("stamped-recovery.jsonl.manifest.json");
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&tags_path);
+        remove_file_if_exists(&manifest_path);
+
+        let report = RunReport {
+            passed: 1,
+            failed: 0,
+            skipped: 0,
+            total_duration: std::time::Duration::from_millis(100),
+            results: vec![ScenarioResult {
+                meta: sample_meta("recovery-pass", "health"),
+                outcome: ScenarioOutcome::Passed {
+                    duration: std::time::Duration::from_millis(50),
+                },
+                sub_results: vec![],
+            }],
+            provenance: sample_provenance(),
+        };
+        let records = records_from_report(&report);
+        append_jsonl(&path, &records).expect("simulate crash after JSONL append");
+
+        append_jsonl_stamped(&path, &report).expect("stamped append should recover sidecars");
+
+        let jsonl_content = std::fs::read_to_string(&path).expect("should read JSONL file");
+        assert_eq!(jsonl_content.lines().count(), records.len());
+        assert!(meta_path.exists(), "meta sidecar should be recovered");
+        assert!(tags_path.exists(), "tags sidecar should be recovered");
+        let manifest_content =
+            std::fs::read_to_string(&manifest_path).expect("should read manifest file");
+        let manifest: StampedJsonlManifest =
+            serde_json::from_str(&manifest_content).expect("manifest should be valid JSON");
+        assert_eq!(manifest.runs.len(), 1);
+        assert!(manifest.runs[0].recovered_from_partial_write);
+
+        remove_file_if_exists(&path);
+        remove_file_if_exists(&meta_path);
+        remove_file_if_exists(&tags_path);
+        remove_file_if_exists(&manifest_path);
     }
 }
