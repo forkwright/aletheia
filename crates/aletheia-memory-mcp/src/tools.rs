@@ -118,7 +118,11 @@ pub struct NousNeighborsParams {
 pub struct NousAnnotateParams {
     /// Owning agent (nous) that is authoring the annotation. Must be explicit;
     /// the `mcp-client` fallback is no longer used for user memory.
-    pub session_id: String,
+    pub nous_id: String,
+    /// Optional source session that produced the annotation, recorded as
+    /// provenance. Distinct from the owning `nous_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_session_id: Option<String>,
     /// Fact ID to annotate.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
@@ -139,6 +143,10 @@ pub struct NousSupersedeParams {
     pub new_fact_id: String,
     /// Owning agent (nous) recording the supersession. Must be explicit.
     pub nous_id: String,
+    /// Optional source session that produced the supersession, recorded as
+    /// provenance. Distinct from the owning `nous_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_session_id: Option<String>,
     /// Reason for supersession.
     pub reason: String,
 }
@@ -1094,7 +1102,8 @@ impl MemoryServer {
     ///   "arguments": {
     ///     "fact_id": "f-abc-123",
     ///     "content": "This fact was verified against external source X",
-    ///     "session_id": "agent-uuid",
+    ///     "nous_id": "agent-uuid",
+    ///     "source_session_id": "session-uuid"
     ///   }
     /// }
     /// ```
@@ -1128,9 +1137,9 @@ impl MemoryServer {
             .into());
         }
 
-        if params.session_id.trim().is_empty() {
+        if params.nous_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
-                message: "session_id (owner nous) must not be empty".to_owned(),
+                message: "nous_id (owner) must not be empty".to_owned(),
             }
             .build()
             .into());
@@ -1138,7 +1147,11 @@ impl MemoryServer {
 
         let fact_id = params.fact_id.clone();
         let content = params.content.clone();
-        let owner_nous_id = params.session_id.clone();
+        let owner_nous_id = params.nous_id.clone();
+        let source_session_id = params
+            .source_session_id
+            .clone()
+            .filter(|s| !s.trim().is_empty());
 
         let result = self
             .run_blocking(move |store| {
@@ -1195,7 +1208,8 @@ impl MemoryServer {
                     provenance: mneme::knowledge::FactProvenance {
                         confidence: 0.95,
                         tier: mneme::knowledge::EpistemicTier::Inferred,
-                        source_session_id: Some(owner_nous_id),
+                        source_session_id,
+
                         stability_hours: mneme::knowledge::default_stability_hours("annotation"),
                     },
                     lifecycle: mneme::knowledge::FactLifecycle {
@@ -1263,7 +1277,8 @@ impl MemoryServer {
     ///     "old_fact_id": "f-abc-123",
     ///     "new_fact_id": "f-abc-124",
     ///     "nous_id": "alice",
-    ///     "reason": "Updated with more recent information",
+    ///     "source_session_id": "session-uuid",
+    ///     "reason": "Updated with more recent information"
     ///   }
     /// }
     /// ```
@@ -1317,6 +1332,10 @@ impl MemoryServer {
         let new_id = params.new_fact_id.clone();
         let reason = params.reason.clone();
         let owner_nous_id = params.nous_id.clone();
+        let source_session_id = params
+            .source_session_id
+            .clone()
+            .filter(|s| !s.trim().is_empty());
 
         let record_id = self
             .run_blocking(move |store| {
@@ -1402,7 +1421,8 @@ impl MemoryServer {
                     provenance: mneme::knowledge::FactProvenance {
                         confidence: 1.0,
                         tier: mneme::knowledge::EpistemicTier::Verified,
-                        source_session_id: Some(owner_nous_id),
+                        source_session_id,
+
                         stability_hours: mneme::knowledge::default_stability_hours("supersession"),
                     },
                     lifecycle: mneme::knowledge::FactLifecycle {
@@ -1707,37 +1727,41 @@ mod tests {
 
     #[test]
     fn nous_annotate_params_requires_owner() {
-        // Missing session_id (owner)
+        // Missing nous_id (owner)
         let json = r#"{"fact_id":"f-abc-123","content":"note"}"#;
         assert!(serde_json::from_str::<NousAnnotateParams>(json).is_err());
     }
 
     #[test]
     fn nous_annotate_params_round_trip() {
-        let json = r#"{"session_id":"agent-uuid","fact_id":"f-abc-123","content":"verified"}"#;
+        let json = r#"{"nous_id":"agent-uuid","source_session_id":"session-uuid","fact_id":"f-abc-123","content":"verified"}"#;
         let params: NousAnnotateParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.session_id, "agent-uuid".to_owned());
+        assert_eq!(params.nous_id, "agent-uuid".to_owned());
+        assert_eq!(params.source_session_id, Some("session-uuid".to_owned()));
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.content, "verified");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousAnnotateParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.session_id, "agent-uuid");
+        assert_eq!(back.nous_id, "agent-uuid");
+        assert_eq!(back.source_session_id, Some("session-uuid".to_owned()));
     }
 
     #[test]
     fn nous_supersede_params_round_trip() {
         let json =
-            r#"{"old_fact_id":"f-old","new_fact_id":"f-new","nous_id":"alice","reason":"updated"}"#;
+            r#"{"old_fact_id":"f-old","new_fact_id":"f-new","nous_id":"alice","source_session_id":"session-uuid","reason":"updated"}"#;
         let params: NousSupersedeParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.old_fact_id, "f-old");
         assert_eq!(params.new_fact_id, "f-new");
         assert_eq!(params.nous_id, "alice");
+        assert_eq!(params.source_session_id, Some("session-uuid".to_owned()));
         assert_eq!(params.reason, "updated");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousSupersedeParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.nous_id, "alice");
+        assert_eq!(back.source_session_id, Some("session-uuid".to_owned()));
     }
 
     #[test]
@@ -2219,7 +2243,8 @@ mod tests {
 
         let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
-            session_id: "alice".to_owned(),
+            nous_id: "alice".to_owned(),
+            source_session_id: Some("sess-target".to_owned()),
             fact_id: "f-target-1".to_owned(),
             content: "verified by external source".to_owned(),
         };
@@ -2245,6 +2270,11 @@ mod tests {
             annotation.nous_id, "alice",
             "annotation must not fallback to mcp-client"
         );
+        assert_eq!(
+            annotation.provenance.source_session_id,
+            Some("sess-target".to_owned()),
+            "annotation must record the supplied source session"
+        );
         assert_eq!(annotation.visibility, Visibility::Shared);
         assert_eq!(annotation.sensitivity, FactSensitivity::Internal);
         assert_eq!(annotation.scope, Some(MemoryScope::Project));
@@ -2267,7 +2297,8 @@ mod tests {
 
         let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
-            session_id: "alice".to_owned(),
+            nous_id: "alice".to_owned(),
+            source_session_id: None,
             fact_id: "f-bob-1".to_owned(),
             content: "verified by external source".to_owned(),
         };
@@ -2304,6 +2335,7 @@ mod tests {
             old_fact_id: "f-old-1".to_owned(),
             new_fact_id: "f-new-1".to_owned(),
             nous_id: "alice".to_owned(),
+            source_session_id: Some("sess-supersede".to_owned()),
             reason: "updated".to_owned(),
         };
         let result = server.nous_supersede(Parameters(params)).await.unwrap();
@@ -2327,6 +2359,11 @@ mod tests {
         assert_eq!(
             record.nous_id, "alice",
             "supersession record must not use mcp-server"
+        );
+        assert_eq!(
+            record.provenance.source_session_id,
+            Some("sess-supersede".to_owned()),
+            "supersession record must record the supplied source session"
         );
         assert_eq!(record.visibility, Visibility::Shared);
         assert_eq!(record.scope, Some(MemoryScope::Project));
@@ -2361,6 +2398,7 @@ mod tests {
             old_fact_id: "f-old-bob".to_owned(),
             new_fact_id: "f-new-alice".to_owned(),
             nous_id: "alice".to_owned(),
+            source_session_id: None,
             reason: "updated".to_owned(),
         };
         let result = server.nous_supersede(Parameters(params)).await;
