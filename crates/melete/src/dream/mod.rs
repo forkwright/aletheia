@@ -160,6 +160,53 @@ pub trait ConsolidationTarget: Send + Sync {
     ) -> std::result::Result<usize, std::io::Error>;
 }
 
+/// WHY: `TranscriptSource` and `ConsolidationTarget` methods perform blocking
+/// fjall I/O. Wrapping each call in `tokio::task::spawn_blocking` keeps the
+/// async runtime worker threads from being stalled by unbounded scans or tree
+/// writes (#5666).
+async fn load_transcripts_async(
+    source: Arc<dyn TranscriptSource>,
+    since: jiff::Timestamp,
+) -> Result<Vec<SessionTranscript>> {
+    tokio::task::spawn_blocking(move || source.load_transcripts_since(since))
+        .await
+        .map_err(|e| std::io::Error::other(format!("blocking transcript load task panicked: {e}")))
+        .and_then(std::convert::identity)
+        .context(DreamTranscriptSourceSnafu {
+            context: "load transcripts for consolidation",
+        })
+}
+
+async fn merge_flush_async(
+    target: Arc<dyn ConsolidationTarget>,
+    flush: MemoryFlush,
+    nous_id: String,
+) -> Result<MergeReport> {
+    tokio::task::spawn_blocking(move || target.merge_flush(&flush, &nous_id))
+        .await
+        .map_err(|e| std::io::Error::other(format!("blocking merge flush task panicked: {e}")))
+        .and_then(std::convert::identity)
+        .context(DreamConsolidationTargetSnafu {
+            context: "merge flush INTO knowledge graph",
+        })
+}
+
+async fn mark_contradictions_stale_async(
+    target: Arc<dyn ConsolidationTarget>,
+    log: ContradictionLog,
+    nous_id: String,
+) -> Result<usize> {
+    tokio::task::spawn_blocking(move || target.mark_contradictions_stale(&log, &nous_id))
+        .await
+        .map_err(|e| {
+            std::io::Error::other(format!("blocking stale-marking task panicked: {e}"))
+        })
+        .and_then(std::convert::identity)
+        .context(DreamConsolidationTargetSnafu {
+            context: "mark contradicted facts stale",
+        })
+}
+
 /// The auto-dream consolidation engine.
 ///
 /// Manages the triple-gate system and spawns background consolidation tasks.
@@ -340,8 +387,8 @@ impl DreamEngine {
                 match engine
                     .run_consolidation(
                         acquired,
-                        source.as_ref(),
-                        target.as_ref(),
+                        Arc::clone(&source),
+                        Arc::clone(&target),
                         provider.as_ref(),
                     )
                     .await
@@ -420,8 +467,8 @@ impl DreamEngine {
     async fn run_consolidation(
         &self,
         acquired: lock::AcquiredLock,
-        source: &dyn TranscriptSource,
-        target: &dyn ConsolidationTarget,
+        source: Arc<dyn TranscriptSource>,
+        target: Arc<dyn ConsolidationTarget>,
         provider: &dyn LlmProvider,
     ) -> Result<MergeReport> {
         let since = acquired
@@ -429,18 +476,13 @@ impl DreamEngine {
             .and_then(|st| lock::system_time_to_timestamp(*st))
             .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
 
-        let transcripts =
-            match source
-                .load_transcripts_since(since)
-                .context(DreamTranscriptSourceSnafu {
-                    context: "load transcripts for consolidation",
-                }) {
-                Ok(t) => t,
-                Err(e) => {
-                    acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
-                    return Err(e);
-                }
-            };
+        let transcripts = match load_transcripts_async(Arc::clone(&source), since).await {
+            Ok(t) => t,
+            Err(e) => {
+                acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
+                return Err(e);
+            }
+        };
 
         if transcripts.is_empty() {
             tracing::info!("no transcripts to consolidate");
@@ -486,11 +528,13 @@ impl DreamEngine {
             }
 
             // NOTE: merge extracted facts INTO the knowledge graph.
-            match target
-                .merge_flush(&result.memory_flush, &transcript.nous_id)
-                .context(DreamConsolidationTargetSnafu {
-                    context: "merge flush INTO knowledge graph",
-                }) {
+            match merge_flush_async(
+                Arc::clone(&target),
+                result.memory_flush.clone(),
+                transcript.nous_id.clone(),
+            )
+            .await
+            {
                 Ok(report) => {
                     total_report.facts_added =
                         total_report.facts_added.saturating_add(report.facts_added);
@@ -510,11 +554,13 @@ impl DreamEngine {
 
             // NOTE: mark contradicted facts for stale decay.
             if !result.contradiction_log.is_empty() {
-                match target
-                    .mark_contradictions_stale(&result.contradiction_log, &transcript.nous_id)
-                    .context(DreamConsolidationTargetSnafu {
-                        context: "mark contradicted facts stale",
-                    }) {
+                match mark_contradictions_stale_async(
+                    Arc::clone(&target),
+                    result.contradiction_log.clone(),
+                    transcript.nous_id.clone(),
+                )
+                .await
+                {
                     Ok(count) => {
                         total_report.facts_stale = total_report.facts_stale.saturating_add(count);
                     }
