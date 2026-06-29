@@ -629,23 +629,74 @@ fn collect_fact_ids_from_rich_text(
     }
 }
 
-fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
-    use poiesis_core::{Block, Span};
+#[derive(Debug, Clone, Copy)]
+enum TypstEscapeContext {
+    Markup,
+    StringLiteral,
+}
 
-    fn render_rich(rt: &poiesis_core::RichText) -> String {
-        rt.spans
-            .iter()
-            .map(|s| match s {
-                Span::Plain(t) => t.clone(),
-                Span::Bold(t) => format!("*{t}*"),
-                Span::Italic(t) => format!("_{t}_"),
-                Span::Code(t) => format!("`{t}`"),
-                Span::Cite(id) => id.clone(),
-                Span::Link { text, url } => format!("#link(\"{url}\")[{text}]"),
-            })
-            .collect()
+fn typst_escape(text: &str, context: TypstEscapeContext) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '#' | '*' | '_' | '[' | ']' | '$' | '@' | '<' | '>' | '='
+                if matches!(context, TypstEscapeContext::Markup) =>
+            {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            '#' | '*' | '_' | '[' | ']' | '$' | '@' | '<' | '>' | '=' => {
+                escaped.push_str(typst_char_escape(ch));
+            }
+            _ => escaped.push(ch),
+        }
     }
+    escaped
+}
 
+fn typst_char_escape(ch: char) -> &'static str {
+    match ch {
+        '#' => "\\u{23}",
+        '*' => "\\u{2a}",
+        '_' => "\\u{5f}",
+        '[' => "\\u{5b}",
+        ']' => "\\u{5d}",
+        '$' => "\\u{24}",
+        '@' => "\\u{40}",
+        '<' => "\\u{3c}",
+        '>' => "\\u{3e}",
+        '=' => "\\u{3d}",
+        _ => unreachable!("only Typst punctuation is converted to string escapes"),
+    }
+}
+
+fn render_typst_rich_text(rt: &poiesis_core::RichText) -> String {
+    use poiesis_core::Span;
+
+    rt.spans
+        .iter()
+        .map(|s| match s {
+            Span::Plain(t) => typst_escape(t, TypstEscapeContext::Markup),
+            Span::Bold(t) => format!("*{}*", typst_escape(t, TypstEscapeContext::Markup)),
+            Span::Italic(t) => format!("_{}_", typst_escape(t, TypstEscapeContext::Markup)),
+            Span::Code(t) => format!(
+                "#raw(\"{}\")",
+                typst_escape(t, TypstEscapeContext::StringLiteral)
+            ),
+            Span::Cite(id) => typst_escape(id, TypstEscapeContext::Markup),
+            Span::Link { text, url } => format!(
+                "#link(\"{}\")[{}]",
+                typst_escape(url, TypstEscapeContext::StringLiteral),
+                typst_escape(text, TypstEscapeContext::Markup)
+            ),
+        })
+        .collect()
+}
+
+fn typst_source_from_doc(doc: &Document) -> String {
+    use poiesis_core::Block;
     use std::fmt::Write as _;
 
     let mut src = String::new();
@@ -654,31 +705,49 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
     let _ = write!(
         src,
         "#align(center)[#text(18pt, weight: \"bold\")[{}]]\n\n",
-        doc.metadata.title
+        typst_escape(&doc.metadata.title, TypstEscapeContext::Markup)
     );
     if let Some(author) = &doc.metadata.author {
-        let _ = write!(src, "#align(center)[#emph[{author}]]\n#v(8pt)\n\n");
+        let _ = write!(
+            src,
+            "#align(center)[#emph[{}]]\n#v(8pt)\n\n",
+            typst_escape(author, TypstEscapeContext::Markup)
+        );
     }
 
     for block in &doc.content {
         match block {
             Block::Heading { level, text } => {
                 let eq = "=".repeat(usize::from((*level).max(1)));
-                let _ = write!(src, "{eq} {}\n\n", render_rich(text));
+                let _ = write!(src, "{eq} {}\n\n", render_typst_rich_text(text));
             }
             Block::Paragraph(text) => {
-                src.push_str(&render_rich(text));
+                src.push_str(&render_typst_rich_text(text));
                 src.push_str("\n\n");
             }
             Block::Note(note) => {
-                let _ = writeln!(src, "*{}:* {}", note.kind.label(), render_rich(&note.body));
+                let _ = writeln!(
+                    src,
+                    "*{}:* {}",
+                    note.kind.label(),
+                    render_typst_rich_text(&note.body)
+                );
                 src.push('\n');
             }
             Block::DisplayMath(expr) => {
-                let _ = write!(src, "${expr}$\n\n");
+                let _ = write!(
+                    src,
+                    "${}$\n\n",
+                    typst_escape(expr, TypstEscapeContext::Markup)
+                );
             }
             Block::RawBlock { format, content } => {
-                let _ = writeln!(src, "[raw:{format}] {content}");
+                let _ = writeln!(
+                    src,
+                    "[raw:{}] {}",
+                    typst_escape(format, TypstEscapeContext::Markup),
+                    typst_escape(content, TypstEscapeContext::Markup)
+                );
                 src.push('\n');
             }
             Block::PageBreak => src.push_str("#pagebreak()\n\n"),
@@ -686,11 +755,15 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
                 let n = t.headers.len().max(1);
                 let _ = writeln!(src, "#table(columns: {n},");
                 for h in &t.headers {
-                    let _ = writeln!(src, "  [*{h}*],");
+                    let _ = writeln!(
+                        src,
+                        "  [*{}*],",
+                        typst_escape(h, TypstEscapeContext::Markup)
+                    );
                 }
                 for row in &t.rows {
                     for cell in row {
-                        let _ = writeln!(src, "  [{}],", render_rich(cell));
+                        let _ = writeln!(src, "  [{}],", render_typst_rich_text(cell));
                     }
                 }
                 src.push_str(")\n\n");
@@ -699,7 +772,7 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
                 let cmd = if *ordered { "enum" } else { "list" };
                 let _ = writeln!(src, "#{cmd}(");
                 for item in items {
-                    let _ = writeln!(src, "  [{}],", render_rich(&item.content));
+                    let _ = writeln!(src, "  [{}],", render_typst_rich_text(&item.content));
                 }
                 src.push_str(")\n\n");
             }
@@ -712,11 +785,7 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
                 } else {
                     image.alt.trim()
                 };
-                let alt_escaped = alt
-                    .replace('\\', "\\\\")
-                    .replace('#', "\\#")
-                    .replace('[', "\\[")
-                    .replace(']', "\\]");
+                let alt_escaped = typst_escape(alt, TypstEscapeContext::Markup);
                 let _ = write!(
                     src,
                     "#figure(rect(width: 100%, stroke: 0.5pt)[#emph[Figure: {alt_escaped}]])\n\n"
@@ -725,6 +794,11 @@ fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
         }
     }
 
+    src
+}
+
+fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
+    let src = typst_source_from_doc(doc);
     poiesis_typst::render_typst(&src, &serde_json::json!({})).map_err(|e| {
         PandocError::WriterFailed {
             fmt: "pdf".to_owned(),
@@ -839,6 +913,130 @@ mod tests {
         assert_eq!(OutputFormat::Latex.pandoc_flag(), "latex");
         assert_eq!(OutputFormat::Html.pandoc_flag(), "html5");
         assert_eq!(OutputFormat::Epub.pandoc_flag(), "epub3");
+    }
+
+    const TYPST_SPECIAL: &str = r#"\ # * _ [ ] $ @ < > = " ]"#;
+    const TYPST_MARKUP_ESCAPED: &str = r#"\\ \# \* \_ \[ \] \$ \@ \< \> \= \" \]"#;
+    const TYPST_STRING_ESCAPED: &str =
+        r#"\\ \u{23} \u{2a} \u{5f} \u{5b} \u{5d} \u{24} \u{40} \u{3c} \u{3e} \u{3d} \" \u{5d}"#;
+
+    fn typst_escape_fixture_doc() -> Document {
+        use poiesis_core::{Image, ListItem, Note, NoteKind, Span, Table};
+
+        let rich_text = RichText {
+            spans: vec![
+                Span::Plain(TYPST_SPECIAL.to_owned()),
+                Span::Bold(TYPST_SPECIAL.to_owned()),
+                Span::Italic(TYPST_SPECIAL.to_owned()),
+                Span::Code(TYPST_SPECIAL.to_owned()),
+                Span::Cite(TYPST_SPECIAL.to_owned()),
+                Span::Link {
+                    text: TYPST_SPECIAL.to_owned(),
+                    url: TYPST_SPECIAL.to_owned(),
+                },
+            ],
+        };
+        Document {
+            metadata: Metadata {
+                title: TYPST_SPECIAL.to_owned(),
+                author: Some(TYPST_SPECIAL.to_owned()),
+                created: None,
+            },
+            content: vec![
+                Block::Heading {
+                    level: 1,
+                    text: RichText::from(TYPST_SPECIAL),
+                },
+                Block::Paragraph(rich_text.clone()),
+                Block::Note(Note {
+                    kind: NoteKind::Warning,
+                    body: RichText::from(TYPST_SPECIAL),
+                }),
+                Block::DisplayMath(TYPST_SPECIAL.to_owned()),
+                Block::RawBlock {
+                    format: TYPST_SPECIAL.to_owned(),
+                    content: TYPST_SPECIAL.to_owned(),
+                },
+                Block::Table(Table {
+                    headers: vec![TYPST_SPECIAL.to_owned()],
+                    rows: vec![vec![rich_text.clone()]],
+                }),
+                Block::List {
+                    ordered: false,
+                    items: vec![ListItem {
+                        content: RichText::from(TYPST_SPECIAL),
+                    }],
+                },
+                Block::Image(Image {
+                    data: Vec::new(),
+                    mime: "image/png".to_owned(),
+                    alt: TYPST_SPECIAL.to_owned(),
+                }),
+            ],
+        }
+    }
+
+    fn assert_typst_source_escapes_user_content(source: &str) {
+        assert!(
+            !source.contains(TYPST_SPECIAL),
+            "raw user content must not appear in Typst source: {source}"
+        );
+        assert!(
+            source.contains(&format!(
+                "#text(18pt, weight: \"bold\")[{TYPST_MARKUP_ESCAPED}]"
+            )),
+            "title must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("#emph[{TYPST_MARKUP_ESCAPED}]")),
+            "author must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("= {TYPST_MARKUP_ESCAPED}")),
+            "heading must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("*{TYPST_MARKUP_ESCAPED}*")),
+            "bold span must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("_{TYPST_MARKUP_ESCAPED}_")),
+            "italic span must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("#raw(\"{TYPST_STRING_ESCAPED}\")")),
+            "code span must be escaped as a Typst string literal: {source}"
+        );
+        assert!(
+            source.contains(&format!(
+                "#link(\"{TYPST_STRING_ESCAPED}\")[{TYPST_MARKUP_ESCAPED}]"
+            )),
+            "link URL and text must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("${TYPST_MARKUP_ESCAPED}$")),
+            "display math must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!(
+                "[raw:{TYPST_MARKUP_ESCAPED}] {TYPST_MARKUP_ESCAPED}"
+            )),
+            "raw block format and content must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("[*{TYPST_MARKUP_ESCAPED}*]")),
+            "table headers must be escaped: {source}"
+        );
+        assert!(
+            source.contains(&format!("[Figure: {TYPST_MARKUP_ESCAPED}]")),
+            "image alt text must be escaped: {source}"
+        );
+    }
+
+    #[test]
+    fn typst_source_escapes_user_content() {
+        let source = typst_source_from_doc(&typst_escape_fixture_doc());
+        assert_typst_source_escapes_user_content(&source);
     }
 
     #[test]
