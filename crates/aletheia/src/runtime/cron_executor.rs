@@ -46,6 +46,10 @@ pub(super) fn open_lock_store(oikos: &Oikos) -> Result<Arc<CronLockStore>> {
 ///
 /// Returns `Ok(())` and logs at info level when no enabled tasks are present
 /// — the daemon should remain healthy without any cron configuration.
+///
+/// WHY: invalid *enabled* cron config is a startup error. A typo can otherwise
+/// silently disable scheduled maintenance without failing startup or marking
+/// the runtime degraded.
 pub(super) fn start(
     tasks: &[CronTaskConfig],
     orchestrator: Arc<Orchestrator>,
@@ -53,34 +57,40 @@ pub(super) fn start(
     lock_store: Arc<CronLockStore>,
     task_tracker: &TaskTracker,
     shutdown_token: &CancellationToken,
-) {
+) -> crate::error::Result<()> {
     let enabled: Vec<&CronTaskConfig> = tasks.iter().filter(|t| t.enabled).collect();
     if enabled.is_empty() {
         info!(
             configured = tasks.len(),
             "dispatch cron executor: no enabled tasks; skipping scheduler startup"
         );
-        return;
+        return Ok(());
     }
 
     let mut cron_tasks: Vec<CronTask> = Vec::with_capacity(enabled.len());
+    let mut errors: Vec<String> = Vec::new();
     for cfg in &enabled {
         match build_cron_task(cfg) {
             Ok(task) => cron_tasks.push(task),
-            Err(e) => warn!(
-                task = %cfg.name,
-                schedule = %cfg.schedule,
-                error = %e,
-                "dispatch cron executor: invalid task — skipping"
-            ),
+            Err(e) => errors.push(format!(
+                "task '{}' schedule '{}' parse error: {e}",
+                cfg.name, cfg.schedule
+            )),
         }
     }
+    if !errors.is_empty() {
+        return Err(crate::error::Error::msg(format!(
+            "invalid enabled cron task config:\n  - {}",
+            errors.join("\n  - ")
+        )));
+    }
     if cron_tasks.is_empty() {
-        warn!(
-            configured = tasks.len(),
-            "dispatch cron executor: all enabled tasks failed to parse — scheduler not started"
-        );
-        return;
+        // WHY: all enabled tasks were filtered for a non-parse reason (e.g.
+        // empty after sanitisation); this is still a startup failure because
+        // the operator explicitly enabled tasks that cannot run.
+        return Err(crate::error::Error::msg(
+            "all enabled cron tasks failed to build; scheduler not started",
+        ));
     }
 
     let theke = oikos.theke();
@@ -111,6 +121,8 @@ pub(super) fn start(
         }
         .instrument(tracing::info_span!("cron_executor")),
     );
+
+    Ok(())
 }
 
 fn build_cron_task(cfg: &CronTaskConfig) -> energeia::error::Result<CronTask> {
@@ -337,5 +349,53 @@ mod tests {
         // WHY: no panic or error propagation when the queue dir is absent;
         // the executor must stay resilient to partially-configured projects.
         fire_task(task, orchestrator, theke.path().to_path_buf()).await;
+    }
+
+    /// Invalid enabled cron config must fail startup rather than being logged and
+    /// skipped, so a typo cannot silently disable scheduled maintenance.
+    #[test]
+    fn start_fails_when_enabled_task_has_invalid_schedule() {
+        let tmp = TempDir::new().expect("tempdir");
+        let oikos = Oikos::from_root(tmp.path());
+        let lock_store = open_lock_store(&oikos).expect("open lock store");
+        let engine = Arc::new(MockEngine::new(vec![]));
+        let qa: Arc<dyn QaGate> = Arc::new(StubQaGate);
+        let orchestrator = Arc::new(Orchestrator::new(engine, qa, OrchestratorConfig::new()));
+        let task_tracker = TaskTracker::new();
+        let shutdown = CancellationToken::new();
+
+        let invalid = CronTaskConfig {
+            name: "bad-schedule".to_owned(),
+            schedule: "not a cron expression".to_owned(),
+            jitter_secs: 0,
+            enabled: true,
+            dispatch_spec: DispatchSpecConfig {
+                prompt_numbers: vec![],
+                project: "test".to_owned(),
+                dag_ref: None,
+                max_parallel: None,
+                max_turns: None,
+                budget_usd: None,
+            },
+        };
+
+        let result = start(
+            &[invalid],
+            orchestrator,
+            &oikos,
+            lock_store,
+            &task_tracker,
+            &shutdown,
+        );
+        assert!(result.is_err(), "invalid enabled cron task must fail startup");
+        let message = result.unwrap_err().to_string();
+        assert!(
+            message.contains("bad-schedule"),
+            "error should name the invalid task: {message}"
+        );
+        assert!(
+            message.contains("not a cron expression"),
+            "error should include the bad schedule: {message}"
+        );
     }
 }
