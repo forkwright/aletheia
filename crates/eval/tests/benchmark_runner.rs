@@ -10,7 +10,7 @@ use dokimion::benchmarks::longmemeval::LongMemEvalDataset;
 use dokimion::benchmarks::{
     BenchmarkRunner, BenchmarkRunnerConfig, EvalClient, QuestionStatus, RetrievalScoringMode,
 };
-use wiremock::matchers::{method, path, path_regex};
+use wiremock::matchers::{method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // kanon:ignore RUST/box-dyn-error — integration test uses Box<dyn Error> for ergonomic test result propagation
@@ -186,6 +186,31 @@ const SAMPLE_DATASET: &str = r#"[
             [
                 {"role": "user", "content": "My favorite color is blue"},
                 {"role": "assistant", "content": "Noted"}
+            ]
+        ]
+    }
+]"#;
+
+const TWO_QUESTION_DATASET: &str = r#"[
+    {
+        "question_id": "q1",
+        "question_type": "single-session-user",
+        "question": "What color did alice mention first?",
+        "answer": "blue",
+        "haystack_sessions": [
+            [
+                {"role": "user", "content": "Alice mentioned blue first."}
+            ]
+        ]
+    },
+    {
+        "question_id": "q2",
+        "question_type": "single-session-user",
+        "question": "What color did bob mention second?",
+        "answer": "red",
+        "haystack_sessions": [
+            [
+                {"role": "user", "content": "Bob mentioned red second."}
             ]
         ]
     }
@@ -408,5 +433,58 @@ async fn runner_scores_retrieval_against_evidence_ids() -> TestResult {
     assert_eq!(retrieved.id.as_deref(), Some("fact-blue"));
     assert!((retrieved.score - 0.81).abs() < f64::EPSILON);
     assert!(!retrieved.content_sha256.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn runner_counts_retrieval_search_errors_as_zero_metrics() -> TestResult {
+    init_crypto();
+    let server = setup_mock_server("blue").await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/knowledge/search"))
+        .and(query_param("q", "What color did alice mention first?"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "results": [
+                {
+                    "id": "fact-blue",
+                    "content": "blue",
+                    "confidence": 0.92,
+                    "tier": "active",
+                    "fact_type": "user",
+                    "score": 0.81
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/knowledge/search"))
+        .and(query_param("q", "What color did bob mention second?"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("search unavailable"))
+        .mount(&server)
+        .await;
+
+    let client = EvalClient::new(server.uri(), None);
+    let config = BenchmarkRunnerConfig {
+        retrieval_k: Some(1),
+        ..Default::default()
+    };
+    let runner = BenchmarkRunner::new(client, config);
+
+    let dataset = LongMemEvalDataset::from_bytes(TWO_QUESTION_DATASET.as_bytes())?;
+    let report = runner.run(&dataset).await?;
+
+    assert_eq!(report.total, 2);
+    assert_eq!(report.questions[0].recall_at_k, Some(1.0));
+    assert_eq!(report.questions[1].recall_at_k, Some(0.0));
+    assert_eq!(report.questions[1].ndcg_at_k, Some(0.0));
+    let mean_recall = report
+        .mean_recall_at_k()
+        .ok_or_else(|| std::io::Error::other("missing mean recall"))?;
+    let mean_ndcg = report
+        .mean_ndcg_at_k()
+        .ok_or_else(|| std::io::Error::other("missing mean ndcg"))?;
+    assert!((mean_recall - 0.5).abs() < f64::EPSILON);
+    assert!((mean_ndcg - 0.5).abs() < f64::EPSILON);
     Ok(())
 }

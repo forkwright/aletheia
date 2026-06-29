@@ -1010,7 +1010,12 @@ impl BenchmarkReport {
         Some(summary.correct as f64 / summary.attempted as f64) // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
-    /// Mean Recall@k across all questions that have retrieval metrics.
+    /// Mean Recall@k across all questions with recorded retrieval metrics.
+    ///
+    /// The benchmark runner records `0.0` when `retrieval_k` is configured but
+    /// a question is non-scorable or the knowledge search fails, so those
+    /// retrieval failures stay in the denominator. Legacy reports with missing
+    /// retrieval fields are still excluded because they lack a recorded metric.
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,
@@ -1032,7 +1037,12 @@ impl BenchmarkReport {
         Some(values.iter().sum::<f64>() / values.len() as f64) // SAFETY: value counts <10_000 per function-level #[expect]
     }
 
-    /// Mean NDCG@k across all questions that have retrieval metrics.
+    /// Mean NDCG@k across all questions with recorded retrieval metrics.
+    ///
+    /// The benchmark runner records `0.0` when `retrieval_k` is configured but
+    /// a question is non-scorable or the knowledge search fails, so those
+    /// retrieval failures stay in the denominator. Legacy reports with missing
+    /// retrieval fields are still excluded because they lack a recorded metric.
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,

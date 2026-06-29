@@ -387,9 +387,11 @@ impl BenchmarkRunner {
         question: &BenchmarkQuestion,
         status: QuestionStatus,
     ) -> RetrievalMetrics {
-        if status.is_scored()
-            && let Some(k) = self.config.retrieval_k
-        {
+        if let Some(k) = self.config.retrieval_k {
+            if !status.is_scored() {
+                return (None, None, Some(0.0), Some(0.0));
+            }
+
             match self
                 .client
                 .search_knowledge(
@@ -442,7 +444,7 @@ impl BenchmarkRunner {
                         error = %e,
                         "knowledge search failed"
                     );
-                    (None, None, None, None)
+                    (None, None, Some(0.0), Some(0.0))
                 }
             }
         } else {
