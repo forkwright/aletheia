@@ -31,7 +31,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use graphe::types::{
     AgentNote, BlackboardRow, Message, Session, SessionMetrics, SessionOrigin, SessionStatus,
@@ -63,9 +63,11 @@ const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Suffix for the staging directory created next to the final destination.
 const STAGING_SUFFIX: &str = "staging";
 
-/// Suffix for the backup directory created when `--force` overwrites an
-/// existing destination.
+/// Suffix segment for backup directories created when a force run replaces
+/// an existing destination.
 const BACKUP_SUFFIX: &str = "backup";
+
+const BACKUP_MARKER_MAGIC: &str = "aletheia-sessions-migrate backup\n";
 
 /// Default deterministic per-session sample count retained for the
 /// compatibility portion of verification reports.
@@ -134,9 +136,15 @@ pub(crate) struct SourceData {
 pub struct StagedMigration {
     staging_dir: PathBuf,
     final_dir: PathBuf,
-    backup_dir: Option<PathBuf>,
+    backup: Option<BackupPaths>,
     report: MigrationReport,
     published: bool,
+}
+
+#[derive(Debug, Clone)]
+struct BackupPaths {
+    dir: PathBuf,
+    marker: PathBuf,
 }
 
 impl StagedMigration {
@@ -162,10 +170,13 @@ impl StagedMigration {
     /// Returns [`crate::error::Error::AtomicRenameFailed`] if the final
     /// atomic rename cannot complete.
     pub fn publish(mut self) -> Result<MigrationReport> {
+        if let Some(ref backup) = self.backup {
+            rotate_destination_to_backup(&self.final_dir, backup)?;
+        }
         atomic_rename_dir(&self.staging_dir, &self.final_dir)?;
         self.published = true;
-        if let Some(ref backup) = self.backup_dir {
-            let _ = fs::remove_dir_all(backup);
+        if let Some(ref backup) = self.backup {
+            cleanup_marker_owned_backup(backup);
         }
         Ok(self.report.clone())
     }
@@ -177,14 +188,16 @@ impl Drop for StagedMigration {
             return;
         }
 
-        // Migration failed or was abandoned: remove the partial staging
-        // directory so later tooling does not treat it as authoritative.
-        let _ = fs::remove_dir_all(&self.staging_dir);
+        if let Err(source) = fs::remove_dir_all(&self.staging_dir) {
+            warn!(
+                error = %source,
+                staging = %self.staging_dir.display(),
+                "failed to remove abandoned migration staging directory"
+            );
+        }
 
-        // Restore the backup so the operator does not lose the prior store
-        // when `--force` overwrite was in progress.
-        if let Some(ref backup) = self.backup_dir {
-            let _ = fs::rename(backup, &self.final_dir);
+        if let Some(ref backup) = self.backup {
+            restore_backup(&self.final_dir, backup);
         }
     }
 }
@@ -287,9 +300,8 @@ pub fn run_migration(source: &Path, dest: &Path, force: bool) -> Result<Migratio
 pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<StagedMigration> {
     let started = Instant::now();
     let staging_dir = dest.with_extension(STAGING_SUFFIX);
-    let backup_dir = dest.with_extension(BACKUP_SUFFIX);
 
-    let dest_existed = prepare_destination_dirs(dest, force, &staging_dir, &backup_dir)?;
+    let dest_existed = prepare_destination_dirs(dest, force, &staging_dir)?;
 
     // Read and validate the source before touching the destination.
     let conn = open_source(source)?;
@@ -297,14 +309,19 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
 
     let source_data = load_source_data(&conn)?;
 
-    // Move an existing destination out of the way when `--force` is set.
-    // This is done after source validation so we do not wipe live data for
-    // an invalid migration input.
-    if dest_existed {
-        rotate_destination_to_backup(dest, &backup_dir)?;
-    }
-
-    let counts = write_staging(&staging_dir, &source_data)?;
+    let counts = match write_staging(&staging_dir, &source_data) {
+        Ok(counts) => counts,
+        Err(err) => {
+            if let Err(source) = fs::remove_dir_all(&staging_dir) {
+                warn!(
+                    error = %source,
+                    staging = %staging_dir.display(),
+                    "failed to remove migration staging directory after write error"
+                );
+            }
+            return Err(err);
+        }
+    };
 
     fsync_dir(dest.parent().unwrap_or_else(|| Path::new(".")))?;
 
@@ -321,7 +338,7 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
     Ok(StagedMigration {
         staging_dir,
         final_dir: dest.to_path_buf(),
-        backup_dir: if dest_existed { Some(backup_dir) } else { None },
+        backup: dest_existed.then(|| unique_backup_paths(dest)),
         report,
         published: false,
     })
@@ -329,12 +346,7 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
 
 /// Check destination preconditions and clean up leftover staging when
 /// `force` is set. Returns whether a non-empty destination already exists.
-fn prepare_destination_dirs(
-    dest: &Path,
-    force: bool,
-    staging_dir: &Path,
-    backup_dir: &Path,
-) -> Result<bool> {
+fn prepare_destination_dirs(dest: &Path, force: bool, staging_dir: &Path) -> Result<bool> {
     if staging_dir.exists() {
         if !force {
             return Err(MigrationIncompleteSnafu {
@@ -359,24 +371,140 @@ fn prepare_destination_dirs(
         .build());
     }
 
-    if backup_dir.exists() {
-        fs::remove_dir_all(backup_dir).context(IoSnafu {
-            context: format!("removing old backup directory {}", backup_dir.display()),
-        })?;
-    }
-
     Ok(dest_existed)
 }
 
 /// Rotate an existing destination directory to the backup path.
-fn rotate_destination_to_backup(dest: &Path, backup_dir: &Path) -> Result<()> {
-    fs::rename(dest, backup_dir).context(IoSnafu {
+fn rotate_destination_to_backup(dest: &Path, backup: &BackupPaths) -> Result<()> {
+    fs::rename(dest, &backup.dir).context(IoSnafu {
         context: format!(
             "moving existing destination {} to backup {}",
             dest.display(),
-            backup_dir.display()
+            backup.dir.display()
         ),
-    })
+    })?;
+    let marker = format!(
+        "{BACKUP_MARKER_MAGIC}dest={}\nbackup={}\n",
+        dest.display(),
+        backup.dir.display()
+    );
+    fs::write(&backup.marker, marker).context(IoSnafu {
+        context: format!("writing backup marker {}", backup.marker.display()),
+    })?;
+    fsync_dir(dest.parent().unwrap_or_else(|| Path::new(".")))?;
+    Ok(())
+}
+
+fn unique_backup_paths(dest: &Path) -> BackupPaths {
+    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+    let base = dest
+        .file_name()
+        .map_or_else(|| "destination".into(), |name| name.to_string_lossy());
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    let pid = std::process::id();
+
+    for attempt in 0..1024u16 {
+        let dir = parent.join(format!("{base}.{BACKUP_SUFFIX}-{stamp}-{pid}-{attempt}"));
+        let marker = backup_marker_path(&dir);
+        if !dir.exists() && !marker.exists() {
+            return BackupPaths { dir, marker };
+        }
+    }
+
+    let dir = parent.join(format!("{base}.{BACKUP_SUFFIX}-{stamp}-{pid}-fallback"));
+    let marker = backup_marker_path(&dir);
+    BackupPaths { dir, marker }
+}
+
+fn backup_marker_path(backup_dir: &Path) -> PathBuf {
+    let mut marker = backup_dir.as_os_str().to_os_string();
+    marker.push(".marker");
+    PathBuf::from(marker)
+}
+
+fn cleanup_marker_owned_backup(backup: &BackupPaths) {
+    if !backup_marker_is_owned(backup) {
+        warn!(
+            backup = %backup.dir.display(),
+            marker = %backup.marker.display(),
+            "leaving replacement backup in place because marker ownership was not confirmed"
+        );
+        return;
+    }
+
+    if let Err(source) = fs::remove_dir_all(&backup.dir) {
+        warn!(
+            error = %source,
+            backup = %backup.dir.display(),
+            "failed to remove replacement backup after publish"
+        );
+        return;
+    }
+
+    remove_backup_marker(backup);
+}
+
+fn backup_marker_is_owned(backup: &BackupPaths) -> bool {
+    match fs::read_to_string(&backup.marker) {
+        Ok(contents) => contents.starts_with(BACKUP_MARKER_MAGIC),
+        Err(source) => {
+            warn!(
+                error = %source,
+                marker = %backup.marker.display(),
+                "failed to read replacement backup marker"
+            );
+            false
+        }
+    }
+}
+
+fn restore_backup(final_dir: &Path, backup: &BackupPaths) {
+    if !backup.dir.exists() {
+        return;
+    }
+    if final_dir.exists() {
+        warn!(
+            final_dir = %final_dir.display(),
+            backup = %backup.dir.display(),
+            "leaving replacement backup in place because final destination exists"
+        );
+        return;
+    }
+
+    if let Err(source) = fs::rename(&backup.dir, final_dir) {
+        warn!(
+            error = %source,
+            final_dir = %final_dir.display(),
+            backup = %backup.dir.display(),
+            "failed to restore replacement backup"
+        );
+        return;
+    }
+
+    remove_backup_marker(backup);
+    if let Err(err) = fsync_dir(final_dir.parent().unwrap_or_else(|| Path::new("."))) {
+        warn!(
+            error = ?err,
+            final_dir = %final_dir.display(),
+            "failed to fsync restored destination parent directory"
+        );
+    }
+}
+
+fn remove_backup_marker(backup: &BackupPaths) {
+    match fs::remove_file(&backup.marker) {
+        Ok(()) => {}
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
+        Err(source) => {
+            warn!(
+                error = %source,
+                marker = %backup.marker.display(),
+                "failed to remove replacement backup marker"
+            );
+        }
+    }
 }
 
 /// Read every table from the validated source connection and return the

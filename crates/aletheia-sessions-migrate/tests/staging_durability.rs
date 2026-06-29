@@ -218,6 +218,89 @@ fn force_overwrite_restores_backup_when_staged_migration_dropped() {
 }
 
 #[test]
+fn force_staging_write_failure_preserves_existing_dest_and_prior_backup() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let src = tmp.path().join("source.db");
+    let dest = tmp.path().join("dest.fjall");
+    let staging = dest.with_extension("staging");
+    let prior_backup = dest.with_extension("backup");
+    let prior_backup_sentinel = prior_backup.join("sentinel");
+
+    common::build_empty_v32(&src);
+    {
+        let conn = Connection::open(&src).expect("open source");
+        common::insert_session(
+            &conn,
+            "ses-v1",
+            "syn",
+            "main",
+            "active",
+            None,
+            "2026-04-01T00:00:00.000Z",
+            "2026-04-01T01:00:00.000Z",
+        );
+        common::insert_message(
+            &conn,
+            "ses-v1",
+            1,
+            "user",
+            "v1",
+            false,
+            1,
+            "2026-04-01T00:30:00.000Z",
+        );
+    }
+
+    run_migration(&src, &dest, false).expect("first migration");
+    fs::create_dir_all(&prior_backup).expect("create prior backup");
+    fs::write(&prior_backup_sentinel, b"operator backup").expect("write sentinel");
+
+    {
+        let conn = Connection::open(&src).expect("open source");
+        common::insert_session(
+            &conn,
+            "ses-bad",
+            "syn",
+            "bad",
+            "active",
+            None,
+            "2026-04-02T00:00:00.000Z",
+            "2026-04-02T01:00:00.000Z",
+        );
+        common::insert_message(
+            &conn,
+            "ses-bad",
+            -1,
+            "user",
+            "negative sequence cannot be written to fjall",
+            false,
+            1,
+            "2026-04-02T00:30:00.000Z",
+        );
+    }
+
+    let err = run_migration(&src, &dest, true).expect_err("force replacement must fail");
+    let message = format!("{err:#}");
+    assert!(
+        message.contains("message.seq"),
+        "expected numeric range error, got: {message}"
+    );
+
+    let store = graphe::store::SessionStore::open(&dest).expect("open original store");
+    let sessions = store.list_sessions(None).expect("list sessions");
+    assert_eq!(sessions.len(), 1, "original destination must remain live");
+    assert_eq!(sessions.first().expect("one session").id, "ses-v1");
+    assert!(
+        prior_backup_sentinel.exists(),
+        "operator backup directory must not be removed"
+    );
+    assert!(
+        !staging.exists(),
+        "failed staging write should not leave a staging directory"
+    );
+}
+
+#[test]
 fn force_overwrite_publishes_new_data() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
