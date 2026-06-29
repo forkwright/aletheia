@@ -919,6 +919,10 @@ pub async fn stream_turn(
         turn_id = %turn_id,
     );
 
+    // WHY(#5727): Create the cancellation token before the bridge task so a
+    // clone can be moved into the bridge. Cancelling it on client disconnect
+    // causes the bridge to exit instead of continuing to drain queued events.
+    let turn_cancel = CancellationToken::new();
     // WHY: Returns a JoinHandle so the turn task can wait for all deltas to drain
     // before emitting turn_complete (prevents the race where turn_complete
     // arrives at the TUI before the final text_delta events).
@@ -928,72 +932,83 @@ pub async fn stream_turn(
     let approval_session_id = session_id.clone();
     let approval_turn_id = turn_id.clone();
     let approval_tx_for_bridge = approval_tx.clone();
+    let turn_cancel_for_bridge = turn_cancel.clone();
     let bridge_handle = tokio::spawn(
         async move {
-            while let Some(event) = nous_rx.recv().await {
-                let turn_event = match event {
-                    TurnStreamEvent::LlmDelta(llm_event) => {
-                        provider_stream_event_to_turn_event(llm_event)
+            loop {
+                tokio::select! {
+                    biased;
+                    // WHY(#5727): Client disconnect cancels this token; stop
+                    // consuming queued events so the bridge cannot register stale
+                    // approval senders after the turn guard has dropped.
+                    () = turn_cancel_for_bridge.cancelled() => break,
+                    event = nous_rx.recv() => {
+                        let Some(event) = event else { break; };
+                        let turn_event = match event {
+                            TurnStreamEvent::LlmDelta(llm_event) => {
+                                provider_stream_event_to_turn_event(llm_event)
+                            }
+                            TurnStreamEvent::ToolStart {
+                                tool_id,
+                                tool_name,
+                                input,
+                            } => PylonTurnStreamEvent::ToolUse {
+                                tool_name,
+                                tool_id,
+                                input,
+                            },
+                            TurnStreamEvent::ToolApprovalRequired {
+                                turn_id: _nous_turn_id,
+                                tool_id,
+                                tool_name,
+                                input,
+                                risk,
+                                reason,
+                            } => PylonTurnStreamEvent::ToolApprovalRequired {
+                                turn_id: {
+                                    approval_registry
+                                        .register_tool(
+                                            &approval_session_id,
+                                            &approval_turn_id,
+                                            tool_id.clone(),
+                                            approval_tx_for_bridge.clone(),
+                                        )
+                                        .await;
+                                    approval_turn_id.clone()
+                                },
+                                tool_name,
+                                tool_id,
+                                input,
+                                risk,
+                                reason,
+                            },
+                            TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
+                                PylonTurnStreamEvent::ToolApprovalResolved { tool_id, decision }
+                            }
+                            TurnStreamEvent::ToolResult {
+                                tool_id,
+                                tool_name,
+                                result,
+                                is_error,
+                                duration_ms,
+                            } => PylonTurnStreamEvent::ToolResult {
+                                tool_name,
+                                tool_id,
+                                result,
+                                is_error,
+                                duration_ms,
+                            },
+                            _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
+                                event_type: "unknown_turn_stream_event".to_owned(),
+                            },
+                        };
+                        let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
+                            continue;
+                        };
+                        if bridge_tx.send(recorded).await.is_err() {
+                            break;
+                        }
                     }
-                    TurnStreamEvent::ToolStart {
-                        tool_id,
-                        tool_name,
-                        input,
-                    } => PylonTurnStreamEvent::ToolUse {
-                        tool_name,
-                        tool_id,
-                        input,
-                    },
-                    TurnStreamEvent::ToolApprovalRequired {
-                        turn_id: _nous_turn_id,
-                        tool_id,
-                        tool_name,
-                        input,
-                        risk,
-                        reason,
-                    } => PylonTurnStreamEvent::ToolApprovalRequired {
-                        turn_id: {
-                            approval_registry
-                                .register_tool(
-                                    &approval_session_id,
-                                    &approval_turn_id,
-                                    tool_id.clone(),
-                                    approval_tx_for_bridge.clone(),
-                                )
-                                .await;
-                            approval_turn_id.clone()
-                        },
-                        tool_name,
-                        tool_id,
-                        input,
-                        risk,
-                        reason,
-                    },
-                    TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
-                        PylonTurnStreamEvent::ToolApprovalResolved { tool_id, decision }
-                    }
-                    TurnStreamEvent::ToolResult {
-                        tool_id,
-                        tool_name,
-                        result,
-                        is_error,
-                        duration_ms,
-                    } => PylonTurnStreamEvent::ToolResult {
-                        tool_name,
-                        tool_id,
-                        result,
-                        is_error,
-                        duration_ms,
-                    },
-                    _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
-                        event_type: "unknown_turn_stream_event".to_owned(),
-                    },
-                };
-                let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
-                    continue;
-                };
-                if bridge_tx.send(recorded).await.is_err() {
-                    break;
                 }
             }
         }
@@ -1001,7 +1016,6 @@ pub async fn stream_turn(
     );
 
     let shutdown_token = state.shutdown.child_token();
-    let turn_cancel = CancellationToken::new();
     let turn_cancel_task = turn_cancel.clone();
     let buf_handle_task = buf_handle.clone();
     let event_bus = Arc::clone(&state.event_bus);
