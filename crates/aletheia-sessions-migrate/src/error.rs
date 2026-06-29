@@ -47,6 +47,18 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "unknown legacy enum value in {table}.{column} for row '{row_id}': {raw_value:?}"
+    ))]
+    UnknownLegacyEnum {
+        table: String,
+        row_id: String,
+        column: String,
+        raw_value: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    #[snafu(display(
         "schema mismatch: expected user_version = {expected}, found {found}; \
          this migrator only supports the final pre-fjall SQLite schema (PR #3446)"
     ))]

@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use snafu::IntoError as _;
 use snafu::ResultExt as _;
 
-use crate::error::{LegacyExtraReadSnafu, Result, SqliteSnafu};
+use crate::error::{LegacyExtraReadSnafu, Result, SqliteSnafu, UnknownLegacyEnumSnafu};
 
 /// Legacy session columns that have no analog on the new fjall `Session`
 /// type. When non-default, we route them to a `migration_legacy`
@@ -84,6 +84,49 @@ where
     })
 }
 
+fn unknown_enum(
+    table: &'static str,
+    row_id: impl Into<String>,
+    column: &'static str,
+    raw_value: impl Into<String>,
+) -> crate::error::Error {
+    UnknownLegacyEnumSnafu {
+        table: table.to_owned(),
+        row_id: row_id.into(),
+        column: column.to_owned(),
+        raw_value: raw_value.into(),
+    }
+    .build()
+}
+
+fn parse_session_status(row_id: &str, raw: &str) -> Result<SessionStatus> {
+    match raw {
+        "active" => Ok(SessionStatus::Active),
+        "archived" => Ok(SessionStatus::Archived),
+        "distilled" => Ok(SessionStatus::Distilled),
+        _ => Err(unknown_enum("sessions", row_id, "status", raw)),
+    }
+}
+
+fn parse_session_type(row_id: &str, raw: Option<&str>) -> Result<SessionType> {
+    match raw {
+        None | Some("primary") => Ok(SessionType::Primary),
+        Some("background") => Ok(SessionType::Background),
+        Some("ephemeral") => Ok(SessionType::Ephemeral),
+        Some(value) => Err(unknown_enum("sessions", row_id, "session_type", value)),
+    }
+}
+
+fn parse_message_role(row_id: i64, raw: &str) -> Result<Role> {
+    match raw {
+        "system" => Ok(Role::System),
+        "user" => Ok(Role::User),
+        "assistant" => Ok(Role::Assistant),
+        "tool_result" => Ok(Role::ToolResult),
+        _ => Err(unknown_enum("messages", row_id.to_string(), "role", raw)),
+    }
+}
+
 /// Map one `SQLite` `sessions` row to a `Session` plus legacy extras.
 fn map_session(row: &Row<'_>) -> Result<SessionRow> {
     let session_id: String = session_column(row, "id")?;
@@ -93,22 +136,16 @@ fn map_session(row: &Row<'_>) -> Result<SessionRow> {
     let thinking_budget = legacy_column(row, &session_id, "thinking_budget")?;
     let working_state = legacy_column(row, &session_id, "working_state")?;
     let distillation_priming = legacy_column(row, &session_id, "distillation_priming")?;
+    let status = parse_session_status(&session_id, &status_str)?;
+    let session_type = parse_session_type(&session_id, type_str.as_deref())?;
     Ok(SessionRow {
         session: Session {
             id: session_id,
             nous_id: session_column(row, "nous_id")?,
             session_key: session_column(row, "session_key")?,
-            status: match status_str.as_str() {
-                "archived" => SessionStatus::Archived,
-                "distilled" => SessionStatus::Distilled,
-                _ => SessionStatus::Active,
-            },
+            status,
             model: session_column(row, "model")?,
-            session_type: match type_str.as_deref() {
-                Some("background") => SessionType::Background,
-                Some("ephemeral") => SessionType::Ephemeral,
-                _ => SessionType::Primary,
-            },
+            session_type,
             created_at: session_column(row, "created_at")?,
             updated_at: session_column(row, "updated_at")?,
             metrics: SessionMetrics {
@@ -162,25 +199,41 @@ pub fn read_sessions(conn: &Connection) -> Result<Vec<SessionRow>> {
 }
 
 /// Map one `SQLite` `messages` row to a `Message`.
-fn map_message(row: &Row<'_>) -> rusqlite::Result<Message> {
-    let role_str: String = row.get("role")?;
-    let distilled: i64 = row.get("is_distilled")?;
+fn map_message(row: &Row<'_>) -> Result<Message> {
+    let id: i64 = row.get("id").context(SqliteSnafu {
+        context: "mapping messages.id".to_owned(),
+    })?;
+    let role_str: String = row.get("role").context(SqliteSnafu {
+        context: "mapping messages.role".to_owned(),
+    })?;
+    let distilled: i64 = row.get("is_distilled").context(SqliteSnafu {
+        context: "mapping messages.is_distilled".to_owned(),
+    })?;
     Ok(Message {
-        id: row.get("id")?,
-        session_id: row.get("session_id")?,
-        seq: row.get("seq")?,
-        role: match role_str.as_str() {
-            "user" => Role::User,
-            "assistant" => Role::Assistant,
-            "tool_result" => Role::ToolResult,
-            _ => Role::System,
-        },
-        content: row.get("content")?,
-        tool_call_id: row.get("tool_call_id")?,
-        tool_name: row.get("tool_name")?,
-        token_estimate: row.get("token_estimate")?,
+        id,
+        session_id: row.get("session_id").context(SqliteSnafu {
+            context: "mapping messages.session_id".to_owned(),
+        })?,
+        seq: row.get("seq").context(SqliteSnafu {
+            context: "mapping messages.seq".to_owned(),
+        })?,
+        role: parse_message_role(id, &role_str)?,
+        content: row.get("content").context(SqliteSnafu {
+            context: "mapping messages.content".to_owned(),
+        })?,
+        tool_call_id: row.get("tool_call_id").context(SqliteSnafu {
+            context: "mapping messages.tool_call_id".to_owned(),
+        })?,
+        tool_name: row.get("tool_name").context(SqliteSnafu {
+            context: "mapping messages.tool_name".to_owned(),
+        })?,
+        token_estimate: row.get("token_estimate").context(SqliteSnafu {
+            context: "mapping messages.token_estimate".to_owned(),
+        })?,
         is_distilled: distilled != 0,
-        created_at: row.get("created_at")?,
+        created_at: row.get("created_at").context(SqliteSnafu {
+            context: "mapping messages.created_at".to_owned(),
+        })?,
     })
 }
 
@@ -195,16 +248,16 @@ pub fn read_messages(conn: &Connection) -> Result<Vec<Message>> {
         .context(SqliteSnafu {
             context: "preparing messages select".to_owned(),
         })?;
-    let rows: Vec<Message> = stmt
-        .query_map([], map_message)
-        .context(SqliteSnafu {
-            context: "querying messages".to_owned(),
-        })?
-        .collect::<rusqlite::Result<_>>()
-        .context(SqliteSnafu {
-            context: "mapping message rows".to_owned(),
-        })?;
-    Ok(rows)
+    let mut rows = stmt.query([]).context(SqliteSnafu {
+        context: "querying messages".to_owned(),
+    })?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next().context(SqliteSnafu {
+        context: "reading messages row".to_owned(),
+    })? {
+        out.push(map_message(row)?);
+    }
+    Ok(out)
 }
 
 /// Map one `SQLite` `usage` row.
