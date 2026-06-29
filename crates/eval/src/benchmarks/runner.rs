@@ -17,7 +17,6 @@
 //! dataset. See [`BenchmarkRunnerConfig`] for per-question timeouts and
 //! concurrency controls.
 
-use std::fmt::Write as _;
 use std::time::Duration;
 
 use tracing::{info, instrument, warn};
@@ -44,6 +43,7 @@ use super::{
 ///   simulates a real user conversation where earlier questions and answers
 ///   remain in context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BenchmarkMode {
     /// Clean-session protocol used for official results.
     OfficialParity,
@@ -108,6 +108,7 @@ impl Default for BenchmarkRunnerConfig {
 }
 
 /// Runs a memory benchmark against a live aletheia instance.
+// kanon:ignore RUST/pub-visibility — used by the aletheia benchmark command and integration tests
 pub struct BenchmarkRunner {
     client: EvalClient,
     config: BenchmarkRunnerConfig,
@@ -172,6 +173,7 @@ type RetrievalMetrics = (
 impl BenchmarkRunner {
     /// Create a new runner with the given client and configuration.
     #[must_use]
+    // kanon:ignore RUST/pub-visibility — used by sibling crates to construct live benchmark runs
     pub fn new(client: EvalClient, config: BenchmarkRunnerConfig) -> Self {
         Self { client, config }
     }
@@ -216,8 +218,15 @@ impl BenchmarkRunner {
         }
 
         // Clean up the shared continuous-memory session at the end of the run.
-        if let Some(session_id) = shared_session.take() {
-            let _ = self.client.close_session(&session_id).await;
+        if let Some(session_id) = shared_session.take()
+            && let Err(error) = self.client.close_session(&session_id).await
+        {
+            warn!(
+                session_id = %session_id,
+                eval_run_id = %self.config.provenance.eval_run_id,
+                error = %error,
+                "failed to close shared benchmark session"
+            );
         }
 
         let report = BenchmarkReport::new(benchmark.name(), results)
@@ -545,7 +554,14 @@ impl BenchmarkRunner {
         if self.config.mode() == BenchmarkMode::OfficialParity {
             // WHY: Best-effort cleanup keeps the live session list from
             // growing unbounded during a large benchmark run.
-            let _ = self.client.close_session(&session_id).await;
+            if let Err(error) = self.client.close_session(&session_id).await {
+                warn!(
+                    session_id = %session_id,
+                    eval_run_id = %self.config.provenance.eval_run_id,
+                    error = %error,
+                    "failed to close benchmark question session"
+                );
+            }
             if shared_session.as_ref() == Some(&session_id) {
                 *shared_session = None;
             }
@@ -563,12 +579,20 @@ impl BenchmarkRunner {
 fn build_transcript_markdown(question: &BenchmarkQuestion) -> String {
     let mut out = String::new();
     for (session_idx, session) in question.sessions.iter().enumerate() {
-        let _ = write!(out, "## Session {session_idx}\n\n");
+        out.push_str("## Session ");
+        out.push_str(&session_idx.to_string());
+        out.push_str("\n\n");
         for (turn_idx, (role, content)) in session.iter().enumerate() {
             if content.trim().is_empty() {
                 continue;
             }
-            let _ = write!(out, "### turn {turn_idx} — {role}\n\n{content}\n\n");
+            out.push_str("### turn ");
+            out.push_str(&turn_idx.to_string());
+            out.push_str(" — ");
+            out.push_str(role);
+            out.push_str("\n\n");
+            out.push_str(content);
+            out.push_str("\n\n");
         }
     }
     out

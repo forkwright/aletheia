@@ -36,11 +36,6 @@ pub(crate) struct RecallScore {
 ///
 /// Returns a score of 0.0 if `relevant` is empty.
 #[must_use]
-#[expect(
-    clippy::as_conversions,
-    clippy::cast_precision_loss,
-    reason = "count values are small enough for lossless f64 conversion"
-)]
 pub(crate) fn compute_recall_at_k(
     relevant: &HashSet<String>,
     retrieved: &[String],
@@ -64,13 +59,13 @@ pub(crate) fn compute_recall_at_k(
         .filter(|item| top_k.contains(item.as_str()))
         .count();
 
-    let score = found as f64 / total_relevant as f64; // SAFETY: count values small; exact in f64 mantissa
+    let score = usize_to_f64(found) / usize_to_f64(total_relevant);
 
     let actual_k = retrieved.len().min(k);
     let precision = if actual_k == 0 {
         0.0
     } else {
-        found as f64 / actual_k as f64
+        usize_to_f64(found) / usize_to_f64(actual_k)
     };
 
     RecallScore {
@@ -80,6 +75,10 @@ pub(crate) fn compute_recall_at_k(
         found,
         total_relevant,
     }
+}
+
+fn usize_to_f64(value: usize) -> f64 {
+    f64::from(u32::try_from(value).unwrap_or(u32::MAX))
 }
 
 /// Compute recall at all standard k values (1, 5, 10, 20).
