@@ -315,6 +315,7 @@ async fn self_audit_default_instinct_check_is_not_stub() {
         error_count: 4,
         completed: false,
         turn_text: "synthetic runtime session".to_owned(),
+        session_age_days: Some(0),
     });
     state.behavior_patterns.push(BehaviorPatternSnapshot {
         session_id: "session-instinct".to_owned(),

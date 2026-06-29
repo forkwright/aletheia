@@ -193,6 +193,9 @@ fn build_prosoche_audit_state(nous_id: &str) -> ProsocheState {
         turn_text: format!(
             "daemon runtime task executions total={total} successes={successes} errors={errors}"
         ),
+        // WHY: the synthetic daemon-runtime session is always current; age is
+        // zero days so it is never treated as stale.
+        session_age_days: Some(0),
     });
     state.behavior_patterns.push(BehaviorPatternSnapshot {
         session_id,

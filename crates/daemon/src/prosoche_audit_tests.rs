@@ -29,6 +29,9 @@ fn session(id: &str, turns: u32, errors: u32, completed: bool) -> SessionSnapsho
         error_count: errors,
         completed,
         turn_text: format!("turn text for session {id}"),
+        // WHY: default test sessions are older than the default 90-day staleness
+        // threshold so age-gated checks behave like the pre-age tests.
+        session_age_days: Some(120),
     }
 }
 
@@ -176,6 +179,7 @@ async fn goal_alignment_check_matching_session_no_finding() {
         turn_count: 5,
         error_count: 0,
         completed: true,
+        session_age_days: Some(120),
         turn_text: "implementing authentication and login functionality".to_owned(),
     }];
     let findings = check.check(&state).await;
@@ -195,6 +199,7 @@ async fn goal_alignment_check_unrelated_session_flagged() {
         turn_count: 5,
         error_count: 0,
         completed: true,
+        session_age_days: Some(120),
         turn_text: "discussing unrelated topics about coffee and weather".to_owned(),
     }];
     let findings = check.check(&state).await;
@@ -301,6 +306,7 @@ async fn instinct_patterns_check_detects_behavioral_patterns() {
         turn_count: 8,
         error_count: 4,
         completed: false,
+        session_age_days: Some(120),
         turn_text: "synthetic session transcript".to_owned(),
     }];
     state.behavior_patterns = vec![BehaviorPatternSnapshot {
@@ -354,6 +360,7 @@ async fn instinct_patterns_text_fallback_is_speculative() {
         turn_count: 6,
         error_count: 1,
         completed: false,
+        session_age_days: Some(120),
         turn_text: "still failing same error retry again definitely will work".to_owned(),
     }];
 
@@ -541,6 +548,7 @@ async fn persisted_report_does_not_copy_fact_or_session_content() {
         turn_count: 12,
         error_count: 0,
         completed: false,
+        session_age_days: Some(120),
         turn_text: "VERY-SENSITIVE-SESSION-TURN".to_owned(),
     }];
 

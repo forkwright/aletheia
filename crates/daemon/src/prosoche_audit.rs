@@ -284,6 +284,10 @@ pub struct SessionSnapshot {
     /// Used for goal-alignment keyword matching. Only hashes of this value are
     /// persisted in durable reports.
     pub turn_text: String,
+    /// How many days ago this session started.
+    ///
+    /// A value of `None` means the session age is unknown.
+    pub session_age_days: Option<u32>,
 }
 
 /// Behavioral counters for one recent session.
@@ -629,8 +633,12 @@ impl StalenessCheck {
             .iter()
             .map(|s| {
                 format!(
-                    "session:{}:turns={}:completed={}",
-                    s.session_id, s.turn_count, s.completed
+                    "session:{}:turns={}:completed={}:age={}",
+                    s.session_id,
+                    s.turn_count,
+                    s.completed,
+                    s.session_age_days
+                        .map_or_else(|| "unknown".to_owned(), |d| d.to_string())
                 )
             })
             .collect();
@@ -702,9 +710,16 @@ impl ProsocheCheck for StalenessCheck {
                 }
             }
 
-            // Future: carry session_age_days in SessionSnapshot and use it here.
+            // WHY: session age is required to weigh staleness; sessions whose
+            // age is unknown cannot be scored and are skipped.
             for session in &state.sessions {
-                if !session.completed && session.turn_count > 10 {
+                let Some(age_days) = session.session_age_days else {
+                    continue;
+                };
+                if !session.completed
+                    && session.turn_count > 10
+                    && f64::from(age_days) > self.fact_stale_days
+                {
                     let rate = if sessions_scanned == 0 {
                         None
                     } else {
@@ -713,8 +728,11 @@ impl ProsocheCheck for StalenessCheck {
                     findings.push(Finding {
                         finding_id: format!("PROSOCHE-STALENESS-SESSION-{}", findings.len() + 1),
                         claim: format!(
-                            "Session '{}' has {} turns but was never completed.",
-                            session.session_id, session.turn_count
+                            "Session '{}' has {} turns but was never completed (age: {age_days} \
+                             days; threshold: {:.0}).",
+                            session.session_id,
+                            session.turn_count,
+                            self.fact_stale_days
                         ),
                         evidence_level: EvidenceLevel::Interpretive,
                         counter_argument:
