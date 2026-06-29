@@ -375,7 +375,8 @@ async fn write_tool_rejected_without_token_env_set() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "content": "test annotation",
-                    "session_id": "alice"
+                    "nous_id": "alice",
+                    "source_session_id": "session-write-disabled"
                 })
                 .as_object()
                 .expect("object")
@@ -446,7 +447,8 @@ async fn write_tool_accepts_correct_token() {
                 serde_json::json!({
                     "fact_id": "f-test-0001",
                     "content": "This fact is well-established",
-                    "session_id": "alice"
+                    "nous_id": "alice",
+                    "source_session_id": "session-annotate-1"
                 })
                 .as_object()
                 .expect("object")
@@ -477,6 +479,17 @@ async fn write_tool_accepts_correct_token() {
         .get("annotation_id")
         .and_then(|v| v.as_str())
         .expect("annotation id string");
+    let annotation_fact = inspect_store
+        .read_facts_by_id(annotation_id)
+        .expect("read annotation fact")
+        .into_iter()
+        .next()
+        .expect("annotation fact exists");
+    assert_eq!(
+        annotation_fact.provenance.source_session_id.as_deref(),
+        Some("session-annotate-1"),
+        "annotation provenance must use the supplied source session"
+    );
     let mut link_params = BTreeMap::new();
     link_params.insert(
         "annotation_entity".to_owned(),
@@ -513,6 +526,7 @@ async fn write_tool_accepts_correct_token() {
                     "old_fact_id": "f-test-0001",
                     "new_fact_id": "f-test-0002",
                     "nous_id": "alice",
+                    "source_session_id": "session-supersede-1",
                     "reason": "Updated with fresher information"
                 })
                 .as_object()
@@ -537,6 +551,21 @@ async fn write_tool_accepts_correct_token() {
         supersede_json.get("old_fact_id").and_then(|v| v.as_str()),
         Some("f-test-0001"),
         "old_fact_id mismatch"
+    );
+    let record_id = supersede_json
+        .get("record_id")
+        .and_then(|v| v.as_str())
+        .expect("supersession record id");
+    let supersession_record = inspect_store
+        .read_facts_by_id(record_id)
+        .expect("read supersession record")
+        .into_iter()
+        .next()
+        .expect("supersession record exists");
+    assert_eq!(
+        supersession_record.provenance.source_session_id.as_deref(),
+        Some("session-supersede-1"),
+        "supersession provenance must use the supplied source session"
     );
 
     // 3. nous_forget with correct token should succeed

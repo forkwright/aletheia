@@ -64,7 +64,8 @@ aletheia-memory-mcp  # server inherits the token
   "arguments": {
     "fact_id": "f-abc-123",
     "content": "Verified against external source X",
-    "session_id": "agent-uuid"
+    "nous_id": "agent-uuid",
+    "source_session_id": "session-uuid"
   }
 }
 ```
