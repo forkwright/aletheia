@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use serde::{Deserialize, Serialize};
 
 /// Prosoche attention check runner.
-pub struct ProsocheCheck {
+pub(crate) struct ProsocheCheck {
     nous_id: String,
     /// Instance data directory to check for disk usage.
     data_dir: Option<PathBuf>,
@@ -41,7 +41,7 @@ impl std::fmt::Debug for ProsocheCheck {
             "knowledge_store",
             &self.knowledge_store.as_ref().map(|_| "<KnowledgeStore>"),
         );
-        s.finish()
+        s.finish_non_exhaustive()
     }
 }
 
@@ -61,28 +61,28 @@ impl Clone for ProsocheCheck {
 
 /// Result of a prosoche check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProsocheResult {
+pub(crate) struct ProsocheResult {
     /// Items requiring the nous's attention.
-    pub items: Vec<AttentionItem>,
+    pub(crate) items: Vec<AttentionItem>,
     /// ISO 8601 timestamp when the check was performed.
-    pub checked_at: String,
+    pub(crate) checked_at: String,
 }
 
 /// A single item requiring attention.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AttentionItem {
+pub(crate) struct AttentionItem {
     /// What kind of attention is needed.
-    pub category: AttentionCategory,
+    pub(crate) category: AttentionCategory,
     /// Human-readable description of the item.
-    pub summary: String,
+    pub(crate) summary: String,
     /// How urgently this needs attention.
-    pub urgency: Urgency,
+    pub(crate) urgency: Urgency,
 }
 
 /// Categories of attention items.
 #[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AttentionCategory {
+pub(crate) enum AttentionCategory {
     /// Calendar event or deadline.
     Calendar,
     /// Pending task or overdue item.
@@ -98,7 +98,7 @@ pub enum AttentionCategory {
 /// Urgency level for attention items.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Urgency {
+pub(crate) enum Urgency {
     /// Informational, no action needed soon.
     Low,
     /// Should be addressed within the current session.
@@ -204,7 +204,7 @@ impl ProsocheCheck {
     /// Cancel-safe. Each health check is independent and partial results
     /// are discarded on cancellation. No state is mutated.
     #[tracing::instrument(skip_all)]
-    pub async fn run(&self) -> crate::error::Result<ProsocheResult> {
+    pub(crate) async fn run(&self) -> crate::error::Result<ProsocheResult> {
         let mut items = Vec::new();
 
         if let Some(ref data_dir) = self.data_dir {

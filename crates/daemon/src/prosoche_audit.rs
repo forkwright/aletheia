@@ -376,7 +376,7 @@ impl BehaviorPatternSnapshot {
 /// `check` returns `Pin<Box<dyn Future>>` so the trait is object-safe and
 /// `Arc<dyn ProsocheCheck>` works without `async_trait`. Pattern mirrors
 /// [`crate::bridge::DaemonBridge`].
-pub trait ProsocheCheck: Send + Sync {
+pub(crate) trait ProsocheCheck: Send + Sync {
     /// Run the check against the provided system state.
     ///
     /// Returns zero or more findings. An empty `Vec` means no issues detected —
@@ -439,7 +439,7 @@ pub struct CheckFailure {
 ///
 /// Future: integrate with episteme's A-MemGuard consensus layer for full
 /// multi-path contradiction detection.
-pub struct ConsistencyCheck;
+pub(crate) struct ConsistencyCheck;
 
 impl ConsistencyCheck {
     fn query_hash(state: &ProsocheState) -> String {
@@ -650,9 +650,9 @@ fn extract_key_terms(content: &str) -> Vec<String> {
 /// v1 thresholds:
 /// - Facts untouched > 90 days: `Exploratory` finding.
 /// - Incomplete sessions with > 10 turns: `Interpretive` finding.
-pub struct StalenessCheck {
+pub(crate) struct StalenessCheck {
     /// Number of days after which an unaccessed fact is considered stale.
-    pub fact_stale_days: f64,
+    pub(crate) fact_stale_days: f64,
 }
 
 impl Default for StalenessCheck {
@@ -850,7 +850,7 @@ impl ProsocheCheck for StalenessCheck {
 /// Limitation: keyword matching does not capture semantic alignment. A session
 /// about "implement the authentication system" may advance the goal
 /// "ship secure login" without sharing keywords.
-pub struct GoalAlignmentCheck;
+pub(crate) struct GoalAlignmentCheck;
 
 impl GoalAlignmentCheck {
     fn query_hash(state: &ProsocheState) -> String {
@@ -996,13 +996,13 @@ impl ProsocheCheck for GoalAlignmentCheck {
 /// v1 thresholds:
 /// - Error rate > 50% of turns: `Exploratory` finding.
 /// - Zero completed sessions in the snapshot AND ≥ 5 sessions: `Interpretive` finding.
-pub struct SessionQualityCheck {
+pub(crate) struct SessionQualityCheck {
     /// Error rate threshold above which a session is flagged (0.0–1.0).
-    pub error_rate_threshold: f64,
+    pub(crate) error_rate_threshold: f64,
     /// Minimum session length (in turns) before quality check is applied.
     ///
     /// Very short sessions are excluded to avoid flagging legitimate 1-turn interactions.
-    pub min_turns: u32,
+    pub(crate) min_turns: u32,
 }
 
 impl Default for SessionQualityCheck {
@@ -1173,7 +1173,7 @@ impl ProsocheCheck for SessionQualityCheck {
 /// v1 heuristic: combines typed behavior counters with lightweight text
 /// markers inferred from recent session turn text. Typed counters carry
 /// `Exploratory` evidence; text-only fallback findings remain `Speculative`.
-pub struct InstinctPatternsCheck;
+pub(crate) struct InstinctPatternsCheck;
 
 impl InstinctPatternsCheck {
     const MIN_TURNS: u32 = 4;
@@ -1532,9 +1532,9 @@ impl ProsocheCheck for InstinctPatternsCheck {
 ///
 /// v1: writes JSON files to a directory on disk. Each audit run produces
 /// a timestamped file: `prosoche-audit-<ISO8601>.json`.
-pub struct AuditStorage {
+pub(crate) struct AuditStorage {
     /// Directory where audit reports are written.
-    pub dir: PathBuf,
+    pub(crate) dir: PathBuf,
 }
 
 impl AuditStorage {
@@ -1542,14 +1542,14 @@ impl AuditStorage {
     ///
     /// The directory is created lazily on first [`AuditStorage::persist`] call.
     #[must_use]
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
+    pub(crate) fn new(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
     }
 
     /// Persist an audit report to disk.
     ///
     /// Returns the path of the written file on success.
-    pub async fn persist(&self, report: &AuditReport) -> std::io::Result<PathBuf> {
+    pub(crate) async fn persist(&self, report: &AuditReport) -> std::io::Result<PathBuf> {
         tokio::fs::create_dir_all(&self.dir).await?;
 
         let ts = report.audited_at.replace([':', '.'], "-");
@@ -1719,7 +1719,8 @@ impl ProsocheAuditRunner {
 
     /// Build a runner with a custom check list and storage backend.
     #[must_use]
-    pub fn new(checks: Vec<Arc<dyn ProsocheCheck>>, storage: AuditStorage) -> Self {
+    #[cfg(test)]
+    pub(crate) fn new(checks: Vec<Arc<dyn ProsocheCheck>>, storage: AuditStorage) -> Self {
         Self { checks, storage }
     }
 
