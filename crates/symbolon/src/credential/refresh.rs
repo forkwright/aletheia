@@ -71,6 +71,7 @@ const MIN_EXPIRES_IN_SECS: u64 = 60;
 
 /// Maximum `expires_in` accepted from OAuth responses (seconds).
 const MAX_EXPIRES_IN_SECS: u64 = 86400;
+const MAX_OAUTH_ERROR_PREVIEW_CHARS: usize = 160;
 
 fn default_expires_in() -> u64 {
     28800 // NOTE: 8 hours
@@ -514,14 +515,15 @@ pub(super) async fn do_refresh(
 ) -> RefreshOutcome {
     // NOTE: Anthropic OAuth endpoint expects form-urlencoded, not JSON.
     // This matches RFC 6749 Section 4.1.3 for token refresh requests.
-    let body = format!(
-        "grant_type=refresh_token&refresh_token={refresh_token}&client_id={OAUTH_CLIENT_ID}",
-    );
+    let form = [
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token),
+        ("client_id", OAUTH_CLIENT_ID),
+    ];
 
     let resp = match client
         .post(token_url)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body)
+        .form(&form)
         .timeout(Duration::from_secs(30))
         .send()
         .await
@@ -539,18 +541,24 @@ pub(super) async fn do_refresh(
             warn!("failed to read OAuth error response body: {e}");
             String::new()
         });
+        let error_response = serde_json::from_str::<OAuthErrorResponse>(&body_text).ok();
+        let error_code = error_response
+            .as_ref()
+            .map_or("unparseable_oauth_error", |err_resp| {
+                err_resp.error.as_str()
+            });
+        let body_preview = oauth_error_body_preview(&body_text, error_response.as_ref());
 
         // WHY: `invalid_grant` means the refresh token is revoked, expired, or
         // otherwise permanently invalid; retrying will never succeed — the user
         // must re-authenticate to obtain a new refresh token.
-        if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text)
-            && err_resp.error == "invalid_grant"
-        {
+        if error_code == "invalid_grant" {
             // WHY: error_description is provider-controlled and may contain account
-            // identifiers or token fragments — log only the normalized error code
+            // identifiers or token fragments — log only normalized structured fields.
             error!(
                 status = %status,
-                error = %err_resp.error,
+                oauth_error = %error_code,
+                body_preview = %body_preview,
                 "OAuth refresh token is invalid — re-authentication required. \
                  Run `aletheia auth login` or re-authorize via Claude Code to obtain \
                  a new refresh token."
@@ -558,8 +566,14 @@ pub(super) async fn do_refresh(
             return RefreshOutcome::InvalidGrant;
         }
 
-        // WHY: raw body may contain provider-echoed request material; log only status
-        warn!(status = %status, "OAuth refresh returned error");
+        // WHY: raw body may contain provider-echoed request material; log only
+        // structured status/code plus a sanitized bounded preview.
+        warn!(
+            status = %status,
+            oauth_error = %error_code,
+            body_preview = %body_preview,
+            "OAuth refresh returned error"
+        );
         return RefreshOutcome::TransientError;
     }
 
@@ -583,6 +597,31 @@ pub(super) async fn do_refresh(
             warn!(error = %e, "failed to parse OAuth refresh response");
             RefreshOutcome::TransientError
         }
+    }
+}
+
+fn oauth_error_body_preview(
+    body_text: &str,
+    error_response: Option<&OAuthErrorResponse>,
+) -> String {
+    if let Some(error_response) = error_response {
+        return truncate_oauth_error_preview(
+            &serde_json::json!({ "error": error_response.error.as_str() }).to_string(),
+        );
+    }
+    if body_text.is_empty() {
+        return "[empty OAuth error body]".to_owned();
+    }
+    format!("[redacted OAuth error body: {} bytes]", body_text.len())
+}
+
+fn truncate_oauth_error_preview(preview: &str) -> String {
+    let mut chars = preview.chars();
+    let truncated: String = chars.by_ref().take(MAX_OAUTH_ERROR_PREVIEW_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
 }
 
