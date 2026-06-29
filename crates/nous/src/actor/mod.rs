@@ -214,7 +214,8 @@ impl NousActor {
     /// or [`spawn`] to start it.
     #[expect(
         clippy::too_many_arguments,
-        reason = "actor requires all runtime dependencies"
+        clippy::too_many_lines,
+        reason = "actor requires all runtime dependencies and wires persistent training sinks"
     )]
     pub(crate) fn new(
         id: String,

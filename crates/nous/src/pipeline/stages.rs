@@ -224,6 +224,7 @@ pub(super) async fn run_context_stage(
 /// Recall stage: retrieve relevant knowledge from vector/BM25 search.
 #[expect(
     clippy::too_many_arguments,
+    clippy::too_many_lines,
     reason = "stage receives all search dependencies and owns recall branch lifecycle"
 )]
 pub(super) async fn run_recall_stage(
@@ -254,7 +255,7 @@ pub(super) async fn run_recall_stage(
     let start = Instant::now();
     // WHY(#3380): both "mock-embedding" (hash-based) and "degraded-embedding" (startup failure) produce
     // meaningless vector results; skip to BM25-only at the pipeline level for both cases.
-    let bm25_only = embedding_provider.is_some_and(|ep| {
+    let bm25_only = embedding_provider.as_ref().is_some_and(|ep| {
         let name = ep.model_name();
         name == "mock-embedding" || name == mneme::embedding::DegradedEmbeddingProvider::MODEL_NAME
     });
@@ -270,7 +271,9 @@ pub(super) async fn run_recall_stage(
     if bm25_only {
         if let Some(ts) = text_search {
             debug!(
-                provider = embedding_provider.map_or("none", EmbeddingProvider::model_name),
+                provider = embedding_provider
+                    .as_deref()
+                    .map_or("none", EmbeddingProvider::model_name),
                 "embeddings unavailable — using BM25-only recall"
             );
             let recall_stage = crate::recall::RecallStage::new(config.recall.clone())

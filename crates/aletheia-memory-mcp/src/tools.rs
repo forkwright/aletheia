@@ -1652,10 +1652,7 @@ impl MemoryServer {
                 if old_fact.lifecycle.is_forgotten
                     || old_fact.lifecycle.superseded_by.as_ref().is_some()
                 {
-                    return Err(crate::error::FactNotFoundSnafu {
-                        id: old_id.clone(),
-                    }
-                    .build());
+                    return Err(crate::error::FactNotFoundSnafu { id: old_id.clone() }.build());
                 }
 
                 // Mark the old fact as superseded

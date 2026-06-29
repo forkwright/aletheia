@@ -1389,113 +1389,110 @@ pub(crate) async fn run_pipeline(
                 )
             };
 
-        if finalize_outcome == FinalizeOutcome::Persisted {
-            if let Some(capture_arc) = training_capture {
-                // NOTE: one entry per tool call with success/error
-                // classification and timing — feeds the DPO/ORPO reward
-                // signal (#3417).
-                let tool_outcomes = if result.tool_calls.is_empty() {
-                    None
-                } else {
-                    Some(
-                        result
-                            .tool_calls
-                            .iter()
-                            .map(|tc| crate::training::ToolOutcome {
-                                name: tc.name.clone(),
-                                success: !tc.is_error,
-                                duration_ms: tc.duration_ms,
-                                // WHY: tool results are free-form
-                                // strings. Extract a short stable
-                                // label by taking the first
-                                // whitespace-separated token (capped
-                                // at 32 chars) so downstream training
-                                // jobs can bucket errors without
-                                // parsing prose. Full result text is
-                                // never stored here — it would defeat
-                                // the PII filter's purpose.
-                                error_kind: if tc.is_error {
-                                    tc.result.as_ref().map(|r| {
-                                        let first = r
-                                            .split_whitespace()
-                                            .next()
-                                            .unwrap_or("error")
-                                            .trim_end_matches(':');
-                                        first.chars().take(32).collect::<String>()
-                                    })
-                                } else {
-                                    None
-                                },
-                            })
-                            .collect(),
-                    )
-                };
+        if finalize_outcome == FinalizeOutcome::Persisted
+            && let Some(capture_arc) = training_capture
+        {
+            // NOTE: one entry per tool call with success/error
+            // classification and timing — feeds the DPO/ORPO reward
+            // signal (#3417).
+            let tool_outcomes = if result.tool_calls.is_empty() {
+                None
+            } else {
+                Some(
+                    result
+                        .tool_calls
+                        .iter()
+                        .map(|tc| crate::training::ToolOutcome {
+                            name: tc.name.clone(),
+                            success: !tc.is_error,
+                            duration_ms: tc.duration_ms,
+                            // WHY: tool results are free-form
+                            // strings. Extract a short stable
+                            // label by taking the first
+                            // whitespace-separated token (capped
+                            // at 32 chars) so downstream training
+                            // jobs can bucket errors without
+                            // parsing prose. Full result text is
+                            // never stored here — it would defeat
+                            // the PII filter's purpose.
+                            error_kind: if tc.is_error {
+                                tc.result.as_ref().map(|r| {
+                                    let first = r
+                                        .split_whitespace()
+                                        .next()
+                                        .unwrap_or("error")
+                                        .trim_end_matches(':');
+                                    first.chars().take(32).collect::<String>()
+                                })
+                            } else {
+                                None
+                            },
+                        })
+                        .collect(),
+                )
+            };
 
-                // WHY(#3418): per-fact entries are left empty because the
-                // injected `recall_section` is not structured at the
-                // pipeline boundary today.
-                let recall_signals = ctx.recall_result.as_ref().map(|r| {
-                    let candidates_found =
-                        u32::try_from(r.candidates_found).unwrap_or(u32::MAX);
-                    let results_injected =
-                        u32::try_from(r.results_injected).unwrap_or(u32::MAX);
-                    crate::training::RecallSignals {
-                        candidates_found,
-                        results_injected,
-                        tokens_consumed: r.tokens_consumed,
-                        facts: Vec::new(),
-                    }
-                });
-
-                let turn_id = input.session.turn_id.to_string();
-                let session_id = input.session.id.clone();
-                let nous_id = config.id.clone();
-                let user_message = input.content.clone();
-                let assistant_response = result.content.clone();
-                let model = result.model_used.clone();
-                let tokens = result.usage.total_tokens();
-                let stop_reason =
-                    crate::training::CaptureStopReason::parse(&result.stop_reason);
-                let has_tool_calls = !result.tool_calls.is_empty();
-                let tool_surface_hashes = result.tool_surface_hashes.clone();
-                let capture_policy_ref = "nous-training-capture-v1".to_owned();
-                let finalization_status = "finalized".to_owned();
-
-                // WHY: TrainingCapture writes append to a JSONL shard and
-                // persist the manifest using synchronous std::fs. Moving the
-                // write onto a blocking thread keeps the async worker from
-                // stalling on filesystem I/O. (#5676)
-                let capture_arc = Arc::clone(&capture_arc);
-                if let Err(e) = tokio::task::spawn_blocking(move || {
-                    let tool_surface_hashes_ref: &[String] = &tool_surface_hashes;
-                    let mut guard = capture_arc
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    guard.maybe_capture(crate::training::CaptureInput {
-                        session_id: session_id.as_str(),
-                        nous_id: nous_id.as_str(),
-                        user_message: user_message.as_str(),
-                        assistant_response: assistant_response.as_str(),
-                        model: model.as_str(),
-                        tokens,
-                        stop_reason,
-                        has_tool_calls,
-                        turn_type: Some(turn_classification.to_string()),
-                        is_correction: Some(correction_signal.is_correction),
-                        fact_types: Some(vec![fact_type.to_string()]),
-                        tool_outcomes,
-                        recall_signals,
-                        tool_surface_hashes: tool_surface_hashes_ref,
-                        turn_id: Some(turn_id.as_str()),
-                        turn_seq: input.session.turn,
-                        capture_policy_ref: Some(capture_policy_ref.as_str()),
-                        finalization_status: Some(finalization_status.as_str()),
-                    })
-                })
-                .await
-                {
-                    warn!(error = %e, "training capture write task failed");
+            // WHY(#3418): per-fact entries are left empty because the
+            // injected `recall_section` is not structured at the
+            // pipeline boundary today.
+            let recall_signals = ctx.recall_result.as_ref().map(|r| {
+                let candidates_found = u32::try_from(r.candidates_found).unwrap_or(u32::MAX);
+                let results_injected = u32::try_from(r.results_injected).unwrap_or(u32::MAX);
+                crate::training::RecallSignals {
+                    candidates_found,
+                    results_injected,
+                    tokens_consumed: r.tokens_consumed,
+                    facts: Vec::new(),
                 }
+            });
+
+            let turn_id = input.session.turn_id.to_string();
+            let session_id = input.session.id.clone();
+            let nous_id = config.id.clone();
+            let user_message = input.content.clone();
+            let assistant_response = result.content.clone();
+            let model = result.model_used.clone();
+            let tokens = result.usage.total_tokens();
+            let stop_reason = crate::training::CaptureStopReason::parse(&result.stop_reason);
+            let has_tool_calls = !result.tool_calls.is_empty();
+            let tool_surface_hashes = result.tool_surface_hashes.clone();
+            let capture_policy_ref = "nous-training-capture-v1".to_owned();
+            let finalization_status = "finalized".to_owned();
+
+            // WHY: TrainingCapture writes append to a JSONL shard and
+            // persist the manifest using synchronous std::fs. Moving the
+            // write onto a blocking thread keeps the async worker from
+            // stalling on filesystem I/O. (#5676)
+            let capture_arc = Arc::clone(&capture_arc);
+            if let Err(e) = tokio::task::spawn_blocking(move || {
+                let tool_surface_hashes_ref: &[String] = &tool_surface_hashes;
+                let mut guard = capture_arc
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                guard.maybe_capture(crate::training::CaptureInput {
+                    session_id: session_id.as_str(),
+                    nous_id: nous_id.as_ref(),
+                    user_message: user_message.as_str(),
+                    assistant_response: assistant_response.as_str(),
+                    model: model.as_str(),
+                    tokens,
+                    stop_reason,
+                    has_tool_calls,
+                    turn_type: Some(turn_classification.to_string()),
+                    is_correction: Some(correction_signal.is_correction),
+                    fact_types: Some(vec![fact_type.to_string()]),
+                    tool_outcomes,
+                    recall_signals,
+                    tool_surface_hashes: tool_surface_hashes_ref,
+                    turn_id: Some(turn_id.as_str()),
+                    turn_seq: input.session.turn,
+                    capture_policy_ref: Some(capture_policy_ref.as_str()),
+                    finalization_status: Some(finalization_status.as_str()),
+                })
+            })
+            .await
+            {
+                warn!(error = %e, "training capture write task failed");
             }
         }
 
@@ -1503,72 +1500,71 @@ pub(crate) async fn run_pipeline(
         // quality-filtered turn data feeds both pipelines. Uses a global
         // extractor because the pipeline task has no persistent actor state.
         // Session IDs are ULID-based and globally unique.
-        if finalize_outcome == FinalizeOutcome::Persisted {
-            if let Some(writer_arc) = dpo_writer {
-                // WHY(#3786): authorship gate skips agent-authored turns to prevent
-                // preference pairs derived from AI-generated text.
-                let dpo_passes_authorship = if pipeline_config.training.author_classifier_enabled {
-                    let classifier = aletheia_classify::Classifier::new();
-                    match classifier.classify(&input.content) {
-                        Ok(probs) => {
-                            let class = probs.argmax();
-                            let confidence = probs.confidence();
-                            let passes = class == aletheia_classify::AuthorClass::User
-                                || confidence
-                                    < pipeline_config.training.author_classifier_threshold;
-                            if !passes {
-                                crate::metrics::record_training_capture_rejected(
-                                    &config.id,
-                                    class.as_str(),
-                                );
-                            }
-                            passes
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                error = %e,
-                                session_id = %input.session.id,
-                                "DPO authorship classification failed; continuing without filter"
+        if finalize_outcome == FinalizeOutcome::Persisted
+            && let Some(writer_arc) = dpo_writer
+        {
+            // WHY(#3786): authorship gate skips agent-authored turns to prevent
+            // preference pairs derived from AI-generated text.
+            let dpo_passes_authorship = if pipeline_config.training.author_classifier_enabled {
+                let classifier = aletheia_classify::Classifier::new();
+                match classifier.classify(&input.content) {
+                    Ok(probs) => {
+                        let class = probs.argmax();
+                        let confidence = probs.confidence();
+                        let passes = class == aletheia_classify::AuthorClass::User
+                            || confidence < pipeline_config.training.author_classifier_threshold;
+                        if !passes {
+                            crate::metrics::record_training_capture_rejected(
+                                &config.id,
+                                class.as_str(),
                             );
-                            true
                         }
+                        passes
                     }
-                } else {
-                    true
-                };
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            session_id = %input.session.id,
+                            "DPO authorship classification failed; continuing without filter"
+                        );
+                        true
+                    }
+                }
+            } else {
+                true
+            };
 
-                if dpo_passes_authorship {
-                    if let Some(pair) = crate::training::dpo::process_turn_global(
-                        &input.session.id,
-                        input.session.turn,
-                        &input.content,
-                        &result.content,
-                        correction_signal.is_correction,
-                        pipeline_config.training.pii_filter_enabled,
-                    ) {
-                        // WHY: DpoWriter::write_pair opens and appends to a JSONL
-                        // file with synchronous std::fs. Moving the write onto a
-                        // blocking thread keeps the async worker from stalling on
-                        // filesystem I/O. (#5676)
-                        let writer_arc = Arc::clone(&writer_arc);
-                        match tokio::task::spawn_blocking(move || {
-                            let guard = writer_arc
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner);
-                            guard.write_pair(&pair)
-                        })
-                        .await
-                        {
-                            Ok(Ok(())) => {
-                                crate::training::dpo::record_dpo_pair_captured(&config.id);
-                            }
-                            Ok(Err(e)) => {
-                                tracing::warn!(error = %e, "DPO pair write failed");
-                            }
-                            Err(e) => {
-                                tracing::warn!(error = %e, "DPO pair write task failed");
-                            }
-                        }
+            if dpo_passes_authorship
+                && let Some(pair) = crate::training::dpo::process_turn_global(
+                    &input.session.id,
+                    input.session.turn,
+                    &input.content,
+                    &result.content,
+                    correction_signal.is_correction,
+                    pipeline_config.training.pii_filter_enabled,
+                )
+            {
+                // WHY: DpoWriter::write_pair opens and appends to a JSONL
+                // file with synchronous std::fs. Moving the write onto a
+                // blocking thread keeps the async worker from stalling on
+                // filesystem I/O. (#5676)
+                let writer_arc = Arc::clone(&writer_arc);
+                match tokio::task::spawn_blocking(move || {
+                    let guard = writer_arc
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    guard.write_pair(&pair)
+                })
+                .await
+                {
+                    Ok(Ok(())) => {
+                        crate::training::dpo::record_dpo_pair_captured(&config.id);
+                    }
+                    Ok(Err(e)) => {
+                        tracing::warn!(error = %e, "DPO pair write failed");
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "DPO pair write task failed");
                     }
                 }
             }
