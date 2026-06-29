@@ -188,7 +188,7 @@ impl KnowledgeStore {
         let mut results = Vec::new();
         for row in &rows.rows {
             if row.len() < 9 {
-                continue;
+                return Err(short_row_error("pending merge row", 9, row.len()));
             }
             let entity_a = crate::id::EntityId::new(extract_str(&row[0])?)
                 .context(crate::error::InvalidIdSnafu)?;
@@ -413,10 +413,10 @@ impl KnowledgeStore {
         let count = rows
             .rows
             .first()
-            .and_then(|row| row.first())
-            .map(extract_int)
-            .transpose()?
-            .unwrap_or(0);
+            .ok_or_else(|| short_row_error("entity ownership count", 1, 0))?
+            .first()
+            .ok_or_else(|| short_row_error("entity ownership count", 1, 0))
+            .and_then(extract_int)?;
         Ok(count > 0)
     }
 
@@ -438,10 +438,9 @@ impl KnowledgeStore {
         let mut results = Vec::new();
         for row in &rows.rows {
             if row.len() < 7 {
-                continue;
+                return Err(short_row_error("merge audit row", 7, row.len()));
             }
-            let merged_at = crate::knowledge::parse_timestamp(&extract_str(&row[6])?)
-                .unwrap_or_else(jiff::Timestamp::now);
+            let merged_at = strict_timestamp(&extract_str(&row[6])?, "merge audit merged_at")?;
             let canonical_entity_id = crate::id::EntityId::new(extract_str(&row[0])?)
                 .context(crate::error::InvalidIdSnafu)?;
             let merged_entity_id = crate::id::EntityId::new(extract_str(&row[1])?)
@@ -451,8 +450,14 @@ impl KnowledgeStore {
                 merged_entity_id,
                 merged_entity_name: extract_str(&row[2])?,
                 merge_score: extract_float(&row[3])?,
-                facts_transferred: u32::try_from(extract_int(&row[4])?).unwrap_or(0),
-                relationships_redirected: u32::try_from(extract_int(&row[5])?).unwrap_or(0),
+                facts_transferred: checked_u32(
+                    extract_int(&row[4])?,
+                    "merge audit facts_transferred",
+                )?,
+                relationships_redirected: checked_u32(
+                    extract_int(&row[5])?,
+                    "merge audit relationships_redirected",
+                )?,
                 merged_at,
             });
         }
@@ -801,7 +806,7 @@ impl KnowledgeStore {
         let count = rows.rows.len();
         for row in &rows.rows {
             if row.len() < 3 {
-                continue;
+                return Err(short_row_error("fact entity transfer row", 3, row.len()));
             }
             let fact_id = extract_str(&row[0])?;
             let created_at = extract_str(&row[2])?;
@@ -828,7 +833,7 @@ impl KnowledgeStore {
             let _ = self.run_mut(&queries::rm_fact_entity(), rm_params);
         }
 
-        Ok(u32::try_from(count).unwrap_or(0))
+        usize_to_u32(count, "transferred fact entity count")
     }
 
     /// Add an alias to an entity's alias list.
@@ -932,4 +937,42 @@ impl KnowledgeStore {
         params.insert("created_at".to_owned(), DataValue::Str(now.into()));
         self.run_mut(&queries::put_pending_merge(), params)
     }
+}
+
+#[cfg(feature = "mneme-engine")]
+fn short_row_error(context: &str, expected: usize, actual: usize) -> crate::error::Error {
+    crate::error::ConversionSnafu {
+        message: format!("{context}: expected at least {expected} columns, got {actual}"),
+    }
+    .build()
+}
+
+#[cfg(feature = "mneme-engine")]
+fn strict_timestamp(raw: &str, context: &str) -> crate::error::Result<jiff::Timestamp> {
+    crate::knowledge::parse_timestamp(raw).ok_or_else(|| {
+        crate::error::EngineQuerySnafu {
+            message: format!("{context}: invalid timestamp '{raw}'"),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn checked_u32(value: i64, context: &str) -> crate::error::Result<u32> {
+    u32::try_from(value).map_err(|err| {
+        crate::error::ConversionSnafu {
+            message: format!("{context}: cannot convert {value} to u32: {err}"),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn usize_to_u32(value: usize, context: &str) -> crate::error::Result<u32> {
+    u32::try_from(value).map_err(|err| {
+        crate::error::ConversionSnafu {
+            message: format!("{context}: cannot convert {value} to u32: {err}"),
+        }
+        .build()
+    })
 }

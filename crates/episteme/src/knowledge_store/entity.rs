@@ -1,7 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
-)]
 use snafu::ResultExt;
 
 use super::marshal::{
@@ -115,37 +111,7 @@ impl KnowledgeStore {
             :order name";
         let rows = self.run_read(script, BTreeMap::new())?;
 
-        let mut entities = Vec::new();
-        for row in &rows.rows {
-            if row.len() < 6 {
-                continue;
-            }
-            let aliases_str = extract_str(&row[3])?;
-            let aliases: Vec<String> = if aliases_str.is_empty() {
-                Vec::new()
-            } else {
-                aliases_str
-                    .split(',')
-                    .map(|s| s.trim().to_owned())
-                    .collect()
-            };
-            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
-                .unwrap_or_else(jiff::Timestamp::now);
-            let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
-                .unwrap_or_else(jiff::Timestamp::now);
-
-            let id = crate::id::EntityId::new(extract_str(&row[0])?)
-                .context(crate::error::InvalidIdSnafu)?;
-            entities.push(crate::knowledge::Entity {
-                id,
-                name: extract_str(&row[1])?,
-                entity_type: extract_str(&row[2])?,
-                aliases,
-                created_at,
-                updated_at,
-            });
-        }
-        Ok(entities)
+        parse_entities(&rows)
     }
 
     /// List entities reachable from the supplied fact IDs.
@@ -199,13 +165,11 @@ impl KnowledgeStore {
 
         let mut edges = Vec::new();
         for row in &rows.rows {
-            if row.len() < 2 {
-                continue;
-            }
-            let fact_id = crate::id::FactId::new(extract_str(&row[0])?)
+            let fact_id = crate::id::FactId::new(row_str(row, 0, "fact_id", "fact_entity edge")?)
                 .context(crate::error::InvalidIdSnafu)?;
-            let entity_id = crate::id::EntityId::new(extract_str(&row[1])?)
-                .context(crate::error::InvalidIdSnafu)?;
+            let entity_id =
+                crate::id::EntityId::new(row_str(row, 1, "entity_id", "fact_entity edge")?)
+                    .context(crate::error::InvalidIdSnafu)?;
             edges.push((fact_id, entity_id));
         }
         Ok(edges)
@@ -227,28 +191,7 @@ impl KnowledgeStore {
             :order src";
         let rows = self.run_read(script, BTreeMap::new())?;
 
-        let mut relationships = Vec::new();
-        for row in &rows.rows {
-            if row.len() < 5 {
-                continue;
-            }
-            let src = crate::id::EntityId::new(extract_str(&row[0])?)
-                .context(crate::error::InvalidIdSnafu)?;
-            let dst = crate::id::EntityId::new(extract_str(&row[1])?)
-                .context(crate::error::InvalidIdSnafu)?;
-            let relation = extract_str(&row[2])?;
-            let weight = extract_float(&row[3])?;
-            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
-                .unwrap_or_else(jiff::Timestamp::now);
-            relationships.push(crate::knowledge::Relationship {
-                src,
-                dst,
-                relation,
-                weight,
-                created_at,
-            });
-        }
-        Ok(relationships)
+        parse_relationships(&rows)
     }
 
     /// List relationships whose endpoints are both in `entity_ids`.
@@ -342,24 +285,17 @@ impl KnowledgeStore {
 
         let mut entities = Vec::new();
         for row in &rows.rows {
-            if row.len() < 6 {
-                continue;
-            }
-            let id_str = extract_str(&row[0])?;
-            let name = extract_str(&row[1])?;
-            let entity_type = extract_str(&row[2])?;
-            let aliases_str = extract_str(&row[3])?;
-            let aliases: Vec<String> = if aliases_str.is_empty() {
-                Vec::new()
-            } else {
-                aliases_str
-                    .split(',')
-                    .map(|s| s.trim().to_owned())
-                    .collect()
-            };
-            let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
-                .unwrap_or_else(jiff::Timestamp::now);
-            let name_embedding = super::marshal::extract_optional_f32_vec(&row[5])?;
+            let id_str = row_str(row, 0, "id", "dedup entity info")?;
+            let name = row_str(row, 1, "name", "dedup entity info")?;
+            let entity_type = row_str(row, 2, "entity_type", "dedup entity info")?;
+            let aliases = parse_aliases(&row_str(row, 3, "aliases", "dedup entity info")?);
+            let created_at = row_timestamp(row, 4, "created_at", "dedup entity info")?;
+            let name_embedding = super::marshal::extract_optional_f32_vec(row_value(
+                row,
+                5,
+                "name_embedding",
+                "dedup entity info",
+            )?)?;
 
             let rel_count = self.count_relationships(&id_str)?;
             let fact_count = self.count_facts(&id_str)?;
@@ -370,8 +306,8 @@ impl KnowledgeStore {
                 name,
                 entity_type,
                 aliases,
-                relationship_count: u32::try_from(rel_count).unwrap_or(0),
-                fact_count: u32::try_from(fact_count).unwrap_or(0),
+                relationship_count: checked_u32(rel_count, "dedup entity relationship_count")?,
+                fact_count: checked_u32(fact_count, "dedup entity fact_count")?,
                 created_at,
                 name_embedding,
             });
@@ -423,25 +359,14 @@ impl KnowledgeStore {
             .build()
         })?;
 
-        let aliases_str = extract_str(&row[3])?;
-        let aliases: Vec<String> = if aliases_str.is_empty() {
-            Vec::new()
-        } else {
-            aliases_str
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .collect()
-        };
-
-        let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
-            .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
-            .unwrap_or_else(jiff::Timestamp::now);
+        let aliases = parse_aliases(&row_str(&row, 3, "aliases", "entity row")?);
+        let created_at = row_timestamp(&row, 4, "created_at", "entity row")?;
+        let updated_at = row_timestamp(&row, 5, "updated_at", "entity row")?;
 
         Ok(crate::knowledge::Entity {
             id: entity_id.clone(),
-            name: extract_str(&row[1])?,
-            entity_type: extract_str(&row[2])?,
+            name: row_str(&row, 1, "name", "entity row")?,
+            entity_type: row_str(&row, 2, "entity_type", "entity row")?,
             aliases,
             created_at,
             updated_at,
@@ -507,13 +432,10 @@ impl KnowledgeStore {
 
         let count = rows.rows.len();
         for row in &rows.rows {
-            if row.len() < 5 {
-                continue;
-            }
-            let dst = extract_str(&row[1])?;
-            let relation = extract_str(&row[2])?;
-            let weight = extract_float(&row[3])?;
-            let created_at = extract_str(&row[4])?;
+            let dst = row_str(row, 1, "dst", "relationship redirect src")?;
+            let relation = row_str(row, 2, "relation", "relationship redirect src")?;
+            let weight = row_weight(row, 3, "relationship redirect src")?;
+            let created_at = row_str(row, 4, "created_at", "relationship redirect src")?;
 
             if dst == to_id.as_str() {
                 let mut rm_params = BTreeMap::new();
@@ -536,13 +458,13 @@ impl KnowledgeStore {
             rm_params.insert("src".to_owned(), DataValue::Str(from_id.as_str().into()));
             rm_params.insert(
                 "dst".to_owned(),
-                DataValue::Str(extract_str(&row[1])?.into()),
+                DataValue::Str(row_str(row, 1, "dst", "relationship redirect src")?.into()),
             );
             // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
             let _ = self.run_mut(&queries::rm_relationship(), rm_params);
         }
 
-        Ok(u32::try_from(count).unwrap_or(0))
+        usize_to_u32(count, "redirected source relationship count")
     }
 
     /// Redirect relationships where merged entity is the destination.
@@ -566,13 +488,10 @@ impl KnowledgeStore {
 
         let count = rows.rows.len();
         for row in &rows.rows {
-            if row.len() < 5 {
-                continue;
-            }
-            let src = extract_str(&row[0])?;
-            let relation = extract_str(&row[2])?;
-            let weight = extract_float(&row[3])?;
-            let created_at = extract_str(&row[4])?;
+            let src = row_str(row, 0, "src", "relationship redirect dst")?;
+            let relation = row_str(row, 2, "relation", "relationship redirect dst")?;
+            let weight = row_weight(row, 3, "relationship redirect dst")?;
+            let created_at = row_str(row, 4, "created_at", "relationship redirect dst")?;
 
             if src == to_id.as_str() {
                 let mut rm_params = BTreeMap::new();
@@ -594,14 +513,14 @@ impl KnowledgeStore {
             let mut rm_params = BTreeMap::new();
             rm_params.insert(
                 "src".to_owned(),
-                DataValue::Str(extract_str(&row[0])?.into()),
+                DataValue::Str(row_str(row, 0, "src", "relationship redirect dst")?.into()),
             );
             rm_params.insert("dst".to_owned(), DataValue::Str(from_id.as_str().into()));
             // kanon:ignore RUST/no-silent-result-swallow — stale row cleanup after merge; non-fatal if missing
             let _ = self.run_mut(&queries::rm_relationship(), rm_params);
         }
 
-        Ok(u32::try_from(count).unwrap_or(0))
+        usize_to_u32(count, "redirected destination relationship count")
     }
 
     /// Delete an entity from the entities relation.
@@ -678,38 +597,134 @@ fn quoted_id_list<'a>(ids: impl Iterator<Item = &'a str>) -> String {
 }
 
 #[cfg(feature = "mneme-engine")]
+fn row_value<'a>(
+    row: &'a [crate::engine::DataValue],
+    index: usize,
+    column: &str,
+    context: &str,
+) -> crate::error::Result<&'a crate::engine::DataValue> {
+    row.get(index).ok_or_else(|| {
+        crate::error::ConversionSnafu {
+            message: format!(
+                "{context}: missing {column} column at index {index}; row has {} columns",
+                row.len()
+            ),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn row_str(
+    row: &[crate::engine::DataValue],
+    index: usize,
+    column: &str,
+    context: &str,
+) -> crate::error::Result<String> {
+    extract_str(row_value(row, index, column, context)?)
+}
+
+#[cfg(feature = "mneme-engine")]
+fn row_timestamp(
+    row: &[crate::engine::DataValue],
+    index: usize,
+    column: &str,
+    context: &str,
+) -> crate::error::Result<jiff::Timestamp> {
+    let raw = row_str(row, index, column, context)?;
+    crate::knowledge::parse_timestamp(&raw).ok_or_else(|| {
+        crate::error::EngineQuerySnafu {
+            message: format!("{context}: invalid {column} timestamp '{raw}'"),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn row_weight(
+    row: &[crate::engine::DataValue],
+    index: usize,
+    context: &str,
+) -> crate::error::Result<f64> {
+    let weight = extract_float(row_value(row, index, "weight", context)?)?;
+    if !(0.0..=1.0).contains(&weight) {
+        return Err(crate::error::EngineQuerySnafu {
+            message: format!("{context}: relationship weight out of range: {weight}"),
+        }
+        .build());
+    }
+    Ok(weight)
+}
+
+#[cfg(feature = "mneme-engine")]
+fn parse_aliases(raw: &str) -> Vec<String> {
+    if raw.is_empty() {
+        Vec::new()
+    } else {
+        raw.split(',').map(|s| s.trim().to_owned()).collect()
+    }
+}
+
+#[cfg(feature = "mneme-engine")]
+fn checked_u32(value: i64, context: &str) -> crate::error::Result<u32> {
+    u32::try_from(value).map_err(|err| {
+        crate::error::ConversionSnafu {
+            message: format!("{context}: cannot convert {value} to u32: {err}"),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn usize_to_u32(value: usize, context: &str) -> crate::error::Result<u32> {
+    u32::try_from(value).map_err(|err| {
+        crate::error::ConversionSnafu {
+            message: format!("{context}: cannot convert {value} to u32: {err}"),
+        }
+        .build()
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn decode_entity_row(
+    row: &[crate::engine::DataValue],
+    context: &str,
+) -> crate::error::Result<crate::knowledge::Entity> {
+    let id = crate::id::EntityId::new(row_str(row, 0, "id", context)?)
+        .context(crate::error::InvalidIdSnafu)?;
+    Ok(crate::knowledge::Entity {
+        id,
+        name: row_str(row, 1, "name", context)?,
+        entity_type: row_str(row, 2, "entity_type", context)?,
+        aliases: parse_aliases(&row_str(row, 3, "aliases", context)?),
+        created_at: row_timestamp(row, 4, "created_at", context)?,
+        updated_at: row_timestamp(row, 5, "updated_at", context)?,
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
+fn decode_relationship_row(
+    row: &[crate::engine::DataValue],
+    context: &str,
+) -> crate::error::Result<crate::knowledge::Relationship> {
+    Ok(crate::knowledge::Relationship {
+        src: crate::id::EntityId::new(row_str(row, 0, "src", context)?)
+            .context(crate::error::InvalidIdSnafu)?,
+        dst: crate::id::EntityId::new(row_str(row, 1, "dst", context)?)
+            .context(crate::error::InvalidIdSnafu)?,
+        relation: row_str(row, 2, "relation", context)?,
+        weight: row_weight(row, 3, context)?,
+        created_at: row_timestamp(row, 4, "created_at", context)?,
+    })
+}
+
+#[cfg(feature = "mneme-engine")]
 fn parse_entities(
     rows: &crate::engine::NamedRows,
 ) -> crate::error::Result<Vec<crate::knowledge::Entity>> {
     let mut entities = Vec::new();
     for row in &rows.rows {
-        if row.len() < 6 {
-            continue;
-        }
-        let aliases_str = extract_str(&row[3])?;
-        let aliases: Vec<String> = if aliases_str.is_empty() {
-            Vec::new()
-        } else {
-            aliases_str
-                .split(',')
-                .map(|s| s.trim().to_owned())
-                .collect()
-        };
-        let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
-            .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at = crate::knowledge::parse_timestamp(&extract_str(&row[5])?)
-            .unwrap_or_else(jiff::Timestamp::now);
-
-        let id = crate::id::EntityId::new(extract_str(&row[0])?)
-            .context(crate::error::InvalidIdSnafu)?;
-        entities.push(crate::knowledge::Entity {
-            id,
-            name: extract_str(&row[1])?,
-            entity_type: extract_str(&row[2])?,
-            aliases,
-            created_at,
-            updated_at,
-        });
+        entities.push(decode_entity_row(row, "entity row")?);
     }
     Ok(entities)
 }
@@ -720,24 +735,7 @@ fn parse_relationships(
 ) -> crate::error::Result<Vec<crate::knowledge::Relationship>> {
     let mut relationships = Vec::new();
     for row in &rows.rows {
-        if row.len() < 5 {
-            continue;
-        }
-        let src = crate::id::EntityId::new(extract_str(&row[0])?)
-            .context(crate::error::InvalidIdSnafu)?;
-        let dst = crate::id::EntityId::new(extract_str(&row[1])?)
-            .context(crate::error::InvalidIdSnafu)?;
-        let relation = extract_str(&row[2])?;
-        let weight = extract_float(&row[3])?;
-        let created_at = crate::knowledge::parse_timestamp(&extract_str(&row[4])?)
-            .unwrap_or_else(jiff::Timestamp::now);
-        relationships.push(crate::knowledge::Relationship {
-            src,
-            dst,
-            relation,
-            weight,
-            created_at,
-        });
+        relationships.push(decode_relationship_row(row, "relationship row")?);
     }
     Ok(relationships)
 }

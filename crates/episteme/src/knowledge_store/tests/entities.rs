@@ -710,6 +710,93 @@ fn approve_merge_for_nous_rejects_foreign_review_row() {
     );
 }
 
+#[test]
+fn list_entities_for_facts_rejects_invalid_entity_timestamp() {
+    let store = make_store();
+    let fact = make_fact("bad-entity-fact", "alice", "fact linked to bad entity");
+    store.insert_fact(&fact).expect("insert fact");
+    store
+        .run_mut_query(
+            r#"?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <- [[
+                "bad-entity", "Bad Entity", "topic", "", "not-a-timestamp",
+                "2026-06-01T00:00:00Z", null
+            ]]
+            :put entities {id => name, entity_type, aliases, created_at, updated_at, name_embedding}"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("insert malformed entity row");
+    let entity_id = crate::id::EntityId::new("bad-entity").expect("valid entity id");
+    store
+        .insert_fact_entity(&fact.id, &entity_id)
+        .expect("link malformed entity");
+
+    let err = store
+        .list_entities_for_facts(&[fact.id])
+        .expect_err("invalid entity timestamp must fail export hydration");
+    assert!(
+        err.to_string().contains("invalid created_at timestamp"),
+        "error should name invalid timestamp, got: {err}"
+    );
+}
+
+#[test]
+fn list_relationships_between_entities_rejects_invalid_weight() {
+    let store = make_store();
+    store
+        .insert_entity(&make_entity("weight-src", "Weight Src", "topic"))
+        .expect("insert src");
+    store
+        .insert_entity(&make_entity("weight-dst", "Weight Dst", "topic"))
+        .expect("insert dst");
+    store
+        .run_mut_query(
+            r#"?[src, dst, relation, weight, created_at] <- [[
+                "weight-src", "weight-dst", "related_to", 2.0, "2026-06-01T00:00:00Z"
+            ]]
+            :put relationships {src, dst => relation, weight, created_at}"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("insert malformed relationship row");
+
+    let entity_ids = ["weight-src".to_owned(), "weight-dst".to_owned()]
+        .into_iter()
+        .collect();
+    let err = store
+        .list_relationships_between_entities(&entity_ids)
+        .expect_err("invalid weight must fail relationship hydration");
+    assert!(
+        err.to_string().contains("relationship weight out of range"),
+        "error should name invalid weight, got: {err}"
+    );
+}
+
+#[test]
+fn merge_history_rejects_invalid_audit_timestamp() {
+    let store = make_store();
+    store
+        .run_mut_query(
+            r#"?[nous_id, canonical_id, merged_id, merged_name, merge_score,
+                facts_transferred, relationships_redirected, merged_at] <- [[
+                    "alice", "history-a", "history-b", "History B", 0.8, 1, 0,
+                    "not-a-timestamp"
+                ]]
+            :put merge_audit {
+                nous_id, canonical_id, merged_id => merged_name, merge_score,
+                facts_transferred, relationships_redirected, merged_at
+            }"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("insert malformed merge audit row");
+
+    let err = store
+        .get_merge_history("alice")
+        .expect_err("invalid merge timestamp must fail audit hydration");
+    assert!(
+        err.to_string().contains("merge audit merged_at"),
+        "error should name invalid merge timestamp, got: {err}"
+    );
+}
+
 /// #4165 E regression: `find_duplicate_entities("nous-A")` must not see
 /// entities linked exclusively to `nous-B`. Pre-fix, `load_entity_infos`
 /// loaded every row of the `entities` relation, so dedup could merge
