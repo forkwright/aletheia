@@ -41,11 +41,29 @@ pub(super) enum RefreshOutcome {
 /// WHY: bundled as a named struct so `persist_refresh_success` stays within
 /// clippy's argument-count limit while keeping all fields named.
 pub(super) struct RefreshSuccessPayload {
-    pub access_token: SecretString,
-    pub refresh_token: SecretString,
-    pub expires_in: u64,
-    pub scope: Option<String>,
-    pub subscription_type: Option<String>,
+    access_token: SecretString,
+    refresh_token: SecretString,
+    expires_in: u64,
+    scope: Option<String>,
+    subscription_type: Option<String>,
+}
+
+impl RefreshSuccessPayload {
+    fn new(
+        access_token: SecretString,
+        refresh_token: SecretString,
+        expires_in: u64,
+        scope: Option<String>,
+        subscription_type: Option<String>,
+    ) -> Self {
+        Self {
+            access_token,
+            refresh_token,
+            expires_in,
+            scope,
+            subscription_type,
+        }
+    }
 }
 
 /// Minimum `expires_in` accepted from OAuth responses (seconds).
@@ -99,6 +117,7 @@ impl RefreshState {
 /// The `RwLock` allows concurrent readers (`get_credential` calls) with a
 /// single writer (the background refresh task), so LLM requests are not
 /// blocked during a token refresh, which may take 100-500ms.
+// kanon:ignore RUST/pub-visibility -- WHY: re-exported as symbolon::credential credential-provider API and constructed by the aletheia runtime.
 pub struct RefreshingCredentialProvider {
     /// Current OAuth token and refresh metadata. `None` after a fatal
     /// refresh failure. Writers: the background refresh task (exclusive).
@@ -454,13 +473,13 @@ async fn refresh_loop(
                     &path,
                     &mut mtime_tracker,
                     &circuit_breaker,
-                    RefreshSuccessPayload {
+                    RefreshSuccessPayload::new(
                         access_token,
                         refresh_token,
                         expires_in,
                         scope,
                         subscription_type,
-                    },
+                    ),
                 );
             }
             RefreshOutcome::InvalidGrant => {
@@ -673,6 +692,7 @@ pub(super) fn claude_code_credential_path_with_env(
 /// `~/.claude/.credentials.json` path is intentionally not discovered by
 /// default; operators must opt in by setting the env var or config path.
 #[must_use]
+// kanon:ignore RUST/pub-visibility -- WHY: aletheia runtime setup consumes this re-export to resolve the configured Claude Code credential path.
 pub fn claude_code_credential_path(configured_path: Option<&str>) -> Option<PathBuf> {
     claude_code_credential_path_with_env(configured_path, &RealSystem)
 }
@@ -681,6 +701,7 @@ pub fn claude_code_credential_path(configured_path: Option<&str>) -> Option<Path
 ///
 /// Returns `CLAUDE_CODE_CREDS` when set, otherwise `None`.
 #[must_use]
+// kanon:ignore RUST/pub-visibility -- WHY: pylon health checks and aletheia credential commands consume this re-export for explicit Claude Code credential detection.
 pub fn claude_code_default_path() -> Option<PathBuf> {
     claude_code_credential_path(None)
 }
@@ -693,14 +714,12 @@ pub fn claude_code_default_path() -> Option<PathBuf> {
 ///
 /// Returns `None` if the file does not exist or cannot be parsed.
 #[must_use]
+// kanon:ignore RUST/pub-visibility -- WHY: aletheia runtime setup consumes this re-export to build the configured Claude Code provider.
 pub fn claude_code_provider(path: &Path) -> Option<Box<dyn CredentialProvider>> {
     claude_code_provider_with_config(path, CircuitBreakerConfig::default())
 }
 
-/// Build a credential provider with a custom circuit breaker configuration.
-///
-/// See [`claude_code_provider`] for behavior details.
-pub fn claude_code_provider_with_config(
+fn claude_code_provider_with_config(
     path: &Path,
     cb_config: CircuitBreakerConfig,
 ) -> Option<Box<dyn CredentialProvider>> {
@@ -725,6 +744,9 @@ pub fn claude_code_provider_with_config(
     Some(Box::new(FileCredentialProvider::new(path.to_path_buf())))
 }
 
+#[cfg(test)]
+#[path = "refresh_path_tests.rs"]
+mod refresh_path_tests;
 #[cfg(test)]
 #[path = "refresh_tests.rs"]
 mod refresh_tests;

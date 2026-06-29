@@ -22,7 +22,7 @@ pub use keyring_provider::KeyringCredentialProvider;
 pub use providers::{CredentialChain, EnvCredentialProvider, FileCredentialProvider};
 pub use refresh::{
     RefreshingCredentialProvider, claude_code_credential_path, claude_code_default_path,
-    claude_code_provider, claude_code_provider_with_config, force_refresh,
+    claude_code_provider, force_refresh,
 };
 
 pub use pkce::OAuthProvider;

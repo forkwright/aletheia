@@ -764,7 +764,8 @@ fn prosoche_path_summary(
         self_audit_interval_secs: self_audit_active.then_some(settings.self_audit.interval_secs),
         external_timer_interval_secs: external_active
             .then_some(settings.external_timer.interval_secs),
-        external_timer_task_id: external_active.then(|| settings.external_timer.task_id.clone()),
+        external_timer_task_id: external_active
+            .then(|| settings.external_timer.task_id.as_str().to_owned()),
     }
 }
 

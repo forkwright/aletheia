@@ -8,15 +8,13 @@
 //! fallback branch) so any arithmetic flip, boolean flip, stubbed-body, or
 //! replaced-return mutant is caught.
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::thread::sleep;
 use std::time::Duration;
 
 use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
-use koina::system::Environment;
 
 // WHY: this file is included via `#[path = "refresh_tests.rs"] mod refresh_tests;`
 // in `refresh.rs`, so it is a submodule of `refresh` — `super::` reaches the
@@ -26,8 +24,7 @@ use super::super::providers::FileCredentialProvider;
 use super::super::{REFRESH_THRESHOLD_SECS, unix_epoch_ms};
 use super::{
     FileMtimeTracker, RefreshState, RefreshSuccessPayload, RefreshingCredentialProvider,
-    claude_code_credential_path_with_env, persist_refresh_success, plan_refresh,
-    resolve_post_refresh_state, try_reload_from_file,
+    persist_refresh_success, plan_refresh, resolve_post_refresh_state, try_reload_from_file,
 };
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
@@ -35,55 +32,6 @@ use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 // have second-level mtime granularity, so tests that rewrite the same file
 // must sleep long enough to guarantee a detectable mtime delta.
 const MTIME_GRANULARITY_NAP: Duration = Duration::from_millis(1100);
-
-#[derive(Default)]
-struct TestEnv {
-    vars: HashMap<String, String>,
-}
-
-impl TestEnv {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    fn with_env(mut self, key: &str, value: &str) -> Self {
-        self.vars.insert(key.to_owned(), value.to_owned());
-        self
-    }
-}
-
-impl Environment for TestEnv {
-    fn var(&self, name: &str) -> Option<String> {
-        self.vars.get(name).cloned()
-    }
-
-    fn var_os(&self, name: &str) -> Option<std::ffi::OsString> {
-        self.vars.get(name).map(Into::into)
-    }
-
-    fn vars(&self) -> Vec<(String, String)> {
-        self.vars
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect()
-    }
-
-    fn current_dir(&self) -> std::io::Result<PathBuf> {
-        Ok(PathBuf::from("/test"))
-    }
-
-    fn temp_dir(&self) -> PathBuf {
-        PathBuf::from("/tmp")
-    }
-
-    fn current_exe(&self) -> std::io::Result<PathBuf> {
-        Ok(PathBuf::from("/test/bin/aletheia"))
-    }
-
-    fn args(&self) -> Vec<String> {
-        vec!["aletheia".to_owned()]
-    }
-}
 
 fn make_cred(token: &str, refresh: &str, expires_at_ms: u64) -> CredentialFile {
     CredentialFile {
@@ -99,52 +47,6 @@ fn write_cred(path: &Path, token: &str, refresh: &str, expires_at_ms: u64) {
     make_cred(token, refresh, expires_at_ms)
         .save(path)
         .expect("save credential for test");
-}
-
-// ── Claude Code credential path resolution ──
-
-#[test]
-fn claude_code_path_has_no_implicit_home_default() {
-    // WHY: clean Aletheia installs must not probe another agent's private
-    // credential store unless the operator opts in.
-    let env = TestEnv::new().with_env("HOME", "/home/alice");
-
-    assert_eq!(claude_code_credential_path_with_env(None, &env), None);
-}
-
-#[test]
-fn claude_code_path_uses_env_override_before_config() {
-    // WHY: non-default Claude Code credential locations must not be silently
-    // skipped when the operator supplied an explicit override.
-    let env = TestEnv::new()
-        .with_env("HOME", "/home/alice")
-        .with_env("CLAUDE_CODE_CREDS", "~/cc/env.json");
-
-    let resolved =
-        claude_code_credential_path_with_env(Some("/srv/aletheia/configured.json"), &env)
-            .expect("env override should resolve");
-
-    assert_eq!(resolved, Path::new("/home/alice/cc/env.json"));
-}
-
-#[test]
-fn claude_code_path_uses_configured_path_when_env_absent() {
-    let env = TestEnv::new().with_env("HOME", "/home/alice");
-
-    let resolved = claude_code_credential_path_with_env(Some("/srv/cc/credentials.json"), &env)
-        .expect("configured path should resolve");
-
-    assert_eq!(resolved, Path::new("/srv/cc/credentials.json"));
-}
-
-#[test]
-fn claude_code_path_expands_configured_tilde_path() {
-    let env = TestEnv::new().with_env("HOME", "/home/alice");
-
-    let resolved = claude_code_credential_path_with_env(Some("~/.config/claude/creds.json"), &env)
-        .expect("configured path should resolve");
-
-    assert_eq!(resolved, Path::new("/home/alice/.config/claude/creds.json"));
 }
 
 // ── FileMtimeTracker::has_changed mutant kills ──
@@ -470,13 +372,13 @@ fn persist_refresh_success_writes_file_and_updates_state() {
         &path,
         &mut tracker,
         &cb,
-        RefreshSuccessPayload {
-            access_token: SecretString::from("tok-new"),
-            refresh_token: SecretString::from("rt-new"),
+        RefreshSuccessPayload::new(
+            SecretString::from("tok-new"),
+            SecretString::from("rt-new"),
             expires_in,
-            scope: Some("user:inference".to_owned()),
-            subscription_type: Some("max".to_owned()),
-        },
+            Some("user:inference".to_owned()),
+            Some("max".to_owned()),
+        ),
     );
     let after_ms = unix_epoch_ms();
 
@@ -554,13 +456,13 @@ fn persist_refresh_success_records_circuit_breaker_success() {
         &path,
         &mut tracker,
         &cb,
-        RefreshSuccessPayload {
-            access_token: SecretString::from("tok-new"),
-            refresh_token: SecretString::from("rt-new"),
-            expires_in: 3600,
-            scope: None,
-            subscription_type: None,
-        },
+        RefreshSuccessPayload::new(
+            SecretString::from("tok-new"),
+            SecretString::from("rt-new"),
+            3600,
+            None,
+            None,
+        ),
     );
 
     // WHY: record_success on Closed state clears failure history. After the
