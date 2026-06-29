@@ -1,3 +1,4 @@
+use std::io::Write as _;
 use std::path::Path;
 
 use owo_colors::OwoColorize;
@@ -43,11 +44,46 @@ fn format_reward_surface(surface: &RewardSurface) -> String {
     )
 }
 
-/// Print a human-readable benchmark report with per-category breakdown
-/// and peer baseline comparison.
-pub(super) fn print_report_human(report: &BenchmarkReport, reward_surface: Option<&RewardSurface>) {
-    let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
+pub(super) fn write_stdout(output: &str) -> Result<()> {
+    let mut stdout = std::io::stdout().lock();
+    stdout
+        .write_all(output.as_bytes())
+        .whatever_context("failed to write benchmark output to stdout")
+}
 
+fn finish_lines(lines: &[String]) -> String {
+    let mut output = lines.join("\n");
+    output.push('\n');
+    output
+}
+
+/// Render a human-readable benchmark report with per-category breakdown
+/// and peer baseline comparison.
+pub(super) fn render_report_human(
+    report: &BenchmarkReport,
+    reward_surface: Option<&RewardSurface>,
+) -> String {
+    let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
+    let mut lines = Vec::new();
+
+    render_report_header(report, use_color, &mut lines);
+    render_results_table(report, use_color, &mut lines);
+    render_statistics(report, &mut lines);
+    render_publishability(report, &mut lines);
+    render_comparisons(report, &mut lines);
+    render_retrieval_metrics(report, &mut lines);
+    render_judge_summary(report, &mut lines);
+
+    if let Some(surface) = reward_surface {
+        lines.push(String::new());
+        lines.push(format_reward_surface(surface));
+    }
+
+    render_baselines(report, use_color, &mut lines);
+    finish_lines(&lines)
+}
+
+fn render_report_header(report: &BenchmarkReport, use_color: bool, lines: &mut Vec<String>) {
     let header = if let Some(ref meta) = report.metadata {
         format!(
             "{} Benchmark \u{2014} {} ({})",
@@ -57,166 +93,176 @@ pub(super) fn print_report_human(report: &BenchmarkReport, reward_surface: Optio
         format!("{} Benchmark", report.benchmark)
     };
     if use_color {
-        println!("{}", header.bold());
+        lines.push(header.bold().to_string());
     } else {
-        println!("{header}");
+        lines.push(header.clone());
     }
-    println!("{}", "\u{2550}".repeat(header.len()));
+    lines.push("\u{2550}".repeat(header.len()));
 
     if let Some(ref meta) = report.metadata {
-        println!(
+        lines.push(format!(
             "Version: {} | Questions: {}/{} | Timeout: {}s",
             meta.aletheia_version,
             meta.evaluated_questions,
             meta.total_questions,
             meta.timeout_secs
-        );
+        ));
         if meta.dataset_best_effort {
             let warnings = meta
                 .dataset_validation
                 .as_ref()
                 .map_or(0, |validation| validation.warnings.len());
-            println!("Dataset validation: best-effort ({warnings} warning(s))");
+            lines.push(format!(
+                "Dataset validation: best-effort ({warnings} warning(s))"
+            ));
         }
     } else {
-        println!("Questions: {}", report.total);
+        lines.push(format!("Questions: {}", report.total));
     }
-    println!(
-        "Attempted: {} | Scored: {} | Errors: {} | Timeouts: {} | No answer: {}\n",
+    lines.push(format!(
+        "Attempted: {} | Scored: {} | Errors: {} | Timeouts: {} | No answer: {}",
         report.total, report.scored, report.errors, report.timeouts, report.no_answers
-    );
+    ));
+    lines.push(String::new());
+}
 
-    println!("Results:");
-    println!("  {:<30} {:>6} {:>6}", "Category", "EM%", "F1%");
-    println!("  {}", "\u{2500}".repeat(44));
+fn render_results_table(report: &BenchmarkReport, use_color: bool, lines: &mut Vec<String>) {
+    lines.push("Results:".to_owned());
+    lines.push(format!("  {:<30} {:>6} {:>6}", "Category", "EM%", "F1%"));
+    lines.push(format!("  {}", "\u{2500}".repeat(44)));
 
     let categories = report.per_category();
     for (cat, em, f1) in &categories {
         let em_pct = em * 100.0;
         let f1_pct = f1 * 100.0;
         if use_color {
-            println!(
+            lines.push(format!(
                 "  {:<30} {:>5.1}  {:>5.1}",
                 cat,
                 em_pct.yellow(),
                 f1_pct.yellow()
-            );
+            ));
         } else {
-            println!("  {cat:<30} {em_pct:>5.1}  {f1_pct:>5.1}");
+            lines.push(format!("  {cat:<30} {em_pct:>5.1}  {f1_pct:>5.1}"));
         }
     }
 
     let overall_em = report.exact_match_rate() * 100.0;
     let overall_f1 = report.mean_f1() * 100.0;
-    println!("  {}", "\u{2500}".repeat(44));
+    lines.push(format!("  {}", "\u{2500}".repeat(44)));
     if use_color {
-        println!(
+        lines.push(format!(
             "  {:<30} {:>5.1}  {:>5.1}",
             "Overall".bold(),
             format!("{overall_em:.1}").green().bold(),
             format!("{overall_f1:.1}").green().bold()
-        );
+        ));
     } else {
-        println!(
+        lines.push(format!(
             "  {:<30} {:>5.1}  {:>5.1}",
             "Overall", overall_em, overall_f1
-        );
+        ));
     }
+}
 
-    print_statistics(report);
-    print_publishability(report);
-    print_comparisons(report);
-
+fn render_retrieval_metrics(report: &BenchmarkReport, lines: &mut Vec<String>) {
     if let Some(recall) = report.mean_recall_at_k() {
         let ndcg = report.mean_ndcg_at_k().unwrap_or(0.0);
-        println!("\nRetrieval metrics (k={}):", args_retrieval_k(report));
-        println!("  Mean Recall@k: {recall:.3} | Mean NDCG@k: {ndcg:.3}");
+        lines.push(String::new());
+        lines.push(format!(
+            "Retrieval metrics (k={}):",
+            args_retrieval_k(report)
+        ));
+        lines.push(format!(
+            "  Mean Recall@k: {recall:.3} | Mean NDCG@k: {ndcg:.3}"
+        ));
     }
+}
 
+fn render_judge_summary(report: &BenchmarkReport, lines: &mut Vec<String>) {
     if let (Some(judge_acc), Some(summary)) = (report.judge_accuracy(), report.judge_summary) {
-        println!(
-            "\nLLM-as-judge accuracy: {:.1}% ({} correct / {} attempted; {} parsed, {} errors)",
+        lines.push(String::new());
+        lines.push(format!(
+            "LLM-as-judge accuracy: {:.1}% ({} correct / {} attempted; {} parsed, {} errors)",
             judge_acc * 100.0,
             summary.correct,
             summary.attempted,
             summary.scored,
             summary.errors
-        );
+        ));
     }
-
-    if let Some(surface) = reward_surface {
-        println!("\n{}", format_reward_surface(surface));
-    }
-
-    print_baselines(report, use_color);
 }
 
-fn print_statistics(report: &BenchmarkReport) {
+fn render_statistics(report: &BenchmarkReport, lines: &mut Vec<String>) {
     if let Some(statistics) = &report.statistics {
-        println!(
-            "\nStatistics (95% bootstrap CI, {} resamples):",
+        lines.push(String::new());
+        lines.push(format!(
+            "Statistics (95% bootstrap CI, {} resamples):",
             statistics.n_resamples
-        );
-        println!(
+        ));
+        lines.push(format!(
             "  EM: {:.1}% [{:.1}, {:.1}]",
             report.exact_match_rate() * 100.0,
             statistics.em_ci_low * 100.0,
             statistics.em_ci_high * 100.0
-        );
-        println!(
+        ));
+        lines.push(format!(
             "  F1: {:.1}% [{:.1}, {:.1}]",
             report.mean_f1() * 100.0,
             statistics.f1_ci_low * 100.0,
             statistics.f1_ci_high * 100.0
-        );
-        println!("  Method: {}", statistics.method);
+        ));
+        lines.push(format!("  Method: {}", statistics.method));
     } else {
-        println!(
-            "\nStatistics: unavailable (requires at least {} scored questions)",
+        lines.push(String::new());
+        lines.push(format!(
+            "Statistics: unavailable (requires at least {} scored questions)",
             dokimion::benchmarks::MIN_PUBLISHABLE_SCORED_QUESTIONS
-        );
+        ));
     }
 }
 
-fn print_publishability(report: &BenchmarkReport) {
+fn render_publishability(report: &BenchmarkReport, lines: &mut Vec<String>) {
     let Some(assessment) = &report.publishability else {
         return;
     };
+    lines.push(String::new());
     if assessment.publishable {
-        println!("\nPublishability: publishable");
+        lines.push("Publishability: publishable".to_owned());
         return;
     }
 
-    println!("\nPublishability: not publishable");
+    lines.push("Publishability: not publishable".to_owned());
     for reason in &assessment.reasons {
-        println!("  - {reason}");
+        lines.push(format!("  - {reason}"));
     }
 }
 
-fn print_comparisons(report: &BenchmarkReport) {
+fn render_comparisons(report: &BenchmarkReport, lines: &mut Vec<String>) {
     if report.comparisons.is_empty() {
         return;
     }
 
-    println!("\nBaseline/candidate statistics:");
+    lines.push(String::new());
+    lines.push("Baseline/candidate statistics:".to_owned());
     for comparison in &report.comparisons {
-        print_comparison(comparison);
+        render_comparison(comparison, lines);
     }
 }
 
-fn print_comparison(comparison: &BenchmarkComparisonReport) {
+fn render_comparison(comparison: &BenchmarkComparisonReport, lines: &mut Vec<String>) {
     if let (BenchmarkComparisonStatus::Complete, Some(statistics)) =
         (&comparison.status, &comparison.statistics)
     {
-        println!(
+        lines.push(format!(
             "  {}: baseline {:.3}, candidate {:.3}, d={} ({})",
             comparison.metric,
             statistics.mean_a,
             statistics.mean_b,
             format_float(statistics.effect.d),
             statistics.effect.interpretation
-        );
-        println!(
+        ));
+        lines.push(format!(
             "      baseline CI [{}, {}] | candidate CI [{}, {}] | p_raw={} | p_fdr={}",
             format_float(statistics.ci_a.ci_low),
             format_float(statistics.ci_a.ci_high),
@@ -226,13 +272,16 @@ fn print_comparison(comparison: &BenchmarkComparisonReport) {
             statistics
                 .p_adjusted
                 .map_or_else(|| "n/a".to_owned(), format_float)
-        );
+        ));
     } else {
         let reason = comparison
             .reason
             .as_deref()
             .unwrap_or("comparison statistics are incomplete");
-        println!("  {}: {} ({reason})", comparison.metric, comparison.status);
+        lines.push(format!(
+            "  {}: {} ({reason})",
+            comparison.metric, comparison.status
+        ));
     }
 }
 
@@ -257,17 +306,18 @@ fn args_retrieval_k(report: &BenchmarkReport) -> usize {
         .unwrap_or(0)
 }
 
-/// Print peer baseline comparison table.
-fn print_baselines(report: &BenchmarkReport, use_color: bool) {
+/// Render peer baseline comparison table.
+fn render_baselines(report: &BenchmarkReport, use_color: bool, lines: &mut Vec<String>) {
     let baselines = match report.benchmark.as_str() {
         "LongMemEval" => dokimion::benchmarks::baselines::longmemeval_baselines(),
         "LoCoMo" => dokimion::benchmarks::baselines::locomo_baselines(),
         _ => return,
     };
 
-    println!("\nPeer baselines:");
-    println!("  {:<28} {:>8} {:>8}", "System", "EM%", "F1%");
-    println!("  {}", "\u{2500}".repeat(46));
+    lines.push(String::new());
+    lines.push("Peer baselines:".to_owned());
+    lines.push(format!("  {:<28} {:>8} {:>8}", "System", "EM%", "F1%"));
+    lines.push(format!("  {}", "\u{2500}".repeat(46)));
 
     for baseline in &baselines {
         let em_str = baseline
@@ -277,29 +327,29 @@ fn print_baselines(report: &BenchmarkReport, use_color: bool) {
             .mean_f1
             .map_or_else(|| "-".to_owned(), |v| format!("{:.1}", v * 100.0));
         if use_color {
-            println!(
+            lines.push(format!(
                 "  {:<28} {:>8} {:>8}  {}",
                 baseline.system.dimmed(),
                 em_str.dimmed(),
                 f1_str.dimmed(),
                 baseline.note.dimmed()
-            );
+            ));
         } else {
-            println!(
+            lines.push(format!(
                 "  {:<28} {:>8} {:>8}  {}",
                 baseline.system, em_str, f1_str, baseline.note
-            );
+            ));
         }
     }
 }
 
-/// Print the benchmark report as JSON for machine consumption.
-pub(super) fn print_report_json(
+/// Render the benchmark report as JSON for machine consumption.
+pub(super) fn render_report_json(
     report: &BenchmarkReport,
-) -> std::result::Result<(), serde_json::Error> {
-    let json = serde_json::to_string_pretty(report)?;
-    println!("{json}");
-    Ok(())
+) -> std::result::Result<String, serde_json::Error> {
+    let mut json = serde_json::to_string_pretty(report)?;
+    json.push('\n');
+    Ok(json)
 }
 
 #[cfg(test)]

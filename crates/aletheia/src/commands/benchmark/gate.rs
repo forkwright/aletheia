@@ -7,20 +7,24 @@ use dokimion::benchmarks::BenchmarkReport;
 
 use crate::error::Result;
 
-use super::{BenchmarkGateArgs, load_benchmark_report};
+use super::{BenchmarkGateArgs, load_benchmark_report, output};
 
 pub(super) async fn run(args: BenchmarkGateArgs) -> Result<()> {
     let candidate = load_benchmark_report(&args.candidate_report).await?;
     let baseline = load_gate_baseline(&args.baseline).await?;
     let gate_report = benchmark_gate_report(&candidate, &baseline)?;
-    print_gate_report(&gate_report, args.json).whatever_context("failed to print gate report")?;
+    let gate_output = render_gate_report(&gate_report, args.json)
+        .whatever_context("failed to render gate report")?;
+    output::write_stdout(&gate_output)?;
     require_gate_passed(&gate_report)
 }
 
 pub(super) async fn enforce_report(report: &BenchmarkReport, baseline_path: &Path) -> Result<()> {
     let baseline = load_gate_baseline(baseline_path).await?;
     let gate_report = benchmark_gate_report(report, &baseline)?;
-    print_gate_report(&gate_report, false).whatever_context("failed to print gate report")?;
+    let gate_output =
+        render_gate_report(&gate_report, false).whatever_context("failed to render gate report")?;
+    output::write_stdout(&gate_output)?;
     require_gate_passed(&gate_report)
 }
 
@@ -687,29 +691,35 @@ fn format_metric(value: f64) -> String {
     format!("{value:.4}")
 }
 
-fn print_gate_report(
+fn finish_gate_lines(lines: &[String]) -> String {
+    let mut output = lines.join("\n");
+    output.push('\n');
+    output
+}
+
+fn render_gate_report(
     report: &BenchmarkGateReport,
     json: bool,
-) -> std::result::Result<(), serde_json::Error> {
+) -> std::result::Result<String, serde_json::Error> {
     if json {
-        let json = serde_json::to_string_pretty(report)?;
-        println!("{json}");
-        return Ok(());
+        let mut json = serde_json::to_string_pretty(report)?;
+        json.push('\n');
+        return Ok(json);
     }
 
     if report.passed {
-        println!(
+        let lines = [format!(
             "Benchmark regression gate passed ({} checks).",
             report.checks.len()
-        );
-        return Ok(());
+        )];
+        return Ok(finish_gate_lines(&lines));
     }
 
-    println!("Benchmark regression gate failed:");
+    let mut lines = vec!["Benchmark regression gate failed:".to_owned()];
     for check in report.checks.iter().filter(|check| !check.passed) {
-        println!("  - {}: {}", check.metric, check.detail);
+        lines.push(format!("  - {}: {}", check.metric, check.detail));
     }
-    Ok(())
+    Ok(finish_gate_lines(&lines))
 }
 
 fn require_gate_passed(report: &BenchmarkGateReport) -> Result<()> {

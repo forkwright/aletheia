@@ -367,9 +367,10 @@ Status values: `healthy` (all pass), `degraded` (warnings, e.g. no LLM provider)
 
 ## Prosoche heartbeat timer
 
-The optional user timer is the **external** prosoche heartbeat path. It checks
-the running server and then executes the local prosoche self-audit task. The
-timer starts one minute after activation and runs every five minutes.
+Enable the optional user timer only for the **external** prosoche heartbeat
+path. It checks the running server and then executes the local prosoche
+self-audit task. The timer starts one minute after activation and runs every
+five minutes.
 
 Use this timer when `[maintenance.prosoche].mode` is set to `"external"` or
 `"both"`. With the default `mode = "daemon"`, the daemon's in-process scheduler

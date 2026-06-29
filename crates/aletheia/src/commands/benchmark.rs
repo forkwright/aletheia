@@ -233,11 +233,12 @@ async fn run_benchmark(
         None
     };
 
-    if args.json {
-        output::print_report_json(&report).whatever_context("failed to serialize report")?;
+    let rendered = if args.json {
+        output::render_report_json(&report).whatever_context("failed to serialize report")?
     } else {
-        output::print_report_human(&report, reward_surface.as_ref());
-    }
+        output::render_report_human(&report, reward_surface.as_ref())
+    };
+    output::write_stdout(&rendered)?;
 
     Ok(())
 }
