@@ -4,6 +4,9 @@ set -euo pipefail
 #
 # Usage:
 #   scripts/benchmark.sh [--instance URL] [--nous-id ID] [--max-questions N]
+#                        [--publishable]
+#                        [--longmemeval-gate-baseline PATH]
+#                        [--locomo-gate-baseline PATH]
 #
 # Prerequisites:
 #   - Aletheia instance running and healthy
@@ -17,6 +20,9 @@ set -euo pipefail
 INSTANCE_URL="${INSTANCE_URL:-http://127.0.0.1:18789}"
 NOUS_ID="${NOUS_ID:-benchmark}"
 MAX_QUESTIONS=""
+PUBLISHABLE=0
+LONGMEMEVAL_GATE_BASELINE="${LONGMEMEVAL_GATE_BASELINE:-}"
+LOCOMO_GATE_BASELINE="${LOCOMO_GATE_BASELINE:-}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 REPORT_DIR="docs/benchmarks/reports"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,13 +42,32 @@ while [[ $# -gt 0 ]]; do
             MAX_QUESTIONS="$2"
             shift 2
             ;;
+        --publishable)
+            PUBLISHABLE=1
+            shift
+            ;;
+        --longmemeval-gate-baseline)
+            LONGMEMEVAL_GATE_BASELINE="$2"
+            shift 2
+            ;;
+        --locomo-gate-baseline)
+            LOCOMO_GATE_BASELINE="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: $0 [--instance URL] [--nous-id ID] [--max-questions N]" >&2
+            echo "Usage: $0 [--instance URL] [--nous-id ID] [--max-questions N] [--publishable] [--longmemeval-gate-baseline PATH] [--locomo-gate-baseline PATH]" >&2
             exit 1
             ;;
     esac
 done
+
+if [[ "$PUBLISHABLE" -eq 1 ]]; then
+    if [[ -z "$LONGMEMEVAL_GATE_BASELINE" || -z "$LOCOMO_GATE_BASELINE" ]]; then
+        echo "ERROR: --publishable requires both --longmemeval-gate-baseline and --locomo-gate-baseline." >&2
+        exit 1
+    fi
+fi
 
 mkdir -p "$REPORT_DIR"
 
@@ -84,6 +109,21 @@ if [[ -n "$MAX_QUESTIONS" ]]; then
     MAX_ARGS=(--max-questions "$MAX_QUESTIONS")
 fi
 
+PUBLISHABLE_ARGS=()
+if [[ "$PUBLISHABLE" -eq 1 ]]; then
+    PUBLISHABLE_ARGS=(--publishable)
+fi
+
+LONGMEMEVAL_GATE_ARGS=()
+if [[ -n "$LONGMEMEVAL_GATE_BASELINE" ]]; then
+    LONGMEMEVAL_GATE_ARGS=(--gate-baseline "$LONGMEMEVAL_GATE_BASELINE")
+fi
+
+LOCOMO_GATE_ARGS=()
+if [[ -n "$LOCOMO_GATE_BASELINE" ]]; then
+    LOCOMO_GATE_ARGS=(--gate-baseline "$LOCOMO_GATE_BASELINE")
+fi
+
 # Run LongMemEval
 echo ""
 echo "=== Running LongMemEval ==="
@@ -92,6 +132,8 @@ echo "=== Running LongMemEval ==="
     --url "$INSTANCE_URL" \
     --nous-id "$NOUS_ID" \
     "${MAX_ARGS[@]}" \
+    "${PUBLISHABLE_ARGS[@]}" \
+    "${LONGMEMEVAL_GATE_ARGS[@]}" \
     --output "$REPORT_DIR/longmemeval-$TIMESTAMP.json"
 
 # Run LoCoMo
@@ -102,6 +144,8 @@ echo "=== Running LoCoMo ==="
     --url "$INSTANCE_URL" \
     --nous-id "$NOUS_ID" \
     "${MAX_ARGS[@]}" \
+    "${PUBLISHABLE_ARGS[@]}" \
+    "${LOCOMO_GATE_ARGS[@]}" \
     --output "$REPORT_DIR/locomo-$TIMESTAMP.json"
 
 echo ""

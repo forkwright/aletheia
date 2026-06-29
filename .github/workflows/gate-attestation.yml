@@ -105,6 +105,12 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Benchmark regression gate
+        run: |
+          cargo run -p aletheia --bin aletheia -- benchmark gate \
+            --candidate-report crates/aletheia/testdata/benchmarks/smoke-report.json \
+            --baseline crates/aletheia/testdata/benchmarks/smoke-gate-baseline.json
+
       - name: cargo check fuzz targets
         env:
           CARGO_TARGET_DIR: target

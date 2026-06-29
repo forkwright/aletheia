@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "benchmark": "LongMemEval",
+  "provenance": {
+    "dataset_hash": "sha256:a6ecd7d5dadb9734f9cf28a590b99bfe527d906c08aaf3d356e7861661e74f10",
+    "dataset_version": "fixture-smoke-v1",
+    "model": "fixture-model",
+    "source_report": "crates/aletheia/testdata/benchmarks/smoke-report.json",
+    "reviewed_at": "2026-06-01T00:00:00Z",
+    "reviewed_by": "benchmark-maintainers",
+    "git_sha": "0123456789abcdef"
+  },
+  "metrics": {
+    "exact_match_rate": 0.5,
+    "mean_f1": 0.5,
+    "error_rate": 0.0,
+    "timeout_rate": 0.0,
+    "no_answer_rate": 0.0,
+    "recall_at_k": 0.75,
+    "ndcg_at_k": 0.75,
+    "judge_accuracy": 0.5,
+    "judge_error_rate": 0.0
+  },
+  "allowed_regression": {
+    "exact_match_rate": 0.0,
+    "mean_f1": 0.0,
+    "error_rate": 0.0,
+    "timeout_rate": 0.0,
+    "no_answer_rate": 0.0,
+    "recall_at_k": 0.0,
+    "ndcg_at_k": 0.0,
+    "judge_accuracy": 0.0,
+    "judge_error_rate": 0.0
+  },
+  "minimums": {
+    "scored_questions": 2,
+    "exact_match_rate": 0.5,
+    "mean_f1": 0.5,
+    "recall_at_k": 0.75,
+    "ndcg_at_k": 0.75,
+    "judge_accuracy": 0.5
+  },
+  "maximums": {
+    "error_rate": 0.0,
+    "timeout_rate": 0.0,
+    "no_answer_rate": 0.0,
+    "judge_error_rate": 0.0
+  },
+  "require_retrieval": true,
+  "require_judge": true
+}

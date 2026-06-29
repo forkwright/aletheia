@@ -1,0 +1,32 @@
+[
+  {
+    "question_id": "q1",
+    "question_type": "factual",
+    "question": "What color did Alice choose?",
+    "answer": "blue",
+    "answer_alternatives": [],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Alice chose blue for the release smoke benchmark."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "q2",
+    "question_type": "factual",
+    "question": "What color did Bob choose?",
+    "answer": "red",
+    "answer_alternatives": [],
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Bob chose red for the release smoke benchmark."
+        }
+      ]
+    ]
+  }
+]

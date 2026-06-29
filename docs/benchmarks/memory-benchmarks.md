@@ -157,35 +157,35 @@ Once prerequisites are met, run the benchmarks via the CLI:
 
 ```bash
 # LongMemEval — full run (~500 questions, expect several hours)
-cargo run -p aletheia -- benchmark longmemeval \
+cargo run -p aletheia --bin aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
     --url http://localhost:8080 \
     --nous-id benchmark \
     --output results/longmemeval-$(date +%Y%m%d).json
 
 # LongMemEval — smoke test (5 questions, ~5 minutes)
-cargo run -p aletheia -- benchmark longmemeval \
+cargo run -p aletheia --bin aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
     --url http://localhost:8080 \
     --nous-id benchmark \
     --max-questions 5
 
 # LoCoMo — full run (~10,000 QA pairs across 50 conversations)
-cargo run -p aletheia -- benchmark locomo \
+cargo run -p aletheia --bin aletheia -- benchmark locomo \
     --dataset benchmark-data/locomo.json \
     --url http://localhost:8080 \
     --nous-id benchmark \
     --output results/locomo-$(date +%Y%m%d).json
 
 # With retrieval metrics (Recall@k / NDCG@k)
-cargo run -p aletheia -- benchmark longmemeval \
+cargo run -p aletheia --bin aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
     --url http://localhost:8080 \
     --nous-id benchmark \
     --retrieval-k 5
 
 # With LLM-as-judge evaluation
-cargo run -p aletheia -- benchmark longmemeval \
+cargo run -p aletheia --bin aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
     --url http://localhost:8080 \
     --nous-id benchmark \
@@ -194,27 +194,38 @@ cargo run -p aletheia -- benchmark longmemeval \
     --judge-api-key $OPENAI_API_KEY
 
 # Strict publication gate: fails unless statistics and provenance are complete
-cargo run -p aletheia -- benchmark longmemeval \
+cargo run -p aletheia --bin aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
     --url http://localhost:8080 \
     --nous-id benchmark \
     --publishable \
+    --gate-baseline docs/benchmarks/baselines/longmemeval-gate.json \
     --output results/longmemeval-publishable.json
 
 # Compare a candidate run against a prior full BenchmarkReport JSON
-cargo run -p aletheia -- benchmark longmemeval \
+cargo run -p aletheia --bin aletheia -- benchmark longmemeval \
     --dataset benchmark-data/longmemeval.json \
     --url http://localhost:8080 \
     --nous-id benchmark \
     --baseline-report results/longmemeval-baseline.json \
     --publishable \
+    --gate-baseline docs/benchmarks/baselines/longmemeval-gate.json \
     --output results/longmemeval-candidate.json
+
+# CI/release smoke gate: no live instance or model call
+cargo run -p aletheia --bin aletheia -- benchmark gate \
+    --candidate-report crates/aletheia/testdata/benchmarks/smoke-report.json \
+    --baseline crates/aletheia/testdata/benchmarks/smoke-gate-baseline.json
 ```
 
 Or use the reproducibility script:
 
 ```bash
 scripts/benchmark.sh --instance http://localhost:8080 --nous-id benchmark
+scripts/benchmark.sh --instance http://localhost:8080 --nous-id benchmark \
+    --publishable \
+    --longmemeval-gate-baseline docs/benchmarks/baselines/longmemeval-gate.json \
+    --locomo-gate-baseline docs/benchmarks/baselines/locomo-gate.json
 ```
 
 ### Tuning the runner
@@ -234,7 +245,9 @@ Configure `BenchmarkRunnerConfig` for production runs:
 ### Publishable reports
 
 Use `--publishable` for results intended for publication or long-term
-archival. This mode fails closed unless the full report includes:
+archival. This mode fails during CLI validation unless
+`--gate-baseline <reviewed-baseline.json>` is also supplied, then fails closed
+unless the full report includes:
 
 - At least two scored questions, so bootstrap confidence intervals are valid
 - 95% bootstrap CIs for exact match and F1
@@ -243,6 +256,7 @@ archival. This mode fails closed unless the full report includes:
 - Benchmark metadata with dataset hash and validation diagnostics
 - Complete baseline/candidate comparison statistics when `--baseline-report`
   is supplied
+- A passing benchmark regression gate for the reviewed dataset/model baseline
 
 Insufficient samples are represented explicitly in JSON as
 `publishability.publishable = false` with reasons, instead of silently omitting
@@ -258,6 +272,30 @@ bootstrap CIs, Cohen's d, raw p-values, and Benjamini-Hochberg FDR-adjusted
 p-values. The older `--baseline-in` / `--baseline-out` compact summaries remain
 for reward-surface loading and do not contain enough per-question data for
 statistical significance tests.
+
+### Regression gates
+
+`aletheia benchmark gate` validates a saved `BenchmarkReport` without talking
+to a live instance. The gate compares candidate EM, mean F1, error rate,
+timeout rate, no-answer rate, retrieval metrics, and LLM-as-judge metrics
+against a reviewed baseline artifact. The artifact records benchmark name,
+dataset hash and version, model, source report, reviewer, review timestamp,
+baseline metrics, allowed regression deltas, minimum quality floors, and
+maximum failure-rate ceilings.
+
+The PR and release workflows run the deterministic smoke gate in
+`crates/aletheia/testdata/benchmarks/`. Full LongMemEval and LoCoMo gates
+should be run manually or on a schedule after producing fresh live reports:
+
+```bash
+cargo run -p aletheia --bin aletheia -- benchmark gate \
+    --candidate-report docs/benchmarks/reports/longmemeval-20260601.json \
+    --baseline docs/benchmarks/baselines/longmemeval-gate.json
+```
+
+A baseline refresh is a reviewed artifact update. Do not relax thresholds by
+passing ad hoc flags; update the JSON artifact with the new source report,
+dataset hash/version, model, reviewer, and threshold rationale.
 
 ### Execution modes
 
@@ -415,11 +453,10 @@ When results land, compare against the [Published SOTA baselines](#published-sot
 - `multi_hop` F1 collapse (LoCoMo): evidence gap feature (#2851) not
   bridging cross-session dependencies
 
-**Regression gate:**
-Once a baseline run is recorded, add a CI check that runs `--max-questions 20`
-and asserts `em_rate >= baseline - 0.05`. The wiremock-based integration
-tests already validate the scoring pipeline; this would validate the live
-memory pipeline.
+**Regression gate:** CI covers the deterministic smoke artifact with
+`aletheia benchmark gate`. Full live memory gates should compare archived
+LongMemEval and LoCoMo reports against reviewed baselines before publishing
+or using the numbers for release decisions.
 
 ---
 

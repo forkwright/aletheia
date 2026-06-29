@@ -127,6 +127,30 @@ cargo bench -p aletheia-symbolon --bench jwt -- --save-baseline main
 cargo bench -p aletheia-symbolon --bench jwt -- --baseline main
 ```
 
-The CI workflow runs `cargo bench --workspace --no-run` to verify that
-all bench targets compile, but does not track regression
-thresholds. That gate is tracked in #2802 follow-up if needed.
+The CI workflow keeps the compile-only bench check separate from the quality
+gate:
+
+```bash
+cargo bench --workspace --no-run
+```
+
+Memory-quality regressions are enforced through the production CLI gate, which
+validates a saved `BenchmarkReport` against a reviewed JSON baseline artifact:
+
+```bash
+cargo run -p aletheia --bin aletheia -- benchmark gate \
+  --candidate-report crates/aletheia/testdata/benchmarks/smoke-report.json \
+  --baseline crates/aletheia/testdata/benchmarks/smoke-gate-baseline.json
+```
+
+The PR and release workflows run that deterministic smoke gate. Full
+LongMemEval and LoCoMo runs remain manual or scheduled because they require
+downloaded datasets, a running Aletheia instance, and model credentials.
+Publishable live runs must pass `--gate-baseline <reviewed-baseline.json>`;
+`--publishable` fails during CLI validation if the gate baseline is missing.
+
+Reviewed gate artifacts record benchmark name, dataset hash and version, model,
+source report, reviewer, review timestamp, point metrics, allowed regression,
+minimum EM/F1/retrieval/judge thresholds, and maximum error/timeout/no-answer
+rates. Refreshing a baseline is a reviewable artifact change, not a local
+flag tweak.

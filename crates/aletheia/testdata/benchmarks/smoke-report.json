@@ -1,0 +1,57 @@
+{
+  "benchmark": "LongMemEval",
+  "total": 2,
+  "scored": 2,
+  "errors": 0,
+  "timeouts": 0,
+  "no_answers": 0,
+  "judge_summary": {
+    "attempted": 2,
+    "scored": 2,
+    "errors": 0,
+    "correct": 1
+  },
+  "questions": [
+    {
+      "id": "q1",
+      "category": "factual",
+      "status": "scored",
+      "actual_answer": "blue",
+      "expected_answers": ["blue"],
+      "score": {
+        "exact_match": true,
+        "f1": 1.0,
+        "contains": true
+      },
+      "recall_at_k": 1.0,
+      "ndcg_at_k": 1.0
+    },
+    {
+      "id": "q2",
+      "category": "factual",
+      "status": "scored",
+      "actual_answer": "green",
+      "expected_answers": ["red"],
+      "score": {
+        "exact_match": false,
+        "f1": 0.0,
+        "contains": false
+      },
+      "recall_at_k": 0.5,
+      "ndcg_at_k": 0.5
+    }
+  ],
+  "metadata": {
+    "timestamp": "2026-06-01T00:00:00Z",
+    "aletheia_version": "0.1.0",
+    "nous_id": "benchmark",
+    "model": "fixture-model",
+    "benchmark": "LongMemEval",
+    "total_questions": 2,
+    "evaluated_questions": 2,
+    "timeout_secs": 120,
+    "dataset_hash": "sha256:a6ecd7d5dadb9734f9cf28a590b99bfe527d906c08aaf3d356e7861661e74f10",
+    "git_sha": "0123456789abcdef",
+    "dataset_best_effort": false
+  }
+}

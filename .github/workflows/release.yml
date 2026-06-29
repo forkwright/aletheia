@@ -36,6 +36,11 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Test
         run: cargo test --workspace --exclude proskenion
+      - name: Benchmark regression gate
+        run: |
+          cargo run -p aletheia --bin aletheia -- benchmark gate \
+            --candidate-report crates/aletheia/testdata/benchmarks/smoke-report.json \
+            --baseline crates/aletheia/testdata/benchmarks/smoke-gate-baseline.json
 
   feature-policy:
     # WHY: release feature coverage is derived from Cargo metadata so new
