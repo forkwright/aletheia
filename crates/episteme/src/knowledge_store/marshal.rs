@@ -719,15 +719,6 @@ pub(super) fn sanitize_fts_query(raw: &str) -> String {
 }
 
 #[cfg(feature = "mneme-engine")]
-pub(super) fn scoped_visibility_rules() -> &'static str {
-    r"
-    visible_fact[id] := *facts{id, nous_id: $requester_nous_id}
-    visible_fact[id] := *facts{id, visibility: 'shared'}
-    visible_fact[id] := *facts{id, visibility: 'published'}
-"
-}
-
-#[cfg(feature = "mneme-engine")]
 pub(super) fn build_hybrid_query(q: &super::HybridQuery) -> String {
     build_hybrid_query_inner(q, false)
 }
@@ -790,7 +781,7 @@ fn build_hybrid_query_inner(q: &super::HybridQuery, scoped: bool) -> String {
             "vec[id, score] :=\n        ~embeddings:semantic_idx{id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},\n        score = 1.0 - raw_dist",
             "vec_raw[source_id, score] :=\n        ~embeddings:semantic_idx{id, source_type, source_id | query: $query_vec, k: $k, ef: $ef, bind_distance: raw_dist},\n        source_type == 'fact',\n        score = 1.0 - raw_dist\n\n    vec[id, score] := vec_raw[id, score], visible_fact[id]",
         );
-        format!("{}\n{script}", scoped_visibility_rules())
+        format!("{}\n{script}", super::scoped_visibility_rules())
     } else {
         script
     }

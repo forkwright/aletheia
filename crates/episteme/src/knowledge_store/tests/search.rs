@@ -180,6 +180,52 @@ fn scoped_visible_fact_query_hides_foreign_private_and_keeps_shared() {
 }
 
 #[test]
+fn public_scoped_visibility_policy_matches_store_fixture() {
+    let store = make_store();
+    store
+        .insert_fact(&make_visible_fact(
+            "policy-private",
+            "alice",
+            "alice private policy note",
+            Visibility::Private,
+        ))
+        .expect("insert private");
+    store
+        .insert_fact(&make_visible_fact(
+            "policy-shared",
+            "alice",
+            "alice shared policy note",
+            Visibility::Shared,
+        ))
+        .expect("insert shared");
+
+    let script = format!(
+        r"
+        {visible}
+        ?[id] :=
+            visible_fact[id],
+            *facts{{id, is_forgotten}},
+            is_forgotten == false
+        :order id
+        ",
+        visible = crate::knowledge_store::scoped_visibility_rules()
+    );
+    let mut params = std::collections::BTreeMap::new();
+    params.insert(
+        crate::knowledge_store::ScopedVisibilityPolicy::REQUESTER_NOUS_ID_PARAM.to_owned(),
+        crate::engine::DataValue::Str("bob".into()),
+    );
+
+    let rows = store.run_query(&script, params).expect("visible facts");
+    let ids: Vec<String> = (0..rows.row_count())
+        .filter_map(|row| rows.get_string(row, "id"))
+        .collect();
+
+    assert!(!ids.iter().any(|id| id == "policy-private"));
+    assert!(ids.iter().any(|id| id == "policy-shared"));
+}
+
+#[test]
 fn scoped_bm25_hides_foreign_private_and_keeps_shared() {
     let store = make_store();
     store

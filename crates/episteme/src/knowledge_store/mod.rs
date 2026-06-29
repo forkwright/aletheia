@@ -299,6 +299,41 @@ pub struct EmbeddingMeta {
 #[cfg(feature = "mneme-engine")]
 use crate::query::queries;
 
+/// Store-owned scoped visibility policy for fact queries.
+#[cfg(feature = "mneme-engine")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScopedVisibilityPolicy;
+
+#[cfg(feature = "mneme-engine")]
+impl ScopedVisibilityPolicy {
+    /// Parameter name callers must bind to the requesting nous id.
+    pub const REQUESTER_NOUS_ID_PARAM: &'static str = "requester_nous_id";
+
+    /// Predicate name emitted by [`Self::datalog`].
+    pub const VISIBLE_FACT_PREDICATE: &'static str = "visible_fact";
+
+    /// Datalog rules defining which fact rows are visible to the requester.
+    #[must_use]
+    pub const fn datalog(self) -> &'static str {
+        r"
+    visible_fact[id] := *facts{id, nous_id: $requester_nous_id}
+    visible_fact[id] := *facts{id, visibility: 'shared'}
+    visible_fact[id] := *facts{id, visibility: 'published'}
+"
+    }
+}
+
+/// Canonical scoped visibility policy used by store queries.
+#[cfg(feature = "mneme-engine")]
+pub const SCOPED_VISIBILITY_POLICY: ScopedVisibilityPolicy = ScopedVisibilityPolicy;
+
+/// Return the canonical Datalog rules for scoped fact visibility.
+#[cfg(feature = "mneme-engine")]
+#[must_use]
+pub const fn scoped_visibility_rules() -> &'static str {
+    SCOPED_VISIBILITY_POLICY.datalog()
+}
+
 /// Typed wrapper for raw Datalog query results.
 ///
 /// Returned by [`KnowledgeStore::run_query`] and related escape-hatch methods.

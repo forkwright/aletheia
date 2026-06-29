@@ -1,7 +1,7 @@
 use tracing::instrument;
 
-use super::marshal::{extract_str, fact_to_params, rows_to_facts, scoped_visibility_rules};
-use super::{KnowledgeStore, queries};
+use super::marshal::{extract_str, fact_to_params, rows_to_facts};
+use super::{KnowledgeStore, queries, scoped_visibility_rules};
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Recompute and persist embeddings for every fact in the store.

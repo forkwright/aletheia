@@ -2,11 +2,11 @@ use snafu::ResultExt;
 
 use super::marshal::{
     build_hybrid_query, build_scoped_hybrid_query, embedding_to_params, extract_str,
-    rows_to_hybrid_results, rows_to_recall_results, sanitize_fts_query, scoped_visibility_rules,
+    rows_to_hybrid_results, rows_to_recall_results, sanitize_fts_query,
 };
 use tracing::instrument;
 
-use super::{HybridQuery, HybridResult, KnowledgeStore, queries};
+use super::{HybridQuery, HybridResult, KnowledgeStore, queries, scoped_visibility_rules};
 
 #[cfg(feature = "mneme-engine")]
 fn truncate_recall_results(results: &mut Vec<crate::knowledge::RecallResult>, k: i64) {
