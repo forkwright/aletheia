@@ -421,7 +421,7 @@ impl BenchmarkComparisonMetric {
 pub enum BenchmarkComparisonStatus {
     /// Comparison contains CI, effect size, raw p-value, and FDR-adjusted p-value.
     Complete,
-    /// Fewer than two matched scored questions were available.
+    /// Fewer than two matched attempted questions were available.
     InsufficientSamples,
     /// Reports could not be compared, for example because benchmark names differ.
     Incomparable,
@@ -449,7 +449,7 @@ pub struct BenchmarkComparisonReport {
     pub label: String,
     /// Whether the comparison is statistically complete.
     pub status: BenchmarkComparisonStatus,
-    /// Number of scored question ids present in both reports.
+    /// Number of attempted question ids present in both reports.
     pub matched_questions: usize,
     /// Full statistical comparison when available.
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -634,12 +634,12 @@ impl BenchmarkReport {
     pub fn with_statistics(mut self, n_resamples: usize) -> Self {
         use crate::stats::bootstrap::bootstrap_ci;
 
-        let scored = self.scored_questions();
-        if scored.len() < 2 {
+        if self.questions.len() < 2 {
             return self;
         }
-        let f1_scores: Vec<f64> = scored.iter().map(|q| q.score.f1).collect();
-        let em_scores: Vec<f64> = scored
+        let f1_scores: Vec<f64> = self.questions.iter().map(|q| q.score.f1).collect();
+        let em_scores: Vec<f64> = self
+            .questions
             .iter()
             .map(|q| if q.score.exact_match { 1.0 } else { 0.0 })
             .collect();
@@ -837,12 +837,8 @@ impl BenchmarkReport {
             .collect()
     }
 
-    fn scored_questions_by_id(&self) -> BTreeMap<&str, &QuestionResult> {
-        self.questions
-            .iter()
-            .filter(|q| q.status.is_scored())
-            .map(|q| (q.id.as_str(), q))
-            .collect()
+    fn attempted_questions_by_id(&self) -> BTreeMap<&str, &QuestionResult> {
+        self.questions.iter().map(|q| (q.id.as_str(), q)).collect()
     }
 
     fn comparison_for_metric(
@@ -862,7 +858,7 @@ impl BenchmarkReport {
                 BenchmarkComparisonStatus::InsufficientSamples,
                 matched_questions,
                 format!(
-                    "requires at least {MIN_PUBLISHABLE_SCORED_QUESTIONS} matched scored questions; got {matched_questions}"
+                    "requires at least {MIN_PUBLISHABLE_SCORED_QUESTIONS} matched attempted questions; got {matched_questions}"
                 ),
             );
         }
@@ -894,8 +890,8 @@ impl BenchmarkReport {
         baseline: &Self,
         metric: BenchmarkComparisonMetric,
     ) -> (Vec<f64>, Vec<f64>) {
-        let baseline_by_id = baseline.scored_questions_by_id();
-        let candidate_by_id = self.scored_questions_by_id();
+        let baseline_by_id = baseline.attempted_questions_by_id();
+        let candidate_by_id = self.attempted_questions_by_id();
         let mut baseline_scores = Vec::new();
         let mut candidate_scores = Vec::new();
 
@@ -909,7 +905,11 @@ impl BenchmarkReport {
         (baseline_scores, candidate_scores)
     }
 
-    /// Fraction of questions with exact-match score >= 1.0.
+    /// Fraction of attempted questions with exact-match score >= 1.0.
+    ///
+    /// Non-scorable outcomes remain in the denominator and contribute zero.
+    /// Use [`BenchmarkReport::scored_only_exact_match_rate`] for the
+    /// diagnostic score over answered questions only.
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,
@@ -920,6 +920,28 @@ impl BenchmarkReport {
         reason = "usize to f64 — question counts are bounded and small"
     )]
     pub fn exact_match_rate(&self) -> f64 {
+        if self.questions.is_empty() {
+            return 0.0;
+        }
+        let hits = self
+            .questions
+            .iter()
+            .filter(|q| q.score.exact_match)
+            .count();
+        hits as f64 / self.questions.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
+    }
+
+    /// Exact-match rate over answered questions only.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "question counts are small (<10000); f64 mantissa handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — question counts are bounded and small"
+    )]
+    pub fn scored_only_exact_match_rate(&self) -> f64 {
         let scored = self.scored_questions();
         if scored.is_empty() {
             return 0.0;
@@ -928,7 +950,11 @@ impl BenchmarkReport {
         hits as f64 / scored.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
     }
 
-    /// Mean F1 score across all questions.
+    /// Mean F1 score across attempted questions.
+    ///
+    /// Non-scorable outcomes remain in the denominator and contribute zero.
+    /// Use [`BenchmarkReport::scored_only_mean_f1`] for the diagnostic score
+    /// over answered questions only.
     #[must_use]
     #[expect(
         clippy::cast_precision_loss,
@@ -939,6 +965,24 @@ impl BenchmarkReport {
         reason = "usize to f64 — question counts are bounded and small"
     )]
     pub fn mean_f1(&self) -> f64 {
+        if self.questions.is_empty() {
+            return 0.0;
+        }
+        let sum: f64 = self.questions.iter().map(|q| q.score.f1).sum();
+        sum / self.questions.len() as f64 // SAFETY: question counts <10_000 per function-level #[expect]
+    }
+
+    /// Mean F1 over answered questions only.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "question counts are small (<10000); f64 mantissa handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — question counts are bounded and small"
+    )]
+    pub fn scored_only_mean_f1(&self) -> f64 {
         let scored = self.scored_questions();
         if scored.is_empty() {
             return 0.0;
@@ -1006,8 +1050,22 @@ impl BenchmarkReport {
         Some(values.iter().sum::<f64>() / values.len() as f64) // SAFETY: value counts <10_000 per function-level #[expect]
     }
 
-    /// Group questions by category and return a (category, `exact_match_rate`, f1) tuple per category.
+    /// Group attempted questions by category and return `(category, EM, F1)`.
+    ///
+    /// Non-scorable outcomes remain in each category denominator and
+    /// contribute zero. Use [`BenchmarkReport::scored_only_per_category`] for
+    /// the diagnostic answered-question denominator.
     #[must_use]
+    pub fn per_category(&self) -> Vec<(String, f64, f64)> {
+        Self::per_category_for_questions(self.questions.iter())
+    }
+
+    /// Group answered questions by category and return `(category, EM, F1)`.
+    #[must_use]
+    pub fn scored_only_per_category(&self) -> Vec<(String, f64, f64)> {
+        Self::per_category_for_questions(self.questions.iter().filter(|q| q.status.is_scored()))
+    }
+
     #[expect(
         clippy::cast_precision_loss,
         reason = "bucket counts are small; f64 mantissa handles them exactly"
@@ -1016,10 +1074,12 @@ impl BenchmarkReport {
         clippy::as_conversions,
         reason = "usize to f64 — bucket counts are bounded and small"
     )]
-    pub fn per_category(&self) -> Vec<(String, f64, f64)> {
+    fn per_category_for_questions<'a>(
+        questions: impl Iterator<Item = &'a QuestionResult>,
+    ) -> Vec<(String, f64, f64)> {
         use std::collections::BTreeMap;
         let mut buckets: BTreeMap<String, Vec<&QuestionResult>> = BTreeMap::new();
-        for q in self.questions.iter().filter(|q| q.status.is_scored()) {
+        for q in questions {
             buckets.entry(q.category.clone()).or_default().push(q);
         }
         buckets
@@ -1277,18 +1337,41 @@ mod tests {
     }
 
     #[test]
-    fn non_scored_statuses_do_not_enter_score_denominator() {
+    fn non_scored_statuses_count_as_zero_in_headline_denominator() {
+        let scored = result("q1", "factual", "blue", &["blue"]);
         let mut timeout = result("q2", "factual", "", &["red"]);
         timeout.status = QuestionStatus::Timeout;
         timeout.error_message = Some("timed out".to_owned());
         timeout.score = BenchmarkScore::zero();
-        let questions = vec![result("q1", "factual", "blue", &["blue"]), timeout];
+        let mut error = result("q3", "factual", "", &["green"]);
+        error.status = QuestionStatus::Error;
+        error.error_message = Some("request failed".to_owned());
+        error.score = BenchmarkScore::zero();
+        let mut no_answer = result("q4", "factual", "", &["yellow"]);
+        no_answer.status = QuestionStatus::NoAnswer;
+        no_answer.error_message = Some("empty answer".to_owned());
+        no_answer.score = BenchmarkScore::zero();
+
+        let questions = vec![scored, timeout, error, no_answer];
         let report = BenchmarkReport::new("Test", questions);
-        assert_eq!(report.total, 2);
+        assert_eq!(report.total, 4);
         assert_eq!(report.scored, 1);
         assert_eq!(report.timeouts, 1);
-        assert!((report.exact_match_rate() - 1.0).abs() < f64::EPSILON);
-        assert!((report.mean_f1() - 1.0).abs() < f64::EPSILON);
+        assert_eq!(report.errors, 1);
+        assert_eq!(report.no_answers, 1);
+        assert!((report.exact_match_rate() - 0.25).abs() < f64::EPSILON);
+        assert!((report.mean_f1() - 0.25).abs() < f64::EPSILON);
+        assert!((report.scored_only_exact_match_rate() - 1.0).abs() < f64::EPSILON);
+        assert!((report.scored_only_mean_f1() - 1.0).abs() < f64::EPSILON);
+
+        let per_category = report.per_category();
+        assert_eq!(per_category.len(), 1);
+        assert!((per_category[0].1 - 0.25).abs() < f64::EPSILON);
+        assert!((per_category[0].2 - 0.25).abs() < f64::EPSILON);
+        let scored_only_per_category = report.scored_only_per_category();
+        assert_eq!(scored_only_per_category.len(), 1);
+        assert!((scored_only_per_category[0].1 - 1.0).abs() < f64::EPSILON);
+        assert!((scored_only_per_category[0].2 - 1.0).abs() < f64::EPSILON);
     }
 
     fn publishable_metadata() -> BenchmarkMetadata {
