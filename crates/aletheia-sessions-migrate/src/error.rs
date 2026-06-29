@@ -96,7 +96,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "destination '{}' is non-empty; pass --force to replace it through the staged migration path",
+        "destination '{}' is non-empty; pass --replace-existing --i-understand-this-replaces-destination to replace it. \
+         Replacement writes and verifies staging first, moves the current destination to a temporary backup during publish, \
+         and deletes that backup after publish succeeds",
         path.display()
     ))]
     DestinationNotEmpty {
@@ -146,7 +148,7 @@ pub enum Error {
 
     #[snafu(display(
         "destination '{}' is incomplete: previous migration left {} behind. \
-         Pass --force to remove the leftover staging directory and rerun, \
+         Pass --replace-existing --i-understand-this-replaces-destination to remove the leftover staging directory and rerun, \
          or inspect it manually",
         path.display(),
         marker

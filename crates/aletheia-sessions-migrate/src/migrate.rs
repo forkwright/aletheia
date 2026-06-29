@@ -15,7 +15,8 @@
 //! destination and atomically renames it into place only after every
 //! per-session bundle, the blackboard, and global counters have committed.
 //! If the process is interrupted, the leftover staging directory is detected
-//! on the next run and refused unless the operator passes `--force`.
+//! on the next run and refused unless the operator explicitly requests
+//! replacement.
 //!
 //! # Orphan recovery
 //!
@@ -63,8 +64,8 @@ const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Suffix for the staging directory created next to the final destination.
 const STAGING_SUFFIX: &str = "staging";
 
-/// Suffix segment for backup directories created when a force run replaces
-/// an existing destination.
+/// Suffix segment for backup directories created when replacement publishes
+/// over an existing destination.
 const BACKUP_SUFFIX: &str = "backup";
 
 const BACKUP_MARKER_MAGIC: &str = "aletheia-sessions-migrate backup\n";
@@ -137,7 +138,7 @@ pub(crate) struct SourceData {
 /// published to the final destination.
 ///
 /// Dropping the guard without calling [`Self::publish`] removes the staging
-/// directory and restores any backup created for `--force` overwrites.
+/// directory and restores any backup created for replacement publishes.
 pub struct StagedMigration {
     staging_dir: PathBuf,
     final_dir: PathBuf,
@@ -277,8 +278,12 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
 /// Propagates schema validation failures, source read errors, any fjall
 /// write failure, or an atomic-rename error as the structured error type
 /// defined in [`crate::error`].
-pub fn run_migration(source: &Path, dest: &Path, force: bool) -> Result<MigrationReport> {
-    let staged = stage_migration(source, dest, force)?;
+pub fn run_migration(
+    source: &Path,
+    dest: &Path,
+    replace_existing: bool,
+) -> Result<MigrationReport> {
+    let staged = stage_migration(source, dest, replace_existing)?;
     let verification = staged.verify(source, DEFAULT_VERIFY_SAMPLES)?;
     if !verification.ok() {
         return Err(VerificationFailedSnafu {
@@ -295,20 +300,24 @@ pub fn run_migration(source: &Path, dest: &Path, force: bool) -> Result<Migratio
 /// Returns a [`StagedMigration`] guard that owns the staging directory.
 /// Call [`StagedMigration::publish`] to atomically rename the staging
 /// directory to `dest`. Dropping the guard without publishing cleans up
-/// the staging directory and restores any backup created for a `--force`
+/// the staging directory and restores any backup created for a replacement
 /// overwrite.
 ///
 /// # Errors
 ///
 /// Returns [`crate::error::Error::MigrationIncomplete`] when a previous
-/// run left a staging directory behind and `force` is false,
+/// run left a staging directory behind and `replace_existing` is false,
 /// [`crate::error::Error::DestinationNotEmpty`] when `dest` is non-empty
-/// and `force` is false, or any source/fjall error.
-pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<StagedMigration> {
+/// and `replace_existing` is false, or any source/fjall error.
+pub fn stage_migration(
+    source: &Path,
+    dest: &Path,
+    replace_existing: bool,
+) -> Result<StagedMigration> {
     let started = Instant::now();
     let staging_dir = dest.with_extension(STAGING_SUFFIX);
 
-    let dest_existed = prepare_destination_dirs(dest, force, &staging_dir)?;
+    let dest_existed = prepare_destination_dirs(dest, replace_existing, &staging_dir)?;
 
     // Read and validate the source before touching the destination.
     let conn = open_source(source)?;
@@ -353,10 +362,14 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
 }
 
 /// Check destination preconditions and clean up leftover staging when
-/// `force` is set. Returns whether a non-empty destination already exists.
-fn prepare_destination_dirs(dest: &Path, force: bool, staging_dir: &Path) -> Result<bool> {
+/// replacement is set. Returns whether a non-empty destination already exists.
+fn prepare_destination_dirs(
+    dest: &Path,
+    replace_existing: bool,
+    staging_dir: &Path,
+) -> Result<bool> {
     if staging_dir.exists() {
-        if !force {
+        if !replace_existing {
             return Err(MigrationIncompleteSnafu {
                 path: dest.to_path_buf(),
                 marker: staging_dir.display().to_string(),
@@ -372,7 +385,7 @@ fn prepare_destination_dirs(dest: &Path, force: bool, staging_dir: &Path) -> Res
     }
 
     let dest_existed = dest.exists() && !is_empty_or_absent(dest)?;
-    if dest_existed && !force {
+    if dest_existed && !replace_existing {
         return Err(DestinationNotEmptySnafu {
             path: dest.to_path_buf(),
         }

@@ -3,8 +3,8 @@
 //! - Migration writes to a staging directory and only publishes after all
 //!   writes complete.
 //! - A leftover staging directory from a failed run is refused unless the
-//!   operator passes `--force`.
-//! - `--force` overwrite preserves the prior destination in a backup and
+//!   operator explicitly requests replacement.
+//! - Replacement preserves the prior destination in a backup and
 //!   restores it if the new migration is abandoned before publish.
 
 #![expect(
@@ -73,7 +73,7 @@ fn staging_dir_exists_before_publish_and_dest_does_not() {
 }
 
 #[test]
-fn leftover_staging_refused_without_force() {
+fn leftover_staging_refused_without_replacement() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
     let dest = tmp.path().join("dest.fjall");
@@ -89,13 +89,17 @@ fn leftover_staging_refused_without_force() {
         "expected 'incomplete' in error; got: {msg}"
     );
     assert!(
-        msg.contains("--force"),
-        "expected --force hint in error; got: {msg}"
+        msg.contains("--replace-existing"),
+        "expected replacement hint in error; got: {msg}"
+    );
+    assert!(
+        msg.contains("--i-understand-this-replaces-destination"),
+        "expected confirmation hint in error; got: {msg}"
     );
 }
 
 #[test]
-fn leftover_staging_removed_with_force() {
+fn leftover_staging_removed_with_replacement() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
     let dest = tmp.path().join("dest.fjall");
@@ -128,7 +132,7 @@ fn leftover_staging_removed_with_force() {
 
     fs::create_dir_all(&staging).expect("create leftover staging dir");
 
-    let report = run_migration(&src, &dest, true).expect("migration with force");
+    let report = run_migration(&src, &dest, true).expect("migration with replacement");
     assert_eq!(report.counts.sessions, 1);
     assert!(dest.exists(), "destination must exist after migration");
     assert!(
@@ -138,7 +142,7 @@ fn leftover_staging_removed_with_force() {
 }
 
 #[test]
-fn force_overwrite_restores_backup_when_staged_migration_dropped() {
+fn replacement_restores_backup_when_staged_migration_dropped() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
     let dest = tmp.path().join("dest.fjall");
@@ -197,7 +201,7 @@ fn force_overwrite_restores_backup_when_staged_migration_dropped() {
     }
 
     {
-        let staged = stage_migration(&src, &dest, true).expect("stage with force");
+        let staged = stage_migration(&src, &dest, true).expect("stage with replacement");
         assert_eq!(staged.report().counts.sessions, 2);
         // Drop without publishing.
     }
@@ -218,7 +222,7 @@ fn force_overwrite_restores_backup_when_staged_migration_dropped() {
 }
 
 #[test]
-fn force_staging_write_failure_preserves_existing_dest_and_prior_backup() {
+fn replacement_staging_write_failure_preserves_existing_dest_and_prior_backup() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
     let dest = tmp.path().join("dest.fjall");
@@ -279,7 +283,7 @@ fn force_staging_write_failure_preserves_existing_dest_and_prior_backup() {
         );
     }
 
-    let err = run_migration(&src, &dest, true).expect_err("force replacement must fail");
+    let err = run_migration(&src, &dest, true).expect_err("replacement must fail");
     let message = format!("{err:#}");
     assert!(
         message.contains("message.seq"),
@@ -301,7 +305,7 @@ fn force_staging_write_failure_preserves_existing_dest_and_prior_backup() {
 }
 
 #[test]
-fn force_overwrite_publishes_new_data() {
+fn replacement_publishes_new_data() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
     let dest = tmp.path().join("dest.fjall");
@@ -357,9 +361,9 @@ fn force_overwrite_publishes_new_data() {
         );
     }
 
-    run_migration(&src, &dest, true).expect("force overwrite");
+    run_migration(&src, &dest, true).expect("replacement");
 
     let store = graphe::store::SessionStore::open(&dest).expect("open store");
     let sessions = store.list_sessions(None).expect("list sessions");
-    assert_eq!(sessions.len(), 2, "force overwrite must publish new data");
+    assert_eq!(sessions.len(), 2, "replacement must publish new data");
 }
