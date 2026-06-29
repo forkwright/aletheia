@@ -1,5 +1,6 @@
 //! Server entry point with graceful shutdown.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -36,6 +37,15 @@ pub struct ServerConfig {
     pub instance_path: PathBuf,
     /// Security configuration for middleware layers.
     pub security: SecurityConfig,
+}
+
+struct ServerRuntime {
+    oikos: Arc<Oikos>,
+    aletheia_config: AletheiaConfig,
+    session_store: Arc<Mutex<SessionStore>>,
+    provider_registry: Arc<ProviderRegistry>,
+    tool_registry: Arc<ToolRegistry>,
+    nous_manager: NousManager,
 }
 
 /// Errors from the pylon HTTP server lifecycle.
@@ -111,6 +121,31 @@ pub enum ServerError {
 /// SIGHUP-handler drain and `shutdown_readonly` call, which may leave actor tasks
 /// running until the runtime exits.
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
+    let state = build_state(&config).await?;
+
+    #[cfg(unix)]
+    let sighup_handle = spawn_sighup_handler(Arc::clone(&state));
+
+    let app = build_router(Arc::clone(&state), &config.security);
+
+    write_discovery_file(&state, &config.bind_addr).await;
+    serve_configured(app, &config).await?;
+
+    #[cfg(unix)]
+    finish_shutdown(state, sighup_handle).await;
+
+    #[cfg(not(unix))]
+    finish_shutdown(state).await;
+
+    Ok(())
+}
+
+async fn build_state(config: &ServerConfig) -> Result<Arc<AppState>, ServerError> {
+    let runtime = prepare_runtime(config).await?;
+    assemble_state(runtime)
+}
+
+async fn prepare_runtime(config: &ServerConfig) -> Result<ServerRuntime, ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
     let oikos = Arc::new(oikos);
@@ -125,13 +160,42 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let provider_registry = Arc::new(ProviderRegistry::new());
     let tool_registry = Arc::new(ToolRegistry::new());
 
-    let mut nous_manager = NousManager::new(
+    let nous_manager = spawn_default_nous(
         Arc::clone(&provider_registry),
         Arc::clone(&tool_registry),
         Arc::clone(&oikos),
+        Arc::clone(&session_store),
+    )
+    .await?;
+
+    // WHY: Emit a loud warning when authentication is disabled so operators
+    // see the consequence in every log aggregator, not just buried in the
+    // gateway config. (#3383)
+    taxis::validate::warn_if_auth_disabled(&aletheia_config);
+
+    Ok(ServerRuntime {
+        oikos,
+        aletheia_config,
+        session_store,
+        provider_registry,
+        tool_registry,
+        nous_manager,
+    })
+}
+
+async fn spawn_default_nous(
+    provider_registry: Arc<ProviderRegistry>,
+    tool_registry: Arc<ToolRegistry>,
+    oikos: Arc<Oikos>,
+    session_store: Arc<Mutex<SessionStore>>,
+) -> Result<NousManager, ServerError> {
+    let mut nous_manager = NousManager::new(
+        provider_registry,
+        tool_registry,
+        oikos,
         None,
         None,
-        Some(Arc::clone(&session_store)),
+        Some(session_store),
         #[cfg(feature = "knowledge-store")]
         None,
         Arc::new(vec![]),
@@ -146,11 +210,18 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .await
         .context(NousSpawnSnafu)?;
 
-    // WHY: Emit a loud warning when authentication is disabled so operators
-    // see the consequence in every log aggregator, not just buried in the
-    // gateway config. (#3383)
-    taxis::validate::warn_if_auth_disabled(&aletheia_config);
+    Ok(nous_manager)
+}
 
+fn assemble_state(runtime: ServerRuntime) -> Result<Arc<AppState>, ServerError> {
+    let ServerRuntime {
+        oikos,
+        aletheia_config,
+        session_store,
+        provider_registry,
+        tool_registry,
+        nous_manager,
+    } = runtime;
     let (jwt_manager, auth_facade) = build_auth_state(&aletheia_config, &oikos)?;
 
     #[cfg(feature = "knowledge-store")]
@@ -179,7 +250,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         Arc::clone(&provider_registry),
     ));
 
-    let state = Arc::new(AppState {
+    Ok(Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
         provider_registry,
@@ -206,39 +277,49 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
         approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
-    });
+    }))
+}
 
-    #[cfg(unix)]
-    let sighup_handle = spawn_sighup_handler(Arc::clone(&state));
-
-    let app = build_router(state.clone(), &config.security);
-
-    // WHY: write the discovery file after bind succeeds so clients can locate
-    // the server. Best-effort: failure is logged but does not abort startup.
+async fn write_discovery_file(state: &AppState, bind_addr: &str) {
+    // WHY: Best-effort: failure is logged but does not abort startup.
     let data_dir = state.oikos.data();
-    if let Err(e) = crate::discovery::write_discovery_file(&data_dir, &config.bind_addr).await {
+    if let Err(e) = crate::discovery::write_discovery_file(&data_dir, bind_addr).await {
         warn!(error = %e, "failed to write discovery file, clients may need manual URL");
     }
+}
 
+async fn serve_configured(app: axum::Router, config: &ServerConfig) -> Result<(), ServerError> {
     if config.security.tls.enabled {
-        serve_tls(app, &config).await?;
+        serve_tls(app, config).await
     } else {
-        serve_plain(app, &config.bind_addr).await?;
+        serve_plain(app, &config.bind_addr).await
     }
+}
 
-    // NOTE: Cancel shutdown token so background tasks (SIGHUP handler) observe shutdown.
+#[cfg(unix)]
+async fn finish_shutdown(state: Arc<AppState>, sighup_handle: Option<tokio::task::JoinHandle<()>>) {
     state.shutdown.cancel();
+    drain_sighup_handler(sighup_handle).await;
+    finish_shutdown_common(state).await;
+}
 
-    #[cfg(unix)]
+#[cfg(not(unix))]
+async fn finish_shutdown(state: Arc<AppState>) {
+    state.shutdown.cancel();
+    finish_shutdown_common(state).await;
+}
+
+#[cfg(unix)]
+async fn drain_sighup_handler(sighup_handle: Option<tokio::task::JoinHandle<()>>) {
+    let drain_timeout = std::time::Duration::from_secs(10);
+    if let Some(handle) = sighup_handle
+        && tokio::time::timeout(drain_timeout, handle).await.is_err()
     {
-        let drain_timeout = std::time::Duration::from_secs(10);
-        if let Some(handle) = sighup_handle
-            && tokio::time::timeout(drain_timeout, handle).await.is_err()
-        {
-            warn!("sighup handler did not exit within drain timeout");
-        }
+        warn!("sighup handler did not exit within drain timeout");
     }
+}
 
+async fn finish_shutdown_common(state: Arc<AppState>) {
     // WHY: remove discovery file so clients do not attempt to connect to
     // a stopped server. Best-effort: if removal fails, the file is stale
     // but harmless (clients will get connection-refused).
@@ -246,7 +327,6 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     state.nous_manager.shutdown_readonly().await;
     info!("pylon shutdown complete");
-    Ok(())
 }
 
 fn build_auth_state(
@@ -315,7 +395,7 @@ async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerErr
     // rather than spoofable `X-Forwarded-For` headers.
     axum::serve(
         listener,
-        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown_signal())
     .await
@@ -347,7 +427,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
         .await
         .context(TlsConfigSnafu)?;
 
-    let addr: std::net::SocketAddr = config
+    let addr: SocketAddr = config
         .bind_addr
         .parse()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
@@ -369,7 +449,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
 
     axum_server::bind_rustls(addr, tls_config)
         .handle(handle)
-        .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .context(ServeSnafu)
 }
