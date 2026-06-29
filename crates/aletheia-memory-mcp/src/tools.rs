@@ -251,6 +251,13 @@ fn parse_optional_source_session_id(raw: Option<&str>) -> crate::error::Result<O
     }
 }
 
+fn ensure_fact_is_active(fact: &Fact, id: &str) -> crate::error::Result<()> {
+    if fact.lifecycle.is_forgotten || fact.lifecycle.superseded_by.as_ref().is_some() {
+        return Err(crate::error::FactNotFoundSnafu { id: id.to_owned() }.build());
+    }
+    Ok(())
+}
+
 /// Apply project/scope/visibility/sensitivity filters to recall results.
 fn matches_scope_filters(
     result: &mneme::knowledge::RecallResult,
@@ -1185,6 +1192,7 @@ impl MemoryServer {
                     }
                     .build());
                 }
+                ensure_fact_is_active(&target, &fact_id)?;
 
                 // Create annotation fact with a generated ID
                 // Use "f-mcp-" prefix to mark MCP-inserted facts for audit purposes.
@@ -1376,6 +1384,7 @@ impl MemoryServer {
                     }
                     .build());
                 }
+                ensure_fact_is_active(&old_fact, &old_id)?;
 
                 // Mark the old fact as superseded
                 let new_fact_id = mneme::id::FactId::new(new_id.clone()).map_err(|e| {
@@ -1670,6 +1679,22 @@ mod tests {
                 last_accessed_at: None,
             },
         }
+    }
+
+    fn assert_fact_not_found(
+        result: Result<CallToolResult, rmcp::ErrorData>,
+        expected_fact_id: &str,
+    ) {
+        let Err(err) = result else {
+            panic!("expected FactNotFound for {expected_fact_id}");
+        };
+        assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        assert!(
+            err.message
+                .contains(&format!("fact not found: {expected_fact_id}")),
+            "unexpected error message: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -2320,6 +2345,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn annotate_rejects_forgotten_target() {
+        let store = open_store();
+        let mut target = sample_fact(
+            "f-target-forgotten",
+            "alice",
+            "old value",
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        target.lifecycle.is_forgotten = true;
+        target.lifecycle.forgotten_at = Some(jiff::Timestamp::now());
+        target.lifecycle.forget_reason = Some(mneme::knowledge::ForgetReason::Stale);
+        store.insert_fact(&target).unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let params = NousAnnotateParams {
+            nous_id: "alice".to_owned(),
+            fact_id: "f-target-forgotten".to_owned(),
+            content: "verified by external source".to_owned(),
+            source_session_id: None,
+        };
+        assert_fact_not_found(
+            server.nous_annotate(Parameters(params)).await,
+            "f-target-forgotten",
+        );
+    }
+
+    #[tokio::test]
+    async fn annotate_rejects_superseded_target() {
+        let store = open_store();
+        let mut target = sample_fact(
+            "f-target-superseded",
+            "alice",
+            "old value",
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        target.lifecycle.superseded_by =
+            Some(mneme::id::FactId::new("f-target-replacement").unwrap());
+        store.insert_fact(&target).unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let params = NousAnnotateParams {
+            nous_id: "alice".to_owned(),
+            fact_id: "f-target-superseded".to_owned(),
+            content: "verified by external source".to_owned(),
+            source_session_id: None,
+        };
+        assert_fact_not_found(
+            server.nous_annotate(Parameters(params)).await,
+            "f-target-superseded",
+        );
+    }
+
+    #[tokio::test]
     async fn supersede_uses_explicit_owner_not_mcp_server() {
         let store = open_store();
         let old_fact = sample_fact(
@@ -2417,6 +2501,87 @@ mod tests {
         assert!(
             result.is_err(),
             "alice must not supersede facts outside her ownership"
+        );
+    }
+
+    #[tokio::test]
+    async fn supersede_rejects_forgotten_old_fact() {
+        let store = open_store();
+        let mut old_fact = sample_fact(
+            "f-old-forgotten",
+            "alice",
+            "old value",
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        old_fact.lifecycle.is_forgotten = true;
+        old_fact.lifecycle.forgotten_at = Some(jiff::Timestamp::now());
+        old_fact.lifecycle.forget_reason = Some(mneme::knowledge::ForgetReason::Stale);
+        let new_fact = sample_fact(
+            "f-new-for-forgotten",
+            "alice",
+            "new value",
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        store.insert_fact(&old_fact).unwrap();
+        store.insert_fact(&new_fact).unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let params = NousSupersedeParams {
+            old_fact_id: "f-old-forgotten".to_owned(),
+            new_fact_id: "f-new-for-forgotten".to_owned(),
+            nous_id: "alice".to_owned(),
+            source_session_id: None,
+            reason: "updated".to_owned(),
+        };
+        assert_fact_not_found(
+            server.nous_supersede(Parameters(params)).await,
+            "f-old-forgotten",
+        );
+    }
+
+    #[tokio::test]
+    async fn supersede_rejects_superseded_old_fact() {
+        let store = open_store();
+        let mut old_fact = sample_fact(
+            "f-old-superseded",
+            "alice",
+            "old value",
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        old_fact.lifecycle.superseded_by =
+            Some(mneme::id::FactId::new("f-old-existing-replacement").unwrap());
+        let new_fact = sample_fact(
+            "f-new-for-superseded",
+            "alice",
+            "new value",
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        store.insert_fact(&old_fact).unwrap();
+        store.insert_fact(&new_fact).unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let params = NousSupersedeParams {
+            old_fact_id: "f-old-superseded".to_owned(),
+            new_fact_id: "f-new-for-superseded".to_owned(),
+            nous_id: "alice".to_owned(),
+            source_session_id: None,
+            reason: "updated".to_owned(),
+        };
+        assert_fact_not_found(
+            server.nous_supersede(Parameters(params)).await,
+            "f-old-superseded",
         );
     }
 
