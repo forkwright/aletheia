@@ -1,5 +1,6 @@
 //! Server entry point with graceful shutdown.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -343,7 +344,7 @@ async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerErr
     // rather than spoofable `X-Forwarded-For` headers.
     axum::serve(
         listener,
-        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown_signal())
     .await
@@ -375,7 +376,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
         .await
         .context(TlsConfigSnafu)?;
 
-    let addr: std::net::SocketAddr = config
+    let addr: SocketAddr = config
         .bind_addr
         .parse()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
@@ -636,7 +637,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[expect(deprecated, reason = "test exercises the deprecated gateway-only harness")]
+    #[expect(
+        deprecated,
+        reason = "test exercises the deprecated gateway-only harness"
+    )]
     async fn run_fails_on_malformed_config() {
         let instance = tempfile::tempdir().unwrap_or_else(|e| panic!("create tempdir: {e}"));
         for dir in ["config", "data", "nous"] {
