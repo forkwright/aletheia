@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use snafu::ResultExt as _;
 
+use koina::id::NousId;
 use mneme::engine::DataValue;
 use mneme::id::{EntityId, FactId};
 use mneme::knowledge::{Fact, ForgetReason};
@@ -118,7 +119,8 @@ pub struct NousNeighborsParams {
 pub struct NousAnnotateParams {
     /// Owning agent (nous) that is authoring the annotation. Must be explicit;
     /// the `mcp-client` fallback is no longer used for user memory.
-    pub nous_id: String,
+    #[schemars(with = "String")]
+    pub nous_id: NousId,
     /// Fact ID to annotate.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
@@ -141,7 +143,8 @@ pub struct NousSupersedeParams {
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub new_fact_id: String,
     /// Owning agent (nous) recording the supersession. Must be explicit.
-    pub nous_id: String,
+    #[schemars(with = "String")]
+    pub nous_id: NousId,
     /// Optional source session that caused this supersession write.
     #[serde(default)]
     pub source_session_id: Option<String>,
@@ -158,7 +161,8 @@ pub struct NousForgetParams {
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
     /// Owning agent (nous) requesting the forget. Must match the fact owner.
-    pub nous_id: String,
+    #[schemars(with = "String")]
+    pub nous_id: NousId,
     /// Typed reason for forgetting; one of `user_requested`, `outdated`,
     /// `incorrect`, `privacy`, `stale`, `superseded`, or `contradicted`.
     pub reason: String,
@@ -173,6 +177,80 @@ const ALLOWED_FORGET_REASONS: &str =
 /// WHY: raw atomic Datalog writes bypass `KnowledgeStore::insert_fact`; keep
 /// the same public fact content limit enforced before building those writes.
 const MAX_FACT_CONTENT_LENGTH: usize = 102_400;
+const INSERT_ANNOTATION_GRAPH_SCRIPT: &str = r"
+    {
+        ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+          superseded_by, source_session_id, recorded_at,
+          access_count, last_accessed_at, stability_hours, fact_type,
+          is_forgotten, forgotten_at, forget_reason, scope, project_id,
+          visibility, sensitivity] :=
+            id = $annotation_id,
+            valid_from = $annotation_valid_from,
+            content = $annotation_content,
+            nous_id = $annotation_nous_id,
+            confidence = $annotation_confidence,
+            tier = $annotation_tier,
+            valid_to = $annotation_valid_to,
+            superseded_by = $annotation_superseded_by,
+            source_session_id = $annotation_source_session_id,
+            recorded_at = $annotation_recorded_at,
+            access_count = $annotation_access_count,
+            last_accessed_at = $annotation_last_accessed_at,
+            stability_hours = $annotation_stability_hours,
+            fact_type = $annotation_fact_type,
+            is_forgotten = $annotation_is_forgotten,
+            forgotten_at = $annotation_forgotten_at,
+            forget_reason = $annotation_forget_reason,
+            scope = $annotation_scope,
+            project_id = $annotation_project_id,
+            visibility = $annotation_visibility,
+            sensitivity = $annotation_sensitivity
+        :put facts {id, valid_from => content, nous_id, confidence, tier,
+                    valid_to, superseded_by, source_session_id, recorded_at,
+                    access_count, last_accessed_at, stability_hours, fact_type,
+                    is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                    visibility, sensitivity}
+    }
+    {
+        ?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] :=
+            id = $annotation_entity_id,
+            name = $annotation_entity_name,
+            entity_type = $entity_type,
+            aliases = $empty_aliases,
+            created_at = $created_at,
+            updated_at = $created_at,
+            name_embedding = null
+        ?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] :=
+            id = $target_entity_id,
+            name = $target_entity_name,
+            entity_type = $entity_type,
+            aliases = $empty_aliases,
+            created_at = $created_at,
+            updated_at = $created_at,
+            name_embedding = null
+        :put entities {id => name, entity_type, aliases, created_at, updated_at, name_embedding}
+    }
+    {
+        ?[fact_id, entity_id, created_at] :=
+            fact_id = $annotation_id,
+            entity_id = $annotation_entity_id,
+            created_at = $created_at
+        ?[fact_id, entity_id, created_at] :=
+            fact_id = $target_fact_id,
+            entity_id = $target_entity_id,
+            created_at = $created_at
+        :put fact_entities {fact_id, entity_id => created_at}
+    }
+    {
+        ?[src, dst, relation, weight, created_at] :=
+            src = $annotation_entity_id,
+            dst = $target_entity_id,
+            relation = $annotates_relation,
+            weight = $relationship_weight,
+            created_at = $created_at
+        :put relationships {src, dst => relation, weight, created_at}
+    }
+";
 
 fn opaque_store_id(store_path: Option<&Path>) -> String {
     let Some(store_path) = store_path else {
@@ -329,11 +407,11 @@ fn matches_scope_filters(
 /// WHY: mirrors `episteme::knowledge_store::marshal::scoped_visibility_rules`
 /// without depending on the non-public helper. A fact is visible when it is
 /// owned by the requester, marked `shared`, or marked `published`.
-const SCOPED_VISIBILITY_RULES: &str = r"
-    visible_fact[id] := *facts{id, nous_id: $requester_nous_id}
-    visible_fact[id] := *facts{id, visibility: 'shared'}
-    visible_fact[id] := *facts{id, visibility: 'published'}
-";
+const SCOPED_VISIBILITY_RULES: &str = concat!(
+    "visible_fact[id] := *facts{id, nous_id: $requester_nous_id}\n",
+    "visible_fact[id] := *facts{id, visibility: 'shared'}\n",
+    "visible_fact[id] := *facts{id, visibility: 'published'}\n",
+);
 
 /// A visible fact row materialized for aggregation tools.
 #[derive(Debug, Clone)]
@@ -448,15 +526,16 @@ fn run_scoped_facts_query(
 ) -> crate::error::Result<Vec<ScopedFactRow>> {
     let rules = SCOPED_VISIBILITY_RULES;
     let script = format!(
-        r"
-        {rules}
-        ?[id, fact_type, scope, project_id, visibility, sensitivity, recorded_at] :=
-            visible_fact[id],
-            *facts{{id, fact_type, is_forgotten, superseded_by, scope, project_id, visibility, sensitivity, recorded_at}},
-            is_forgotten == false,
-            is_null(superseded_by)
-        :order id
-        "
+        "{}{}",
+        rules,
+        concat!(
+            "?[id, fact_type, scope, project_id, visibility, sensitivity, recorded_at] :=\n",
+            "    visible_fact[id],\n",
+            "    *facts{id, fact_type, is_forgotten, superseded_by, scope, project_id, visibility, sensitivity, recorded_at},\n",
+            "    is_forgotten == false,\n",
+            "    is_null(superseded_by)\n",
+            ":order id\n",
+        )
     );
     let mut params = BTreeMap::new();
     params.insert(
@@ -650,57 +729,14 @@ fn insert_annotation_graph_atomically(
     );
     params.insert("relationship_weight".to_owned(), DataValue::from(1.0));
 
-    let script = r"
-        {
-            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-              superseded_by, source_session_id, recorded_at,
-              access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id,
-              visibility, sensitivity] <- [[$annotation_id, $annotation_valid_from,
-              $annotation_content, $annotation_nous_id, $annotation_confidence,
-              $annotation_tier, $annotation_valid_to, $annotation_superseded_by,
-              $annotation_source_session_id, $annotation_recorded_at,
-              $annotation_access_count, $annotation_last_accessed_at,
-              $annotation_stability_hours, $annotation_fact_type,
-              $annotation_is_forgotten, $annotation_forgotten_at,
-              $annotation_forget_reason, $annotation_scope, $annotation_project_id,
-              $annotation_visibility, $annotation_sensitivity]]
-            :put facts {id, valid_from => content, nous_id, confidence, tier,
-                        valid_to, superseded_by, source_session_id, recorded_at,
-                        access_count, last_accessed_at, stability_hours, fact_type,
-                        is_forgotten, forgotten_at, forget_reason, scope, project_id,
-                        visibility, sensitivity}
-        }
-        {
-            ?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <- [
-                [$annotation_entity_id, $annotation_entity_name, $entity_type, $empty_aliases,
-                 $created_at, $created_at, null],
-                [$target_entity_id, $target_entity_name, $entity_type, $empty_aliases,
-                 $created_at, $created_at, null]
-            ]
-            :put entities {id => name, entity_type, aliases, created_at, updated_at, name_embedding}
-        }
-        {
-            ?[fact_id, entity_id, created_at] <- [
-                [$annotation_id, $annotation_entity_id, $created_at],
-                [$target_fact_id, $target_entity_id, $created_at]
-            ]
-            :put fact_entities {fact_id, entity_id => created_at}
-        }
-        {
-            ?[src, dst, relation, weight, created_at] <- [
-                [$annotation_entity_id, $target_entity_id, $annotates_relation,
-                 $relationship_weight, $created_at]
-            ]
-            :put relationships {src, dst => relation, weight, created_at}
-        }
-    ";
-    store.run_mut_query(script, params).map_err(|e| {
-        KnowledgeStoreSnafu {
-            message: e.to_string(),
-        }
-        .build()
-    })?;
+    store
+        .run_mut_query(INSERT_ANNOTATION_GRAPH_SCRIPT, params)
+        .map_err(|e| {
+            KnowledgeStoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
     Ok(())
 }
 
@@ -1365,7 +1401,7 @@ impl MemoryServer {
         }
         validate_fact_content_length(&params.content).map_err(rmcp::ErrorData::from)?;
 
-        if params.nous_id.trim().is_empty() {
+        if params.nous_id.as_str().is_empty() {
             return Err(InvalidInputSnafu {
                 message: "nous_id (owner) must not be empty".to_owned(),
             }
@@ -1375,7 +1411,7 @@ impl MemoryServer {
 
         let fact_id = params.fact_id.clone();
         let content = params.content.clone();
-        let owner_nous_id = params.nous_id.trim().to_owned();
+        let owner_nous_id = params.nous_id.as_str().to_owned();
         let source_session_id =
             parse_optional_source_session_id(params.source_session_id.as_deref())?;
 
@@ -1540,7 +1576,7 @@ impl MemoryServer {
             .into());
         }
 
-        if params.nous_id.trim().is_empty() {
+        if params.nous_id.as_str().is_empty() {
             return Err(InvalidInputSnafu {
                 message: "nous_id (owner) must not be empty".to_owned(),
             }
@@ -1551,7 +1587,7 @@ impl MemoryServer {
         let old_id = params.old_fact_id.clone();
         let new_id = params.new_fact_id.clone();
         let reason = params.reason.clone();
-        let owner_nous_id = params.nous_id.trim().to_owned();
+        let owner_nous_id = params.nous_id.as_str().to_owned();
         let source_session_id =
             parse_optional_source_session_id(params.source_session_id.as_deref())?;
 
@@ -1725,7 +1761,7 @@ impl MemoryServer {
             .into());
         }
 
-        if params.nous_id.trim().is_empty() {
+        if params.nous_id.as_str().is_empty() {
             return Err(InvalidInputSnafu {
                 message: "nous_id (owner) must not be empty".to_owned(),
             }
@@ -1734,7 +1770,7 @@ impl MemoryServer {
         }
 
         let fact_id_str = params.fact_id.clone();
-        let owner_nous_id = params.nous_id.clone();
+        let owner_nous_id = params.nous_id.as_str().to_owned();
         let forget_reason = parse_forget_reason(&params.reason)?;
 
         let forgotten_at = self
@@ -1812,16 +1848,20 @@ impl MemoryServer {
     reason = "test assertions may panic on failure"
 )]
 mod tests {
-    use super::*;
-
     use mneme::knowledge::{
         EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
         FactTemporal, MemoryScope, Visibility, default_stability_hours, far_future,
     };
     use mneme::knowledge_store::KnowledgeStore;
 
+    use super::*;
+
     fn open_store() -> std::sync::Arc<KnowledgeStore> {
         KnowledgeStore::open_mem().expect("in-memory store should open")
+    }
+
+    fn valid_nous_id(id: &str) -> NousId {
+        NousId::new(id).expect("valid test nous id")
     }
 
     fn sample_fact(
@@ -2076,14 +2116,14 @@ mod tests {
     fn nous_annotate_params_round_trip() {
         let json = r#"{"nous_id":"agent-uuid","fact_id":"f-abc-123","content":"verified","source_session_id":"session-uuid"}"#;
         let params: NousAnnotateParams = serde_json::from_str(json).unwrap();
-        assert_eq!(params.nous_id, "agent-uuid".to_owned());
+        assert_eq!(params.nous_id.as_str(), "agent-uuid");
         assert_eq!(params.fact_id, "f-abc-123");
         assert_eq!(params.content, "verified");
         assert_eq!(params.source_session_id.as_deref(), Some("session-uuid"));
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousAnnotateParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.nous_id, "agent-uuid");
+        assert_eq!(back.nous_id.as_str(), "agent-uuid");
         assert_eq!(back.source_session_id.as_deref(), Some("session-uuid"));
     }
 
@@ -2093,13 +2133,13 @@ mod tests {
         let params: NousSupersedeParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.old_fact_id, "f-old");
         assert_eq!(params.new_fact_id, "f-new");
-        assert_eq!(params.nous_id, "alice");
+        assert_eq!(params.nous_id.as_str(), "alice");
         assert_eq!(params.source_session_id.as_deref(), Some("session-uuid"));
         assert_eq!(params.reason, "updated");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousSupersedeParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.nous_id, "alice");
+        assert_eq!(back.nous_id.as_str(), "alice");
         assert_eq!(back.source_session_id.as_deref(), Some("session-uuid"));
     }
 
@@ -2108,12 +2148,12 @@ mod tests {
         let json = r#"{"fact_id":"f-abc-123","nous_id":"alice","reason":"stale"}"#;
         let params: NousForgetParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.fact_id, "f-abc-123");
-        assert_eq!(params.nous_id, "alice");
+        assert_eq!(params.nous_id.as_str(), "alice");
         assert_eq!(params.reason, "stale");
 
         let out = serde_json::to_string(&params).unwrap();
         let back: NousForgetParams = serde_json::from_str(&out).unwrap();
-        assert_eq!(back.nous_id, "alice");
+        assert_eq!(back.nous_id.as_str(), "alice");
     }
 
     #[test]
@@ -2650,7 +2690,7 @@ mod tests {
 
         let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             fact_id: "f-target-1".to_owned(),
             content: "verified by external source".to_owned(),
             source_session_id: Some("session-annotation-1".to_owned()),
@@ -2703,7 +2743,7 @@ mod tests {
 
         let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             fact_id: "f-bob-1".to_owned(),
             content: "verified by external source".to_owned(),
             source_session_id: None,
@@ -2731,7 +2771,7 @@ mod tests {
 
         let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             fact_id: "f-target-forgotten".to_owned(),
             content: "verified by external source".to_owned(),
             source_session_id: None,
@@ -2760,7 +2800,7 @@ mod tests {
 
         let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousAnnotateParams {
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             fact_id: "f-target-superseded".to_owned(),
             content: "verified by external source".to_owned(),
             source_session_id: None,
@@ -2799,7 +2839,7 @@ mod tests {
         let params = NousSupersedeParams {
             old_fact_id: "f-old-1".to_owned(),
             new_fact_id: "f-new-1".to_owned(),
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             source_session_id: Some("session-supersede-1".to_owned()),
             reason: "updated".to_owned(),
         };
@@ -2861,7 +2901,7 @@ mod tests {
         let params = NousSupersedeParams {
             old_fact_id: "f-old-bob".to_owned(),
             new_fact_id: "f-new-alice".to_owned(),
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             source_session_id: None,
             reason: "updated".to_owned(),
         };
@@ -2903,7 +2943,7 @@ mod tests {
         let params = NousSupersedeParams {
             old_fact_id: "f-old-forgotten".to_owned(),
             new_fact_id: "f-new-for-forgotten".to_owned(),
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             source_session_id: None,
             reason: "updated".to_owned(),
         };
@@ -2943,7 +2983,7 @@ mod tests {
         let params = NousSupersedeParams {
             old_fact_id: "f-old-superseded".to_owned(),
             new_fact_id: "f-new-for-superseded".to_owned(),
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             source_session_id: None,
             reason: "updated".to_owned(),
         };
@@ -2971,7 +3011,7 @@ mod tests {
         let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
         let params = NousForgetParams {
             fact_id: "f-bob-1".to_owned(),
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             reason: "stale".to_owned(),
         };
         let result = server.nous_forget(Parameters(params)).await;
@@ -2996,7 +3036,7 @@ mod tests {
         let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
         let params = NousForgetParams {
             fact_id: "f-forget-reason".to_owned(),
-            nous_id: "alice".to_owned(),
+            nous_id: valid_nous_id("alice"),
             reason: "privcy".to_owned(),
         };
         assert_invalid_input_contains(
