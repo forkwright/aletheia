@@ -242,6 +242,23 @@ fn parse_sensitivity(
     }
 }
 
+/// Allowed `ForgetReason` strings accepted by `nous_forget`.
+const FORGET_REASON_NAMES: &str =
+    "user_requested, outdated, incorrect, privacy, stale, superseded, contradicted";
+
+/// Parse a forget reason strictly, rejecting unknown values.
+fn parse_forget_reason(raw: &str) -> crate::error::Result<mneme::knowledge::ForgetReason> {
+    raw.parse().map_err(|e: String| {
+        InvalidInputSnafu {
+            message: format!(
+                "invalid forget reason '{raw}': {e}; allowed: {}",
+                FORGET_REASON_NAMES
+            ),
+        }
+        .build()
+    })
+}
+
 /// Apply project/scope/visibility/sensitivity filters to recall results.
 fn matches_scope_filters(
     result: &mneme::knowledge::RecallResult,
@@ -1529,6 +1546,7 @@ impl MemoryServer {
         let fact_id_str = params.fact_id.clone();
         let reason_str = params.reason.clone();
         let owner_nous_id = params.nous_id.clone();
+        let forget_reason = parse_forget_reason(&reason_str)?;
 
         let forgotten_at = self
             .run_blocking(move |store| {
@@ -1559,15 +1577,6 @@ impl MemoryServer {
                     }
                     .build());
                 }
-
-                // Map the string reason to a ForgetReason enum
-                let forget_reason = match reason_str.to_lowercase().as_str() {
-                    "outdated" => mneme::knowledge::ForgetReason::Outdated,
-                    "incorrect" => mneme::knowledge::ForgetReason::Incorrect,
-                    "privacy" => mneme::knowledge::ForgetReason::Privacy,
-                    "stale" => mneme::knowledge::ForgetReason::Stale,
-                    _ => mneme::knowledge::ForgetReason::UserRequested,
-                };
 
                 let forgotten_fact =
                     forget_fact_with_current_schema(&store, &fact_id, forget_reason)?;
@@ -1775,6 +1784,13 @@ mod tests {
         let out = serde_json::to_string(&params).unwrap();
         let back: NousForgetParams = serde_json::from_str(&out).unwrap();
         assert_eq!(back.nous_id, "alice");
+    }
+
+    #[test]
+    fn nous_forget_rejects_unknown_reason() {
+        let err = parse_forget_reason("privcy").expect_err("typo should fail");
+        assert!(err.to_string().contains("privcy"));
+        assert!(err.to_string().contains("allowed:"));
     }
 
     #[test]
