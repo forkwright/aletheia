@@ -55,7 +55,7 @@ pub struct NousSearchParams {
 // kanon:ignore RUST/no-debug-derive-on-public-types — contains only scope filters; no secrets
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousListTopicsParams {
-    /// Optional project partition filter.
+    /// Optional project partition filter (64-character SHA-256 hex).
     #[serde(default)]
     pub project_id: Option<String>,
     /// Optional memory scope filter.
@@ -73,7 +73,7 @@ pub struct NousListTopicsParams {
 // kanon:ignore RUST/no-debug-derive-on-public-types — contains only scope filters; no secrets
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct NousStatsParams {
-    /// Optional project partition filter.
+    /// Optional project partition filter (64-character SHA-256 hex).
     #[serde(default)]
     pub project_id: Option<String>,
     /// Optional memory scope filter.
@@ -97,7 +97,7 @@ pub struct NousNeighborsParams {
     /// ID of the seed fact whose entity neighbors should be returned.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
-    /// Optional project partition filter.
+    /// Optional project partition filter (64-character SHA-256 hex).
     #[serde(default)]
     pub project_id: Option<String>,
     /// Optional memory scope filter.
@@ -243,6 +243,22 @@ fn parse_sensitivity(
     }
 }
 
+fn parse_project_id(
+    raw: Option<&str>,
+) -> crate::error::Result<Option<mneme::workspace::ProjectId>> {
+    match raw {
+        Some(s) if !s.trim().is_empty() => mneme::workspace::ProjectId::from_sha256_hex(s)
+            .map(Some)
+            .map_err(|e| {
+                InvalidInputSnafu {
+                    message: format!("invalid project_id filter: {e}"),
+                }
+                .build()
+            }),
+        _ => Ok(None),
+    }
+}
+
 fn parse_optional_source_session_id(raw: Option<&str>) -> crate::error::Result<Option<String>> {
     match raw {
         Some(s) if s.trim().is_empty() => Err(InvalidInputSnafu {
@@ -275,16 +291,13 @@ fn parse_forget_reason(raw: &str) -> crate::error::Result<ForgetReason> {
 /// Apply project/scope/visibility/sensitivity filters to recall results.
 fn matches_scope_filters(
     result: &mneme::knowledge::RecallResult,
-    project_id: Option<&str>,
+    project_id: Option<&mneme::workspace::ProjectId>,
     scope: Option<mneme::knowledge::MemoryScope>,
     min_visibility: Option<mneme::knowledge::Visibility>,
     max_sensitivity: Option<mneme::knowledge::FactSensitivity>,
 ) -> bool {
     if let Some(expected) = project_id {
-        let matches = result
-            .project_id
-            .as_ref()
-            .is_some_and(|p| p.as_str() == expected);
+        let matches = result.project_id.as_ref().is_some_and(|p| p == expected);
         if !matches {
             return false;
         }
@@ -667,7 +680,7 @@ impl MemoryServer {
         let requester = self.requester_nous_id()?.to_owned();
 
         let query = params.query.clone();
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -688,7 +701,7 @@ impl MemoryServer {
                 results.retain(|r| {
                     matches_scope_filters(
                         r,
-                        project_id.as_deref(),
+                        project_id.as_ref(),
                         scope,
                         min_visibility,
                         max_sensitivity,
@@ -745,7 +758,7 @@ impl MemoryServer {
         let requester = self.requester_nous_id()?.to_owned();
 
         let fact_id = params.fact_id.clone();
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -798,7 +811,7 @@ impl MemoryServer {
                         visibility: seed_fact.visibility,
                         source_count: 0,
                     },
-                    project_id.as_deref(),
+                    project_id.as_ref(),
                     scope,
                     min_visibility,
                     max_sensitivity,
@@ -925,7 +938,7 @@ impl MemoryServer {
         // identity, not to any model-supplied argument.
         let requester = self.requester_nous_id()?.to_owned();
 
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -950,7 +963,7 @@ impl MemoryServer {
                             visibility: row.visibility,
                             source_count: 0,
                         },
-                        project_id.as_deref(),
+                        project_id.as_ref(),
                         scope,
                         min_visibility,
                         max_sensitivity,
@@ -1026,7 +1039,7 @@ impl MemoryServer {
             None
         };
         let store_path_redacted = self.store_path.is_some() && exposed_store_path.is_none();
-        let project_id = params.project_id.clone().filter(|s| !s.is_empty());
+        let project_id = parse_project_id(params.project_id.as_deref())?;
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
         let max_sensitivity = parse_sensitivity(params.max_sensitivity.as_deref())?;
@@ -1052,7 +1065,7 @@ impl MemoryServer {
                             visibility: row.visibility,
                             source_count: 0,
                         },
-                        project_id.as_deref(),
+                        project_id.as_ref(),
                         scope,
                         min_visibility,
                         max_sensitivity,
@@ -1999,6 +2012,62 @@ mod tests {
         assert!(
             result.is_err(),
             "read tools must fail closed when no caller identity is bound"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_tools_reject_invalid_project_id_filters() {
+        let store = open_store();
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+
+        assert_invalid_input_contains(
+            server
+                .nous_search(Parameters(NousSearchParams {
+                    query: "dispatch".to_owned(),
+                    limit: Some(10),
+                    project_id: Some("not-a-project-id".to_owned()),
+                    scope: None,
+                    min_visibility: None,
+                    max_sensitivity: None,
+                }))
+                .await,
+            "invalid project_id filter: project ID must be 64 hex characters",
+        );
+        assert_invalid_input_contains(
+            server
+                .nous_neighbors(Parameters(NousNeighborsParams {
+                    fact_id: "f-missing".to_owned(),
+                    project_id: Some("not-a-project-id".to_owned()),
+                    scope: None,
+                    min_visibility: None,
+                    max_sensitivity: None,
+                }))
+                .await,
+            "invalid project_id filter: project ID must be 64 hex characters",
+        );
+        assert_invalid_input_contains(
+            server
+                .nous_list_topics(Parameters(NousListTopicsParams {
+                    project_id: Some("not-a-project-id".to_owned()),
+                    scope: None,
+                    min_visibility: None,
+                    max_sensitivity: None,
+                }))
+                .await,
+            "invalid project_id filter: project ID must be 64 hex characters",
+        );
+        assert_invalid_input_contains(
+            server
+                .nous_stats(Parameters(NousStatsParams {
+                    project_id: Some("not-a-project-id".to_owned()),
+                    scope: None,
+                    min_visibility: None,
+                    max_sensitivity: None,
+                    include_store_path: None,
+                }))
+                .await,
+            "invalid project_id filter: project ID must be 64 hex characters",
         );
     }
 
