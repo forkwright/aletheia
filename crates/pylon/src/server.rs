@@ -92,6 +92,15 @@ pub enum ServerError {
 
 /// Start the HTTP gateway and block until shutdown.
 ///
+/// # WARNING: gateway-only test harness
+///
+/// This entry point constructs empty provider and tool registries and a default
+/// nous agent. It is intentionally **not** the production Aletheia runtime.
+/// Production servers must assemble runtime state through the binary crate
+/// (`aletheia server`) and serve the resulting router with
+/// `into_make_service_with_connect_info` so peer identity, registered tools, and
+/// configured providers are available.
+///
 /// # Errors
 ///
 /// Returns [`ServerError::Validation`] if the instance directory layout is invalid.
@@ -110,6 +119,7 @@ pub enum ServerError {
 /// until the OS delivers a shutdown signal; dropping it at that point skips the
 /// SIGHUP-handler drain and `shutdown_readonly` call, which may leave actor tasks
 /// running until the runtime exits.
+#[deprecated = "Use the production `aletheia server` path instead; pylon::server::run is a gateway-only test harness with empty registries"]
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
@@ -124,6 +134,11 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     let provider_registry = Arc::new(ProviderRegistry::new());
     let tool_registry = Arc::new(ToolRegistry::new());
+
+    // WHY(#4556): pylon::server::run is a gateway-only test harness. Empty
+    // registries would be silently served as a production-looking runtime, so
+    // emit a loud warning at startup documenting the limitation.
+    warn_if_gateway_test_harness(&provider_registry, &tool_registry);
 
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
@@ -240,6 +255,26 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     state.nous_manager.shutdown_readonly().await;
     info!("pylon shutdown complete");
     Ok(())
+}
+
+/// Warn when pylon's standalone entry point is about to serve an empty,
+/// production-looking runtime.
+///
+/// WHY(#4556): `pylon::server::run` builds empty provider and tool registries.
+/// Returning `true` lets tests assert that the regression guard fires instead of
+/// silently presenting an unconfigured runtime to callers.
+fn warn_if_gateway_test_harness(
+    provider_registry: &hermeneus::provider::ProviderRegistry,
+    tool_registry: &organon::registry::ToolRegistry,
+) -> bool {
+    if provider_registry.providers().is_empty() && tool_registry.definitions().is_empty() {
+        warn!(
+            "pylon::server::run is serving a gateway-only test harness: no providers or tools are registered"
+        );
+        true
+    } else {
+        false
+    }
 }
 
 fn build_auth_state(
@@ -601,6 +636,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(deprecated, reason = "test exercises the deprecated gateway-only harness")]
     async fn run_fails_on_malformed_config() {
         let instance = tempfile::tempdir().unwrap_or_else(|e| panic!("create tempdir: {e}"));
         for dir in ["config", "data", "nous"] {
@@ -630,6 +666,16 @@ mod tests {
         assert!(
             source.to_string().contains("failed to parse TOML config"),
             "source should preserve parse failure: {source}"
+        );
+    }
+
+    #[test]
+    fn gateway_test_harness_warning_fires_for_empty_registries() {
+        let providers = hermeneus::provider::ProviderRegistry::new();
+        let tools = organon::registry::ToolRegistry::new();
+        assert!(
+            warn_if_gateway_test_harness(&providers, &tools),
+            "empty registries must be detected as the gateway-only test harness"
         );
     }
 }
