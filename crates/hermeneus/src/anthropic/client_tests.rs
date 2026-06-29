@@ -98,7 +98,7 @@ fn from_config_empty_api_key() {
 fn from_config_rejects_spoofed_loopback_without_leaking_credentials() {
     let config = ProviderConfig {
         api_key: Some(SecretString::from("sk-secret-5055")),
-        base_url: Some("http://operator:url-secret@127.0.0.1.evil.example/v1".to_owned()),
+        base_url: Some("http://operator:url-secret@127.0.0.1.evil.example/v1".to_owned()), // pii-allow: test fixture asserting credential non-leak
         ..ProviderConfig::default()
     };
     let err = AnthropicProvider::from_config(&config).expect_err("spoofed host must fail");
@@ -124,7 +124,7 @@ fn with_credential_provider_rejects_spoofed_loopback_without_leaking_credentials
     use std::sync::Arc;
 
     let config = ProviderConfig {
-        base_url: Some("http://operator:url-secret@localhost.evil.example/v1".to_owned()),
+        base_url: Some("http://operator:url-secret@localhost.evil.example/v1".to_owned()), // pii-allow: test fixture asserting credential non-leak
         ..ProviderConfig::default()
     };
     let credential_provider = Arc::new(StaticCredentialProvider {
