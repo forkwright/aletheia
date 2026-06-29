@@ -1,0 +1,219 @@
+# Project repo paths -- expanded at runtime ($HOME, ~, $KANON_ROOT supported).
+
+[projects.aletheia]
+repo_dir = "$HOME/dev/aletheia"
+gh_repo = "forkwright/aletheia"
+prefix = "al"
+
+[projects.harmonia]
+repo_dir = "$HOME/dev/harmonia"
+gh_repo = "forkwright/harmonia"
+prefix = "hm"
+
+[projects.akroasis]
+repo_dir = "$HOME/dev/akroasis"
+gh_repo = "forkwright/akroasis"
+prefix = "ak"
+
+# Vehicle-build knowledge repo (1997 Dodge Ram 12V Cummins); agent-first docs, no cargo gates.
+[projects.akron]
+repo_dir = "$HOME/dev/akron"
+gh_repo = "forkwright/akron"
+prefix = "an"
+
+[projects.kanon]
+repo_dir = "$KANON_ROOT"
+gh_repo = "forkwright/kanon"
+prefix = "kn"
+
+[projects.thumos]
+repo_dir = "$HOME/dev/thumos"
+gh_repo = "forkwright/thumos"
+prefix = "th"
+
+[projects.hamma]
+repo_dir = "$HOME/dev/hamma"
+prefix = "ha"
+
+[projects.gnomon]
+repo_dir = "$HOME/dev/gnomon"
+gh_repo = "forkwright/gnomon"
+prefix = "gn"
+
+[projects.dioptron]
+repo_dir = "$HOME/dev/dioptron"
+gh_repo = "forkwright/dioptron"
+prefix = "di"
+
+[projects.arche]
+repo_dir = "$HOME/dev/arche"
+gh_repo = "forkwright/arche"
+prefix = "ac"
+
+[projects.chalkeion]
+repo_dir = "$HOME/dev/chalkeion"
+prefix = "ch"
+
+[projects.theatron]
+repo_dir = "$HOME/dev/theatron"
+gh_repo = "forkwright/theatron"
+prefix = "te"
+
+[projects.typikon]
+repo_dir = "$HOME/dev/typikon"
+gh_repo = "forkwright/typikon"
+prefix = "ty"
+
+[projects.epistole]
+repo_dir = "$HOME/dev/epistole"
+gh_repo = "forkwright/epistole"
+prefix = "ep"
+
+[projects.ardent-site]
+repo_dir = "$HOME/dev/ardent-site"
+gh_repo = "forkwright/ardent-site"
+prefix = "ar"
+
+[projects.coherence-of-aporia]
+repo_dir = "$HOME/dev/coherence-of-aporia"
+gh_repo = "forkwright/coherence-of-aporia"
+prefix = "co"
+
+[projects.logismos]
+repo_dir = "$HOME/dev/logismos"
+gh_repo = "forkwright/logismos"
+prefix = "lo"
+
+[projects.heurema]
+repo_dir = "$HOME/dev/heurema"
+prefix = "he"
+
+[projects.mneme]
+repo_dir = "$HOME/dev/mneme"
+prefix = "mn"
+
+[projects.pinax]
+repo_dir = "$HOME/dev/pinax"
+prefix = "pi"
+
+[projects.zetesis]
+repo_dir = "$HOME/dev/zetesis"
+gh_repo = "forkwright/zetesis"
+prefix = "ze"
+
+[projects.daimon]
+repo_dir = "$HOME/dev/daimon"
+prefix = "da"
+
+# LLM proxy for OAuth token lifecycle management and multi-key resilience.
+# WHY: Eliminates OAuth token expiry mid-dispatch (#359). The proxy's
+# BackgroundRefresher keeps tokens valid continuously. CC sessions pointed
+# at the proxy never see auth failures from expired tokens.
+# Set via env: KANON_PROVIDER__PROXY_URL, KANON_PROVIDER__PROXY_API_KEY
+[provider]
+# proxy_api_key -- set via KANON_PROVIDER__PROXY_API_KEY env var (not committed)
+
+[dispatch]
+model = "claude-sonnet-4-6"
+model_qa = "claude-sonnet-4-6"
+# NOTE: `max_parallel` is overridden by the `KANON_DISPATCH_MAX_PARALLEL`
+# env var when set; env wins so per-host limits are not baked into committed config
+# and accidentally raised by a config change.
+max_parallel = 10
+target_dir = "/data/target"
+worktree_base = "/data/worktrees"
+
+[gate]
+skip = []
+timeout = 2400
+max_parallel_cargo = 3
+jobs_per_process = 0
+feature_checks = ["test-core"]
+msrv_toolchain = "stable"
+exclude_packages = []
+
+[gate.nightly]
+enabled = false
+schedule = "0 2 * * *"
+mode = "full"
+
+[tooling]
+gate_full_tooling_coverage = false
+auto_issue_max_per_run = 5
+# per-host script dirs come from the box-local config override (KANON_CONFIG), never committed
+operator_script_dirs = []
+
+[tooling.cli_only]
+commands = []
+
+[tooling.mcp_only]
+tools = []
+
+[tooling.script_paths]
+paths = []
+tracking_issues = {}
+
+[features]
+cron_scheduler = false
+progress_streaming = false
+tool_whitelisting = false
+coordinator_fanout = false
+microcompaction = false
+# Remote feature flag config -- fetched and cached in state_dir.
+# Supports file:// and http(s):// URLs (curl must be on $PATH).
+# remote_url = "file:///path/to/remote_flags.json"
+# remote_ttl_secs = 300
+
+[steward]
+ci_mode = "github"
+# Keep in sync with the main branch protection required status contexts.
+required_checks = ["cargo audit", "cargo deny", "gate-attestation"]
+
+[steward.reactions]
+fix_ci = true
+auto_merge = true
+stale_close = false
+stale_after_days = 14
+
+[cron]
+enabled = false
+tick_interval_secs = 60
+jitter_percent = 0.10
+jitter_max_secs = 900
+age_out_days = 7
+
+[cleanup]
+worktree_max_age_hours = 48
+pid_max_age_hours = 24
+prune_target_dir = true
+target_dir_max_age_days = 7
+
+# Worktree pool configuration
+[worktree]
+stale_threshold_secs = 86400
+
+# Triage and deduplication configuration
+[triage]
+skip_labels = ["wontfix", "duplicate", "question", "invalid"]
+blast_radius_threshold = 5
+corrective_blast_threshold = 3
+directive_min_turns = 5
+bus_capacity = 1024
+
+# Affinity scoring weights for dispatch routing
+[dispatch.affinity_weights]
+crate_weight = 0.4
+file_weight = 0.3
+project_weight = 0.2
+
+# Fix pipeline configuration
+[steward.fix]
+ci_poll_timeout_secs = 300
+ci_poll_interval_secs = 30
+max_concurrent_fixes = 8
+
+# LLM review merge gate (forge#164).
+# "stub" (default) -- always approves; "kanon-assist" -- calls localhost:8089.
+# Set via env: KANON_LLM_REVIEW_PROVIDER
+[llm_review]
+provider = "stub"
