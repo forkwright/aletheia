@@ -4,10 +4,10 @@
 //! (`pandoc -f json`). The mapping is near-identity per B-006 § 1, with the
 //! typed note/cite/math/raw-block forms carried directly into the AST.
 
+use poiesis_core::{Block, Document, Image as DocImage, NoteKind, RichText, Span};
 use serde_json::{Value, json};
 
 use super::error::PandocError;
-use poiesis_core::{Block, Document, Image as DocImage, NoteKind, RichText, Span};
 
 /// Serialize a `Document` to Pandoc JSON AST bytes.
 ///
@@ -17,7 +17,7 @@ use poiesis_core::{Block, Document, Image as DocImage, NoteKind, RichText, Span}
 /// NOTE: the current AST is assembled entirely from `serde_json::Value`, whose
 /// serialization is structurally valid by construction. The `Result` return
 /// still preserves a traceable error path if that invariant changes.
-pub fn document_to_pandoc_json(doc: &Document) -> Result<Vec<u8>, PandocError> {
+pub(crate) fn document_to_pandoc_json(doc: &Document) -> Result<Vec<u8>, PandocError> {
     let mut figure_index = 0usize;
     let blocks: Vec<Value> = doc
         .content
@@ -258,8 +258,9 @@ fn note_kind_to_attr(kind: NoteKind) -> &'static str {
     reason = "test assertions on known-good JSON"
 )]
 mod tests {
-    use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText};
+
+    use super::*;
 
     fn minimal_doc() -> Document {
         Document {

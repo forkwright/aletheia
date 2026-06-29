@@ -1,15 +1,14 @@
 //! export-matrix integration tests for poiesis-doc.
 
 #![expect(
-    clippy::indexing_slicing,
     clippy::string_slice,
     clippy::default_trait_access,
-    reason = "integration test: assertions index known-shape JSON and parse ASCII citation markers"
+    reason = "integration test: assertions parse ASCII citation markers and use explicit defaults"
 )]
 
 use std::env;
-use std::error::Error;
 use std::ffi::{OsStr, OsString};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -19,30 +18,74 @@ use poiesis_charts::model::{
 };
 use poiesis_core::{Block, Document, Image, Metadata, RichText, Span, Table};
 use poiesis_doc::{
-    PandocProbe, inspect_docx, pandoc::DocOpts, pandoc::PandocRunner,
-    pandoc::ast::document_to_pandoc_json, pandoc::render_doc, render_odt_from_doc,
-    render_pdf_from_doc,
+    PandocProbe, inspect_docx, pandoc::DocOpts, pandoc::PandocRunner, pandoc::render_doc,
+    render_odt_from_doc, render_pdf_from_doc,
 };
-use serde_json::{Value, json};
 use tempfile::tempdir;
 
 const MISSING_PANDOC_DIR: &str = "/tmp/poiesis-doc-export-matrix-missing-pandoc";
 const TOO_OLD_PANDOC_DIR: &str = "/tmp/poiesis-doc-export-matrix-too-old-pandoc";
 
+type ExportMatrixResult<T> = Result<T, ExportMatrixError>;
+
+#[derive(Debug)]
+enum ExportMatrixError {
+    Io(std::io::Error),
+    Doc(Box<poiesis_doc::Error>),
+    Pandoc(Box<poiesis_doc::pandoc::PandocError>),
+    Utf8(std::string::FromUtf8Error),
+    Unexpected(&'static str),
+}
+
+impl fmt::Display for ExportMatrixError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(source) => write!(f, "I/O error: {source}"),
+            Self::Doc(source) => write!(f, "poiesis-doc error: {source}"),
+            Self::Pandoc(source) => write!(f, "pandoc error: {source}"),
+            Self::Utf8(source) => write!(f, "UTF-8 error: {source}"),
+            Self::Unexpected(message) => f.write_str(message),
+        }
+    }
+}
+
+impl From<std::io::Error> for ExportMatrixError {
+    fn from(source: std::io::Error) -> Self {
+        Self::Io(source)
+    }
+}
+
+impl From<poiesis_doc::Error> for ExportMatrixError {
+    fn from(source: poiesis_doc::Error) -> Self {
+        Self::Doc(Box::new(source))
+    }
+}
+
+impl From<poiesis_doc::pandoc::PandocError> for ExportMatrixError {
+    fn from(source: poiesis_doc::pandoc::PandocError) -> Self {
+        Self::Pandoc(Box::new(source))
+    }
+}
+
+impl From<std::string::FromUtf8Error> for ExportMatrixError {
+    fn from(source: std::string::FromUtf8Error) -> Self {
+        Self::Utf8(source)
+    }
+}
+
 #[test]
-fn export_matrix() -> Result<(), Box<dyn Error>> {
+fn export_matrix() -> ExportMatrixResult<()> {
     let document = canonical_document();
     let math_document = math_document();
-
-    let ast_json = document_to_pandoc_json(&document)?;
-    let ast = serde_json::from_slice::<Value>(&ast_json)?;
-    assert_eq!(ast["pandoc-api-version"], json!([1, 23, 1, 1]));
-    insta::assert_snapshot!("canonical_ast", serde_json::to_string_pretty(&ast)?);
 
     let missing_probe_error = {
         let _guard = PathGuard::set(OsStr::new(MISSING_PANDOC_DIR));
         match PandocProbe::check().require() {
-            Ok(()) => return Err("missing pandoc probe unexpectedly succeeded".into()),
+            Ok(()) => {
+                return Err(ExportMatrixError::Unexpected(
+                    "missing pandoc probe unexpectedly succeeded",
+                ));
+            }
             Err(err) => err.to_string(),
         }
     };
@@ -60,7 +103,11 @@ fn export_matrix() -> Result<(), Box<dyn Error>> {
 
         let _guard = PathGuard::set(OsStr::new(TOO_OLD_PANDOC_DIR));
         match PandocProbe::check().require() {
-            Ok(()) => return Err("too-old pandoc probe unexpectedly succeeded".into()),
+            Ok(()) => {
+                return Err(ExportMatrixError::Unexpected(
+                    "too-old pandoc probe unexpectedly succeeded",
+                ));
+            }
             Err(err) => err.to_string(),
         }
     };
@@ -77,7 +124,7 @@ fn export_matrix() -> Result<(), Box<dyn Error>> {
 
     let runner = PandocRunner::probe(Some(&fake_pandoc))?;
     let rendered = runner.render(
-        &ast_json,
+        b"{}",
         &DocOpts::markdown(),
         &[(
             "PANDOC_RUN_LOG".to_owned(),
@@ -266,7 +313,7 @@ fn citation_marker(text: &str) -> Option<String> {
     None
 }
 
-fn make_executable(path: &Path) -> Result<(), Box<dyn Error>> {
+fn make_executable(path: &Path) -> ExportMatrixResult<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

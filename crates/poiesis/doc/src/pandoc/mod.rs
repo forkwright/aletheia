@@ -13,20 +13,25 @@
 //! `pandoc` Rust crate as a dependency. See B-006 § GPL-clean boundary.
 
 /// AST serialization: `Document` → Pandoc JSON AST.
-pub mod ast;
+pub(crate) mod ast;
 /// Error types for the Pandoc subprocess wrapper.
 pub mod error;
 /// Figure helpers and chart rendering for `Image` payloads.
 pub(crate) mod figure;
+mod typst;
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
-use crate::process::{CommandOutputError, output_with_timeout};
-use crate::raster;
 use poiesis_core::Document;
 use tracing::instrument;
+
+use crate::process::{CommandOutputError, command, output_with_timeout};
+use crate::raster;
 
 pub use error::PandocError;
 
@@ -209,7 +214,7 @@ impl PandocRunner {
             if !candidate.exists() {
                 continue;
             }
-            let mut cmd = Command::new(candidate);
+            let mut cmd = command(candidate);
             cmd.arg("--version");
             match output_with_timeout(&mut cmd, PANDOC_PROBE_TIMEOUT) {
                 Ok(output) if output.status.success() => {
@@ -232,7 +237,9 @@ impl PandocRunner {
                 Err(error @ CommandOutputError::Timeout { .. }) => {
                     return Err(pandoc_process_error(error, "probe"));
                 }
-                Ok(_) | Err(_) => {}
+                Ok(_) | Err(_) => {
+                    // Keep probing later candidates after bad version output or I/O failure.
+                }
             }
         }
 
@@ -267,7 +274,7 @@ impl PandocRunner {
         let tmp_path = tmp.path().to_path_buf();
 
         let fmt = opts.format.pandoc_flag();
-        let mut cmd = Command::new(&self.bin);
+        let mut cmd = command(&self.bin);
         cmd.env("LC_ALL", "C")
             .arg("-f")
             .arg("json")
@@ -286,11 +293,11 @@ impl PandocRunner {
             cmd.arg("--reference-doc").arg(ref_doc);
         }
 
-        match opts.format {
-            OutputFormat::Html | OutputFormat::Latex | OutputFormat::Epub => {
-                cmd.arg("--standalone");
-            }
-            _ => {}
+        if matches!(
+            opts.format,
+            OutputFormat::Html | OutputFormat::Latex | OutputFormat::Epub
+        ) {
+            cmd.arg("--standalone");
         }
 
         if matches!(opts.format, OutputFormat::Html) {
@@ -351,7 +358,7 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
     let use_typst = matches!(opts.format, OutputFormat::Pdf) && pdf_engine.is_none();
 
     if use_typst {
-        return render_doc_via_typst(doc);
+        return typst::render_doc_via_typst(doc);
     }
 
     let runner = PandocRunner::probe(None)?;
@@ -572,15 +579,20 @@ fn lua_string_literal(value: &str) -> String {
             '\t' => escaped.push_str("\\t"),
             '\u{0008}' => escaped.push_str("\\b"),
             '\u{000C}' => escaped.push_str("\\f"),
-            ch if ch.is_control() => {
-                use std::fmt::Write as _;
-                let _ = write!(escaped, "\\x{:02X}", u32::from(ch));
-            }
+            ch if ch.is_control() => push_lua_hex_escape(&mut escaped, ch),
             ch => escaped.push(ch),
         }
     }
     escaped.push('"');
     escaped
+}
+
+fn push_lua_hex_escape(escaped: &mut String, ch: char) {
+    use std::fmt::Write as _;
+
+    if let Err(error) = write!(escaped, "\\x{:02X}", u32::from(ch)) {
+        unreachable!("writing to a String must not fail: {error}");
+    }
 }
 
 fn collect_fact_ids_from_block(
@@ -609,7 +621,9 @@ fn collect_fact_ids_from_block(
                 collect_fact_ids_from_rich_text(&item.content, seen, ordered_fact_ids);
             }
         }
-        Block::DisplayMath(_) | Block::RawBlock { .. } | Block::Image(_) | Block::PageBreak => {}
+        Block::DisplayMath(_) | Block::RawBlock { .. } | Block::Image(_) | Block::PageBreak => {
+            // These block kinds do not contain rich-text citation spans.
+        }
     }
 }
 
@@ -626,642 +640,5 @@ fn collect_fact_ids_from_rich_text(
         {
             ordered_fact_ids.push(fact_id.clone());
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum TypstEscapeContext {
-    Markup,
-    StringLiteral,
-}
-
-fn typst_escape(text: &str, context: TypstEscapeContext) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\\' => escaped.push_str("\\\\"),
-            '"' => escaped.push_str("\\\""),
-            '#' | '*' | '_' | '[' | ']' | '$' | '@' | '<' | '>' | '='
-                if matches!(context, TypstEscapeContext::Markup) =>
-            {
-                escaped.push('\\');
-                escaped.push(ch);
-            }
-            '#' | '*' | '_' | '[' | ']' | '$' | '@' | '<' | '>' | '=' => {
-                escaped.push_str(typst_char_escape(ch));
-            }
-            _ => escaped.push(ch),
-        }
-    }
-    escaped
-}
-
-fn typst_char_escape(ch: char) -> &'static str {
-    match ch {
-        '#' => "\\u{23}",
-        '*' => "\\u{2a}",
-        '_' => "\\u{5f}",
-        '[' => "\\u{5b}",
-        ']' => "\\u{5d}",
-        '$' => "\\u{24}",
-        '@' => "\\u{40}",
-        '<' => "\\u{3c}",
-        '>' => "\\u{3e}",
-        '=' => "\\u{3d}",
-        _ => unreachable!("only Typst punctuation is converted to string escapes"),
-    }
-}
-
-fn render_typst_rich_text(rt: &poiesis_core::RichText) -> String {
-    use poiesis_core::Span;
-
-    rt.spans
-        .iter()
-        .map(|s| match s {
-            Span::Plain(t) => typst_escape(t, TypstEscapeContext::Markup),
-            Span::Bold(t) => format!("*{}*", typst_escape(t, TypstEscapeContext::Markup)),
-            Span::Italic(t) => format!("_{}_", typst_escape(t, TypstEscapeContext::Markup)),
-            Span::Code(t) => format!(
-                "#raw(\"{}\")",
-                typst_escape(t, TypstEscapeContext::StringLiteral)
-            ),
-            Span::Cite(id) => typst_escape(id, TypstEscapeContext::Markup),
-            Span::Link { text, url } => format!(
-                "#link(\"{}\")[{}]",
-                typst_escape(url, TypstEscapeContext::StringLiteral),
-                typst_escape(text, TypstEscapeContext::Markup)
-            ),
-        })
-        .collect()
-}
-
-fn typst_source_from_doc(doc: &Document) -> String {
-    use poiesis_core::Block;
-    use std::fmt::Write as _;
-
-    let mut src = String::new();
-    src.push_str("#set page(paper: \"a4\", margin: 2cm)\n");
-    src.push_str("#set text(font: \"Liberation Sans\", size: 11pt)\n\n");
-    let _ = write!(
-        src,
-        "#align(center)[#text(18pt, weight: \"bold\")[{}]]\n\n",
-        typst_escape(&doc.metadata.title, TypstEscapeContext::Markup)
-    );
-    if let Some(author) = &doc.metadata.author {
-        let _ = write!(
-            src,
-            "#align(center)[#emph[{}]]\n#v(8pt)\n\n",
-            typst_escape(author, TypstEscapeContext::Markup)
-        );
-    }
-
-    for block in &doc.content {
-        match block {
-            Block::Heading { level, text } => {
-                let eq = "=".repeat(usize::from((*level).max(1)));
-                let _ = write!(src, "{eq} {}\n\n", render_typst_rich_text(text));
-            }
-            Block::Paragraph(text) => {
-                src.push_str(&render_typst_rich_text(text));
-                src.push_str("\n\n");
-            }
-            Block::Note(note) => {
-                let _ = writeln!(
-                    src,
-                    "*{}:* {}",
-                    note.kind.label(),
-                    render_typst_rich_text(&note.body)
-                );
-                src.push('\n');
-            }
-            Block::DisplayMath(expr) => {
-                let _ = write!(
-                    src,
-                    "${}$\n\n",
-                    typst_escape(expr, TypstEscapeContext::Markup)
-                );
-            }
-            Block::RawBlock { format, content } => {
-                let _ = writeln!(
-                    src,
-                    "[raw:{}] {}",
-                    typst_escape(format, TypstEscapeContext::Markup),
-                    typst_escape(content, TypstEscapeContext::Markup)
-                );
-                src.push('\n');
-            }
-            Block::PageBreak => src.push_str("#pagebreak()\n\n"),
-            Block::Table(t) => {
-                let n = t.headers.len().max(1);
-                let _ = writeln!(src, "#table(columns: {n},");
-                for h in &t.headers {
-                    let _ = writeln!(
-                        src,
-                        "  [*{}*],",
-                        typst_escape(h, TypstEscapeContext::Markup)
-                    );
-                }
-                for row in &t.rows {
-                    for cell in row {
-                        let _ = writeln!(src, "  [{}],", render_typst_rich_text(cell));
-                    }
-                }
-                src.push_str(")\n\n");
-            }
-            Block::List { ordered, items } => {
-                let cmd = if *ordered { "enum" } else { "list" };
-                let _ = writeln!(src, "#{cmd}(");
-                for item in items {
-                    let _ = writeln!(src, "  [{}],", render_typst_rich_text(&item.content));
-                }
-                src.push_str(")\n\n");
-            }
-            Block::Image(image) => {
-                // WARNING: the in-process Typst fast-lane cannot embed image bytes
-                // (TypstWorld wires only data.json); emit alt text as a visible
-                // placeholder rather than silently dropping the block.
-                let alt = if image.alt.trim().is_empty() {
-                    "untitled figure"
-                } else {
-                    image.alt.trim()
-                };
-                let alt_escaped = typst_escape(alt, TypstEscapeContext::Markup);
-                let _ = write!(
-                    src,
-                    "#figure(rect(width: 100%, stroke: 0.5pt)[#emph[Figure: {alt_escaped}]])\n\n"
-                );
-            }
-        }
-    }
-
-    src
-}
-
-fn render_doc_via_typst(doc: &Document) -> Result<Vec<u8>, PandocError> {
-    let src = typst_source_from_doc(doc);
-    poiesis_typst::render_typst(&src, &serde_json::json!({})).map_err(|e| {
-        PandocError::WriterFailed {
-            fmt: "pdf".to_owned(),
-            stderr: e.to_string(),
-        }
-    })
-}
-
-#[cfg(test)]
-#[expect(clippy::expect_used, reason = "test assertions")]
-mod tests {
-    use super::*;
-    use crate::{
-        inspect_docx, render_docx_from_doc, render_html_from_doc, render_latex_from_doc,
-        render_md_from_doc,
-    };
-    use poiesis_core::{Block, Document, Metadata, RichText};
-
-    fn simple_doc() -> Document {
-        Document {
-            metadata: Metadata {
-                title: "Test".to_owned(),
-                author: None,
-                created: None,
-            },
-            content: vec![Block::Paragraph(RichText::from("Hello."))],
-        }
-    }
-
-    fn cite_doc() -> Document {
-        use poiesis_core::Span;
-
-        Document {
-            metadata: Metadata {
-                title: "Citations".to_owned(),
-                author: None,
-                created: None,
-            },
-            content: vec![Block::Paragraph(RichText {
-                spans: vec![
-                    Span::Plain("See ".to_owned()),
-                    Span::Cite("fact-42".to_owned()),
-                    Span::Plain(" for details.".to_owned()),
-                ],
-            })],
-        }
-    }
-
-    fn warning_doc() -> Document {
-        use poiesis_core::{Note, NoteKind, Span};
-
-        Document {
-            metadata: Metadata {
-                title: "Warnings".to_owned(),
-                author: None,
-                created: None,
-            },
-            content: vec![Block::Note(Note {
-                kind: NoteKind::Warning,
-                body: RichText {
-                    spans: vec![Span::Plain("Mind the gap.".to_owned())],
-                },
-            })],
-        }
-    }
-
-    fn pandoc_available() -> bool {
-        which::which("pandoc").is_ok()
-    }
-
-    #[cfg(unix)]
-    fn write_executable_script(dir: &tempfile::TempDir, name: &str, script: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        let path = dir.path().join(name);
-        std::fs::write(&path, script).expect("write script");
-        let mut perms = std::fs::metadata(&path).expect("metadata").permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&path, perms).expect("chmod script");
-        path
-    }
-
-    #[test]
-    fn default_pdf_routes_to_typst() {
-        let doc = simple_doc();
-        let result = render_doc(&doc, &DocOpts::default_pdf());
-        match result {
-            Ok(bytes) => assert!(bytes.starts_with(b"%PDF"), "must be PDF"),
-            Err(PandocError::WriterFailed { fmt, .. }) if fmt == "pdf" => {
-                // Typst may fail if no font available in CI — acceptable skip
-            }
-            Err(e) => panic!("unexpected error: {e}"),
-        }
-    }
-
-    #[test]
-    fn docx_format_without_pandoc_returns_not_installed_or_fails() {
-        let doc = simple_doc();
-        let result = render_doc(&doc, &DocOpts::docx());
-        // In CI without pandoc, this must return NotInstalled — not a panic.
-        match result {
-            Ok(_) | Err(PandocError::NotInstalled { .. } | PandocError::WriterFailed { .. }) => {}
-            Err(e) => panic!("unexpected error variant: {e:?}"),
-        }
-    }
-
-    #[test]
-    fn output_format_flags() {
-        assert_eq!(OutputFormat::Docx.pandoc_flag(), "docx");
-        assert_eq!(OutputFormat::Odt.pandoc_flag(), "odt");
-        assert_eq!(OutputFormat::Markdown.pandoc_flag(), "gfm");
-        assert_eq!(OutputFormat::Latex.pandoc_flag(), "latex");
-        assert_eq!(OutputFormat::Html.pandoc_flag(), "html5");
-        assert_eq!(OutputFormat::Epub.pandoc_flag(), "epub3");
-    }
-
-    const TYPST_SPECIAL: &str = r#"\ # * _ [ ] $ @ < > = " ]"#;
-    const TYPST_MARKUP_ESCAPED: &str = r#"\\ \# \* \_ \[ \] \$ \@ \< \> \= \" \]"#;
-    const TYPST_STRING_ESCAPED: &str =
-        r#"\\ \u{23} \u{2a} \u{5f} \u{5b} \u{5d} \u{24} \u{40} \u{3c} \u{3e} \u{3d} \" \u{5d}"#;
-
-    fn typst_escape_fixture_doc() -> Document {
-        use poiesis_core::{Image, ListItem, Note, NoteKind, Span, Table};
-
-        let rich_text = RichText {
-            spans: vec![
-                Span::Plain(TYPST_SPECIAL.to_owned()),
-                Span::Bold(TYPST_SPECIAL.to_owned()),
-                Span::Italic(TYPST_SPECIAL.to_owned()),
-                Span::Code(TYPST_SPECIAL.to_owned()),
-                Span::Cite(TYPST_SPECIAL.to_owned()),
-                Span::Link {
-                    text: TYPST_SPECIAL.to_owned(),
-                    url: TYPST_SPECIAL.to_owned(),
-                },
-            ],
-        };
-        Document {
-            metadata: Metadata {
-                title: TYPST_SPECIAL.to_owned(),
-                author: Some(TYPST_SPECIAL.to_owned()),
-                created: None,
-            },
-            content: vec![
-                Block::Heading {
-                    level: 1,
-                    text: RichText::from(TYPST_SPECIAL),
-                },
-                Block::Paragraph(rich_text.clone()),
-                Block::Note(Note {
-                    kind: NoteKind::Warning,
-                    body: RichText::from(TYPST_SPECIAL),
-                }),
-                Block::DisplayMath(TYPST_SPECIAL.to_owned()),
-                Block::RawBlock {
-                    format: TYPST_SPECIAL.to_owned(),
-                    content: TYPST_SPECIAL.to_owned(),
-                },
-                Block::Table(Table {
-                    headers: vec![TYPST_SPECIAL.to_owned()],
-                    rows: vec![vec![rich_text.clone()]],
-                }),
-                Block::List {
-                    ordered: false,
-                    items: vec![ListItem {
-                        content: RichText::from(TYPST_SPECIAL),
-                    }],
-                },
-                Block::Image(Image {
-                    data: Vec::new(),
-                    mime: "image/png".to_owned(),
-                    alt: TYPST_SPECIAL.to_owned(),
-                }),
-            ],
-        }
-    }
-
-    fn assert_typst_source_escapes_user_content(source: &str) {
-        assert!(
-            !source.contains(TYPST_SPECIAL),
-            "raw user content must not appear in Typst source: {source}"
-        );
-        assert!(
-            source.contains(&format!(
-                "#text(18pt, weight: \"bold\")[{TYPST_MARKUP_ESCAPED}]"
-            )),
-            "title must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("#emph[{TYPST_MARKUP_ESCAPED}]")),
-            "author must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("= {TYPST_MARKUP_ESCAPED}")),
-            "heading must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("*{TYPST_MARKUP_ESCAPED}*")),
-            "bold span must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("_{TYPST_MARKUP_ESCAPED}_")),
-            "italic span must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("#raw(\"{TYPST_STRING_ESCAPED}\")")),
-            "code span must be escaped as a Typst string literal: {source}"
-        );
-        assert!(
-            source.contains(&format!(
-                "#link(\"{TYPST_STRING_ESCAPED}\")[{TYPST_MARKUP_ESCAPED}]"
-            )),
-            "link URL and text must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("${TYPST_MARKUP_ESCAPED}$")),
-            "display math must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!(
-                "[raw:{TYPST_MARKUP_ESCAPED}] {TYPST_MARKUP_ESCAPED}"
-            )),
-            "raw block format and content must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("[*{TYPST_MARKUP_ESCAPED}*]")),
-            "table headers must be escaped: {source}"
-        );
-        assert!(
-            source.contains(&format!("[Figure: {TYPST_MARKUP_ESCAPED}]")),
-            "image alt text must be escaped: {source}"
-        );
-    }
-
-    #[test]
-    fn typst_source_escapes_user_content() {
-        let source = typst_source_from_doc(&typst_escape_fixture_doc());
-        assert_typst_source_escapes_user_content(&source);
-    }
-
-    #[test]
-    fn embedded_lua_filters_materialize_for_each_render() {
-        let dir = tempfile::tempdir().expect("tmpdir");
-        let filters = materialize_default_lua_filters(dir.path()).expect("filters");
-
-        assert_eq!(filters.len(), 3);
-        for filter in &filters {
-            assert!(
-                filter.exists(),
-                "materialized filter must exist: {}",
-                filter.display()
-            );
-            assert_eq!(
-                filter.parent(),
-                Some(dir.path()),
-                "filter must live under the render tempdir"
-            );
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn writer_failure_preserves_stderr() {
-        let dir = tempfile::tempdir().expect("tmpdir");
-        let fake_pandoc = write_executable_script(
-            &dir,
-            "pandoc",
-            r#"#!/bin/sh
-if [ "$1" = "--version" ]; then
-  echo "pandoc 3.1.1"
-  exit 0
-fi
-echo "writer exploded" >&2
-exit 23
-"#,
-        );
-
-        let runner = PandocRunner::probe(Some(&fake_pandoc)).expect("probe");
-        let err = runner
-            .render(b"{}", &DocOpts::markdown(), &[])
-            .expect_err("render must fail");
-
-        match err {
-            PandocError::WriterFailed { stderr, .. } => {
-                assert!(
-                    stderr.contains("writer exploded"),
-                    "stderr must be preserved: {stderr}"
-                );
-            }
-            other => panic!("expected WriterFailed, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn citation_display_is_stable_across_docx_html_and_md() {
-        if !pandoc_available() {
-            return;
-        }
-
-        let doc = cite_doc();
-
-        let docx = render_docx_from_doc(&doc).expect("docx must render");
-        let docx_summary = inspect_docx(&docx).expect("docx must inspect");
-        let docx_text = docx_summary.paragraphs.join("\n");
-        assert!(
-            docx_text.contains("[1]"),
-            "docx output must preserve the citation number"
-        );
-
-        let html = String::from_utf8(render_html_from_doc(&doc).expect("html must render"))
-            .expect("html must be utf-8");
-        assert!(
-            html.contains("[1]"),
-            "html output must preserve the citation number"
-        );
-
-        let md = String::from_utf8(render_md_from_doc(&doc).expect("md must render"))
-            .expect("markdown must be utf-8");
-        let md_visible = md.replace("\\[", "[").replace("\\]", "]");
-        assert!(
-            md_visible.contains("[1]"),
-            "markdown output must preserve the citation number"
-        );
-    }
-
-    #[test]
-    fn warning_note_renders_as_admonition_in_html_and_latex() {
-        if !pandoc_available() {
-            return;
-        }
-
-        let doc = warning_doc();
-
-        let html = String::from_utf8(render_html_from_doc(&doc).expect("html must render"))
-            .expect("html must be utf-8");
-        assert!(
-            html.contains("admonition-warning"),
-            "html output must include warning admonition classes"
-        );
-        assert!(
-            html.contains("Mind the gap."),
-            "html output must include the note body"
-        );
-
-        let latex = String::from_utf8(render_latex_from_doc(&doc).expect("latex must render"))
-            .expect("latex must be utf-8");
-        assert!(
-            latex.contains("\\begin{tcolorbox}[title={Warning}]"),
-            "latex output must wrap the note in a tcolorbox"
-        );
-        assert!(
-            latex.contains("Mind the gap."),
-            "latex output must include the note body"
-        );
-    }
-
-    fn chart_doc() -> Document {
-        use poiesis_charts::model::{
-            AxisSide, Chart, ChartKind, FactCite, FactId, LegendSpec, Point, Series, SeriesStyle,
-            ToneRef, Unit,
-        };
-        use poiesis_core::Image;
-
-        let chart = Chart {
-            kind: ChartKind::Line,
-            title: None,
-            series: vec![Series {
-                name: poiesis_charts::CiteOrText::Text("Revenue".to_owned()),
-                points: vec![
-                    Point {
-                        label: Some(poiesis_charts::CiteOrText::Text("JAN".to_owned())),
-                        x: None,
-                        y: FactCite {
-                            id: FactId("rev-1".to_owned()),
-                            value: 1.0,
-                            unit: Unit::Number,
-                        },
-                    },
-                    Point {
-                        label: Some(poiesis_charts::CiteOrText::Text("FEB".to_owned())),
-                        x: None,
-                        y: FactCite {
-                            id: FactId("rev-2".to_owned()),
-                            value: 2.0,
-                            unit: Unit::Number,
-                        },
-                    },
-                ],
-                tone: ToneRef::Indexed(0),
-                axis: AxisSide::Left,
-                style: SeriesStyle::Default,
-            }],
-            axes: poiesis_charts::Axes::default(),
-            legend: LegendSpec::Auto,
-            data_labels: false,
-            caption: None,
-        };
-
-        let data = serde_json::to_vec(&chart).expect("chart json");
-
-        Document {
-            metadata: Metadata {
-                title: "Chart Figure".to_owned(),
-                author: None,
-                created: None,
-            },
-            content: vec![Block::Image(Image {
-                data,
-                mime: "application/vnd.poiesis.chart+json".to_owned(),
-                alt: "Revenue trend".to_owned(),
-            })],
-        }
-    }
-
-    fn docx_media_entries(bytes: &[u8]) -> Vec<String> {
-        let cursor = std::io::Cursor::new(bytes);
-        let mut archive = zip::ZipArchive::new(cursor).expect("docx zip");
-        let mut names = Vec::new();
-
-        for idx in 0..archive.len() {
-            let file = archive.by_index(idx).expect("zip entry");
-            let name = file.name().to_owned();
-            if name.contains("media/") {
-                names.push(name);
-            }
-        }
-
-        names
-    }
-
-    #[test]
-    fn chart_figure_renders_png_in_docx() {
-        if !pandoc_available() {
-            return;
-        }
-
-        let bytes = render_docx_from_doc(&chart_doc()).expect("docx must render");
-        let media = docx_media_entries(&bytes);
-        assert!(
-            media.iter().any(|name| {
-                std::path::Path::new(name)
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
-            }),
-            "docx must embed a PNG media entry, got: {media:?}"
-        );
-    }
-
-    #[test]
-    fn chart_figure_renders_svg_in_html() {
-        if !pandoc_available() {
-            return;
-        }
-
-        let html = String::from_utf8(render_html_from_doc(&chart_doc()).expect("html must render"))
-            .expect("html must be utf-8");
-        assert!(
-            html.contains("<svg"),
-            "html output must include inline SVG, got: {html}"
-        );
-        assert!(
-            !html.contains(".png"),
-            "html output must not reference raster PNG assets, got: {html}"
-        );
     }
 }
