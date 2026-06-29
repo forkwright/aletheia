@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Agent file format version.
 ///
@@ -19,13 +19,11 @@ use serde::{Deserialize, Serialize};
 /// - **v2** (#4163): faithful round-trip. Producers populate every populated
 ///   slot from live stores; consumers preserve session status, timestamps,
 ///   metrics, and per-message `created_at`/`is_distilled` on import.
-/// - **v3** (#4590): binary workspace files include base64 contents, byte
-///   count, and sha256 so import restores bytes instead of path-only entries.
 ///
 /// The version bump declares the fidelity contract: consumers MUST reject
 /// older versions (or pipe them through a migration) so they cannot silently
-/// drop fields that the current version expects to round-trip.
-pub const AGENT_FILE_VERSION: u32 = 3;
+/// drop fields that v2 expects to round-trip.
+pub const AGENT_FILE_VERSION: u32 = 2;
 
 /// Machine-readable metadata describing the completeness of an export.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -40,9 +38,6 @@ pub struct ExportMetadata {
     /// Slots where the exported data was truncated by operator request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub truncations: Vec<TruncationRecord>,
-    /// Workspace symbolic-link traversal policy used by the exporter.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_symlink_policy: Option<String>,
 }
 
 /// A section that was omitted from an export.
@@ -112,7 +107,60 @@ pub struct NousInfo {
     pub config: serde_json::Value,
 }
 
-/// Workspace file snapshot: text content included, binary bytes encoded.
+/// Binary workspace file entry with optional base64 payload.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct BinaryFile {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_base64: Option<String>,
+}
+
+impl BinaryFile {
+    /// Create a path-only entry for legacy/TS v1 compatibility.
+    pub fn path_only(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            content_base64: None,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BinaryFile {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(s) = value.as_str() {
+            return Ok(BinaryFile {
+                path: s.to_owned(),
+                content_base64: None,
+            });
+        }
+        let path = value
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| D::Error::custom("binary file entry must have a path"))?
+            .to_owned();
+        let content_base64 = value
+            .get("contentBase64")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from);
+        Ok(BinaryFile {
+            path,
+            content_base64,
+        })
+    }
+}
+
+/// Workspace file snapshot: text content included, binary files listed with
+/// base64 payloads when available.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[expect(
@@ -121,23 +169,8 @@ pub struct NousInfo {
 )]
 pub struct WorkspaceData {
     pub files: HashMap<String, String>,
-    pub binary_files: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub binary_file_contents: Vec<BinaryFileData>,
-}
-
-/// Binary workspace file payload.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[expect(
-    missing_docs,
-    reason = "portability struct fields are self-documenting by name"
-)]
-pub struct BinaryFileData {
-    pub path: String,
-    pub size_bytes: u64,
-    pub sha256: String,
-    pub contents_base64: String,
+    pub binary_files: Vec<BinaryFile>,
 }
 
 /// Session snapshot with full message history and metadata.
@@ -165,25 +198,6 @@ pub struct ExportedSession {
     pub messages: Vec<ExportedMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_records: Option<Vec<ExportedUsageRecord>>,
-    // NOTE: artefact_meta from Session is intentionally excluded — store-internal
-    // provenance, not user/agent data. The identity fields below were excluded from
-    // v1; they now round-trip, guarded by serde(default) so older files still load.
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub parent_session_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub thread_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub transport: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub last_input_tokens: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub bootstrap_hash: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub last_distilled_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub computed_context_tokens: Option<i64>,
 }
 
 /// Single message within an exported session.
@@ -323,14 +337,7 @@ mod tests {
                     ("memory/notes.md".to_owned(), "# Notes\n".to_owned()),
                     ("config.yaml".to_owned(), "key: value\n".to_owned()),
                 ]),
-                binary_files: vec!["avatar.png".to_owned()],
-                binary_file_contents: vec![BinaryFileData {
-                    path: "avatar.png".to_owned(),
-                    size_bytes: 4,
-                    sha256: "0f4636c78f65d3639ece5a064b5ae753e3408614a14fb18ab4d7540d2c248543"
-                        .to_owned(),
-                    contents_base64: "iVBORw==".to_owned(),
-                }],
+                binary_files: vec![BinaryFile::path_only("avatar.png")],
             },
             sessions: vec![ExportedSession {
                 id: "ses-001".to_owned(),
@@ -379,14 +386,6 @@ mod tests {
                     cache_write_tokens: 0,
                     model: Some("claude-sonnet-4-6".to_owned()),
                 }]),
-                parent_session_id: Some("ses-parent".to_owned()),
-                thread_id: Some("thread-9".to_owned()),
-                transport: Some("stdio".to_owned()),
-                display_name: Some("Main Session".to_owned()),
-                last_input_tokens: Some(64),
-                bootstrap_hash: Some("abc123".to_owned()),
-                last_distilled_at: Some("2026-03-05T10:45:00Z".to_owned()),
-                computed_context_tokens: Some(210),
             }],
             memory: None,
             knowledge: None,
@@ -406,7 +405,6 @@ mod tests {
         assert_eq!(restored.nous.id, original.nous.id);
         assert_eq!(restored.workspace.files.len(), 2);
         assert_eq!(restored.workspace.binary_files.len(), 1);
-        assert_eq!(restored.workspace.binary_file_contents.len(), 1);
         assert_eq!(restored.sessions.len(), 1);
         assert_eq!(restored.sessions[0].messages.len(), 2);
         assert_eq!(restored.sessions[0].notes.len(), 1);
@@ -424,10 +422,6 @@ mod tests {
 
         let ws = value.get("workspace").expect("workspace key must exist");
         assert!(ws.get("binaryFiles").is_some(), "missing binaryFiles");
-        assert!(
-            ws.get("binaryFileContents").is_some(),
-            "missing binaryFileContents"
-        );
         assert!(ws.get("binary_files").is_none(), "snake_case leaked");
 
         let session = &value["sessions"][0];
@@ -505,7 +499,7 @@ mod tests {
 
     #[test]
     fn format_version_constant() {
-        assert_eq!(AGENT_FILE_VERSION, 3);
+        assert_eq!(AGENT_FILE_VERSION, 2);
     }
 
     #[test]
@@ -566,60 +560,6 @@ mod tests {
     }
 
     #[test]
-    fn session_identity_fields_round_trip() {
-        let original = sample_agent_file();
-        let json = serde_json::to_string(&original).expect("AgentFile is serializable");
-        let restored: AgentFile = serde_json::from_str(&json).expect("round-trip JSON is valid");
-        let s = &restored.sessions[0];
-        assert_eq!(s.parent_session_id.as_deref(), Some("ses-parent"));
-        assert_eq!(s.thread_id.as_deref(), Some("thread-9"));
-        assert_eq!(s.transport.as_deref(), Some("stdio"));
-        assert_eq!(s.display_name.as_deref(), Some("Main Session"));
-        assert_eq!(s.last_input_tokens, Some(64));
-        assert_eq!(s.bootstrap_hash.as_deref(), Some("abc123"));
-        assert_eq!(s.last_distilled_at.as_deref(), Some("2026-03-05T10:45:00Z"));
-        assert_eq!(s.computed_context_tokens, Some(210));
-    }
-
-    #[test]
-    fn session_identity_fields_omitted_when_none() {
-        let mut agent = sample_agent_file();
-        let s = &mut agent.sessions[0];
-        s.parent_session_id = None;
-        s.thread_id = None;
-        s.transport = None;
-        s.display_name = None;
-        s.last_input_tokens = None;
-        s.bootstrap_hash = None;
-        s.last_distilled_at = None;
-        s.computed_context_tokens = None;
-        let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
-        assert!(
-            !json.contains("parentSessionId"),
-            "None parent_session_id leaked"
-        );
-        assert!(!json.contains("threadId"), "None thread_id leaked");
-        assert!(
-            !json.contains("bootstrapHash"),
-            "None bootstrap_hash leaked"
-        );
-    }
-
-    #[test]
-    fn session_identity_fields_deserialize_when_absent() {
-        let json = r#"{
-            "id":"ses-x","sessionKey":"main","status":"active","sessionType":"primary",
-            "messageCount":0,"tokenCountEstimate":0,"distillationCount":0,
-            "createdAt":"2026-03-05T10:00:00Z","updatedAt":"2026-03-05T11:00:00Z",
-            "notes":[],"messages":[]
-        }"#;
-        let restored: ExportedSession =
-            serde_json::from_str(json).expect("legacy session JSON is valid");
-        assert_eq!(restored.parent_session_id, None);
-        assert_eq!(restored.computed_context_tokens, None);
-    }
-
-    #[test]
     fn knowledge_export_round_trips_fact_entity_edges() {
         let original = KnowledgeExport {
             facts: vec![],
@@ -643,5 +583,79 @@ mod tests {
         let json = r#"{"facts":[],"entities":[],"relationships":[]}"#;
         let restored: KnowledgeExport = serde_json::from_str(json).expect("legacy JSON is valid");
         assert!(restored.fact_entity_edges.is_empty());
+    }
+
+    #[test]
+    fn omitted_section_round_trips() {
+        let original = OmittedSection {
+            section: "knowledge".to_owned(),
+            reason: "store exists but could not be opened".to_owned(),
+            count: Some(3),
+        };
+        let json = serde_json::to_string(&original).expect("OmittedSection is serializable");
+        let restored: OmittedSection =
+            serde_json::from_str(&json).expect("round-trip JSON is valid");
+        assert_eq!(restored.section, original.section);
+        assert_eq!(restored.reason, original.reason);
+        assert_eq!(restored.count, original.count);
+    }
+
+    #[test]
+    fn binary_file_deserializes_legacy_string() {
+        let json = r#"["avatar.png"]"#;
+        let restored: Vec<BinaryFile> =
+            serde_json::from_str(json).expect("legacy binary file array parses");
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].path, "avatar.png");
+        assert!(restored[0].content_base64.is_none());
+    }
+
+    #[test]
+    fn binary_file_round_trips_with_base64_content() {
+        let original = vec![BinaryFile {
+            path: "data.bin".to_owned(),
+            content_base64: Some("SGVsbG8=".to_owned()),
+        }];
+        let json = serde_json::to_string(&original).expect("binary files serializable");
+        let restored: Vec<BinaryFile> =
+            serde_json::from_str(&json).expect("binary files deserializable");
+        assert_eq!(restored[0].path, "data.bin");
+        assert_eq!(restored[0].content_base64.as_deref(), Some("SGVsbG8="));
+    }
+
+    #[test]
+    fn omitted_sections_use_camel_case_keys() {
+        let agent = AgentFile {
+            export_metadata: Some(ExportMetadata {
+                lossless: false,
+                omitted_sections: vec![OmittedSection {
+                    section: "knowledge".to_owned(),
+                    reason: "corrupt store".to_owned(),
+                    count: None,
+                }],
+                truncations: Vec::new(),
+            }),
+            ..sample_agent_file()
+        };
+        let value: serde_json::Value = serde_json::to_value(&agent).expect("serializable");
+        let metadata = value
+            .get("exportMetadata")
+            .expect("exportMetadata key must exist");
+        let omitted = metadata
+            .get("omittedSections")
+            .expect("omittedSections key must exist");
+        let first = &omitted.as_array().expect("array")[0];
+        assert!(first.get("section").is_some(), "missing section");
+        assert!(first.get("reason").is_some(), "missing reason");
+    }
+
+    #[test]
+    fn export_metadata_omitted_when_none() {
+        let agent = sample_agent_file();
+        let json = serde_json::to_string(&agent).expect("AgentFile is serializable");
+        assert!(
+            !json.contains("\"exportMetadata\""),
+            "export_metadata=None should be omitted"
+        );
     }
 }

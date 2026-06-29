@@ -96,10 +96,22 @@ pub enum ManualMaintenanceTask {
     DerivedFactsMaterialize,
     /// Run serendipity discovery over recent knowledge graph entities.
     SerendipityDiscovery,
-    /// Consolidate overflowing facts into summarized knowledge.
-    KnowledgeConsolidation,
-    /// Rebuild the gnosis code-graph index for the workspace.
-    IndexMaintenance,
+}
+
+impl ManualMaintenanceTask {
+    /// Returns `true` for tasks that need a `KnowledgeMaintenanceExecutor` to run.
+    #[must_use]
+    pub fn requires_knowledge_executor(self) -> bool {
+        matches!(
+            self,
+            Self::DecayRefresh
+                | Self::EntityDedup
+                | Self::GraphRecompute
+                | Self::SkillDecay
+                | Self::DerivedFactsMaterialize
+                | Self::SerendipityDiscovery
+        )
+    }
 }
 
 /// Canonical metadata for one maintenance task.
@@ -175,6 +187,83 @@ impl MaintenanceTaskDefinition {
         }
     }
 
+    /// Returns `true` when this task is registered as a manual-only task.
+    #[must_use]
+    pub fn is_manual_only(&self) -> bool {
+        matches!(self.registration, MaintenanceTaskRegistration::ManualOnly)
+    }
+
+    /// Whether this task can be scheduled by the daemon with the given config and capabilities.
+    #[must_use]
+    pub fn availability(
+        &self,
+        config: &super::MaintenanceConfig,
+        capabilities: MaintenanceRuntimeCapabilities,
+    ) -> MaintenanceTaskAvailability {
+        if self.implementation_status == MaintenanceTaskImplementationStatus::Planned {
+            return MaintenanceTaskAvailability::Unavailable {
+                reason: "task is planned but not yet implemented",
+            };
+        }
+
+        match self.registration {
+            MaintenanceTaskRegistration::ManualOnly => MaintenanceTaskAvailability::Available,
+            MaintenanceTaskRegistration::Scheduled { condition, .. } => {
+                if condition.is_met(config, capabilities) {
+                    MaintenanceTaskAvailability::Available
+                } else {
+                    MaintenanceTaskAvailability::Unavailable {
+                        reason: condition.unmet_reason(config, capabilities),
+                    }
+                }
+            }
+            MaintenanceTaskRegistration::Planned { .. } => {
+                MaintenanceTaskAvailability::Unavailable {
+                    reason: "task is planned but not yet implemented",
+                }
+            }
+        }
+    }
+
+    /// Returns `true` when this task's manual run variant needs a knowledge
+    /// maintenance executor.
+    #[must_use]
+    pub fn manual_run_requires_knowledge_executor(&self) -> bool {
+        self.manual_run
+            .is_some_and(ManualMaintenanceTask::requires_knowledge_executor)
+    }
+
+    /// Whether this task can be triggered manually via `aletheia maintenance run`.
+    ///
+    /// This is intentionally narrower than [`Self::availability`]: a task may be
+    /// disabled in config (so the daemon does not schedule it) while still being
+    /// runnable on demand from the CLI.
+    #[must_use]
+    pub fn manual_availability(
+        &self,
+        capabilities: MaintenanceRuntimeCapabilities,
+    ) -> MaintenanceTaskAvailability {
+        if self.implementation_status == MaintenanceTaskImplementationStatus::Planned {
+            return MaintenanceTaskAvailability::Unavailable {
+                reason: "task is planned but not yet implemented",
+            };
+        }
+
+        let Some(manual) = self.manual_run else {
+            return MaintenanceTaskAvailability::Unavailable {
+                reason: "task is not supported for manual execution",
+            };
+        };
+
+        if manual.requires_knowledge_executor() && !capabilities.has_knowledge_executor {
+            return MaintenanceTaskAvailability::Unavailable {
+                reason: "no knowledge maintenance executor configured",
+            };
+        }
+
+        MaintenanceTaskAvailability::Available
+    }
+
     pub(crate) fn scheduled_task(
         &self,
         config: &super::MaintenanceConfig,
@@ -216,6 +305,18 @@ impl MaintenanceTaskDefinition {
         };
         condition.skipped_warning(self.id, config, capabilities)
     }
+}
+
+/// Whether a registry task can be run with the supplied config and capabilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaintenanceTaskAvailability {
+    /// The task is implemented and its dependencies are configured.
+    Available,
+    /// The task cannot run; `reason` explains why.
+    Unavailable {
+        /// Human-readable explanation (e.g. disabled, missing executor, planned).
+        reason: &'static str,
+    },
 }
 
 /// Runtime capabilities that affect scheduled task registration.
@@ -268,7 +369,6 @@ enum ScheduleSource {
     FixedIntervalSecs(u64),
     InstanceBackupIntervalHours,
     DerivedRulesMaterializationInterval,
-    GnosisRebuildInterval,
     SerendipityCadence,
     CronEvolutionInterval,
     CronReflectionInterval,
@@ -289,9 +389,6 @@ impl ScheduleSource {
                     .derived_rules
                     .materialization_interval,
             ),
-            Self::GnosisRebuildInterval => {
-                Schedule::Interval(config.knowledge_maintenance.index_maintenance_interval)
-            }
             Self::SerendipityCadence => {
                 Schedule::Cron(config.knowledge_maintenance.serendipity.cadence.clone())
             }
@@ -376,6 +473,80 @@ impl RegistrationCondition {
             _ => None,
         }
     }
+
+    fn unmet_reason(
+        self,
+        config: &super::MaintenanceConfig,
+        capabilities: MaintenanceRuntimeCapabilities,
+    ) -> &'static str {
+        match self {
+            Self::ConfigEnabled(section) => section.disabled_reason(),
+            Self::AfterActionStoreConfigured => "no after-action store configured",
+            Self::RetentionEnabledWithExecutor => {
+                if !config.retention.enabled {
+                    "data retention is disabled"
+                } else if !capabilities.has_retention_executor {
+                    "no retention executor configured"
+                } else {
+                    "retention dependency is not configured"
+                }
+            }
+            Self::KnowledgeMaintenanceEnabledWithExecutor => {
+                if !config.knowledge_maintenance.enabled {
+                    "knowledge maintenance is disabled"
+                } else if !capabilities.has_knowledge_executor {
+                    "no knowledge maintenance executor configured"
+                } else {
+                    "knowledge maintenance dependency is not configured"
+                }
+            }
+            Self::KnowledgeExecutorConfigured => {
+                if !capabilities.has_knowledge_executor {
+                    "no knowledge maintenance executor configured"
+                } else {
+                    "knowledge maintenance dependency is not configured"
+                }
+            }
+            Self::CronEvolutionEnabledWithBridge => {
+                if !config.cron.evolution.enabled {
+                    "evolution cron task is disabled"
+                } else if !capabilities.has_bridge {
+                    "no daemon bridge configured"
+                } else {
+                    "evolution cron dependency is not configured"
+                }
+            }
+            Self::CronReflectionEnabledWithBridge => {
+                if !config.cron.reflection.enabled {
+                    "reflection cron task is disabled"
+                } else if !capabilities.has_bridge {
+                    "no daemon bridge configured"
+                } else {
+                    "reflection cron dependency is not configured"
+                }
+            }
+            Self::CronGraphCleanupEnabledWithKnowledge => {
+                if !config.cron.graph_cleanup.enabled {
+                    "graph cleanup cron task is disabled"
+                } else if !capabilities.has_knowledge_executor {
+                    "no knowledge maintenance executor configured"
+                } else {
+                    "graph cleanup dependency is not configured"
+                }
+            }
+            Self::SerendipityEnabledWithKnowledge => {
+                if !config.knowledge_maintenance.enabled
+                    || !config.knowledge_maintenance.serendipity.enabled
+                {
+                    "serendipity discovery is disabled"
+                } else if !capabilities.has_knowledge_executor {
+                    "no knowledge maintenance executor configured"
+                } else {
+                    "serendipity dependency is not configured"
+                }
+            }
+        }
+    }
 }
 
 impl MaintenanceConfigSection {
@@ -395,6 +566,25 @@ impl MaintenanceConfigSection {
             | Self::CronGraphCleanup
             | Self::ProsocheAudit
             | Self::NousSelfAudit => false,
+        }
+    }
+
+    fn disabled_reason(self) -> &'static str {
+        match self {
+            Self::TraceRotation => "trace rotation is disabled",
+            Self::DriftDetection => "drift detection is disabled",
+            Self::DbMonitoring => "database monitoring is disabled",
+            Self::Retention => "data retention is disabled",
+            Self::KnowledgeMaintenance => "knowledge maintenance is disabled",
+            Self::InstanceBackup => "instance backup is disabled",
+            Self::ProposeRules => "rule proposal generation is disabled",
+            Self::PromptAudit => "prompt audit rotation is disabled",
+            Self::RoutingAfterActionStore
+            | Self::CronEvolution
+            | Self::CronReflection
+            | Self::CronGraphCleanup
+            | Self::ProsocheAudit
+            | Self::NousSelfAudit => "task dependency is disabled",
         }
     }
 }
@@ -660,22 +850,6 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         ),
     ),
     task(
-        "knowledge-consolidation",
-        "Knowledge consolidation",
-        MaintenanceTaskOwner::KnowledgeGraph,
-        Some(MaintenanceConfigSection::KnowledgeMaintenance),
-        "Knowledge consolidation",
-        MaintenanceTaskImplementationStatus::Implemented,
-        CRON_METRICS,
-        Some(ManualMaintenanceTask::KnowledgeConsolidation),
-        scheduled(
-            BuiltinTask::KnowledgeConsolidation,
-            ScheduleSource::FixedIntervalSecs(4 * 60 * 60),
-            true,
-            RegistrationCondition::KnowledgeMaintenanceEnabledWithExecutor,
-        ),
-    ),
-    task(
         "cron-evolution",
         "Evolution: config variant search",
         MaintenanceTaskOwner::Cron,
@@ -739,21 +913,13 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Knowledge garbage collection",
         BuiltinTask::KnowledgeGc,
     ),
-    task(
+    planned(
         "index-maintenance",
-        "Gnosis code-graph index rebuild",
+        "Knowledge index maintenance",
         MaintenanceTaskOwner::KnowledgeGraph,
-        Some(MaintenanceConfigSection::KnowledgeMaintenance),
-        "Gnosis code-graph index rebuild",
-        MaintenanceTaskImplementationStatus::Implemented,
-        CRON_METRICS,
-        Some(ManualMaintenanceTask::IndexMaintenance),
-        scheduled(
-            BuiltinTask::IndexMaintenance,
-            ScheduleSource::GnosisRebuildInterval,
-            true,
-            RegistrationCondition::KnowledgeMaintenanceEnabledWithExecutor,
-        ),
+        MaintenanceConfigSection::KnowledgeMaintenance,
+        "Knowledge index maintenance",
+        BuiltinTask::IndexMaintenance,
     ),
     planned(
         "graph-health-check",
@@ -926,35 +1092,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn index_maintenance_is_implemented_and_schedulable() {
-        let Some(definition) = maintenance_task_by_id("index-maintenance") else {
-            panic!("index-maintenance should be present in registry");
-        };
-        assert_eq!(definition.id(), "index-maintenance");
-        assert_eq!(
-            definition.implementation_status(),
-            MaintenanceTaskImplementationStatus::Implemented,
-            "index-maintenance must be implemented for #5963"
-        );
-        assert_eq!(
-            definition.manual_run(),
-            Some(ManualMaintenanceTask::IndexMaintenance)
-        );
-        assert_eq!(definition.builtin(), Some(BuiltinTask::IndexMaintenance));
-
-        let mut config = super::super::MaintenanceConfig::default();
-        config.knowledge_maintenance.enabled = true;
-        let capabilities = MaintenanceRuntimeCapabilities {
-            has_knowledge_executor: true,
-            ..MaintenanceRuntimeCapabilities::default()
-        };
-        let Some(scheduled) = definition.scheduled_task(&config, capabilities) else {
-            panic!("index-maintenance should schedule when knowledge maintenance is enabled");
-        };
-        assert_eq!(scheduled.id, "index-maintenance");
     }
 
     #[test]

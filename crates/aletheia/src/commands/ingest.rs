@@ -1,9 +1,12 @@
 //! `aletheia ingest`: file-based knowledge ingestion.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use clap::Parser;
 use snafu::prelude::*;
+
+use koina::http::BEARER_PREFIX;
 
 use crate::error::Result;
 
@@ -55,7 +58,13 @@ pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> R
         let config = taxis::loader::load_config(&oikos).ok().map_or_else(
             mneme::knowledge_store::KnowledgeConfig::default,
             |config| {
-                let embedding = config.embedding.to_embedding_config();
+                let embedding = mneme::embedding::EmbeddingConfig {
+                    provider: config.embedding.provider.clone(),
+                    model: config.embedding.model.clone(),
+                    dimension: Some(config.embedding.dimension),
+                    api_key: None,
+                    base_url: None,
+                };
                 mneme::knowledge_store::KnowledgeConfig {
                     dim: config.embedding.dimension,
                     embedding_model: embedding.effective_model_name(),
@@ -302,13 +311,27 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok((inserted, skipped))
+}
+
+fn build_client(token: Option<&str>) -> Result<reqwest::Client> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(tok) = token {
+        let value = reqwest::header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{tok}"))
+            .whatever_context("invalid token value")?;
+        headers.insert(reqwest::header::AUTHORIZATION, value);
+    }
+    reqwest::Client::builder()
+        .default_headers(headers)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .whatever_context("failed to build HTTP client")
 }
 
 #[cfg(feature = "recall")]
 fn run_direct(
     args: &IngestArgs,
-    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    store: &Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<()> {
     let path = &args.path;
     if !path.exists() {
@@ -357,7 +380,7 @@ fn run_direct(
 fn process_file(
     file: &Path,
     args: &IngestArgs,
-    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    store: &Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<(usize, usize)> {
     let content = std::fs::read_to_string(file)
         .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
@@ -549,6 +572,14 @@ mod tests {
     }
 
     #[test]
+    fn ingest_token_option_parses() {
+        use clap::Parser as _;
+
+        let args = IngestArgs::try_parse_from(["ingest", "/tmp/x", "--token", "my-token"]).unwrap();
+        assert_eq!(args.token.as_deref(), Some("my-token"));
+    }
+
+    #[test]
     fn validate_inputs_rejects_empty_nous_id() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("x.txt");
@@ -705,5 +736,109 @@ mod tests {
                 "run_direct should return Ok despite the bad file: {result:?}"
             );
         }
+    }
+
+    /// API mode must POST once per supported file in a directory, not
+    /// concatenate the directory into a single payload.
+    #[tokio::test]
+    async fn api_mode_posts_per_file_for_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs");
+        std::fs::create_dir(&docs).unwrap();
+        std::fs::write(docs.join("a.md"), "# A\nfirst.\n").unwrap();
+        std::fs::write(docs.join("b.txt"), "second.\n").unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&requests);
+
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                match tokio::time::timeout(std::time::Duration::from_secs(2), listener.accept())
+                    .await
+                {
+                    Ok(Ok((mut socket, _))) => {
+                        seen.fetch_add(1, Ordering::SeqCst);
+                        let mut buf = [0_u8; 2048];
+                        let _ = socket.read(&mut buf).await;
+                        let body = r#"{"inserted":1,"skipped":0,"errors":[]}"#;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = socket.write_all(response.as_bytes()).await;
+                    }
+                    _ => break,
+                }
+            }
+        });
+
+        let args = IngestArgs {
+            path: docs,
+            format: "auto".to_owned(),
+            nous_id: "alice".to_owned(),
+            dry_run: false,
+            url: format!("http://{addr}"),
+            token: None,
+        };
+
+        run_via_api(&args).await.unwrap();
+        server.await.unwrap();
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            2,
+            "directory ingest must POST once per supported file"
+        );
+    }
+
+    /// API mode must forward a bearer token when --token is supplied.
+    #[tokio::test]
+    async fn api_mode_sends_bearer_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.txt");
+        std::fs::write(&input, "one fact").unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let saw_auth = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let seen = Arc::clone(&saw_auth);
+
+        let server = tokio::spawn(async move {
+            if let Ok(Ok((mut socket, _))) =
+                tokio::time::timeout(std::time::Duration::from_secs(2), listener.accept()).await
+            {
+                let mut buf = [0_u8; 2048];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                if req.contains("Authorization: Bearer my-test-token") {
+                    seen.store(true, Ordering::SeqCst);
+                }
+                let body = r#"{"inserted":1,"skipped":0,"errors":[]}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+
+        let args = IngestArgs {
+            path: input,
+            format: "auto".to_owned(),
+            nous_id: "alice".to_owned(),
+            dry_run: false,
+            url: format!("http://{addr}"),
+            token: Some("my-test-token".to_owned()),
+        };
+
+        run_via_api(&args).await.unwrap();
+        server.await.unwrap();
+        assert!(
+            saw_auth.load(Ordering::SeqCst),
+            "request must include bearer token"
+        );
     }
 }

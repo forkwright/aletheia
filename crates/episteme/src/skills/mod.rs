@@ -12,6 +12,8 @@
 //!   → LLM extraction generates skill definition (separate)
 //! ```
 
+use serde::Deserialize;
+
 pub mod candidate;
 pub mod extract;
 pub mod heuristics;
@@ -61,6 +63,7 @@ impl ContentEvidenceRef {
 /// This is a lightweight record, a subset of a full tool execution record
 /// carrying what the heuristic filter needs plus redacted review evidence.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(from = "ToolCallRecordRaw")]
 pub struct ToolCallRecord {
     /// Tool name (e.g. `"Read"`, `"Edit"`, `"Bash"`).
     pub tool_name: String,
@@ -83,6 +86,39 @@ pub struct ToolCallRecord {
     /// SHA-256 hash over the durable, redacted tool-call evidence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call_hash: Option<String>,
+}
+
+/// Raw deserialization type for [`ToolCallRecord`].
+#[derive(Debug, Clone, Deserialize)]
+struct ToolCallRecordRaw {
+    tool_name: String,
+    is_error: bool,
+    duration_ms: u64,
+    #[serde(default)]
+    tool_id: Option<String>,
+    #[serde(default)]
+    redacted_input: Option<serde_json::Value>,
+    #[serde(default)]
+    result_ref: Option<ContentEvidenceRef>,
+    #[serde(default)]
+    receipt: Option<String>,
+    #[serde(default)]
+    call_hash: Option<String>,
+}
+
+impl From<ToolCallRecordRaw> for ToolCallRecord {
+    fn from(raw: ToolCallRecordRaw) -> Self {
+        Self {
+            tool_name: raw.tool_name,
+            is_error: raw.is_error,
+            duration_ms: raw.duration_ms,
+            tool_id: raw.tool_id,
+            redacted_input: raw.redacted_input,
+            result_ref: raw.result_ref,
+            receipt: raw.receipt,
+            call_hash: raw.call_hash,
+        }
+    }
 }
 
 impl ToolCallRecord {

@@ -1,13 +1,14 @@
 // kanon:ignore RUST/file-too-long — module contains tightly-coupled agent I/O CLI command implementations; splitting would hurt cohesion
 //! Agent import/export and skill management commands.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
+use base64::Engine as _;
 use clap::Args;
-use mneme::types::parse_session_or_agent_id;
+use mneme::types::validate_session_or_agent_id;
 use snafu::prelude::*;
 
 use crate::error::Result;
@@ -96,8 +97,8 @@ pub(crate) struct ExportArgs {
     /// Include archived/distilled sessions
     #[arg(long)]
     pub archived: bool,
-    /// Max messages per session (0 = all)
-    #[arg(long, default_value_t = 500)]
+    /// Max messages per session (0 = all; default is lossless)
+    #[arg(long, default_value_t = 0)]
     pub max_messages: usize,
     /// Compact JSON (no pretty printing)
     #[arg(long)]
@@ -125,12 +126,12 @@ pub(crate) struct ImportArgs {
     /// Skip importing session history
     #[arg(long)]
     pub skip_sessions: bool,
+    /// Skip importing typed knowledge
+    #[arg(long)]
+    pub skip_knowledge: bool,
     /// Skip restoring workspace files
     #[arg(long)]
     pub skip_workspace: bool,
-    /// Skip importing typed knowledge (facts, entities, relationships)
-    #[arg(long)]
-    pub skip_knowledge: bool,
     /// Overwrite existing workspace files
     #[arg(long)]
     pub force: bool,
@@ -141,6 +142,21 @@ pub(crate) struct ImportArgs {
     /// to be silently defaulted instead of failing the import.
     #[arg(long)]
     pub allow_unknown_values: bool,
+}
+
+impl Default for ImportArgs {
+    fn default() -> Self {
+        Self {
+            file: PathBuf::new(),
+            target_id: None,
+            skip_sessions: false,
+            skip_knowledge: false,
+            skip_workspace: false,
+            force: false,
+            dry_run: false,
+            allow_unknown_values: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Args)]
@@ -259,7 +275,7 @@ pub(crate) struct InitArgs {
     #[arg(long)]
     pub non_interactive: bool,
     /// Anthropic API key. Sets credential source to 'api-key'.
-    /// Omit to use 'auto' resolution (credential file -> keyring -> env)
+    /// Omit to use 'auto' resolution (api-key -> env -> claude-code)
     #[arg(long, env = "ANTHROPIC_API_KEY")]
     pub api_key: Option<String>,
     /// Authentication mode: none, token (default: none)
@@ -291,7 +307,13 @@ fn knowledge_config_for_oikos(oikos: &Oikos) -> mneme::knowledge_store::Knowledg
     taxis::loader::load_config(oikos).ok().map_or_else(
         mneme::knowledge_store::KnowledgeConfig::default,
         |config| {
-            let embedding = config.embedding.to_embedding_config();
+            let embedding = mneme::embedding::EmbeddingConfig {
+                provider: config.embedding.provider.clone(),
+                model: config.embedding.model.clone(),
+                dimension: Some(config.embedding.dimension),
+                api_key: None,
+                base_url: None,
+            };
             mneme::knowledge_store::KnowledgeConfig {
                 dim: config.embedding.dimension,
                 embedding_model: embedding.effective_model_name(),
@@ -308,25 +330,31 @@ struct KnowledgeImportCounts {
     relationships: usize,
 }
 
+/// Outcome of attempting to export an agent's typed knowledge.
+#[derive(Debug)]
+enum KnowledgeExportStatus {
+    /// Knowledge was successfully enumerated and should be included.
+    Exported(mneme::portability::KnowledgeExport),
+    /// No knowledge store exists or it contains no data for this agent.
+    Missing,
+    /// A store exists but could not be opened or enumerated.
+    Omitted { reason: String },
+}
+
 /// Enumerate the agent's typed knowledge from the live store.
 ///
-/// Returns `(None, false)` when the `recall` feature is disabled or when no
-/// knowledge store exists on disk for this agent. Returns an error when a store
-/// exists but cannot be opened or enumerated, so callers can decide whether to
-/// fail or produce a partial export. The `bool` is `true` when the store
-/// contains vector embeddings that are not included in the typed export and
-/// cannot be regenerated solely from the exported facts.
+/// Returns `None` when the `recall` feature is disabled or when no knowledge
+/// store exists on disk for this agent. Returns an error when a store exists
+/// but cannot be opened or enumerated, so callers can decide whether to fail
+/// or produce a partial export.
 #[cfg(feature = "recall")]
-fn export_knowledge(
-    oikos: &Oikos,
-    nous_id: &str,
-) -> Result<(Option<mneme::portability::KnowledgeExport>, bool)> {
+fn export_knowledge(oikos: &Oikos, nous_id: &str) -> Result<KnowledgeExportStatus> {
     use mneme::knowledge_store::KnowledgeStore;
     use mneme::portability::{FactEntityEdge, KnowledgeExport};
 
     let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
     if !knowledge_path.exists() {
-        return Ok((None, false));
+        return Ok(KnowledgeExportStatus::Missing);
     }
 
     let config = knowledge_config_for_oikos(oikos);
@@ -338,84 +366,61 @@ fn export_knowledge(
             )
         })?;
 
-    // INVARIANT: export arrays must be deterministically ordered so that two
-    // consecutive exports of the same agent produce byte-identical JSON after
-    // removing the exportedAt/generator header fields (#6015).
-    let mut facts: Vec<mneme::knowledge::Fact> = store
-        .list_all_facts(i64::MAX)
-        .with_whatever_context(|_| format!("failed to list facts for '{nous_id}'"))?
-        .into_iter()
-        .filter(|f| f.nous_id == nous_id)
-        .collect();
-    facts.sort_by(|a, b| a.id.cmp(&b.id));
+    fn try_enumerate(
+        store: &mneme::knowledge_store::KnowledgeStore,
+        nous_id: &str,
+    ) -> Result<KnowledgeExport> {
+        let facts: Vec<mneme::knowledge::Fact> = store
+            .list_all_facts(i64::MAX)
+            .with_whatever_context(|_| format!("failed to list facts for '{nous_id}'"))?
+            .into_iter()
+            .filter(|f| f.nous_id == nous_id)
+            .collect();
 
-    let fact_ids: Vec<mneme::id::FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
-    let mut entities = store
-        .list_entities_for_facts(&fact_ids)
-        .with_whatever_context(|_| format!("failed to list entities for '{nous_id}'"))?;
-    entities.sort_by(|a, b| a.id.cmp(&b.id));
+        let fact_ids: Vec<mneme::id::FactId> = facts.iter().map(|fact| fact.id.clone()).collect();
+        let entities = store
+            .list_entities_for_facts(&fact_ids)
+            .with_whatever_context(|_| format!("failed to list entities for '{nous_id}'"))?;
+        let fact_entity_edges = store
+            .list_fact_entity_edges_for_facts(&fact_ids)
+            .with_whatever_context(|_| format!("failed to list fact/entity links for '{nous_id}'"))?
+            .into_iter()
+            .map(|(fact_id, entity_id)| FactEntityEdge { fact_id, entity_id })
+            .collect();
+        let entity_ids: std::collections::HashSet<String> = entities
+            .iter()
+            .map(|entity| entity.id.as_str().to_owned())
+            .collect();
+        let relationships = store
+            .list_relationships_between_entities(&entity_ids)
+            .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
 
-    let mut fact_entity_edges: Vec<FactEntityEdge> = store
-        .list_fact_entity_edges_for_facts(&fact_ids)
-        .with_whatever_context(|_| format!("failed to list fact/entity links for '{nous_id}'"))?
-        .into_iter()
-        .map(|(fact_id, entity_id)| FactEntityEdge { fact_id, entity_id })
-        .collect();
-    fact_entity_edges.sort_by(|a, b| {
-        a.fact_id
-            .cmp(&b.fact_id)
-            .then(a.entity_id.cmp(&b.entity_id))
-    });
-
-    let entity_ids: std::collections::HashSet<String> = entities
-        .iter()
-        .map(|entity| entity.id.as_str().to_owned())
-        .collect();
-    let mut relationships = store
-        .list_relationships_between_entities(&entity_ids)
-        .with_whatever_context(|_| format!("failed to list relationships for '{nous_id}'"))?;
-    relationships.sort_by(|a, b| {
-        a.src
-            .cmp(&b.src)
-            .then(a.dst.cmp(&b.dst))
-            .then(a.relation.cmp(&b.relation))
-    });
-
-    // WHY: Fact embeddings are regenerated by backfill_fact_embeddings on import,
-    // so they are not a true omission. Only embeddings whose source text is not
-    // carried in the typed export (e.g. skill or workspace chunks) are unexportable.
-    // Excluding source_type = 'fact' prevents import-time backfill from causing
-    // subsequent exports to report a spurious memory omission (#6015).
-    let has_unexported_vectors = {
-        use std::collections::BTreeMap;
-        const HAS_NON_FACT_EMBEDDINGS: &str = "?[id] := *embeddings{id, nous_id: $nous_id, source_type}, source_type != 'fact'\n:limit 1";
-        let mut params = BTreeMap::new();
-        params.insert(
-            "nous_id".to_owned(),
-            mneme::engine::DataValue::Str(nous_id.into()),
-        );
-        store
-            .run_script_read_only(HAS_NON_FACT_EMBEDDINGS, params)
-            .is_ok_and(|r| r.row_count() > 0)
-    };
-
-    Ok((
-        Some(KnowledgeExport {
+        Ok(KnowledgeExport {
             facts,
             entities,
             relationships,
             fact_entity_edges,
-        }),
-        has_unexported_vectors,
-    ))
+        })
+    }
+
+    match try_enumerate(&store, nous_id) {
+        Ok(export) => {
+            if export.facts.is_empty()
+                && export.entities.is_empty()
+                && export.relationships.is_empty()
+            {
+                Ok(KnowledgeExportStatus::Missing)
+            } else {
+                Ok(KnowledgeExportStatus::Exported(export))
+            }
+        }
+        Err(err) => Err(err),
+    }
 }
 
 #[cfg(not(feature = "recall"))]
-fn export_knowledge(
-    _oikos: &Oikos,
-    _nous_id: &str,
-) -> Result<(Option<mneme::portability::KnowledgeExport>, bool)> {
-    Ok((None, false))
+fn export_knowledge(_oikos: &Oikos, _nous_id: &str) -> Result<KnowledgeExportStatus> {
+    Ok(KnowledgeExportStatus::Missing)
 }
 
 /// Hydrate typed knowledge into the live store.
@@ -429,57 +434,44 @@ fn import_knowledge(
     nous_id: &str,
     knowledge: &mneme::portability::KnowledgeExport,
 ) -> Result<KnowledgeImportCounts> {
-    use mneme::embedding::create_provider;
+    use mneme::embedding::{EmbeddingConfig, create_provider};
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
-    // WHY(#4741): load_config returns Ok(defaults) even when no config file
-    // exists; the candle default provider then downloads BAAI/bge-small-en-v1.5
-    // on first use. Gate provider creation behind explicit config-file existence
-    // so environments without a deployed instance (test, fresh install) do not
-    // block on a network fetch.
-    let config_file_exists = oikos.config().join("aletheia.toml").exists()
-        || oikos.config().join("aletheia.yaml").exists();
-    let loaded_config = if config_file_exists {
-        match taxis::loader::load_config(oikos) {
-            Ok(config) => Some(config),
-            Err(err) => {
-                tracing::warn!(
-                    nous_id,
-                    error = %err,
-                    "failed to load instance config; imported fact vectors will be skipped"
-                );
-                None
-            }
+    let loaded_config = match taxis::loader::load_config(oikos) {
+        Ok(config) => Some(config),
+        Err(err) => {
+            tracing::warn!(
+                nous_id,
+                error = %err,
+                "failed to load instance config; imported fact vectors will be skipped"
+            );
+            None
         }
-    } else {
-        None
     };
 
     let knowledge_config = loaded_config
         .as_ref()
         .map_or_else(KnowledgeConfig::default, |config| KnowledgeConfig {
             dim: config.embedding.dimension,
-            embedding_model: config
-                .embedding
-                .to_embedding_config()
-                .effective_model_name(),
+            embedding_model: EmbeddingConfig {
+                provider: config.embedding.provider.clone(),
+                model: config.embedding.model.clone(),
+                dimension: Some(config.embedding.dimension),
+                api_key: None,
+                base_url: None,
+            }
+            .effective_model_name(),
             ..Default::default()
         });
 
     let embedding_provider = loaded_config.as_ref().and_then(|config| {
-        let embedding_config =
-            match crate::embedding_config::runtime_embedding_config(&config.embedding) {
-                Ok(config) => config,
-                Err(err) => {
-                    tracing::warn!(
-                        nous_id,
-                        provider = %config.embedding.provider,
-                        error = %err,
-                        "embedding config invalid; imported fact vectors will be skipped"
-                    );
-                    return None;
-                }
-            };
+        let embedding_config = EmbeddingConfig {
+            provider: config.embedding.provider.clone(),
+            model: config.embedding.model.clone(),
+            dimension: Some(config.embedding.dimension),
+            api_key: None,
+            base_url: None,
+        };
         match create_provider(&embedding_config) {
             Ok(provider) => Some(provider),
             Err(err) => {
@@ -727,7 +719,6 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             Some(row) => serde_json::from_str::<serde_json::Value>(&row.value).ok(),
             None => None,
         };
-
         sessions.push(ExportedSession {
             id: session.id,
             session_key: session.session_key,
@@ -743,16 +734,6 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             notes,
             messages,
             usage_records: Some(usage_records),
-            // WHY(#5783): faithfully round-trip session identity metadata that v1
-            // silently dropped; artefact_meta stays excluded (store-internal).
-            parent_session_id: session.origin.parent_session_id,
-            thread_id: session.origin.thread_id,
-            transport: session.origin.transport,
-            display_name: session.origin.display_name,
-            last_input_tokens: Some(session.metrics.last_input_tokens),
-            bootstrap_hash: session.metrics.bootstrap_hash,
-            last_distilled_at: session.metrics.last_distilled_at,
-            computed_context_tokens: Some(session.metrics.computed_context_tokens),
         });
     }
 
@@ -769,8 +750,9 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         });
     }
 
-    let (knowledge, has_unexported_vectors) = match export_knowledge(&oikos, &args.nous_id) {
-        Ok(pair) => pair,
+    let knowledge = match export_knowledge(&oikos, &args.nous_id) {
+        Ok(KnowledgeExportStatus::Exported(export)) => Some(export),
+        Ok(KnowledgeExportStatus::Missing) | Ok(KnowledgeExportStatus::Omitted { .. }) => None,
         Err(err) => {
             if args.allow_partial {
                 eprintln!(
@@ -783,31 +765,18 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
                     reason: "store_unavailable".to_owned(),
                     count: None,
                 });
-                (None, false)
+                None
             } else {
                 return Err(err);
             }
         }
     };
 
-    // WHY: Only mark the memory section omitted when the store actually contains
-    // vector embeddings. Missing or empty stores have no memory data to lose, and
-    // exports that carry all facts/entities/relationships are genuinely lossless
-    // because fact embeddings are regenerated by backfill on import.
-    if has_unexported_vectors {
-        omitted_sections.push(OmittedSection {
-            section: "memory".to_owned(),
-            reason: "vectors_and_graph_not_exported".to_owned(),
-            count: None,
-        });
-    }
-
     let exported_at = jiff::Timestamp::now().to_string();
     let export_metadata = Some(ExportMetadata {
         lossless: omitted_sections.is_empty() && truncations.is_empty(),
         omitted_sections,
         truncations,
-        workspace_symlink_policy: Some(String::from("reject")),
     });
     let agent_file = AgentFile {
         version: mneme::portability::AGENT_FILE_VERSION,
@@ -905,53 +874,6 @@ fn default_export_path(nous_id: &str, exported_at: &str) -> PathBuf {
     PathBuf::from(format!("{nous_id}-{date}.agent.json"))
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-
-    fn hex_char(nibble: u8) -> char {
-        match nibble {
-            0 => '0',
-            1 => '1',
-            2 => '2',
-            3 => '3',
-            4 => '4',
-            5 => '5',
-            6 => '6',
-            7 => '7',
-            8 => '8',
-            9 => '9',
-            10 => 'a',
-            11 => 'b',
-            12 => 'c',
-            13 => 'd',
-            14 => 'e',
-            15 => 'f',
-            _ => '?',
-        }
-    }
-
-    let digest = Sha256::digest(bytes);
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        hex.push(hex_char(byte >> 4));
-        hex.push(hex_char(byte & 0x0f));
-    }
-    hex
-}
-
-fn read_binary_file(path: &Path) -> Result<Vec<u8>> {
-    use std::io::Read as _;
-
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .open(path)
-        .with_whatever_context(|_| format!("failed to open binary file {}", path.display()))?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .with_whatever_context(|_| format!("failed to read binary file {}", path.display()))?;
-    Ok(bytes)
-}
-
 fn resolve_workspace_path(oikos: &Oikos, workspace: &str) -> PathBuf {
     let path = Path::new(workspace);
     if path.is_absolute() {
@@ -964,47 +886,16 @@ fn resolve_workspace_path(oikos: &Oikos, workspace: &str) -> PathBuf {
 fn export_workspace(root: &Path) -> Result<mneme::portability::WorkspaceData> {
     let mut files = HashMap::new();
     let mut binary_files = Vec::new();
-    let mut binary_file_contents = Vec::new();
-    let metadata = match std::fs::symlink_metadata(root) {
-        Ok(metadata) => metadata,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(mneme::portability::WorkspaceData {
-                files,
-                binary_files,
-                binary_file_contents,
-            });
-        }
-        Err(e) => {
-            return Err(crate::error::Error::msg(format!(
-                "failed to read workspace source metadata {}: {e}",
-                root.display()
-            )));
-        }
-    };
-    if metadata.file_type().is_symlink() {
-        reject_workspace_symlink(root, root)?;
+    if !root.exists() {
+        return Ok(mneme::portability::WorkspaceData {
+            files,
+            binary_files,
+        });
     }
-    if !metadata.is_dir() {
-        whatever!(
-            "workspace source root {} is not a directory",
-            root.display()
-        );
-    }
-    collect_workspace_entries(
-        root,
-        root,
-        &mut files,
-        &mut binary_files,
-        &mut binary_file_contents,
-    )?;
-    // INVARIANT: binary_files must be sorted so that two exports of the same
-    // workspace produce identical arrays regardless of read_dir traversal order.
-    binary_files.sort();
-    binary_file_contents.sort_by(|left, right| left.path.cmp(&right.path));
+    collect_workspace_entries(root, root, &mut files, &mut binary_files)?;
     Ok(mneme::portability::WorkspaceData {
         files,
         binary_files,
-        binary_file_contents,
     })
 }
 
@@ -1012,8 +903,7 @@ fn collect_workspace_entries(
     root: &Path,
     dir: &Path,
     files: &mut HashMap<String, String>,
-    binary_files: &mut Vec<String>,
-    binary_file_contents: &mut Vec<mneme::portability::BinaryFileData>,
+    binary_files: &mut Vec<mneme::portability::BinaryFile>,
 ) -> Result<()> {
     for entry in std::fs::read_dir(dir)
         .with_whatever_context(|_| format!("failed to read {}", dir.display()))?
@@ -1021,16 +911,11 @@ fn collect_workspace_entries(
         let entry = entry
             .with_whatever_context(|_| format!("failed to read entry in {}", dir.display()))?;
         let path = entry.path();
-        let metadata = std::fs::symlink_metadata(&path)
-            .with_whatever_context(|_| format!("failed to read metadata for {}", path.display()))?;
-        if metadata.file_type().is_symlink() {
-            reject_workspace_symlink(root, &path)?;
-        }
-        if metadata.is_dir() {
-            collect_workspace_entries(root, &path, files, binary_files, binary_file_contents)?;
+        if path.is_dir() {
+            collect_workspace_entries(root, &path, files, binary_files)?;
             continue;
         }
-        if !metadata.is_file() {
+        if !path.is_file() {
             continue;
         }
         let relative = path
@@ -1043,15 +928,12 @@ fn collect_workspace_entries(
                 files.insert(relative, content);
             }
             Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
-                let bytes = read_binary_file(&path)?;
-                let size_bytes = u64::try_from(bytes.len())
-                    .whatever_context("binary workspace file length does not fit in u64")?;
-                binary_files.push(relative.clone());
-                binary_file_contents.push(mneme::portability::BinaryFileData {
+                let bytes = std::fs::read(&path).with_whatever_context(|_| {
+                    format!("failed to read binary workspace file {}", path.display())
+                })?;
+                binary_files.push(mneme::portability::BinaryFile {
                     path: relative,
-                    size_bytes,
-                    sha256: sha256_hex(&bytes),
-                    contents_base64: koina::base64::encode(&bytes),
+                    content_base64: Some(base64::engine::general_purpose::STANDARD.encode(&bytes)),
                 });
             }
             Err(e) => {
@@ -1063,26 +945,6 @@ fn collect_workspace_entries(
         }
     }
     Ok(())
-}
-
-fn reject_workspace_symlink(root: &Path, path: &Path) -> Result<()> {
-    let relative = workspace_relative_path(root, path);
-    whatever!(
-        "refusing to follow symbolic link in workspace export: {} \
-         (relative path {} under source root {})",
-        path.display(),
-        relative,
-        root.display(),
-    );
-}
-
-fn workspace_relative_path(root: &Path, path: &Path) -> String {
-    let relative = path.strip_prefix(root).unwrap_or(path);
-    if relative.as_os_str().is_empty() {
-        String::from(".")
-    } else {
-        relative.to_string_lossy().replace('\\', "/")
-    }
 }
 fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
@@ -1212,72 +1074,6 @@ fn preflight_agent_file(file: &mneme::portability::AgentFile) -> Result<()> {
     Ok(())
 }
 
-/// Decode and verify binary workspace payloads before import mutates disk state.
-fn decode_binary_workspace_files(
-    file: &mneme::portability::AgentFile,
-) -> Result<HashMap<String, Vec<u8>>> {
-    let mut listed_paths = HashSet::new();
-    for path in &file.workspace.binary_files {
-        if file.workspace.files.contains_key(path) {
-            whatever!("workspace file {path:?} is listed as both text and binary");
-        }
-        if !listed_paths.insert(path.as_str()) {
-            whatever!("duplicate binary workspace file path {path:?}");
-        }
-    }
-
-    let mut decoded = HashMap::new();
-    for payload in &file.workspace.binary_file_contents {
-        if !listed_paths.contains(payload.path.as_str()) {
-            whatever!(
-                "binary workspace payload {:?} is not listed in workspace.binaryFiles",
-                payload.path
-            );
-        }
-        if decoded.contains_key(&payload.path) {
-            whatever!(
-                "duplicate binary workspace file payload for {:?}",
-                payload.path
-            );
-        }
-
-        let bytes =
-            koina::base64::decode(&payload.contents_base64).with_whatever_context(|_| {
-                format!("failed to decode binary workspace file {:?}", payload.path)
-            })?;
-        let decoded_size = u64::try_from(bytes.len())
-            .whatever_context("decoded binary workspace file length does not fit in u64")?;
-        if decoded_size != payload.size_bytes {
-            whatever!(
-                "binary workspace file {:?} size mismatch: metadata says {} bytes, decoded {} bytes",
-                payload.path,
-                payload.size_bytes,
-                decoded_size
-            );
-        }
-        let actual_sha256 = sha256_hex(&bytes);
-        if !payload.sha256.eq_ignore_ascii_case(&actual_sha256) {
-            whatever!(
-                "binary workspace file {:?} sha256 mismatch: metadata says {}, decoded {}",
-                payload.path,
-                payload.sha256,
-                actual_sha256
-            );
-        }
-        decoded.insert(payload.path.clone(), bytes);
-    }
-
-    for path in &file.workspace.binary_files {
-        if !decoded.contains_key(path) {
-            whatever!(
-                "binary workspace file {path:?} has no serialized contents; re-export with a version that preserves binary workspace file bytes"
-            );
-        }
-    }
-
-    Ok(decoded)
-}
-
 /// Report partial-export metadata before any filesystem or store mutation.
 ///
 /// WHY(#5102/#4965): the import must not silently restore an export that the
@@ -1336,20 +1132,11 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let agent_file: mneme::portability::AgentFile =
         serde_json::from_str(&json).whatever_context("failed to parse agent file")?;
 
-    // WHY(#5782): reject only FUTURE versions outright; older files upgrade
-    // transparently because every additive field carries serde(default).
-    if agent_file.version > mneme::portability::AGENT_FILE_VERSION {
+    if agent_file.version != mneme::portability::AGENT_FILE_VERSION {
         return Err(import_error(&ImportError::VersionMismatch {
             version: agent_file.version,
             expected: mneme::portability::AGENT_FILE_VERSION,
         }));
-    }
-    if agent_file.version < mneme::portability::AGENT_FILE_VERSION {
-        tracing::warn!(
-            from_version = agent_file.version,
-            to_version = mneme::portability::AGENT_FILE_VERSION,
-            "upgrading agent file from an older format version; absent fields default"
-        );
     }
 
     // WARNING(#4241): if --target-id is absent, the imported nous.id is
@@ -1360,17 +1147,13 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     for path in agent_file.workspace.files.keys() {
         validate_workspace_relative_path(path)?;
     }
-    for path in &agent_file.workspace.binary_files {
-        validate_workspace_relative_path(path)?;
-    }
-    for payload in &agent_file.workspace.binary_file_contents {
-        validate_workspace_relative_path(&payload.path)?;
+    for binary in &agent_file.workspace.binary_files {
+        validate_workspace_relative_path(&binary.path)?;
     }
     // WHY: preflight before any I/O so a corrupt export is rejected without
     // leaving partial state on disk (no workspace files partially written,
     // no config half-updated, no orphaned session records).
     preflight_agent_file(&agent_file)?;
-    let binary_workspace_files = decode_binary_workspace_files(&agent_file)?;
 
     // WHY(#5102/#4965): validate/report partial sections before any mutation.
     report_partial_export(&agent_file);
@@ -1450,20 +1233,32 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 .with_whatever_context(|_| format!("failed to write {}", target.display()))?;
             summary.workspace_files += 1;
         }
-
-        for path in &agent_file.workspace.binary_files {
-            let Some(bytes) = binary_workspace_files.get(path) else {
-                whatever!("binary workspace file {path:?} was not decoded during preflight");
-            };
-            let target = nous_dir.join(path);
+        for binary in &agent_file.workspace.binary_files {
+            let target = nous_dir.join(&binary.path);
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent).with_whatever_context(|_| {
                     format!("failed to create directory: {}", parent.display())
                 })?;
             }
-            koina::fs::write_restricted(&target, bytes)
-                .with_whatever_context(|_| format!("failed to write {}", target.display()))?;
-            summary.workspace_files += 1;
+            match &binary.content_base64 {
+                Some(payload) => {
+                    let decoded = base64::engine::general_purpose::STANDARD
+                        .decode(payload.as_bytes())
+                        .with_whatever_context(|_| {
+                            format!("failed to decode base64 for {}", binary.path)
+                        })?;
+                    koina::fs::write_restricted(&target, &decoded).with_whatever_context(|_| {
+                        format!("failed to write {}", target.display())
+                    })?;
+                    summary.workspace_files += 1;
+                }
+                None => {
+                    eprintln!(
+                        "  WARN: skipping binary workspace file '{}' (no base64 payload)",
+                        binary.path
+                    );
+                }
+            }
         }
     }
 
@@ -1603,13 +1398,13 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         })?;
 
         for session in &agent_file.sessions {
-            parse_session_or_agent_id(&session.id).with_whatever_context(|_| {
+            validate_session_or_agent_id(&session.id).with_whatever_context(|_| {
                 format!(
                     "imported session {} uses a reserved internal prefix",
                     session.id
                 )
             })?;
-            parse_session_or_agent_id(&session.session_key).with_whatever_context(|_| {
+            validate_session_or_agent_id(&session.session_key).with_whatever_context(|_| {
                 format!("imported session {} has a reserved session_key", session.id)
             })?;
 
@@ -1637,22 +1432,17 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                         metrics: SessionMetrics {
                             token_count_estimate: session.token_count_estimate,
                             message_count: session.message_count,
-                            // WHY(#5783): restore identity metrics from the export;
-                            // absent in v1 files, where serde(default) yields None/0.
-                            last_input_tokens: session.last_input_tokens.unwrap_or(0),
-                            bootstrap_hash: session.bootstrap_hash.clone(),
+                            last_input_tokens: 0,
+                            bootstrap_hash: None,
                             distillation_count: session.distillation_count,
-                            last_distilled_at: session.last_distilled_at.clone(),
-                            computed_context_tokens: session.computed_context_tokens.unwrap_or(0),
+                            last_distilled_at: None,
+                            computed_context_tokens: 0,
                         },
                         origin: SessionOrigin {
-                            // WHY(#5783): faithful round-trip — preserve origin
-                            // metadata exactly as exported (including None), so a
-                            // re-export is byte-identical (the #4163 fidelity contract).
-                            parent_session_id: session.parent_session_id.clone(),
-                            thread_id: session.thread_id.clone(),
-                            transport: session.transport.clone(),
-                            display_name: session.display_name.clone(),
+                            parent_session_id: None,
+                            thread_id: None,
+                            transport: Some("import".to_owned()),
+                            display_name: None,
                         },
                         artefact_meta: None,
                     },
@@ -1746,7 +1536,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 
         // Best-effort: remove marker on success. On failure the marker remains
         // so a re-run auto-enables force mode and resumes safely.
-        let _ = std::fs::remove_file(&resume_marker); // kanon:ignore RUST/no-silent-result-swallow — best-effort; if removal fails the marker persists so a re-run auto-enables force mode and resumes safely
+        let _ = std::fs::remove_file(&resume_marker);
     }
 
     // WHY: knowledge import is independent of session import. Previously this
@@ -2066,6 +1856,13 @@ pub(crate) async fn review_skills(
             })?;
 
         let nous_id = &args.nous_id;
+        let reviewer = args
+            .reviewer
+            .clone()
+            .or_else(|| std::env::var("USER").ok())
+            .unwrap_or_else(|| "operator".to_owned());
+        let reason = args.reason.as_deref();
+
         match args.action.as_str() {
             "list" => {
                 let pending = store
@@ -2101,7 +1898,7 @@ pub(crate) async fn review_skills(
                 let new_id = store
                     .approve_pending_skill(&fact_id, nous_id, review)
                     .whatever_context("failed to approve skill")?;
-                println!("Approved: {fid} → new skill fact: {new_id}");
+                println!("Approved by {reviewer}: {fid} → new skill fact: {new_id}");
             }
             "reject" => {
                 let fid = args.fact_id.as_deref().ok_or_else(|| {
@@ -2112,7 +1909,7 @@ pub(crate) async fn review_skills(
                 store
                     .reject_pending_skill(&fact_id, nous_id, review)
                     .whatever_context("failed to reject skill")?;
-                println!("Rejected: {fid}");
+                println!("Rejected by {reviewer}: {fid}");
             }
             other => {
                 whatever!("unknown action '{other}'. Use: list, approve, reject");
@@ -2152,61 +1949,57 @@ fn format_pending_skill_for_review(
     use std::fmt::Write as _;
 
     let mut out = String::new();
-    writeln!(out, "  ID: {}", fact.id).ok();
-    writeln!(out, "  Name: {}", ps.skill.name).ok();
-    writeln!(
+    let _ = writeln!(out, "  ID: {}", fact.id);
+    let _ = writeln!(out, "  Name: {}", ps.skill.name);
+    let _ = writeln!(
         out,
         "  Description: {}",
         ps.skill.description.lines().next().unwrap_or("")
-    )
-    .ok();
-    writeln!(out, "  Tools: {}", ps.skill.tools_used.join(", ")).ok();
-    writeln!(out, "  Tags: {}", ps.skill.domain_tags.join(", ")).ok();
-    writeln!(out, "  Steps: {}", ps.skill.steps.len()).ok();
-    writeln!(out, "  Status: {}", ps.status).ok();
-    writeln!(out, "  Candidate: {}", ps.candidate_id).ok();
+    );
+    let _ = writeln!(out, "  Tools: {}", ps.skill.tools_used.join(", "));
+    let _ = writeln!(out, "  Tags: {}", ps.skill.domain_tags.join(", "));
+    let _ = writeln!(out, "  Steps: {}", ps.skill.steps.len());
+    let _ = writeln!(out, "  Status: {}", ps.status);
+    let _ = writeln!(out, "  Candidate: {}", ps.candidate_id);
     let source_session = ps
         .source_session_id
         .as_deref()
         .or(fact.provenance.source_session_id.as_deref())
         .or_else(|| ps.source_evidence.session_refs.first().map(String::as_str))
         .unwrap_or("unknown");
-    writeln!(out, "  Source session: {source_session}").ok();
+    let _ = writeln!(out, "  Source session: {source_session}");
     if !ps.source_evidence.session_refs.is_empty() {
-        writeln!(
+        let _ = writeln!(
             out,
             "  Evidence sessions: {}",
             ps.source_evidence.session_refs.join(", ")
-        )
-        .ok();
+        );
     }
     if !ps.source_evidence.sequence_hashes.is_empty() {
-        writeln!(
+        let _ = writeln!(
             out,
             "  Sequence hashes: {}",
             ps.source_evidence.sequence_hashes.join(", ")
-        )
-        .ok();
+        );
     }
     if let Some(ref audit) = ps.extraction_audit {
-        writeln!(
+        let _ = writeln!(
             out,
             "  Extraction: prompt {}:{}, response {}:{}",
             audit.user_prompt_ref.algorithm,
             audit.user_prompt_ref.digest,
             audit.response_ref.algorithm,
             audit.response_ref.digest
-        )
-        .ok();
+        );
     }
     if let Some(observation) = ps.source_evidence.observations.first() {
-        writeln!(out, "  Evidence tools:").ok();
+        let _ = writeln!(out, "  Evidence tools:");
         for tool in &observation.tool_calls {
-            writeln!(out, "{}", format_tool_evidence_for_review(tool)).ok();
+            let _ = writeln!(out, "{}", format_tool_evidence_for_review(tool));
         }
     }
-    writeln!(out, "  Extracted: {}", ps.extracted_at).ok();
-    writeln!(out).ok();
+    let _ = writeln!(out, "  Extracted: {}", ps.extracted_at);
+    let _ = writeln!(out);
     out
 }
 
@@ -2281,14 +2074,9 @@ fn truncate_for_review(value: &str, max_chars: usize) -> String {
     }
 }
 
-// async required when migrate-qdrant feature is enabled; with the feature
-// disabled this function has no await points.
-#[cfg_attr(
-    not(feature = "migrate-qdrant"),
-    expect(
-        clippy::unused_async,
-        reason = "async required when migrate-qdrant feature is enabled"
-    )
+#[expect(
+    clippy::unused_async,
+    reason = "async required when migrate-qdrant feature is enabled"
 )]
 pub(crate) async fn migrate_memory(
     instance_root: Option<&PathBuf>,
@@ -2609,7 +2397,6 @@ mod tests {
                     "# Imported Agent\n\nYou are imported.\n".to_owned(),
                 )]),
                 binary_files: vec![],
-                binary_file_contents: vec![],
             },
             sessions: vec![ExportedSession {
                 id: "ses-001".to_owned(),
@@ -2658,14 +2445,6 @@ mod tests {
                     cache_write_tokens: 4,
                     model: Some("claude-sonnet-4-6".to_owned()),
                 }]),
-                parent_session_id: None,
-                thread_id: None,
-                transport: None,
-                display_name: None,
-                last_input_tokens: None,
-                bootstrap_hash: None,
-                last_distilled_at: None,
-                computed_context_tokens: None,
             }],
             memory: None,
             knowledge: None,
@@ -2705,6 +2484,15 @@ workspace = "nous/{agent_id}"
         )
         .unwrap();
         std::fs::write(config_path, config).unwrap();
+    }
+
+    /// Place a file where the default cohort's fjall knowledge store is
+    /// expected, simulating a store that exists but cannot be opened.
+    fn make_knowledge_store_unopenable(root: &Path) {
+        let oikos = Oikos::from_root(root);
+        let knowledge_db = oikos.knowledge_db();
+        std::fs::create_dir_all(&knowledge_db).unwrap();
+        std::fs::write(knowledge_db.join("shared"), "not a valid fjall store").unwrap();
     }
 
     #[test]
@@ -2777,13 +2565,6 @@ workspace = "nous/{agent_id}"
             exported.sessions[0].messages[1].tool_name.as_deref(),
             Some("read_file")
         );
-        assert_eq!(
-            exported
-                .export_metadata
-                .as_ref()
-                .and_then(|meta| meta.workspace_symlink_policy.as_deref()),
-            Some("reject")
-        );
         let usage_records = exported.sessions[0]
             .usage_records
             .as_ref()
@@ -2800,12 +2581,6 @@ workspace = "nous/{agent_id}"
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
         std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
-        let avatar_bytes = [0x89, 0x50, 0x4e, 0x47, 0x00, 0xff];
-        std::fs::write(
-            source_oikos.nous_dir("alice").join("avatar.png"),
-            avatar_bytes,
-        )
-        .unwrap();
 
         let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
         let session = source_store
@@ -2830,17 +2605,6 @@ workspace = "nous/{agent_id}"
             },
         )
         .unwrap();
-        let exported: AgentFile =
-            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
-        assert_eq!(exported.workspace.binary_files, vec!["avatar.png"]);
-        let avatar_payload = exported
-            .workspace
-            .binary_file_contents
-            .iter()
-            .find(|payload| payload.path == "avatar.png")
-            .expect("binary payload must be exported");
-        assert_eq!(avatar_payload.size_bytes, 6);
-        assert_eq!(avatar_payload.sha256, sha256_hex(&avatar_bytes));
 
         let dest = tempfile::tempdir().unwrap();
         let dest_oikos = Oikos::from_root(dest.path());
@@ -2852,8 +2616,8 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
-                skip_workspace: false,
                 skip_knowledge: false,
+                skip_workspace: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -2867,10 +2631,6 @@ workspace = "nous/{agent_id}"
         let history = dest_store.get_history(&sessions[0].id, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].content, "round trip");
-        assert_eq!(
-            std::fs::read(dest_oikos.nous_dir("alice").join("avatar.png")).unwrap(),
-            avatar_bytes.to_vec()
-        );
     }
 
     #[test]
@@ -2895,8 +2655,8 @@ workspace = "nous/{agent_id}"
                 file: import_path,
                 target_id: None,
                 skip_sessions: false,
-                skip_workspace: false,
                 skip_knowledge: false,
+                skip_workspace: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -2976,8 +2736,8 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
-                skip_workspace: false,
                 skip_knowledge: false,
+                skip_workspace: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -3096,8 +2856,8 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
-                skip_workspace: false,
                 skip_knowledge: false,
+                skip_workspace: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -3348,8 +3108,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
-            skip_workspace: false,
             skip_knowledge: false,
+            skip_workspace: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3403,8 +3163,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
-            skip_workspace: false,
             skip_knowledge: false,
+            skip_workspace: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3454,8 +3214,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: Some("dest-nous".to_owned()),
             skip_sessions: true,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3490,8 +3250,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3526,8 +3286,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
-            skip_workspace: false,
             skip_knowledge: false,
+            skip_workspace: false,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3555,8 +3315,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: Some("../../../../tmp/escaped".to_owned()),
             skip_sessions: true,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3585,8 +3345,8 @@ workspace = "nous/{agent_id}"
             file: agent_path.clone(),
             target_id: None,
             skip_sessions: true,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -3831,8 +3591,8 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
-                skip_workspace: false,
                 skip_knowledge: false,
+                skip_workspace: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -4038,8 +3798,8 @@ workspace = "nous/{agent_id}"
                 file: export_path,
                 target_id: None,
                 skip_sessions: false,
-                skip_workspace: false,
                 skip_knowledge: false,
+                skip_workspace: false,
                 // WHY: write_agent_config above pre-creates the dest nous dir, so
                 // import must overwrite it; the [embedding] config still applies.
                 force: true,
@@ -4177,8 +3937,8 @@ workspace = "nous/{agent_id}"
                 file: export1.clone(),
                 target_id: None,
                 skip_sessions: false,
-                skip_workspace: false,
                 skip_knowledge: false,
+                skip_workspace: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -4216,6 +3976,265 @@ workspace = "nous/{agent_id}"
         assert_eq!(v1, v2, "second export must be identical to first");
     }
 
+    /// WHY(#5102): binary workspace files round-trip through base64 payloads.
+    #[test]
+    fn export_import_roundtrips_binary_workspace_file() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let binary_path = source_oikos.nous_dir("alice").join("data.bin");
+        let original_bytes: Vec<u8> = vec![0, 1, 2, 255, 128, 64];
+        std::fs::write(&binary_path, &original_bytes).unwrap();
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
+        assert_eq!(exported.workspace.binary_files.len(), 1);
+        assert_eq!(exported.workspace.binary_files[0].path, "data.bin");
+        assert!(exported.workspace.binary_files[0].content_base64.is_some());
+        assert!(
+            exported.workspace.files.contains_key("SOUL.md"),
+            "text workspace files are still captured"
+        );
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_knowledge: false,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .unwrap();
+
+        let restored_bytes = std::fs::read(dest_oikos.nous_dir("alice").join("data.bin")).unwrap();
+        assert_eq!(restored_bytes, original_bytes);
+    }
+
+    /// WHY(#5102): session skipping and knowledge skipping are independent.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn import_skips_knowledge_independently_of_sessions() {
+        let source = tempfile::tempdir().unwrap();
+        let source_oikos = Oikos::from_root(source.path());
+        write_agent_config(source.path(), "alice", "Alice");
+        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        seed_typed_knowledge(&source_oikos, "alice");
+
+        let source_store = mneme::store::SessionStore::open(&source_oikos.sessions_db()).unwrap();
+        let session = source_store
+            .create_session(
+                "ses-knowledge-skip",
+                "alice",
+                "main",
+                None,
+                Some("mock-model"),
+            )
+            .unwrap();
+        source_store
+            .append_message(&session.id, Role::User, "hello", None, None, 5)
+            .unwrap();
+        drop(source_store);
+
+        let export_path = source.path().join("alice.agent.json");
+        export_agent(
+            Some(&source.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(export_path.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
+            },
+        )
+        .unwrap();
+
+        let dest = tempfile::tempdir().unwrap();
+        let dest_oikos = Oikos::from_root(dest.path());
+        std::fs::create_dir_all(dest_oikos.config()).unwrap();
+        std::fs::create_dir_all(dest_oikos.data()).unwrap();
+        import_agent(
+            Some(&dest.path().to_path_buf()),
+            &ImportArgs {
+                file: export_path,
+                target_id: None,
+                skip_sessions: false,
+                skip_knowledge: true,
+                skip_workspace: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .unwrap();
+
+        let facts = imported_facts(&dest_oikos, "alice");
+        assert!(facts.is_empty(), "knowledge should be skipped");
+
+        let dest_store = mneme::store::SessionStore::open(&dest_oikos.sessions_db()).unwrap();
+        let sessions = dest_store.list_sessions(Some("alice")).unwrap();
+        assert_eq!(sessions.len(), 1, "sessions should still import");
+    }
+
+    /// WHY(#4965/#5102): when no knowledge store exists, the export succeeds
+    /// cleanly and records the knowledge section as omitted in the coverage
+    /// metadata so the partiality is explicit.
+    #[test]
+    fn export_agent_succeeds_without_knowledge_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
+        assert!(exported.knowledge.is_none());
+        assert!(exported.omissions.is_none());
+        let coverage = exported
+            .coverage
+            .expect("coverage metadata must be present");
+        let knowledge = coverage
+            .sections
+            .iter()
+            .find(|s| s.section == "knowledge")
+            .expect("knowledge coverage entry missing");
+        assert_eq!(knowledge.status, "omitted");
+    }
+
+    /// WHY(#4965): a store that exists but cannot be opened must fail the
+    /// export unless the operator explicitly opts into partial mode.
+    #[test]
+    fn export_agent_fails_on_unopenable_knowledge_store_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        make_knowledge_store_unopenable(dir.path());
+
+        let output = dir.path().join("alice.agent.json");
+        let result = export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: false,
+                skip_sessions: false,
+                skip_knowledge: false,
+            },
+        );
+
+        assert!(
+            result.is_err(),
+            "expected export to fail without --allow-partial"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("failed to open knowledge store"),
+            "expected open error, got: {msg}"
+        );
+        assert!(
+            !output.exists(),
+            "output file must not be written when export fails"
+        );
+    }
+
+    /// WHY(#4965): in partial mode an unopenable store is recorded as an
+    /// omission so the export remains machine-readable.
+    #[test]
+    fn export_agent_records_omission_with_allow_partial() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        write_agent_config(dir.path(), "alice", "Alice");
+        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
+        make_knowledge_store_unopenable(dir.path());
+
+        let output = dir.path().join("alice.agent.json");
+        export_agent(
+            Some(&dir.path().to_path_buf()),
+            &ExportArgs {
+                nous_id: "alice".to_owned(),
+                output: Some(output.clone()),
+                archived: false,
+                max_messages: 0,
+                compact: true,
+                force: false,
+                allow_partial: true,
+                skip_sessions: false,
+                skip_knowledge: false,
+            },
+        )
+        .unwrap();
+
+        let exported: AgentFile =
+            serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
+        assert!(exported.knowledge.is_none());
+        let omissions = exported
+            .omissions
+            .expect("omissions must be present in partial mode");
+        assert_eq!(omissions.len(), 1);
+        assert_eq!(omissions[0].section, "knowledge");
+        assert!(
+            omissions[0]
+                .reason
+                .contains("failed to open knowledge store"),
+            "got: {}",
+            omissions[0].reason
+        );
+    }
+
     fn minimal_agent_file() -> AgentFile {
         AgentFile {
             version: mneme::portability::AGENT_FILE_VERSION,
@@ -4230,7 +4249,6 @@ workspace = "nous/{agent_id}"
             workspace: WorkspaceData {
                 files: HashMap::new(),
                 binary_files: vec![],
-                binary_file_contents: vec![],
             },
             sessions: vec![],
             memory: None,
@@ -4265,14 +4283,6 @@ workspace = "nous/{agent_id}"
                 tool_name: None,
             }],
             usage_records: None,
-            parent_session_id: None,
-            thread_id: None,
-            transport: None,
-            display_name: None,
-            last_input_tokens: None,
-            bootstrap_hash: None,
-            last_distilled_at: None,
-            computed_context_tokens: None,
         }];
         file
     }
@@ -4294,8 +4304,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: true,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4307,9 +4317,7 @@ workspace = "nous/{agent_id}"
     }
 
     #[test]
-    fn import_accepts_older_agent_file() {
-        // WHY(#5782): an older-version file must upgrade transparently rather than
-        // hard-reject — additive fields carry serde(default).
+    fn import_rejects_old_version() {
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         std::fs::create_dir_all(oikos.config()).unwrap();
@@ -4318,21 +4326,23 @@ workspace = "nous/{agent_id}"
         let mut agent_file = minimal_agent_file();
         agent_file.version = mneme::portability::AGENT_FILE_VERSION - 1;
         let json = serde_json::to_string(&agent_file).unwrap();
-        let agent_path = dir.path().join("older.agent.json");
+        let agent_path = dir.path().join("old.agent.json");
         std::fs::write(&agent_path, json).unwrap();
 
         let args = ImportArgs {
             file: agent_path,
             target_id: None,
             skip_sessions: true,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
         };
-        import_agent(Some(&dir.path().to_path_buf()), &args)
-            .expect("older-version agent file should import after transparent upgrade");
+        let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("agent file is version"), "got: {msg}");
+        assert!(msg.contains("requires v"), "got: {msg}");
     }
 
     #[test]
@@ -4351,8 +4361,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4378,8 +4388,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4405,8 +4415,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: false,
@@ -4432,8 +4442,8 @@ workspace = "nous/{agent_id}"
             file: agent_path,
             target_id: None,
             skip_sessions: false,
-            skip_workspace: true,
             skip_knowledge: false,
+            skip_workspace: true,
             force: false,
             dry_run: false,
             allow_unknown_values: true,
@@ -4787,7 +4797,6 @@ workspace = "nous/{agent_id}"
                 count: None,
             }],
             truncations: vec![],
-            workspace_symlink_policy: None,
         });
         let json = serde_json::to_string(&agent_file).unwrap();
         let agent_path = dir.path().join("partial.agent.json");
@@ -4800,7 +4809,6 @@ workspace = "nous/{agent_id}"
                 target_id: None,
                 skip_sessions: true,
                 skip_workspace: true,
-                skip_knowledge: false,
                 force: false,
                 dry_run: false,
                 allow_unknown_values: false,
@@ -4955,215 +4963,6 @@ workspace = "nous/{agent_id}"
         assert!(
             !rendered.contains(secret),
             "secret value must not leak into the review surface: {rendered}"
-        );
-    }
-
-    /// WHY(#4590): binary workspace files must carry payload bytes, not just
-    /// path names, so an export/import round-trip can restore them.
-    #[test]
-    fn export_records_binary_workspace_file_payloads_4590() {
-        let dir = tempfile::tempdir().unwrap();
-        let oikos = Oikos::from_root(dir.path());
-        write_agent_config(dir.path(), "alice", "Alice");
-        std::fs::write(oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
-        // WHY: PNG magic bytes are not valid UTF-8, so the collector treats this
-        // as a binary file and records a payload record for import.
-        let avatar_bytes = [0x89, 0x50, 0x4e, 0x47];
-        std::fs::write(oikos.nous_dir("alice").join("avatar.png"), avatar_bytes).unwrap();
-
-        let output = dir.path().join("alice.agent.json");
-        let args = ExportArgs {
-            nous_id: "alice".to_owned(),
-            output: Some(output.clone()),
-            archived: false,
-            max_messages: 0,
-            compact: false,
-            force: false,
-            allow_partial: false,
-        };
-        export_agent(Some(&dir.path().to_path_buf()), &args).unwrap();
-
-        let exported: AgentFile =
-            serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
-        assert_eq!(exported.workspace.binary_files, vec!["avatar.png"]);
-        let payload = exported
-            .workspace
-            .binary_file_contents
-            .iter()
-            .find(|payload| payload.path == "avatar.png")
-            .expect("binary payload must be exported");
-        assert_eq!(payload.size_bytes, 4);
-        assert_eq!(payload.sha256, sha256_hex(&avatar_bytes));
-        assert_eq!(
-            koina::base64::decode(&payload.contents_base64).unwrap(),
-            avatar_bytes.to_vec()
-        );
-        let meta = exported.export_metadata.expect("metadata must be present");
-        assert!(
-            meta.lossless,
-            "binary workspace payloads must not make export partial"
-        );
-        assert!(meta.omitted_sections.is_empty());
-    }
-
-    #[cfg(unix)]
-    fn assert_workspace_symlink_rejected(root: &Path, expected_relative_path: &str) {
-        let err = export_workspace(root).expect_err("workspace symlink should be rejected");
-        let msg = err.to_string();
-        assert!(
-            msg.contains("symbolic link"),
-            "error should identify symlink policy: {msg}"
-        );
-        assert!(
-            msg.contains(expected_relative_path),
-            "error should include relative path {expected_relative_path:?}: {msg}"
-        );
-        assert!(
-            msg.contains("source root") && msg.contains(&root.display().to_string()),
-            "error should include source root {}: {msg}",
-            root.display()
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn export_workspace_rejects_symlink_to_outside_root_4952() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("workspace");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("SOUL.md"), "# Alice\n").unwrap();
-
-        let outside = dir.path().join("outside.txt");
-        std::fs::write(&outside, "outside").unwrap();
-        std::os::unix::fs::symlink(&outside, root.join("leak.txt")).unwrap();
-
-        assert_workspace_symlink_rejected(&root, "leak.txt");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn export_workspace_rejects_symlink_loop_4952() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("workspace");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("SOUL.md"), "# Alice\n").unwrap();
-        std::os::unix::fs::symlink(".", root.join("loop")).unwrap();
-
-        assert_workspace_symlink_rejected(&root, "loop");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn export_workspace_rejects_symlink_to_file_4952() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("workspace");
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("real.txt"), "safe").unwrap();
-        std::os::unix::fs::symlink("real.txt", root.join("link.txt")).unwrap();
-
-        assert_workspace_symlink_rejected(&root, "link.txt");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn export_workspace_rejects_internal_directory_symlink_4952() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().join("workspace");
-        let target = root.join("target");
-        std::fs::create_dir_all(&target).unwrap();
-        std::fs::write(target.join("NOTE.md"), "safe").unwrap();
-        std::os::unix::fs::symlink("target", root.join("target-link")).unwrap();
-
-        assert_workspace_symlink_rejected(&root, "target-link");
-    }
-
-    /// WHY(#4590): importers must not silently drop path-only binary entries
-    /// from older or malformed exports.
-    #[test]
-    fn import_rejects_path_only_binary_workspace_files_4590() {
-        let dest = tempfile::tempdir().unwrap();
-        let dest_oikos = Oikos::from_root(dest.path());
-        std::fs::create_dir_all(dest_oikos.config()).unwrap();
-        std::fs::create_dir_all(dest_oikos.data()).unwrap();
-
-        let mut agent_file = sample_agent_file();
-        agent_file.workspace.binary_files = vec!["avatar.png".to_owned()];
-        let import_path = dest.path().join("agent.agent.json");
-        std::fs::write(
-            &import_path,
-            serde_json::to_string_pretty(&agent_file).unwrap(),
-        )
-        .unwrap();
-
-        let err = import_agent(
-            Some(&dest.path().to_path_buf()),
-            &ImportArgs {
-                file: import_path,
-                target_id: None,
-                skip_sessions: false,
-                skip_workspace: false,
-                skip_knowledge: false,
-                force: false,
-                dry_run: false,
-                allow_unknown_values: false,
-            },
-        )
-        .unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("has no serialized contents"), "got: {msg}");
-        assert!(
-            !dest_oikos.nous_dir("imported-agent").exists(),
-            "path-only binary import must fail before workspace writes"
-        );
-    }
-
-    /// WHY(#5102): session and knowledge skipping must be independent flags.
-    #[cfg(feature = "recall")]
-    #[test]
-    fn import_skip_knowledge_flag_omits_typed_knowledge_5102() {
-        let source = tempfile::tempdir().unwrap();
-        let source_oikos = Oikos::from_root(source.path());
-        write_agent_config(source.path(), "alice", "Alice");
-        std::fs::write(source_oikos.nous_dir("alice").join("SOUL.md"), "# Alice\n").unwrap();
-        seed_typed_knowledge(&source_oikos, "alice");
-
-        let export_path = source.path().join("alice.agent.json");
-        export_agent(
-            Some(&source.path().to_path_buf()),
-            &ExportArgs {
-                nous_id: "alice".to_owned(),
-                output: Some(export_path.clone()),
-                archived: false,
-                max_messages: 0,
-                compact: true,
-                force: false,
-                allow_partial: false,
-            },
-        )
-        .unwrap();
-
-        let dest = tempfile::tempdir().unwrap();
-        let dest_oikos = Oikos::from_root(dest.path());
-        std::fs::create_dir_all(dest_oikos.config()).unwrap();
-        std::fs::create_dir_all(dest_oikos.data()).unwrap();
-        import_agent(
-            Some(&dest.path().to_path_buf()),
-            &ImportArgs {
-                file: export_path,
-                target_id: None,
-                skip_sessions: false,
-                skip_workspace: false,
-                skip_knowledge: true,
-                force: false,
-                dry_run: false,
-                allow_unknown_values: false,
-            },
-        )
-        .unwrap();
-
-        assert!(
-            imported_facts(&dest_oikos, "alice").is_empty(),
-            "knowledge must be skipped when --skip-knowledge is set"
         );
     }
 }

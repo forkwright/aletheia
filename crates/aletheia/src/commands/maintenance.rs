@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use clap::Subcommand;
+use serde::Serialize;
 use snafu::prelude::*;
 
 use oikonomos::maintenance::{
@@ -24,12 +25,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
 
-mod prosoche_status;
-#[cfg(test)]
-mod tests;
-
-use prosoche_status::{MaintenanceStatusOutput, format_prosoche_path, prosoche_path_summary};
-
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
     /// Show status of all maintenance tasks
@@ -47,12 +42,6 @@ pub(crate) enum Action {
         /// List individual files (drift-detection only)
         #[arg(long)]
         verbose: bool,
-    },
-    /// Clear the persisted failure/backoff/disable state for a task so it
-    /// becomes eligible to run again. (#5130)
-    Reset {
-        /// Task ID whose persisted state should be reset.
-        task: String,
     },
 }
 
@@ -72,19 +61,6 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 .with_maintenance(maint.clone())
                 .with_knowledge_maintenance_opt(knowledge_executor.clone());
             runner.register_maintenance_tasks();
-
-            // WHY(#5131): the daemon persists task state to disk. The CLI runs
-            // in a separate process with a fresh in-memory runner, so without
-            // restoring the persisted state, `status` always reported zero runs
-            // and never reflected backoff or auto-disable. Load it if present.
-            let state_root = oikos.data().join("daemon-task-state").join("system");
-            if state_root.exists()
-                && let Ok(store) = oikonomos::state::TaskStateStore::open(&state_root)
-            {
-                runner = runner.with_state_store(store);
-                runner.restore_state();
-            }
-
             let statuses = merge_unavailable_tasks(runner.status(), &maint, &runner);
             let prosoche_summary = prosoche_path_summary(&config.maintenance.prosoche);
             if json {
@@ -137,8 +113,20 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             }
         }
         Action::Run { task, verbose } => {
-            let tasks: Vec<&'static MaintenanceTaskDefinition> = if task == "all" {
-                manual_maintenance_tasks().collect()
+            if task == "all" {
+                let knowledge_executor = build_knowledge_executor(&oikos, &config)?;
+                let capabilities = maintenance_capabilities(knowledge_executor.as_ref());
+                let tasks: Vec<&'static MaintenanceTaskDefinition> = manual_maintenance_tasks()
+                    .filter(|definition| {
+                        matches!(
+                            definition.manual_availability(capabilities),
+                            MaintenanceTaskAvailability::Available
+                        )
+                    })
+                    .collect();
+                for definition in tasks {
+                    run_task(definition, &maint, knowledge_executor.as_ref(), verbose).await?;
+                }
             } else {
                 vec![manual_task_definition(&task, knowledge_executor.is_some())?]
             };
@@ -156,43 +144,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 run_task(definition, &maint, knowledge_executor.as_ref(), verbose).await?;
             }
         }
-        Action::Reset { task } => reset_task_state(&oikos, &task)?,
     }
-    Ok(())
-}
-
-/// Clear the persisted failure/backoff/disable state for a single task. (#5130)
-///
-/// Re-enables the task, zeroes the consecutive-failure counter, and clears the
-/// backoff deadline and last error so the daemon will schedule it again on its
-/// next start.
-fn reset_task_state(oikos: &Oikos, task_id: &str) -> Result<()> {
-    let state_root = oikos.data().join("daemon-task-state").join("system");
-    if !state_root.exists() {
-        whatever!("no persisted task state found at {}", state_root.display());
-    }
-
-    let store = oikonomos::state::TaskStateStore::open(&state_root)
-        .whatever_context("failed to open task-state store")?;
-    let states = store
-        .load_all()
-        .whatever_context("failed to load task state")?;
-
-    let Some(mut state) = states.into_iter().find(|s| s.task_id == task_id) else {
-        whatever!("no persisted state for task '{task_id}'");
-    };
-
-    state.enabled = Some(true);
-    state.consecutive_failures = 0;
-    state.backoff_until_ts = None;
-    state.last_error = None;
-    state.schema_version = oikonomos::state::TASK_STATE_SCHEMA_VERSION;
-
-    store
-        .save(&state)
-        .whatever_context("failed to persist reset task state")?;
-
-    println!("Reset persisted state for task '{task_id}' (re-enabled, backoff cleared).");
     Ok(())
 }
 
@@ -238,8 +190,10 @@ async fn run_task(
     verbose: bool,
 ) -> Result<()> {
     let Some(manual_task) = definition.manual_run() else {
-        let valid = manual_maintenance_task_ids().join(", ");
-        whatever!("unknown task: {}. Valid: {valid}, all", definition.id())
+        whatever!(
+            "task '{}' is not supported for manual execution",
+            definition.id()
+        )
     };
 
     match manual_task {
@@ -257,17 +211,14 @@ async fn run_task(
         }
         ManualMaintenanceTask::DbMonitor => {
             let report = DbMonitor::new(maint.db_monitoring.clone())
-                .with_session_store_health_probe(maint.session_store_health_probe.clone())
                 .check()
                 .whatever_context("db monitor failed")?;
             for db in &report.databases {
                 println!(
-                    "db-monitor: {} {}MB ({}, {}, {})",
+                    "db-monitor: {} {}MB ({})",
                     db.name,
                     db.size_bytes / (1024 * 1024),
-                    db.status,
-                    db.shape,
-                    db.health
+                    db.status
                 );
             }
         }
@@ -308,9 +259,7 @@ async fn run_task(
         | ManualMaintenanceTask::GraphRecompute
         | ManualMaintenanceTask::SkillDecay
         | ManualMaintenanceTask::DerivedFactsMaterialize
-        | ManualMaintenanceTask::SerendipityDiscovery
-        | ManualMaintenanceTask::KnowledgeConsolidation
-        | ManualMaintenanceTask::IndexMaintenance => {
+        | ManualMaintenanceTask::SerendipityDiscovery => {
             run_knowledge_task(definition, knowledge_executor).await?;
         }
         _ => whatever!("{}: not scheduled for manual run", definition.id()),
@@ -384,12 +333,6 @@ async fn run_knowledge_task(
             oikonomos::schedule::BuiltinTask::SerendipityDiscovery => {
                 executor.discover_serendipitous_facts(&nous_id)
             }
-            oikonomos::schedule::BuiltinTask::KnowledgeConsolidation => {
-                executor.consolidate_knowledge(&nous_id)
-            }
-            oikonomos::schedule::BuiltinTask::IndexMaintenance => {
-                executor.maintain_indexes(&nous_id)
-            }
             _ => Err(oikonomos::error::TaskFailedSnafu {
                 task_id,
                 reason: format!("{builtin:?} is not a manual knowledge maintenance task"),
@@ -422,8 +365,7 @@ async fn run_knowledge_task(
                 report.duration_ms
             );
         }
-        // Covers Failure and any future #[non_exhaustive] variants.
-        _ => {
+        oikonomos::maintenance::MaintenanceOutcome::Failure => {
             whatever!(
                 "{}: failed — {} processed, {} modified in {}ms",
                 definition.id(),
@@ -437,6 +379,42 @@ async fn run_knowledge_task(
         println!("  {detail}");
     }
     Ok(())
+}
+
+fn require_knowledge_executor<'a>(
+    id: &str,
+    executor: Option<&'a Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<&'a Arc<dyn KnowledgeMaintenanceExecutor>> {
+    match executor {
+        Some(e) => Ok(e),
+        None => whatever!("task '{id}' requires a knowledge maintenance executor"),
+    }
+}
+
+async fn run_knowledge_blocking<F>(
+    task_id: &str,
+    f: F,
+) -> Result<oikonomos::maintenance::MaintenanceReport>
+where
+    F: FnOnce() -> oikonomos::error::Result<oikonomos::maintenance::MaintenanceReport>
+        + Send
+        + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .whatever_context(format!("{task_id}: blocking task panicked"))?
+        .whatever_context(format!("{task_id} failed"))
+}
+
+fn print_knowledge_report(id: &str, report: &oikonomos::maintenance::MaintenanceReport) {
+    let mut output = format!(
+        "{} processed, {} modified, {} errors in {}ms",
+        report.items_processed, report.items_modified, report.errors, report.duration_ms
+    );
+    if let Some(detail) = &report.detail {
+        output.push_str(&format!(": {detail}"));
+    }
+    println!("{id}: {output}");
 }
 
 fn run_self_audit() {
@@ -577,8 +555,6 @@ fn merge_unavailable_tasks(
             consecutive_failures: 0,
             in_flight: false,
             last_error: None,
-            data_source: "live".to_owned(),
-            as_of: None,
             last_errors: 0,
             available: reason.is_none(),
             reason,
@@ -647,7 +623,6 @@ pub(crate) fn build_config(
             warn_threshold_mb: settings.db_monitoring.warn_threshold_mb,
             alert_threshold_mb: settings.db_monitoring.alert_threshold_mb,
         },
-        session_store_health_probe: None,
         retention: oikonomos::maintenance::RetentionConfig {
             enabled: settings.retention.enabled,
         },
@@ -659,7 +634,6 @@ pub(crate) fn build_config(
                 enabled: settings.knowledge_maintenance_serendipity.enabled,
                 cadence: settings.knowledge_maintenance_serendipity.cadence.clone(),
             },
-            index_maintenance_interval: std::time::Duration::from_hours(1),
         },
         instance_backup: InstanceBackupConfig {
             enabled: settings.backup.enabled,
@@ -667,7 +641,6 @@ pub(crate) fn build_config(
             backup_dir: oikos.backups().join("instance"),
             interval_hours: settings.backup.backup_interval_hours,
             retention_count: settings.backup.backup_retention_count,
-            additional_workspaces: Vec::new(),
         },
         backup_metrics: None,
         prosoche_audit_dir: oikos.data().join("prosoche-audits"),
@@ -700,5 +673,297 @@ pub(crate) fn build_config(
                 ),
             },
         },
+    }
+}
+
+/// Active path for prosoche heartbeat/self-audit maintenance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ProsochePath {
+    DaemonScheduler,
+    ExternalTimer,
+    Both,
+    Disabled,
+}
+
+impl ProsochePath {
+    fn from_mode(runs_daemon: bool, uses_external: bool) -> Self {
+        match (runs_daemon, uses_external) {
+            (true, true) => Self::Both,
+            (true, false) => Self::DaemonScheduler,
+            (false, true) => Self::ExternalTimer,
+            (false, false) => Self::Disabled,
+        }
+    }
+}
+
+impl std::fmt::Display for ProsochePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DaemonScheduler => write!(f, "daemon scheduler"),
+            Self::ExternalTimer => write!(f, "external timer"),
+            Self::Both => write!(f, "both"),
+            Self::Disabled => write!(f, "disabled"),
+        }
+    }
+}
+
+/// Summary of the active prosoche heartbeat path for status output.
+#[derive(Debug, Clone, Serialize)]
+struct ProsochePathSummary {
+    path: ProsochePath,
+    heartbeat_enabled: bool,
+    self_audit_enabled: bool,
+    external_timer_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    heartbeat_interval_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    self_audit_interval_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    external_timer_interval_secs: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    external_timer_task_id: Option<String>,
+}
+
+fn prosoche_path_summary(
+    settings: &taxis::config::ProsocheMaintenanceSettings,
+) -> ProsochePathSummary {
+    let daemon_mode = settings.mode.runs_daemon_tasks();
+    let heartbeat_active = daemon_mode && settings.heartbeat.enabled;
+    let self_audit_active = daemon_mode && settings.self_audit.enabled;
+    let external_active = settings.mode.uses_external_timer() && settings.external_timer.enabled;
+    let path = ProsochePath::from_mode(heartbeat_active || self_audit_active, external_active);
+    ProsochePathSummary {
+        path,
+        heartbeat_enabled: heartbeat_active,
+        self_audit_enabled: self_audit_active,
+        external_timer_enabled: external_active,
+        heartbeat_interval_secs: heartbeat_active.then_some(settings.heartbeat.interval_secs),
+        self_audit_interval_secs: self_audit_active.then_some(settings.self_audit.interval_secs),
+        external_timer_interval_secs: external_active
+            .then_some(settings.external_timer.interval_secs),
+        external_timer_task_id: external_active.then(|| settings.external_timer.task_id.clone()),
+    }
+}
+
+fn format_prosoche_path(summary: &ProsochePathSummary) -> String {
+    match summary.path {
+        ProsochePath::DaemonScheduler => format!(
+            "Prosoche heartbeat: {} (heartbeat: {}s, self-audit: {}s)",
+            summary.path,
+            summary.heartbeat_interval_secs.unwrap_or(0),
+            summary.self_audit_interval_secs.unwrap_or(0)
+        ),
+        ProsochePath::ExternalTimer => format!(
+            "Prosoche heartbeat: {} (task-id: {}, interval: {}s)",
+            summary.path,
+            summary.external_timer_task_id.as_deref().unwrap_or("none"),
+            summary.external_timer_interval_secs.unwrap_or(0)
+        ),
+        ProsochePath::Both => format!(
+            "Prosoche heartbeat: {} (heartbeat: {}s, self-audit: {}s, external task-id: {}, interval: {}s)",
+            summary.path,
+            summary.heartbeat_interval_secs.unwrap_or(0),
+            summary.self_audit_interval_secs.unwrap_or(0),
+            summary.external_timer_task_id.as_deref().unwrap_or("none"),
+            summary.external_timer_interval_secs.unwrap_or(0)
+        ),
+        ProsochePath::Disabled => "Prosoche heartbeat: disabled".to_owned(),
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MaintenanceStatusOutput {
+    tasks: Vec<TaskStatus>,
+    prosoche: ProsochePathSummary,
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use std::collections::BTreeSet;
+    use std::sync::{LazyLock, Mutex};
+
+    use oikonomos::maintenance::{maintenance_task_by_id, manual_maintenance_task_ids};
+    use taxis::config::AletheiaConfig;
+
+    use super::*;
+
+    static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    // WHY: the cwd-resolution test changes process cwd; restore it on drop so
+    // that change cannot leak into later tests.
+    struct CwdGuard(PathBuf);
+
+    impl CwdGuard {
+        fn save() -> Self {
+            Self(std::env::current_dir().expect("current dir"))
+        }
+    }
+
+    impl Drop for CwdGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.0).expect("restore cwd");
+        }
+    }
+
+    #[test]
+    fn all_expansion_comes_from_registry_manual_tasks() {
+        let ids = manual_maintenance_task_ids();
+        assert!(!ids.is_empty(), "manual task registry must not be empty");
+
+        let unique: BTreeSet<_> = ids.iter().copied().collect();
+        assert_eq!(unique.len(), ids.len(), "manual task IDs must be unique");
+
+        for id in ids {
+            let Some(definition) = maintenance_task_by_id(id) else {
+                panic!("manual id '{id}' resolves");
+            };
+            assert!(
+                definition.manual_run().is_some(),
+                "manual task '{id}' must carry a manual run handler"
+            );
+        }
+    }
+
+    #[test]
+    fn prosoche_path_from_mode_combinations() {
+        assert_eq!(
+            ProsochePath::from_mode(false, false),
+            ProsochePath::Disabled
+        );
+        assert_eq!(
+            ProsochePath::from_mode(true, false),
+            ProsochePath::DaemonScheduler
+        );
+        assert_eq!(
+            ProsochePath::from_mode(false, true),
+            ProsochePath::ExternalTimer
+        );
+        assert_eq!(ProsochePath::from_mode(true, true), ProsochePath::Both);
+    }
+
+    #[test]
+    fn prosoche_path_display_labels() {
+        assert_eq!(
+            ProsochePath::DaemonScheduler.to_string(),
+            "daemon scheduler"
+        );
+        assert_eq!(ProsochePath::ExternalTimer.to_string(), "external timer");
+        assert_eq!(ProsochePath::Both.to_string(), "both");
+        assert_eq!(ProsochePath::Disabled.to_string(), "disabled");
+    }
+
+    #[test]
+    fn format_prosoche_path_outputs_active_path() {
+        let daemon = ProsochePathSummary {
+            path: ProsochePath::DaemonScheduler,
+            heartbeat_enabled: true,
+            self_audit_enabled: true,
+            external_timer_enabled: false,
+            heartbeat_interval_secs: Some(60),
+            self_audit_interval_secs: Some(300),
+            external_timer_interval_secs: None,
+            external_timer_task_id: None,
+        };
+        assert!(format_prosoche_path(&daemon).contains("daemon scheduler"));
+        assert!(format_prosoche_path(&daemon).contains("heartbeat: 60s"));
+        assert!(format_prosoche_path(&daemon).contains("self-audit: 300s"));
+
+        let external = ProsochePathSummary {
+            path: ProsochePath::ExternalTimer,
+            heartbeat_enabled: false,
+            self_audit_enabled: false,
+            external_timer_enabled: true,
+            heartbeat_interval_secs: None,
+            self_audit_interval_secs: None,
+            external_timer_interval_secs: Some(300),
+            external_timer_task_id: Some("task-42".to_owned()),
+        };
+        assert!(format_prosoche_path(&external).contains("external timer"));
+        assert!(format_prosoche_path(&external).contains("task-id: task-42"));
+        assert!(format_prosoche_path(&external).contains("interval: 300s"));
+
+        let both = ProsochePathSummary {
+            path: ProsochePath::Both,
+            heartbeat_enabled: true,
+            self_audit_enabled: true,
+            external_timer_enabled: true,
+            heartbeat_interval_secs: Some(60),
+            self_audit_interval_secs: Some(300),
+            external_timer_interval_secs: Some(300),
+            external_timer_task_id: Some("task-42".to_owned()),
+        };
+        assert!(format_prosoche_path(&both).contains("both"));
+        assert!(format_prosoche_path(&both).contains("external task-id: task-42"));
+
+        let disabled = ProsochePathSummary {
+            path: ProsochePath::Disabled,
+            heartbeat_enabled: false,
+            self_audit_enabled: false,
+            external_timer_enabled: false,
+            heartbeat_interval_secs: None,
+            self_audit_interval_secs: None,
+            external_timer_interval_secs: None,
+            external_timer_task_id: None,
+        };
+        assert_eq!(
+            format_prosoche_path(&disabled),
+            "Prosoche heartbeat: disabled"
+        );
+    }
+
+    #[test]
+    fn manual_registry_exposes_instance_backup_not_fjall_backup() {
+        let ids = manual_maintenance_task_ids();
+        assert!(
+            ids.contains(&"instance-backup"),
+            "manual registry must expose instance-backup"
+        );
+        assert!(
+            !ids.contains(&"fjall-backup"),
+            "manual registry must not expose fjall-backup"
+        );
+
+        let Some(definition) = maintenance_task_by_id("instance-backup") else {
+            panic!("instance-backup must resolve");
+        };
+        assert!(
+            definition.manual_run().is_some(),
+            "instance-backup must be runnable manually"
+        );
+
+        let Some(legacy) = maintenance_task_by_id("fjall-backup") else {
+            panic!("fjall-backup legacy alias must still resolve");
+        };
+        assert_eq!(
+            legacy.id(),
+            "instance-backup",
+            "legacy alias must point to instance-backup"
+        );
+    }
+
+    #[test]
+    fn build_config_resolves_example_root_sibling_even_from_unrelated_cwd() {
+        let _cwd_lock = CWD_LOCK.lock().expect("lock cwd mutation");
+        let _guard = CwdGuard::save();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let instance_root = tmp.path().join("instance");
+        let sibling_example = tmp.path().join("instance.example");
+        std::fs::create_dir_all(&instance_root).expect("mkdir instance");
+        std::fs::create_dir_all(&sibling_example).expect("mkdir sibling example");
+
+        let unrelated = tmp.path().join("unrelated");
+        std::fs::create_dir_all(&unrelated).expect("mkdir unrelated");
+        std::env::set_current_dir(&unrelated).expect("set cwd");
+
+        let oikos = Oikos::from_root(&instance_root);
+        let config = AletheiaConfig::default();
+        let maint = build_config(&oikos, &config.maintenance, &config.prompt_audit);
+
+        assert_eq!(
+            maint.drift_detection.example_root, sibling_example,
+            "drift template should resolve to sibling instance.example, not cwd"
+        );
     }
 }

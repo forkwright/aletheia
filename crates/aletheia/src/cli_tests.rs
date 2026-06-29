@@ -130,16 +130,10 @@ fn memory_gc_parses() {
 #[test]
 fn eval_subcommand_parses() {
     let cli = Cli::parse_from(["aletheia", "eval"]);
-    match cli.command {
-        Some(Command::Eval(args)) => {
-            assert_eq!(
-                args.coverage_policy,
-                dokimion::coverage::Policy::Ci,
-                "eval should default to CI coverage policy"
-            );
-        }
-        _ => panic!("expected Eval command"),
-    }
+    assert!(
+        matches!(cli.command, Some(Command::Eval(_))),
+        "eval subcommand should parse"
+    );
 }
 
 #[test]
@@ -156,8 +150,6 @@ fn eval_with_options_parses() {
         "--json",
         "--timeout",
         "60",
-        "--coverage-policy",
-        "smoke-dev",
     ]);
     match cli.command {
         Some(Command::Eval(args)) => {
@@ -174,11 +166,6 @@ fn eval_with_options_parses() {
             );
             assert!(args.json, "json flag should be set");
             assert_eq!(args.timeout, 60, "timeout should be set");
-            assert_eq!(
-                args.coverage_policy,
-                dokimion::coverage::Policy::SmokeDev,
-                "coverage policy should be set"
-            );
         }
         _ => panic!("expected Eval command"),
     }
@@ -192,7 +179,10 @@ fn export_subcommand_parses() {
             assert_eq!(args.nous_id, "syn", "nous_id should be set");
             assert!(args.archived, "archived flag should be set");
             assert!(args.compact, "compact flag should be set");
-            assert_eq!(args.max_messages, 500, "max_messages should default to 500");
+            assert_eq!(
+                args.max_messages, 0,
+                "max_messages should default to lossless (0)"
+            );
         }
         _ => panic!("expected Export command"),
     }
@@ -490,7 +480,7 @@ fn backup_prune_with_keep_parses() {
             ..
         })) => {
             assert!(prune, "prune flag should be set");
-            assert_eq!(keep, Some(3), "keep count should be set");
+            assert_eq!(keep, 3, "keep count should be set");
             assert!(yes, "yes flag should be set");
         }
         _ => panic!("expected Backup command"),
@@ -529,7 +519,7 @@ fn backup_prune_subcommand_parses() {
             action: Some(BackupAction::Prune { keep, yes }),
             ..
         })) => {
-            assert_eq!(keep, Some(7), "keep should be set");
+            assert_eq!(keep, 7, "keep should be set");
             assert!(yes, "yes should be set");
         }
         _ => panic!("expected Backup Prune subcommand"),
@@ -668,6 +658,10 @@ fn import_minimal_parses() {
             assert!(args.target_id.is_none(), "target_id should default to none");
             assert!(!args.skip_sessions, "skip_sessions should default to false");
             assert!(
+                !args.skip_knowledge,
+                "skip_knowledge should default to false"
+            );
+            assert!(
                 !args.skip_workspace,
                 "skip_workspace should default to false"
             );
@@ -687,6 +681,7 @@ fn import_with_all_flags_parses() {
         "--target-id",
         "new-agent",
         "--skip-sessions",
+        "--skip-knowledge",
         "--skip-workspace",
         "--force",
         "--dry-run",
@@ -699,6 +694,7 @@ fn import_with_all_flags_parses() {
                 "target_id should be set"
             );
             assert!(args.skip_sessions, "skip_sessions flag should be set");
+            assert!(args.skip_knowledge, "skip_knowledge flag should be set");
             assert!(args.skip_workspace, "skip_workspace flag should be set");
             assert!(args.force, "force flag should be set");
             assert!(args.dry_run, "dry_run flag should be set");

@@ -1,8 +1,10 @@
-//! Lifecycle, builder pattern, and basic failure handling tests.
+//! Lifecycle + builder pattern + basic failure handling tests (split from `runner_tests.rs`).
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
@@ -10,7 +12,66 @@ use super::super::*;
 use super::make_echo_task;
 use crate::bridge::DaemonBridge;
 use crate::execution::execute_builtin;
+use crate::maintenance::{KnowledgeMaintenanceExecutor, MaintenanceReport};
 use crate::runner::ExecutionResult;
+
+/// Knowledge executor that reports non-fatal errors for decay refresh.
+struct DecayErrorKnowledge;
+
+impl KnowledgeMaintenanceExecutor for DecayErrorKnowledge {
+    fn insert_fact(&self, _fact: &episteme::knowledge::Fact) -> crate::error::Result<()> {
+        Ok(())
+    }
+
+    fn refresh_decay_scores(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport {
+            items_processed: 5,
+            items_modified: 1,
+            errors: 2,
+            duration_ms: 42,
+            detail: Some("decay refresh: 2 partial failures".to_owned()),
+        })
+    }
+
+    fn deduplicate_entities(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn recompute_graph_scores(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn refresh_embeddings(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn garbage_collect(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn maintain_indexes(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn health_check(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn run_skill_decay(&self, _nous_id: &str) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn materialize_derived_facts(&self) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+
+    fn discover_serendipitous_facts(
+        &self,
+        _nous_id: &str,
+    ) -> crate::error::Result<MaintenanceReport> {
+        Ok(MaintenanceReport::default())
+    }
+}
 
 #[test]
 fn register_shows_in_status() {
@@ -362,7 +423,7 @@ fn knowledge_maintenance_registers_only_implemented_tasks() {
     assert!(ids.contains(&"skill-decay"));
     assert!(!ids.contains(&"embedding-refresh"));
     assert!(!ids.contains(&"knowledge-gc"));
-    assert!(ids.contains(&"index-maintenance"));
+    assert!(!ids.contains(&"index-maintenance"));
     assert!(!ids.contains(&"graph-health-check"));
 }
 
@@ -536,13 +597,13 @@ impl crate::maintenance::KnowledgeMaintenanceExecutor for MockKnowledgeExecutor 
 #[test]
 fn execution_result_serialization() {
     let result = ExecutionResult {
-        outcome: TaskOutcome::Success,
+        success: true,
         errors: 0,
         output: Some("hello".to_owned()),
     };
     let json = serde_json::to_string(&result).expect("serialize");
     let back: ExecutionResult = serde_json::from_str(&json).expect("deserialize");
-    assert!(back.is_success());
+    assert!(back.success);
     assert_eq!(back.output.as_deref(), Some("hello"));
 }
 
@@ -641,64 +702,6 @@ async fn shutdown_completes_within_timeout() {
     );
 }
 
-/// Shutdown must await in-flight `JoinHandle`s so that tasks observe
-/// cancellation before `run()` returns.
-#[tokio::test]
-async fn shutdown_awaits_inflight_tasks_before_returning() {
-    let shutdown = CancellationToken::new();
-    let mut runner = TaskRunner::new("test-nous", shutdown.clone());
-
-    let task_cancel = CancellationToken::new();
-    let task_cancel_child = task_cancel.child_token();
-    let observed = Arc::new(AtomicBool::new(false));
-    let observed_clone = Arc::clone(&observed);
-
-    let handle = tokio::spawn(
-        async move {
-            // WHY: loop until cancellation propagates, then record that the
-            // task had a chance to observe shutdown before being awaited.
-            while !task_cancel_child.is_cancelled() {
-                tokio::task::yield_now().await;
-            }
-            observed_clone.store(true, Ordering::SeqCst);
-            Ok(ExecutionResult::success(None))
-        }
-        .instrument(tracing::info_span!("test_inflight_task")),
-    );
-
-    runner.in_flight.insert(
-        "long-task".to_owned(),
-        InFlightTask {
-            handle,
-            cancel: task_cancel,
-            started_at: Instant::now()
-                .checked_sub(Duration::from_secs(1))
-                .expect("test start instant should fit before now"),
-            timeout: Duration::from_mins(1),
-            warned: false,
-        },
-    );
-
-    let run_handle = tokio::spawn(
-        async move {
-            runner.run().await;
-        }
-        .instrument(tracing::info_span!("test_runner")),
-    );
-
-    shutdown.cancel();
-
-    let result = tokio::time::timeout(Duration::from_secs(5), run_handle).await;
-    assert!(
-        result.is_ok(),
-        "runner should return after shutdown is signalled"
-    );
-    assert!(
-        observed.load(Ordering::SeqCst),
-        "in-flight task should observe cancellation before run() returns"
-    );
-}
-
 /// Multiple runners with independent child tokens: cancelling one does not affect others.
 #[tokio::test]
 async fn independent_child_tokens_isolated() {
@@ -773,4 +776,297 @@ fn backoff_cleared_on_success() {
     runner.record_task_completion("backoff-clear", Duration::from_millis(1), 0);
     assert!(runner.tasks[0].backoff_until.is_none());
     assert_eq!(runner.tasks[0].consecutive_failures, 0);
+}
+
+#[tokio::test]
+async fn hung_task_cancelled_after_2x_timeout() {
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token);
+
+    let task = TaskDef {
+        id: "hung-task".to_owned(),
+        name: "Hung task".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
+        action: TaskAction::Command("echo ok".to_owned()),
+        timeout: Duration::from_millis(50),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+
+    // NOTE: Simulate a hung task by spawning a long sleep.
+    let handle = tokio::spawn(
+        async {
+            // kanon:ignore TESTING/sleep-in-test reason = "simulates a hung task; the runner cancels the handle before the sleep elapses"
+            tokio::time::sleep(Duration::from_mins(1)).await;
+            Ok(ExecutionResult {
+                success: true,
+                errors: 0,
+                output: None,
+            })
+        }
+        .instrument(tracing::info_span!("test_hung_task")),
+    );
+
+    runner.in_flight.insert(
+        "hung-task".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: CancellationToken::new(),
+            started_at: Instant::now()
+                .checked_sub(Duration::from_millis(150))
+                .expect("subtracting 150ms from now should succeed"),
+            timeout: Duration::from_millis(50),
+            warned: false,
+        },
+    );
+
+    runner.check_in_flight().await;
+
+    assert!(!runner.in_flight.contains_key("hung-task"));
+    assert_eq!(runner.tasks[0].consecutive_failures, 1);
+}
+
+/// Bridge that captures the cancellation token passed to a prompt dispatch and
+/// never returns, so the runner must cancel the token and abort the task.
+struct CancelCapturingBridge {
+    captured: Arc<Mutex<Option<CancellationToken>>>,
+    ready: Arc<Notify>,
+}
+
+impl CancelCapturingBridge {
+    fn new() -> (Self, Arc<Mutex<Option<CancellationToken>>>, Arc<Notify>) {
+        let captured = Arc::new(Mutex::new(None));
+        let ready = Arc::new(Notify::new());
+        (
+            Self {
+                captured: Arc::clone(&captured),
+                ready: Arc::clone(&ready),
+            },
+            captured,
+            ready,
+        )
+    }
+}
+
+impl DaemonBridge for CancelCapturingBridge {
+    fn send_prompt(
+        &self,
+        _nous_id: &str,
+        _session_key: &str,
+        _prompt: &str,
+    ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
+        Box::pin(async {
+            Ok(ExecutionResult {
+                success: false,
+                errors: 0,
+                output: Some("send_prompt not expected".to_owned()),
+            })
+        })
+    }
+
+    fn send_prompt_with_cancel(
+        &self,
+        _nous_id: &str,
+        _session_key: &str,
+        _prompt: &str,
+        cancel: CancellationToken,
+    ) -> Pin<Box<dyn Future<Output = crate::error::Result<ExecutionResult>> + Send + '_>> {
+        *self.captured.lock().expect("lock poisoned") = Some(cancel.clone());
+        self.ready.notify_one();
+
+        Box::pin(async move {
+            // Wait until cancellation propagates, then yield forever so the
+            // runner's timeout path cancels the stored token before aborting.
+            cancel.cancelled().await;
+            loop {
+                tokio::task::yield_now().await;
+            }
+        })
+    }
+}
+
+#[tokio::test]
+async fn hung_bridge_task_cancels_token_before_abort() {
+    let shutdown = CancellationToken::new();
+    let (bridge, captured, ready) = CancelCapturingBridge::new();
+    let bridge: Arc<dyn DaemonBridge> = Arc::new(bridge);
+    let mut runner = TaskRunner::with_bridge("test-nous", shutdown, bridge);
+
+    let task = TaskDef {
+        id: "bridge-task".to_owned(),
+        name: "Bridge task".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
+        action: TaskAction::SelfPrompt("hello".to_owned()),
+        timeout: Duration::from_millis(50),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+    runner.tasks[0].next_run = Some(
+        jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(10))
+            .expect("past timestamp arithmetic should succeed"),
+    );
+
+    runner.tick();
+    assert!(
+        runner.in_flight.contains_key("bridge-task"),
+        "task should be in flight after tick"
+    );
+
+    // Wait for the spawned task to enter the bridge and hand us its token.
+    tokio::time::timeout(Duration::from_secs(5), ready.notified())
+        .await
+        .expect("bridge should receive the prompt");
+
+    let task_token = captured
+        .lock()
+        .expect("lock poisoned")
+        .clone()
+        .expect("token should be captured");
+    assert!(!task_token.is_cancelled(), "token should start uncancelled");
+
+    // Simulate the task running well past its 2x timeout threshold.
+    let inflight = runner
+        .in_flight
+        .get_mut("bridge-task")
+        .expect("task still in flight");
+    inflight.started_at = Instant::now()
+        .checked_sub(Duration::from_millis(150))
+        .expect("test duration should fit before now");
+
+    runner.check_in_flight().await;
+
+    assert!(
+        !runner.in_flight.contains_key("bridge-task"),
+        "runner should remove the hung task"
+    );
+    assert!(
+        task_token.is_cancelled(),
+        "runner should cancel the token passed to the bridge-dispatched task"
+    );
+    assert_eq!(
+        runner.tasks[0].consecutive_failures, 1,
+        "hung task should be recorded as a failure"
+    );
+}
+
+#[tokio::test]
+async fn watchdog_enabled_restarts_hung_inflight_task() {
+    let token = CancellationToken::new();
+    let settings = taxis::config::WatchdogSettings {
+        enabled: true,
+        heartbeat_timeout_secs: 0,
+        check_interval_secs: 1,
+        max_restarts: 5,
+    };
+    let mut runner = TaskRunner::new("test-nous", token).with_watchdog_settings(&settings);
+
+    let task = TaskDef {
+        id: "watchdog-task".to_owned(),
+        name: "Watchdog task".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_secs(60)),
+        action: TaskAction::Command("sleep 60".to_owned()),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+
+    let task_cancel = CancellationToken::new();
+    let handle = tokio::spawn(async {
+        std::future::pending::<crate::error::Result<ExecutionResult>>().await
+    });
+    runner.in_flight.insert(
+        "watchdog-task".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: task_cancel.clone(),
+            started_at: Instant::now(),
+            timeout: Duration::from_secs(60),
+            warned: false,
+        },
+    );
+    runner.register_watchdog_process("watchdog-task");
+
+    runner.check_task_watchdog().await;
+
+    assert!(
+        !runner.in_flight.contains_key("watchdog-task"),
+        "watchdog should remove the hung task from in-flight tracking"
+    );
+    assert!(
+        task_cancel.is_cancelled(),
+        "watchdog kill should cancel the task token"
+    );
+    assert_eq!(
+        runner.tasks[0].consecutive_failures, 1,
+        "watchdog kill should record a task failure"
+    );
+    assert_eq!(
+        runner.watchdog_restart_count(),
+        1,
+        "watchdog should record the restart event"
+    );
+    let next_run = runner.tasks[0]
+        .next_run
+        .expect("watchdog restart should schedule an immediate run");
+    assert!(
+        next_run <= jiff::Timestamp::now(),
+        "watchdog restart should be due immediately"
+    );
+}
+
+/// Regression (#5132): a knowledge maintenance report with errors > 0 must be
+/// routed through the runner's failure path so status/metrics see a non-success.
+#[tokio::test]
+async fn knowledge_partial_error_records_task_failure() {
+    let token = CancellationToken::new();
+    let mut runner = TaskRunner::new("test-nous", token)
+        .with_knowledge_maintenance(Arc::new(DecayErrorKnowledge));
+
+    let task = TaskDef {
+        id: "decay-refresh".to_owned(),
+        name: "Decay refresh".to_owned(),
+        nous_id: "test-nous".to_owned(),
+        schedule: Schedule::Interval(Duration::from_mins(1)),
+        action: TaskAction::Builtin(BuiltinTask::DecayRefresh),
+        enabled: true,
+        ..TaskDef::default()
+    };
+    runner.register(task);
+    runner.tasks[0].next_run = Some(
+        jiff::Timestamp::now()
+            .checked_sub(jiff::SignedDuration::from_secs(10))
+            .expect("past timestamp arithmetic should succeed"),
+    );
+
+    runner.tick();
+    assert!(
+        runner.in_flight.contains_key("decay-refresh"),
+        "task should be spawned"
+    );
+
+    while runner.in_flight.contains_key("decay-refresh") {
+        runner.check_in_flight().await;
+        tokio::task::yield_now().await;
+    }
+
+    let statuses = runner.status();
+    assert_eq!(
+        statuses[0].consecutive_failures, 1,
+        "partial-error maintenance must increment consecutive failures"
+    );
+    assert!(
+        statuses[0]
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("2 errors"),
+        "last_error should surface the error count: {:?}",
+        statuses[0].last_error
+    );
 }
