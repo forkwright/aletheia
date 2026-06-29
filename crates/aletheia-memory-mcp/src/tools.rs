@@ -22,7 +22,7 @@ use snafu::ResultExt as _;
 
 use mneme::engine::DataValue;
 use mneme::id::{EntityId, FactId};
-use mneme::knowledge::{Entity, Fact, ForgetReason, Relationship};
+use mneme::knowledge::{Fact, ForgetReason};
 use mneme::knowledge_store::KnowledgeStore;
 
 use crate::error::{InvalidInputSnafu, KnowledgeStoreSnafu, SerializationSnafu};
@@ -170,6 +170,9 @@ const DEFAULT_SEARCH_LIMIT: usize = 20;
 const MAX_SEARCH_LIMIT: usize = 200;
 const ALLOWED_FORGET_REASONS: &str =
     "user_requested, outdated, incorrect, privacy, stale, superseded, contradicted";
+/// WHY: raw atomic Datalog writes bypass `KnowledgeStore::insert_fact`; keep
+/// the same public fact content limit enforced before building those writes.
+const MAX_FACT_CONTENT_LENGTH: usize = 102_400;
 
 fn opaque_store_id(store_path: Option<&Path>) -> String {
     let Some(store_path) = store_path else {
@@ -483,29 +486,214 @@ fn fact_entity_id(fact_id: &str) -> crate::error::Result<EntityId> {
     })
 }
 
-fn insert_fact_entity_link(
+fn prefixed_param(prefix: &str, field: &str) -> String {
+    format!("{prefix}_{field}")
+}
+
+fn optional_str_value(value: Option<&str>) -> DataValue {
+    value.map_or(DataValue::Null, |s| DataValue::Str(s.into()))
+}
+
+fn optional_timestamp_value(value: Option<&jiff::Timestamp>) -> DataValue {
+    value.map_or(DataValue::Null, |ts| {
+        DataValue::Str(mneme::knowledge::format_timestamp(ts).into())
+    })
+}
+
+fn insert_fact_params(params: &mut BTreeMap<String, DataValue>, prefix: &str, fact: &Fact) {
+    params.insert(
+        prefixed_param(prefix, "id"),
+        DataValue::Str(fact.id.as_str().into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "valid_from"),
+        DataValue::Str(mneme::knowledge::format_timestamp(&fact.temporal.valid_from).into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "content"),
+        DataValue::Str(fact.content.as_str().into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "nous_id"),
+        DataValue::Str(fact.nous_id.as_str().into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "confidence"),
+        DataValue::from(fact.provenance.confidence),
+    );
+    params.insert(
+        prefixed_param(prefix, "tier"),
+        DataValue::Str(fact.provenance.tier.as_str().into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "valid_to"),
+        DataValue::Str(mneme::knowledge::format_timestamp(&fact.temporal.valid_to).into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "superseded_by"),
+        optional_str_value(fact.lifecycle.superseded_by.as_ref().map(FactId::as_str)),
+    );
+    params.insert(
+        prefixed_param(prefix, "source_session_id"),
+        optional_str_value(fact.provenance.source_session_id.as_deref()),
+    );
+    params.insert(
+        prefixed_param(prefix, "recorded_at"),
+        DataValue::Str(mneme::knowledge::format_timestamp(&fact.temporal.recorded_at).into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "access_count"),
+        DataValue::from(i64::from(fact.access.access_count)),
+    );
+    params.insert(
+        prefixed_param(prefix, "last_accessed_at"),
+        fact.access.last_accessed_at.as_ref().map_or_else(
+            || DataValue::Str("".into()),
+            |ts| DataValue::Str(mneme::knowledge::format_timestamp(ts).into()),
+        ),
+    );
+    params.insert(
+        prefixed_param(prefix, "stability_hours"),
+        DataValue::from(fact.provenance.stability_hours),
+    );
+    params.insert(
+        prefixed_param(prefix, "fact_type"),
+        DataValue::Str(fact.fact_type.as_str().into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "is_forgotten"),
+        DataValue::Bool(fact.lifecycle.is_forgotten),
+    );
+    params.insert(
+        prefixed_param(prefix, "forgotten_at"),
+        optional_timestamp_value(fact.lifecycle.forgotten_at.as_ref()),
+    );
+    params.insert(
+        prefixed_param(prefix, "forget_reason"),
+        optional_str_value(fact.lifecycle.forget_reason.map(ForgetReason::as_str)),
+    );
+    params.insert(
+        prefixed_param(prefix, "scope"),
+        optional_str_value(fact.scope.map(mneme::knowledge::MemoryScope::as_str)),
+    );
+    params.insert(
+        prefixed_param(prefix, "project_id"),
+        optional_str_value(
+            fact.project_id
+                .as_ref()
+                .map(mneme::workspace::ProjectId::as_str),
+        ),
+    );
+    params.insert(
+        prefixed_param(prefix, "visibility"),
+        DataValue::Str(fact.visibility.as_str().into()),
+    );
+    params.insert(
+        prefixed_param(prefix, "sensitivity"),
+        DataValue::Str(fact.sensitivity.as_str().into()),
+    );
+}
+
+fn validate_fact_content_length(content: &str) -> crate::error::Result<()> {
+    if content.len() > MAX_FACT_CONTENT_LENGTH {
+        return Err(InvalidInputSnafu {
+            message: format!(
+                "content exceeds maximum length: {} > {}",
+                content.len(),
+                MAX_FACT_CONTENT_LENGTH
+            ),
+        }
+        .build());
+    }
+    Ok(())
+}
+
+fn insert_annotation_graph_atomically(
     store: &KnowledgeStore,
-    fact_id: &FactId,
-    entity_id: &EntityId,
+    annotation_fact: &Fact,
+    target_id: &FactId,
     timestamp: jiff::Timestamp,
 ) -> crate::error::Result<()> {
+    let annotation_id = &annotation_fact.id;
+    let annotation_entity_id = fact_entity_id(annotation_id.as_str())?;
+    let target_entity_id = fact_entity_id(target_id.as_str())?;
+
     let mut params = BTreeMap::new();
+    insert_fact_params(&mut params, "annotation", annotation_fact);
+    let created_at = mneme::knowledge::format_timestamp(&timestamp);
     params.insert(
-        "fact_id".to_owned(),
-        DataValue::Str(fact_id.as_str().into()),
+        "annotation_entity_id".to_owned(),
+        DataValue::Str(annotation_entity_id.as_str().into()),
     );
     params.insert(
-        "entity_id".to_owned(),
-        DataValue::Str(entity_id.as_str().into()),
+        "target_entity_id".to_owned(),
+        DataValue::Str(target_entity_id.as_str().into()),
     );
     params.insert(
-        "created_at".to_owned(),
-        DataValue::Str(mneme::knowledge::format_timestamp(&timestamp).into()),
+        "target_fact_id".to_owned(),
+        DataValue::Str(target_id.as_str().into()),
     );
+    params.insert(
+        "annotation_entity_name".to_owned(),
+        DataValue::Str(annotation_id.as_str().into()),
+    );
+    params.insert(
+        "target_entity_name".to_owned(),
+        DataValue::Str(target_id.as_str().into()),
+    );
+    params.insert("entity_type".to_owned(), DataValue::Str("fact".into()));
+    params.insert("empty_aliases".to_owned(), DataValue::Str("".into()));
+    params.insert("created_at".to_owned(), DataValue::Str(created_at.into()));
+    params.insert(
+        "annotates_relation".to_owned(),
+        DataValue::Str("annotates".into()),
+    );
+    params.insert("relationship_weight".to_owned(), DataValue::from(1.0));
 
     let script = r"
-        ?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
-        :put fact_entities {fact_id, entity_id => created_at}
+        {
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] <- [[$annotation_id, $annotation_valid_from,
+              $annotation_content, $annotation_nous_id, $annotation_confidence,
+              $annotation_tier, $annotation_valid_to, $annotation_superseded_by,
+              $annotation_source_session_id, $annotation_recorded_at,
+              $annotation_access_count, $annotation_last_accessed_at,
+              $annotation_stability_hours, $annotation_fact_type,
+              $annotation_is_forgotten, $annotation_forgotten_at,
+              $annotation_forget_reason, $annotation_scope, $annotation_project_id,
+              $annotation_visibility, $annotation_sensitivity]]
+            :put facts {id, valid_from => content, nous_id, confidence, tier,
+                        valid_to, superseded_by, source_session_id, recorded_at,
+                        access_count, last_accessed_at, stability_hours, fact_type,
+                        is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                        visibility, sensitivity}
+        }
+        {
+            ?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <- [
+                [$annotation_entity_id, $annotation_entity_name, $entity_type, $empty_aliases,
+                 $created_at, $created_at, null],
+                [$target_entity_id, $target_entity_name, $entity_type, $empty_aliases,
+                 $created_at, $created_at, null]
+            ]
+            :put entities {id => name, entity_type, aliases, created_at, updated_at, name_embedding}
+        }
+        {
+            ?[fact_id, entity_id, created_at] <- [
+                [$annotation_id, $annotation_entity_id, $created_at],
+                [$target_fact_id, $target_entity_id, $created_at]
+            ]
+            :put fact_entities {fact_id, entity_id => created_at}
+        }
+        {
+            ?[src, dst, relation, weight, created_at] <- [
+                [$annotation_entity_id, $target_entity_id, $annotates_relation,
+                 $relationship_weight, $created_at]
+            ]
+            :put relationships {src, dst => relation, weight, created_at}
+        }
     ";
     store.run_mut_query(script, params).map_err(|e| {
         KnowledgeStoreSnafu {
@@ -516,52 +704,48 @@ fn insert_fact_entity_link(
     Ok(())
 }
 
-fn link_annotation_to_target(
+fn put_supersession_atomically(
     store: &KnowledgeStore,
-    annotation_id: &FactId,
-    target_id: &FactId,
-    timestamp: jiff::Timestamp,
+    old_fact: &Fact,
+    record_fact: &Fact,
 ) -> crate::error::Result<()> {
-    let annotation_entity_id = fact_entity_id(annotation_id.as_str())?;
-    let target_entity_id = fact_entity_id(target_id.as_str())?;
-    for (entity_id, fact_id) in [
-        (&annotation_entity_id, annotation_id.as_str()),
-        (&target_entity_id, target_id.as_str()),
-    ] {
-        store
-            .insert_entity(&Entity {
-                id: entity_id.clone(),
-                name: fact_id.to_owned(),
-                entity_type: "fact".to_owned(),
-                aliases: Vec::new(),
-                created_at: timestamp,
-                updated_at: timestamp,
-            })
-            .map_err(|e| {
-                KnowledgeStoreSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-    }
-
-    insert_fact_entity_link(store, annotation_id, &annotation_entity_id, timestamp)?;
-    insert_fact_entity_link(store, target_id, &target_entity_id, timestamp)?;
-
-    store
-        .insert_relationship(&Relationship {
-            src: annotation_entity_id,
-            dst: target_entity_id,
-            relation: "annotates".to_owned(),
-            weight: 1.0,
-            created_at: timestamp,
-        })
-        .map_err(|e| {
-            KnowledgeStoreSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
+    let mut params = BTreeMap::new();
+    insert_fact_params(&mut params, "old", old_fact);
+    insert_fact_params(&mut params, "record", record_fact);
+    let script = r"
+        {
+            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+              superseded_by, source_session_id, recorded_at,
+              access_count, last_accessed_at, stability_hours, fact_type,
+              is_forgotten, forgotten_at, forget_reason, scope, project_id,
+              visibility, sensitivity] <- [
+                [$old_id, $old_valid_from, $old_content, $old_nous_id,
+                 $old_confidence, $old_tier, $old_valid_to, $old_superseded_by,
+                 $old_source_session_id, $old_recorded_at, $old_access_count,
+                 $old_last_accessed_at, $old_stability_hours, $old_fact_type,
+                 $old_is_forgotten, $old_forgotten_at, $old_forget_reason,
+                 $old_scope, $old_project_id, $old_visibility, $old_sensitivity],
+                [$record_id, $record_valid_from, $record_content, $record_nous_id,
+                 $record_confidence, $record_tier, $record_valid_to,
+                 $record_superseded_by, $record_source_session_id, $record_recorded_at,
+                 $record_access_count, $record_last_accessed_at,
+                 $record_stability_hours, $record_fact_type, $record_is_forgotten,
+                 $record_forgotten_at, $record_forget_reason, $record_scope,
+                 $record_project_id, $record_visibility, $record_sensitivity]
+            ]
+            :put facts {id, valid_from => content, nous_id, confidence, tier,
+                        valid_to, superseded_by, source_session_id, recorded_at,
+                        access_count, last_accessed_at, stability_hours, fact_type,
+                        is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                        visibility, sensitivity}
+        }
+    ";
+    store.run_mut_query(script, params).map_err(|e| {
+        KnowledgeStoreSnafu {
+            message: e.to_string(),
+        }
+        .build()
+    })?;
     Ok(())
 }
 
@@ -1179,6 +1363,7 @@ impl MemoryServer {
             .build()
             .into());
         }
+        validate_fact_content_length(&params.content).map_err(rmcp::ErrorData::from)?;
 
         if params.nous_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1265,19 +1450,13 @@ impl MemoryServer {
                     },
                 };
 
-                store.insert_fact(&annotation_fact).map_err(|e| {
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build()
-                })?;
                 let target_id = mneme::id::FactId::new(fact_id.clone()).map_err(|e| {
                     InvalidInputSnafu {
                         message: format!("failed to create target fact id: {e}"),
                     }
                     .build()
                 })?;
-                link_annotation_to_target(&store, &annotation_id, &target_id, now)?;
+                insert_annotation_graph_atomically(&store, &annotation_fact, &target_id, now)?;
 
                 Ok(annotation_id_str)
             })
@@ -1423,13 +1602,6 @@ impl MemoryServer {
                 let mut old_fact = old_fact;
                 old_fact.lifecycle.superseded_by = Some(new_fact_id);
 
-                store.insert_fact(&old_fact).map_err(|e| {
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build()
-                })?;
-
                 // Create a record fact documenting the supersession, attributing
                 // it to the explicitly supplied owner and inheriting the old
                 // fact's scope/visibility/sensitivity.
@@ -1443,6 +1615,7 @@ impl MemoryServer {
                 let now = jiff::Timestamp::now();
                 let record_content =
                     format!("Supersession: {old_id} was superseded by {new_id} — {reason}");
+                validate_fact_content_length(&record_content)?;
 
                 let record_fact = mneme::knowledge::Fact {
                     id: record_id.clone(),
@@ -1476,12 +1649,7 @@ impl MemoryServer {
                     },
                 };
 
-                store.insert_fact(&record_fact).map_err(|e| {
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build()
-                })?;
+                put_supersession_atomically(&store, &old_fact, &record_fact)?;
 
                 Ok(record_id.to_string())
             })
@@ -1727,6 +1895,117 @@ mod tests {
             err.message.contains(expected_fragment),
             "unexpected error message: {}",
             err.message
+        );
+    }
+
+    #[test]
+    fn annotation_atomic_script_rolls_back_fact_on_later_failure() {
+        let store = open_store();
+        let annotation = sample_fact(
+            "f-annotation-rollback",
+            "alice",
+            "annotation content",
+            "annotation",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        let mut params = BTreeMap::new();
+        insert_fact_params(&mut params, "annotation", &annotation);
+        let script = r"
+            {
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                  superseded_by, source_session_id, recorded_at,
+                  access_count, last_accessed_at, stability_hours, fact_type,
+                  is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                  visibility, sensitivity] <- [[$annotation_id, $annotation_valid_from,
+                  $annotation_content, $annotation_nous_id, $annotation_confidence,
+                  $annotation_tier, $annotation_valid_to, $annotation_superseded_by,
+                  $annotation_source_session_id, $annotation_recorded_at,
+                  $annotation_access_count, $annotation_last_accessed_at,
+                  $annotation_stability_hours, $annotation_fact_type,
+                  $annotation_is_forgotten, $annotation_forgotten_at,
+                  $annotation_forget_reason, $annotation_scope, $annotation_project_id,
+                  $annotation_visibility, $annotation_sensitivity]]
+                :put facts {id, valid_from => content, nous_id, confidence, tier,
+                            valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count, last_accessed_at, stability_hours, fact_type,
+                            is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                            visibility, sensitivity}
+            }
+            {
+                ?[fact_id, entity_id, created_at] <- [[$annotation_id, 42, $annotation_recorded_at]]
+                :put fact_entities {fact_id, entity_id => created_at}
+            }
+        ";
+        assert!(
+            store.run_mut_query(script, params).is_err(),
+            "second write must fail so rollback is exercised"
+        );
+        assert!(
+            store
+                .read_facts_by_id("f-annotation-rollback")
+                .unwrap()
+                .is_empty(),
+            "failed annotation transaction must not leave the fact row behind"
+        );
+    }
+
+    #[test]
+    fn supersession_atomic_script_rolls_back_lifecycle_on_later_failure() {
+        let store = open_store();
+        let mut old_fact = sample_fact(
+            "f-supersession-rollback",
+            "alice",
+            "old value",
+            "note",
+            Visibility::Private,
+            FactSensitivity::Public,
+            None,
+        );
+        store.insert_fact(&old_fact).unwrap();
+        old_fact.lifecycle.superseded_by =
+            Some(mneme::id::FactId::new("f-rollback-replacement").unwrap());
+
+        let mut params = BTreeMap::new();
+        insert_fact_params(&mut params, "old", &old_fact);
+        let script = r"
+            {
+                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+                  superseded_by, source_session_id, recorded_at,
+                  access_count, last_accessed_at, stability_hours, fact_type,
+                  is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                  visibility, sensitivity] <- [[$old_id, $old_valid_from, $old_content,
+                  $old_nous_id, $old_confidence, $old_tier, $old_valid_to,
+                  $old_superseded_by, $old_source_session_id, $old_recorded_at,
+                  $old_access_count, $old_last_accessed_at, $old_stability_hours,
+                  $old_fact_type, $old_is_forgotten, $old_forgotten_at,
+                  $old_forget_reason, $old_scope, $old_project_id,
+                  $old_visibility, $old_sensitivity]]
+                :put facts {id, valid_from => content, nous_id, confidence, tier,
+                            valid_to, superseded_by, source_session_id, recorded_at,
+                            access_count, last_accessed_at, stability_hours, fact_type,
+                            is_forgotten, forgotten_at, forget_reason, scope, project_id,
+                            visibility, sensitivity}
+            }
+            {
+                ?[fact_id, entity_id, created_at] <- [[$old_id, 42, $old_recorded_at]]
+                :put fact_entities {fact_id, entity_id => created_at}
+            }
+        ";
+        assert!(
+            store.run_mut_query(script, params).is_err(),
+            "second write must fail so rollback is exercised"
+        );
+        let stored = store
+            .read_facts_by_id("f-supersession-rollback")
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("original fact remains");
+        assert!(
+            stored.lifecycle.superseded_by.is_none(),
+            "failed supersession transaction must not update lifecycle"
         );
     }
 
