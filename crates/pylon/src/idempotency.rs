@@ -135,6 +135,16 @@ impl IdempotencyCache {
         Self::with_config(DEFAULT_TTL, DEFAULT_CAPACITY, DEFAULT_MAX_KEY_LENGTH)
     }
 
+    /// Create an idempotency cache from the API limits config.
+    #[must_use]
+    pub fn from_config(config: &taxis::config::ApiLimitsConfig) -> Self {
+        Self::with_config(
+            Duration::from_secs(config.idempotency_ttl_secs),
+            config.idempotency_capacity,
+            config.idempotency_max_key_length,
+        )
+    }
+
     /// Create an idempotency cache from deployment-level config values.
     #[must_use]
     pub fn with_config(ttl: Duration, capacity: usize, max_key_length: usize) -> Self {
@@ -554,6 +564,39 @@ mod tests {
             } => {}
             other => panic!("expected body mismatch rejection, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn from_config_uses_non_default_limits() {
+        let config = taxis::config::ApiLimitsConfig {
+            idempotency_ttl_secs: 7,
+            idempotency_capacity: 42,
+            idempotency_max_key_length: 17,
+            ..taxis::config::ApiLimitsConfig::default()
+        };
+        let cache = IdempotencyCache::from_config(&config);
+
+        // WHY: The max key length is the only config field exposed directly on
+        // the cache; TTL/capacity are private but drive eviction behavior.
+        assert_eq!(cache.max_key_length, 17);
+
+        // Fill the cache to its configured capacity; the 43rd distinct key must
+        // evict the oldest entry, proving capacity was wired from config.
+        for i in 0..43 {
+            let _ = cache.check_or_insert(
+                "principal",
+                &format!("key-{i}"),
+                "session",
+                "sha256:body",
+            );
+        }
+        assert!(
+            matches!(
+                cache.check_or_insert("principal", "key-0", "session", "sha256:body"),
+                LookupResult::Miss,
+            ),
+            "oldest entry must be evicted when capacity is exceeded"
+        );
     }
 
     impl std::fmt::Debug for LookupResult {

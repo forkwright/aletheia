@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use koina::secret::SecretString;
 
+/// Default time-to-live for completed turn buffers before they are reaped, in seconds.
+pub const DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS: u64 = 300;
+
+/// Maximum events retained per turn buffer to bound memory usage.
+pub const DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN: usize = 10_000;
+
 /// HTTP gateway configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +34,10 @@ pub struct GatewayConfig {
     pub rate_limit: RateLimitConfig,
     /// SSE heartbeat interval for event subscription streams, in seconds.
     pub sse_heartbeat_interval_secs: u64,
+    /// Time-to-live for completed turn buffers before they are reaped, in seconds.
+    pub turn_buffer_completed_ttl_secs: u64,
+    /// Maximum events retained per turn buffer to bound memory usage.
+    pub turn_buffer_max_events_per_turn: usize,
 }
 
 impl Default for GatewayConfig {
@@ -42,6 +52,8 @@ impl Default for GatewayConfig {
             csrf: CsrfConfig::default(),
             rate_limit: RateLimitConfig::default(),
             sse_heartbeat_interval_secs: 30,
+            turn_buffer_completed_ttl_secs: DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS,
+            turn_buffer_max_events_per_turn: DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN,
         }
     }
 }
@@ -235,3 +247,12 @@ impl Default for PerUserRateLimitConfig {
         }
     }
 }
+
+#[cfg(test)]
+const _: () = assert!(
+    DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS == pylon::turn_buffer::DEFAULT_COMPLETED_TTL.as_secs()
+);
+#[cfg(test)]
+const _: () = assert!(
+    DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN == pylon::turn_buffer::DEFAULT_MAX_EVENTS_PER_TURN
+);

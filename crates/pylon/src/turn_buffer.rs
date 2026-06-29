@@ -21,10 +21,10 @@ use tokio::sync::{Mutex, Notify};
 use tracing::{Instrument as _, debug, warn};
 
 /// Default time-to-live for completed turn buffers before they are reaped.
-const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
+pub const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
 
 /// Maximum events retained per turn buffer to bound memory usage.
-const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
+pub const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
 
 /// Retained marker emitted when a turn buffer reaches its capacity limit.
 pub(crate) const REPLAY_GAP_EVENT_TYPE: &str = "replay_gap";
@@ -241,6 +241,15 @@ impl TurnBufferRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self::with_limits(DEFAULT_COMPLETED_TTL, DEFAULT_MAX_EVENTS_PER_TURN)
+    }
+
+    /// Create a registry from gateway config values.
+    #[must_use]
+    pub fn from_config(config: &taxis::config::GatewayConfig) -> Self {
+        Self::with_limits(
+            Duration::from_secs(config.turn_buffer_completed_ttl_secs),
+            config.turn_buffer_max_events_per_turn,
+        )
     }
 
     /// Create a registry with explicit replay retention limits.
@@ -723,5 +732,27 @@ mod tests {
                 reason: TURN_ABORT_REASON_TIMEOUT.to_owned(),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn from_config_uses_non_default_limits() {
+        tokio::time::pause();
+        let config = taxis::config::GatewayConfig {
+            turn_buffer_completed_ttl_secs: 0,
+            turn_buffer_max_events_per_turn: 2,
+            ..taxis::config::GatewayConfig::default()
+        };
+        let registry = TurnBufferRegistry::from_config(&config);
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+
+        handle.record("text_delta", r#"{"text":"a"}"#).await;
+        handle.record("text_delta", r#"{"text":"b"}"#).await;
+        handle.mark_completed().await;
+
+        // WHY: TTL is zero, so the buffer is immediately eligible for reaping.
+        tokio::time::advance(Duration::from_millis(1)).await;
+        registry.reap_expired().await;
+        assert!(registry.get("ses-1", "turn-1").await.is_none());
     }
 }

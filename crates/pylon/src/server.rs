@@ -188,14 +188,18 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         loopback_only_metrics: aletheia_config.gateway.bind == "localhost",
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
         config_tx,
-        idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),
+        idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::from_config(
+            &aletheia_config.api_limits,
+        )),
         shutdown: CancellationToken::new(),
         #[cfg(feature = "knowledge-store")]
         knowledge_store,
         // WHY: pylon's standalone server does not configure embeddings; the
         // aletheia binary owns the embedding pipeline. Health reports "warn".
         embedding_provider: None,
-        turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
+        turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::from_config(
+            &aletheia_config.gateway,
+        )),
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
         approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
