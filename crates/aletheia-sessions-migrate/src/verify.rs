@@ -253,6 +253,10 @@ fn source_expected_partitions(source_data: &SourceData) -> Result<PartitionMap> 
     }
 
     add_blackboard_entries(&mut partitions, &source_data.blackboard)?;
+    add_legacy_sidecar_entries(
+        partition_mut(&mut partitions, "migration_legacy"),
+        &source_data.legacy_sidecars,
+    );
     add_counter_entries(&mut partitions, source_data)?;
 
     Ok(partitions)
@@ -419,6 +423,12 @@ fn add_blackboard_entries(partitions: &mut PartitionMap, rows: &[BlackboardRow])
         insert_bytes(blackboard, row.key.as_bytes(), json_vec("blackboard", row)?);
     }
     Ok(())
+}
+
+fn add_legacy_sidecar_entries(entries: &mut EntryMap, rows: &[crate::source::LegacySidecarEntry]) {
+    for row in rows {
+        insert_bytes(entries, row.key.as_bytes(), row.value.clone());
+    }
 }
 
 fn add_counter_entries(partitions: &mut PartitionMap, source_data: &SourceData) -> Result<()> {

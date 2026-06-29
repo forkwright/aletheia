@@ -19,7 +19,7 @@
 //! | `notes`         | `gid:{note_global_id:020}`                           | `{session_id}:{local_id}`|
 //! | `blackboard`    | `{key}`                                              | JSON `BlackboardRow`     |
 //! | `counters`      | `msg_id` / `dist_id` / `note_local_id` / `note_global_id` | big-endian `u64`    |
-//! | `migration_legacy` | `{session_id}:{column_name}`                      | UTF-8 string             |
+//! | `migration_legacy` | `{session_id}:{column_name}` / table-scoped legacy-only keys | UTF-8 string |
 //!
 //! # Why a sidecar `migration_legacy` partition?
 //!
@@ -29,6 +29,9 @@
 //! values at write time would silently mutate the operator's history.
 //! When a column carries a non-default value we route it here so the data
 //! is recoverable post-migration.
+//! Legacy-only fields from `usage`, `distillations`, and `blackboard` are
+//! also routed here under table-scoped keys because the runtime types do not
+//! carry those fields.
 //!
 //! Source `schema_version` is enforced before any row is read; the staged
 //! verification pass compares deterministic key/value hashes for every
@@ -49,7 +52,7 @@ use crate::error::{
     DestinationNotEmptySnafu, FjallOpSnafu, FjallOpenSnafu, FjallPartitionSnafu, IoSnafu,
     JsonSnafu, NumericRangeSnafu, Result,
 };
-use crate::source::{DistillationRecord, LegacyExtras};
+use crate::source::{DistillationRecord, LegacyExtras, LegacySidecarEntry};
 
 /// Width for zero-padded sequence keys. Must match
 /// `fjall_store::SEQ_WIDTH = 20`.
@@ -247,8 +250,9 @@ impl Destination {
         distillations = distillations.len(),
         notes = notes.len(),
         blackboard = blackboard.len(),
+        legacy_sidecars = legacy_sidecars.len(),
     ))]
-    pub fn write_all(
+    pub(crate) fn write_all(
         &self,
         sessions: &[(Session, LegacyExtras)],
         messages: &[Message],
@@ -256,6 +260,7 @@ impl Destination {
         distillations: &[DistillationRecord],
         notes: &[AgentNote],
         blackboard: &[BlackboardRow],
+        legacy_sidecars: &[LegacySidecarEntry],
     ) -> Result<TableCounts> {
         let mut counts = TableCounts::default();
 
@@ -323,6 +328,12 @@ impl Destination {
         self.write_blackboard(blackboard)?;
         counts.blackboard = blackboard.len();
         info!(rows = counts.blackboard, "migrated blackboard");
+
+        self.write_legacy_sidecars(legacy_sidecars)?;
+        info!(
+            entries = legacy_sidecars.len(),
+            "preserved legacy-only sidecar fields"
+        );
 
         // Seed global counters so subsequent runtime inserts don't reuse IDs
         // we already wrote. msg_id is seeded to MAX(legacy messages.id);
@@ -528,6 +539,23 @@ impl Destination {
             );
         }
         tx.commit().map_err(fjall_op_err("commit blackboard"))?;
+        Ok(())
+    }
+
+    fn write_legacy_sidecars(&self, entries: &[LegacySidecarEntry]) -> Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self.db.db.write_tx();
+        for entry in entries {
+            tx.insert(
+                &self.migration_legacy,
+                entry.key.as_str(),
+                entry.value.as_slice(),
+            );
+        }
+        tx.commit()
+            .map_err(fjall_op_err("commit legacy sidecars"))?;
         Ok(())
     }
 

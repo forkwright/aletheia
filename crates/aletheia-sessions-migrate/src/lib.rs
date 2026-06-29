@@ -32,6 +32,10 @@
 //! `migration_legacy` partition keyed by `{session_id}:{column_name}`. The
 //! data is never silently dropped.
 //!
+//! Legacy-only fields on `usage`, `distillations`, and `blackboard` are also
+//! preserved under table-scoped `migration_legacy` keys so audit/replay data
+//! remains recoverable even when the runtime type has no field for it.
+//!
 //! Likewise, messages whose parent session row is missing in the legacy
 //! schema (an artefact of #2959, `REFERENCES sessions(id)` without
 //! cascade) are preserved under synthesised `orphan-recovery` sessions —

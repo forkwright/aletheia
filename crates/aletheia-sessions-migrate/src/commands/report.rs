@@ -23,6 +23,10 @@ pub fn print_dry_run(plan: &MigrationPlan, dest: &Path) {
         plan.legacy_extras_present
     );
     println!(
+        " legacy-only sidecar entries: {}",
+        plan.legacy_sidecar_entries_present
+    );
+    println!(
         " orphan messages detected: {} across {} session_id(s) (will synthesise orphan-recovery sessions)",
         plan.orphan_messages_detected, plan.orphan_sessions_to_synthesise
     );
@@ -46,6 +50,10 @@ pub fn print_migration(r: &MigrationReport) {
     println!(
         " legacy extras preserved (migration_legacy partition): {} session(s)",
         r.legacy_extras_preserved
+    );
+    println!(
+        " legacy-only sidecar entries preserved: {}",
+        r.legacy_sidecar_entries_preserved
     );
     println!(
         " orphan messages recovered: {} (across {} synthesised orphan-recovery session(s))",

@@ -10,6 +10,8 @@
 //! these readers run; [`crate::verify`] rebuilds expected fjall key/value
 //! entries from these rows and compares them against the destination.
 
+use std::collections::BTreeMap;
+
 use graphe::types::{
     AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
     SessionType, UsageRecord,
@@ -35,6 +37,12 @@ pub struct LegacyExtras {
     pub working_state: Option<String>,
     /// `distillation_priming` opaque blob (TEXT). Default: NULL.
     pub distillation_priming: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LegacySidecarEntry {
+    pub(crate) key: String,
+    pub(crate) value: Vec<u8>,
 }
 
 impl LegacyExtras {
@@ -424,4 +432,140 @@ pub fn read_blackboard(conn: &Connection) -> Result<Vec<BlackboardRow>> {
             context: "mapping blackboard rows".to_owned(),
         })?;
     Ok(rows)
+}
+
+pub(crate) fn read_legacy_sidecars(conn: &Connection) -> Result<Vec<LegacySidecarEntry>> {
+    let mut entries = Vec::new();
+    append_usage_legacy_sidecars(conn, &mut entries)?;
+    append_distillation_legacy_sidecars(conn, &mut entries)?;
+    append_blackboard_legacy_sidecars(conn, &mut entries)?;
+    Ok(entries)
+}
+
+fn append_usage_legacy_sidecars(
+    conn: &Connection,
+    entries: &mut Vec<LegacySidecarEntry>,
+) -> Result<()> {
+    let mut stmt = conn
+        .prepare("SELECT session_id, turn_seq, id, created_at FROM usage ORDER BY session_id ASC, turn_seq ASC")
+        .context(SqliteSnafu {
+            context: "preparing usage legacy sidecar select".to_owned(),
+        })?;
+    let mut rows = stmt.query([]).context(SqliteSnafu {
+        context: "querying usage legacy sidecars".to_owned(),
+    })?;
+    while let Some(row) = rows.next().context(SqliteSnafu {
+        context: "reading usage legacy sidecar row".to_owned(),
+    })? {
+        let session_id: String = row.get("session_id").context(SqliteSnafu {
+            context: "mapping usage.session_id legacy sidecar".to_owned(),
+        })?;
+        let turn_seq: i64 = row.get("turn_seq").context(SqliteSnafu {
+            context: format!("mapping usage.turn_seq legacy sidecar for session {session_id}"),
+        })?;
+        let row_key = format!("usage:{}:{}", session_id, legacy_i64_key(turn_seq));
+        let id: i64 = row.get("id").context(SqliteSnafu {
+            context: format!("mapping usage.id legacy sidecar for row {row_key}"),
+        })?;
+        let created_at: String = row.get("created_at").context(SqliteSnafu {
+            context: format!("mapping usage.created_at legacy sidecar for row {row_key}"),
+        })?;
+        push_sidecar(
+            entries,
+            format!("{row_key}:id"),
+            id.to_string().into_bytes(),
+        );
+        push_sidecar(
+            entries,
+            format!("{row_key}:created_at"),
+            created_at.into_bytes(),
+        );
+    }
+    Ok(())
+}
+
+fn append_distillation_legacy_sidecars(
+    conn: &Connection,
+    entries: &mut Vec<LegacySidecarEntry>,
+) -> Result<()> {
+    let mut stmt = conn
+        .prepare("SELECT session_id, id, facts_extracted FROM distillations ORDER BY session_id ASC, id ASC")
+        .context(SqliteSnafu {
+            context: "preparing distillation legacy sidecar select".to_owned(),
+        })?;
+    let mut rows = stmt.query([]).context(SqliteSnafu {
+        context: "querying distillation legacy sidecars".to_owned(),
+    })?;
+    let mut local_ids: BTreeMap<String, u64> = BTreeMap::new();
+    while let Some(row) = rows.next().context(SqliteSnafu {
+        context: "reading distillation legacy sidecar row".to_owned(),
+    })? {
+        let session_id: String = row.get("session_id").context(SqliteSnafu {
+            context: "mapping distillations.session_id legacy sidecar".to_owned(),
+        })?;
+        let legacy_id: i64 = row.get("id").context(SqliteSnafu {
+            context: format!("mapping distillations.id legacy sidecar for session {session_id}"),
+        })?;
+        let facts_extracted: Option<i64> = row.get("facts_extracted").context(SqliteSnafu {
+            context: format!(
+                "mapping distillations.facts_extracted legacy sidecar for id {legacy_id}"
+            ),
+        })?;
+        let local_id = local_ids.entry(session_id.clone()).or_insert(0);
+        *local_id += 1;
+        let row_key = format!("distillations:{}:{}", session_id, pad_u64(*local_id));
+        push_sidecar(
+            entries,
+            format!("{row_key}:id"),
+            legacy_id.to_string().into_bytes(),
+        );
+        push_sidecar(
+            entries,
+            format!("{row_key}:facts_extracted"),
+            optional_i64_bytes(facts_extracted),
+        );
+    }
+    Ok(())
+}
+
+fn append_blackboard_legacy_sidecars(
+    conn: &Connection,
+    entries: &mut Vec<LegacySidecarEntry>,
+) -> Result<()> {
+    let mut stmt = conn
+        .prepare("SELECT key, id FROM blackboard ORDER BY key ASC")
+        .context(SqliteSnafu {
+            context: "preparing blackboard legacy sidecar select".to_owned(),
+        })?;
+    let mut rows = stmt.query([]).context(SqliteSnafu {
+        context: "querying blackboard legacy sidecars".to_owned(),
+    })?;
+    while let Some(row) = rows.next().context(SqliteSnafu {
+        context: "reading blackboard legacy sidecar row".to_owned(),
+    })? {
+        let key: String = row.get("key").context(SqliteSnafu {
+            context: "mapping blackboard.key legacy sidecar".to_owned(),
+        })?;
+        let id: String = row.get("id").context(SqliteSnafu {
+            context: format!("mapping blackboard.id legacy sidecar for key {key}"),
+        })?;
+        push_sidecar(entries, format!("blackboard:{key}:id"), id.into_bytes());
+    }
+    Ok(())
+}
+
+fn push_sidecar(entries: &mut Vec<LegacySidecarEntry>, key: String, value: Vec<u8>) {
+    entries.push(LegacySidecarEntry { key, value });
+}
+
+fn optional_i64_bytes(value: Option<i64>) -> Vec<u8> {
+    value.map_or_else(|| b"null".to_vec(), |v| v.to_string().into_bytes())
+}
+
+fn legacy_i64_key(value: i64) -> String {
+    u64::try_from(value).map_or_else(|_| value.to_string(), pad_u64)
+}
+
+fn pad_u64(value: u64) -> String {
+    format!("{value:0>20}")
 }

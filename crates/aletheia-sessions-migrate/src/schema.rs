@@ -83,6 +83,7 @@ pub fn required_columns(table: &str) -> &'static [&'static str] {
             "cache_read_tokens",
             "cache_write_tokens",
             "model",
+            "created_at",
         ],
         "distillations" => &[
             "id",
@@ -91,6 +92,7 @@ pub fn required_columns(table: &str) -> &'static [&'static str] {
             "messages_after",
             "tokens_before",
             "tokens_after",
+            "facts_extracted",
             "model",
             "created_at",
         ],
@@ -103,6 +105,7 @@ pub fn required_columns(table: &str) -> &'static [&'static str] {
             "created_at",
         ],
         "blackboard" => &[
+            "id",
             "key",
             "value",
             "author_nous_id",
@@ -215,9 +218,10 @@ mod tests {
                 id TEXT, nous_id TEXT, session_key TEXT, parent_session_id TEXT,
                 status TEXT, model TEXT, token_count_estimate INTEGER, message_count INTEGER,
                 created_at TEXT, updated_at TEXT, last_input_tokens INTEGER,
-                bootstrap_hash TEXT, distillation_count INTEGER, thread_id TEXT,
-                transport TEXT, session_type TEXT, last_distilled_at TEXT,
-                computed_context_tokens INTEGER, display_name TEXT
+                bootstrap_hash TEXT, distillation_count INTEGER, thinking_enabled INTEGER,
+                thinking_budget INTEGER, thread_id TEXT, transport TEXT, working_state TEXT,
+                session_type TEXT, last_distilled_at TEXT, computed_context_tokens INTEGER,
+                distillation_priming TEXT, display_name TEXT
             )",
         )
         .unwrap();
@@ -236,22 +240,23 @@ mod tests {
                 id TEXT, nous_id TEXT, session_key TEXT, parent_session_id TEXT,
                 status TEXT, model TEXT, token_count_estimate INTEGER, message_count INTEGER,
                 created_at TEXT, updated_at TEXT, last_input_tokens INTEGER,
-                bootstrap_hash TEXT, distillation_count INTEGER, thread_id TEXT,
-                transport TEXT, session_type TEXT, last_distilled_at TEXT,
-                computed_context_tokens INTEGER
+                bootstrap_hash TEXT, distillation_count INTEGER, thinking_enabled INTEGER,
+                thinking_budget INTEGER, thread_id TEXT, transport TEXT, working_state TEXT,
+                session_type TEXT, last_distilled_at TEXT, computed_context_tokens INTEGER,
+                distillation_priming TEXT
             );
             CREATE TABLE messages (id INTEGER, session_id TEXT, seq INTEGER, role TEXT,
                 content TEXT, tool_call_id TEXT, tool_name TEXT, token_estimate INTEGER,
                 is_distilled INTEGER, created_at TEXT);
             CREATE TABLE usage (id INTEGER, session_id TEXT, turn_seq INTEGER,
                 input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
-                cache_write_tokens INTEGER, model TEXT);
+                cache_write_tokens INTEGER, model TEXT, created_at TEXT);
             CREATE TABLE distillations (id INTEGER, session_id TEXT, messages_before INTEGER,
                 messages_after INTEGER, tokens_before INTEGER, tokens_after INTEGER,
-                model TEXT, created_at TEXT);
+                facts_extracted INTEGER, model TEXT, created_at TEXT);
             CREATE TABLE agent_notes (id INTEGER, session_id TEXT, nous_id TEXT,
                 category TEXT, content TEXT, created_at TEXT);
-            CREATE TABLE blackboard (key TEXT, value TEXT, author_nous_id TEXT,
+            CREATE TABLE blackboard (id TEXT, key TEXT, value TEXT, author_nous_id TEXT,
                 ttl_seconds INTEGER, created_at TEXT, expires_at TEXT);",
         )
         .unwrap();

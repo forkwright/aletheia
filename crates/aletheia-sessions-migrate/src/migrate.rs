@@ -87,6 +87,8 @@ pub struct MigrationPlan {
     /// Sessions that carry non-default `thinking_*` / `working_state` /
     /// `distillation_priming` columns; preserved in `migration_legacy`.
     pub legacy_extras_present: usize,
+    /// Legacy-only field entries that would be written to `migration_legacy`.
+    pub legacy_sidecar_entries_present: usize,
     /// Orphan messages (session row missing) that the migrator would
     /// preserve under synthesised orphan-recovery sessions.
     pub orphan_messages_detected: usize,
@@ -105,6 +107,8 @@ pub struct MigrationReport {
     pub counts: TableCounts,
     /// Sessions whose legacy extras were preserved in `migration_legacy`.
     pub legacy_extras_preserved: usize,
+    /// Legacy-only field entries preserved in `migration_legacy`.
+    pub legacy_sidecar_entries_preserved: usize,
     /// Count of orphan messages (whose parent session row was missing in
     /// the legacy DB) that were preserved under synthesised
     /// `orphan-recovery` sessions.
@@ -124,6 +128,7 @@ pub(crate) struct SourceData {
     pub(crate) distillations: Vec<DistillationRecord>,
     pub(crate) notes: Vec<AgentNote>,
     pub(crate) blackboard: Vec<BlackboardRow>,
+    pub(crate) legacy_sidecars: Vec<source::LegacySidecarEntry>,
     orphans: OrphanReport,
     legacy_extras_preserved: usize,
 }
@@ -237,6 +242,7 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
     let dists = source::read_distillations(&conn)?;
     let notes = source::read_notes(&conn)?;
     let blackboard = source::read_blackboard(&conn)?;
+    let legacy_sidecars = source::read_legacy_sidecars(&conn)?;
     let legacy_extras_present = session_rows
         .iter()
         .filter(|s| s.legacy.is_non_default())
@@ -255,6 +261,7 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
         },
         sample_session_id: session_rows.first().map(|s| s.session.id.clone()),
         legacy_extras_present,
+        legacy_sidecar_entries_present: legacy_sidecars.len(),
         orphan_messages_detected: orphans.orphan_message_count,
         orphan_sessions_to_synthesise: orphans.synthetic_sessions.len(),
     };
@@ -330,6 +337,7 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
         dest: dest.to_path_buf(),
         counts,
         legacy_extras_preserved: source_data.legacy_extras_preserved,
+        legacy_sidecar_entries_preserved: source_data.legacy_sidecars.len(),
         orphan_messages_recovered: source_data.orphans.orphan_message_count,
         orphan_sessions_synthesised: source_data.orphans.synthetic_sessions.len(),
         elapsed_secs: started.elapsed().as_secs_f64(),
@@ -517,6 +525,7 @@ pub(crate) fn load_source_data(conn: &Connection) -> Result<SourceData> {
     let dists = source::read_distillations(conn)?;
     let notes = source::read_notes(conn)?;
     let blackboard = source::read_blackboard(conn)?;
+    let legacy_sidecars = source::read_legacy_sidecars(conn)?;
     info!(
         sessions = session_rows.len(),
         messages = messages.len(),
@@ -524,6 +533,7 @@ pub(crate) fn load_source_data(conn: &Connection) -> Result<SourceData> {
         distillations = dists.len(),
         notes = notes.len(),
         blackboard = blackboard.len(),
+        legacy_sidecars = legacy_sidecars.len(),
         "source loaded"
     );
 
@@ -556,6 +566,7 @@ pub(crate) fn load_source_data(conn: &Connection) -> Result<SourceData> {
         distillations: dists,
         notes,
         blackboard,
+        legacy_sidecars,
         orphans,
         legacy_extras_preserved,
     })
@@ -571,6 +582,7 @@ fn write_staging(staging_dir: &Path, source_data: &SourceData) -> Result<TableCo
         &source_data.distillations,
         &source_data.notes,
         &source_data.blackboard,
+        &source_data.legacy_sidecars,
     )?;
 
     // Make the staging store durable before the atomic publish.
