@@ -42,6 +42,10 @@ impl AcquiredLock {
     ///
     /// Returns `DreamLockIo` if the file cannot be written.
     pub(crate) fn mark_complete(mut self) -> Result<()> {
+        // WHY: synchronous variant kept for test callers and the pre-spawn
+        // check_gates path. The async consolidation task uses
+        // [`mark_complete_async`](Self::mark_complete_async).
+
         // WHY: take the path so `Drop` will not attempt a second cleanup.
         let Some(path) = self.path.take() else {
             return Ok(());
@@ -49,6 +53,15 @@ impl AcquiredLock {
         // WHY: write empty body to signal "not held"; mtime of this write = lastConsolidatedAt.
         write_file(&path, b"")?;
         Ok(())
+    }
+
+    /// Async version of [`mark_complete`](Self::mark_complete) that runs the
+    /// blocking std::fs operations on Tokio's blocking pool.
+    ///
+    /// WHY: `run_consolidation` executes on a Tokio worker thread; lock-file
+    /// I/O must not block it (#5712).
+    pub(crate) async fn mark_complete_async(self) -> Result<()> {
+        run_blocking_lock(move || self.mark_complete()).await
     }
 
     /// Rollback: restore pre-acquisition mtime on consolidation failure.
@@ -60,6 +73,9 @@ impl AcquiredLock {
     ///
     /// Returns `DreamLockIo` if file operations fail.
     pub(crate) fn rollback(mut self) -> Result<()> {
+        // WHY: synchronous variant kept for test callers and the pre-spawn
+        // check_gates path. The async consolidation task uses
+        // [`rollback_async`](Self::rollback_async).
         // WHY: take the path so `Drop` will not attempt a second cleanup.
         let Some(path) = self.path.take() else {
             return Ok(());
@@ -88,6 +104,15 @@ impl AcquiredLock {
             }
         }
         Ok(())
+    }
+
+    /// Async version of [`rollback`](Self::rollback) that runs the blocking
+    /// std::fs operations on Tokio's blocking pool.
+    ///
+    /// WHY: `run_consolidation` executes on a Tokio worker thread; lock-file
+    /// I/O must not block it (#5712).
+    pub(crate) async fn rollback_async(self) -> Result<()> {
+        run_blocking_lock(move || self.rollback()).await
     }
 
     /// The prior mtime for external inspection (e.g. consolidation timestamp).
@@ -150,6 +175,27 @@ impl Drop for AcquiredLock {
             }
         }
     }
+}
+
+/// Run a lock-file operation on Tokio's blocking pool.
+///
+/// WHY: lock-file operations use synchronous `std::fs` I/O. When called from
+/// the async consolidation task, they must be moved off the worker thread
+/// (#5712).
+async fn run_blocking_lock<F, T>(f: F) -> Result<T>
+where
+    F: FnOnce() -> Result<T> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| {
+            DreamLockIoSnafu {
+                context: "blocking lock operation",
+                source: std::io::Error::other(e.to_string()),
+            }
+            .build()
+        })?
 }
 
 /// Write bytes to a file (CREATE + truncate).

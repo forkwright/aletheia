@@ -479,14 +479,14 @@ impl DreamEngine {
         let transcripts = match load_transcripts_async(Arc::clone(&source), since).await {
             Ok(t) => t,
             Err(e) => {
-                acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
+                acquired.rollback_async().await.unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
                 return Err(e);
             }
         };
 
         if transcripts.is_empty() {
             tracing::info!("no transcripts to consolidate");
-            acquired.mark_complete()?;
+            acquired.mark_complete_async().await?;
             return Ok(MergeReport::default());
         }
 
@@ -523,7 +523,7 @@ impl DreamEngine {
 
             if let Err(e) = self.verify_flush_grounding(&result.memory_flush, &transcript.messages)
             {
-                acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
+                acquired.rollback_async().await.unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
                 return Err(e);
             }
 
@@ -576,7 +576,7 @@ impl DreamEngine {
         }
 
         // NOTE: all transcripts processed; mark consolidation complete.
-        acquired.mark_complete()?;
+        acquired.mark_complete_async().await?;
 
         Ok(total_report)
     }
