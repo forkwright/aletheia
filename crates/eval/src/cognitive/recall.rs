@@ -36,6 +36,11 @@ pub(crate) struct RecallScore {
 ///
 /// Returns a score of 0.0 if `relevant` is empty.
 #[must_use]
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_precision_loss,
+    reason = "count values are small enough for lossless f64 conversion"
+)]
 pub(crate) fn compute_recall_at_k(
     relevant: &HashSet<String>,
     retrieved: &[String],
@@ -59,22 +64,13 @@ pub(crate) fn compute_recall_at_k(
         .filter(|item| top_k.contains(item.as_str()))
         .count();
 
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "count values are small enough for lossless f64 conversion"
-    )]
     let score = found as f64 / total_relevant as f64; // SAFETY: count values small; exact in f64 mantissa
 
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "count values are small enough for lossless f64 conversion"
-    )]
-    let precision = if top_k.is_empty() {
+    let actual_k = retrieved.len().min(k);
+    let precision = if actual_k == 0 {
         0.0
     } else {
-        found as f64 / top_k.len() as f64
+        found as f64 / actual_k as f64
     };
 
     RecallScore {
@@ -530,6 +526,11 @@ mod tests {
             (score.score - 0.5).abs() < f64::EPSILON,
             "duplicate retrieved items: 1 unique match out of 2 relevant = 0.5, got {}",
             score.score
+        );
+        assert!(
+            (score.precision - 1.0 / 3.0).abs() < f64::EPSILON,
+            "duplicate retrieved items: 1 unique match in 3 retrieved slots = 1/3 precision, got {}",
+            score.precision
         );
     }
 }
