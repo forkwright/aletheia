@@ -287,7 +287,7 @@ mod tests {
         assert!(is_plaintext_loopback_url("http://[::1]:8080"));
         assert!(is_plaintext_loopback_url("http://[0:0:0:0:0:0:0:1]:8080"));
         assert!(is_plaintext_loopback_url(
-            "http://operator:secret@localhost:8080/v1"
+            "http://operator:secret@localhost:8080/v1" // pii-allow: test fixture exercising loopback-URL credential handling
         ));
     }
 
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn transport_url_diagnostic_redacts_userinfo() {
         assert_eq!(
-            transport_url_for_diagnostic("http://operator:secret@localhost.evil.example/v1"),
+            transport_url_for_diagnostic("http://operator:secret@localhost.evil.example/v1"), // pii-allow: test fixture asserting userinfo redaction
             "http://localhost.evil.example/v1"
         );
         assert_eq!(transport_url_for_diagnostic("http://[::1"), "<invalid URL>");
