@@ -301,7 +301,7 @@ fn idempotency_guard_releases_in_flight_on_drop() {
         assert!(
             matches!(
                 cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
-                LookupResult::Conflict
+                LookupResult::Conflict { .. }
             ),
             "key must still be in flight while the guard lives"
         );
@@ -388,7 +388,7 @@ fn idempotency_guard_shared_completion_flag() {
     assert!(
         matches!(
             cache.check_or_insert(&principal, &key, &session_id, &body_fingerprint),
-            LookupResult::Conflict
+            LookupResult::Conflict { .. }
         ),
         "shared completion flag must keep the in-flight entry intact"
     );
@@ -411,6 +411,7 @@ fn turn_complete_event_payload_includes_cache_tokens() {
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     };
 
@@ -450,6 +451,7 @@ async fn emit_turn_result_events_buffered_includes_cache_tokens() {
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     };
 

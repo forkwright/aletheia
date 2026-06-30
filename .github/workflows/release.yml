@@ -37,42 +37,45 @@ jobs:
       - name: Test
         run: cargo test --workspace --exclude proskenion
 
+  feature-policy:
+    # WHY: release feature coverage is derived from Cargo metadata so new
+    # optional surfaces are checked unless they are explicitly excluded in the
+    # policy manifest.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      feature_matrix: ${{ steps.matrices.outputs.feature_matrix }}
+      no_default_matrix: ${{ steps.matrices.outputs.no_default_matrix }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - name: Load Cargo metadata
+        run: cargo metadata --format-version 1 --no-deps > metadata.json
+      - name: Validate release feature policy
+        run: scripts/release-feature-policy.py --metadata metadata.json validate
+      - name: Derive release feature matrices
+        id: matrices
+        run: |
+          echo "feature_matrix=$(scripts/release-feature-policy.py --metadata metadata.json matrix --kind feature-checks)" >> "$GITHUB_OUTPUT"
+          echo "no_default_matrix=$(scripts/release-feature-policy.py --metadata metadata.json matrix --kind no-default-recipes)" >> "$GITHUB_OUTPUT"
+
   feature-check:
     # WHY: ensures optional features compile; if they break, nobody knows until someone
-    # enables them locally. See standards/RUST.md "Feature Flags" section.
+    # enables them locally. The matrix is generated from cargo metadata plus
+    # scripts/release-feature-policy.toml instead of hand-maintained YAML.
+    needs: [feature-policy]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # aletheia features
-          - crate: aletheia
-            feature: mcp
-          - crate: aletheia
-            feature: cc-provider
-          - crate: aletheia
-            feature: codex-provider
-          - crate: aletheia
-            feature: kimi-provider
-          - crate: aletheia
-            feature: energeia
-          # organon features
-          - crate: organon
-            feature: computer-use
-          - crate: organon
-            feature: bookkeeper
-          - crate: organon
-            feature: energeia
-          - crate: organon
-            feature: z3
-          # hermeneus features
-          - crate: hermeneus
-            feature: codex-provider
-          - crate: hermeneus
-            feature: kimi-provider
+      max-parallel: 12
+      matrix: ${{ fromJson(needs.feature-policy.outputs.feature_matrix) }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -91,55 +94,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
-          key: feature-${{ matrix.feature }}
-      - name: Validate feature references
-        env:
-          CRATE: ${{ matrix.crate }}
-          FEATURE: ${{ matrix.feature }}
-        run: |
-          cargo metadata --format-version 1 --no-deps > metadata.json
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-
-          crate = os.environ["CRATE"]
-          feature = os.environ["FEATURE"]
-          import pathlib
-          import re
-
-          packages = json.load(open("metadata.json", encoding="utf-8"))["packages"]
-          feature_map = {pkg["name"]: set(pkg["features"]) for pkg in packages}
-          package = next((pkg for pkg in packages if pkg["name"] == crate), None)
-          if package is None:
-              sys.exit(f"unknown package in release feature matrix: {crate}")
-          if feature not in package["features"]:
-              sys.exit(f"unknown feature in release feature matrix: {crate}/{feature}")
-
-          docs = [pathlib.Path("README.md"), *pathlib.Path("docs").rglob("*.md")]
-          feature_docs = [
-              pathlib.Path("README.md"),
-              pathlib.Path("docs/FEATURE-FLAGS.md"),
-              pathlib.Path("docs/test-tiers.md"),
-          ]
-          feature_ref = re.compile(r"`([a-z0-9_-]+)/([a-z0-9_.-]+)`")
-          removed_feature = "local" + "-llm"
-          for path in docs:
-              text = path.read_text(encoding="utf-8")
-              if removed_feature in text:
-                  sys.exit(
-                      f"removed feature reference found in {path}: "
-                      f"{removed_feature}"
-                  )
-          for path in feature_docs:
-              text = path.read_text(encoding="utf-8")
-              for doc_crate, doc_feature in feature_ref.findall(text):
-                  if doc_crate in feature_map and doc_feature not in feature_map[doc_crate]:
-                      sys.exit(
-                          f"unknown documented feature in {path}: "
-                          f"{doc_crate}/{doc_feature}"
-                      )
-          PY
+          key: feature-${{ matrix.crate }}-${{ matrix.feature }}
       - name: Check feature ${{ matrix.feature }}
         env:
           CRATE: ${{ matrix.crate }}
@@ -150,22 +105,14 @@ jobs:
     # WHY: verifies that documented no-default-features deployment recipes compile exactly
     # as written in docs/FEATURE-FLAGS.md. With defaults enabled the check can mask missing
     # dependencies in minimal builds.
+    needs: [feature-policy]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # Bare minimum: no TUI, no recall, no ML, no CC provider.
-          - features: ""
-          # Minimal headless: HTTP API + TLS, no recall wiring or ML stack.
-          - features: "tls"
-          # Headless + keyring auth, still no ML.
-          - features: "tls,keyring"
-          # Full headless: recall + ML + CC provider + TLS, no TUI.
-          - features: "recall,storage-fjall,embed-candle,cc-provider,tls"
+      matrix: ${{ fromJson(needs.feature-policy.outputs.no_default_matrix) }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -184,15 +131,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
-          key: no-default-${{ matrix.features }}
-      - name: Check no-default-features recipe (${{ matrix.features || 'bare' }})
+          key: no-default-${{ matrix.name }}
+      - name: Check no-default-features recipe (${{ matrix.name }})
         env:
+          CRATE: ${{ matrix.crate }}
           FEATURES: ${{ matrix.features }}
         run: |
           if [[ -n "$FEATURES" ]]; then
-            cargo check -p aletheia --no-default-features --features "$FEATURES"
+            cargo check -p "$CRATE" --no-default-features --features "$FEATURES"
           else
-            cargo check -p aletheia --no-default-features
+            cargo check -p "$CRATE" --no-default-features
           fi
 
   build:

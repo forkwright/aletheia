@@ -109,8 +109,10 @@ journalctl --user -u aletheia-health --since "30 minutes ago"
 
 The daemon's backup maintenance task creates local whole-instance backup sets.
 Each set contains `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
-configuration, workspace directories, and optional local audit/archive data when
-present. Configure it in `instance/config/aletheia.toml`:
+present runtime stores (`stores/auth.fjall`, `stores/daemon-task-state`,
+`stores/cron-locks.fjall`), configuration, workspace directories, and optional
+local audit/archive data when present. Configure it in
+`instance/config/aletheia.toml`:
 
 ```toml
 [maintenance.backup]
@@ -375,23 +377,23 @@ aletheia backup --list --json    # machine-readable
 
 ## Restore from backup
 
-Restoring requires a complete instance backup set. Always stop the service,
-verify the set, move live stores aside, then copy both required stores back.
+Restoring requires a complete instance backup set. Always stop the service and
+verify the set first. The restore command reads the manifest, stages every
+selected entry, verifies the staged copy, swaps entries into place, and rolls
+back automatically if publish fails.
 
 ```bash
 systemctl --user stop aletheia
 BACKUP=instance/data/backups/instance/<timestamp>
 aletheia backup verify "$BACKUP"
-STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-mv instance/data/knowledge.fjall "instance/data/knowledge.fjall.pre-restore.$STAMP"
-mv instance/data/sessions.db     "instance/data/sessions.db.pre-restore.$STAMP"
-cp -a "$BACKUP/stores/knowledge.fjall" instance/data/knowledge.fjall
-cp -a "$BACKUP/stores/sessions.db"     instance/data/sessions.db
-cp -a "$BACKUP/config/." instance/config/ 2>/dev/null || true
-cp -a "$BACKUP/workspace/." instance/ 2>/dev/null || true
+aletheia backup restore "$BACKUP"
 systemctl --user start aletheia
 aletheia health
 ```
+
+Use `--include <selector>` or `--exclude <selector>` for intentional partial
+restore. Selectors match manifest names such as `sessions.db`, backup paths such
+as `stores/sessions.db`, or target paths such as `data/archive`.
 
 ## Prune old backups
 
@@ -581,7 +583,7 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "timed out|panicked
 |---------|-------|-----|
 | `researcher timed out after {N}s` | Task too complex for the time budget | Increase `timeout_secs` in the spawn request |
 | `ask to '{id}' timed out after 30s` | Target agent not responding | Check target agent health; restart if stuck |
-| `actor '{id}' inbox full` | Sub-agent overloaded | Wait for the inbox to drain; reduce concurrent spawns |
+| `actor '{id}' inbox full` | Sub-agent overloaded | Check `aletheia_nous_inbox_saturation_total`; wait for the inbox to drain or reduce concurrent spawns |
 | `ask cycle detected: {chain}` | Circular sub-agent ask chain | Redesign the call graph to break the cycle |
 | `background task limit reached` | 8 concurrent tasks active | Wait for prior tasks to finish |
 

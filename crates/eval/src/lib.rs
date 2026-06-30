@@ -7,6 +7,8 @@ pub mod benchmarks;
 pub(crate) mod client;
 /// Cognitive evaluations: recall@k, sycophancy detection, adversarial testing.
 pub(crate) mod cognitive;
+/// Coverage policies and skip classification for eval reports.
+pub mod coverage;
 /// Eval-specific error types and result alias.
 pub mod error;
 /// JSONL persistence for evaluation results as training data.

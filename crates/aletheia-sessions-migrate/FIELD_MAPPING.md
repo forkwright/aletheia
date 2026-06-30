@@ -60,6 +60,7 @@ Global seed: `counters/msg_id` set to MAX(messages.id).
 
 | SQLite column          | Fjall location                | Notes        |
 |------------------------|-------------------------------|--------------|
+| `id`                   | `migration_legacy:usage:{session_id}:{turn_seq:020}:id` | legacy auto-id |
 | `session_id`           | `UsageRecord::session_id`     | direct       |
 | `turn_seq`             | `UsageRecord::turn_seq`       | direct       |
 | `input_tokens`         | `UsageRecord::input_tokens`   | direct       |
@@ -67,10 +68,11 @@ Global seed: `counters/msg_id` set to MAX(messages.id).
 | `cache_read_tokens`    | `UsageRecord::cache_read_tokens` | direct    |
 | `cache_write_tokens`   | `UsageRecord::cache_write_tokens` | direct   |
 | `model`                | `UsageRecord::model`          | direct       |
+| `created_at`           | `migration_legacy:usage:{session_id}:{turn_seq:020}:created_at` | legacy timestamp |
 
-`id`, `created_at` columns are dropped - no analog on the fjall type
-and the runtime never reads them. `turn_seq` already uniquely
-identifies a usage record per session.
+`turn_seq` identifies the runtime usage record per session; legacy-only
+`id` and `created_at` are preserved in `migration_legacy` for audit/replay
+fidelity.
 
 Per-row key: `{session_id}:{turn_seq:020}` in `usage` partition.
 
@@ -78,16 +80,18 @@ Per-row key: `{session_id}:{turn_seq:020}` in `usage` partition.
 
 | SQLite column      | Fjall location                            | Notes |
 |--------------------|-------------------------------------------|-------|
+| `id`               | `migration_legacy:distillations:{session_id}:{local_id:020}:id` | legacy auto-id |
 | `session_id`       | `DistillationRecord::session_id`          | direct |
 | `messages_before`  | `DistillationRecord::messages_before`     | direct |
 | `messages_after`   | `DistillationRecord::messages_after`      | direct |
 | `tokens_before`    | `DistillationRecord::tokens_before`       | direct |
 | `tokens_after`     | `DistillationRecord::tokens_after`        | direct |
+| `facts_extracted`  | `migration_legacy:distillations:{session_id}:{local_id:020}:facts_extracted` | legacy extraction count |
 | `model`            | `DistillationRecord::model`               | direct |
 | `created_at`       | `DistillationRecord::created_at`          | direct |
 
-`id` and `facts_extracted` are dropped - neither appears on the fjall
-`DistillationRecord` shape (which is `fjall_store`-internal).
+`id` and `facts_extracted` do not appear on the runtime
+`DistillationRecord` shape, so they are preserved in `migration_legacy`.
 
 Per-row key: `{session_id}:{local_id:020}` where `local_id` is the
 1-based position of the row within its session's distillation list,
@@ -121,6 +125,7 @@ the max per-session count.
 
 | SQLite column    | Fjall location                | Notes |
 |------------------|-------------------------------|-------|
+| `id`             | `migration_legacy:blackboard:{key}:id` | legacy row id |
 | `key`            | `BlackboardRow::key`          | direct |
 | `value`          | `BlackboardRow::value`        | direct |
 | `author_nous_id` | `BlackboardRow::author_nous_id` | direct |
@@ -128,7 +133,8 @@ the max per-session count.
 | `created_at`     | `BlackboardRow::created_at`   | direct |
 | `expires_at`     | `BlackboardRow::expires_at`   | direct |
 
-`id` is dropped - `key` is the unique identifier in the new layout.
+`key` is the unique identifier in the new layout; legacy `id` is preserved
+in `migration_legacy`.
 
 Per-row key: `{key}` in `blackboard` partition.
 

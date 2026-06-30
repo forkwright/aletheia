@@ -22,7 +22,7 @@ pub(crate) mod message;
 pub(crate) mod option_card;
 pub(crate) mod plan_card;
 pub(crate) mod planning_card;
-/// Quick input overlay for the global hotkey launcher.
+/// Quick input overlay for in-window message submission.
 pub(crate) mod quick_input;
 /// Reusable drag-to-resize panel divider.
 pub(crate) mod resize_handle;

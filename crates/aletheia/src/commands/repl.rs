@@ -78,13 +78,7 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
     let config = taxis::loader::load_config(&oikos).ok().map_or_else(
         mneme::knowledge_store::KnowledgeConfig::default,
         |config| {
-            let embedding = mneme::embedding::EmbeddingConfig {
-                provider: config.embedding.provider.clone(),
-                model: config.embedding.model.clone(),
-                dimension: Some(config.embedding.dimension),
-                api_key: None,
-                base_url: None,
-            };
+            let embedding = config.embedding.to_embedding_config();
             mneme::knowledge_store::KnowledgeConfig {
                 dim: config.embedding.dimension,
                 embedding_model: embedding.effective_model_name(),

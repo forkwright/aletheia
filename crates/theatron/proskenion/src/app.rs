@@ -1,8 +1,8 @@
 //! Root component that gates on connection state.
 //!
 //! When disconnected, shows the connect view. When connected, shows the
-//! main layout with the router. Platform integration (tray state, hotkeys,
-//! window persistence, quick input) is wired here.
+//! main layout with the router. Window persistence and quick input state are
+//! wired here.
 
 use dioxus::prelude::*;
 use themelion::theme::ThemeProvider;
@@ -18,7 +18,7 @@ use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::planning::PlanningCapabilities;
-use crate::state::platform::{CloseBehavior, HotkeyState, QuickInputState, TrayState, WindowState};
+use crate::state::platform::{QuickInputState, WindowState};
 use crate::state::tool_metrics::DateRange;
 use crate::views::chat::Chat;
 #[cfg(debug_assertions)]
@@ -122,12 +122,9 @@ pub(crate) fn App() -> Element {
     use_context_provider(|| is_first_run);
     provide_toast_context();
 
-    // NOTE: Platform state signals available to all components.
-    use_context_provider(|| Signal::new(TrayState::default()));
-    use_context_provider(|| Signal::new(HotkeyState::default()));
+    // NOTE: Platform-adjacent state signals available to all components.
     use_context_provider(|| Signal::new(loaded_window_state));
     use_context_provider(|| Signal::new(QuickInputState::default()));
-    use_context_provider(|| Signal::new(CloseBehavior::default()));
 
     let needs_wizard = *is_first_run.read();
     let needs_connect = connection_state.read().needs_connect_view();
@@ -151,9 +148,8 @@ pub(crate) fn App() -> Element {
 
 /// Inner component rendered when connected.
 ///
-/// Starts the SSE coroutine, spawns platform integration coroutines
-/// (tray state sync, window state persistence), and renders the router
-/// with toast overlay and quick input overlay.
+/// Starts the SSE coroutine, persists window state, and renders the router with
+/// toast and quick input overlays.
 #[component]
 fn ConnectedApp() -> Element {
     let config = use_context::<Signal<crate::state::connection::ConnectionConfig>>();
@@ -164,9 +160,8 @@ fn ConnectedApp() -> Element {
     use_context_provider(|| Signal::new(NotificationHistory::default()));
     use_context_provider(|| Signal::new(DndState::default()));
 
-    // WHY: AgentStore must be provided before start_tray_sync (which consumes it)
-    // and before the Router (whose layout.rs also needs it). Providing here ensures
-    // both the tray sync coroutine and all routed views see the same store.
+    // WHY: AgentStore must be provided before the Router because layout.rs
+    // needs it for the agent roster.
     use_context_provider(|| Signal::new(AgentStore::new()));
     // WHY: Provide here (not layout.rs) so they are scoped to the connected state
     // and not the connect view.
@@ -187,21 +182,37 @@ fn ConnectedApp() -> Element {
     {
         let cfg = config.read().clone();
         let mut agents: Signal<AgentStore> = use_context();
+        let mut connection_state: Signal<ConnectionState> = use_context();
+        let mut commands: Signal<CommandStore> = use_context();
         use_future(move || {
-            let server_url = cfg.server_url.clone();
+            let cfg = cfg.clone();
             async move {
-                let Ok(client) = skene::api::client::ApiClient::new(&server_url, None) else {
-                    return;
-                };
-                if let Ok(list) = client.agents().await {
-                    agents.write().load_from_api(list);
+                match crate::api::client::fetch_agent_roster(&cfg).await {
+                    Ok(list) => agents.write().load_from_api(list),
+                    Err(err) if err.is_auth_failure() => {
+                        tracing::warn!(error = %err, "startup agent roster authentication failed");
+                        connection_state.set(ConnectionState::Failed {
+                            reason: err.connection_failure_reason().to_string(),
+                        });
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to load startup agent roster");
+                    }
+                }
+
+                match crate::api::client::fetch_server_command_descriptors(&cfg).await {
+                    Ok(descriptors) => {
+                        commands.write().replace_server_commands(descriptors);
+                    }
+                    Err(err) => {
+                        tracing::warn!(error = %err, "failed to load command discovery payload");
+                    }
                 }
             }
         });
     }
 
-    // NOTE: Start platform integration coroutines.
-    start_tray_sync();
+    // NOTE: Start platform persistence coroutines.
     start_window_state_writer();
 
     rsx! {
@@ -209,26 +220,6 @@ fn ConnectedApp() -> Element {
         crate::components::quick_input::QuickInputOverlay {}
         Router::<Route> {}
     }
-}
-
-/// Coroutine that syncs tray state from agent store and event state.
-///
-/// Runs a reactive effect that recomputes tray state whenever agent
-/// statuses or connection state change.
-fn start_tray_sync() {
-    let agents: Signal<AgentStore> = use_context();
-    let mut tray: Signal<TrayState> = use_context();
-    let connection_state: Signal<ConnectionState> = use_context();
-
-    // WHY: Use use_effect so this re-runs whenever the agent store or connection
-    // state signals change. Degraded readiness is surfaced as a warning tray
-    // status rather than disconnected.
-    use_effect(move || {
-        let agent_store = agents.read();
-        let connection_state = connection_state.read();
-        let new_tray = platform::tray::derive_tray_state(&agent_store, &connection_state, true);
-        tray.set(new_tray);
-    });
 }
 
 /// Coroutine that persists window state changes with debouncing.

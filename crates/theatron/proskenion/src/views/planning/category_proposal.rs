@@ -1,6 +1,7 @@
 //! Category proposal card: accept/reject an agent's proposed category change.
 
 use dioxus::prelude::*;
+use skene::api::routes::planning::project_proposal_url;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
@@ -159,10 +160,7 @@ fn send_proposal_action(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let url = format!(
-            "{}/api/v1/planning/projects/{pid}/proposals/{prop_id}",
-            cfg.server_url.trim_end_matches('/')
-        );
+        let url = project_proposal_url(&cfg.server_url, &pid, &prop_id);
 
         let body = ProposalActionRequest { action };
 

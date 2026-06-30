@@ -6,6 +6,7 @@ pub use eidos::bookkeeping::{
     ConversationMessage, ExtractedEntity, ExtractedFact, ExtractedRelationship, ExtractedToolCall,
     Extraction, ExtractionSchema,
 };
+use eidos::workspace::ProjectId;
 
 /// Configuration for the knowledge extraction pipeline.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +49,9 @@ pub struct ExtractionConfig {
     /// knowledge store after extraction.
     #[serde(default)]
     pub detect_conflict: bool,
+    /// Current project partition applied when persisting project-scoped facts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<ProjectId>,
 }
 
 const fn default_true() -> bool {
@@ -72,6 +76,7 @@ impl Default for ExtractionConfig {
             events_only_prompt: false,
             default_tier: EpistemicTier::Inferred,
             detect_conflict: false,
+            project_id: None,
         }
     }
 }

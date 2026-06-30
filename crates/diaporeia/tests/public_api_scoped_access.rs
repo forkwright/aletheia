@@ -261,6 +261,40 @@ async fn agent_session_history_rejects_cross_agent_session() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn scoped_operator_session_create_rejects_contradictory_nous_id() {
+    let (state, jwt, _tmp) = StateBuilder::new().build();
+
+    let token = issue_token_with_nous_id(&jwt, "operator-syn", Role::Operator, "syn");
+    let router = test_router(&state);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header(header::HOST, "localhost")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json, text/event-stream")
+                .body(tool_call_request(
+                    1,
+                    "session_create",
+                    &serde_json::json!({"nous_id": "demiurge", "session_key": "main"}),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        extract_error_code(response).await,
+        Some(-32001),
+        "scoped operator must not create sessions for a sibling agent"
+    );
+}
+
 #[cfg(feature = "knowledge-store")]
 #[tokio::test(flavor = "multi_thread")]
 async fn agent_knowledge_recall_is_scoped_to_caller_nous() {
@@ -393,6 +427,88 @@ async fn agent_knowledge_get_rejects_cross_agent_fact() {
         extract_error_code(response).await,
         Some(rmcp::model::ErrorCode::INVALID_PARAMS.0.into()),
         "cross-agent fact get must return invalid params (not found)"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn scoped_operator_knowledge_insert_rejects_contradictory_nous_id() {
+    let (state, jwt, _tmp) = StateBuilder::new().knowledge_graph_enabled().build();
+
+    let token = issue_token_with_nous_id(&jwt, "operator-syn", Role::Operator, "syn");
+    let router = test_router(&state);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header(header::HOST, "localhost")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json, text/event-stream")
+                .body(tool_call_request(
+                    1,
+                    "knowledge_insert",
+                    &serde_json::json!({
+                        "content": "cross-agent fact",
+                        "nous_id": "demiurge"
+                    }),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        extract_error_code(response).await,
+        Some(-32001),
+        "scoped operator must not insert facts for a sibling agent"
+    );
+}
+
+#[cfg(feature = "knowledge-store")]
+#[tokio::test(flavor = "multi_thread")]
+async fn scoped_operator_knowledge_forget_rejects_cross_agent_fact_id() {
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
+    insert_test_fact(&store, "demiurge", "demiurge fact to protect from forget");
+    let results = store
+        .search_text_for_recall("demiurge fact to protect from forget", 10)
+        .expect("search");
+    let fact_id = results.first().expect("one fact").source_id.clone();
+
+    let (state, jwt, _tmp) = StateBuilder::new()
+        .knowledge_graph_enabled()
+        .knowledge_store(store)
+        .build();
+
+    let token = issue_token_with_nous_id(&jwt, "operator-syn", Role::Operator, "syn");
+    let router = test_router(&state);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header(header::HOST, "localhost")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json, text/event-stream")
+                .body(tool_call_request(
+                    1,
+                    "knowledge_forget",
+                    &serde_json::json!({"fact_id": fact_id}),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        extract_error_code(response).await,
+        Some(-32001),
+        "scoped operator must not mutate sibling facts by ID"
     );
 }
 

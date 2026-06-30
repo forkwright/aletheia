@@ -17,10 +17,10 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>) -> Result<()> {
     let runtime =
         Box::pin(RuntimeBuilder::production(Arc::clone(&oikos), config.clone()).build()).await?;
 
-    let mcp_jwt = if runtime.state.auth_mode == "none" {
+    let mcp_auth_facade = if runtime.state.auth_mode == "none" {
         None
     } else {
-        Some(Arc::clone(&runtime.state.jwt_manager))
+        Some(Arc::clone(&runtime.state.auth_facade))
     };
 
     let diaporeia_state = Arc::new(diaporeia::state::DiaporeiaState {
@@ -28,7 +28,7 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>) -> Result<()> {
         nous_manager: Arc::clone(&runtime.state.nous_manager),
         tool_registry: Arc::clone(&runtime.state.tool_registry),
         oikos: Arc::clone(&runtime.state.oikos),
-        jwt_manager: mcp_jwt,
+        auth_facade: mcp_auth_facade,
         start_time: runtime.state.start_time,
         config: Arc::clone(&runtime.state.config),
         auth_mode: runtime.state.auth_mode.clone(),

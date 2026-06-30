@@ -27,6 +27,7 @@ use crate::types::{
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
+use super::filesystem_policy::protected_path_class;
 use super::workspace::{extract_opt_bool, extract_str, validate_path};
 
 /// Sanitize a path to just its filename for error messages.
@@ -39,32 +40,6 @@ fn sanitize(path: &Path) -> String {
         .and_then(|n| n.to_str())
         .unwrap_or("<path>")
         .to_owned()
-}
-
-/// Reject mutations to protected files.
-///
-/// WHY: The write/edit tools block overwriting identity/soul/secret files.
-/// Destination-taking mutations (mv, cp, rm) must enforce the same guard so
-/// agents cannot route around the protection via rename/delete. We mirror the
-/// `PROTECTED_FILES` allowlist used by `workspace::is_protected_file` rather
-/// than importing it because the exact match semantics are tool-specific.
-const PROTECTED_BASENAMES: &[&str] = &[
-    "IDENTITY.md",
-    "SOUL.md",
-    "GOALS.md",
-    "TOOLS.md",
-    "MEMORY.md",
-    ".git",
-    ".claude",
-    "standards",
-];
-
-fn is_protected(path: &Path) -> Option<&'static str> {
-    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    PROTECTED_BASENAMES
-        .iter()
-        .copied()
-        .find(|&name| filename == name)
 }
 
 /// Re-canonicalize a path immediately before a filesystem mutation and re-check
@@ -86,6 +61,95 @@ fn revalidate_before_mutation(
     Ok(())
 }
 
+fn first_protected_existing_descendant(path: &Path, workspace: &Path) -> Option<&'static str> {
+    if let Some(protected) = protected_path_class(path, workspace) {
+        return Some(protected);
+    }
+
+    if !path.is_dir() {
+        return None;
+    }
+
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let child = entry.path();
+            if let Some(protected) = protected_path_class(&child, workspace) {
+                return Some(protected);
+            }
+            if entry
+                .file_type()
+                .ok()
+                .is_some_and(|file_type| file_type.is_dir())
+            {
+                pending.push(child);
+            }
+        }
+    }
+
+    None
+}
+
+fn first_protected_destination_descendant(
+    source: &Path,
+    destination: &Path,
+    workspace: &Path,
+) -> Option<&'static str> {
+    if let Some(protected) = protected_path_class(destination, workspace) {
+        return Some(protected);
+    }
+
+    if !source.is_dir() {
+        return None;
+    }
+
+    let mut pending = vec![source.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let source_child = entry.path();
+            let Ok(relative_child) = source_child.strip_prefix(source) else {
+                continue;
+            };
+            let destination_child = destination.join(relative_child);
+            if let Some(protected) = protected_path_class(&destination_child, workspace) {
+                return Some(protected);
+            }
+            if entry
+                .file_type()
+                .ok()
+                .is_some_and(|file_type| file_type.is_dir())
+            {
+                pending.push(source_child);
+            }
+        }
+    }
+
+    None
+}
+
+fn protected_path_error(action: &str, protected: &str) -> ToolResult {
+    ToolResult::error(format!("cannot {action} protected path: {protected}"))
+}
+
+fn protected_io_error(action: &str, protected: &str) -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!("cannot {action} protected path: {protected}"),
+    )
+}
+
 pub(crate) struct MkdirExecutor;
 
 impl ToolExecutor for MkdirExecutor {
@@ -98,6 +162,10 @@ impl ToolExecutor for MkdirExecutor {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let parents = extract_opt_bool(&input.arguments, "parents").unwrap_or(true);
             let path = validate_path(path_str, ctx, &input.name)?;
+
+            if let Some(protected) = protected_path_class(&path, &ctx.workspace) {
+                return Ok(protected_path_error("create", protected));
+            }
 
             if path.exists() {
                 // WHY: idempotent success mirrors POSIX `mkdir -p` behavior so
@@ -140,15 +208,13 @@ impl ToolExecutor for MvExecutor {
             let from = validate_path(from_str, ctx, &input.name)?;
             let to = validate_path(to_str, ctx, &input.name)?;
 
-            if let Some(name) = is_protected(&from) {
-                return Ok(ToolResult::error(format!(
-                    "cannot move protected path: {name}"
-                )));
+            if let Some(protected) = first_protected_existing_descendant(&from, &ctx.workspace) {
+                return Ok(protected_path_error("move", protected));
             }
-            if let Some(name) = is_protected(&to) {
-                return Ok(ToolResult::error(format!(
-                    "cannot overwrite protected path: {name}"
-                )));
+            if let Some(protected) =
+                first_protected_destination_descendant(&from, &to, &ctx.workspace)
+            {
+                return Ok(protected_path_error("overwrite", protected));
             }
 
             if !from.exists() {
@@ -178,13 +244,18 @@ impl ToolExecutor for MvExecutor {
                     revalidate_before_mutation(&from, ctx, &input.name)?;
                     revalidate_before_mutation(&to, ctx, &input.name)?;
                     let copy_result = if from.is_dir() {
-                        copy_dir_recursive(&from, &to)
+                        copy_dir_recursive(&from, &to, &ctx.workspace)
                     } else {
                         std::fs::copy(&from, &to).map(|_| ())
                     };
                     match copy_result {
                         Ok(()) => {
                             revalidate_before_mutation(&from, ctx, &input.name)?;
+                            if let Some(protected) =
+                                first_protected_existing_descendant(&from, &ctx.workspace)
+                            {
+                                return Ok(protected_path_error("remove", protected));
+                            }
                             match remove_path(&from) {
                                 Ok(()) => Ok(ToolResult::text(format!(
                                     "moved (cross-device) {} -> {}",
@@ -230,10 +301,11 @@ impl ToolExecutor for CpExecutor {
             let from = validate_path(from_str, ctx, &input.name)?;
             let to = validate_path(to_str, ctx, &input.name)?;
 
-            if let Some(name) = is_protected(&to) {
-                return Ok(ToolResult::error(format!(
-                    "cannot overwrite protected path: {name}"
-                )));
+            if let Some(protected) = protected_path_class(&from, &ctx.workspace) {
+                return Ok(protected_path_error("copy", protected));
+            }
+            if let Some(protected) = protected_path_class(&to, &ctx.workspace) {
+                return Ok(protected_path_error("overwrite", protected));
             }
 
             if !from.exists() {
@@ -254,7 +326,16 @@ impl ToolExecutor for CpExecutor {
                         "source is a directory; pass recursive=true to copy directories".to_owned(),
                     ));
                 }
-                match copy_dir_recursive(&from, &to) {
+                if let Some(protected) = first_protected_existing_descendant(&from, &ctx.workspace)
+                {
+                    return Ok(protected_path_error("copy", protected));
+                }
+                if let Some(protected) =
+                    first_protected_destination_descendant(&from, &to, &ctx.workspace)
+                {
+                    return Ok(protected_path_error("overwrite", protected));
+                }
+                match copy_dir_recursive(&from, &to, &ctx.workspace) {
                     Ok(()) => Ok(ToolResult::text(format!(
                         "copied directory {} -> {}",
                         sanitize(&from),
@@ -276,15 +357,25 @@ impl ToolExecutor for CpExecutor {
     }
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+fn copy_dir_recursive(src: &Path, dst: &Path, workspace: &Path) -> std::io::Result<()> {
+    if let Some(protected) = protected_path_class(dst, workspace) {
+        return Err(protected_io_error("overwrite", protected));
+    }
+
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
+        if let Some(protected) = protected_path_class(&src_path, workspace) {
+            return Err(protected_io_error("copy", protected));
+        }
+        if let Some(protected) = protected_path_class(&dst_path, workspace) {
+            return Err(protected_io_error("overwrite", protected));
+        }
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
+            copy_dir_recursive(&src_path, &dst_path, workspace)?;
         } else if file_type.is_symlink() {
             // WHY: Reproducing symlinks verbatim would create a destination
             // link whose target may not satisfy `allowed_roots`. Fail closed
@@ -313,10 +404,8 @@ impl ToolExecutor for RmExecutor {
             let recursive = extract_opt_bool(&input.arguments, "recursive").unwrap_or(false);
             let path = validate_path(path_str, ctx, &input.name)?;
 
-            if let Some(name) = is_protected(&path) {
-                return Ok(ToolResult::error(format!(
-                    "cannot remove protected path: {name}"
-                )));
+            if let Some(protected) = protected_path_class(&path, &ctx.workspace) {
+                return Ok(protected_path_error("remove", protected));
             }
 
             if !path.exists() {
@@ -346,6 +435,10 @@ impl ToolExecutor for RmExecutor {
                     return Ok(ToolResult::error(
                         "path is a directory; pass recursive=true to remove directories".to_owned(),
                     ));
+                }
+                if let Some(protected) = first_protected_existing_descendant(&path, &ctx.workspace)
+                {
+                    return Ok(protected_path_error("remove", protected));
                 }
                 std::fs::remove_dir_all(&path)
             } else {
@@ -383,6 +476,7 @@ fn mkdir_def() -> ToolDef {
                         description: "Directory path to create".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -393,6 +487,7 @@ fn mkdir_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(true)),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -420,6 +515,7 @@ fn mv_def() -> ToolDef {
                         description: "Source path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -429,6 +525,7 @@ fn mv_def() -> ToolDef {
                         description: "Destination path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -456,6 +553,7 @@ fn cp_def() -> ToolDef {
                         description: "Source path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -465,6 +563,7 @@ fn cp_def() -> ToolDef {
                         description: "Destination path".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -474,6 +573,7 @@ fn cp_def() -> ToolDef {
                         description: "Required to copy a directory (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -501,6 +601,7 @@ fn rm_def() -> ToolDef {
                         description: "Path to remove".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -512,6 +613,7 @@ fn rm_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default()
                     },
                 ),
             ]),

@@ -30,6 +30,7 @@ use koina::secret::SecretString;
 use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;
 use taxis::config::AletheiaConfig;
@@ -141,13 +142,17 @@ async fn router_rejects_expired_bearer_token() {
     // every issued token is already expired by the time validation runs,
     // triggering the expired-token path. The default 30s leeway would
     // otherwise keep the token alive past the 50ms sleep below.
-    let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
+    let jwt_config = JwtConfig {
         signing_key: SecretString::from("expired-token-test-signing-key-bytes!".to_owned()),
         access_ttl: Duration::from_secs(0),
         refresh_ttl: Duration::from_secs(0),
         issuer: "aletheia-diaporeia-tests".to_owned(),
         clock_skew_leeway_secs: 0,
-    }));
+    };
+    let jwt_manager = Arc::new(JwtManager::new(jwt_config.clone()));
+    let auth_facade = Arc::new(
+        AuthFacade::in_memory(AuthConfig { jwt: jwt_config }).expect("in-memory auth facade"),
+    );
 
     let config = Arc::new(RwLock::new(AletheiaConfig::default()));
     let state = Arc::new(DiaporeiaState {
@@ -155,7 +160,7 @@ async fn router_rejects_expired_bearer_token() {
         nous_manager,
         tool_registry,
         oikos,
-        jwt_manager: Some(Arc::clone(&jwt_manager)),
+        auth_facade: Some(auth_facade),
         start_time: Instant::now(),
         config,
         auth_mode: "token".to_owned(),
@@ -190,6 +195,37 @@ async fn router_rejects_expired_bearer_token() {
         "expired token must be rejected by mcp_auth"
     );
     drop(instance_root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn router_rejects_revoked_bearer_token() {
+    let (state, jwt, _tmp) = StateBuilder::new().auth_mode("token").build();
+    let token = issue_token(&jwt, "alice", Role::Operator);
+    state
+        .auth_facade
+        .as_ref()
+        .expect("token-mode state must carry auth facade")
+        .revoke(&token)
+        .expect("revoke test token");
+    let router = streamable_http_router(state);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::UNAUTHORIZED,
+        "revoked Bearer token must be rejected by MCP auth"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

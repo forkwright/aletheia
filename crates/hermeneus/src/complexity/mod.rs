@@ -449,6 +449,9 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
             model,
             complexity_score = complexity.score,
             complexity_tier = %complexity.tier,
+            complexity_no_llm_threshold = config.no_llm_threshold,
+            complexity_low_threshold = config.low_threshold,
+            complexity_high_threshold = config.high_threshold,
             "model routing: user override"
         );
         return RoutingDecision {
@@ -478,6 +481,9 @@ pub fn route_model(input: &ComplexityInput<'_>, config: &ComplexityConfig) -> Ro
         model,
         complexity_score = complexity.score,
         complexity_tier = %complexity.tier,
+        complexity_no_llm_threshold = config.no_llm_threshold,
+        complexity_low_threshold = config.low_threshold,
+        complexity_high_threshold = config.high_threshold,
         reason = %complexity.reason,
         "model routing decision"
     );

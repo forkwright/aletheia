@@ -39,6 +39,7 @@ notify = { workspace = true }
 prometheus-client = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true, features = ["process", "signal"] }
 tokio-util = { workspace = true }
@@ -53,6 +54,7 @@ episteme = { path = "../episteme", default-features = false, features = [
 ] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true

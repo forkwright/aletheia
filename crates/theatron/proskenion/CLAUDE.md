@@ -37,8 +37,6 @@ Dioxus desktop application for Aletheia: chat, planning, memory, metrics, ops, a
 | `ToolCallState` | `state/tools.rs` | Active call tracking with approval state |
 | `PlanCardState` | `state/tools.rs` | Plan visualization with step status tracking |
 | `WindowState` | `state/platform.rs` | Window geometry persistence across sessions |
-| `TrayState` | `state/platform.rs` | Tray icon and menu state |
-| `HotkeyState` | `state/platform.rs` | Global hotkey registration and actions |
 
 ## Views
 
@@ -59,7 +57,7 @@ Dioxus desktop application for Aletheia: chat, planning, memory, metrics, ops, a
 - **Signal-based reactivity**: Dioxus signals and stores for all state; background services write into signals.
 - **Dual-stream architecture**: Global SSE for dashboard events + per-message stream for turn content.
 - **Service coroutines**: Background tasks (SSE, streaming, file watcher) run as Dioxus coroutines or tokio tasks.
-- **Platform integration**: System tray, global hotkeys, native menus, window state persistence, desktop notifications.
+- **Platform integration**: Window state persistence and desktop notifications.
 - **Workspace excluded**: Not in the cargo workspace due to GTK/webkit2gtk system deps. Inline lints mirror workspace config.
 
 ## Common tasks
@@ -70,7 +68,7 @@ Dioxus desktop application for Aletheia: chat, planning, memory, metrics, ops, a
 | Add UI component | `src/components/` (new component module) |
 | Add state domain | `src/state/` (new state module) + `src/state/mod.rs` (re-export) |
 | Add background service | `src/services/` (new service module) |
-| Add platform feature | `src/platform/` (tray, hotkeys, window state, notifications) |
+| Add platform feature | `src/platform/` (window state, notifications) |
 | Add overlay | `src/state/app.rs` (Overlay enum) + `src/views/` or `src/components/` (render) |
 
 ## Dependencies

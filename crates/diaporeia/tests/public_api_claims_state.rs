@@ -77,7 +77,7 @@ fn state_constructs_from_real_workspace_dependencies() {
     let (state, _jwt, _tmp) = StateBuilder::new().build();
 
     assert_eq!(state.auth_mode, "token");
-    assert!(state.jwt_manager.is_some());
+    assert!(state.auth_facade.is_some());
     assert_eq!(state.none_role, "readonly");
     assert!(
         state.start_time.elapsed() < Duration::from_secs(5),
@@ -87,7 +87,7 @@ fn state_constructs_from_real_workspace_dependencies() {
 }
 
 #[test]
-fn state_omits_jwt_manager_when_auth_mode_is_none() {
+fn state_omits_auth_facade_when_auth_mode_is_none() {
     let (state, _jwt, _tmp) = StateBuilder::new()
         .auth_mode("none")
         .none_role("admin")
@@ -95,8 +95,8 @@ fn state_omits_jwt_manager_when_auth_mode_is_none() {
 
     assert_eq!(state.auth_mode, "none");
     assert!(
-        state.jwt_manager.is_none(),
-        "auth_mode=none must not carry a signing manager"
+        state.auth_facade.is_none(),
+        "auth_mode=none must not carry a bearer-token validator"
     );
     assert_eq!(state.none_role, "admin");
 }

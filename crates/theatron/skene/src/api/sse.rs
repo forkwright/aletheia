@@ -20,6 +20,7 @@ use tracing::Instrument;
 use crate::id::{NousId, SessionId, TurnId};
 use crate::sse::SseStream;
 
+use super::error::{format_error_fields_for_display, format_http_error_body};
 use super::types::SseEvent;
 
 /// If no SSE event is received within this window, the connection is treated as
@@ -85,18 +86,7 @@ impl SseConnection {
                         let reason = status.canonical_reason().unwrap_or("Unknown");
                         // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
                         let body = resp.text().await.unwrap_or_default();
-                        let message =
-                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-                                json.get("message")
-                                    .or_else(|| json.get("error"))
-                                    .and_then(|v| v.as_str())
-                                    .map_or_else(
-                                        || format!("{} {}", status.as_u16(), reason),
-                                        std::string::ToString::to_string,
-                                    )
-                            } else {
-                                format!("{} {}", status.as_u16(), reason)
-                            };
+                        let message = format_http_error_body(status.as_u16(), reason, &body);
                         tracing::warn!("SSE error: {message}");
                         if tx.send(SseEvent::Disconnected).await.is_err() {
                             return;
@@ -289,11 +279,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         "ping" => Some(SseEvent::Ping),
         "stream_lagged" => stream_lagged_event(&json),
         "error" => Some(SseEvent::Error {
-            message: json
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("server error")
-                .to_string(),
+            message: sse_error_message(&json),
         }),
         other => {
             tracing::debug!("unknown SSE event type: {other}");
@@ -303,6 +289,22 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             })
         }
     }
+}
+
+fn sse_error_message(json: &serde_json::Value) -> String {
+    let message = json
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("server error");
+    format_error_fields_for_display(
+        message,
+        None,
+        json.get("code").and_then(serde_json::Value::as_str),
+        json.get("request_id")
+            .or_else(|| json.get("requestId"))
+            .and_then(serde_json::Value::as_str),
+        json.get("details"),
+    )
 }
 
 fn stream_lagged_event(json: &serde_json::Value) -> Option<SseEvent> {
@@ -508,6 +510,19 @@ mod tests {
         let data = r#"{"dropped":"many"}"#;
         let result = parse_sse_event("stream_lagged", data);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_error_preserves_code_request_id_and_details() {
+        let data = r#"{"code":"stream_failed","message":"provider unavailable","request_id":"req-sse","details":{"provider":"synthetic"}}"#;
+        let result = parse_sse_event("error", data);
+        let Some(SseEvent::Error { message }) = result else {
+            panic!("expected Error");
+        };
+        assert!(message.contains("provider unavailable"));
+        assert!(message.contains("code stream_failed"));
+        assert!(message.contains("request_id req-sse"));
+        assert!(message.contains(r#""provider":"synthetic""#));
     }
 
     #[test]

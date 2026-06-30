@@ -10,14 +10,16 @@ mod tools;
 
 pub use agents::{
     AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentToolGroupPolicy, AgentsConfig,
-    CachingConfig, ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
+    CachingConfig, ModelRoute, ModelSpec, NousDefinition, RecallProfile, RecallSettings,
+    RecallWeights,
 };
 pub use behavior::{
     AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig,
-    CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DeploymentTarget, DispatchConfig,
-    DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
-    MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig,
-    ProviderKind, RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DaemonRunnerOutputMode,
+    DeploymentTarget, DispatchConfig, DispatchSpecConfig, ExtractionConfig, JwtSettings,
+    KnowledgeConfig, LlmProviderConfig, MessagingConfig, NousBehaviorConfig, OpenAiApiFamily,
+    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
+    ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
@@ -28,16 +30,17 @@ pub use maintenance::{
     BackupSettings, CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
     DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, KnowledgeGraphMcpConfig,
     LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings,
-    ProsocheActiveWindowSettings, ProsocheExternalTimerSettings, ProsocheMaintenanceSettings,
-    ProsocheScheduleMode, ProsocheTaskScheduleSettings, RedactionSettings, RepomixMcpConfig,
-    RetentionSettings, SandboxSettings, SerendipityMaintenanceSettings, TraceRotationSettings,
-    WatchdogSettings,
+    ProsocheActiveWindowSettings, ProsocheExternalTimerSettings, ProsocheExternalTimerTaskId,
+    ProsocheMaintenanceSettings, ProsocheScheduleMode, ProsocheTaskScheduleSettings,
+    RedactionSettings, RepomixMcpConfig, RetentionSettings, SandboxSettings,
+    SerendipityMaintenanceSettings, TraceRotationSettings, WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,
 };
 pub use tools::{
-    ExternalToolAuth, ExternalToolEntry, ExternalToolKind, ExternalToolMethod, ExternalToolsConfig,
+    ExternalToolAuth, ExternalToolEntry, ExternalToolGroupId, ExternalToolKind, ExternalToolMethod,
+    ExternalToolReversibility, ExternalToolsConfig,
 };
 
 use std::collections::HashMap;
@@ -170,11 +173,12 @@ pub struct AletheiaConfig {
     /// resolution aggressiveness vary by deployment use case (research vs
     /// production, single-agent vs multi-agent).
     pub knowledge: KnowledgeConfig,
-    /// Hermeneus provider timeout, concurrency, and complexity routing thresholds.
+    /// Hermeneus provider timeout, concurrency, and complexity routing controls.
     ///
     /// WHY configurable: non-streaming timeouts and concurrency limits depend
-    /// on provider rate limits and latency characteristics. Complexity
-    /// thresholds control model routing (Haiku vs Opus) which affects cost.
+    /// on provider rate limits and latency characteristics. Complexity routing
+    /// controls let operators opt into score-based tier selection and tune
+    /// the cost/quality boundaries.
     pub provider_behavior: ProviderBehaviorConfig,
     /// Pylon request size and idempotency limits.
     ///
@@ -224,13 +228,17 @@ pub struct AletheiaConfig {
     pub jwt: JwtSettings,
     /// LLM provider definitions (#3424, #3414).
     ///
-    /// Ordered list of backends — the provider registry routes each request
-    /// to the first entry that claims the requested model. Empty by default
-    /// for backward compatibility: when empty, the runtime falls back to the
+    /// Ordered list of backends — the provider registry prefers the highest
+    /// model-match specificity and breaks equal-specificity ties by this
+    /// order. Empty by default for backward compatibility: when empty, the
+    /// runtime falls back to the
     /// legacy single-Anthropic setup driven by [`Self::anthropic`] and the
-    /// top-level credential chain. Populate this to enable OpenAI-compatible
-    /// endpoints (local llama.cpp/ollama/vllm, other cloud APIs) or to
-    /// declare explicit deployment targets for the factsensitivity filter.
+    /// top-level credential chain. Once populated, this list is the complete
+    /// provider-ordering contract. An `anthropic` entry without `apiKeyEnv`
+    /// uses the top-level credential chain at that entry's declared position.
+    /// Populate this to enable OpenAI-compatible endpoints (local
+    /// llama.cpp/ollama/vllm, other cloud APIs) or to declare explicit
+    /// deployment targets for the factsensitivity filter.
     #[serde(default)]
     pub providers: Vec<LlmProviderConfig>,
     /// Prompt audit log: operator visibility into outbound LLM requests (#3411).
@@ -327,18 +335,39 @@ fn default_session_pattern() -> String {
 }
 
 /// Embedding provider configuration for recall pipeline.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 #[rustfmt::skip]
 pub struct EmbeddingSettings {
-    /// Provider type: "mock", "candle".
+    /// Provider type: "candle", "openai-compat", "voyage".
     pub provider: String,
     /// Provider-specific model name.
     pub model: Option<String>,
     /// Output vector dimension (must match knowledge store HNSW index).
     pub dimension: usize,
+    /// OpenAI-compatible embedding endpoint base URL.
+    #[serde(alias = "baseurl")]
+    pub base_url: Option<String>,
+    /// Environment variable that stores the embedding provider API key.
+    #[serde(alias = "apikeyenv")]
+    pub api_key_env: Option<String>,
+}
+
+impl std::fmt::Debug for EmbeddingSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmbeddingSettings")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("dimension", &self.dimension)
+            .field("base_url", &self.base_url.as_ref().map(|_| "<redacted>"))
+            .field(
+                "api_key_env",
+                &self.api_key_env.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl Default for EmbeddingSettings {
@@ -347,6 +376,32 @@ impl Default for EmbeddingSettings {
             provider: "candle".to_owned(),
             model: None,
             dimension: 384,
+            base_url: None,
+            api_key_env: None,
+        }
+    }
+}
+
+impl EmbeddingSettings {
+    /// Convert public TOML settings into the embedding provider config shape
+    /// without resolving secrets from the process environment.
+    #[must_use]
+    pub fn to_embedding_config(&self) -> episteme::embedding::EmbeddingConfig {
+        self.to_embedding_config_with_api_key(None)
+    }
+
+    /// Convert public TOML settings into the embedding provider config shape.
+    #[must_use]
+    pub fn to_embedding_config_with_api_key(
+        &self,
+        api_key: Option<koina::secret::SecretString>,
+    ) -> episteme::embedding::EmbeddingConfig {
+        episteme::embedding::EmbeddingConfig {
+            provider: self.provider.clone(),
+            model: self.model.clone(),
+            dimension: Some(self.dimension),
+            api_key,
+            base_url: self.base_url.clone(),
         }
     }
 }

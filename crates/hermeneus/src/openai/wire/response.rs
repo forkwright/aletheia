@@ -5,8 +5,9 @@
 //! OpenAI proper, llama.cpp, ollama, and vllm.
 
 use serde::Deserialize;
-use tracing::warn;
+use serde::de::Error as _;
 
+use crate::error::{self, Result as HermeneusResult};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 #[derive(Debug, Deserialize)]
@@ -92,31 +93,205 @@ pub(crate) struct ResponsesIncompleteDetails {
     pub reason: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
+/// One item in the OpenAI Responses API `output` array.
+///
+/// Deserialized manually so unknown future item types are captured with their
+/// raw JSON and provider type instead of being silently dropped.
+#[derive(Debug)]
 pub(crate) enum ResponsesOutputItem {
-    #[serde(rename = "message")]
     Message {
         content: Vec<ResponsesOutputContent>,
     },
-    #[serde(rename = "function_call")]
     FunctionCall {
         call_id: String,
         name: String,
-        #[serde(default)]
         arguments: String,
     },
-    #[serde(other)]
-    Other,
+    Reasoning {
+        id: String,
+        summary: Vec<ReasoningSummary>,
+    },
+    WebSearchCall {
+        id: String,
+    },
+    FileSearchCall {
+        id: String,
+    },
+    ComputerCall {
+        call_id: String,
+        action: serde_json::Value,
+    },
+    ComputerCallOutput {
+        call_id: String,
+        output: serde_json::Value,
+    },
+    Unsupported {
+        provider_type: String,
+        raw: serde_json::Value,
+    },
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
+impl<'de> Deserialize<'de> for ResponsesOutputItem {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let provider_type = value
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_owned();
+        match provider_type.as_str() {
+            "message" => {
+                let content = value
+                    .get("content")
+                    .map(Vec::<ResponsesOutputContent>::deserialize)
+                    .transpose()
+                    .map_err(D::Error::custom)?
+                    .unwrap_or_default();
+                Ok(Self::Message { content })
+            }
+            "function_call" => {
+                let call_id = value
+                    .get("call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                let name = value
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                let arguments = value
+                    .get("arguments")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                Ok(Self::FunctionCall {
+                    call_id,
+                    name,
+                    arguments,
+                })
+            }
+            "reasoning" => {
+                let id = value
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                let summary = value
+                    .get("summary")
+                    .map(Vec::<ReasoningSummary>::deserialize)
+                    .transpose()
+                    .map_err(D::Error::custom)?
+                    .unwrap_or_default();
+                Ok(Self::Reasoning { id, summary })
+            }
+            "web_search_call" => {
+                let id = value
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                Ok(Self::WebSearchCall { id })
+            }
+            "file_search_call" => {
+                let id = value
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                Ok(Self::FileSearchCall { id })
+            }
+            "computer_call" => {
+                let call_id = value
+                    .get("call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                let action = value.get("action").cloned().unwrap_or_default();
+                Ok(Self::ComputerCall { call_id, action })
+            }
+            "computer_call_output" => {
+                let call_id = value
+                    .get("call_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                let output = value.get("output").cloned().unwrap_or_default();
+                Ok(Self::ComputerCallOutput { call_id, output })
+            }
+            _ => Ok(Self::Unsupported {
+                provider_type,
+                raw: value,
+            }),
+        }
+    }
+}
+
+/// One content part inside a Responses API `message` output item.
+#[derive(Debug)]
 pub(crate) enum ResponsesOutputContent {
-    #[serde(rename = "output_text")]
-    OutputText { text: String },
-    #[serde(other)]
-    Other,
+    OutputText {
+        text: String,
+    },
+    Refusal {
+        refusal: String,
+    },
+    Unsupported {
+        provider_type: String,
+        raw: serde_json::Value,
+    },
+}
+
+impl<'de> Deserialize<'de> for ResponsesOutputContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let provider_type = value
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_owned();
+        match provider_type.as_str() {
+            "output_text" => {
+                let text = value
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                Ok(Self::OutputText { text })
+            }
+            "refusal" => {
+                let refusal = value
+                    .get("refusal")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                Ok(Self::Refusal { refusal })
+            }
+            _ => Ok(Self::Unsupported {
+                provider_type,
+                raw: value,
+            }),
+        }
+    }
+}
+
+/// A single summary entry inside a Responses API `reasoning` item.
+#[derive(Debug, Deserialize)]
+pub(crate) struct ReasoningSummary {
+    #[expect(
+        dead_code,
+        reason = "deserialized for completeness; reasoning summary items are filtered by type via text field"
+    )]
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,10 +310,10 @@ impl ChatCompletionResponse {
     ///
     /// # Errors
     ///
-    /// Returns an error string when the response contains no choices (the
-    /// OpenAI API guarantees at least one but we defend against a degenerate
-    /// server).
-    pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {
+    /// Returns a provider-contract error when the response contains no choices
+    /// (the OpenAI API guarantees at least one but we defend against a
+    /// degenerate server).
+    pub(crate) fn into_response(self) -> HermeneusResult<CompletionResponse> {
         let Self {
             id,
             model,
@@ -147,9 +322,12 @@ impl ChatCompletionResponse {
         } = self;
 
         let mut choices_iter = choices.into_iter();
-        let choice = choices_iter
-            .next()
-            .ok_or_else(|| "OpenAI response had no choices".to_owned())?;
+        let choice = choices_iter.next().ok_or_else(|| {
+            error::ProviderContractSnafu {
+                message: "OpenAI response had no choices".to_owned(),
+            }
+            .build()
+        })?;
 
         let finish_reason = choice.finish_reason.as_deref().unwrap_or("stop");
         let stop_reason = map_finish_reason(finish_reason);
@@ -168,7 +346,11 @@ impl ChatCompletionResponse {
         for call in choice.message.tool_calls {
             // WHY: arguments is a JSON-encoded string on the wire. An empty
             // string means the tool takes no input — map to an empty object.
-            let input = parse_arguments(&call.function.arguments);
+            let input = parse_arguments(
+                &call.function.arguments,
+                "OpenAI Chat Completions",
+                &call.function.name,
+            )?;
             content.push(ContentBlock::ToolUse {
                 id: call.id,
                 name: call.function.name,
@@ -209,9 +391,13 @@ impl ResponsesResponse {
     ///
     /// # Errors
     ///
-    /// Returns an error string when the response contains neither output
-    /// items nor an `output_text` convenience field.
-    pub(crate) fn into_response(self) -> Result<CompletionResponse, String> {
+    /// Returns a provider-contract error when the response contains neither
+    /// output items nor an `output_text` convenience field.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "each match arm maps a distinct Responses API output item type; extracting helpers would obscure the one-to-one mapping"
+    )]
+    pub(crate) fn into_response(self) -> HermeneusResult<CompletionResponse> {
         let Self {
             id,
             model,
@@ -229,13 +415,30 @@ impl ResponsesResponse {
             match item {
                 ResponsesOutputItem::Message { content: parts } => {
                     for part in parts {
-                        if let ResponsesOutputContent::OutputText { text } = part
-                            && !text.is_empty()
-                        {
-                            content.push(ContentBlock::Text {
-                                text,
-                                citations: None,
-                            });
+                        match part {
+                            ResponsesOutputContent::OutputText { text } if !text.is_empty() => {
+                                content.push(ContentBlock::Text {
+                                    text,
+                                    citations: None,
+                                });
+                            }
+                            ResponsesOutputContent::Refusal { refusal } => {
+                                content.push(ContentBlock::Unsupported {
+                                    kind: "content".to_owned(),
+                                    provider_type: Some("refusal".to_owned()),
+                                    detail: Some(serde_json::json!({ "refusal": refusal })),
+                                });
+                            }
+                            ResponsesOutputContent::Unsupported { provider_type, raw } => {
+                                content.push(ContentBlock::Unsupported {
+                                    kind: "content".to_owned(),
+                                    provider_type: Some(provider_type),
+                                    detail: Some(raw),
+                                });
+                            }
+                            // WHY: Empty output_text is intentionally elided; it carries
+                            // no information and would pollute the content array.
+                            ResponsesOutputContent::OutputText { .. } => {}
                         }
                     }
                 }
@@ -245,13 +448,66 @@ impl ResponsesResponse {
                     arguments,
                 } => {
                     saw_function_call = true;
+                    let input = parse_arguments(&arguments, "OpenAI Responses", &name)?;
                     content.push(ContentBlock::ToolUse {
                         id: call_id,
                         name,
-                        input: parse_arguments(&arguments),
+                        input,
                     });
                 }
-                ResponsesOutputItem::Other => {}
+                ResponsesOutputItem::Reasoning { id, summary } => {
+                    let thinking: String = summary
+                        .into_iter()
+                        .filter_map(|part| part.text)
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if thinking.is_empty() {
+                        content.push(ContentBlock::Unsupported {
+                            kind: "output_item".to_owned(),
+                            provider_type: Some("reasoning".to_owned()),
+                            detail: Some(serde_json::json!({ "id": id })),
+                        });
+                    } else {
+                        content.push(ContentBlock::Thinking {
+                            thinking,
+                            signature: None,
+                        });
+                    }
+                }
+                ResponsesOutputItem::WebSearchCall { id } => {
+                    content.push(ContentBlock::ServerToolUse {
+                        id,
+                        name: "web_search".to_owned(),
+                        input: serde_json::Value::Null,
+                    });
+                }
+                ResponsesOutputItem::FileSearchCall { id } => {
+                    content.push(ContentBlock::ServerToolUse {
+                        id,
+                        name: "file_search".to_owned(),
+                        input: serde_json::Value::Null,
+                    });
+                }
+                ResponsesOutputItem::ComputerCall { call_id, action } => {
+                    content.push(ContentBlock::ServerToolUse {
+                        id: call_id,
+                        name: "computer".to_owned(),
+                        input: action,
+                    });
+                }
+                ResponsesOutputItem::ComputerCallOutput { call_id, output } => {
+                    content.push(ContentBlock::WebSearchToolResult {
+                        tool_use_id: call_id,
+                        content: output,
+                    });
+                }
+                ResponsesOutputItem::Unsupported { provider_type, raw } => {
+                    content.push(ContentBlock::Unsupported {
+                        kind: "output_item".to_owned(),
+                        provider_type: Some(provider_type),
+                        detail: Some(raw),
+                    });
+                }
             }
         }
 
@@ -266,7 +522,10 @@ impl ResponsesResponse {
         }
 
         if content.is_empty() {
-            return Err("OpenAI Responses response had no output".to_owned());
+            return Err(error::ProviderContractSnafu {
+                message: "OpenAI Responses response had no output".to_owned(),
+            }
+            .build());
         }
 
         let stop_reason = if saw_function_call {
@@ -314,24 +573,22 @@ impl ResponsesResponse {
     }
 }
 
-pub(crate) fn parse_arguments(arguments: &str) -> serde_json::Value {
+pub(crate) fn parse_arguments(
+    arguments: &str,
+    surface: &str,
+    tool_name: &str,
+) -> HermeneusResult<serde_json::Value> {
     if arguments.is_empty() {
-        serde_json::json!({})
+        Ok(serde_json::json!({}))
     } else {
-        match serde_json::from_str(arguments) {
-            Ok(v) => v,
-            Err(e) => {
-                warn!(
-                    error = %e,
-                    raw_arguments = %arguments,
-                    "OpenAI tool arguments JSON parse failed; returning error object to agent"
-                );
-                serde_json::json!({
-                    "_parse_error": format!("malformed tool input: {e}"),
-                    "_raw_input": arguments,
-                })
+        serde_json::from_str(arguments).map_err(|e| {
+            error::ProviderContractSnafu {
+                message: format!(
+                    "{surface} tool call '{tool_name}' arguments were not valid JSON: {e}"
+                ),
             }
-        }
+            .build()
+        })
     }
 }
 
@@ -360,6 +617,7 @@ fn map_finish_reason(reason: &str) -> StopReason {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
@@ -572,7 +830,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed_arguments_becomes_parse_error_object() {
+    fn malformed_chat_arguments_returns_provider_contract_error() {
         let body = r#"{
             "id": "x",
             "model": "m",
@@ -590,39 +848,23 @@ mod tests {
             }]
         }"#;
         let parsed: ChatCompletionResponse = serde_json::from_str(body).unwrap();
-        let resp = parsed.into_response().unwrap();
-        match &resp.content[0] {
-            ContentBlock::ToolUse { input, .. } => {
-                assert!(
-                    input.is_object(),
-                    "malformed arguments must be an object, not a string: {input:?}"
-                );
-                let Some(obj) = input.as_object() else {
-                    panic!("malformed arguments should produce an object: {input:?}");
-                };
-                assert!(
-                    obj.get("_parse_error")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s.starts_with("malformed tool input:")),
-                    "expected _parse_error field: {input:?}"
-                );
-                assert!(
-                    obj.contains_key("_raw_input"),
-                    "expected _raw_input field: {input:?}"
-                );
-                assert!(
-                    obj.get("_raw_input")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s == "{not json"),
-                    "_raw_input should preserve raw argument string: {input:?}"
-                );
-            }
-            other => panic!("expected ToolUse, got {other:?}"),
-        }
+        let err = parsed
+            .into_response()
+            .expect_err("malformed Chat arguments should fail");
+        assert!(
+            matches!(
+                err,
+                error::Error::ProviderContract { ref message, .. }
+                    if message.contains("OpenAI Chat Completions")
+                        && message.contains("'f'")
+                        && message.contains("not valid JSON")
+            ),
+            "expected ProviderContract for malformed Chat arguments, got {err:?}"
+        );
     }
 
     #[test]
-    fn responses_malformed_arguments_becomes_parse_error_object() {
+    fn responses_malformed_arguments_returns_provider_contract_error() {
         let body = r#"{
             "id": "resp-malformed",
             "model": "m",
@@ -635,28 +877,250 @@ mod tests {
             }]
         }"#;
         let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let err = parsed
+            .into_response()
+            .expect_err("malformed Responses arguments should fail");
+        assert!(
+            matches!(
+                err,
+                error::Error::ProviderContract { ref message, .. }
+                    if message.contains("OpenAI Responses")
+                        && message.contains("'f'")
+                        && message.contains("not valid JSON")
+            ),
+            "expected ProviderContract for malformed Responses arguments, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn responses_reasoning_item_becomes_thinking_block() {
+        let body = r#"{
+            "id": "resp-reasoning",
+            "model": "o3",
+            "status": "completed",
+            "output": [{
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [
+                    { "type": "thinking", "text": "First thought." },
+                    { "type": "thinking", "text": "Second thought." }
+                ]
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
         let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
         match &resp.content[0] {
-            ContentBlock::ToolUse { input, .. } => {
-                assert!(
-                    input.is_object(),
-                    "malformed arguments must be an object, not a string: {input:?}"
-                );
-                let Some(obj) = input.as_object() else {
-                    panic!("malformed arguments should produce an object: {input:?}");
-                };
-                assert!(
-                    obj.get("_parse_error")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s.starts_with("malformed tool input:")),
-                    "expected _parse_error field: {input:?}"
-                );
-                assert!(
-                    obj.contains_key("_raw_input"),
-                    "expected _raw_input field: {input:?}"
+            ContentBlock::Thinking {
+                thinking,
+                signature,
+            } => {
+                assert_eq!(thinking, "First thought.\nSecond thought.");
+                assert!(signature.is_none());
+            }
+            other => panic!("expected Thinking, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_refusal_content_becomes_unsupported_block() {
+        let body = r#"{
+            "id": "resp-refusal",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "message",
+                "content": [{ "type": "refusal", "refusal": "I cannot answer that." }]
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
+        match &resp.content[0] {
+            ContentBlock::Unsupported {
+                kind,
+                provider_type,
+                detail,
+            } => {
+                assert_eq!(kind, "content");
+                assert_eq!(provider_type.as_deref(), Some("refusal"));
+                let detail = detail.as_ref().expect("detail should be present");
+                assert_eq!(
+                    detail.get("refusal").and_then(|v| v.as_str()),
+                    Some("I cannot answer that.")
                 );
             }
-            other => panic!("expected ToolUse, got {other:?}"),
+            other => panic!("expected Unsupported, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_web_search_call_becomes_server_tool_use() {
+        let body = r#"{
+            "id": "resp-web-search",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "web_search_call",
+                "id": "ws_1",
+                "status": "completed"
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
+        match &resp.content[0] {
+            ContentBlock::ServerToolUse { id, name, input } => {
+                assert_eq!(id, "ws_1");
+                assert_eq!(name, "web_search");
+                assert!(input.is_null());
+            }
+            other => panic!("expected ServerToolUse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_file_search_call_becomes_server_tool_use() {
+        let body = r#"{
+            "id": "resp-file-search",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "file_search_call",
+                "id": "fs_1",
+                "status": "completed"
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
+        match &resp.content[0] {
+            ContentBlock::ServerToolUse { id, name, input } => {
+                assert_eq!(id, "fs_1");
+                assert_eq!(name, "file_search");
+                assert!(input.is_null());
+            }
+            other => panic!("expected ServerToolUse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_computer_call_becomes_server_tool_use() {
+        let body = r#"{
+            "id": "resp-computer",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "computer_call",
+                "call_id": "cc_1",
+                "action": { "type": "bash", "command": "echo hi" }
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
+        match &resp.content[0] {
+            ContentBlock::ServerToolUse { id, name, input } => {
+                assert_eq!(id, "cc_1");
+                assert_eq!(name, "computer");
+                assert_eq!(input.get("type").and_then(|v| v.as_str()), Some("bash"));
+            }
+            other => panic!("expected ServerToolUse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_computer_call_output_becomes_web_search_tool_result() {
+        let body = r#"{
+            "id": "resp-computer-out",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "computer_call_output",
+                "call_id": "cc_1",
+                "output": { "type": "input_text", "text": "hi" }
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
+        match &resp.content[0] {
+            ContentBlock::WebSearchToolResult {
+                tool_use_id,
+                content,
+            } => {
+                assert_eq!(tool_use_id, "cc_1");
+                assert_eq!(
+                    content.get("type").and_then(|v| v.as_str()),
+                    Some("input_text")
+                );
+            }
+            other => panic!("expected WebSearchToolResult, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_unknown_output_item_becomes_unsupported_block() {
+        let body = r#"{
+            "id": "resp-unknown",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "future_unknown_item",
+                "id": "fu_1",
+                "extra_field": 42
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
+        match &resp.content[0] {
+            ContentBlock::Unsupported {
+                kind,
+                provider_type,
+                detail,
+            } => {
+                assert_eq!(kind, "output_item");
+                assert_eq!(provider_type.as_deref(), Some("future_unknown_item"));
+                let detail = detail.as_ref().expect("detail should be present");
+                assert_eq!(detail.get("id").and_then(|v| v.as_str()), Some("fu_1"));
+                assert_eq!(
+                    detail
+                        .get("extra_field")
+                        .and_then(serde_json::Value::as_i64),
+                    Some(42)
+                );
+            }
+            other => panic!("expected Unsupported, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn responses_unknown_content_type_becomes_unsupported_block() {
+        let body = r#"{
+            "id": "resp-unknown-content",
+            "model": "gpt-5",
+            "status": "completed",
+            "output": [{
+                "type": "message",
+                "content": [{ "type": "future_unknown_content", "data": "xyz" }]
+            }]
+        }"#;
+        let parsed: ResponsesResponse = serde_json::from_str(body).unwrap();
+        let resp = parsed.into_response().unwrap();
+        assert_eq!(resp.content.len(), 1);
+        match &resp.content[0] {
+            ContentBlock::Unsupported {
+                kind,
+                provider_type,
+                detail,
+            } => {
+                assert_eq!(kind, "content");
+                assert_eq!(provider_type.as_deref(), Some("future_unknown_content"));
+                let detail = detail.as_ref().expect("detail should be present");
+                assert_eq!(detail.get("data").and_then(|v| v.as_str()), Some("xyz"));
+            }
+            other => panic!("expected Unsupported, got {other:?}"),
         }
     }
 }

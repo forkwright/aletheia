@@ -71,6 +71,7 @@ for the same terms and cross-references.
 | Fact class | Canonical doc |
 |------------|---------------|
 | Release process | [RELEASING.md](RELEASING.md) |
+| Automation PR gate and auto-merge policy | [AUTOMATION-PR-GATES.md](AUTOMATION-PR-GATES.md) |
 | No-AI-attribution policy | [NO-AI-ATTRIBUTION.md](NO-AI-ATTRIBUTION.md) |
 | Lessons learned | [LESSONS-LEARNED.md](LESSONS-LEARNED.md) |
 

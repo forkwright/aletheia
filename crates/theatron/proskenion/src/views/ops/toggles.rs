@@ -1,11 +1,15 @@
 //! Toggle controls panel: agent enable/disable, tool toggles, feature flags.
 
 use dioxus::prelude::*;
+use skene::api::routes::{
+    config::feature_flags_url,
+    nous::{agent_tools_url, agent_url},
+};
 use skeue::EmptyState;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-use crate::state::ops::ToggleStore;
+use crate::state::ops::{ToggleActionResult, ToggleApplyState, ToggleStore};
 
 const PANEL_STYLE: &str = "\
     background: var(--bg-surface); \
@@ -74,6 +78,18 @@ const FLAG_DESC: &str = "\
     padding: 0 0 var(--space-2) 0;\
 ";
 
+const STATUS_BADGE_WARNING: &str = "\
+    color: var(--status-warning); \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-bold);\
+";
+
+const STATUS_BADGE_ERROR: &str = "\
+    color: var(--status-error); \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-bold);\
+";
+
 const CONFIRM_OVERLAY: &str = "\
     position: fixed; \
     top: 0; left: 0; right: 0; bottom: 0; \
@@ -114,7 +130,16 @@ pub(crate) fn ToggleControlsPanel(
         let data = store.read();
         data.agent_toggles
             .iter()
-            .map(|t| (t.id.clone(), t.name.clone(), t.enabled, t.pending))
+            .map(|t| {
+                (
+                    t.id.clone(),
+                    t.name.clone(),
+                    t.enabled,
+                    t.pending,
+                    t.apply_state,
+                    t.live_status.clone(),
+                )
+            })
             .collect()
     };
 
@@ -151,13 +176,15 @@ pub(crate) fn ToggleControlsPanel(
                 EmptyState { title: "No agents available".to_string() }
             }
 
-            for (id , name , enabled , pending) in agent_ids {
+            for (id , name , enabled , pending , apply_state , live_status) in agent_ids {
                 AgentToggleRow {
                     key: "{id}",
                     id: id.clone(),
                     name,
                     enabled,
                     pending,
+                    apply_state,
+                    live_status,
                     store,
                     config,
                     confirm_disable,
@@ -218,6 +245,8 @@ fn AgentToggleRow(
     name: String,
     enabled: bool,
     pending: bool,
+    apply_state: ToggleApplyState,
+    live_status: Option<String>,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
     mut confirm_disable: Signal<Option<skene::id::NousId>>,
@@ -245,12 +274,15 @@ fn AgentToggleRow(
                     t.tool_name.clone(),
                     t.enabled,
                     t.pending,
+                    t.apply_state,
                 )
             })
             .collect()
     } else {
         Vec::new()
     };
+    let status_label = toggle_status_label(pending, apply_state, live_status.as_deref());
+    let status_style = toggle_status_style(pending, apply_state);
 
     rsx! {
         div {
@@ -258,6 +290,9 @@ fn AgentToggleRow(
             div {
                 style: "display: flex; align-items: center; gap: var(--space-2);",
                 span { style: "{TOGGLE_LABEL}", "{name}" }
+                if let Some(label) = status_label {
+                    span { style: "{status_style}", "{label}" }
+                }
                 button {
                     style: "{EXPAND_BTN}",
                     onclick: {
@@ -291,13 +326,14 @@ fn AgentToggleRow(
         }
 
         if is_expanded {
-            for (aid , tname , tool_enabled , tool_pending) in tools {
+            for (aid , tname , tool_enabled , tool_pending , tool_apply_state) in tools {
                 ToolToggleRow {
                     key: "{aid}-{tname}",
                     agent_id: aid,
                     tool_name: tname,
                     enabled: tool_enabled,
                     pending: tool_pending,
+                    apply_state: tool_apply_state,
                     store,
                     config,
                 }
@@ -312,13 +348,23 @@ fn ToolToggleRow(
     tool_name: String,
     enabled: bool,
     pending: bool,
+    apply_state: ToggleApplyState,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
 ) -> Element {
+    let status_label = toggle_status_label(pending, apply_state, None);
+    let status_style = toggle_status_style(pending, apply_state);
+
     rsx! {
         div {
             style: "{TOOL_ROW_STYLE}",
-            span { style: "{TOOL_LABEL}", "{tool_name}" }
+            div {
+                style: "display: flex; align-items: center; gap: var(--space-2);",
+                span { style: "{TOOL_LABEL}", "{tool_name}" }
+                if let Some(label) = status_label {
+                    span { style: "{status_style}", "{label}" }
+                }
+            }
             {toggle_switch(
                 enabled,
                 pending,
@@ -331,6 +377,38 @@ fn ToolToggleRow(
                 },
             )}
         }
+    }
+}
+
+fn toggle_status_label(
+    pending: bool,
+    apply_state: ToggleApplyState,
+    live_status: Option<&str>,
+) -> Option<&'static str> {
+    if pending {
+        return Some("pending");
+    }
+    match apply_state {
+        ToggleApplyState::Synced => None,
+        ToggleApplyState::Pending => Some("pending live state"),
+        ToggleApplyState::Degraded => Some("degraded"),
+        ToggleApplyState::ReloadRequired => Some("reload required"),
+        ToggleApplyState::RestartRequired if live_status == Some("degraded") => Some("degraded"),
+        ToggleApplyState::RestartRequired => Some("restart required"),
+        ToggleApplyState::Failed => Some("update failed"),
+    }
+}
+
+fn toggle_status_style(pending: bool, apply_state: ToggleApplyState) -> &'static str {
+    if pending {
+        return STATUS_BADGE_WARNING;
+    }
+    match apply_state {
+        ToggleApplyState::Degraded | ToggleApplyState::Failed => STATUS_BADGE_ERROR,
+        ToggleApplyState::Synced
+        | ToggleApplyState::Pending
+        | ToggleApplyState::ReloadRequired
+        | ToggleApplyState::RestartRequired => STATUS_BADGE_WARNING,
     }
 }
 
@@ -468,6 +546,87 @@ fn request_confirm(mut sig: Signal<Option<skene::id::NousId>>, id: skene::id::No
     sig.set(Some(id));
 }
 
+fn default_true() -> bool {
+    true
+}
+
+/// Server response shape for `PATCH /api/v1/nous/{id}`.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct AgentToggleUpdateResponse {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default = "default_true")]
+    config_applied: bool,
+    #[serde(default = "default_true")]
+    live_applied: bool,
+    #[serde(default)]
+    reload_required: bool,
+    #[serde(default)]
+    restart_required: bool,
+}
+
+impl AgentToggleUpdateResponse {
+    fn action_result(&self) -> ToggleActionResult {
+        ToggleActionResult {
+            config_applied: self.config_applied,
+            live_applied: self.live_applied,
+            reload_required: self.reload_required,
+            restart_required: self.restart_required,
+        }
+    }
+}
+
+/// Server response shape for `GET /api/v1/nous/{id}` after a toggle.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct AgentStatusRefreshResponse {
+    #[serde(default)]
+    status: Option<String>,
+}
+
+/// Tool entry returned by `PATCH /api/v1/nous/{id}/tools`.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct ToolToggleUpdateEntry {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    enabled: bool,
+}
+
+/// Server response shape for `PATCH /api/v1/nous/{id}/tools`.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ToolToggleUpdateResponse {
+    #[serde(default)]
+    tools: Vec<ToolToggleUpdateEntry>,
+    #[serde(default = "default_true")]
+    config_applied: bool,
+    #[serde(default = "default_true")]
+    live_applied: bool,
+    #[serde(default)]
+    reload_required: bool,
+    #[serde(default)]
+    restart_required: bool,
+}
+
+impl ToolToggleUpdateResponse {
+    fn action_result(&self) -> ToggleActionResult {
+        ToggleActionResult {
+            config_applied: self.config_applied,
+            live_applied: self.live_applied,
+            reload_required: self.reload_required,
+            restart_required: self.restart_required,
+        }
+    }
+
+    fn enabled_for(&self, tool_name: &str) -> Option<bool> {
+        self.tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .map(|tool| tool.enabled)
+    }
+}
+
 fn fire_agent_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
@@ -481,9 +640,8 @@ fn fire_agent_toggle(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let base = cfg.server_url.trim_end_matches('/');
         let new_enabled = !prev_val;
-        let url = format!("{base}/api/v1/nous/{agent_id}");
+        let url = agent_url(&cfg.server_url, agent_id.as_ref());
 
         let result = client
             .patch(&url)
@@ -491,8 +649,39 @@ fn fire_agent_toggle(
             .send()
             .await;
 
-        let success = matches!(result, Ok(ref r) if r.status().is_success());
-        store.write().resolve_agent(&id, success, prev_val);
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<AgentToggleUpdateResponse>().await {
+                    Ok(mut body) => {
+                        let status_url = agent_url(&cfg.server_url, agent_id.as_ref());
+                        match client.get(&status_url).send().await {
+                            Ok(status_resp) if status_resp.status().is_success() => {
+                                if let Ok(status_body) =
+                                    status_resp.json::<AgentStatusRefreshResponse>().await
+                                {
+                                    body.status = status_body.status.or(body.status);
+                                }
+                            }
+                            Ok(_) | Err(_) => {}
+                        }
+                        let action_result = body.action_result();
+                        store.write().resolve_agent_result(
+                            &id,
+                            prev_val,
+                            body.enabled,
+                            body.status,
+                            action_result,
+                        );
+                    }
+                    Err(_) => {
+                        store.write().resolve_agent(&id, false, prev_val);
+                    }
+                }
+            }
+            Ok(_) | Err(_) => {
+                store.write().resolve_agent(&id, false, prev_val);
+            }
+        }
     });
 }
 
@@ -511,9 +700,8 @@ fn fire_tool_toggle(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let base = cfg.server_url.trim_end_matches('/');
         let new_enabled = !prev_val;
-        let url = format!("{base}/api/v1/nous/{aid}/tools");
+        let url = agent_tools_url(&cfg.server_url, aid.as_ref());
 
         let result = client
             .patch(&url)
@@ -521,10 +709,31 @@ fn fire_tool_toggle(
             .send()
             .await;
 
-        let success = matches!(result, Ok(ref r) if r.status().is_success());
-        store
-            .write()
-            .resolve_tool(&agent_id, &tool_name, success, prev_val);
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<ToolToggleUpdateResponse>().await {
+                    Ok(body) => {
+                        store.write().resolve_tool_result(
+                            &agent_id,
+                            &tool_name,
+                            prev_val,
+                            body.enabled_for(&tool_name),
+                            body.action_result(),
+                        );
+                    }
+                    Err(_) => {
+                        store
+                            .write()
+                            .resolve_tool(&agent_id, &tool_name, false, prev_val);
+                    }
+                }
+            }
+            Ok(_) | Err(_) => {
+                store
+                    .write()
+                    .resolve_tool(&agent_id, &tool_name, false, prev_val);
+            }
+        }
     });
 }
 
@@ -533,12 +742,6 @@ fn fire_tool_toggle(
 struct ConfigFeatureFlagsUpdateResponse {
     #[serde(default)]
     restart_required: Vec<String>,
-}
-
-/// Build the URL for updating the `feature_flags` config section.
-#[must_use]
-fn feature_flags_update_url(base: &str) -> String {
-    format!("{}/api/v1/config/feature_flags", base.trim_end_matches('/'))
 }
 
 fn fire_feature_toggle(
@@ -554,8 +757,7 @@ fn fire_feature_toggle(
 
     spawn(async move {
         let client = authenticated_client(&cfg);
-        let base = cfg.server_url.trim_end_matches('/');
-        let url = feature_flags_update_url(base);
+        let url = feature_flags_url(&cfg.server_url);
 
         // WHY: Send the complete feature_flags section so the server replaces
         // the array wholesale; a partial PATCH would silently drop sibling flags.
@@ -623,20 +825,20 @@ fn fire_feature_toggle(
 mod tests {
     use crate::state::ops::{FeatureFlag, ToggleStore};
 
-    use super::feature_flags_update_url;
+    use skene::api::routes::config::feature_flags_url;
 
     #[test]
-    fn feature_flags_update_url_uses_put_section_endpoint() {
+    fn feature_flags_url_uses_put_section_endpoint() {
         assert_eq!(
-            feature_flags_update_url("https://example.com"),
+            feature_flags_url("https://example.com"),
             "https://example.com/api/v1/config/feature_flags"
         );
     }
 
     #[test]
-    fn feature_flags_update_url_trims_trailing_slash() {
+    fn feature_flags_url_trims_trailing_slash() {
         assert_eq!(
-            feature_flags_update_url("http://localhost:8080/"),
+            feature_flags_url("http://localhost:8080/"),
             "http://localhost:8080/api/v1/config/feature_flags"
         );
     }

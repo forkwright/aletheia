@@ -22,6 +22,8 @@ pub struct DaemonBehaviorConfig {
     pub watchdog_backoff_cap_secs: u64,
     /// Samples used for anomaly detection in prosoche attention check. Default: 15.
     pub prosoche_anomaly_sample_size: usize,
+    /// Task-output logging policy. Default: `summary` metadata only.
+    pub runner_output_mode: DaemonRunnerOutputMode,
     /// Lines from task output head to include in brief summary. Default: 5.
     pub runner_output_brief_head_lines: usize,
     /// Lines from task output tail to include in brief summary. Default: 3.
@@ -34,10 +36,27 @@ impl Default for DaemonBehaviorConfig {
             watchdog_backoff_base_secs: DEFAULT_WATCHDOG_BACKOFF_BASE_SECS,
             watchdog_backoff_cap_secs: DEFAULT_WATCHDOG_BACKOFF_CAP_SECS,
             prosoche_anomaly_sample_size: 15,
+            runner_output_mode: DaemonRunnerOutputMode::Summary,
             runner_output_brief_head_lines: 5,
             runner_output_brief_tail_lines: 3,
         }
     }
+}
+
+/// Daemon task-output logging policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum DaemonRunnerOutputMode {
+    /// Emit only byte counts, line counts, exit status when available, and a
+    /// stable digest. This is the privacy-preserving default.
+    #[default]
+    Summary,
+    /// Emit summary metadata plus a small redacted excerpt.
+    Brief,
+    /// Emit full redacted output. Unsafe/private: redaction is best-effort and
+    /// this mode should only be enabled for controlled diagnostics.
+    Full,
 }
 
 #[cfg(test)]

@@ -211,20 +211,16 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         }
 
         if let Some(model) = defaults.get("model") {
-            if let Some(primary) = model.get("primary").and_then(Value::as_str)
-                && primary.is_empty()
-            {
-                errors.push("agents.defaults.model.primary must not be empty".to_owned());
+            if let Some(primary) = model.get("primary") {
+                validate_model_route(primary, "agents.defaults.model.primary", errors);
             }
             if let Some(fallbacks) = model.get("fallbacks").and_then(Value::as_array) {
                 for (i, fallback) in fallbacks.iter().enumerate() {
-                    if let Some(s) = fallback.as_str()
-                        && s.is_empty()
-                    {
-                        errors.push(format!(
-                            "agents.defaults.model.fallbacks[{i}] must not be empty"
-                        ));
-                    }
+                    validate_model_route(
+                        fallback,
+                        &format!("agents.defaults.model.fallbacks[{i}]"),
+                        errors,
+                    );
                 }
             }
         }
@@ -260,6 +256,38 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
                 "bootstrapMaxTokens ({boot}) must be less than contextTokens ({ctx})"
             ));
         }
+    }
+}
+
+fn validate_model_route(value: &Value, path: &str, errors: &mut Vec<String>) {
+    match value {
+        Value::String(model) if model.is_empty() => {
+            errors.push(format!("{path} must not be empty"));
+        }
+        Value::Object(fields) => {
+            for field in fields.keys() {
+                if field != "model" && field != "provider" {
+                    errors.push(format!(
+                        "{path}.{field} is not a recognized model route field"
+                    ));
+                }
+            }
+            match fields.get("model").and_then(Value::as_str) {
+                Some("") => {
+                    errors.push(format!("{path}.model must not be empty"));
+                }
+                None => {
+                    errors.push(format!("{path}.model must be a string"));
+                }
+                Some(_) => {}
+            }
+            if let Some(provider) = fields.get("provider").and_then(Value::as_str)
+                && provider.is_empty()
+            {
+                errors.push(format!("{path}.provider must not be empty"));
+            }
+        }
+        _ => {}
     }
 }
 
@@ -468,10 +496,36 @@ fn validate_data(value: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_embedding(value: &Value, errors: &mut Vec<String>) {
-    if let Some(provider) = value.get("provider").and_then(Value::as_str)
-        && provider.is_empty()
+    if let Some(provider) = value.get("provider").and_then(Value::as_str) {
+        if provider.is_empty() {
+            errors.push("embedding.provider must not be empty".to_owned());
+        } else if !matches!(provider, "mock" | "candle" | "openai-compat" | "voyage") {
+            errors.push(format!(
+                "embedding.provider must be one of: candle, openai-compat, voyage (mock is test-only); got '{provider}'"
+            ));
+        } else if provider == "openai-compat"
+            && value
+                .get("baseUrl")
+                .and_then(Value::as_str)
+                .is_none_or(|base_url| base_url.trim().is_empty())
+        {
+            errors.push(
+                "embedding.baseUrl is required when embedding.provider = \"openai-compat\""
+                    .to_owned(),
+            );
+        }
+    }
+
+    if let Some(base_url) = value.get("baseUrl").and_then(Value::as_str)
+        && base_url.trim().is_empty()
     {
-        errors.push("embedding.provider must not be empty".to_owned());
+        errors.push("embedding.baseUrl must not be empty".to_owned());
+    }
+
+    if let Some(api_key_env) = value.get("apiKeyEnv").and_then(Value::as_str)
+        && api_key_env.trim().is_empty()
+    {
+        errors.push("embedding.apiKeyEnv must not be empty".to_owned());
     }
 
     check_positive_u64(value, "dimension", errors);
@@ -824,6 +878,15 @@ fn validate_daemon_behavior(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "prosocheAnomalySampleSize", 2, 1000, errors);
     check_range_u64(value, "runnerOutputBriefHeadLines", 1, 100, errors);
     check_range_u64(value, "runnerOutputBriefTailLines", 1, 100, errors);
+    if let Some(mode) = value.get("runnerOutputMode") {
+        match mode.as_str() {
+            Some("summary" | "brief" | "full") => {}
+            Some(other) => errors.push(format!(
+                "runnerOutputMode must be one of summary, brief, full (got {other})"
+            )),
+            None => errors.push("runnerOutputMode must be a string".to_owned()),
+        }
+    }
 
     // INVARIANT: backoff base must be <= backoff cap.
     let base = value.get("watchdogBackoffBaseSecs").and_then(Value::as_u64);
@@ -875,6 +938,21 @@ fn validate_tuning(value: &Value, errors: &mut Vec<String>) {
 /// Validate configured external tool declarations.
 const VALID_TOOL_KINDS: &[&str] = &["mcp", "http", "builtin"];
 const VALID_HTTP_METHODS: &[&str] = &["get", "post", "put", "delete", "patch"];
+const VALID_TOOL_GROUPS: &[&str] = &[
+    "read",
+    "edit",
+    "command",
+    "mcp",
+    "spawn_subtask",
+    "plan",
+    "verify",
+];
+const VALID_REVERSIBILITIES: &[&str] = &[
+    "fully_reversible",
+    "reversible",
+    "partially_reversible",
+    "irreversible",
+];
 
 fn validate_tools(value: &Value, errors: &mut Vec<String>) {
     validate_tool_group(value, "required", errors);
@@ -929,6 +1007,7 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
                         "tools.{group}.{name}.endpoint must use http:// or https://"
                     ));
                 }
+                validate_http_tool_policy(entry, group, name, errors);
             }
             "mcp" => {
                 let has_endpoint = entry
@@ -960,6 +1039,77 @@ fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {
             }
             _ => {} // other tool types carry no additional endpoint constraints
         }
+    }
+}
+
+fn validate_http_tool_policy(entry: &Value, group: &str, name: &str, errors: &mut Vec<String>) {
+    validate_http_tool_groups(entry, group, name, errors);
+    validate_http_tool_reversibility(entry, group, name, errors);
+}
+
+fn validate_http_tool_groups(entry: &Value, group: &str, name: &str, errors: &mut Vec<String>) {
+    let path = format!("tools.{group}.{name}.groups");
+    let groups_value = entry.get("groups").filter(|value| !value.is_null());
+    let Some(groups) = groups_value else {
+        if group == "required" {
+            errors.push(format!(
+                "{path} is required for required HTTP tools; use at least one of: {}",
+                VALID_TOOL_GROUPS.join(", ")
+            ));
+        }
+        return;
+    };
+
+    let Some(groups) = groups.as_array() else {
+        errors.push(format!("{path} must be a non-empty list of tool groups"));
+        return;
+    };
+    if groups.is_empty() {
+        errors.push(format!("{path} must not be empty"));
+        return;
+    }
+
+    for value in groups {
+        let Some(group_name) = value.as_str() else {
+            errors.push(format!("{path} entries must be strings"));
+            continue;
+        };
+        if !VALID_TOOL_GROUPS.contains(&group_name) {
+            errors.push(format!(
+                "{path} contains invalid group '{group_name}'; must be one of: {}",
+                VALID_TOOL_GROUPS.join(", ")
+            ));
+        }
+    }
+}
+
+fn validate_http_tool_reversibility(
+    entry: &Value,
+    group: &str,
+    name: &str,
+    errors: &mut Vec<String>,
+) {
+    let path = format!("tools.{group}.{name}.reversibility");
+    let reversibility = entry.get("reversibility").filter(|value| !value.is_null());
+    let Some(reversibility) = reversibility else {
+        if group == "required" {
+            errors.push(format!(
+                "{path} is required for required HTTP tools; use one of: {}",
+                VALID_REVERSIBILITIES.join(", ")
+            ));
+        }
+        return;
+    };
+
+    let Some(reversibility) = reversibility.as_str() else {
+        errors.push(format!("{path} must be a reversibility string"));
+        return;
+    };
+    if !VALID_REVERSIBILITIES.contains(&reversibility) {
+        errors.push(format!(
+            "{path} '{reversibility}' is invalid; must be one of: {}",
+            VALID_REVERSIBILITIES.join(", ")
+        ));
     }
 }
 
@@ -1027,7 +1177,8 @@ fn validate_tool_auth(path: &str, value: &Value, errors: &mut Vec<String>) {
 /// (#3424, #3414).
 ///
 /// Rejects entries with empty names, unknown provider kinds, OpenAI-compatible
-/// entries missing a base URL, or duplicate provider names.
+/// entries missing a base URL, malformed subprocess fields, or duplicate
+/// provider names.
 fn validate_providers(value: &Value, errors: &mut Vec<String>) {
     let Some(entries) = value.as_array() else {
         // WHY: missing or empty provider list is a valid config — the
@@ -1050,7 +1201,8 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
             }
         }
 
-        match entry.get("providerType").and_then(Value::as_str) {
+        let provider_kind = entry.get("providerType").and_then(Value::as_str);
+        match provider_kind {
             None | Some("") => {
                 errors.push(format!(
                     "providers[{i}].providerType must be one of: anthropic, openai, open-ai-compatible, openai-compatible, claude-code, codex_oauth, codex-oauth"
@@ -1081,8 +1233,10 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
                         "providers[{i}].baseUrl is required for providerType = openai-compatible"
                     ));
                 }
+                validate_provider_kind_specific_fields(i, entry, kind, errors);
             }
         }
+        validate_provider_models(i, entry, errors);
         if let Some(target) = entry.get("deploymentTarget").and_then(Value::as_str)
             && !matches!(
                 target,
@@ -1099,6 +1253,84 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
             errors.push(format!(
                 "providers[{i}].apiFamily '{api_family}' is not recognized (expected one of: chat-completions, responses)"
             ));
+        }
+    }
+}
+
+fn validate_provider_kind_specific_fields(
+    i: usize,
+    entry: &Value,
+    kind: &str,
+    errors: &mut Vec<String>,
+) {
+    let subprocess = matches!(kind, "claude-code" | "codex_oauth" | "codex-oauth");
+    if subprocess {
+        for field in ["baseUrl", "apiKeyEnv", "apiFamily"] {
+            if entry.get(field).is_some() {
+                errors.push(format!(
+                    "providers[{i}].{field} is not valid for subprocess providerType = {kind}; remove it or use an HTTP provider type"
+                ));
+            }
+        }
+        validate_optional_non_empty_string(i, entry, "binary", errors);
+        validate_optional_non_empty_string(i, entry, "workdir", errors);
+        validate_provider_timeout(i, entry, errors);
+        return;
+    }
+
+    for field in ["binary", "workdir", "timeoutSecs"] {
+        if entry.get(field).is_some() {
+            errors.push(format!(
+                "providers[{i}].{field} is only valid for providerType = claude-code or codex-oauth"
+            ));
+        }
+    }
+}
+
+fn validate_optional_non_empty_string(
+    i: usize,
+    entry: &Value,
+    field: &str,
+    errors: &mut Vec<String>,
+) {
+    let Some(value) = entry.get(field) else {
+        return;
+    };
+    match value.as_str() {
+        Some(text) if !text.is_empty() => {}
+        _ => errors.push(format!("providers[{i}].{field} must be a non-empty string")),
+    }
+}
+
+fn validate_provider_timeout(i: usize, entry: &Value, errors: &mut Vec<String>) {
+    let Some(value) = entry.get("timeoutSecs") else {
+        return;
+    };
+    let Some(timeout_secs) = value.as_u64() else {
+        errors.push(format!("providers[{i}].timeoutSecs must be an integer"));
+        return;
+    };
+    if !(5..=3600).contains(&timeout_secs) {
+        errors.push(format!(
+            "providers[{i}].timeoutSecs must be between 5 and 3600 seconds, got {timeout_secs}"
+        ));
+    }
+}
+
+fn validate_provider_models(i: usize, entry: &Value, errors: &mut Vec<String>) {
+    let Some(models) = entry.get("models") else {
+        return;
+    };
+    let Some(models) = models.as_array() else {
+        errors.push(format!("providers[{i}].models must be an array of strings"));
+        return;
+    };
+    for (model_i, model) in models.iter().enumerate() {
+        match model.as_str() {
+            Some(text) if !text.is_empty() => {}
+            _ => errors.push(format!(
+                "providers[{i}].models[{model_i}] must be a non-empty string"
+            )),
         }
     }
 }

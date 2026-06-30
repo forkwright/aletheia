@@ -1,10 +1,12 @@
 //! Hermeneus provider behavior configuration.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
-/// Hermeneus provider timeout, concurrency, and complexity routing thresholds.
+/// Hermeneus provider timeout, concurrency, and complexity routing controls.
 ///
-/// All defaults match the current hardcoded constants in the `hermeneus` crate.
+/// All defaults match the current public defaults in the `hermeneus` crate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
@@ -18,22 +20,26 @@ pub struct ProviderBehaviorConfig {
     pub concurrency_ewma_alpha: f64,
     /// Latency threshold in seconds above which concurrency limit is reduced.
     pub concurrency_latency_threshold_secs: f64,
-    /// Complexity score below which Haiku-class model is selected.
+    /// Whether per-turn complexity scoring may select a tier model.
+    pub complexity_routing_enabled: bool,
+    /// Complexity score at or below which Haiku-class model is selected when routing is enabled.
     pub complexity_low_threshold: u32,
-    /// Complexity score above which Opus-class model is selected.
+    /// Complexity score at or above which Opus-class model is selected when routing is enabled.
     pub complexity_high_threshold: u32,
 }
 
 impl Default for ProviderBehaviorConfig {
     fn default() -> Self {
+        let complexity = hermeneus::complexity::ComplexityConfig::default();
         Self {
             non_streaming_timeout_secs: hermeneus::anthropic::NON_STREAMING_TIMEOUT.as_secs(),
             sse_default_retry_ms: hermeneus::anthropic::SSE_DEFAULT_RETRY_MS,
             concurrency_ewma_alpha: hermeneus::concurrency::DEFAULT_EWMA_ALPHA,
             concurrency_latency_threshold_secs:
                 hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS,
-            complexity_low_threshold: hermeneus::complexity::DEFAULT_LOW_THRESHOLD,
-            complexity_high_threshold: hermeneus::complexity::DEFAULT_HIGH_THRESHOLD,
+            complexity_routing_enabled: complexity.enabled,
+            complexity_low_threshold: complexity.low_threshold,
+            complexity_high_threshold: complexity.high_threshold,
         }
     }
 }
@@ -182,6 +188,17 @@ pub struct LlmProviderConfig {
     /// subprocess adapters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_family: Option<OpenAiApiFamily>,
+    /// Path to the CLI binary for subprocess providers. Omit to resolve from
+    /// PATH and well-known user install directories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<PathBuf>,
+    /// Working directory for subprocess providers. Relative paths are resolved
+    /// against the instance root by the runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workdir: Option<PathBuf>,
+    /// Wall-clock timeout for subprocess provider calls, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
     /// Where this provider's traffic terminates. Drives the
     /// factsensitivity filter (#3414) and air-gapped mode.
     #[serde(default)]
@@ -201,6 +218,9 @@ impl std::fmt::Debug for LlmProviderConfig {
             .field("base_url", &self.base_url)
             .field("api_key_env", &self.api_key_env)
             .field("api_family", &self.api_family)
+            .field("binary", &self.binary)
+            .field("workdir", &self.workdir)
+            .field("timeout_secs", &self.timeout_secs)
             .field("deployment_target", &self.deployment_target)
             .field("models", &self.models)
             .finish()

@@ -118,6 +118,7 @@ mod tests {
             },
             is_error,
             duration_ms: 42,
+            approval: None,
             receipt: None,
         }
     }

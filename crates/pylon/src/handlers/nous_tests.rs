@@ -38,10 +38,16 @@ fn nous_list_response_serializes_nous_array() {
             name: "Alice".to_owned(),
             enabled: true,
             model: "anthropic/claude-opus-4-6".to_owned(),
+            provider: None,
             fallback_models: vec![],
+            fallback_providers: vec![],
             provider_readiness: vec![],
             status: "active".to_owned(),
             tools: vec![],
+            config_applied: None,
+            live_applied: None,
+            reload_required: None,
+            restart_required: None,
         }],
     };
     let json = serde_json::to_value(&resp).unwrap();
@@ -65,10 +71,16 @@ fn nous_summary_name_falls_back_to_id() {
         name: "bob".to_owned(), // fallback case: name == id
         enabled: false,
         model: "anthropic/claude-sonnet-4-6".to_owned(),
+        provider: None,
         fallback_models: vec![],
+        fallback_providers: vec![],
         provider_readiness: vec![],
         status: "active".to_owned(),
         tools: vec![],
+        config_applied: None,
+        live_applied: None,
+        reload_required: None,
+        restart_required: None,
     };
     let json = serde_json::to_value(&summary).unwrap();
     assert_eq!(json["name"], "bob");
@@ -81,9 +93,14 @@ fn nous_status_serializes_all_config_fields() {
     let status = NousStatus {
         id: "syn".to_owned(),
         model: "anthropic/claude-opus-4-6".to_owned(),
+        provider: Some("anthropic-cloud".to_owned()),
         fallback_models: vec![],
+        fallback_providers: vec![],
         retries_before_fallback: 2,
         complexity_routing_enabled: false,
+        complexity_no_llm_threshold: 5,
+        complexity_low_threshold: 30,
+        complexity_high_threshold: 70,
         provider_readiness: vec![],
         context_window: 200_000,
         max_output_tokens: 4096,
@@ -104,6 +121,9 @@ fn nous_status_serializes_all_config_fields() {
     let json = serde_json::to_value(&status).unwrap();
     assert_eq!(json["id"], "syn");
     assert_eq!(json["context_window"], 200_000);
+    assert_eq!(json["complexity_no_llm_threshold"], 5);
+    assert_eq!(json["complexity_low_threshold"], 30);
+    assert_eq!(json["complexity_high_threshold"], 70);
     assert_eq!(json["thinking_enabled"], true);
     assert_eq!(json["max_tool_iterations"], 10);
     assert_eq!(json["background_failure_total_count"], 5);
@@ -125,14 +145,30 @@ fn tools_response_serializes_tool_list() {
             name: "read_file".to_owned(),
             enabled: true,
             description: "Read a file from disk".to_owned(),
-            category: "Builtin".to_owned(),
+            category: "workspace".to_owned(),
+            reversibility: "fully_reversible".to_owned(),
+            approval: "none".to_owned(),
+            requires_approval: false,
+            destructive: false,
+            groups: vec!["read".to_owned()],
+            source_plane: "organon_builtin".to_owned(),
+            policy_state: "callable".to_owned(),
+            unavailable_reason: None,
+            metadata_verified: true,
             auto_activate: true,
         }],
+        config_applied: None,
+        live_applied: None,
+        reload_required: None,
+        restart_required: None,
     };
     let json = serde_json::to_value(&resp).unwrap();
     assert_eq!(json["tools"][0]["name"], "read_file");
     assert_eq!(json["tools"][0]["enabled"], true);
-    assert_eq!(json["tools"][0]["category"], "Builtin");
+    assert_eq!(json["tools"][0]["category"], "workspace");
+    assert_eq!(json["tools"][0]["reversibility"], "fully_reversible");
+    assert_eq!(json["tools"][0]["approval"], "none");
+    assert_eq!(json["tools"][0]["metadata_verified"], true);
     assert_eq!(json["tools"][0]["auto_activate"], true);
 }
 
@@ -142,12 +178,24 @@ fn tool_summary_serializes_enabled_bit() {
         name: "search".to_owned(),
         enabled: false,
         description: "Search the workspace".to_owned(),
-        category: "Builtin".to_owned(),
+        category: "research".to_owned(),
+        reversibility: "irreversible".to_owned(),
+        approval: "mandatory".to_owned(),
+        requires_approval: true,
+        destructive: true,
+        groups: vec!["mcp".to_owned()],
+        source_plane: "organon_builtin".to_owned(),
+        policy_state: "denied".to_owned(),
+        unavailable_reason: Some("group_policy".to_owned()),
+        metadata_verified: true,
         auto_activate: false,
     };
     let json = serde_json::to_value(&tool).unwrap();
     assert_eq!(json["enabled"], false);
     assert_eq!(json["name"], "search");
+    assert_eq!(json["approval"], "mandatory");
+    assert_eq!(json["destructive"], true);
+    assert_eq!(json["unavailable_reason"], "group_policy");
 }
 
 #[test]

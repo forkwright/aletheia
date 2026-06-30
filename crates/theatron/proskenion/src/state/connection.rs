@@ -99,12 +99,10 @@ pub struct ConnectionConfig {
     pub server_url: String,
     /// Optional authentication token. Injected as `Authorization: Bearer <token>`.
     ///
-    /// SECURITY: Stored in plaintext in the config file (`~/.config/aletheia/desktop.toml`).
-    /// The file is written with 0600 permissions (owner-only), but any process running
-    /// as the same user can read it. Full OS keyring integration (libsecret on Linux,
-    /// Keychain on macOS) is tracked as future work. Do not copy this file or commit
-    /// it to version control.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Runtime-only for new writes. Deserialization accepts legacy plaintext
+    /// `desktop.toml` values so `services::config` can migrate them into the
+    /// desktop secret store.
+    #[serde(default, skip_serializing)]
     pub auth_token: Option<String>,
     /// Whether to automatically reconnect on connection loss.
     #[serde(default = "default_auto_reconnect")]
@@ -301,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn connection_config_round_trip_toml() {
+    fn connection_config_serializes_without_auth_token() {
         let cfg = ConnectionConfig {
             server_url: "https://example.com:8080".to_string(),
             auth_token: Some("secret-token".to_string()),
@@ -310,10 +308,22 @@ mod tests {
         };
         let serialized = toml::to_string(&cfg).unwrap();
         let deserialized: ConnectionConfig = toml::from_str(&serialized).unwrap();
+        assert!(!serialized.contains("secret-token"));
+        assert!(!serialized.contains("auth_token"));
         assert_eq!(deserialized.server_url, cfg.server_url);
-        assert_eq!(deserialized.auth_token, cfg.auth_token);
+        assert!(deserialized.auth_token.is_none());
         assert_eq!(deserialized.auto_reconnect, cfg.auto_reconnect);
         assert_eq!(deserialized.connect_timeout_secs, cfg.connect_timeout_secs);
+    }
+
+    #[test]
+    fn connection_config_deserializes_legacy_auth_token() {
+        let toml_str = r#"
+server_url = "https://example.com:8080"
+auth_token = "legacy-secret"
+"#;
+        let cfg: ConnectionConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.auth_token.as_deref(), Some("legacy-secret"));
     }
 
     #[test]

@@ -105,12 +105,7 @@ fn test_tool_ctx() -> ToolContext {
 fn test_pipeline_ctx() -> PipelineContext {
     PipelineContext {
         system_prompt: Some("You are a test agent.".to_owned()),
-        messages: vec![PipelineMessage {
-            role: "user".to_owned(),
-            content: "Hello".to_owned(),
-            token_estimate: 1,
-            cache_breakpoint: false,
-        }],
+        messages: vec![PipelineMessage::text("user", "Hello", 1)],
         ..PipelineContext::default()
     }
 }

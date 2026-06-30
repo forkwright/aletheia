@@ -4,8 +4,12 @@ use std::time::Duration;
 
 use reqwest::Client;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use snafu::{ResultExt, Snafu};
 
+use crate::state::commands::ServerCommandDescriptor;
 use crate::state::connection::ConnectionConfig;
+
+use skene::api::types::{Agent, AgentsResponse};
 
 /// Outcome of a workspace file save against `PUT /api/v1/workspace/files/content`.
 ///
@@ -23,6 +27,216 @@ pub(crate) enum SaveOutcome {
     Conflict,
     /// Any other failure, carrying a human-readable description.
     Failed(String),
+}
+
+/// Errors from the startup agent-roster fetch.
+#[derive(Debug, Snafu)]
+pub(crate) enum AgentRosterFetchError {
+    /// The server rejected the configured credentials.
+    #[snafu(display("authentication failed while loading the agent roster"))]
+    Auth,
+
+    /// The request failed before a response was received.
+    #[snafu(display("failed to request agent roster: {source}"))]
+    Request {
+        /// Underlying HTTP error.
+        source: reqwest::Error,
+    },
+
+    /// The server returned a non-success response other than auth failure.
+    #[snafu(display("agent roster request returned {status}: {message}"))]
+    Server {
+        /// HTTP status code.
+        status: u16,
+        /// Human-readable server response.
+        message: String,
+    },
+
+    /// The server returned success with an unparseable response body.
+    #[snafu(display("failed to decode agent roster response: {source}"))]
+    Decode {
+        /// Underlying decode error.
+        source: reqwest::Error,
+    },
+}
+
+impl AgentRosterFetchError {
+    /// Whether this failure should be shown as an authentication problem
+    /// instead of an empty roster.
+    #[must_use]
+    pub(crate) fn is_auth_failure(&self) -> bool {
+        matches!(self, Self::Auth)
+    }
+
+    /// User-facing reason to place in connection state for auth failures.
+    #[must_use]
+    pub(crate) fn connection_failure_reason(&self) -> &'static str {
+        match self {
+            Self::Auth => {
+                "Authentication failed while loading the agent roster. Check the server auth token."
+            }
+            Self::Request { .. } | Self::Server { .. } | Self::Decode { .. } => {
+                "Failed to load the agent roster."
+            }
+        }
+    }
+}
+
+/// Fetch the initial sidebar agent roster using the shared authenticated
+/// request builder.
+///
+/// WHY(#4827): startup roster loading runs before most routed views render, but
+/// it must still use the same bearer-token-bearing connection context as those
+/// views. A 401/403 is returned as a typed auth error so the shell can show a
+/// failed connection rather than an empty agent list.
+pub(crate) async fn fetch_agent_roster(
+    config: &ConnectionConfig,
+) -> Result<Vec<Agent>, AgentRosterFetchError> {
+    let client = authenticated_client(config);
+    let base = config.server_url.trim_end_matches('/');
+    let url = format!("{base}/api/v1/nous");
+
+    let resp = client.get(&url).send().await.context(RequestSnafu)?;
+    let status = resp.status();
+
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return AuthSnafu.fail();
+    }
+
+    if !status.is_success() {
+        let status_code = status.as_u16();
+        let detail = match resp.text().await {
+            Ok(text) => text,
+            Err(err) => err.to_string(),
+        };
+        let message = skene::api::error::parse_pylon_error_body(&detail).map_or_else(
+            || {
+                let trimmed = detail.trim();
+                if trimmed.is_empty() {
+                    status.to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            },
+            |detail| detail.message,
+        );
+        return ServerSnafu {
+            status: status_code,
+            message,
+        }
+        .fail();
+    }
+
+    let wrapper: AgentsResponse = resp.json().await.context(DecodeSnafu)?;
+    Ok(wrapper.nous)
+}
+
+/// Fetch server-discovered command descriptors from the agent capability
+/// payload.
+///
+/// WHY(#4869): Proskenion command presentation must be backed by an explicit
+/// server discovery contract. Pylon already publishes per-agent tool
+/// capabilities on `/api/v1/nous`; this function maps that wire contract into
+/// command descriptors instead of inventing unsupported slash commands.
+pub(crate) async fn fetch_server_command_descriptors(
+    config: &ConnectionConfig,
+) -> Result<Vec<ServerCommandDescriptor>, AgentRosterFetchError> {
+    let client = authenticated_client(config);
+    let base = config.server_url.trim_end_matches('/');
+    let url = format!("{base}/api/v1/nous");
+
+    let resp = client.get(&url).send().await.context(RequestSnafu)?;
+    let status = resp.status();
+
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return AuthSnafu.fail();
+    }
+
+    if !status.is_success() {
+        let status_code = status.as_u16();
+        let detail = match resp.text().await {
+            Ok(text) => text,
+            Err(err) => err.to_string(),
+        };
+        let message = skene::api::error::parse_pylon_error_body(&detail).map_or_else(
+            || {
+                let trimmed = detail.trim();
+                if trimmed.is_empty() {
+                    status.to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            },
+            |detail| detail.message,
+        );
+        return ServerSnafu {
+            status: status_code,
+            message,
+        }
+        .fail();
+    }
+
+    let wrapper: CommandDiscoveryResponse = resp.json().await.context(DecodeSnafu)?;
+    Ok(wrapper.into_descriptors())
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CommandDiscoveryResponse {
+    #[serde(default, alias = "agents")]
+    nous: Vec<CommandDiscoveryAgent>,
+}
+
+impl CommandDiscoveryResponse {
+    fn into_descriptors(self) -> Vec<ServerCommandDescriptor> {
+        self.nous
+            .into_iter()
+            .filter(|agent| !agent.id.trim().is_empty())
+            .flat_map(|agent| {
+                let agent_id: skene::id::NousId = agent.id.as_str().into();
+                let agent_name = agent
+                    .name
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or(agent.id);
+                agent.tools.into_iter().filter_map(move |tool| {
+                    let tool_name = tool.name.trim().to_string();
+                    if tool_name.is_empty() {
+                        return None;
+                    }
+                    let description = tool
+                        .description
+                        .filter(|desc| !desc.trim().is_empty())
+                        .unwrap_or_else(|| format!("{tool_name} server tool"));
+                    Some(ServerCommandDescriptor {
+                        agent_id: agent_id.clone(),
+                        agent_name: agent_name.clone(),
+                        tool_name,
+                        description,
+                        enabled: tool.enabled,
+                    })
+                })
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CommandDiscoveryAgent {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    tools: Vec<CommandDiscoveryTool>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct CommandDiscoveryTool {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    description: Option<String>,
 }
 
 /// Persist `content` to the workspace file at `path` (relative to the vault
@@ -126,6 +340,11 @@ fn build_authenticated_client(config: &ConnectionConfig, timeout: Option<Duratio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::task::JoinHandle;
 
     fn install_crypto() {
         let _ = rustls::crypto::ring::default_provider().install_default();
@@ -204,5 +423,98 @@ mod tests {
         let client = authenticated_streaming_client(&config);
         let debug = format!("{client:?}");
         assert!(!debug.is_empty());
+    }
+
+    async fn spawn_auth_required_roster(
+        expected_token: &'static str,
+    ) -> std::io::Result<(String, JoinHandle<std::io::Result<()>>)> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let handle = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+
+            loop {
+                let n = stream.read(&mut chunk).await?;
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..n]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+
+            let request = String::from_utf8_lossy(&request);
+            let expected_header = format!("Bearer {expected_token}");
+            let authorized = request.lines().any(|line| {
+                line.split_once(':').is_some_and(|(name, value)| {
+                    name.eq_ignore_ascii_case("authorization") && value.trim() == expected_header
+                })
+            });
+
+            let body = if authorized {
+                r#"{"nous":[{"id":"alice","name":"Alice","model":"test-model","emoji":"A"}]}"#
+            } else {
+                r#"{"error":{"code":"auth_failed","message":"missing bearer token"}}"#
+            };
+            let status_line = if authorized {
+                "HTTP/1.1 200 OK"
+            } else {
+                "HTTP/1.1 401 Unauthorized"
+            };
+            let response = format!(
+                "{status_line}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+
+            stream.write_all(response.as_bytes()).await?;
+            Ok(())
+        });
+
+        Ok((format!("http://{addr}"), handle))
+    }
+
+    #[tokio::test]
+    async fn fetch_agent_roster_sends_bearer_token() -> Result<(), Box<dyn Error>> {
+        install_crypto();
+        let (server_url, server) = spawn_auth_required_roster("secret-token").await?;
+        let config = ConnectionConfig {
+            server_url,
+            auth_token: Some("secret-token".to_string()),
+            ..ConnectionConfig::default()
+        };
+
+        let agents = fetch_agent_roster(&config).await?;
+
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].id.to_string(), "alice");
+        server.await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn fetch_agent_roster_reports_auth_failure() -> Result<(), Box<dyn Error>> {
+        install_crypto();
+        let (server_url, server) = spawn_auth_required_roster("secret-token").await?;
+        let config = ConnectionConfig {
+            server_url,
+            auth_token: None,
+            ..ConnectionConfig::default()
+        };
+
+        let result = fetch_agent_roster(&config).await;
+
+        let Err(err) = result else {
+            panic!("missing token should fail against auth-required roster");
+        };
+        assert!(err.is_auth_failure());
+        assert_eq!(
+            err.connection_failure_reason(),
+            "Authentication failed while loading the agent roster. Check the server auth token."
+        );
+        server.await??;
+        Ok(())
     }
 }

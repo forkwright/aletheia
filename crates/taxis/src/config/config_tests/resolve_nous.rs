@@ -185,7 +185,13 @@ fn new_deployment_sections_survive_serde_roundtrip() {
     config.nous_behavior.degraded_panic_threshold = 10;
     config.knowledge.conflict_max_candidates = 8;
     config.knowledge.extraction.provider = BookkeepingProviderKind::Gliner;
+    config.provider_behavior.non_streaming_timeout_secs = 33;
+    config.provider_behavior.sse_default_retry_ms = 777;
+    config.provider_behavior.concurrency_ewma_alpha = 0.33;
+    config.provider_behavior.concurrency_latency_threshold_secs = 9.5;
+    config.provider_behavior.complexity_routing_enabled = true;
     config.provider_behavior.complexity_low_threshold = 25;
+    config.provider_behavior.complexity_high_threshold = 85;
     config.api_limits.max_history_limit = 500;
     config.daemon_behavior.prosoche_anomaly_sample_size = 20;
     config.tool_limits.subprocess_timeout_secs = 120;
@@ -207,9 +213,33 @@ fn new_deployment_sections_survive_serde_roundtrip() {
         BookkeepingProviderKind::Gliner,
         "knowledge extraction provider survives roundtrip"
     );
+    assert!(
+        back.provider_behavior.complexity_routing_enabled,
+        "provider_behavior routing toggle survives roundtrip"
+    );
+    assert_eq!(
+        back.provider_behavior.non_streaming_timeout_secs, 33,
+        "provider_behavior timeout survives roundtrip"
+    );
+    assert_eq!(
+        back.provider_behavior.sse_default_retry_ms, 777,
+        "provider_behavior sse retry survives roundtrip"
+    );
+    assert!(
+        (back.provider_behavior.concurrency_ewma_alpha - 0.33).abs() < f64::EPSILON,
+        "provider_behavior concurrency EWMA survives roundtrip"
+    );
+    assert!(
+        (back.provider_behavior.concurrency_latency_threshold_secs - 9.5).abs() < f64::EPSILON,
+        "provider_behavior concurrency threshold survives roundtrip"
+    );
     assert_eq!(
         back.provider_behavior.complexity_low_threshold, 25,
-        "provider_behavior survives roundtrip"
+        "provider_behavior low threshold survives roundtrip"
+    );
+    assert_eq!(
+        back.provider_behavior.complexity_high_threshold, 85,
+        "provider_behavior high threshold survives roundtrip"
     );
     assert_eq!(
         back.api_limits.max_history_limit, 500,

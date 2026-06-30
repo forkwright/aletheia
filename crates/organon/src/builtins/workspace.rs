@@ -19,6 +19,8 @@ use crate::types::{
     ToolDiagnostics, ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
+use super::filesystem_policy::protected_path_class;
+
 /// Strip absolute path prefixes from an error message, showing only the filename.
 ///
 /// WHY: Full filesystem paths in error messages sent to the LLM leak instance
@@ -226,84 +228,6 @@ pub const MAX_READ_BYTES: u64 = 50 * 1024 * 1024;
 /// Fallback default; runtime reads `ctx.tool_config.max_command_length`.
 pub const MAX_COMMAND_LENGTH: usize = 10_000;
 
-/// Files that the LLM must not overwrite.
-const PROTECTED_FILES: &[&str] = &[
-    "IDENTITY.md",
-    "SOUL.md",
-    "GOALS.md",
-    "TOOLS.md",
-    "MEMORY.md",
-    ".claude/settings.json",
-    "standards",
-    ".git/config",
-    "known_hosts",
-];
-
-/// WHY: Sensitive file extensions that must never be written by the LLM.
-/// Checked case-insensitively so `.PEM` and `.pem` are both blocked.
-const PROTECTED_EXTENSIONS: &[&str] = &["key", "pem", "p12", "pfx"];
-
-/// Filename prefixes (case-sensitive) that identify credential files.
-const PROTECTED_PREFIXES: &[&str] = &["id_rsa", "id_ed25519"]; // pii-allow: SSH filename constants guarding access, not key material
-
-/// Filename patterns matched with `starts_with` (case-insensitive).
-const PROTECTED_DOT_PREFIXES: &[&str] = &[".env"];
-
-/// Substring patterns for credential files (case-insensitive).
-const PROTECTED_SUBSTRINGS: &[&str] = &[".credentials"];
-
-/// Check if a resolved path matches a protected file pattern.
-fn is_protected_file(path: &Path, workspace: &Path) -> Option<&'static str> {
-    // WHY: `path` is always canonical (resolved via `resolve_path`), but the
-    // `workspace` we were handed may not be. On macOS `/var/...` and
-    // `/private/var/...` both point to the same directory, and without matching
-    // canonical forms `strip_prefix` falls through so `rel_str` becomes the
-    // full absolute path and never matches `"IDENTITY.md"`. Canonicalize the
-    // workspace here before stripping.
-    let workspace_canonical = workspace.canonicalize();
-    let ws_ref = workspace_canonical.as_deref().unwrap_or(workspace);
-    let relative = path
-        .strip_prefix(ws_ref)
-        .or_else(|_| path.strip_prefix(workspace))
-        .unwrap_or(path);
-    let rel_str = relative.to_string_lossy();
-
-    for &protected in PROTECTED_FILES {
-        if rel_str == protected || rel_str.starts_with(&format!("{protected}/")) {
-            return Some(protected);
-        }
-    }
-
-    let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let filename_lower = filename.to_ascii_lowercase();
-
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        let ext_lower = ext.to_ascii_lowercase();
-        for &protected_ext in PROTECTED_EXTENSIONS {
-            if ext_lower == protected_ext {
-                return Some(protected_ext);
-            }
-        }
-    }
-
-    for &prefix in PROTECTED_PREFIXES {
-        if filename.starts_with(prefix) {
-            return Some(prefix);
-        }
-    }
-
-    for &dot_prefix in PROTECTED_DOT_PREFIXES {
-        if filename_lower.starts_with(dot_prefix) {
-            return Some(dot_prefix);
-        }
-    }
-
-    PROTECTED_SUBSTRINGS
-        .iter()
-        .copied()
-        .find(|&substring| filename_lower.contains(substring))
-}
-
 fn err_result(msg: String) -> ToolResult {
     ToolResult::error(msg)
 }
@@ -402,9 +326,9 @@ impl ToolExecutor for WriteExecutor {
                 )));
             }
 
-            if let Some(protected) = is_protected_file(&path, &ctx.workspace) {
+            if let Some(protected) = protected_path_class(&path, &ctx.workspace) {
                 return Ok(err_result(format!(
-                    "cannot overwrite protected file: {protected}"
+                    "cannot overwrite protected path: {protected}"
                 )));
             }
 
@@ -457,9 +381,9 @@ impl ToolExecutor for EditExecutor {
             let new_text = extract_str(&input.arguments, "new_text", &input.name)?;
             let path = validate_path(path_str, ctx, &input.name)?;
 
-            if let Some(protected) = is_protected_file(&path, &ctx.workspace) {
+            if let Some(protected) = protected_path_class(&path, &ctx.workspace) {
                 return Ok(err_result(format!(
-                    "cannot edit protected file: {protected}"
+                    "cannot edit protected path: {protected}"
                 )));
             }
 
@@ -670,6 +594,7 @@ fn read_def() -> ToolDef {
                         description: "File path (absolute or relative to workspace)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -679,6 +604,7 @@ fn read_def() -> ToolDef {
                         description: "Maximum lines to return (default: all)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -706,6 +632,7 @@ fn write_def() -> ToolDef {
                         description: "File path (absolute or relative to workspace)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -715,6 +642,7 @@ fn write_def() -> ToolDef {
                         description: "Content to write".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -724,6 +652,7 @@ fn write_def() -> ToolDef {
                         description: "Append instead of overwrite (default: false)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -751,6 +680,7 @@ fn edit_def() -> ToolDef {
                         description: "File path (absolute or relative to workspace)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -760,6 +690,7 @@ fn edit_def() -> ToolDef {
                         description: "Exact text to find in the file".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -769,6 +700,7 @@ fn edit_def() -> ToolDef {
                         description: "Replacement text".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -801,6 +733,7 @@ fn exec_def() -> ToolDef {
                         description: "The shell command to execute".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -811,6 +744,7 @@ fn exec_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),

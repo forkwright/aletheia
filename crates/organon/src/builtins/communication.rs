@@ -181,6 +181,7 @@ fn message_def() -> ToolDef {
                         description: "Recipient: phone (+1234567890), group (group:ID), or username (u:handle)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -190,6 +191,7 @@ fn message_def() -> ToolDef {
                         description: "Message text to send (markdown supported)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -217,6 +219,7 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Target nous ID (e.g., 'syn', 'eiron', 'arbor')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -226,6 +229,7 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Question or request to send".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -235,6 +239,7 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Target session key (default: 'ask:<caller>')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -244,6 +249,7 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Max wait time in seconds (default: 120)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(120)),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -271,6 +277,7 @@ fn sessions_send_def() -> ToolDef {
                         description: "Target nous ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -280,6 +287,7 @@ fn sessions_send_def() -> ToolDef {
                         description: "Message to send".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -289,6 +297,7 @@ fn sessions_send_def() -> ToolDef {
                         description: "Target session key (default: 'main')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),

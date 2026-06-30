@@ -5,13 +5,15 @@
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
+use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu};
-use crate::extract::{Claims, require_nous_access};
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::KnowledgeState;
 
 mod dto;
 pub(crate) mod entity;
+mod policy;
 #[cfg(test)]
 pub(crate) use dto::default_limit;
 pub use dto::{
@@ -28,6 +30,9 @@ pub use entity::{
     __path_merge_entities,
 };
 pub use entity::{delete_entity, entity_memories, flag_entity, get_entity, merge_entities};
+#[cfg(feature = "knowledge-store")]
+use policy::visibility_from_row;
+use policy::{KnowledgeReadPolicy, visible_entity_ids};
 
 /// Valid sort fields for fact listing.
 const VALID_SORT_FIELDS: &[&str] = &[
@@ -159,16 +164,19 @@ fn validate_entity_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
 /// side effects beyond not returning a response.
 pub async fn list_facts(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(mut query): Query<FactsQuery>,
 ) -> Result<Json<FactsResponse>, ApiError> {
     use mneme::knowledge::EpistemicTier;
 
+    let policy = KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
+    query.nous_id = policy.single_target_nous_id().map(ToOwned::to_owned);
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
     query.limit = query.limit.min(max_facts_limit);
     validate_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
-    let mut facts = get_stored_facts(&state, &query);
+    let mut facts = get_stored_facts(&state, &policy, &query);
 
     if let Some(ref filter) = query.filter {
         let filter_lower = filter.to_lowercase();
@@ -239,8 +247,12 @@ pub async fn get_fact(
         )
     )]
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<FactDetailResponse>, ApiError> {
+    let policy = KnowledgeReadPolicy::from_claims(&claims)?;
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = &policy;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let facts = store
@@ -253,6 +265,7 @@ pub async fn get_fact(
             path: format!("fact/{id}"),
             location: snafu::location!(),
         })?;
+        policy.require_fact(&fact)?;
         let relationships = get_fact_relationships(&state, &fact);
         let similar = get_similar_facts(&state, &fact);
         return Ok(Json(FactDetailResponse {
@@ -294,32 +307,22 @@ pub async fn get_fact(
 )]
 pub async fn list_entities(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(mut query): Query<EntitiesQuery>,
 ) -> Result<Json<EntitiesResponse>, ApiError> {
+    let policy = KnowledgeReadPolicy::from_agent_filters(&claims, &query.agent)?;
+    query.agent = policy.target_agents();
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
     query.limit = query.limit.min(max_facts_limit);
     validate_entity_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
     let mut entities = get_stored_entities(&state);
-    let entity_stats_map: std::collections::HashMap<String, EntityStats> = {
-        #[cfg(feature = "knowledge-store")]
-        {
-            load_entity_stats(&state, &query)
-        }
-        #[cfg(not(feature = "knowledge-store"))]
-        {
-            std::collections::HashMap::new()
-        }
-    };
-
-    if !query.agent.is_empty() {
-        #[cfg(feature = "knowledge-store")]
-        let allowed = load_agent_entity_ids(&state, &query.agent)?;
-        #[cfg(not(feature = "knowledge-store"))]
-        let allowed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let visible_entities = visible_entity_ids(&state, &policy)?;
+    if let Some(ref allowed) = visible_entities {
         entities.retain(|entity| allowed.contains(entity.id.as_str()));
     }
+    let entity_stats_map = load_entity_stats(&state, &policy, visible_entities.as_ref())?;
 
     if let Some(ref filter) = query.q {
         let filter_lower = filter.to_lowercase();
@@ -394,9 +397,12 @@ pub async fn list_entities(
 )]
 pub async fn entity_relationships(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<RelationshipsResponse>, ApiError> {
-    let relationships = get_entity_relationships(&state, &id)?;
+    let policy = KnowledgeReadPolicy::from_claims(&claims)?;
+    policy.require_entity(&state, &id)?;
+    let relationships = get_entity_relationships(&state, &policy, &id)?;
     Ok(Json(RelationshipsResponse { relationships }))
 }
 
@@ -408,98 +414,99 @@ struct EntityStats {
     relationship_count: u32,
 }
 
-#[cfg(feature = "knowledge-store")]
-fn load_agent_entity_ids(
+fn load_entity_stats(
     state: &KnowledgeState,
-    agents: &[String],
-) -> Result<std::collections::HashSet<String>, ApiError> {
-    use std::collections::{BTreeMap, HashSet};
-
-    let mut entity_ids = HashSet::new();
-    let Some(store) = state.knowledge_store.as_ref() else {
-        return Ok(entity_ids);
-    };
-
-    for agent in agents {
-        let script = r"
-            ?[entity_id] :=
-                *fact_entities{fact_id, entity_id},
-                *facts{id: fact_id, nous_id, is_forgotten, superseded_by},
-                nous_id == $nous_id,
-                is_forgotten == false,
-                is_null(superseded_by)
-        ";
-        let mut params = BTreeMap::new();
-        params.insert(
-            "nous_id".to_owned(),
-            mneme::engine::DataValue::Str(agent.clone().into()),
-        );
-        let result = store
-            .run_query(script, params)
-            .map_err(|e| ApiError::Internal {
-                message: e.to_string(),
-                location: snafu::location!(),
-            })?;
-        for row in 0..result.row_count() {
-            if let Some(entity_id) = result.get_string(row, "entity_id") {
-                entity_ids.insert(entity_id);
-            }
-        }
+    policy: &KnowledgeReadPolicy<'_>,
+    visible_entities: Option<&std::collections::BTreeSet<String>>,
+) -> Result<std::collections::HashMap<String, EntityStats>, ApiError> {
+    #[cfg(feature = "knowledge-store")]
+    {
+        load_entity_stats_from_store(state, policy, visible_entities)
     }
-
-    Ok(entity_ids)
+    #[cfg(not(feature = "knowledge-store"))]
+    {
+        let _ = (state, policy, visible_entities);
+        Ok(std::collections::HashMap::new())
+    }
 }
 
 #[cfg(feature = "knowledge-store")]
-fn load_entity_stats(
+fn load_entity_stats_from_store(
     state: &KnowledgeState,
-    query: &EntitiesQuery,
-) -> std::collections::HashMap<String, EntityStats> {
+    policy: &KnowledgeReadPolicy<'_>,
+    visible_entities: Option<&std::collections::BTreeSet<String>>,
+) -> Result<std::collections::HashMap<String, EntityStats>, ApiError> {
     use std::collections::{BTreeMap, HashMap};
 
     let mut entity_stats: HashMap<String, EntityStats> = HashMap::new();
     let Some(store) = state.knowledge_store.as_ref() else {
-        return entity_stats;
+        return Ok(entity_stats);
     };
 
-    // NOTE: the entity list is already a page-sized slice, so it is safe to load
-    // the broader graph counters once and filter in memory.
     if let Ok(relationships) = store.list_all_relationships() {
         for relationship in relationships {
-            let src = relationship.src.as_str().to_owned();
-            let dst = relationship.dst.as_str().to_owned();
-            entity_stats.entry(src).or_default().relationship_count += 1;
-            entity_stats.entry(dst).or_default().relationship_count += 1;
+            let src = relationship.src.as_str();
+            let dst = relationship.dst.as_str();
+            if !policy.is_unscoped_operator()
+                && visible_entities
+                    .is_some_and(|allowed| !allowed.contains(src) || !allowed.contains(dst))
+            {
+                continue;
+            }
+            entity_stats
+                .entry(src.to_owned())
+                .or_default()
+                .relationship_count += 1;
+            entity_stats
+                .entry(dst.to_owned())
+                .or_default()
+                .relationship_count += 1;
         }
     }
 
-    let mut params = BTreeMap::new();
-    let agent_filter = build_agent_filter_clause(&query.agent, &mut params);
+    let fact_stats_script = r"
+        ?[entity_id, confidence, nous_id, visibility] :=
+            *fact_entities{fact_id, entity_id},
+            *facts{id: fact_id, confidence, nous_id, visibility, is_forgotten, superseded_by},
+            is_forgotten == false,
+            is_null(superseded_by)
+    ";
+    let mut confidence_sums: HashMap<String, f64> = HashMap::new();
+    let result = store
+        .run_query(fact_stats_script, BTreeMap::new())
+        .map_err(|e| ApiError::Internal {
+            message: e.to_string(),
+            location: snafu::location!(),
+        })?;
+    for row in 0..result.row_count() {
+        let Some(entity_id) = result.get_string(row, "entity_id") else {
+            continue;
+        };
+        if visible_entities.is_some_and(|allowed| !allowed.contains(entity_id.as_str())) {
+            continue;
+        }
+        let Some(nous_id) = result.get_string(row, "nous_id") else {
+            continue;
+        };
+        let visibility = visibility_from_row(result.get_string(row, "visibility").as_deref());
+        if !policy.allows_fact_parts(&nous_id, visibility) {
+            continue;
+        }
+        let confidence = result.get_f64(row, "confidence").unwrap_or(0.0);
+        let entry = entity_stats.entry(entity_id.clone()).or_default();
+        entry.memory_count += 1;
+        confidence_sums
+            .entry(entity_id)
+            .and_modify(|sum| *sum += confidence)
+            .or_insert(confidence);
+    }
 
-    let fact_stats_script = format!(
-        r"
-            ?[entity_id, count(fact_id), mean(confidence)] :=
-                *fact_entities{{fact_id, entity_id}},
-                *facts{{id: fact_id, confidence, nous_id, is_forgotten, superseded_by}},
-                is_forgotten == false,
-                is_null(superseded_by)
-                {agent_filter}
-        "
-    );
-
-    if let Ok(result) = store.run_query(&fact_stats_script, params) {
-        for row in 0..result.row_count() {
-            let Some(entity_id) = result.get_string(row, "entity_id") else {
-                continue;
-            };
-            let memory_count = result
-                .get_i64(row, "count(fact_id)")
-                .and_then(|value| u32::try_from(value).ok())
-                .unwrap_or(0);
-            let confidence = result.get_f64(row, "mean(confidence)").unwrap_or(0.0);
-            let entry = entity_stats.entry(entity_id).or_default();
-            entry.memory_count = memory_count;
-            entry.confidence = confidence;
+    for (entity_id, confidence_sum) in confidence_sums {
+        let Some(entry) = entity_stats.get_mut(&entity_id) else {
+            continue;
+        };
+        if entry.memory_count > 0 {
+            entry.confidence = confidence_sum / f64::from(entry.memory_count);
         }
     }
 
@@ -516,35 +523,15 @@ fn load_entity_stats(
             let Some(entity_id) = result.get_string(row, "entity_id") else {
                 continue;
             };
+            if visible_entities.is_some_and(|allowed| !allowed.contains(entity_id.as_str())) {
+                continue;
+            }
             let page_rank = result.get_f64(row, "score").unwrap_or(0.0);
             entity_stats.entry(entity_id).or_default().page_rank = page_rank;
         }
     }
 
-    entity_stats
-}
-
-#[cfg(feature = "knowledge-store")]
-fn build_agent_filter_clause(
-    agents: &[String],
-    params: &mut std::collections::BTreeMap<String, mneme::engine::DataValue>,
-) -> String {
-    if agents.is_empty() {
-        return String::new();
-    }
-
-    for (idx, agent) in agents.iter().enumerate() {
-        params.insert(
-            format!("agent_{idx}"),
-            mneme::engine::DataValue::Str(agent.clone().into()),
-        );
-    }
-
-    let clauses = (0..agents.len())
-        .map(|idx| format!("nous_id == $agent_{idx}"))
-        .collect::<Vec<_>>()
-        .join(" or ");
-    format!(", ({clauses})")
+    Ok(entity_stats)
 }
 
 fn build_entity_list_item(
@@ -655,8 +642,17 @@ pub use webhook::{
 )]
 pub async fn check_graph_health(
     State(state): State<KnowledgeState>,
+    claims: Claims,
 ) -> impl axum::response::IntoResponse {
     use axum::response::IntoResponse as _;
+
+    if let Err(error) = require_role(&claims, Role::Operator) {
+        return error.into_response();
+    }
+    if claims.nous_id.is_some() {
+        return ApiError::forbidden("scoped tokens cannot inspect aggregate knowledge health")
+            .into_response();
+    }
 
     #[cfg(feature = "knowledge-store")]
     {

@@ -1,8 +1,10 @@
 //! Streaming execute tests.
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use hermeneus::error as llm_error;
 use hermeneus::provider::LlmProvider;
 
 use super::*;
@@ -48,9 +50,91 @@ struct DeltaEmitter {
     response: CompletionResponse,
 }
 
+struct StreamingSequenceProvider {
+    outcomes: Mutex<Vec<StreamingSequenceOutcome>>,
+    models: Mutex<Vec<String>>,
+    supported_models: &'static [&'static str],
+    provider_name: &'static str,
+}
+
+struct StreamingArcProvider(Arc<StreamingSequenceProvider>);
+
+enum StreamingSequenceOutcome {
+    Success {
+        deltas: Vec<String>,
+        response: CompletionResponse,
+    },
+    Error {
+        deltas: Vec<String>,
+        error: llm_error::Error,
+    },
+}
+
 impl DeltaEmitter {
     fn new(deltas: usize, response: CompletionResponse) -> Self {
         Self { deltas, response }
+    }
+}
+
+impl StreamingSequenceProvider {
+    fn new(
+        provider_name: &'static str,
+        supported_models: &'static [&'static str],
+        outcomes: Vec<StreamingSequenceOutcome>,
+    ) -> Self {
+        Self {
+            outcomes: Mutex::new(outcomes),
+            models: Mutex::new(Vec::new()),
+            supported_models,
+            provider_name,
+        }
+    }
+
+    fn called_models(&self) -> Vec<String> {
+        self.models.lock().expect("models lock").clone()
+    }
+
+    fn next_outcome(
+        &self,
+        request: &hermeneus::types::CompletionRequest,
+    ) -> StreamingSequenceOutcome {
+        self.models
+            .lock()
+            .expect("models lock")
+            .push(request.model.clone());
+        self.outcomes.lock().expect("outcomes lock").remove(0)
+    }
+}
+
+impl StreamingSequenceOutcome {
+    fn success(deltas: &[&str], response: CompletionResponse) -> Self {
+        Self::Success {
+            deltas: deltas.iter().map(|delta| (*delta).to_owned()).collect(),
+            response,
+        }
+    }
+
+    fn error(deltas: &[&str], error: llm_error::Error) -> Self {
+        Self::Error {
+            deltas: deltas.iter().map(|delta| (*delta).to_owned()).collect(),
+            error,
+        }
+    }
+
+    fn emit(&self, on_event: &mut (dyn FnMut(hermeneus::anthropic::StreamEvent) + Send)) {
+        let deltas = match self {
+            Self::Success { deltas, .. } | Self::Error { deltas, .. } => deltas,
+        };
+        for text in deltas {
+            on_event(hermeneus::anthropic::StreamEvent::TextDelta { text: text.clone() });
+        }
+    }
+
+    fn into_result(self) -> llm_error::Result<CompletionResponse> {
+        match self {
+            Self::Success { response, .. } => Ok(response),
+            Self::Error { error, .. } => Err(error),
+        }
     }
 }
 
@@ -89,6 +173,71 @@ impl LlmProvider for DeltaEmitter {
 
     fn supports_streaming(&self) -> bool {
         true
+    }
+}
+
+impl LlmProvider for StreamingSequenceProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let outcome = self.next_outcome(request);
+        Box::pin(async move { outcome.into_result() })
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+        on_event: &'a mut (dyn FnMut(hermeneus::anthropic::StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let outcome = self.next_outcome(request);
+        outcome.emit(on_event);
+        Box::pin(async move { outcome.into_result() })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        self.supported_models
+    }
+
+    fn name(&self) -> &str {
+        self.provider_name
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+}
+
+impl LlmProvider for StreamingArcProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.0.complete(request)
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        request: &'a hermeneus::types::CompletionRequest,
+        on_event: &'a mut (dyn FnMut(hermeneus::anthropic::StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        self.0.complete_streaming(request, on_event)
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        self.0.supported_models()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn supports_streaming(&self) -> bool {
+        self.0.supports_streaming()
     }
 }
 
@@ -131,6 +280,150 @@ async fn streaming_falls_back_to_non_streaming_for_mock() {
         rx.try_recv().is_err(),
         "no stream events for non-streaming provider"
     );
+}
+
+#[tokio::test]
+async fn streaming_configured_fallback_models_are_used_for_retryable_primary_failure() {
+    let primary = Arc::new(StreamingSequenceProvider::new(
+        "streaming-primary",
+        &["test-model"],
+        vec![StreamingSequenceOutcome::error(
+            &[],
+            llm_error::RateLimitedSnafu {
+                retry_after_ms: 100_u64,
+            }
+            .build(),
+        )],
+    ));
+    let secondary = Arc::new(StreamingSequenceProvider::new(
+        "streaming-secondary",
+        &["fallback-model"],
+        vec![StreamingSequenceOutcome::success(
+            &["fallback-delta"],
+            make_text_response_for_model("fallback answer", "fallback-model"),
+        )],
+    ));
+    let tertiary = Arc::new(StreamingSequenceProvider::new(
+        "streaming-tertiary",
+        &["unused-fallback"],
+        vec![StreamingSequenceOutcome::success(
+            &["unused-delta"],
+            make_text_response_for_model("unused", "unused-fallback"),
+        )],
+    ));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(StreamingArcProvider(Arc::clone(&primary))));
+    providers.register(Box::new(StreamingArcProvider(Arc::clone(&secondary))));
+    providers.register(Box::new(StreamingArcProvider(Arc::clone(&tertiary))));
+
+    let mut config = test_config();
+    config.generation.fallback_models =
+        vec!["fallback-model".to_owned(), "unused-fallback".to_owned()];
+    config.generation.retries_before_fallback = 1;
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("streaming fallback should succeed");
+
+    assert_eq!(result.content, "fallback answer");
+    assert_eq!(
+        result.model_used, "fallback-model",
+        "fallback success should report the model that served the streaming turn"
+    );
+    assert_eq!(primary.called_models(), ["test-model"]);
+    assert_eq!(secondary.called_models(), ["fallback-model"]);
+    assert!(
+        tertiary.called_models().is_empty(),
+        "fallback chain should stop after first streaming success"
+    );
+
+    drop(tx);
+    let mut text_deltas = Vec::new();
+    while let Ok(event) = rx.try_recv() {
+        if let TurnStreamEvent::LlmDelta(hermeneus::anthropic::StreamEvent::TextDelta { text }) =
+            event
+        {
+            text_deltas.push(text);
+        }
+    }
+    assert_eq!(text_deltas, vec!["fallback-delta".to_owned()]);
+}
+
+#[tokio::test]
+async fn streaming_retryable_error_after_delta_does_not_switch_providers() {
+    let primary = Arc::new(StreamingSequenceProvider::new(
+        "streaming-primary",
+        &["test-model"],
+        vec![StreamingSequenceOutcome::error(
+            &["primary-partial"],
+            llm_error::RateLimitedSnafu {
+                retry_after_ms: 100_u64,
+            }
+            .build(),
+        )],
+    ));
+    let secondary = Arc::new(StreamingSequenceProvider::new(
+        "streaming-secondary",
+        &["fallback-model"],
+        vec![StreamingSequenceOutcome::success(
+            &["fallback-delta"],
+            make_text_response_for_model("fallback answer", "fallback-model"),
+        )],
+    ));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(StreamingArcProvider(Arc::clone(&primary))));
+    providers.register(Box::new(StreamingArcProvider(Arc::clone(&secondary))));
+
+    let mut config = test_config();
+    config.generation.fallback_models = vec!["fallback-model".to_owned()];
+    config.generation.retries_before_fallback = 1;
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let err = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect_err("post-delta retryable failure should be terminal");
+
+    assert!(
+        err.to_string().contains("rate limited"),
+        "terminal error should preserve the primary provider failure"
+    );
+    assert_eq!(primary.called_models(), ["test-model"]);
+    assert!(
+        secondary.called_models().is_empty(),
+        "streaming fallback must not switch providers after partial output"
+    );
+
+    drop(tx);
+    let mut text_deltas = Vec::new();
+    while let Ok(event) = rx.try_recv() {
+        if let TurnStreamEvent::LlmDelta(hermeneus::anthropic::StreamEvent::TextDelta { text }) =
+            event
+        {
+            text_deltas.push(text);
+        }
+    }
+    assert_eq!(text_deltas, vec!["primary-partial".to_owned()]);
 }
 
 #[tokio::test]

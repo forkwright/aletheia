@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use clap::Args;
+use dokimion::coverage::Policy as CoveragePolicy;
 use snafu::prelude::*;
 
 use crate::error::Result;
@@ -28,6 +29,18 @@ pub(crate) struct EvalArgs {
     /// Write evaluation results as JSONL training data to this file
     #[arg(long)]
     pub jsonl_output: Option<String>,
+    /// Coverage policy for skipped scenarios
+    #[arg(
+        long,
+        env = "ALETHEIA_EVAL_COVERAGE_POLICY",
+        default_value_t = CoveragePolicy::Ci,
+        value_parser = parse_coverage_policy
+    )]
+    pub coverage_policy: CoveragePolicy,
+}
+
+fn parse_coverage_policy(value: &str) -> std::result::Result<CoveragePolicy, String> {
+    value.parse()
 }
 
 /// Reject obviously-broken inputs before talking to the server, so operators
@@ -56,6 +69,7 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         json: json_output,
         timeout,
         jsonl_output,
+        coverage_policy,
     } = args;
 
     if scenario.as_deref() == Some("list") {
@@ -74,8 +88,8 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     }
 
     let config_hash = dokimion::provenance::sha256_hex_str(&format!(
-        "url={url}\nscenario={scenario:?}\njson_output={json_output}\ntimeout={timeout}\ntoken_present={}",
-        token.is_some()
+        "url={url}\nscenario={scenario:?}\njson_output={json_output}\ntimeout={timeout}\ntoken_present={}\ncoverage_policy={coverage_policy}",
+        token.is_some(),
     ));
     let cli_args: Vec<String> = std::env::args().collect();
     let provenance = dokimion::provenance::EvalProvenance::new(
@@ -97,16 +111,21 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     };
     let runner = dokimion::runner::ScenarioRunner::new(config);
     let report = runner.run().await;
+    let coverage = coverage_policy.evaluate(&report);
 
     if json_output {
-        dokimion::report::print_report_json(&report);
+        dokimion::report::print_report_json_with_coverage(&report, &coverage);
     } else {
-        dokimion::report::print_report(&report, &url);
+        dokimion::report::print_report_with_coverage(&report, &url, &coverage);
     }
 
     if let Some(ref path) = jsonl_output {
-        dokimion::persistence::append_jsonl_stamped(Path::new(path), &report)
-            .whatever_context("failed to write JSONL output")?;
+        dokimion::persistence::append_jsonl_stamped_with_coverage(
+            Path::new(path),
+            &report,
+            Some(&coverage),
+        )
+        .whatever_context("failed to write JSONL output")?;
         tracing::info!(
             path = path,
             scenarios = report.passed + report.failed + report.skipped,
@@ -115,7 +134,13 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     }
 
     let total = report.passed + report.failed + report.skipped;
-    if total == 0 || (report.passed == 0 && report.failed == 0) {
+    if total == 0 {
+        whatever!("no scenarios selected");
+    }
+    if let Some(message) = coverage.failure_message() {
+        whatever!("{message}");
+    }
+    if report.passed == 0 && report.failed == 0 {
         whatever!(
             "no scenarios passed — is the server running at {url}?\n  \
              Check with: aletheia health --url {url}"
@@ -140,6 +165,7 @@ mod tests {
             json: false,
             timeout,
             jsonl_output: None,
+            coverage_policy: CoveragePolicy::Ci,
         }
     }
 
@@ -171,5 +197,13 @@ mod tests {
     fn validate_accepts_well_formed_args() {
         validate_args(&args_with("http://127.0.0.1:18789", 30, None)).unwrap();
         validate_args(&args_with("https://example.com:8443/path", 1, Some("ping"))).unwrap();
+    }
+
+    #[test]
+    fn parse_coverage_policy_accepts_explicit_smoke_dev() {
+        assert_eq!(
+            parse_coverage_policy("smoke-dev").unwrap(),
+            CoveragePolicy::SmokeDev
+        );
     }
 }

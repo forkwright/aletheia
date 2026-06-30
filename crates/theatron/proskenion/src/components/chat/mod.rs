@@ -43,6 +43,7 @@
 
 use std::time::{Duration, Instant};
 
+use skene::api::types::TurnOutcome;
 use skene::events::StreamEvent;
 use skene::id::NousId;
 
@@ -376,6 +377,10 @@ impl ChatStateManager {
                 self.flush_text(state);
                 self.flush_thinking(state);
 
+                let content = reconciled_terminal_content(
+                    std::mem::take(&mut state.streaming.text),
+                    &outcome,
+                );
                 let thinking = if state.streaming.thinking.is_empty() {
                     None
                 } else {
@@ -383,7 +388,7 @@ impl ChatStateManager {
                 };
                 let message = ChatMessage {
                     role: MessageRole::Assistant,
-                    content: std::mem::take(&mut state.streaming.text),
+                    content,
                     model: outcome.model,
                     tool_calls: outcome.tool_calls,
                     input_tokens: outcome.input_tokens,
@@ -400,27 +405,32 @@ impl ChatStateManager {
                 self.flush_text(state);
                 self.flush_thinking(state);
                 tracing::info!(reason, "turn aborted");
-                // Preserve partial text in history if any was generated.
-                if !state.streaming.text.is_empty() {
-                    let thinking = if state.streaming.thinking.is_empty() {
-                        None
-                    } else {
-                        Some(std::mem::take(&mut state.streaming.thinking))
-                    };
-                    let message = ChatMessage {
-                        role: MessageRole::Assistant,
-                        content: std::mem::take(&mut state.streaming.text),
-                        model: None,
-                        tool_calls: 0,
-                        input_tokens: 0,
-                        output_tokens: 0,
-                        thinking,
-                        tool_call_details: std::mem::take(&mut state.streaming.tool_call_details),
-                        plans: std::mem::take(&mut state.streaming.plans),
-                    };
-                    state.messages.push(message);
-                }
-                state.streaming = StreamingState::default();
+                let error = Some(format!("stream aborted: {reason}"));
+                let content = append_terminal_notice(
+                    std::mem::take(&mut state.streaming.text),
+                    &format!("turn aborted: {reason}"),
+                );
+                let thinking = if state.streaming.thinking.is_empty() {
+                    None
+                } else {
+                    Some(std::mem::take(&mut state.streaming.thinking))
+                };
+                let message = ChatMessage {
+                    role: MessageRole::Assistant,
+                    content,
+                    model: None,
+                    tool_calls: 0,
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    thinking,
+                    tool_call_details: std::mem::take(&mut state.streaming.tool_call_details),
+                    plans: std::mem::take(&mut state.streaming.plans),
+                };
+                state.messages.push(message);
+                state.streaming = StreamingState {
+                    error,
+                    ..StreamingState::default()
+                };
                 true
             }
             StreamEvent::Error(msg) => {
@@ -576,6 +586,62 @@ impl ChatStateManager {
             changed = true;
         }
         changed
+    }
+}
+
+fn reconciled_terminal_content(buffered_text: String, outcome: &TurnOutcome) -> String {
+    let mut content = if outcome.text.is_empty() {
+        buffered_text
+    } else {
+        if buffered_text != outcome.text {
+            tracing::warn!(
+                nous_id = %outcome.nous_id,
+                session_id = %outcome.session_id,
+                buffered_len = buffered_text.len(),
+                outcome_len = outcome.text.len(),
+                "streamed text differed from terminal outcome; committing terminal outcome text"
+            );
+        }
+        outcome.text.clone()
+    };
+
+    if let Some(notice) =
+        terminal_failure_notice(outcome.stop_reason.as_deref(), outcome.error.as_deref())
+    {
+        content = append_terminal_notice(content, &notice);
+    }
+
+    content
+}
+
+fn terminal_failure_notice(stop_reason: Option<&str>, error: Option<&str>) -> Option<String> {
+    let failed = error.is_some() || stop_reason.is_some_and(|reason| reason == "error");
+    if !failed {
+        return None;
+    }
+
+    Some(match (stop_reason, error) {
+        (Some(reason), Some(message)) => format!("turn failed: {reason}: {message}"),
+        (Some(reason), None) => format!("turn failed: {reason}"),
+        (None, Some(message)) => format!("turn failed: {message}"),
+        (None, None) => "turn failed".to_string(),
+    })
+}
+
+fn append_terminal_notice(mut text: String, notice: &str) -> String {
+    if text.is_empty() {
+        format!("[{notice}]")
+    } else {
+        if text.ends_with("\n\n") {
+            text.push('[');
+        } else if text.ends_with('\n') {
+            text.push_str("\n[");
+        } else {
+            text.push_str("\n\n[");
+        }
+        text.push_str(notice);
+        text.push(']');
+        text
     }
 }
 

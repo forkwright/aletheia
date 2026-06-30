@@ -164,12 +164,21 @@ fn load_in(base: &Path) -> Result<ConnectionConfig, ConfigError> {
         return Ok(ConnectionConfig::default());
     }
 
-    if let Err(e) = settings_config::upsert_active_server_in(
+    settings_config::upsert_active_server_in(
         base,
         desktop.connection.server_url.clone(),
         desktop.connection.auth_token.clone(),
-    ) {
-        tracing::warn!("failed to migrate legacy connection to settings: {e}");
+    )
+    .context(PersistSettingsSnafu)?;
+    if desktop.connection.auth_token.is_some() {
+        let sanitized = DesktopConfig {
+            connection: ConnectionConfig {
+                auth_token: None,
+                ..desktop.connection.clone()
+            },
+            notifications: desktop.notifications.clone(),
+        };
+        write_desktop_config(&path, &sanitized)?;
     }
 
     Ok(desktop.connection)
@@ -270,7 +279,11 @@ fn save_notification_prefs_in(
         connection: existing.connection,
         notifications: prefs.clone(),
     };
-    let content = toml::to_string_pretty(&updated).context(SerializeSnafu)?;
+    write_desktop_config(path, &updated)
+}
+
+fn write_desktop_config(path: &Path, desktop: &DesktopConfig) -> Result<(), ConfigError> {
+    let content = toml::to_string_pretty(desktop).context(SerializeSnafu)?;
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).context(CreateDirSnafu {
@@ -278,31 +291,29 @@ fn save_notification_prefs_in(
         })?;
     }
 
-    {
-        // WHY: On Unix create the file with 0o600 mode atomically. On Windows
-        // the equivalent `OpenOptionsExt::mode` does not exist; the file lives
-        // in the user's config directory where default ACLs are user-private.
-        #[cfg(unix)]
-        let mut file = {
-            use std::os::unix::fs::OpenOptionsExt;
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(path)
-                .context(WriteFileSnafu { path })?
-        };
-        #[cfg(not(unix))]
-        let mut file = std::fs::OpenOptions::new()
+    // WHY: On Unix create the file with 0o600 mode atomically. On Windows
+    // the equivalent `OpenOptionsExt::mode` does not exist; the file lives
+    // in the user's config directory where default ACLs are user-private.
+    #[cfg(unix)]
+    let mut file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
+            .mode(0o600)
             .open(path)
-            .context(WriteFileSnafu { path })?;
-        file.write_all(content.as_bytes())
-            .context(WriteFileSnafu { path })?;
-    }
+            .context(WriteFileSnafu { path })?
+    };
+    #[cfg(not(unix))]
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .context(WriteFileSnafu { path })?;
+    file.write_all(content.as_bytes())
+        .context(WriteFileSnafu { path })?;
 
     Ok(())
 }
@@ -319,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn round_trip_toml() {
+    fn desktop_config_serialization_omits_raw_bearer_token() {
         let config = ConnectionConfig {
             server_url: "https://pylon.example.com:8443".to_string(),
             auth_token: Some("tok_abc123".to_string()),
@@ -334,8 +345,10 @@ mod tests {
         let serialized = toml::to_string_pretty(&desktop).unwrap();
         let deserialized: DesktopConfig = toml::from_str(&serialized).unwrap();
 
+        assert!(!serialized.contains("tok_abc123"));
+        assert!(!serialized.contains("auth_token"));
         assert_eq!(deserialized.connection.server_url, config.server_url);
-        assert_eq!(deserialized.connection.auth_token, config.auth_token);
+        assert!(deserialized.connection.auth_token.is_none());
         assert_eq!(
             deserialized.connection.auto_reconnect,
             config.auto_reconnect
@@ -343,30 +356,24 @@ mod tests {
     }
 
     #[test]
-    fn save_and_load_tempdir() {
-        // Use a tempdir to avoid touching the real config.
+    fn legacy_desktop_config_deserializes_plaintext_token_for_migration() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("desktop.toml");
-
-        let config = ConnectionConfig {
-            server_url: "http://10.0.0.1:3000".to_string(),
-            auth_token: Some("my-token".to_string()),
-            auto_reconnect: true,
-            ..ConnectionConfig::default()
-        };
-
-        let desktop = DesktopConfig {
-            connection: config.clone(),
-            notifications: NotificationPreferences::default(),
-        };
-        let content = toml::to_string_pretty(&desktop).unwrap();
-        std::fs::write(&path, &content).unwrap();
+        std::fs::write(
+            &path,
+            r#"
+[connection]
+server_url = "http://10.0.0.1:3000"
+auth_token = "my-token"
+"#,
+        )
+        .unwrap();
 
         let loaded_content = std::fs::read_to_string(&path).unwrap();
         let loaded: DesktopConfig = toml::from_str(&loaded_content).unwrap();
 
-        assert_eq!(loaded.connection.server_url, config.server_url);
-        assert_eq!(loaded.connection.auth_token, config.auth_token);
+        assert_eq!(loaded.connection.server_url, "http://10.0.0.1:3000");
+        assert_eq!(loaded.connection.auth_token.as_deref(), Some("my-token"));
     }
 
     #[test]
@@ -491,10 +498,8 @@ server_url = "http://custom:9000"
         assert_eq!(loaded.connection.server_url, "http://test-host:9000");
         assert_eq!(loaded.connection.connect_timeout_secs, 60);
         assert!(!loaded.connection.auto_reconnect);
-        assert_eq!(
-            loaded.connection.auth_token.as_deref(),
-            Some("session-token")
-        );
+        assert!(!loaded_content.contains("session-token"));
+        assert!(loaded.connection.auth_token.is_none());
     }
 
     #[test]
@@ -544,26 +549,39 @@ server_url = "http://custom:9000"
         let (_dir, base) = temp_base();
         let legacy = config_path_from(&base);
         std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-        let desktop = DesktopConfig {
-            connection: ConnectionConfig {
-                server_url: "http://legacy-server:18789".to_string(),
-                auth_token: Some("legacy-token".to_string()),
-                ..ConnectionConfig::default()
-            },
-            notifications: NotificationPreferences::default(),
-        };
-        std::fs::write(&legacy, toml::to_string_pretty(&desktop).unwrap()).unwrap();
+        let legacy_token = "legacy-token-4491";
+        std::fs::write(
+            &legacy,
+            format!(
+                r#"
+[connection]
+server_url = "http://legacy-server:18789"
+auth_token = "{legacy_token}"
+"#
+            ),
+        )
+        .unwrap();
 
         let cfg = load_in(&base).unwrap();
         assert_eq!(cfg.server_url, "http://legacy-server:18789");
-        assert_eq!(cfg.auth_token.as_deref(), Some("legacy-token"));
+        assert_eq!(cfg.auth_token.as_deref(), Some(legacy_token));
+
+        let sanitized_legacy = std::fs::read_to_string(&legacy).unwrap();
+        assert!(!sanitized_legacy.contains(legacy_token));
+        assert!(!sanitized_legacy.contains("auth_token"));
 
         // WHY: Migration should have written the canonical settings store.
+        let settings_path = base.join("aletheia-desktop").join("settings.toml");
+        let raw_settings = std::fs::read_to_string(settings_path).unwrap();
+        assert!(!raw_settings.contains(legacy_token));
+        assert!(!raw_settings.contains("auth_token ="));
+        assert!(raw_settings.contains("auth_token_ref"));
+
         let settings = settings_config::load_in(&base).unwrap();
         let store = settings.server_store();
         let active = store.active().unwrap();
         assert_eq!(active.url, "http://legacy-server:18789");
-        assert_eq!(active.auth_token.as_deref(), Some("legacy-token"));
+        assert_eq!(active.auth_token.as_deref(), Some(legacy_token));
     }
 
     #[test]
@@ -618,18 +636,25 @@ server_url = "http://custom:9000"
     #[test]
     fn save_connection_updates_canonical_settings() {
         let (_dir, base) = temp_base();
+        let raw_token = "save-token-4491";
         let config = ConnectionConfig {
             server_url: "http://save-me:18789".to_string(),
-            auth_token: Some("save-token".to_string()),
+            auth_token: Some(raw_token.to_string()),
             ..ConnectionConfig::default()
         };
 
         save_in(&base, &config).unwrap();
 
+        let settings_path = base.join("aletheia-desktop").join("settings.toml");
+        let raw_settings = std::fs::read_to_string(settings_path).unwrap();
+        assert!(!raw_settings.contains(raw_token));
+        assert!(!raw_settings.contains("auth_token ="));
+        assert!(raw_settings.contains("auth_token_ref"));
+
         let settings = settings_config::load_in(&base).unwrap();
         let store = settings.server_store();
         let active = store.active().unwrap();
         assert_eq!(active.url, "http://save-me:18789");
-        assert_eq!(active.auth_token.as_deref(), Some("save-token"));
+        assert_eq!(active.auth_token.as_deref(), Some(raw_token));
     }
 }

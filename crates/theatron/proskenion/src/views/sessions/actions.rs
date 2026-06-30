@@ -3,7 +3,9 @@
 use dioxus::prelude::*;
 use skene::id::SessionId;
 
-use crate::state::sessions::SessionSelectionStore;
+use crate::state::sessions::{
+    SessionListStore, SessionSelectionStore, session_can_archive, session_can_restore,
+};
 
 const BULK_BAR_STYLE: &str = "\
     display: flex; \
@@ -116,12 +118,36 @@ const DIALOG_CONFIRM_BTN: &str = "\
 /// Bulk action bar shown when sessions are selected.
 #[component]
 pub(crate) fn BulkActionBar(
+    list_store: Signal<SessionListStore>,
     mut selection_store: Signal<SessionSelectionStore>,
     on_bulk_archive: EventHandler<Vec<SessionId>>,
     on_bulk_restore: EventHandler<Vec<SessionId>>,
 ) -> Element {
     let count = selection_store.read().count();
     let mut show_archive_confirm = use_signal(|| false);
+    let (archive_ids, restore_ids) = {
+        let selection = selection_store.read();
+        let list = list_store.read();
+        let mut archive_ids = Vec::new();
+        let mut restore_ids = Vec::new();
+
+        for session in list
+            .sessions
+            .iter()
+            .filter(|session| selection.is_selected(&session.id))
+        {
+            if session_can_archive(session) {
+                archive_ids.push(session.id.clone());
+            }
+            if session_can_restore(session) {
+                restore_ids.push(session.id.clone());
+            }
+        }
+
+        (archive_ids, restore_ids)
+    };
+    let archive_count = archive_ids.len();
+    let restore_count = restore_ids.len();
 
     if count == 0 {
         return rsx! {};
@@ -131,20 +157,27 @@ pub(crate) fn BulkActionBar(
         div {
             style: "{BULK_BAR_STYLE}",
             span { style: "{BULK_COUNT_STYLE}", "{count} selected" }
-            button {
-                style: "{BULK_BTN_STYLE}",
-                onclick: move |_| {
-                    show_archive_confirm.set(true);
-                },
-                "Archive selected"
+            if archive_count > 0 {
+                button {
+                    style: "{BULK_BTN_STYLE}",
+                    onclick: move |_| {
+                        show_archive_confirm.set(true);
+                    },
+                    "Archive selected"
+                }
             }
-            button {
-                style: "{BULK_BTN_STYLE}",
-                onclick: move |_| {
-                    let ids = selection_store.write().take_selected();
-                    on_bulk_restore.call(ids);
-                },
-                "Restore selected"
+            if restore_count > 0 {
+                button {
+                    style: "{BULK_BTN_STYLE}",
+                    onclick: {
+                        let restore_ids = restore_ids.clone();
+                        move |_| {
+                            selection_store.write().clear();
+                            on_bulk_restore.call(restore_ids.clone());
+                        }
+                    },
+                    "Restore selected"
+                }
             }
             button {
                 style: "{CLEAR_BTN_STYLE}",
@@ -154,18 +187,21 @@ pub(crate) fn BulkActionBar(
                 "Clear selection"
             }
         }
-        if *show_archive_confirm.read() {
+        if archive_count > 0 && *show_archive_confirm.read() {
             ConfirmDialog {
                 title: "Archive sessions?".to_string(),
                 message: format!(
-                    "Archive {count} session{}? They will be hidden from the active list but can be restored.",
-                    if count == 1 { "" } else { "s" }
+                    "Archive {archive_count} session{}? They will be hidden from the active list but can be restored.",
+                    if archive_count == 1 { "" } else { "s" }
                 ),
                 confirm_label: "Archive".to_string(),
-                on_confirm: move |_| {
-                    show_archive_confirm.set(false);
-                    let ids = selection_store.write().take_selected();
-                    on_bulk_archive.call(ids);
+                on_confirm: {
+                    let archive_ids = archive_ids.clone();
+                    move |_| {
+                        show_archive_confirm.set(false);
+                        selection_store.write().clear();
+                        on_bulk_archive.call(archive_ids.clone());
+                    }
                 },
                 on_cancel: move |_| {
                     show_archive_confirm.set(false);

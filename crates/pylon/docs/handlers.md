@@ -391,6 +391,68 @@ Retrieve conversation history.
 
 ---
 
+### `GET /api/v1/sessions/{id}/replay`
+
+Export a replay-faithful session record for audit, migration, and run review.
+Unlike history, this endpoint reads raw message rows and includes distilled
+messages, usage records, structured tool audit records, and turn lifecycle
+records.
+
+**Path:** `id` - session ID. Path segments must be percent-encoded by clients.
+
+**Response `200 OK`** - `SessionReplayResponse`:
+
+```json
+{
+  "version": 1,
+  "exportType": "sessionReplay",
+  "exportedAt": "2026-06-28T00:00:00Z",
+  "session": {
+    "id": "01HXYZ...",
+    "nousId": "pronoea",
+    "sessionKey": "main",
+    "status": "active",
+    "sessionType": "primary",
+    "messageCount": 4
+  },
+  "messages": [
+    {
+      "seq": 2,
+      "role": "tool_result",
+      "toolCallId": "toolu_123",
+      "toolName": "read_file"
+    }
+  ],
+  "usageRecords": [
+    {
+      "turnSeq": 42,
+      "inputTokens": 120,
+      "outputTokens": 35,
+      "model": "claude-opus"
+    }
+  ],
+  "toolAuditRecords": [
+    {
+      "turnSeq": 42,
+      "toolCallId": "toolu_123",
+      "toolName": "read_file",
+      "isError": false,
+      "outcome": "success"
+    }
+  ],
+  "turnAttempts": [
+    {
+      "turnId": "01JTEST...",
+      "status": "completed"
+    }
+  ]
+}
+```
+
+**Response `404 Not Found`** - session not found.
+
+---
+
 ### `POST /api/v1/sessions/stream`
 
 Turn stream protocol. Creates or retrieves a session by `(nous_id, session_key)` and
@@ -408,13 +470,21 @@ streams the turn as `TurnStreamEvent` SSE events (used by TUI and desktop client
 
 | Type | Fields |
 |------|--------|
-| `turn_start` | `session_id, nous_id, turn_id` |
-| `thinking_delta` | `thinking` |
+| `message_start` | `session_id, nous_id, turn_id, request_id?` |
+| `provider_message_start` | `usage` |
+| `provider_content_block_start` | `index, block_type` |
+| `provider_input_json_delta` | `partial_json` |
+| `provider_content_block_stop` | `index` |
+| `provider_message_stop` | `stop_reason, usage` |
+| `provider_unsupported_event` | `event_type` |
+| `thinking_delta` | `text` |
 | `text_delta` | `text` |
-| `tool_start` | `id, name, input` |
-| `tool_result` | `tool_use_id, content, is_error` |
-| `turn_complete` | `stop_reason, usage, thinking_tokens, tool_iterations` |
-| `error` | `code, message` |
+| `tool_use` | `tool_name, tool_id, input` |
+| `tool_approval_required` | `turn_id, tool_name, tool_id, input, risk, reason` |
+| `tool_approval_resolved` | `tool_id, decision` |
+| `tool_result` | `tool_name, tool_id, result, is_error, duration_ms` |
+| `message_complete` | `outcome` |
+| `error` | `code, message, request_id?` |
 
 ---
 

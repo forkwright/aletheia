@@ -346,6 +346,97 @@ fn persist_round_trip() {
 
 #[cfg(feature = "mneme-engine")]
 #[test]
+fn persist_project_scoped_extraction_stores_project_id_for_recall_filtering() {
+    let project_alpha =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+            .expect("valid project");
+    let project_beta =
+        eidos::workspace::ProjectId::from_git_remote("https://github.com/acme/beta.git")
+            .expect("valid project");
+    let store = crate::knowledge_store::KnowledgeStore::open_mem()
+        .expect("in-memory knowledge store should open successfully");
+    let engine = ExtractionEngine::new(ExtractionConfig {
+        project_id: Some(project_alpha.clone()),
+        ..ExtractionConfig::default()
+    });
+
+    let extraction = Extraction {
+        entities: vec![],
+        relationships: vec![],
+        facts: vec![ExtractedFact {
+            subject: "Aletheia".to_owned(),
+            predicate: "tracks".to_owned(),
+            object: "project memory boundaries".to_owned(),
+            confidence: 0.9,
+            is_correction: false,
+            fact_type: None,
+        }],
+    };
+
+    engine
+        .persist(&extraction, &store, "session:alpha", "syn")
+        .expect("project-scoped extraction should persist");
+
+    let [stored] = store
+        .list_all_facts(10)
+        .expect("stored facts should be readable")
+        .try_into()
+        .expect("exactly one fact should be stored");
+    assert_eq!(
+        stored.scope,
+        Some(crate::knowledge::MemoryScope::Project),
+        "extracted fact should remain project-scoped"
+    );
+    assert_eq!(
+        stored.project_id.as_ref(),
+        Some(&project_alpha),
+        "project-scoped extracted fact should carry the current project ID"
+    );
+
+    let candidates = vec![
+        crate::recall::ScoredResult {
+            content: stored.content,
+            source_type: "fact".to_owned(),
+            source_id: stored.id.to_string(),
+            nous_id: stored.nous_id,
+            factors: crate::recall::FactorScores::default(),
+            score: 1.0,
+            sensitivity: stored.sensitivity,
+            visibility: stored.visibility,
+            scope: stored.scope,
+            project_id: stored.project_id,
+        },
+        crate::recall::ScoredResult {
+            content: "intentionally global".to_owned(),
+            source_type: "fact".to_owned(),
+            source_id: "global-fact".to_owned(),
+            nous_id: "syn".to_owned(),
+            factors: crate::recall::FactorScores::default(),
+            score: 0.5,
+            sensitivity: crate::knowledge::FactSensitivity::Public,
+            visibility: crate::knowledge::Visibility::Private,
+            scope: None,
+            project_id: None,
+        },
+    ];
+
+    let filtered = crate::recall::filter_by_project_scope(
+        candidates,
+        &crate::recall::ProjectRecallScope::Project(project_beta),
+    );
+    assert_eq!(
+        filtered.len(),
+        1,
+        "project beta recall should not retain project alpha extracted facts"
+    );
+    assert_eq!(
+        filtered[0].source_id, "global-fact",
+        "intentionally global facts should remain eligible"
+    );
+}
+
+#[cfg(feature = "mneme-engine")]
+#[test]
 fn persist_skips_relates_to() {
     let store = crate::knowledge_store::KnowledgeStore::open_mem()
         .expect("in-memory knowledge store should open successfully");

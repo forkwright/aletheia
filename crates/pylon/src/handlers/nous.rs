@@ -1,17 +1,21 @@
 // kanon:ignore RUST/file-too-long — nous handler covers agent CRUD, tool management, and recovery; tracked for split in #4201
 //! Nous (agent) information endpoints.
 
+use std::collections::HashSet;
+
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use nous::config::NousConfig;
 use nous::cross::AddressMask;
+use organon::surface::{DenialReason, SurfaceEntry, SurfaceEntryKind, SurfaceInputs};
+use organon::types::{ApprovalRequirement, Reversibility};
 use symbolon::types::Role;
 use taxis::config::{AletheiaConfig, NousDefinition};
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
-use crate::handlers::providers::resolve_model_readiness;
+use crate::handlers::providers::resolve_model_route_readiness;
 use crate::state::NousState;
 
 #[path = "nous_dto.rs"]
@@ -23,6 +27,32 @@ pub use nous_dto::{
 
 fn agent_definition<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a NousDefinition> {
     config.agents.list.iter().find(|agent| agent.id == id)
+}
+
+fn model_routes_for_config(config: &NousConfig) -> Vec<(String, Option<String>)> {
+    let mut routes = Vec::with_capacity(config.generation.fallback_models.len() + 1);
+    routes.push((
+        config.generation.model.clone(),
+        config.generation.provider.clone(),
+    ));
+    routes.extend(
+        config
+            .generation
+            .fallback_models
+            .iter()
+            .enumerate()
+            .map(|(index, model)| {
+                (
+                    model.clone(),
+                    config
+                        .generation
+                        .fallback_providers
+                        .get(index)
+                        .and_then(Clone::clone),
+                )
+            }),
+    );
+    routes
 }
 
 fn ensure_agent_definition<'a>(
@@ -72,23 +102,91 @@ fn allowlist_for_agent<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a [
     agent_definition(config, id).and_then(|agent| agent.tool_allowlist.as_deref())
 }
 
-fn tool_summaries_for_agent(state: &NousState, allowlist: Option<&[String]>) -> Vec<ToolSummary> {
-    state
-        .tool_registry
-        .definitions()
-        .into_iter()
-        .map(|def| {
-            let enabled =
-                allowlist.is_none_or(|list| list.iter().any(|name| name == def.name.as_str()));
-            ToolSummary {
-                name: def.name.as_str().to_owned(),
-                enabled,
-                description: def.description.clone(),
-                category: format!("{:?}", def.category),
-                auto_activate: def.auto_activate,
-            }
-        })
+fn tool_summaries_for_agent(
+    state: &NousState,
+    runtime: &NousConfig,
+    allowlist: Option<&[String]>,
+) -> Vec<ToolSummary> {
+    let active = HashSet::new();
+    let surface = state.tool_registry.effective_surface(SurfaceInputs {
+        policy: &runtime.tool_groups,
+        allowlist,
+        active: &active,
+        server_tools: runtime.server_tools.as_slice(),
+        server_tool_config: None,
+    });
+
+    surface
+        .entries()
+        .iter()
+        .map(|entry| tool_summary_from_surface_entry(entry, allowlist))
         .collect()
+}
+
+fn tool_summary_from_surface_entry(
+    entry: &SurfaceEntry,
+    allowlist: Option<&[String]>,
+) -> ToolSummary {
+    let enabled = allowlist.is_none_or(|list| list.iter().any(|name| name == entry.name.as_str()));
+    let unavailable_reason = entry
+        .availability
+        .denial_reason()
+        .map(denial_reason_label)
+        .map(str::to_owned);
+    ToolSummary {
+        name: entry.name.as_str().to_owned(),
+        enabled,
+        description: entry.description.clone(),
+        category: entry
+            .category
+            .map_or_else(|| "server".to_owned(), |category| category.to_string()),
+        reversibility: entry.reversibility.to_string(),
+        approval: entry.approval.to_string(),
+        requires_approval: approval_requires_prompt(entry.approval),
+        destructive: reversibility_is_destructive(entry.reversibility),
+        groups: entry
+            .groups
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
+        source_plane: source_plane_label(entry).to_owned(),
+        policy_state: entry.availability.as_str().to_owned(),
+        unavailable_reason,
+        metadata_verified: true,
+        auto_activate: entry.auto_activate,
+    }
+}
+
+fn approval_requires_prompt(approval: ApprovalRequirement) -> bool {
+    matches!(
+        approval,
+        ApprovalRequirement::Required | ApprovalRequirement::Mandatory
+    )
+}
+
+fn reversibility_is_destructive(reversibility: Reversibility) -> bool {
+    matches!(
+        reversibility,
+        Reversibility::PartiallyReversible | Reversibility::Irreversible
+    )
+}
+
+fn denial_reason_label(reason: DenialReason) -> &'static str {
+    match reason {
+        DenialReason::GroupPolicy => "group_policy",
+        DenialReason::Allowlist => "allowlist",
+        DenialReason::NameCollision => "name_collision",
+    }
+}
+
+fn source_plane_label(entry: &SurfaceEntry) -> &'static str {
+    if entry.origin.is_some() {
+        return "runtime_bridged_mcp";
+    }
+    match entry.kind {
+        SurfaceEntryKind::Registry => "organon_builtin",
+        SurfaceEntryKind::Server => "provider_server",
+    }
 }
 
 fn address_mask_status(mask: &AddressMask) -> AddressMaskStatus {
@@ -135,18 +233,26 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
         .map(|c| {
             let agent_id = c.id.as_ref();
             let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
-            let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, agent_id));
-            let mut models = vec![c.generation.model.clone()];
-            models.extend(c.generation.fallback_models.clone());
+            let tools = tool_summaries_for_agent(&state, c, allowlist_for_agent(&config, agent_id));
+            let routes = model_routes_for_config(c);
             NousSummary {
                 id: c.id.to_string(),
                 name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
                 enabled,
                 model: c.generation.model.clone(),
+                provider: c.generation.provider.clone(),
                 fallback_models: c.generation.fallback_models.clone(),
-                provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
+                fallback_providers: c.generation.fallback_providers.clone(),
+                provider_readiness: resolve_model_route_readiness(
+                    &state.provider_registry,
+                    &routes,
+                ),
                 status: "active".to_owned(),
                 tools,
+                config_applied: None,
+                live_applied: None,
+                reload_required: None,
+                restart_required: None,
             }
         })
         .collect();
@@ -203,8 +309,7 @@ pub async fn get_status(
         None => ("unknown".to_owned(), 0, 0, None, None, false),
     };
 
-    let mut status_models = vec![config.generation.model.clone()];
-    status_models.extend(config.generation.fallback_models.clone());
+    let status_routes = model_routes_for_config(config);
     let address_mask = if let Some(router) = state.nous_manager.router() {
         router.address_mask(&id).await
     } else {
@@ -214,10 +319,15 @@ pub async fn get_status(
     Ok(Json(NousStatus {
         id: config.id.to_string(),
         model: config.generation.model.clone(),
+        provider: config.generation.provider.clone(),
         fallback_models: config.generation.fallback_models.clone(),
+        fallback_providers: config.generation.fallback_providers.clone(),
         retries_before_fallback: config.generation.retries_before_fallback,
         complexity_routing_enabled: config.generation.complexity.enabled,
-        provider_readiness: resolve_model_readiness(&state.provider_registry, &status_models),
+        complexity_no_llm_threshold: config.generation.complexity.no_llm_threshold,
+        complexity_low_threshold: config.generation.complexity.low_threshold,
+        complexity_high_threshold: config.generation.complexity.high_threshold,
+        provider_readiness: resolve_model_route_readiness(&state.provider_registry, &status_routes),
         context_window: config.generation.context_window,
         max_output_tokens: config.generation.max_output_tokens,
         thinking_enabled: config.generation.thinking_enabled,
@@ -267,9 +377,15 @@ pub async fn tools(
     require_visible_nous(&claims, runtime)?;
 
     let config = state.config.read().await;
-    let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
+    let tools = tool_summaries_for_agent(&state, runtime, allowlist_for_agent(&config, &id));
 
-    Ok(Json(ToolsResponse { tools }))
+    Ok(Json(ToolsResponse {
+        tools,
+        config_applied: None,
+        live_applied: None,
+        reload_required: None,
+        restart_required: None,
+    }))
 }
 
 /// PATCH /api/v1/nous/{id}: toggle an agent's enabled state.
@@ -332,31 +448,40 @@ pub async fn update_enabled(
         }
     }
 
-    if let Some(handle) = state.nous_manager.get(&id) {
+    let live_handle = state.nous_manager.get(&id);
+    let mut live_command_failed = live_handle.is_none();
+    if let Some(handle) = live_handle.as_ref() {
         let live_result = if body.enabled {
             handle.wake().await
         } else {
             handle.sleep().await
         };
         if let Err(e) = live_result {
+            live_command_failed = true;
             tracing::warn!(nous_id = %id, error = %e, "failed to update live agent lifecycle; config intent persisted");
         }
     }
 
     let config = state.config.read().await;
     let enabled = agent_definition(&config, &id).is_none_or(|agent| agent.enabled);
-    let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
+    let tools = tool_summaries_for_agent(&state, &runtime, allowlist_for_agent(&config, &id));
     drop(config);
-    let status = match state.nous_manager.get(&id) {
+    let status = match live_handle.as_ref() {
         Some(handle) => handle
             .status()
             .await
             .map_or_else(|_| "unknown".to_owned(), |s| s.lifecycle.to_string()),
         None => "unknown".to_owned(),
     };
+    let live_applied = if body.enabled {
+        matches!(status.as_str(), "idle" | "active")
+    } else {
+        status == "dormant"
+    };
+    let restart_required =
+        !live_applied && (live_command_failed || matches!(status.as_str(), "unknown" | "degraded"));
 
-    let mut summary_models = vec![runtime.generation.model.clone()];
-    summary_models.extend(runtime.generation.fallback_models.clone());
+    let summary_routes = model_routes_for_config(&runtime);
 
     Ok(Json(NousSummary {
         id: runtime.id.to_string(),
@@ -366,10 +491,19 @@ pub async fn update_enabled(
             .unwrap_or_else(|| runtime.id.to_string()),
         enabled,
         model: runtime.generation.model.clone(),
+        provider: runtime.generation.provider.clone(),
         fallback_models: runtime.generation.fallback_models.clone(),
-        provider_readiness: resolve_model_readiness(&state.provider_registry, &summary_models),
+        fallback_providers: runtime.generation.fallback_providers.clone(),
+        provider_readiness: resolve_model_route_readiness(
+            &state.provider_registry,
+            &summary_routes,
+        ),
         status,
         tools,
+        config_applied: Some(true),
+        live_applied: Some(live_applied),
+        reload_required: Some(false),
+        restart_required: Some(restart_required),
     }))
 }
 
@@ -465,9 +599,15 @@ pub async fn update_tool(
     }
 
     let config = state.config.read().await;
-    let tools = tool_summaries_for_agent(&state, allowlist_for_agent(&config, &id));
+    let tools = tool_summaries_for_agent(&state, &runtime, allowlist_for_agent(&config, &id));
 
-    Ok(Json(ToolsResponse { tools }))
+    Ok(Json(ToolsResponse {
+        tools,
+        config_applied: Some(true),
+        live_applied: Some(false),
+        reload_required: Some(true),
+        restart_required: Some(false),
+    }))
 }
 
 /// POST /api/v1/nous/{id}/recover: reset degraded actor to idle.

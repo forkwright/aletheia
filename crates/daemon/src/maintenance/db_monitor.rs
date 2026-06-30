@@ -1,8 +1,10 @@
 //! Database size monitoring with configurable thresholds.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use mneme::store::SessionStore;
 use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 
@@ -39,7 +41,7 @@ pub struct DbSizeReport {
     pub databases: Vec<DbInfo>,
     /// Sum of all database sizes in bytes.
     pub total_size_bytes: u64,
-    /// Human-readable alert messages for databases exceeding thresholds.
+    /// Human-readable alert messages for databases exceeding thresholds or failing health probes.
     pub alerts: Vec<String>,
 }
 
@@ -50,10 +52,66 @@ pub struct DbInfo {
     pub name: String,
     /// Absolute path to the database file or directory.
     pub path: PathBuf,
+    /// Filesystem shape of the database path.
+    pub shape: DbShape,
     /// Total size in bytes.
     pub size_bytes: u64,
     /// Health classification based on configured thresholds.
     pub status: DbStatus,
+    /// Lightweight store open/read health, when this monitor knows how to verify it.
+    pub health: DbHealth,
+}
+
+/// Filesystem shape for a database path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DbShape {
+    /// Single-file database or legacy store.
+    File,
+    /// Directory-backed store.
+    Directory,
+}
+
+impl std::fmt::Display for DbShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::File => write!(f, "file"),
+            Self::Directory => write!(f, "directory"),
+        }
+    }
+}
+
+/// Store-level health for a monitored database path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "status", content = "detail", rename_all = "kebab-case")]
+pub enum DbHealth {
+    /// Store opened and a lightweight partition read succeeded.
+    Healthy,
+    /// File-shaped `sessions.db` is present for legacy compatibility and was not opened as fjall.
+    LegacyFile,
+    /// The database has no known store-level health probe.
+    NotChecked,
+    /// The store is currently locked by an active writer.
+    Locked(String),
+    /// The store-level health probe failed.
+    Unhealthy(String),
+}
+
+impl std::fmt::Display for DbHealth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Healthy => write!(f, "healthy"),
+            Self::LegacyFile => write!(f, "legacy-file"),
+            Self::NotChecked => write!(f, "not-checked"),
+            Self::Locked(reason) => write!(f, "locked: {reason}"),
+            Self::Unhealthy(reason) => write!(f, "unhealthy: {reason}"),
+        }
+    }
+}
+
+/// Runtime hook for checking the already-open session store.
+pub trait SessionStoreHealthProbe: std::fmt::Debug + Send + Sync {
+    /// Return lightweight session-store health from the active runtime handle.
+    fn check_session_store(&self) -> DbHealth;
 }
 
 /// Health status of a database based on size thresholds.
@@ -81,13 +139,27 @@ impl std::fmt::Display for DbStatus {
 /// Monitors database file sizes and reports against thresholds.
 pub struct DbMonitor {
     config: DbMonitoringConfig,
+    session_store_health_probe: Option<Arc<dyn SessionStoreHealthProbe>>,
 }
 
 impl DbMonitor {
     /// Create a monitor with the given threshold configuration.
     #[must_use]
     pub fn new(config: DbMonitoringConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            session_store_health_probe: None,
+        }
+    }
+
+    /// Attach a runtime session-store health probe.
+    #[must_use]
+    pub fn with_session_store_health_probe(
+        mut self,
+        probe: Option<Arc<dyn SessionStoreHealthProbe>>,
+    ) -> Self {
+        self.session_store_health_probe = probe;
+        self
     }
 
     /// Check all database files and return a size report.
@@ -98,8 +170,8 @@ impl DbMonitor {
             return Ok(report);
         }
 
-        self.check_file("sessions.db", &mut report)?;
-        self.check_file("planning.db", &mut report)?;
+        self.check_sessions_store(&mut report)?;
+        self.check_path("planning.db", DbHealth::NotChecked, &mut report)?;
 
         self.scan_db_files(&mut report)?;
 
@@ -118,8 +190,10 @@ impl DbMonitor {
             report.databases.push(DbInfo {
                 name,
                 path: legacy_cozo_dir,
+                shape: DbShape::Directory,
                 size_bytes: size,
                 status,
+                health: DbHealth::NotChecked,
             });
         }
 
@@ -128,31 +202,65 @@ impl DbMonitor {
         Ok(report)
     }
 
-    fn check_file(&self, name: &str, report: &mut DbSizeReport) -> error::Result<()> {
+    fn check_sessions_store(&self, report: &mut DbSizeReport) -> error::Result<()> {
+        let name = "sessions.db";
         let path = self.config.data_dir.join(name);
         if !path.exists() {
             return Ok(());
         }
 
-        let metadata = fs::metadata(&path).context(error::MaintenanceIoSnafu {
-            context: format!("reading metadata for {}", path.display()),
-        })?;
+        let (shape, size) = path_shape_size(&path)?;
+        let health = match shape {
+            DbShape::File => DbHealth::LegacyFile,
+            DbShape::Directory => self.check_session_store_health(&path),
+        };
 
-        let size = metadata.len();
-        let status = self.classify(size);
+        self.push_db_info(name.to_owned(), path, shape, size, health, report);
 
-        if status != DbStatus::Ok {
-            report
-                .alerts
-                .push(format!("{name} {}MB ({status})", size / (1024 * 1024)));
+        Ok(())
+    }
+
+    fn check_session_store_health(&self, path: &Path) -> DbHealth {
+        if let Some(probe) = &self.session_store_health_probe {
+            return probe.check_session_store();
         }
 
-        report.databases.push(DbInfo {
-            name: name.to_owned(),
-            path,
-            size_bytes: size,
-            status,
+        if !path.join("version").is_file() {
+            return DbHealth::Unhealthy("missing fjall version marker".to_owned());
+        }
+
+        let result = SessionStore::open(path).and_then(|store| {
+            store.ping()?;
+            store.find_session_by_id("__aletheia_diagnostic_probe__")?;
+            Ok(())
         });
+
+        match result {
+            Ok(()) => DbHealth::Healthy,
+            Err(err) => {
+                let reason = err.to_string();
+                if reason.to_ascii_lowercase().contains("locked") {
+                    DbHealth::Locked(reason)
+                } else {
+                    DbHealth::Unhealthy(reason)
+                }
+            }
+        }
+    }
+
+    fn check_path(
+        &self,
+        name: &str,
+        health: DbHealth,
+        report: &mut DbSizeReport,
+    ) -> error::Result<()> {
+        let path = self.config.data_dir.join(name);
+        if !path.exists() {
+            return Ok(());
+        }
+
+        let (shape, size) = path_shape_size(&path)?;
+        self.push_db_info(name.to_owned(), path, shape, size, health, report);
 
         Ok(())
     }
@@ -170,10 +278,6 @@ impl DbMonitor {
             })?;
             let path = entry.path();
 
-            if path.is_dir() {
-                continue;
-            }
-
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -188,28 +292,50 @@ impl DbMonitor {
                 continue;
             }
 
-            let metadata = entry.metadata().context(error::MaintenanceIoSnafu {
-                context: format!("reading metadata for {}", path.display()),
-            })?;
-
-            let size = metadata.len();
-            let status = self.classify(size);
-
-            if status != DbStatus::Ok {
-                report
-                    .alerts
-                    .push(format!("{name} {}MB ({status})", size / (1024 * 1024)));
-            }
-
-            report.databases.push(DbInfo {
-                name: name.to_owned(),
+            let (shape, size) = path_shape_size(&path)?;
+            self.push_db_info(
+                name.to_owned(),
                 path,
-                size_bytes: size,
-                status,
-            });
+                shape,
+                size,
+                DbHealth::NotChecked,
+                report,
+            );
         }
 
         Ok(())
+    }
+
+    fn push_db_info(
+        &self,
+        name: String,
+        path: PathBuf,
+        shape: DbShape,
+        size: u64,
+        health: DbHealth,
+        report: &mut DbSizeReport,
+    ) {
+        let status = self.classify(size);
+
+        if status != DbStatus::Ok {
+            report
+                .alerts
+                .push(format!("{name} {}MB ({status})", size / (1024 * 1024)));
+        }
+        if let DbHealth::Unhealthy(reason) = &health {
+            report
+                .alerts
+                .push(format!("{name} health unhealthy: {reason}"));
+        }
+
+        report.databases.push(DbInfo {
+            name,
+            path,
+            shape,
+            size_bytes: size,
+            status,
+            health,
+        });
     }
 
     fn classify(&self, size_bytes: u64) -> DbStatus {
@@ -224,7 +350,19 @@ impl DbMonitor {
     }
 }
 
-fn dir_size(path: &std::path::Path) -> error::Result<u64> {
+fn path_shape_size(path: &Path) -> error::Result<(DbShape, u64)> {
+    let metadata = fs::metadata(path).context(error::MaintenanceIoSnafu {
+        context: format!("reading metadata for {}", path.display()),
+    })?;
+
+    if metadata.is_dir() {
+        Ok((DbShape::Directory, dir_size(path)?))
+    } else {
+        Ok((DbShape::File, metadata.len()))
+    }
+}
+
+fn dir_size(path: &Path) -> error::Result<u64> {
     let mut total = 0u64;
     let dir = fs::read_dir(path).context(error::MaintenanceIoSnafu {
         context: format!("reading dir size {}", path.display()),
@@ -259,6 +397,7 @@ fn dir_size(path: &std::path::Path) -> error::Result<u64> {
 )]
 mod tests {
     use super::*;
+    use mneme::store::SessionStore;
 
     fn make_config(tmp: &std::path::Path) -> DbMonitoringConfig {
         DbMonitoringConfig {
@@ -286,6 +425,58 @@ mod tests {
         assert_eq!(report.databases.len(), 1);
         assert_eq!(report.databases[0].status, DbStatus::Ok);
         assert!(report.alerts.is_empty());
+    }
+
+    #[test]
+    fn sessions_db_directory_reports_recursive_size_and_health() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+        fs::create_dir_all(&config.data_dir).unwrap();
+        let sessions_path = config.data_dir.join("sessions.db");
+        {
+            let store = SessionStore::open(&sessions_path).expect("open session store");
+            store
+                .create_session("ses-1", "alice", "main", None, None)
+                .expect("create session");
+        }
+
+        let expected_size = dir_size(&sessions_path).expect("directory size");
+        let monitor = DbMonitor::new(config);
+        let report = monitor.check().expect("check succeeds");
+
+        let sessions = report
+            .databases
+            .iter()
+            .find(|d| d.name == "sessions.db")
+            .expect("sessions.db present");
+        assert_eq!(sessions.shape, DbShape::Directory);
+        assert_eq!(sessions.health, DbHealth::Healthy);
+        assert_eq!(sessions.size_bytes, expected_size);
+        assert_eq!(report.total_size_bytes, expected_size);
+    }
+
+    #[test]
+    fn sessions_db_legacy_file_is_explicit() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+        fs::create_dir_all(&config.data_dir).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
+        fs::write(config.data_dir.join("sessions.db"), "legacy").unwrap();
+
+        let monitor = DbMonitor::new(config);
+        let report = monitor.check().expect("check succeeds");
+
+        let sessions = report
+            .databases
+            .iter()
+            .find(|d| d.name == "sessions.db")
+            .expect("sessions.db present");
+        assert_eq!(sessions.shape, DbShape::File);
+        assert_eq!(sessions.health, DbHealth::LegacyFile);
+        assert_eq!(sessions.size_bytes, 6);
     }
 
     #[test]
@@ -371,6 +562,35 @@ mod tests {
 
         assert_eq!(report.databases.len(), 1);
         assert_eq!(report.databases[0].name, "custom.db");
+    }
+
+    #[test]
+    fn extra_db_directories_are_detected_with_recursive_size() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let config = make_config(tmp.path());
+        fs::create_dir_all(config.data_dir.join("custom.db/nested")).unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
+        fs::write(config.data_dir.join("custom.db/root.dat"), "abc").unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "maintenance tasks run outside the async runtime and require synchronous filesystem access"
+        )]
+        fs::write(config.data_dir.join("custom.db/nested/leaf.dat"), "de").unwrap();
+
+        let monitor = DbMonitor::new(config);
+        let report = monitor.check().expect("check succeeds");
+
+        let custom = report
+            .databases
+            .iter()
+            .find(|d| d.name == "custom.db")
+            .expect("custom.db directory present");
+        assert_eq!(custom.shape, DbShape::Directory);
+        assert_eq!(custom.size_bytes, 5);
+        assert_eq!(custom.health, DbHealth::NotChecked);
     }
 
     #[test]

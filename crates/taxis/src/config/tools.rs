@@ -126,6 +126,12 @@ pub struct ExternalToolEntry {
     /// HTTP method for `http` tools. Defaults to POST.
     #[serde(default)]
     pub method: ExternalToolMethod,
+    /// Tool groups that gate access to this HTTP tool.
+    #[serde(default)]
+    pub groups: Option<Vec<ExternalToolGroupId>>,
+    /// Reversibility classification used to derive approval requirements.
+    #[serde(default)]
+    pub reversibility: Option<ExternalToolReversibility>,
     /// Optional authentication configuration for HTTP-based tools and MCP servers.
     #[serde(default)]
     pub auth: Option<ExternalToolAuth>,
@@ -142,6 +148,8 @@ impl Default for ExternalToolEntry {
             env: HashMap::new(),
             description: None,
             method: ExternalToolMethod::default(),
+            groups: None,
+            reversibility: None,
             auth: None,
         }
     }
@@ -177,6 +185,42 @@ pub enum ExternalToolMethod {
     Delete,
     /// Apply a partial modification.
     Patch,
+}
+
+/// Tool-group labels accepted by external HTTP tool config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ExternalToolGroupId {
+    /// File/code reading tools.
+    Read,
+    /// File, memory, or session-state mutation tools.
+    Edit,
+    /// Shell/cargo execution and local commands.
+    Command,
+    /// MCP tool invocation and external API calls.
+    Mcp,
+    /// Spawning sub-agents.
+    SpawnSubtask,
+    /// Planning and design tools.
+    Plan,
+    /// Tests, lints, checks, validation.
+    Verify,
+}
+
+/// Reversibility labels accepted by external HTTP tool config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ExternalToolReversibility {
+    /// Read-only operations with no side effects.
+    FullyReversible,
+    /// Effects can be undone.
+    Reversible,
+    /// Partial undo may be possible.
+    PartiallyReversible,
+    /// Effects cannot be undone.
+    Irreversible,
 }
 
 #[cfg(test)]

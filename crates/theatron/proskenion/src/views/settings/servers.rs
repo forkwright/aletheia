@@ -143,7 +143,6 @@ pub(crate) fn ServersPanel() -> Element {
                         .filter(|u| snap.is_active && *u != snap.url);
                     let update_url_apply = update_url.clone();
                     let name_update = snap.name.clone();
-                    let token_update = snap.auth_token.clone();
 
                     rsx! {
                         ServerCard {
@@ -171,11 +170,10 @@ pub(crate) fn ServersPanel() -> Element {
                             },
                             on_update_url: move |_| {
                                 if let Some(u) = update_url_apply.clone() {
-                                    server_store.write().update(
+                                    server_store.write().update_identity(
                                         &sid_update,
                                         name_update.clone(),
                                         u,
-                                        token_update.clone(),
                                     );
                                     health_map.write().remove(&sid_update);
                                     let store = server_store.read();

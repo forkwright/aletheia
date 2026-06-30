@@ -45,17 +45,17 @@ pub async fn mcp_auth(
         return unauthorized();
     };
 
-    // INVARIANT: when auth_mode != "none", jwt_manager is always Some
+    // INVARIANT: when auth_mode != "none", auth_facade is always Some
     // (enforced where DiaporeiaState is built in `aletheia::commands::server`).
-    let Some(ref jwt) = state.jwt_manager else {
-        warn!("MCP request rejected: jwt_manager unavailable despite auth_mode != \"none\"");
+    let Some(ref auth_facade) = state.auth_facade else {
+        warn!("MCP request rejected: auth_facade unavailable despite auth_mode != \"none\"");
         return unauthorized();
     };
 
-    match jwt.validate(token) {
+    match auth_facade.validate_token(token) {
         Ok(_) => next.run(req).await,
         Err(_err) => {
-            // SAFETY: logging rejection status, not the token value
+            // SAFETY: logging rejection status, not the token value.
             warn!("MCP request rejected: invalid Bearer token"); // kanon:ignore SECURITY/credential-logging -- logs rejection event, not the token
             unauthorized()
         }

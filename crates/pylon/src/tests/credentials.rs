@@ -144,6 +144,41 @@ async fn credentials_add_list_remove_roundtrip() {
 }
 
 #[tokio::test]
+async fn credentials_add_rejects_short_secret_without_storing() {
+    let (app, dir) = app().await;
+    let raw_secret = "abcd1234";
+
+    let add = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "anthropic",
+                "key": raw_secret,
+                "role": "backup"
+            })),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(add.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(add).await;
+    let message = body
+        .get("error")
+        .and_then(|e| e.get("message"))
+        .and_then(|m| m.as_str())
+        .expect("error message");
+    assert!(message.contains("at least"));
+    assert!(!message.contains(raw_secret));
+    assert!(
+        !dir.path()
+            .join("config/credentials/anthropic.backup.json")
+            .exists(),
+        "invalid credential must not be persisted"
+    );
+}
+
+#[tokio::test]
 async fn credentials_rotate_endpoint_redacts_response() {
     let (app, _dir) = app().await;
     let raw_secret = "sk-test-rotate-secret-2222";

@@ -2,12 +2,13 @@
 
 use crate::app::App;
 use crate::msg::ErrorToast;
-use crate::state::{Overlay, SessionPickerOverlay};
+use crate::state::{ControlMutationStatus, Overlay, SessionPickerOverlay};
 
 pub(crate) fn handle_tab_new(app: &mut App) {
     app.layout.overlay = Some(Overlay::SessionPicker(SessionPickerOverlay {
         cursor: 0,
         show_archived: false,
+        new_session_status: ControlMutationStatus::Idle,
     }));
 }
 

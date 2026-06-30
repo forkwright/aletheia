@@ -24,6 +24,24 @@ pub enum OpsToolStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub(crate) enum ToolCategory {
+    /// Filesystem/workspace operations from server metadata.
+    Workspace,
+    /// Memory operations from server metadata.
+    Memory,
+    /// Messaging and cross-agent communication from server metadata.
+    Communication,
+    /// Planning and deliberation from server metadata.
+    Planning,
+    /// System/configuration operations from server metadata.
+    System,
+    /// Agent coordination from server metadata.
+    Agent,
+    /// Web research and retrieval from server metadata.
+    Research,
+    /// External domain pack tools from server metadata.
+    Domain,
+    /// Provider-side server tools.
+    Server,
     /// File reads: read_file, glob, grep, etc.
     Read,
     /// File writes: write_file, edit_file, notebook_edit, etc.
@@ -41,6 +59,15 @@ pub(crate) enum ToolCategory {
 impl std::fmt::Display for ToolCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Workspace => write!(f, "workspace"),
+            Self::Memory => write!(f, "memory"),
+            Self::Communication => write!(f, "communication"),
+            Self::Planning => write!(f, "planning"),
+            Self::System => write!(f, "system"),
+            Self::Agent => write!(f, "agent"),
+            Self::Research => write!(f, "research"),
+            Self::Domain => write!(f, "domain"),
+            Self::Server => write!(f, "server"),
             Self::Read => write!(f, "read"),
             Self::Write => write!(f, "write"),
             Self::Search => write!(f, "search"),
@@ -56,6 +83,15 @@ impl ToolCategory {
     #[must_use]
     pub(crate) fn icon(self) -> &'static str {
         match self {
+            Self::Workspace => "≡",
+            Self::Memory => "⊙",
+            Self::Communication => "↔",
+            Self::Planning => "◈",
+            Self::System => "⚙",
+            Self::Agent => "⊛",
+            Self::Research => "⊕",
+            Self::Domain => "○",
+            Self::Server => "◆",
             Self::Read => "←",
             Self::Write => "→",
             Self::Search => "⊛",
@@ -69,6 +105,15 @@ impl ToolCategory {
     #[must_use]
     pub(crate) fn display_name(self) -> &'static str {
         match self {
+            Self::Workspace => "workspace",
+            Self::Memory => "memory",
+            Self::Communication => "communication",
+            Self::Planning => "planning",
+            Self::System => "system",
+            Self::Agent => "agent",
+            Self::Research => "research",
+            Self::Domain => "domain",
+            Self::Server => "server",
             Self::Read => "read",
             Self::Write => "write",
             Self::Search => "search",
@@ -89,6 +134,49 @@ impl ToolCategory {
     pub(crate) fn is_destructive(self) -> bool {
         matches!(self, Self::Exec | Self::Write)
     }
+}
+
+/// Risk level used to style tool cards independently of category.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ToolRisk {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl ToolRisk {
+    /// Whether this risk level represents a side-effecting/destructive operation.
+    #[must_use]
+    pub(crate) fn is_destructive(self) -> bool {
+        matches!(self, Self::High | Self::Critical)
+    }
+
+    /// Human-readable display label.
+    #[must_use]
+    pub(crate) fn display_name(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Critical => "critical",
+        }
+    }
+}
+
+/// Server-owned metadata used to render tool category, risk, and policy state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ToolMetadata {
+    pub(crate) category: ToolCategory,
+    pub(crate) risk: ToolRisk,
+    pub(crate) reversibility: Option<String>,
+    pub(crate) approval: Option<String>,
+    pub(crate) requires_approval: bool,
+    pub(crate) destructive: bool,
+    pub(crate) source_plane: Option<String>,
+    pub(crate) policy_state: Option<String>,
+    pub(crate) unavailable_reason: Option<String>,
+    pub(crate) verified: bool,
 }
 
 /// Auto-show behavior configuration.
@@ -118,6 +206,10 @@ pub(crate) struct OpsToolCall {
     pub(crate) error_message: Option<String>,
     /// Tool category for KPI grouping.
     pub(crate) category: ToolCategory,
+    /// Risk level used for card styling.
+    pub(crate) risk: ToolRisk,
+    /// Server-owned metadata, or an explicit unverified fallback.
+    pub(crate) metadata: ToolMetadata,
     /// Wall-clock start time for elapsed display in running tools.
     pub(crate) started_at: std::time::Instant,
 }

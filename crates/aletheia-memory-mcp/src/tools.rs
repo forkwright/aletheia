@@ -10,12 +10,14 @@
 //! never accepted as a model-visible tool argument.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 use snafu::ResultExt as _;
 
 use mneme::engine::DataValue;
@@ -83,6 +85,9 @@ pub struct NousStatsParams {
     /// Optional maximum sensitivity filter.
     #[serde(default)]
     pub max_sensitivity: Option<String>,
+    /// Include the full local store path when admin diagnostics are enabled.
+    #[serde(default)]
+    pub include_store_path: Option<bool>,
 }
 
 /// Parameters for `nous_neighbors`.
@@ -156,6 +161,35 @@ pub struct NousForgetParams {
 const DEFAULT_SEARCH_LIMIT: usize = 20;
 /// Cap on per-call result size to avoid unbounded payloads.
 const MAX_SEARCH_LIMIT: usize = 200;
+
+fn opaque_store_id(store_path: Option<&Path>) -> String {
+    let Some(store_path) = store_path else {
+        return "store:memory:ephemeral".to_owned();
+    };
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"aletheia-memory-mcp/store-path/v1");
+    hasher.update(store_path.to_string_lossy().as_bytes());
+    let digest = hasher.finalize();
+    format!("store:sha256:{}", hex_digest(&digest))
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        hex.push(hex_nibble(byte >> 4));
+        hex.push(hex_nibble(byte & 0x0f));
+    }
+    hex
+}
+
+fn hex_nibble(nibble: u8) -> char {
+    match nibble {
+        0..=9 => char::from(b'0' + nibble),
+        10..=15 => char::from(b'a' + (nibble - 10)),
+        _ => '?',
+    }
+}
 
 /// Parse an optional memory-scope filter string.
 fn parse_scope(raw: Option<&str>) -> crate::error::Result<Option<mneme::knowledge::MemoryScope>> {
@@ -915,9 +949,10 @@ impl MemoryServer {
     /// Health and scale stats for the knowledge store backing this server.
     ///
     /// Returns total active fact count, distinct topic count, schema version,
-    /// the on-disk path (when opened from disk), and the most recent
+    /// an opaque store id, backend/readiness metadata, and the most recent
     /// `recorded_at` timestamp across active facts visible to the requesting
-    /// `nous_id` — the "last updated" signal.
+    /// `nous_id` — the "last updated" signal. Full store paths are redacted
+    /// unless admin diagnostics are enabled server-side and the caller opts in.
     ///
     /// # Example
     ///
@@ -930,7 +965,7 @@ impl MemoryServer {
     #[tool(
         name = "nous_stats",
         description = "Return health stats for the aletheia nous local knowledge store, scoped to the requesting nous; not kanon mnemosyne's durable corpus: fact count, topic count, \
-                       schema version, store path, and last updated timestamp."
+                       schema version, opaque store id, backend/readiness, and last updated timestamp."
     )]
     async fn nous_stats(
         &self,
@@ -940,7 +975,19 @@ impl MemoryServer {
         // identity, not to any model-supplied argument.
         let requester = self.requester_nous_id()?.to_owned();
 
-        let store_path = self.store_path.as_ref().map(|p| p.display().to_string());
+        let store_id = opaque_store_id(self.store_path.as_deref());
+        let store_backend = if self.store_path.is_some() {
+            "fjall"
+        } else {
+            "memory"
+        };
+        let include_store_path = params.include_store_path.unwrap_or(false);
+        let exposed_store_path = if include_store_path && self.admin_diagnostics {
+            self.store_path.as_ref().map(|p| p.display().to_string())
+        } else {
+            None
+        };
+        let store_path_redacted = self.store_path.is_some() && exposed_store_path.is_none();
         let project_id = params.project_id.clone().filter(|s| !s.is_empty());
         let scope = parse_scope(params.scope.as_deref())?;
         let min_visibility = parse_visibility(params.min_visibility.as_deref())?;
@@ -1006,15 +1053,28 @@ impl MemoryServer {
             .map_err(rmcp::ErrorData::from)?;
 
         let (fact_count, topic_count, last_updated, schema_version) = stats;
-        let json = serde_json::to_string_pretty(&serde_json::json!({
-            "fact_count": fact_count,
-            "topic_count": topic_count,
-            "schema_version": schema_version,
-            "store_path": store_path,
-            "last_updated": last_updated,
-        }))
-        .context(SerializationSnafu)
-        .map_err(rmcp::ErrorData::from)?;
+        let mut payload = serde_json::Map::new();
+        payload.insert("fact_count".to_owned(), serde_json::json!(fact_count));
+        payload.insert("topic_count".to_owned(), serde_json::json!(topic_count));
+        payload.insert(
+            "schema_version".to_owned(),
+            serde_json::json!(schema_version),
+        );
+        payload.insert("store_id".to_owned(), serde_json::json!(store_id));
+        payload.insert("store_backend".to_owned(), serde_json::json!(store_backend));
+        payload.insert("readiness".to_owned(), serde_json::json!("ready"));
+        payload.insert(
+            "store_path_redacted".to_owned(),
+            serde_json::json!(store_path_redacted),
+        );
+        if let Some(store_path) = exposed_store_path {
+            payload.insert("store_path".to_owned(), serde_json::json!(store_path));
+        }
+        payload.insert("last_updated".to_owned(), serde_json::json!(last_updated));
+
+        let json = serde_json::to_string_pretty(&serde_json::Value::Object(payload))
+            .context(SerializationSnafu)
+            .map_err(rmcp::ErrorData::from)?;
 
         Ok(CallToolResult::success(vec![rmcp::model::Content::text(
             json,
@@ -1955,6 +2015,7 @@ mod tests {
             scope: None,
             min_visibility: None,
             max_sensitivity: None,
+            include_store_path: None,
         };
         let result = server.nous_stats(Parameters(params)).await.unwrap();
         let text = result
@@ -1968,6 +2029,146 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["fact_count"], 1, "alice should count only her fact");
         assert_eq!(parsed["topic_count"], 1);
+    }
+
+    #[tokio::test]
+    async fn stats_redacts_store_path_by_default() {
+        let store = open_store();
+        let raw_path = std::path::PathBuf::from("/tmp/alice/private/knowledge.fjall/shared");
+        let server = MemoryServer::with_write_token(store, Some(raw_path), None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousStatsParams {
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            include_store_path: None,
+        };
+
+        let result = server.nous_stats(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+
+        assert!(
+            parsed.get("store_path").is_none(),
+            "default stats response must not include raw store_path: {text}"
+        );
+        assert!(
+            !text.contains("/tmp/alice") && !text.contains("knowledge.fjall"),
+            "default stats response leaked path details: {text}"
+        );
+        assert_eq!(
+            parsed
+                .get("store_path_redacted")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            parsed
+                .get("store_backend")
+                .and_then(serde_json::Value::as_str),
+            Some("fjall")
+        );
+        assert_eq!(
+            parsed.get("readiness").and_then(serde_json::Value::as_str),
+            Some("ready")
+        );
+        let store_id = parsed
+            .get("store_id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap();
+        assert!(
+            store_id.starts_with("store:sha256:"),
+            "store id should be an opaque fingerprint: {store_id}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stats_exposes_store_path_only_in_admin_diagnostics() {
+        let store = open_store();
+        let raw_path = std::path::PathBuf::from("/tmp/alice/private/knowledge.fjall/shared");
+        let server =
+            MemoryServer::with_write_token(store, Some(raw_path.clone()), Some("a".repeat(32)))
+                .with_admin_diagnostics(true)
+                .with_nous_id(Some("alice".to_owned()));
+        let params = NousStatsParams {
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            include_store_path: Some(true),
+        };
+
+        let result = server.nous_stats(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let expected_path = raw_path.to_string_lossy();
+
+        assert_eq!(
+            parsed.get("store_path").and_then(serde_json::Value::as_str),
+            Some(expected_path.as_ref())
+        );
+        assert_eq!(
+            parsed
+                .get("store_path_redacted")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[tokio::test]
+    async fn stats_ignores_store_path_request_without_admin_diagnostics() {
+        let store = open_store();
+        let raw_path = std::path::PathBuf::from("/tmp/alice/private/knowledge.fjall/shared");
+        let server = MemoryServer::with_write_token(store, Some(raw_path), Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousStatsParams {
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            include_store_path: Some(true),
+        };
+
+        let result = server.nous_stats(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+
+        assert!(
+            parsed.get("store_path").is_none(),
+            "store_path request must be ignored without admin diagnostics: {text}"
+        );
+        assert!(
+            !text.contains("/tmp/alice") && !text.contains("knowledge.fjall"),
+            "store_path request leaked path details without admin diagnostics: {text}"
+        );
+        assert_eq!(
+            parsed
+                .get("store_path_redacted")
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
     }
 
     #[tokio::test]

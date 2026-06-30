@@ -99,6 +99,8 @@ mod tests {
     use super::*;
 
     const MINIMAL_XLSX: &[u8] = b"PK\x03\x04";
+    const NAMED_ENTITY_TEXT: &str = r"A &amp; B &lt; C &gt; D &apos;Q&apos; &quot;R&quot; &#x2019;";
+    const NUMERIC_ENTITY_TEXT: &str = r"A &#38; B &#60; C &#62; D &#39;Q&#39; &#34;R&#34; &#8217;";
 
     #[test]
     fn truncated_zip_bytes_return_error_for_workbooks() {
@@ -110,6 +112,114 @@ mod tests {
     fn truncated_zip_bytes_return_error_for_presentations() {
         let result = diff_presentations(MINIMAL_XLSX, MINIMAL_XLSX);
         assert!(result.is_err(), "incomplete ZIP should not parse as PPTX");
+    }
+
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn xlsx_with_shared_string(encoded_text: &str) -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        const WORKBOOK: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>"#;
+
+        const SHEET1: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c></row>
+  </sheetData>
+</worksheet>"#;
+
+        let shared_strings = format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1">
+  <si><t>{encoded_text}</t></si>
+</sst>"#
+        );
+
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+        zip.start_file("xl/workbook.xml", options)
+            .expect("start workbook.xml");
+        zip.write_all(WORKBOOK.as_bytes())
+            .expect("write workbook.xml");
+
+        zip.start_file("xl/sharedStrings.xml", options)
+            .expect("start sharedStrings.xml");
+        zip.write_all(shared_strings.as_bytes())
+            .expect("write sharedStrings.xml");
+
+        zip.start_file("xl/worksheets/sheet1.xml", options)
+            .expect("start sheet1.xml");
+        zip.write_all(SHEET1.as_bytes()).expect("write sheet1.xml");
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn pptx_with_slide_text(encoded_text: &str) -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        let slide = format!(
+            r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:sp><p:txBody><a:p><a:r><a:t>{encoded_text}</a:t></a:r></a:p></p:txBody></p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>"#
+        );
+
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+        zip.start_file("ppt/slides/slide1.xml", options)
+            .expect("start slide1.xml");
+        zip.write_all(slide.as_bytes()).expect("write slide1.xml");
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_workbooks_ignores_equivalent_xml_entity_encodings() {
+        let named = xlsx_with_shared_string(NAMED_ENTITY_TEXT);
+        let numeric = xlsx_with_shared_string(NUMERIC_ENTITY_TEXT);
+
+        let diffs = diff_workbooks(&named, &numeric).expect("diff must succeed");
+
+        assert!(
+            diffs.is_empty(),
+            "equivalent XML entity encodings must not produce diffs, got: {diffs:?}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_presentations_ignores_equivalent_xml_entity_encodings() {
+        let named = pptx_with_slide_text(NAMED_ENTITY_TEXT);
+        let numeric = pptx_with_slide_text(NUMERIC_ENTITY_TEXT);
+
+        let diffs = diff_presentations(&named, &numeric).expect("diff must succeed");
+
+        assert!(
+            diffs.is_empty(),
+            "equivalent XML entity encodings must not produce diffs, got: {diffs:?}"
+        );
     }
 
     #[test]

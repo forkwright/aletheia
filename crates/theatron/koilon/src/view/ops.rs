@@ -299,9 +299,9 @@ fn render_tool_call(
     };
 
     let icon = tc.category.icon();
-    let icon_style = if tc.category.is_destructive() {
+    let icon_style = if tc.risk.is_destructive() {
         theme.style_error()
-    } else if tc.category.is_read_only() {
+    } else if matches!(tc.risk.display_name(), "low") {
         theme.style_dim()
     } else {
         theme.style_muted()
@@ -323,6 +323,25 @@ fn render_tool_call(
         header.push(Span::styled(format!(" {arg}"), theme.style_muted()));
     }
 
+    if tc.metadata.verified {
+        if let Some(ref approval) = tc.metadata.approval {
+            header.push(Span::styled(
+                format!(" approval:{approval}"),
+                theme.style_dim(),
+            ));
+        } else {
+            header.push(Span::styled(
+                format!(" risk:{}", tc.risk.display_name()),
+                theme.style_dim(),
+            ));
+        }
+    } else {
+        header.push(Span::styled(
+            " unverified metadata".to_string(),
+            theme.style_error(),
+        ));
+    }
+
     if let Some(ref dur) = duration_str {
         header.push(Span::styled(dur.clone(), theme.style_dim()));
     }
@@ -337,6 +356,8 @@ fn render_tool_call(
     }
 
     if tc.expanded {
+        render_tool_metadata(tc, lines, theme);
+
         if let Some(ref input) = tc.input_json {
             lines.push(Line::from(vec![
                 Span::raw("   "),
@@ -407,6 +428,42 @@ fn render_tool_call(
     }
 }
 
+fn render_tool_metadata(
+    tc: &crate::state::ops::OpsToolCall,
+    lines: &mut Vec<Line<'static>>,
+    theme: &Theme,
+) {
+    let mut parts = Vec::new();
+    if tc.metadata.verified {
+        parts.push(format!("category={}", tc.category.display_name()));
+        parts.push(format!("risk={}", tc.risk.display_name()));
+        if let Some(ref approval) = tc.metadata.approval {
+            parts.push(format!("approval={approval}"));
+        }
+        if let Some(ref reversibility) = tc.metadata.reversibility {
+            parts.push(format!("reversibility={reversibility}"));
+        }
+        if let Some(ref source) = tc.metadata.source_plane {
+            parts.push(format!("source={source}"));
+        }
+        if let Some(ref policy) = tc.metadata.policy_state {
+            parts.push(format!("policy={policy}"));
+        }
+        if let Some(ref reason) = tc.metadata.unavailable_reason {
+            parts.push(format!("unavailable={reason}"));
+        }
+    } else {
+        parts.push("unverified metadata fallback".to_owned());
+        parts.push(format!("category={}", tc.category.display_name()));
+        parts.push(format!("risk={}", tc.risk.display_name()));
+    }
+
+    lines.push(Line::from(vec![
+        Span::raw("   "),
+        Span::styled(format!("metadata: {}", parts.join(" ")), theme.style_dim()),
+    ]));
+}
+
 fn render_diff(
     diff: &crate::state::ops::OpsDiffEntry,
     lines: &mut Vec<Line<'static>>,
@@ -440,6 +497,15 @@ fn render_diff(
 
 /// Category display order for consistent KPI rendering.
 const CATEGORY_ORDER: &[ToolCategory] = &[
+    ToolCategory::Workspace,
+    ToolCategory::Memory,
+    ToolCategory::Communication,
+    ToolCategory::Planning,
+    ToolCategory::System,
+    ToolCategory::Agent,
+    ToolCategory::Research,
+    ToolCategory::Domain,
+    ToolCategory::Server,
     ToolCategory::Read,
     ToolCategory::Write,
     ToolCategory::Search,

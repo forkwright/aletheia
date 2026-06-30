@@ -1,5 +1,6 @@
 use crate::api::types::Session;
 use crate::id::NousId;
+use crate::state::ops::ToolMetadata;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -19,13 +20,10 @@ pub struct ActiveTool {
 
 /// An available tool and its current enablement state.
 #[derive(Debug, Clone)]
-#[expect(
-    dead_code,
-    reason = "name is stored for future tool-detail display; only enabled is read by the status bar indicator"
-)]
 pub struct ToolSummary {
     pub name: String,
     pub enabled: bool,
+    pub metadata: ToolMetadata,
 }
 
 #[derive(Debug, Clone)]

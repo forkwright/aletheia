@@ -6,16 +6,18 @@
 //! 3. Persists the assistant's response
 //! 4. Records token usage
 //!
-//! WHY: graphe commits each append in its own fjall transaction, so finalize
-//! records a durable turn-attempt note keyed by the canonical turn id. A
-//! `Completed` note short-circuits retries, making finalization idempotent
-//! across messages and usage records.
+//! WHY: finalize writes the turn payload and terminal lifecycle marker through
+//! graphe's batched `finalize_turn` transaction. A retry can therefore observe
+//! either a pending marker with no committed turn payload or a completed marker
+//! with the whole turn, never a durable message prefix that gets appended again.
 
 use koina::ulid::Ulid;
 use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
 
-use mneme::store::SessionStore;
+use mneme::store::{
+    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore,
+};
 use mneme::types::{Role, UsageRecord};
 
 use crate::error;
@@ -117,6 +119,158 @@ fn format_assistant_content(content: &str, stop_reason: &str) -> String {
     }
 }
 
+struct PendingFinalizeMessage<'a> {
+    role: Role,
+    content: String,
+    tool_call_id: Option<&'a str>,
+    tool_name: Option<&'a str>,
+    token_estimate: i64,
+}
+
+fn token_count_to_i64(tokens: u64) -> i64 {
+    i64::try_from(tokens).unwrap_or(i64::MAX)
+}
+
+fn input_token_estimate(content: &str) -> i64 {
+    let len = i64::try_from(content.len()).unwrap_or(i64::MAX - 3);
+    len.saturating_add(3) / 4
+}
+
+fn build_finalize_messages<'a>(
+    input_content: &str,
+    result: &'a TurnResult,
+    persist_messages: bool,
+) -> Vec<PendingFinalizeMessage<'a>> {
+    if !persist_messages {
+        return Vec::new();
+    }
+
+    let mut messages = Vec::with_capacity(2 + result.tool_calls.len().saturating_mul(2));
+    messages.push(PendingFinalizeMessage {
+        role: Role::User,
+        content: input_content.to_owned(),
+        tool_call_id: None,
+        tool_name: None,
+        token_estimate: input_token_estimate(input_content),
+    });
+
+    for tc in &result.tool_calls {
+        let input_json = serde_json::to_string(&tc.input).unwrap_or_else(|e| {
+            warn!(error = %e, tool = %tc.name, "failed to serialize tool call input");
+            String::new()
+        });
+        messages.push(PendingFinalizeMessage {
+            role: Role::Assistant,
+            content: input_json,
+            tool_call_id: Some(&tc.id),
+            tool_name: Some(&tc.name),
+            token_estimate: 0,
+        });
+
+        let tool_output = tc.result.as_deref().unwrap_or("[missing tool result]");
+        let compact_tagged_output = crate::compact::micro::format_tool_result(
+            &tc.name,
+            jiff::Timestamp::now(),
+            tool_output,
+        );
+        messages.push(PendingFinalizeMessage {
+            role: Role::ToolResult,
+            content: compact_tagged_output,
+            tool_call_id: Some(&tc.id),
+            tool_name: Some(&tc.name),
+            token_estimate: 0,
+        });
+    }
+
+    messages.push(PendingFinalizeMessage {
+        role: Role::Assistant,
+        content: format_assistant_content(&result.content, &result.stop_reason),
+        tool_call_id: None,
+        tool_name: None,
+        token_estimate: token_count_to_i64(result.usage.output_tokens),
+    });
+    messages
+}
+
+fn tool_outcome(is_error: bool) -> &'static str {
+    if is_error { "error" } else { "success" }
+}
+
+fn build_tool_audit_records(
+    result: &TurnResult,
+    persist_messages: bool,
+    turn_seq: i64,
+) -> Vec<FinalizeToolAuditRecord<'_>> {
+    if !persist_messages {
+        return Vec::new();
+    }
+
+    result
+        .tool_calls
+        .iter()
+        .map(|tc| FinalizeToolAuditRecord {
+            turn_seq,
+            tool_call_id: tc.id.as_str(),
+            tool_name: tc.name.as_str(),
+            duration_ms: tc.duration_ms,
+            is_error: tc.is_error,
+            outcome: tool_outcome(tc.is_error),
+            result: tc.result.as_deref(),
+            approval: tc.approval.as_deref(),
+            receipt: tc.receipt.as_deref(),
+        })
+        .collect()
+}
+
+fn usage_record(session: &SessionState, result: &TurnResult, turn_seq: i64) -> UsageRecord {
+    UsageRecord {
+        session_id: session.id.clone(),
+        turn_seq,
+        input_tokens: token_count_to_i64(result.usage.input_tokens),
+        output_tokens: token_count_to_i64(result.usage.output_tokens),
+        cache_read_tokens: token_count_to_i64(result.usage.cache_read_tokens),
+        cache_write_tokens: token_count_to_i64(result.usage.cache_write_tokens),
+        model: Some(result.model_used.clone()),
+    }
+}
+
+fn terminal_status_for_result(result: &TurnResult) -> TurnAttemptStatus {
+    match result.degraded {
+        Some(
+            crate::pipeline::DegradedMode::DistillationCache { .. }
+            | crate::pipeline::DegradedMode::Unavailable { .. },
+        ) => TurnAttemptStatus::Degraded,
+        Some(crate::pipeline::DegradedMode::TurnBudgetExceeded { .. }) | None => {
+            TurnAttemptStatus::Completed
+        }
+    }
+}
+
+fn turn_attempt_record(
+    session: &SessionState,
+    result: &TurnResult,
+    status: TurnAttemptStatus,
+    expected_messages: usize,
+    messages_persisted: Option<usize>,
+) -> TurnAttemptRecord {
+    let mut record =
+        TurnAttemptRecord::new(&session.turn_id, &session.id, &session.nous_id, status);
+    record.model = Some(result.model_used.clone());
+    record.degraded_provenance = result
+        .degraded
+        .as_ref()
+        .and_then(crate::pipeline::DegradedMode::provenance)
+        .cloned();
+    record.expected_messages = Some(expected_messages);
+    record.messages_persisted = messages_persisted;
+    if status == TurnAttemptStatus::FinalizePending {
+        record.user_content_saved = Some(false);
+    } else if status.is_terminal() {
+        record.user_content_saved = Some(messages_persisted.is_some_and(|count| count > 0));
+    }
+    record
+}
+
 /// Persist turn results to the session store.
 ///
 /// Errors from the store are propagated but callers should treat them as
@@ -124,15 +278,10 @@ fn format_assistant_content(content: &str, stop_reason: &str) -> String {
 ///
 /// # Session guarantee
 ///
-/// The nous actor creates sessions in memory (not in the fjall store). Before
-/// appending messages we verify the session record exists in the store,
-/// avoiding a FOREIGN KEY constraint violation on the `messages` table.
-// NOTE(#940): 120 lines: sequential persistence pipeline: persist assistant message,
-// store tool results, update session, emit events. One cohesive commit sequence.
-#[expect(
-    clippy::too_many_lines,
-    reason = "sequential persist pipeline with dedup guard adds a few lines over the limit"
-)]
+/// The nous actor creates sessions in memory (not in the fjall store). We
+/// create the session row before the pending lifecycle note, then include the
+/// row again in the batched finalize transaction so message, usage, and
+/// completion writes share one commit.
 #[instrument(skip_all, fields(session_id = %session.id))]
 pub(crate) fn finalize(
     store: &SessionStore,
@@ -147,11 +296,28 @@ pub(crate) fn finalize(
     // usage_exists_for_turn guard remains for backward compatibility with
     // turns finalized before the turn-attempt note protocol.
     let turn_seq = turn_seq_from_ulid(&session.turn_id);
-    let already_finalized = store
+    let usage_exists = store
         .usage_exists_for_turn(&session.id, turn_seq)
-        .context(error::StoreSnafu)?
-        || crate::turn_record::is_turn_completed(store, &session.id, &session.turn_id)?;
-    if already_finalized {
+        .context(error::StoreSnafu)?;
+    let terminal_status = terminal_status_for_result(result);
+    let terminal_exists =
+        crate::turn_record::is_turn_terminal(store, &session.id, &session.turn_id)?;
+    if usage_exists || terminal_exists {
+        if usage_exists && !terminal_exists {
+            let expected_messages = if config.persist_messages {
+                2 + result.tool_calls.len().saturating_mul(2)
+            } else {
+                0
+            };
+            let completed = turn_attempt_record(
+                session,
+                result,
+                terminal_status,
+                expected_messages,
+                Some(expected_messages),
+            );
+            crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
+        }
         warn!(
             turn = session.turn,
             turn_id = %session.turn_id,
@@ -160,9 +326,13 @@ pub(crate) fn finalize(
         return Ok(FinalizeResult::new(0, false));
     }
 
-    // WHY: ensure session row exists before child messages: FK constraint on messages table would otherwise fail.
-    // The session row keeps the configured default model; per-turn usage and
-    // lifecycle records below use `result.model_used`, which is the observed model.
+    let pending_messages = build_finalize_messages(input_content, result, config.persist_messages);
+    let pending_tool_audit_records =
+        build_tool_audit_records(result, config.persist_messages, turn_seq);
+    let expected_messages = pending_messages.len();
+
+    // WHY: ensure the session row exists before the pending note; the batched
+    // store call below still owns the atomic turn payload write.
     store
         .find_or_create_session(
             &session.id,
@@ -173,118 +343,93 @@ pub(crate) fn finalize(
         )
         .context(error::StoreSnafu)?;
 
-    let mut pending = TurnAttemptRecord::new(
-        &session.turn_id,
-        &session.id,
-        &session.nous_id,
+    let pending = turn_attempt_record(
+        session,
+        result,
         TurnAttemptStatus::FinalizePending,
+        expected_messages,
+        Some(0),
     );
-    pending.model = Some(result.model_used.clone());
     crate::turn_record::persist_turn_attempt(store, &session.nous_id, &pending)?;
+    #[cfg(test)]
+    test_failure_injection::maybe_fail_after_pending()?;
 
-    let mut messages_persisted = 0usize;
-
-    if config.persist_messages {
-        #[expect(
-            clippy::cast_possible_wrap,
-            clippy::as_conversions,
-            reason = "usize→i64: message length fits in i64"
-        )]
-        let input_token_estimate = (input_content.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast
-        store
-            .append_message(
-                &session.id,
-                Role::User,
-                input_content,
-                None,
-                None,
-                input_token_estimate,
-            )
-            .context(error::StoreSnafu)?;
-        messages_persisted += 1;
-
-        for tc in &result.tool_calls {
-            let input_json = serde_json::to_string(&tc.input).unwrap_or_else(|e| {
-                warn!(error = %e, tool = %tc.name, "failed to serialize tool call input");
-                String::new()
-            });
-            store
-                .append_message(
-                    &session.id,
-                    Role::Assistant,
-                    &input_json,
-                    Some(&tc.id),
-                    Some(&tc.name),
-                    0,
-                )
-                .context(error::StoreSnafu)?;
-            messages_persisted += 1;
-
-            let tool_output = tc.result.as_deref().unwrap_or("[missing tool result]");
-            let compact_tagged_output = crate::compact::micro::format_tool_result(
-                &tc.name,
-                jiff::Timestamp::now(),
-                tool_output,
-            );
-            store
-                .append_message(
-                    &session.id,
-                    Role::ToolResult,
-                    &compact_tagged_output,
-                    Some(&tc.id),
-                    Some(&tc.name),
-                    0,
-                )
-                .context(error::StoreSnafu)?;
-            messages_persisted += 1;
-        }
-
-        let output_tokens = i64::try_from(result.usage.output_tokens).unwrap_or(0);
-        let assistant_content = format_assistant_content(&result.content, &result.stop_reason);
-        store
-            .append_message(
-                &session.id,
-                Role::Assistant,
-                &assistant_content,
-                None,
-                None,
-                output_tokens,
-            )
-            .context(error::StoreSnafu)?;
-        messages_persisted += 1;
-    }
-
-    let mut usage_recorded = false;
-    if config.record_usage {
-        #[expect(
-            clippy::cast_possible_wrap,
-            clippy::as_conversions,
-            reason = "u64→i64: token counts fit in i64"
-        )]
-        let record = UsageRecord {
-            session_id: session.id.clone(),
-            turn_seq,
-            input_tokens: result.usage.input_tokens as i64, // kanon:ignore RUST/as-cast
-            output_tokens: result.usage.output_tokens as i64, // kanon:ignore RUST/as-cast
-            cache_read_tokens: result.usage.cache_read_tokens as i64, // kanon:ignore RUST/as-cast
-            cache_write_tokens: result.usage.cache_write_tokens as i64, // kanon:ignore RUST/as-cast
-            model: Some(result.model_used.clone()),
-        };
-        store.record_usage(&record).context(error::StoreSnafu)?;
-        usage_recorded = true;
-    }
-
-    let mut completed = TurnAttemptRecord::new(
-        &session.turn_id,
-        &session.id,
-        &session.nous_id,
-        TurnAttemptStatus::Completed,
+    let finalize_messages: Vec<FinalizeMessage<'_>> = pending_messages
+        .iter()
+        .map(|msg| FinalizeMessage {
+            role: msg.role,
+            content: msg.content.as_str(),
+            tool_call_id: msg.tool_call_id,
+            tool_name: msg.tool_name,
+            token_estimate: msg.token_estimate,
+        })
+        .collect();
+    let usage = config
+        .record_usage
+        .then(|| usage_record(session, result, turn_seq));
+    let completed = turn_attempt_record(
+        session,
+        result,
+        terminal_status,
+        expected_messages,
+        Some(expected_messages),
     );
-    completed.model = Some(result.model_used.clone());
-    crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
+    let completed_content = crate::turn_record::serialize_turn_attempt(&completed)?;
 
-    debug!(messages_persisted, usage_recorded, "finalize complete");
-    Ok(FinalizeResult::new(messages_persisted, usage_recorded))
+    let finalized = store
+        .finalize_turn(&FinalizeTurnRequest {
+            session_id: &session.id,
+            nous_id: &session.nous_id,
+            session_key: &session.session_key,
+            model: Some(&session.model),
+            parent_session_id: None,
+            messages: &finalize_messages,
+            usage: usage.as_ref(),
+            tool_audit_records: &pending_tool_audit_records,
+            completion_note: Some(FinalizeNote {
+                category: crate::turn_record::TURN_NOTE_CATEGORY,
+                content: &completed_content,
+            }),
+        })
+        .context(error::StoreSnafu)?;
+
+    debug!(
+        messages_persisted = finalized.messages_persisted,
+        usage_recorded = finalized.usage_recorded,
+        "finalize complete"
+    );
+    Ok(FinalizeResult::new(
+        finalized.messages_persisted,
+        finalized.usage_recorded,
+    ))
+}
+
+#[cfg(test)]
+mod test_failure_injection {
+    use std::cell::Cell;
+
+    use crate::error;
+
+    thread_local! {
+        static FAIL_AFTER_PENDING: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub(super) fn fail_after_pending() {
+        FAIL_AFTER_PENDING.with(|cell| cell.set(true));
+    }
+
+    pub(super) fn maybe_fail_after_pending() -> error::Result<()> {
+        FAIL_AFTER_PENDING.with(|cell| {
+            if !cell.replace(false) {
+                return Ok(());
+            }
+            Err(error::PipelineStageSnafu {
+                stage: "finalize",
+                message: "injected failure after pending marker".to_owned(),
+            }
+            .build())
+        })
+    }
 }
 
 #[expect(
@@ -298,6 +443,9 @@ mod tests {
 
     use super::*;
     use crate::config::NousConfig;
+    use crate::degraded_mode::{
+        DegradationSource, DegradedAttemptContext, build_degraded_response_with_provenance,
+    };
     use crate::pipeline::{ToolCall, TurnUsage};
 
     fn make_store_and_session() -> (SessionStore, SessionState) {
@@ -331,8 +479,36 @@ mod tests {
             degraded: None,
             reasoning: String::new(),
             model_used: "test-model".to_owned(),
+            provider_used: None,
             tool_surface_hashes: Vec::new(),
         }
+    }
+
+    fn llm_rate_limit_error() -> error::Error {
+        use hermeneus::error::RateLimitedSnafu;
+        use snafu::IntoError as _;
+
+        let hermeneus_err = RateLimitedSnafu {
+            retry_after_ms: 5000u64,
+        }
+        .build();
+        error::LlmSnafu.into_error(hermeneus_err)
+    }
+
+    fn degraded_result(recent_distillation: Option<&str>, source_id: Option<&str>) -> TurnResult {
+        let err = llm_rate_limit_error();
+        build_degraded_response_with_provenance(
+            "test-nous",
+            "ses-1",
+            &err,
+            recent_distillation,
+            DegradedAttemptContext {
+                attempted_provider: Some("anthropic".to_owned()),
+                configured_model: "configured-model".to_owned(),
+                routed_model: "routed-model".to_owned(),
+                source_id: source_id.map(str::to_owned),
+            },
+        )
     }
 
     fn result_with_tools() -> TurnResult {
@@ -345,6 +521,7 @@ mod tests {
                 result: Some("file contents here".to_owned()),
                 is_error: false,
                 duration_ms: 42,
+                approval: None,
                 receipt: None,
             }],
             usage: TurnUsage {
@@ -359,6 +536,7 @@ mod tests {
             degraded: None,
             reasoning: String::new(),
             model_used: "test-model".to_owned(),
+            provider_used: None,
             tool_surface_hashes: Vec::new(),
         }
     }
@@ -460,6 +638,73 @@ mod tests {
     }
 
     #[test]
+    fn finalize_persists_structured_tool_audit_records() {
+        let (store, session) = make_store_and_session();
+        let mut result = result_with_tools();
+        result.tool_calls = vec![
+            ToolCall {
+                id: "tc-failed".to_owned(),
+                name: "exec".to_owned(),
+                input: serde_json::json!({"cmd": "false"}),
+                result: Some("Tool error: failed".to_owned()),
+                is_error: true,
+                duration_ms: 17,
+                approval: Some("auto_approved".to_owned()),
+                receipt: None,
+            },
+            ToolCall {
+                id: "tc-approved".to_owned(),
+                name: "write_file".to_owned(),
+                input: serde_json::json!({"path": "/tmp/test.txt"}),
+                result: Some("ok".to_owned()),
+                is_error: false,
+                duration_ms: 29,
+                approval: Some("approved".to_owned()),
+                receipt: None,
+            },
+            ToolCall {
+                id: "tc-receipt".to_owned(),
+                name: "read_file".to_owned(),
+                input: serde_json::json!({"path": "/tmp/test.txt"}),
+                result: Some("file contents\n\n[receipt:receipt-token]".to_owned()),
+                is_error: false,
+                duration_ms: 31,
+                approval: Some("auto_approved".to_owned()),
+                receipt: Some("receipt-token".to_owned()),
+            },
+        ];
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Run tools", &result, &config).expect("finalize");
+
+        let audit = store
+            .recent_tool_audit_records(10)
+            .expect("tool audit records");
+        assert_eq!(audit.len(), 3);
+        let failed = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-failed")
+            .expect("failed call audit record");
+        assert!(failed.is_error);
+        assert_eq!(failed.outcome, "error");
+        assert_eq!(failed.result.as_deref(), Some("Tool error: failed"));
+
+        let approved = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-approved")
+            .expect("approved call audit record");
+        assert_eq!(approved.approval.as_deref(), Some("approved"));
+        assert!(!approved.is_error);
+
+        let receipt = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-receipt")
+            .expect("receipt call audit record");
+        assert_eq!(receipt.receipt.as_deref(), Some("receipt-token"));
+        assert_eq!(receipt.outcome, "success");
+    }
+
+    #[test]
     fn finalize_records_usage() {
         let (store, session) = make_store_and_session();
         let result = simple_result();
@@ -554,6 +799,94 @@ mod tests {
             crate::turn_record::TurnAttemptStatus::Completed
         );
         assert_eq!(records[1].model.as_deref(), Some("fallback-model"));
+    }
+
+    #[test]
+    fn finalize_persists_degraded_cache_terminal_provenance() {
+        let (store, session) = make_store_and_session();
+        let result = degraded_result(
+            Some("User prefers concise answers."),
+            Some("message:ses-1:7"),
+        );
+        let config = FinalizeConfig::default();
+
+        let fr = finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+        assert_eq!(fr.messages_persisted, 2);
+        assert!(fr.usage_recorded);
+
+        let history = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].role, Role::User);
+        assert!(history[1].content.contains("User prefers concise answers."));
+
+        let usage = store.get_usage_for_session("ses-1").expect("usage");
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].model.as_deref(), Some("routed-model"));
+        assert_eq!(usage[0].input_tokens, 0);
+        assert_eq!(usage[0].output_tokens, 0);
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].status, TurnAttemptStatus::FinalizePending);
+        assert_eq!(records[0].user_content_saved, Some(false));
+        assert_eq!(records[1].status, TurnAttemptStatus::Degraded);
+        assert_eq!(records[1].model.as_deref(), Some("routed-model"));
+        assert_eq!(records[1].user_content_saved, Some(true));
+        let provenance = records[1]
+            .degraded_provenance
+            .as_ref()
+            .expect("degraded provenance");
+        assert_eq!(provenance.attempted_provider.as_deref(), Some("anthropic"));
+        assert_eq!(provenance.attempted_model, "routed-model");
+        assert_eq!(provenance.configured_model, "configured-model");
+        assert_eq!(provenance.routed_model, "routed-model");
+        assert_eq!(
+            provenance.degradation_source,
+            DegradationSource::DistillationCache
+        );
+        assert_eq!(provenance.source_id.as_deref(), Some("message:ses-1:7"));
+        assert_eq!(provenance.original_error_class, "transient");
+        assert!(provenance.synthetic_response);
+        assert!(!provenance.provider_usage_recorded);
+
+        store
+            .cleanup_usage_records("ses-1", 0)
+            .expect("remove usage");
+        let duplicate =
+            finalize(&store, &session, "Hi again", &result, &config).expect("duplicate finalize");
+        assert_eq!(duplicate.messages_persisted, 0);
+        assert!(!duplicate.usage_recorded);
+        let history_after_duplicate = store.get_history("ses-1", None).expect("history");
+        assert_eq!(history_after_duplicate.len(), 2);
+    }
+
+    #[test]
+    fn finalize_persists_degraded_without_cache_terminal_provenance() {
+        let (store, session) = make_store_and_session();
+        let result = degraded_result(None, None);
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].status, TurnAttemptStatus::Degraded);
+        assert_eq!(records[1].user_content_saved, Some(true));
+        let provenance = records[1]
+            .degraded_provenance
+            .as_ref()
+            .expect("degraded provenance");
+        assert_eq!(
+            provenance.degradation_source,
+            DegradationSource::Unavailable
+        );
+        assert!(provenance.source_id.is_none());
+        assert_eq!(provenance.attempted_model, "routed-model");
+        assert!(!provenance.provider_usage_recorded);
     }
 
     #[test]
@@ -710,5 +1043,58 @@ mod tests {
 
         let history = store.get_history("ses-1", None).expect("history");
         assert_eq!(history.len(), 2);
+    }
+
+    #[test]
+    fn finalize_failure_after_pending_is_detectable_and_retry_does_not_duplicate() {
+        let (store, session) = make_store_and_session();
+        let result = simple_result();
+        let config = FinalizeConfig::default();
+
+        test_failure_injection::fail_after_pending();
+        let failed = finalize(&store, &session, "Hi", &result, &config);
+        assert!(failed.is_err(), "injected failure should abort finalize");
+
+        let history = store.get_history("ses-1", None).expect("history");
+        assert!(
+            history.is_empty(),
+            "failure before atomic finalize_turn should leave no messages"
+        );
+        let usage = store.get_usage_for_session("ses-1").expect("usage");
+        assert!(usage.is_empty(), "failed turn should not record usage");
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].status, TurnAttemptStatus::FinalizePending);
+        assert_eq!(records[0].messages_persisted, Some(0));
+        assert_eq!(records[0].expected_messages, Some(2));
+
+        let retried = finalize(&store, &session, "Hi", &result, &config).expect("retry finalize");
+        assert_eq!(retried.messages_persisted, 2);
+        assert!(retried.usage_recorded);
+
+        let history = store
+            .get_history("ses-1", None)
+            .expect("history after retry");
+        assert_eq!(history.len(), 2, "retry should write one clean turn");
+        let usage = store
+            .get_usage_for_session("ses-1")
+            .expect("usage after retry");
+        assert_eq!(usage.len(), 1);
+
+        let duplicate =
+            finalize(&store, &session, "Hi again", &result, &config).expect("duplicate finalize");
+        assert_eq!(duplicate.messages_persisted, 0);
+        assert!(!duplicate.usage_recorded);
+
+        let history = store
+            .get_history("ses-1", None)
+            .expect("history after duplicate");
+        assert_eq!(history.len(), 2, "duplicate retry must not append");
+        assert!(
+            crate::turn_record::is_turn_terminal(&store, &session.id, &session.turn_id)
+                .expect("terminal marker")
+        );
     }
 }

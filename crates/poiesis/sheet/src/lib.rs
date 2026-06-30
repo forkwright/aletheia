@@ -4,6 +4,7 @@
 //! Feature flags:
 //! - `xlsx` (default): Excel XLSX output via `rust_xlsxwriter`.
 //! - `ods` (default): `OpenDocument` Spreadsheet output via `spreadsheet-ods`.
+//! - `workbook` (default): themed workbook assembly; implies `xlsx`.
 
 #[cfg(feature = "xlsx")]
 pub mod error;

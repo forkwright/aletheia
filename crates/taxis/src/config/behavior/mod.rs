@@ -13,7 +13,7 @@ mod tools;
 mod tuning;
 
 pub use api::ApiLimitsConfig;
-pub use daemon::DaemonBehaviorConfig;
+pub use daemon::{DaemonBehaviorConfig, DaemonRunnerOutputMode};
 pub use dispatch::{CronTaskConfig, DispatchConfig, DispatchSpecConfig};
 pub use jwt::JwtSettings;
 pub use knowledge::{

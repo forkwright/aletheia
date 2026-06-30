@@ -22,6 +22,7 @@ const ROUTES: &[&str] = &[
     "/api/v1/sessions/{id}/name",
     "/api/v1/sessions/{id}/messages",
     "/api/v1/sessions/{id}/history",
+    "/api/v1/sessions/{id}/replay",
     "/api/v1/events",
     // nous
     "/api/v1/nous",

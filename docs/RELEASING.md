@@ -5,6 +5,22 @@
 Semantic Versioning. Pre-1.0, MINOR bumps may include breaking changes with documented migration. PATCH bumps are backwards-compatible.
 
 The canonical version lives in `Cargo.toml` at `[workspace.package].version`. All crates inherit it via `version.workspace = true`.
+`release-please-config.json`, `.release-please-manifest.json`, and
+`scripts/bump-version.sh` all treat that root workspace package version as the
+only release version owner.
+
+Run the release-versioning guard before changing manifests or release tooling:
+
+```bash
+scripts/check-release-versioning.py
+```
+
+The guard fails if a workspace member declares an accidental hardcoded package
+version, if release-please stops updating `[workspace.package].version`, or if
+the manual bump path no longer updates every declared version owner. A crate that
+must be versioned separately needs an explicit release manifest entry with the
+rationale, release owner, and CI enforcement before it can opt out of workspace
+version inheritance.
 
 ## Cargo publish policy
 
@@ -24,7 +40,8 @@ scripts/check-cargo-publish-policy.py
 1. Merge conventional-commit-formatted PRs to `main`
 2. [release-please](https://github.com/googleapis/release-please) opens a
    version-bump PR that updates `.release-please-manifest.json` and `Cargo.toml`
-3. Review and merge the release PR
+3. Review and merge the release PR after the normal PR gates pass. Release
+   automation does not receive a gate waiver by author identity.
 4. release-please creates a git tag (`vX.Y.Z`) and GitHub Release
 5. The tag triggers `.github/workflows/release.yml`:
    - Verifies proskenion's standalone theatron pins match the root workspace
@@ -163,7 +180,12 @@ Per-binary SBOMs are attested and scoped to the linked binary artifact. Workspac
 
 ## Supply chain
 
-- `cargo-audit` and `cargo-deny` run on every PR (`.github/workflows/security.yml`)
+- Automation PR gate and auto-merge policy is documented in
+  [AUTOMATION-PR-GATES.md](AUTOMATION-PR-GATES.md)
+- `cargo-audit` and `cargo-deny` run on every PR
+  (`.github/workflows/security.yml`). If private dependency credentials are
+  unavailable, the checks fail closed instead of reporting a green substitute
+  status.
 - CodeQL runs before merge through `.github/workflows/codeql-pr.yml` when a PR
   touches Rust source, Cargo manifests or lockfile, GitHub workflows,
   `.github/codeql/`, Dependabot config, `.github/SECURITY.md`, or

@@ -206,7 +206,7 @@ impl NousActor {
     pub(crate) fn new(
         id: String,
         config: NousConfig,
-        pipeline_config: PipelineConfig,
+        mut pipeline_config: PipelineConfig,
         inbox: mpsc::Receiver<NousMessage>,
         cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
         cross_tx: Option<mpsc::Sender<CrossNousEnvelope>>,
@@ -229,6 +229,13 @@ impl NousActor {
         router: Option<Arc<dyn Router>>,
         cross_router: Option<Arc<crate::cross::CrossNousRouter>>,
     ) -> Self {
+        let project_id = pipeline_config.project_id.clone();
+        if let Some(extraction) = pipeline_config.extraction.as_mut()
+            && extraction.project_id.is_none()
+        {
+            extraction.project_id = project_id;
+        }
+
         #[cfg(feature = "knowledge-store")]
         let skill_loader = knowledge_store
             .as_ref()
@@ -400,6 +407,7 @@ impl NousActor {
                         NousMessage::StreamingTurn {
                             session_key,
                             session_id,
+                            turn_id,
                             content,
                             stream_tx,
                             approval_gate,
@@ -418,6 +426,7 @@ impl NousActor {
                                 self.handle_streaming_turn(turn::StreamingTurnRequest {
                                     session_key,
                                     session_id,
+                                    turn_id,
                                     content,
                                     stream_tx,
                                     approval_gate,

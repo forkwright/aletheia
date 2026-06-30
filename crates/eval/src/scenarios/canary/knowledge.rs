@@ -3,23 +3,28 @@ use tracing::Instrument;
 
 use crate::client::EvalClient;
 use crate::scenario::{
-    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval, validate_response,
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval,
 };
 use crate::sse;
 
-/// Send technical description → verify fact extraction
+use super::support::{
+    assert_fact_provenance, assert_search_selected, fact_json, facts_for_marker, find_fact,
+    find_search_fact, first_nous_id, ingest_json_facts, unique_fact_id, unique_marker,
+};
+
+/// Ingest technical knowledge → verify durable search and provenance
 pub(super) struct KnowledgeExtractTechnical;
 
 impl Scenario for KnowledgeExtractTechnical {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-knowledge-extract-technical",
-            description: "Technical content yields structured fact extraction",
+            description: "Backend invariant: technical knowledge is durable, searchable by fact ID, and carries provenance",
             category: "canary-knowledge",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(kubernetes|k8s|container|pod|docker)"),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -29,28 +34,54 @@ impl Scenario for KnowledgeExtractTechnical {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "knowledge-tech");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("knowledge-tech");
+                    let fact_id = unique_fact_id("knowledge-tech");
+                    let evidence_id = format!("{marker}-source");
+                    let content = format!(
+                        "Kubernetes {marker} is a container orchestration platform that manages Pods and exposes Services."
+                    );
 
-                    let events = client
-                        .send_message(
-                            &session.id,
-                            "Kubernetes is a container orchestration platform. \
-                         It manages Pods, which are groups of containers. \
-                         Services expose Pods to network traffic. \
-                         What is Kubernetes and what does it manage?",
-                        )
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![fact_json(
+                            &fact_id,
+                            &nous_id,
+                            &content,
+                            "knowledge",
+                            "verified",
+                            0.97,
+                            &evidence_id,
+                            None,
+                        )],
+                    )
+                    .await?;
+
+                    let search = client
+                        .search_knowledge(&format!("Kubernetes Pods {marker}"), &nous_id, 5)
                         .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
+                    let search_fact = find_search_fact(&search.facts, &fact_id)?;
+                    assert_eval(
+                        search_fact.tier == "verified" && search_fact.fact_type == "knowledge",
+                        format!(
+                            "search result did not expose expected provenance/category: {search_fact:?}"
+                        ),
+                    )?;
+                    assert_eval(
+                        search_fact.score > 0.0,
+                        format!("search result should carry positive score: {search_fact:?}"),
+                    )?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    let explain = client
+                        .explain_knowledge(&format!("container orchestration {marker}"), &nous_id, 5)
+                        .await?;
+                    assert_search_selected(&explain, &fact_id)?;
+
+                    let facts = facts_for_marker(client, &nous_id, &marker).await?;
+                    let stored = find_fact(&facts.facts, &fact_id)?;
+                    assert_fact_provenance(stored, &evidence_id, "verified", 0.95)?;
+
                     Ok(())
                 }
                 .await;
@@ -64,19 +95,19 @@ impl Scenario for KnowledgeExtractTechnical {
     }
 }
 
-/// Send contradiction → verify conflict flagged
+/// Ingest replacement knowledge → verify supersession state
 pub(super) struct KnowledgeDetectContradiction;
 
 impl Scenario for KnowledgeDetectContradiction {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-knowledge-detect-contradiction",
-            description: "Contradictory statements are detected and flagged",
+            description: "Backend invariant: contradictory replacement state preserves the superseded fact and selects the current fact",
             category: "canary-knowledge",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(contradict|inconsistent|conflict|cannot both be true)"),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -86,28 +117,70 @@ impl Scenario for KnowledgeDetectContradiction {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "knowledge-contradiction");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("knowledge-contradiction");
+                    let old_id = unique_fact_id("knowledge-contradiction-old");
+                    let current_id = unique_fact_id("knowledge-contradiction-current");
+                    let old_source = format!("{marker}-old-source");
+                    let current_source = format!("{marker}-current-source");
+                    let old_content =
+                        format!("Project Canary {marker} release deadline is March 15.");
+                    let current_content =
+                        format!("Project Canary {marker} release deadline is April 1.");
 
-                    let events = client
-                        .send_message(
-                            &session.id,
-                            "I will tell you two things: \
-                         1) All birds can fly. \
-                         2) Penguins are birds that cannot fly. \
-                         Analyze these statements.",
-                        )
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![
+                            fact_json(
+                                &old_id,
+                                &nous_id,
+                                &old_content,
+                                "knowledge",
+                                "inferred",
+                                0.72,
+                                &old_source,
+                                Some(&current_id),
+                            ),
+                            fact_json(
+                                &current_id,
+                                &nous_id,
+                                &current_content,
+                                "knowledge",
+                                "verified",
+                                0.96,
+                                &current_source,
+                                None,
+                            ),
+                        ],
+                    )
+                    .await?;
+
+                    let search = client
+                        .search_knowledge(&format!("Project Canary deadline {marker}"), &nous_id, 5)
                         .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
+                    find_search_fact(&search.facts, &current_id)?;
+                    assert_eval(
+                        !search.facts.iter().any(|fact| fact.id == old_id),
+                        format!("superseded fact {old_id:?} should not be selected by search"),
+                    )?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    let facts = facts_for_marker(client, &nous_id, &marker).await?;
+                    let old = find_fact(&facts.facts, &old_id)?;
+                    let current = find_fact(&facts.facts, &current_id)?;
+                    assert_eval(
+                        old.superseded_by.as_deref() == Some(current_id.as_str()),
+                        format!(
+                            "old fact should point at current fact via superseded_by; got {:?}",
+                            old.superseded_by
+                        ),
+                    )?;
+                    assert_eval(
+                        current.superseded_by.is_none(),
+                        format!("current fact should not be superseded: {current:?}"),
+                    )?;
+                    assert_fact_provenance(current, &current_source, "verified", 0.95)?;
+
                     Ok(())
                 }
                 .await;
@@ -121,19 +194,19 @@ impl Scenario for KnowledgeDetectContradiction {
     }
 }
 
-/// Send update to existing knowledge → verify revision
+/// Ingest update to existing knowledge → verify revision state
 pub(super) struct KnowledgeUpdateRevision;
 
 impl Scenario for KnowledgeUpdateRevision {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-knowledge-update-revision",
-            description: "Knowledge updates properly revise existing facts",
+            description: "Backend invariant: revised knowledge keeps an auditable prior row and retrieves the replacement row",
             category: "canary-knowledge",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(updated|revised|corrected|new information|changed)"),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -143,29 +216,62 @@ impl Scenario for KnowledgeUpdateRevision {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "knowledge-revision");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("knowledge-revision");
+                    let old_id = unique_fact_id("knowledge-revision-old");
+                    let revised_id = unique_fact_id("knowledge-revision-current");
+                    let old_source = format!("{marker}-old-source");
+                    let revised_source = format!("{marker}-revised-source");
 
-                    let _ = client
-                        .send_message(&session.id, "The project deadline is March 15.")
-                        .await?;
-                    let events = client
-                        .send_message(
-                            &session.id,
-                            "Correction: The project deadline is now April 1. \
-                         What is the current deadline?",
-                        )
-                        .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![
+                            fact_json(
+                                &old_id,
+                                &nous_id,
+                                &format!("The {marker} project deadline is March 15."),
+                                "task",
+                                "inferred",
+                                0.75,
+                                &old_source,
+                                Some(&revised_id),
+                            ),
+                            fact_json(
+                                &revised_id,
+                                &nous_id,
+                                &format!("The {marker} project deadline is April 1."),
+                                "task",
+                                "verified",
+                                0.98,
+                                &revised_source,
+                                None,
+                            ),
+                        ],
+                    )
+                    .await?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    let explain = client
+                        .explain_knowledge(&format!("{marker} current project deadline"), &nous_id, 5)
+                        .await?;
+                    assert_search_selected(&explain, &revised_id)?;
+
+                    let facts = facts_for_marker(client, &nous_id, &marker).await?;
+                    let old = find_fact(&facts.facts, &old_id)?;
+                    let revised = find_fact(&facts.facts, &revised_id)?;
+                    assert_eval(
+                        old.superseded_by.as_deref() == Some(revised_id.as_str()),
+                        format!(
+                            "prior revision should point at replacement via superseded_by; got {:?}",
+                            old.superseded_by
+                        ),
+                    )?;
+                    assert_eval(
+                        revised.content.contains("April 1"),
+                        format!("revised fact should preserve replacement content: {revised:?}"),
+                    )?;
+                    assert_fact_provenance(revised, &revised_source, "verified", 0.95)?;
+
                     Ok(())
                 }
                 .await;
@@ -179,19 +285,19 @@ impl Scenario for KnowledgeUpdateRevision {
     }
 }
 
-/// Send ambiguous statement → verify low confidence
+/// Ingest ambiguous knowledge → verify low confidence provenance
 pub(super) struct KnowledgeAmbiguousLowConfidence;
 
 impl Scenario for KnowledgeAmbiguousLowConfidence {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-knowledge-ambiguous-low-confidence",
-            description: "Ambiguous input is handled with appropriate uncertainty",
+            description: "Backend invariant: uncertain knowledge is stored with assumed tier and low confidence",
             category: "canary-knowledge",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(unclear|ambiguous|not sure|could mean|unsure|uncertain)"),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -201,27 +307,48 @@ impl Scenario for KnowledgeAmbiguousLowConfidence {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "knowledge-ambiguous");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("knowledge-ambiguous");
+                    let fact_id = unique_fact_id("knowledge-ambiguous");
+                    let evidence_id = format!("{marker}-source");
 
-                    let events = client
-                        .send_message(
-                            &session.id,
-                            "It was pretty good. \
-                         (Note: I haven't said what 'it' refers to. \
-                         How do you handle this ambiguity?)",
-                        )
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![fact_json(
+                            &fact_id,
+                            &nous_id,
+                            &format!(
+                                "The ambiguous referent {marker} was described only as pretty good."
+                            ),
+                            "observation",
+                            "assumed",
+                            0.35,
+                            &evidence_id,
+                            None,
+                        )],
+                    )
+                    .await?;
+
+                    let facts = facts_for_marker(client, &nous_id, &marker).await?;
+                    let stored = find_fact(&facts.facts, &fact_id)?;
+                    assert_eval(
+                        stored.tier == "assumed",
+                        format!("ambiguous fact should use assumed tier: {stored:?}"),
+                    )?;
+                    assert_eval(
+                        stored.confidence <= 0.40,
+                        format!(
+                            "ambiguous fact should keep low confidence <= 0.40, got {}",
+                            stored.confidence
+                        ),
+                    )?;
+                    assert_fact_provenance(stored, &evidence_id, "assumed", 0.0)?;
+
+                    let search = client
+                        .search_knowledge(&format!("ambiguous referent {marker}"), &nous_id, 5)
                         .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
-
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    find_search_fact(&search.facts, &fact_id)?;
                     Ok(())
                 }
                 .await;
@@ -235,14 +362,14 @@ impl Scenario for KnowledgeAmbiguousLowConfidence {
     }
 }
 
-/// Send meta-knowledge (about the system) → verify categorization
+/// Send meta-knowledge prompt → smoke-check completed text
 pub(super) struct KnowledgeMetaCategorization;
 
 impl Scenario for KnowledgeMetaCategorization {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-knowledge-meta-categorization",
-            description: "Meta-knowledge about the system is properly categorized",
+            description: "Smoke: meta-knowledge prompt returns a non-empty response; this does not assert backend categorization",
             category: "canary-knowledge",
             requires_auth: true,
             requires_nous: true,

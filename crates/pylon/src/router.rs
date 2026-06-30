@@ -127,6 +127,7 @@ pub fn build_router_with(
             "/sessions/{id}",
             get(sessions::get_session).delete(sessions::close),
         )
+        .route("/sessions/{id}/replay", get(sessions::replay))
         .route("/sessions/{id}/archive", post(sessions::archive))
         .route("/sessions/{id}/unarchive", post(sessions::unarchive))
         .route(

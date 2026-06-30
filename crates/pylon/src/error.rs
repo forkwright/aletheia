@@ -89,6 +89,15 @@ pub enum ApiError {
         location: snafu::Location,
     },
 
+    /// Stream turn idempotency conflict with the canonical turn identifier (409).
+    #[snafu(display("stream turn conflict: {message}"))]
+    StreamTurnConflict {
+        message: String,
+        turn_id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Validation failed with field-level errors (422).
     #[snafu(display("validation failed"))]
     ValidationFailed {
@@ -140,6 +149,11 @@ impl IntoResponse for ApiError {
                 Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
             ),
             Self::Conflict { .. } => (StatusCode::CONFLICT, "conflict", None),
+            Self::StreamTurnConflict { turn_id, .. } => (
+                StatusCode::CONFLICT,
+                "stream_turn_conflict",
+                Some(serde_json::json!({ "turn_id": turn_id })),
+            ),
             Self::Forbidden { .. } => (StatusCode::FORBIDDEN, "forbidden", None),
             Self::ServiceUnavailable { .. } => {
                 (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable", None)

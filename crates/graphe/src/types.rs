@@ -17,6 +17,9 @@ pub enum SessionStatus {
 }
 
 impl SessionStatus {
+    /// Known lifecycle values in backend wire order.
+    pub const ALL: &[Self] = &[Self::Active, Self::Archived, Self::Distilled];
+
     /// Return the wire-format string for this status.
     #[must_use]
     pub fn as_str(self) -> &'static str {
@@ -311,6 +314,37 @@ pub struct UsageRecord {
     pub cache_write_tokens: i64,
     /// Model used for this turn, if known.
     pub model: Option<String>,
+}
+
+/// Structured audit record for one tool invocation within a finalized turn.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolAuditRecord {
+    /// Store-assigned chronological identifier.
+    pub id: i64,
+    /// Session this tool call belongs to.
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    /// Agent that requested the tool call.
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    /// Turn sequence shared with usage records for the finalized turn.
+    pub turn_seq: i64,
+    /// Provider/tool-use identifier for this call.
+    pub tool_call_id: String,
+    /// Registered tool name.
+    pub tool_name: String,
+    /// Execution duration in milliseconds.
+    pub duration_ms: u64,
+    /// Whether the tool result was an error.
+    pub is_error: bool,
+    /// Stable outcome label, currently `"success"` or `"error"`.
+    pub outcome: String,
+    /// Bounded tool result text captured from the execution path.
+    pub result: Option<String>,
+    /// Approval outcome applied before execution, when known.
+    pub approval: Option<String>,
+    /// HMAC receipt token emitted for this tool result, when present.
+    pub receipt: Option<String>,
+    /// ISO 8601 timestamp when this audit row was written.
+    pub created_at: String,
 }
 
 /// Blackboard entry: shared agent state with TTL.

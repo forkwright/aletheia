@@ -50,6 +50,19 @@ fn write_script(name: &str, body: &str) -> PathBuf {
     final_path
 }
 
+fn make_temp_dir(name: &str) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NONCE: AtomicU64 = AtomicU64::new(0);
+    let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "hermeneus_codex_test_{name}_{}_{nonce}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&path);
+    fs::create_dir_all(&path).unwrap();
+    path
+}
+
 #[test]
 fn scrub_codex_auth_env_marks_openai_key_for_removal() {
     let mut cmd = tokio::process::Command::new("codex");
@@ -110,7 +123,7 @@ async fn read_bounded_rejects_too_many_lines() {
 #[tokio::test]
 async fn run_completion_spawn_failure_reports_binary_path() {
     let binary = PathBuf::from("/nonexistent/path/to/codex-binary");
-    let err = run_completion(&binary, None, "hello", Duration::from_secs(5))
+    let err = run_completion(&binary, None, None, "hello", Duration::from_secs(5))
         .await
         .unwrap_err();
 
@@ -137,7 +150,7 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"codex sa
 printf '{"type":"turn.completed","usage":{"input_tokens":4,"cached_input_tokens":1,"output_tokens":2}}\n'"#,
     );
 
-    let output = run_completion(&script, None, "prompt text", Duration::from_secs(10))
+    let output = run_completion(&script, None, None, "prompt text", Duration::from_secs(10))
         .await
         .unwrap();
 
@@ -145,6 +158,38 @@ printf '{"type":"turn.completed","usage":{"input_tokens":4,"cached_input_tokens"
     assert!(output.stdout.contains("codex says hello"));
     assert!(output.stdout.contains(r#""type":"turn.completed""#));
     let _ = fs::remove_file(&script);
+}
+
+#[tokio::test]
+async fn run_completion_uses_configured_working_directory() {
+    let workdir = make_temp_dir("completion_cwd");
+    let expected = std::fs::canonicalize(&workdir)
+        .unwrap()
+        .display()
+        .to_string();
+    let script = write_script(
+        "completion_cwd",
+        r#"input="$(cat)"
+test "$input" = "prompt text" || exit 39
+cwd="$(pwd -P)"
+printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n' "$cwd"
+printf '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}\n'"#,
+    );
+
+    let output = run_completion(
+        &script,
+        Some(&workdir),
+        None,
+        "prompt text",
+        Duration::from_secs(10),
+    )
+    .await
+    .unwrap();
+    let parsed = parse::parse_output(&output.stdout).unwrap();
+
+    assert_eq!(parsed.text, expected);
+    let _ = fs::remove_file(&script);
+    let _ = fs::remove_dir_all(&workdir);
 }
 
 #[test]
@@ -178,6 +223,7 @@ printf 'sys ok\n'"#,
 
     let output = run_completion(
         &script,
+        None,
         Some("Be precise."),
         "prompt",
         Duration::from_secs(10),
@@ -198,7 +244,7 @@ printf 'not logged in\n' >&2
 exit 1",
     );
 
-    let err = run_completion(&script, None, "prompt", Duration::from_secs(10))
+    let err = run_completion(&script, None, None, "prompt", Duration::from_secs(10))
         .await
         .unwrap_err();
 
@@ -211,7 +257,7 @@ exit 1",
 async fn run_completion_timeout_returns_error() {
     let script = write_script("completion_sleep", "sleep 30");
 
-    let err = run_completion(&script, None, "prompt", Duration::from_millis(100))
+    let err = run_completion(&script, None, None, "prompt", Duration::from_millis(100))
         .await
         .unwrap_err();
 
@@ -246,7 +292,7 @@ async fn run_completion_subprocess_killed_on_future_drop() {
     let pid_path_clone = pid_path.clone();
     let binary = script.clone();
     let handle = tokio::spawn(async move {
-        run_completion(&binary, None, "prompt", Duration::from_secs(30)).await
+        run_completion(&binary, None, None, "prompt", Duration::from_secs(30)).await
     });
 
     let deadline = std::time::Instant::now() + Duration::from_secs(5);

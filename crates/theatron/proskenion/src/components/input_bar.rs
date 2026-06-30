@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use crate::state::commands::{CommandStore, CommandUiState};
 use crate::state::input::InputState;
 
 const INPUT_BAR_STYLE: &str = "\
@@ -115,6 +116,8 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
     let is_streaming = props.is_streaming;
     let on_submit = props.on_submit;
     let on_abort = props.on_abort;
+    let mut command_ui = use_context::<Signal<CommandUiState>>();
+    let mut commands = use_context::<Signal<CommandStore>>();
 
     let can_submit = !is_streaming && !input.read().text.trim().is_empty();
 
@@ -128,6 +131,26 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
         on_submit.call(text);
     };
 
+    let mut submit_selected_command = move || {
+        let command = commands.read().selected().cloned();
+        if let Some(command) = command {
+            let text = format!("/{}", command.name);
+            input.write().push_history(text.clone());
+            input.write().clear();
+            command_ui.write().palette_open = false;
+            on_submit.call(text);
+        } else if input.read().text.trim().starts_with('/') {
+            let text = input.read().text.trim().to_string();
+            if !text.is_empty() {
+                input.write().push_history(text.clone());
+                input.write().clear();
+                on_submit.call(text);
+            }
+        } else {
+            command_ui.write().palette_open = false;
+        }
+    };
+
     rsx! {
         div {
             style: "{INPUT_BAR_STYLE}",
@@ -138,11 +161,50 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
                 rows: "1",
                 value: "{input.read().text}",
                 oninput: move |evt: Event<FormData>| {
-                    input.write().text = evt.value().clone();
+                    let value = evt.value().clone();
+                    input.write().text = value.clone();
+
+                    if is_streaming {
+                        return;
+                    }
+
+                    if let Some(prefix) = value.strip_prefix('/') {
+                        commands.write().filter_by_prefix(prefix);
+                        command_ui.write().palette_open = true;
+                    } else if command_ui.read().palette_open {
+                        commands.write().filter_by_prefix(&value);
+                    }
                 },
                 onkeydown: move |evt: Event<KeyboardData>| {
                     let key = evt.key();
                     let modifiers = evt.modifiers();
+
+                    if !is_streaming && command_ui.read().palette_open {
+                        match key {
+                            Key::Escape => {
+                                evt.prevent_default();
+                                command_ui.write().palette_open = false;
+                                commands.write().filter_by_prefix("");
+                                return;
+                            }
+                            Key::ArrowUp => {
+                                evt.prevent_default();
+                                commands.write().cursor_up();
+                                return;
+                            }
+                            Key::ArrowDown => {
+                                evt.prevent_default();
+                                commands.write().cursor_down();
+                                return;
+                            }
+                            Key::Enter if !modifiers.contains(Modifiers::SHIFT) => {
+                                evt.prevent_default();
+                                submit_selected_command();
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
 
                     // Shift+Enter: newline (default textarea behavior, no prevention)
                     if key == Key::Enter && modifiers.contains(Modifiers::SHIFT) {

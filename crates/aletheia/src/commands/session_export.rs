@@ -5,10 +5,9 @@ use std::io::Write as _;
 use std::path::PathBuf;
 
 use clap::Args;
-use serde::Deserialize;
 use snafu::prelude::*;
 
-use koina::http::{API_V1, BEARER_PREFIX};
+use pylon::client::{GatewayClient, HistoryResponse, SessionReplayResponse, SessionResponse};
 
 use crate::error::Result;
 
@@ -42,36 +41,29 @@ pub(crate) enum ExportFormat {
     Json,
 }
 
-#[derive(Debug, Deserialize)]
-struct SessionResponse {
-    id: String,
-    session_key: String,
-    created_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct HistoryResponse {
-    messages: Vec<HistoryMessage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct HistoryMessage {
-    role: String,
-    content: String,
-    tool_name: Option<String>,
-    created_at: String,
-}
-
 pub(crate) async fn run(args: &SessionExportArgs) -> Result<()> {
     validate_args(args)?;
-    let client = build_client(args.token.as_deref())?;
-
-    let session = fetch_session(&client, &args.url, &args.session_id).await?;
-    let history = fetch_history(&client, &args.url, &args.session_id).await?;
+    let client = build_client(args)?;
 
     let rendered = match args.format {
-        ExportFormat::Md => render_markdown(&session, &history),
-        ExportFormat::Json => render_json(&session, &history)?,
+        ExportFormat::Md => {
+            let session = client
+                .session(&args.session_id)
+                .await
+                .whatever_context("failed to fetch session")?;
+            let history = client
+                .history(&args.session_id)
+                .await
+                .whatever_context("failed to fetch session history")?;
+            render_markdown(&session, &history)
+        }
+        ExportFormat::Json => {
+            let replay = client
+                .session_replay(&args.session_id)
+                .await
+                .whatever_context("failed to fetch session replay export")?;
+            render_json(&replay)?
+        }
     };
 
     write_output(&rendered, args.output.as_deref())
@@ -87,96 +79,20 @@ fn validate_args(args: &SessionExportArgs) -> Result<()> {
     Ok(())
 }
 
-fn build_client(token: Option<&str>) -> Result<reqwest::Client> {
-    let mut headers = reqwest::header::HeaderMap::new();
-    if let Some(tok) = token {
-        let value = reqwest::header::HeaderValue::from_str(&format!("{BEARER_PREFIX}{tok}"))
-            .whatever_context("invalid token value")?;
-        headers.insert(reqwest::header::AUTHORIZATION, value);
+fn build_client(args: &SessionExportArgs) -> Result<GatewayClient> {
+    // WARNING: credentials may be in default headers -- warn if sending to non-local, non-HTTPS
+    if !args.url.starts_with("https://")
+        && !args.url.contains("localhost")
+        && !args.url.contains("127.0.0.1")
+        && !args.url.contains("[::1]")
+    {
+        tracing::warn!(
+            base_url = %args.url,
+            "sending credentials over non-HTTPS to non-localhost URL"
+        );
     }
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
+    GatewayClient::new(&args.url, args.token.clone())
         .whatever_context("failed to build HTTP client")
-}
-
-async fn fetch_session(
-    client: &reqwest::Client,
-    base_url: &str,
-    session_id: &str,
-) -> Result<SessionResponse> {
-    // WARNING: credentials may be in default headers -- warn if sending to non-local, non-HTTPS
-    if !base_url.starts_with("https://")
-        && !base_url.contains("localhost")
-        && !base_url.contains("127.0.0.1")
-        && !base_url.contains("[::1]")
-    {
-        tracing::warn!(
-            base_url,
-            "sending credentials over non-HTTPS to non-localhost URL"
-        );
-    }
-    let url = format!("{base_url}{API_V1}/sessions/{session_id}");
-    // CodeQL: cleartext-transmission false positive. The CLI default is
-    // localhost (http://127.0.0.1:18789) which never leaves the machine. The
-    // guard above logs a tracing::warn when the operator overrides --url to a
-    // non-HTTPS, non-localhost target, making the risk explicit. This is a
-    // local operator tool, not a library API — the operator controls the URL.
-    let resp = client.get(&url).send().await.map_err(|e| {
-        if e.is_connect() {
-            crate::error::Error::msg(format!(
-                "cannot connect to {base_url}\n  Is the server running? Start it with: aletheia"
-            ))
-        } else {
-            crate::error::Error::msg(format!("request failed: {e}"))
-        }
-    })?;
-
-    if resp.status() == reqwest::StatusCode::NOT_FOUND {
-        whatever!("session not found: {session_id}");
-    }
-    if !resp.status().is_success() {
-        whatever!("server returned HTTP {}", resp.status());
-    }
-
-    resp.json::<SessionResponse>()
-        .await
-        .whatever_context("failed to parse session response")
-}
-
-async fn fetch_history(
-    client: &reqwest::Client,
-    base_url: &str,
-    session_id: &str,
-) -> Result<HistoryResponse> {
-    // WARNING: credentials may be in default headers -- warn if sending to non-local, non-HTTPS
-    if !base_url.starts_with("https://")
-        && !base_url.contains("localhost")
-        && !base_url.contains("127.0.0.1")
-        && !base_url.contains("[::1]")
-    {
-        tracing::warn!(
-            base_url,
-            "sending credentials over non-HTTPS to non-localhost URL"
-        );
-    }
-    let url = format!("{base_url}{API_V1}/sessions/{session_id}/history");
-    // CodeQL: cleartext-transmission false positive — same mitigation as
-    // `fetch_session` above: localhost default + tracing::warn on non-HTTPS.
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .whatever_context("failed to fetch session history")?;
-
-    if !resp.status().is_success() {
-        whatever!("history endpoint returned HTTP {}", resp.status());
-    }
-
-    resp.json::<HistoryResponse>()
-        .await
-        .whatever_context("failed to parse history response")
 }
 
 fn render_markdown(session: &SessionResponse, history: &HistoryResponse) -> String {
@@ -190,7 +106,7 @@ fn render_markdown(session: &SessionResponse, history: &HistoryResponse) -> Stri
     for msg in &history.messages {
         out.push_str("\n---\n\n");
         match msg.role.as_str() {
-            "tool" => {
+            "tool" | "tool_result" => {
                 let name = msg.tool_name.as_deref().unwrap_or("unknown");
                 // kanon:ignore RUST/no-silent-result-swallow — writing to a String never fails
                 let _ = writeln!(out, "## Tool Call: {name} — {}", msg.created_at);
@@ -210,19 +126,9 @@ fn render_markdown(session: &SessionResponse, history: &HistoryResponse) -> Stri
     out
 }
 
-fn render_json(session: &SessionResponse, history: &HistoryResponse) -> Result<String> {
-    let payload = serde_json::json!({
-        "id": session.id,
-        "session_key": session.session_key,
-        "created_at": session.created_at,
-        "messages": history.messages.iter().map(|m| serde_json::json!({
-            "role": m.role,
-            "content": m.content,
-            "tool_name": m.tool_name,
-            "created_at": m.created_at,
-        })).collect::<Vec<_>>(),
-    });
-    serde_json::to_string_pretty(&payload).whatever_context("failed to serialize session to JSON")
+fn render_json(replay: &SessionReplayResponse) -> Result<String> {
+    serde_json::to_string_pretty(replay)
+        .whatever_context("failed to serialize session replay export to JSON")
 }
 
 fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
@@ -266,6 +172,9 @@ fn capitalize_first(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pylon::client::{
+        ReplayMessage, ReplaySession, ReplayToolAuditRecord, ReplayTurnAttempt, ReplayUsageRecord,
+    };
 
     fn base_args() -> SessionExportArgs {
         SessionExportArgs {
@@ -275,6 +184,123 @@ mod tests {
             url: "http://127.0.0.1:18789".to_owned(),
             token: None,
         }
+    }
+
+    fn replay_with_audit_fields() -> SessionReplayResponse {
+        SessionReplayResponse {
+            version: 1,
+            export_type: "sessionReplay".to_owned(),
+            exported_at: "2026-06-28T00:00:00Z".to_owned(),
+            session: ReplaySession {
+                id: "session/requires encoding".to_owned(),
+                nous_id: "alice".to_owned(),
+                session_key: "main".to_owned(),
+                status: "active".to_owned(),
+                session_type: "primary".to_owned(),
+                model: Some("mock-model".to_owned()),
+                message_count: 1,
+                token_count_estimate: 12,
+                distillation_count: 0,
+                created_at: "2026-06-28T00:00:00Z".to_owned(),
+                updated_at: "2026-06-28T00:01:00Z".to_owned(),
+                parent_session_id: None,
+                thread_id: None,
+                transport: None,
+                display_name: Some("Audit fixture".to_owned()),
+                last_input_tokens: 5,
+                bootstrap_hash: Some("hash-fixture".to_owned()),
+                last_distilled_at: None,
+                computed_context_tokens: 12,
+            },
+            messages: vec![ReplayMessage {
+                id: 7,
+                seq: 42,
+                role: "tool_result".to_owned(),
+                content: "tool failed".to_owned(),
+                tool_call_id: Some("toolu-1".to_owned()),
+                tool_name: Some("read_file".to_owned()),
+                token_estimate: 3,
+                is_distilled: false,
+                created_at: "2026-06-28T00:00:30Z".to_owned(),
+            }],
+            usage_records: vec![ReplayUsageRecord {
+                turn_seq: 42,
+                input_tokens: 10,
+                output_tokens: 4,
+                cache_read_tokens: 2,
+                cache_write_tokens: 1,
+                model: Some("mock-model".to_owned()),
+            }],
+            tool_audit_records: vec![ReplayToolAuditRecord {
+                id: 3,
+                nous_id: "alice".to_owned(),
+                turn_seq: 42,
+                tool_call_id: "toolu-1".to_owned(),
+                tool_name: "read_file".to_owned(),
+                duration_ms: 25,
+                is_error: true,
+                outcome: "error".to_owned(),
+                result: Some("permission denied".to_owned()),
+                approval: Some("approved".to_owned()),
+                receipt: Some("receipt-1".to_owned()),
+                created_at: "2026-06-28T00:00:31Z".to_owned(),
+            }],
+            turn_attempts: vec![ReplayTurnAttempt {
+                version: 1,
+                turn_id: "01JTESTTURN000000000000001".to_owned(),
+                session_id: "session/requires encoding".to_owned(),
+                nous_id: "alice".to_owned(),
+                status: "failed".to_owned(),
+                stage: Some("execute".to_owned()),
+                error_code: Some("tool_failed".to_owned()),
+                error_message: Some("tool failed".to_owned()),
+                model: Some("mock-model".to_owned()),
+                messages_persisted: Some(1),
+                expected_messages: Some(3),
+                created_at: "2026-06-28T00:00:32Z".to_owned(),
+            }],
+        }
+    }
+
+    #[test]
+    fn replay_route_encodes_reserved_session_id_bytes() {
+        let path = pylon::client::routes::session_replay("a/b c?d#e");
+        assert_eq!(path, "/api/v1/sessions/a%2Fb%20c%3Fd%23e/replay");
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn json_export_preserves_replay_audit_fields() {
+        let rendered = render_json(&replay_with_audit_fields()).expect("render replay export");
+        let value: serde_json::Value =
+            serde_json::from_str(&rendered).expect("rendered export is valid JSON");
+        let field = |pointer: &str| {
+            value
+                .pointer(pointer)
+                .expect("expected replay export JSON field")
+        };
+
+        assert_eq!(field("/exportType").as_str(), Some("sessionReplay"));
+        assert_eq!(field("/messages/0/toolCallId").as_str(), Some("toolu-1"));
+        assert_eq!(field("/messages/0/toolName").as_str(), Some("read_file"));
+        assert_eq!(field("/usageRecords/0/turnSeq").as_i64(), Some(42));
+        assert_eq!(field("/usageRecords/0/inputTokens").as_i64(), Some(10));
+        assert_eq!(field("/usageRecords/0/cacheWriteTokens").as_i64(), Some(1));
+        assert_eq!(
+            field("/toolAuditRecords/0/toolCallId").as_str(),
+            Some("toolu-1")
+        );
+        assert_eq!(field("/toolAuditRecords/0/isError").as_bool(), Some(true));
+        assert_eq!(field("/toolAuditRecords/0/outcome").as_str(), Some("error"));
+        assert_eq!(
+            field("/turnAttempts/0/turnId").as_str(),
+            Some("01JTESTTURN000000000000001")
+        );
+        assert_eq!(field("/turnAttempts/0/status").as_str(), Some("failed"));
+        assert_eq!(
+            field("/turnAttempts/0/errorCode").as_str(),
+            Some("tool_failed")
+        );
     }
 
     #[test]

@@ -1,24 +1,28 @@
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
 use crate::scenario::{
-    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, validate_response,
+    Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval,
 };
-use crate::sse;
 
-/// Insert fact → query it back → verify exact match
+use super::support::{
+    assert_fact_provenance, assert_search_selected, fact_json, fact_json_recorded_at,
+    facts_for_marker, facts_for_marker_ordered_by_created, find_fact, find_search_fact,
+    first_nous_id, ingest_json_facts, unique_fact_id, unique_marker,
+};
+
+/// Insert fact → query typed store → verify exact fact ID
 pub(super) struct RecallInsertQueryRoundtrip;
 
 impl Scenario for RecallInsertQueryRoundtrip {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-recall-insert-query-roundtrip",
-            description: "Insert a specific fact and verify exact recall on query",
+            description: "Backend invariant: inserted memory is durably searchable by exact fact ID and provenance",
             category: "canary-recall",
             requires_auth: true,
             requires_nous: true,
-            expected_contains: Some(" eval-canary-test-fact "),
+            expected_contains: None,
             expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
@@ -29,28 +33,41 @@ impl Scenario for RecallInsertQueryRoundtrip {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "recall-roundtrip");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("recall-roundtrip");
+                    let fact_id = unique_fact_id("recall-roundtrip");
+                    let evidence_id = format!("{marker}-source");
+                    let content =
+                        format!("The durable recall marker is eval-canary-test-fact {marker}.");
 
-                    let _ = client
-                        .send_message(
-                            &session.id,
-                            "Remember this exact fact: eval-canary-test-fact-42",
-                        )
-                        .await?;
-                    let events = client
-                        .send_message(&session.id, "What fact did I just ask you to remember?")
-                        .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![fact_json(
+                            &fact_id,
+                            &nous_id,
+                            &content,
+                            "knowledge",
+                            "verified",
+                            0.99,
+                            &evidence_id,
+                            None,
+                        )],
+                    )
+                    .await?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    let search = client
+                        .search_knowledge(&format!("eval-canary-test-fact {marker}"), &nous_id, 5)
+                        .await?;
+                    let search_fact = find_search_fact(&search.facts, &fact_id)?;
+                    assert_eval(
+                        search_fact.content.contains(&marker),
+                        format!("selected fact should contain unique marker: {search_fact:?}"),
+                    )?;
+
+                    let facts = facts_for_marker(client, &nous_id, &marker).await?;
+                    let stored = find_fact(&facts.facts, &fact_id)?;
+                    assert_fact_provenance(stored, &evidence_id, "verified", 0.95)?;
                     Ok(())
                 }
                 .await;
@@ -64,19 +81,19 @@ impl Scenario for RecallInsertQueryRoundtrip {
     }
 }
 
-/// Insert 3 related facts → search by semantic query → verify recall
+/// Insert related facts → verify selected ranking
 pub(super) struct RecallSemanticSearch;
 
 impl Scenario for RecallSemanticSearch {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-recall-semantic-search",
-            description: "Insert related facts and verify semantic search recall",
+            description: "Backend invariant: semantic recall ranks the relevant fact above sibling facts",
             category: "canary-recall",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(redwood|sequoia|pine|oak|maple)"),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -86,30 +103,74 @@ impl Scenario for RecallSemanticSearch {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "recall-semantic");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("recall-semantic");
+                    let redwood_id = unique_fact_id("recall-semantic-redwood");
+                    let sequoia_id = unique_fact_id("recall-semantic-sequoia");
+                    let pine_id = unique_fact_id("recall-semantic-pine");
+                    let evidence_id = format!("{marker}-source");
 
-                    let _ = client
-                        .send_message(
-                            &session.id,
-                            "Remember: Redwoods are the tallest trees. \
-                         Sequoias are the most massive. \
-                         Bristlecone pines are the oldest.",
-                        )
-                        .await?;
-                    let events = client
-                        .send_message(&session.id, "Tell me about the tallest trees.")
-                        .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![
+                            fact_json(
+                                &redwood_id,
+                                &nous_id,
+                                &format!("Redwoods {marker} are the tallest trees."),
+                                "knowledge",
+                                "verified",
+                                0.98,
+                                &evidence_id,
+                                None,
+                            ),
+                            fact_json(
+                                &sequoia_id,
+                                &nous_id,
+                                &format!("Sequoias {marker} are the most massive trees."),
+                                "knowledge",
+                                "verified",
+                                0.90,
+                                &evidence_id,
+                                None,
+                            ),
+                            fact_json(
+                                &pine_id,
+                                &nous_id,
+                                &format!("Bristlecone pines {marker} are the oldest trees."),
+                                "knowledge",
+                                "verified",
+                                0.88,
+                                &evidence_id,
+                                None,
+                            ),
+                        ],
+                    )
+                    .await?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    let search = client
+                        .search_knowledge(&format!("tallest trees {marker}"), &nous_id, 5)
+                        .await?;
+                    let first = search.facts.first().ok_or_else(|| {
+                        crate::error::AssertionSnafu {
+                            message: "semantic search returned no facts".to_owned(),
+                        }
+                        .build()
+                    })?;
+                    assert_eval(
+                        first.id == redwood_id,
+                        format!("semantic search should rank redwood first; got {search:?}"),
+                    )?;
+                    assert_eval(
+                        search.facts.iter().any(|fact| fact.id == sequoia_id)
+                            && search.facts.iter().any(|fact| fact.id == pine_id),
+                        format!("semantic search should keep sibling facts visible: {search:?}"),
+                    )?;
+
+                    let explain = client
+                        .explain_knowledge(&format!("tallest trees {marker}"), &nous_id, 5)
+                        .await?;
+                    assert_search_selected(&explain, &redwood_id)?;
                     Ok(())
                 }
                 .await;
@@ -123,19 +184,19 @@ impl Scenario for RecallSemanticSearch {
     }
 }
 
-/// Insert fact with high confidence → insert contradicting fact → verify conflict detection
+/// Insert superseded conflict pair → verify current recall and audit state
 pub(super) struct RecallConflictDetection;
 
 impl Scenario for RecallConflictDetection {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-recall-conflict-detection",
-            description: "Insert conflicting facts and verify conflict detection",
+            description: "Backend invariant: superseded conflicting memory is retained for audit but excluded from current recall",
             category: "canary-recall",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(conflict|contradict|inconsistent|discrepancy)"),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -145,38 +206,60 @@ impl Scenario for RecallConflictDetection {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "recall-conflict");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("recall-conflict");
+                    let old_id = unique_fact_id("recall-conflict-old");
+                    let current_id = unique_fact_id("recall-conflict-current");
+                    let old_source = format!("{marker}-old-source");
+                    let current_source = format!("{marker}-current-source");
 
-                    let _ = client
-                        .send_message(
-                            &session.id,
-                            "The capital of France is Paris. This is certain.",
-                        )
-                        .await?;
-                    let _ = client
-                        .send_message(
-                            &session.id,
-                            "Actually, the capital of France is Lyon. \
-                         I was wrong before.",
-                        )
-                        .await?;
-                    let events = client
-                    .send_message(
-                        &session.id,
-                        "What is the capital of France? Is there any conflict in what I told you?",
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![
+                            fact_json(
+                                &old_id,
+                                &nous_id,
+                                &format!("The capital canary {marker} answer is Paris."),
+                                "knowledge",
+                                "inferred",
+                                0.70,
+                                &old_source,
+                                Some(&current_id),
+                            ),
+                            fact_json(
+                                &current_id,
+                                &nous_id,
+                                &format!("The capital canary {marker} corrected answer is Lyon."),
+                                "knowledge",
+                                "verified",
+                                0.96,
+                                &current_source,
+                                None,
+                            ),
+                        ],
                     )
                     .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    let search = client
+                        .search_knowledge(
+                            &format!("capital canary corrected {marker}"),
+                            &nous_id,
+                            5,
+                        )
+                        .await?;
+                    find_search_fact(&search.facts, &current_id)?;
+                    assert_eval(
+                        !search.facts.iter().any(|fact| fact.id == old_id),
+                        format!("superseded conflict fact should not be selected: {search:?}"),
+                    )?;
+
+                    let facts = facts_for_marker(client, &nous_id, &marker).await?;
+                    let old = find_fact(&facts.facts, &old_id)?;
+                    assert_eval(
+                        old.superseded_by.as_deref() == Some(current_id.as_str()),
+                        format!("conflict audit row should point at current fact: {old:?}"),
+                    )?;
                     Ok(())
                 }
                 .await;
@@ -190,19 +273,19 @@ impl Scenario for RecallConflictDetection {
     }
 }
 
-/// Insert temporal facts → query by time range → verify ordering
+/// Insert temporal facts → verify durable chronological ordering
 pub(super) struct RecallTemporalOrdering;
 
 impl Scenario for RecallTemporalOrdering {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-recall-temporal-ordering",
-            description: "Insert temporal facts and verify chronological ordering",
+            description: "Backend invariant: fact listing preserves chronological order by recorded_at",
             category: "canary-recall",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(r"(?i)(1969.*1989|Apollo.*Berlin|moon.*wall)"),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -212,33 +295,63 @@ impl Scenario for RecallTemporalOrdering {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "recall-temporal");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("recall-temporal");
+                    let moon_id = unique_fact_id("recall-temporal-moon");
+                    let wall_id = unique_fact_id("recall-temporal-wall");
+                    let union_id = unique_fact_id("recall-temporal-union");
+                    let evidence_id = format!("{marker}-source");
 
-                    let _ = client
-                        .send_message(
-                            &session.id,
-                            "In 1989, the Berlin Wall fell. \
-                         In 1969, humans first landed on the moon. \
-                         In 1991, the Soviet Union dissolved.",
-                        )
-                        .await?;
-                    let events = client
-                        .send_message(
-                            &session.id,
-                            "List the events I mentioned in chronological order.",
-                        )
-                        .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
+                    let moon_time = timestamp("1969-07-20T20:17:40Z")?;
+                    let wall_time = timestamp("1989-11-09T00:00:00Z")?;
+                    let union_time = timestamp("1991-12-26T00:00:00Z")?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
+                    ingest_json_facts(
+                        client,
+                        &nous_id,
+                        vec![
+                            fact_json_recorded_at(
+                                &wall_id,
+                                &nous_id,
+                                &format!("In 1989, the Berlin Wall fell {marker}."),
+                                &evidence_id,
+                                wall_time,
+                            ),
+                            fact_json_recorded_at(
+                                &moon_id,
+                                &nous_id,
+                                &format!("In 1969, humans first landed on the moon {marker}."),
+                                &evidence_id,
+                                moon_time,
+                            ),
+                            fact_json_recorded_at(
+                                &union_id,
+                                &nous_id,
+                                &format!("In 1991, the Soviet Union dissolved {marker}."),
+                                &evidence_id,
+                                union_time,
+                            ),
+                        ],
+                    )
+                    .await?;
+
+                    let facts =
+                        facts_for_marker_ordered_by_created(client, &nous_id, &marker).await?;
+                    let ordered_ids: Vec<&str> =
+                        facts.facts.iter().map(|fact| fact.id.as_str()).collect();
+                    assert_eval(
+                        ordered_ids == vec![moon_id.as_str(), wall_id.as_str(), union_id.as_str()],
+                        format!("facts should be ordered chronologically; got {ordered_ids:?}"),
+                    )?;
+                    for fact_id in [&moon_id, &wall_id, &union_id] {
+                        let fact = find_fact(&facts.facts, fact_id)?;
+                        assert_fact_provenance(fact, &evidence_id, "verified", 0.95)?;
+                    }
+
+                    let search = client
+                        .search_knowledge(&format!("Berlin Wall {marker}"), &nous_id, 5)
+                        .await?;
+                    find_search_fact(&search.facts, &wall_id)?;
                     Ok(())
                 }
                 .await;
@@ -259,14 +372,12 @@ impl Scenario for RecallEmptyKnowledgeGraceful {
     fn meta(&self) -> ScenarioMeta {
         ScenarioMeta {
             id: "canary-recall-empty-knowledge-graceful",
-            description: "Query with no relevant knowledge returns graceful response",
+            description: "Backend invariant: empty knowledge query returns no selected facts",
             category: "canary-recall",
             requires_auth: true,
             requires_nous: true,
             expected_contains: None,
-            expected_pattern: Some(
-                r"(?i)(don't know|not sure|no information|haven't been told|unclear)",
-            ),
+            expected_pattern: None,
 
             classification: ScenarioClassification::Assertive,
         }
@@ -276,26 +387,20 @@ impl Scenario for RecallEmptyKnowledgeGraceful {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
-                    let key = crate::scenarios::unique_key("canary", "recall-empty");
-                    let session = client.create_session(nous_id, &key).await?;
-
-                    let events = client
-                        .send_message(
-                            &session.id,
-                            "What is my favorite color? \
-                         (Note: I have not told you this information)",
+                    let nous_id = first_nous_id(client).await?;
+                    let marker = unique_marker("recall-empty");
+                    let search = client
+                        .search_knowledge(
+                            &format!("no stored fact should match {marker}"),
+                            &nous_id,
+                            5,
                         )
                         .await?;
-                    let text = sse::extract_text(&events);
-                    validate_response(&self.meta(), &text)?;
+                    assert_eval(
+                        search.facts.is_empty(),
+                        format!("empty knowledge query should return no facts: {search:?}"),
+                    )?;
 
-                    // kanon:ignore RUST/no-silent-result-swallow — session cleanup after canary scenario
-                    let _ = client.close_session(&session.id).await;
                     Ok(())
                 }
                 .await;
@@ -307,4 +412,13 @@ impl Scenario for RecallEmptyKnowledgeGraceful {
             )),
         )
     }
+}
+
+fn timestamp(value: &str) -> crate::error::Result<jiff::Timestamp> {
+    value.parse().map_err(|e| {
+        crate::error::AssertionSnafu {
+            message: format!("invalid canary timestamp {value:?}: {e}"),
+        }
+        .build()
+    })
 }

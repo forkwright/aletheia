@@ -10,13 +10,16 @@ pub use streaming::{events, reconnect_turn, send_message, stream_turn};
 
 use types::{
     CreateSessionRequest, HistoryMessage, HistoryParams, HistoryResponse, ListSessionsParams,
-    ListSessionsResponse, RenameSessionRequest, SessionListItem, SessionResponse,
+    ListSessionsResponse, RenameSessionRequest, ReplayMessage, ReplaySession,
+    ReplayToolAuditRecord, ReplayTurnAttempt, ReplayUsageRecord, SessionListItem,
+    SessionReplayResponse, SessionResponse,
 };
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use serde::Deserialize;
 use tracing::{info, instrument};
 
 use mneme::types::SessionStatus;
@@ -29,6 +32,32 @@ use crate::error::{
 };
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::SessionsState;
+
+const SESSION_REPLAY_VERSION: u32 = 1;
+const SESSION_REPLAY_EXPORT_TYPE: &str = "sessionReplay";
+const TURN_NOTE_CATEGORY: &str = "context";
+
+#[derive(Debug, Deserialize)]
+struct StoredTurnAttempt {
+    version: u32,
+    turn_id: String,
+    session_id: String,
+    nous_id: String,
+    status: String,
+    #[serde(default)]
+    stage: Option<String>,
+    #[serde(default)]
+    error_code: Option<String>,
+    #[serde(default)]
+    error_message: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    messages_persisted: Option<usize>,
+    #[serde(default)]
+    expected_messages: Option<usize>,
+    created_at: String,
+}
 
 fn session_matches_search(session: &mneme::types::Session, search: &str) -> bool {
     let search = search.to_lowercase();
@@ -43,6 +72,96 @@ fn session_matches_search(session: &mneme::types::Session, search: &str) -> bool
     fields
         .into_iter()
         .any(|field| field.to_lowercase().contains(&search))
+}
+
+fn replay_session_from_mneme(session: mneme::types::Session) -> ReplaySession {
+    ReplaySession {
+        id: session.id,
+        nous_id: session.nous_id,
+        session_key: session.session_key,
+        status: session.status.to_string(),
+        session_type: session.session_type.to_string(),
+        model: session.model,
+        message_count: session.metrics.message_count,
+        token_count_estimate: session.metrics.token_count_estimate,
+        distillation_count: session.metrics.distillation_count,
+        created_at: session.created_at,
+        updated_at: session.updated_at,
+        parent_session_id: session.origin.parent_session_id,
+        thread_id: session.origin.thread_id,
+        transport: session.origin.transport,
+        display_name: session.origin.display_name,
+        last_input_tokens: session.metrics.last_input_tokens,
+        bootstrap_hash: session.metrics.bootstrap_hash,
+        last_distilled_at: session.metrics.last_distilled_at,
+        computed_context_tokens: session.metrics.computed_context_tokens,
+    }
+}
+
+fn replay_message_from_mneme(message: mneme::types::Message) -> ReplayMessage {
+    ReplayMessage {
+        id: message.id,
+        seq: message.seq,
+        role: message.role.as_str().to_owned(),
+        content: message.content,
+        tool_call_id: message.tool_call_id,
+        tool_name: message.tool_name,
+        token_estimate: message.token_estimate,
+        is_distilled: message.is_distilled,
+        created_at: message.created_at,
+    }
+}
+
+fn replay_usage_from_mneme(record: mneme::types::UsageRecord) -> ReplayUsageRecord {
+    ReplayUsageRecord {
+        turn_seq: record.turn_seq,
+        input_tokens: record.input_tokens,
+        output_tokens: record.output_tokens,
+        cache_read_tokens: record.cache_read_tokens,
+        cache_write_tokens: record.cache_write_tokens,
+        model: record.model,
+    }
+}
+
+fn replay_tool_audit_from_mneme(record: mneme::types::ToolAuditRecord) -> ReplayToolAuditRecord {
+    ReplayToolAuditRecord {
+        id: record.id,
+        nous_id: record.nous_id,
+        turn_seq: record.turn_seq,
+        tool_call_id: record.tool_call_id,
+        tool_name: record.tool_name,
+        duration_ms: record.duration_ms,
+        is_error: record.is_error,
+        outcome: record.outcome,
+        result: record.result,
+        approval: record.approval,
+        receipt: record.receipt,
+        created_at: record.created_at,
+    }
+}
+
+fn replay_turn_attempts_from_notes(notes: Vec<mneme::types::AgentNote>) -> Vec<ReplayTurnAttempt> {
+    let mut attempts: Vec<ReplayTurnAttempt> = notes
+        .into_iter()
+        .filter(|note| note.category == TURN_NOTE_CATEGORY)
+        .filter_map(|note| serde_json::from_str::<StoredTurnAttempt>(&note.content).ok())
+        .map(|attempt| ReplayTurnAttempt {
+            version: attempt.version,
+            turn_id: attempt.turn_id,
+            session_id: attempt.session_id,
+            nous_id: attempt.nous_id,
+            status: attempt.status,
+            stage: attempt.stage,
+            error_code: attempt.error_code,
+            error_message: attempt.error_message,
+            model: attempt.model,
+            messages_persisted: attempt.messages_persisted,
+            expected_messages: attempt.expected_messages,
+            created_at: attempt.created_at,
+        })
+        .collect();
+    attempts.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    attempts
 }
 
 /// POST /api/v1/sessions: create a new session.
@@ -288,6 +407,72 @@ pub async fn get_session(
         return Err(SessionNotFoundSnafu { id: id.clone() }.build());
     }
     Ok(Json(SessionResponse::from_mneme(&session)))
+}
+
+/// GET /api/v1/sessions/{id}/replay: replay-faithful session export.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+#[utoipa::path(
+    get,
+    path = "/api/v1/sessions/{id}/replay",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Replay-faithful session export", body = SessionReplayResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 404, description = "Session not found", body = ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[instrument(skip(state, claims))]
+pub async fn replay(
+    State(state): State<SessionsState>,
+    claims: Claims,
+    Path(id): Path<String>,
+) -> Result<Json<SessionReplayResponse>, ApiError> {
+    let session = find_session(&state, &id).await?;
+    require_nous_access(&claims, &session.nous_id)?;
+
+    let state_clone = state.clone();
+    let id_clone = id.clone();
+    let (messages, usage_records, tool_audit_records, notes) =
+        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
+            let store = state_clone.session_store.blocking_lock();
+            let messages = store
+                .get_history_raw(&id_clone, None)
+                .map_err(ApiError::from)?;
+            let usage_records = store
+                .get_usage_for_session(&id_clone)
+                .map_err(ApiError::from)?;
+            let tool_audit_records = store
+                .tool_audit_records_for_session(&id_clone)
+                .map_err(ApiError::from)?;
+            let notes = store.get_notes(&id_clone).map_err(ApiError::from)?;
+            Ok((messages, usage_records, tool_audit_records, notes))
+        })
+        .await??;
+
+    Ok(Json(SessionReplayResponse {
+        version: SESSION_REPLAY_VERSION,
+        export_type: SESSION_REPLAY_EXPORT_TYPE.to_owned(),
+        exported_at: jiff::Timestamp::now().to_string(),
+        session: replay_session_from_mneme(session),
+        messages: messages
+            .into_iter()
+            .map(replay_message_from_mneme)
+            .collect(),
+        usage_records: usage_records
+            .into_iter()
+            .map(replay_usage_from_mneme)
+            .collect(),
+        tool_audit_records: tool_audit_records
+            .into_iter()
+            .map(replay_tool_audit_from_mneme)
+            .collect(),
+        turn_attempts: replay_turn_attempts_from_notes(notes),
+    }))
 }
 
 /// DELETE /api/v1/sessions/{id}: close (archive) a session.

@@ -12,7 +12,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use koina::secret::SecretString;
 
 use super::*;
-use crate::anthropic::pricing::{backoff_delay, estimate_cost, model_family};
+use crate::anthropic::pricing::{estimate_cost, model_family};
 use crate::error::Error;
 use crate::models::BACKOFF_MAX_MS;
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ProviderConfig};
@@ -24,7 +24,11 @@ fn test_config_with(base_url: &str) -> ProviderConfig {
         api_key: Some(SecretString::from("test-key")),
         base_url: Some(base_url.to_owned()),
         default_model: None,
-        max_retries: Some(0),
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..crate::RetryPolicy::default()
+        },
+        concurrency: crate::concurrency::ConcurrencyConfig::default(),
         pricing: HashMap::new(),
         cc_mimicry: None,
         prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
@@ -87,6 +91,62 @@ fn from_config_empty_api_key() {
     assert!(
         matches!(err, Error::ProviderInit { .. }),
         "expected ProviderInit, got: {err:?}"
+    );
+}
+
+#[test]
+fn from_config_rejects_spoofed_loopback_without_leaking_credentials() {
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("sk-secret-5055")),
+        base_url: Some("http://operator:url-secret@127.0.0.1.evil.example/v1".to_owned()), // pii-allow: test fixture asserting credential non-leak
+        ..ProviderConfig::default()
+    };
+    let err = AnthropicProvider::from_config(&config).expect_err("spoofed host must fail");
+    let message = err.to_string();
+
+    assert!(message.contains("HTTPS"), "unexpected error: {message}");
+    assert!(
+        message.contains("127.0.0.1.evil.example"),
+        "diagnostic should keep the rejected host: {message}"
+    );
+    assert!(
+        !message.contains("url-secret"),
+        "diagnostic must redact URL userinfo: {message}"
+    );
+    assert!(
+        !message.contains("sk-secret-5055"),
+        "diagnostic must not include API keys: {message}"
+    );
+}
+
+#[test]
+fn with_credential_provider_rejects_spoofed_loopback_without_leaking_credentials() {
+    use std::sync::Arc;
+
+    let config = ProviderConfig {
+        base_url: Some("http://operator:url-secret@localhost.evil.example/v1".to_owned()), // pii-allow: test fixture asserting credential non-leak
+        ..ProviderConfig::default()
+    };
+    let credential_provider = Arc::new(StaticCredentialProvider {
+        key: SecretString::from("dynamic-secret-5055"),
+    });
+
+    let err = AnthropicProvider::with_credential_provider(credential_provider, &config)
+        .expect_err("spoofed host must fail");
+    let message = err.to_string();
+
+    assert!(message.contains("HTTPS"), "unexpected error: {message}");
+    assert!(
+        message.contains("localhost.evil.example"),
+        "diagnostic should keep the rejected host: {message}"
+    );
+    assert!(
+        !message.contains("url-secret"),
+        "diagnostic must redact URL userinfo: {message}"
+    );
+    assert!(
+        !message.contains("dynamic-secret-5055"),
+        "diagnostic must not include credential provider secrets: {message}"
     );
 }
 
@@ -283,7 +343,7 @@ async fn complete_streaming_retries_pre_content_connection_reset() {
     });
 
     let mut config = test_config_with(&format!("http://{addr}"));
-    config.max_retries = Some(1);
+    config.retry_policy.max_retries = 1;
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
 
     let mut events = Vec::new();
@@ -422,7 +482,7 @@ async fn complete_auth_failure_not_retried() {
         .await;
 
     let mut config = test_config_with(&server.uri());
-    config.max_retries = Some(2);
+    config.retry_policy.max_retries = 2;
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     let err = provider
         .complete(&test_request())
@@ -449,7 +509,7 @@ async fn complete_bad_request_not_retried() {
         .await;
 
     let mut config = test_config_with(&server.uri());
-    config.max_retries = Some(2);
+    config.retry_policy.max_retries = 2;
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     let err = provider
         .complete(&test_request())
@@ -753,7 +813,7 @@ fn backoff_delay_respects_retry_after() {
         retry_after_ms: 5000_u64,
     }
     .build();
-    let delay = backoff_delay(1, Some(&err));
+    let delay = crate::RetryPolicy::default().delay(1, Some(&err));
     assert_eq!(
         delay,
         Duration::from_secs(5),
@@ -763,9 +823,10 @@ fn backoff_delay_respects_retry_after() {
 
 #[test]
 fn backoff_delay_exponential_growth() {
-    let d1 = backoff_delay(1, None);
-    let d2 = backoff_delay(2, None);
-    let d3 = backoff_delay(3, None);
+    let policy = crate::RetryPolicy::default();
+    let d1 = policy.delay(1, None);
+    let d2 = policy.delay(2, None);
+    let d3 = policy.delay(3, None);
     assert!(d1 < d2, "attempt 2 delay should exceed attempt 1");
     assert!(d2 < d3, "attempt 3 delay should exceed attempt 2");
     assert!(
@@ -866,7 +927,10 @@ fn compute_attribution_returns_none_for_environment_credential() {
     let config = ProviderConfig {
         base_url: Some("https://api.anthropic.com".to_owned()),
         cc_mimicry: Some(true),
-        max_retries: Some(0),
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..crate::RetryPolicy::default()
+        },
         ..ProviderConfig::default()
     };
     let provider = AnthropicProvider::with_credential_provider(Arc::new(EnvKeyProvider), &config)
@@ -920,7 +984,10 @@ fn compute_attribution_returns_some_for_oauth_credential() {
     let config = ProviderConfig {
         base_url: Some("https://api.anthropic.com".to_owned()),
         cc_mimicry: Some(true),
-        max_retries: Some(0),
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..crate::RetryPolicy::default()
+        },
         ..ProviderConfig::default()
     };
     let provider = AnthropicProvider::with_credential_provider(Arc::new(OAuthProvider), &config)

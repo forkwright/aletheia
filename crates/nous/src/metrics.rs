@@ -20,6 +20,12 @@ struct NousLabels {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousProviderLabels {
+    nous_id: String,
+    provider: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct NousStageLabels {
     nous_id: String,
     stage: String,
@@ -59,7 +65,8 @@ struct StreamEventDroppedLabels {
 
 // ── Metric families ──
 
-static PIPELINE_TURNS_TOTAL: LazyLock<Family<NousLabels, Counter>> = LazyLock::new(Family::default);
+static PIPELINE_TURNS_TOTAL: LazyLock<Family<NousProviderLabels, Counter>> =
+    LazyLock::new(Family::default);
 
 fn pipeline_stage_histogram() -> Histogram {
     Histogram::new([0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 30.0, 60.0])
@@ -83,6 +90,9 @@ static TOOL_FAILURES_TOTAL: LazyLock<Family<NousToolLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<StreamEventDroppedLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static NOUS_INBOX_SATURATION_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
@@ -139,6 +149,11 @@ pub fn register(registry: &mut Registry) {
         STREAM_EVENTS_DROPPED_TOTAL.clone(),
     );
     registry.register(
+        "aletheia_nous_inbox_saturation",
+        "Total nous actor inbox saturation events by reason",
+        NOUS_INBOX_SATURATION_TOTAL.clone(),
+    );
+    registry.register(
         "aletheia_dpo_pairs_captured",
         "Total DPO preference pairs captured from correction turns",
         DPO_PAIRS_CAPTURED_TOTAL.clone(),
@@ -168,10 +183,11 @@ pub(crate) fn record_stage(nous_id: &str, stage: &str, duration_secs: f64) {
 }
 
 /// Record a completed turn.
-pub(crate) fn record_turn(nous_id: &str) {
+pub(crate) fn record_turn(nous_id: &str, provider: &str) {
     PIPELINE_TURNS_TOTAL
-        .get_or_create(&NousLabels {
+        .get_or_create(&NousProviderLabels {
             nous_id: nous_id.to_owned(),
+            provider: provider.to_owned(),
         })
         .inc();
 }
@@ -210,8 +226,10 @@ fn record_pipeline_event(name: &str, labels: &[(&str, String)], value: f64) {
             }
         }
         "TurnCompleted" => {
-            if let Some(nous_id) = label(labels, "nous_id") {
-                record_turn(nous_id);
+            if let (Some(nous_id), Some(provider)) =
+                (label(labels, "nous_id"), label(labels, "provider"))
+            {
+                record_turn(nous_id, provider);
             }
         }
         _ => {
@@ -252,6 +270,21 @@ pub(crate) fn record_stream_event_dropped(nous_id: &str, event_type: &str, reaso
         .get_or_create(&StreamEventDroppedLabels {
             nous_id: nous_id.to_owned(),
             event_type: event_type.to_owned(),
+            reason: reason.to_owned(),
+        })
+        .inc();
+}
+
+/// Record actor inbox saturation.
+///
+/// WHY(#4644): Bounded actor inboxes intentionally fail with service-busy
+/// errors under sustained overload. Operators need a Prometheus signal before
+/// client-facing failures become the only evidence of saturation.
+pub(crate) fn record_inbox_saturation(nous_id: &str, reason: &str) {
+    tracing::warn!(nous_id, reason, "nous actor inbox saturated");
+    NOUS_INBOX_SATURATION_TOTAL
+        .get_or_create(&NousReasonLabels {
+            nous_id: nous_id.to_owned(),
             reason: reason.to_owned(),
         })
         .inc();
@@ -358,12 +391,13 @@ mod tests {
     fn register_exposes_all_metrics() {
         let r = fresh_registry();
         record_stage("n1", "context", 0.001);
-        record_turn("n1");
+        record_turn("n1", "unknown");
         record_error("n1", "execute", "timeout");
         record_cache_usage("n1", 5, 5);
         record_background_failure("n1", "extract");
         record_tool_failure("n1", "read");
         record_stream_event_dropped("n1", "text_delta", "full");
+        record_inbox_saturation("n1", "send_timeout");
         record_training_capture_rejected("n1", "non_authored");
         record_dpo_pair("n1");
         record_health_poller_restart();
@@ -378,6 +412,7 @@ mod tests {
             "aletheia_nous_background_task_failures_total",
             "aletheia_tool_failures_total",
             "aletheia_stream_events_dropped_total",
+            "aletheia_nous_inbox_saturation_total",
             "aletheia_training_capture_rejected_total",
             "aletheia_dpo_pairs_captured_total",
             "aletheia_nous_health_poller_restarts_total",
@@ -403,12 +438,14 @@ mod tests {
     #[test]
     fn record_turn_increments_counter() {
         let r = fresh_registry();
-        record_turn("agent-b");
-        record_turn("agent-b");
-        record_turn("agent-b");
+        record_turn("agent-b", "local-proxy");
+        record_turn("agent-b", "local-proxy");
+        record_turn("agent-b", "local-proxy");
         let out = encode(&r);
         assert!(
-            out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-b\"} 3"),
+            out.contains(
+                "aletheia_pipeline_turns_total{nous_id=\"agent-b\",provider=\"local-proxy\"} 3"
+            ),
             "got: {out}"
         );
     }
@@ -422,6 +459,7 @@ mod tests {
         emitter.emit(&crate::pipeline::events::TurnCompleted {
             nous_id: "agent-e".to_owned(),
             model: "test-model".to_owned(),
+            provider: Some("anthropic-cloud".to_owned()),
             duration_ms: 100,
             input_tokens: 10,
             output_tokens: 10,
@@ -430,7 +468,9 @@ mod tests {
         });
         let out = encode(&r);
         assert!(
-            out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-e\"} 1"),
+            out.contains(
+                "aletheia_pipeline_turns_total{nous_id=\"agent-e\",provider=\"anthropic-cloud\"} 1"
+            ),
             "TurnCompleted should increment the counter exactly once, got: {out}"
         );
     }

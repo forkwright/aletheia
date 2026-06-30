@@ -15,7 +15,7 @@ use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
 use organon::types::{BlackboardStore, NoteStore};
-use symbolon::jwt::JwtManager;
+use symbolon::auth::AuthFacade;
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 
@@ -32,10 +32,10 @@ pub struct DiaporeiaState {
     pub tool_registry: Arc<ToolRegistry>,
     /// Instance directory layout for file resolution.
     pub oikos: Arc<Oikos>,
-    /// JWT token validation (shared with pylon).
+    /// Revocation-aware bearer token validation (shared with pylon).
     ///
-    /// `None` when `auth_mode == "none"` (no signing key available).
-    pub jwt_manager: Option<Arc<JwtManager>>,
+    /// `None` when `auth_mode == "none"` (no validator required).
+    pub auth_facade: Option<Arc<AuthFacade>>,
     /// Server start instant for uptime calculation.
     pub start_time: Instant,
     /// Runtime configuration, updatable via config API.

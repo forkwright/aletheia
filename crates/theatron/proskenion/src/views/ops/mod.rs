@@ -16,7 +16,7 @@ use crate::state::events::EventState;
 use crate::state::fetch::FetchState;
 use crate::state::ops::{
     AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag, HealthTier, ServiceHealthStore,
-    ToggleStore, ToolToggle, health_from_status,
+    ToggleApplyState, ToggleStore, ToolToggle, health_from_status,
 };
 
 use self::agents::AgentCards;
@@ -46,6 +46,8 @@ struct AgentEntry {
     emoji: Option<String>,
     #[serde(default)]
     enabled: Option<bool>,
+    #[serde(default)]
+    status: Option<String>,
     #[serde(default)]
     tools: Vec<ToolEntryResp>,
 }
@@ -351,6 +353,8 @@ pub(crate) fn Ops() -> Element {
                     name: a.name.clone().unwrap_or_else(|| a.id.clone()),
                     enabled: a.enabled.unwrap_or(true),
                     pending: false,
+                    apply_state: ToggleApplyState::Synced,
+                    live_status: a.status.clone(),
                 })
                 .collect();
 
@@ -363,6 +367,7 @@ pub(crate) fn Ops() -> Element {
                         tool_name: t.name.clone(),
                         enabled: t.enabled,
                         pending: false,
+                        apply_state: ToggleApplyState::Synced,
                     })
                 })
                 .collect();

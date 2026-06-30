@@ -36,10 +36,12 @@ static_regex!(
 /// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
 #[must_use]
 pub fn redact_sensitive(value: &str) -> String {
-    let mut result = replace_sensitive(&RE_ANTHROPIC_KEY, value, "sk-ant-***");
-    result = replace_sensitive(&RE_SK_KEY, &result, "sk-***");
-    result = replace_sensitive(&RE_BEARER, &result, "Bearer ***");
+    let mut result = replace_sensitive(&RE_BEARER, value, "Bearer ***");
+    // JWT segments are base64url and can contain key-like substrings such as
+    // `sk-...`; redact the full JWT before narrower API-key patterns split it.
     result = replace_sensitive(&RE_JWT, &result, "[JWT REDACTED]");
+    result = replace_sensitive(&RE_ANTHROPIC_KEY, &result, "sk-ant-***");
+    result = replace_sensitive(&RE_SK_KEY, &result, "sk-***");
     result = replace_sensitive(&RE_SECRETS, &result, "$1=***");
     result
 }
@@ -79,6 +81,13 @@ mod tests {
         let output = redact_sensitive(input);
         assert!(output.contains("[JWT REDACTED]"));
         assert!(!output.contains("dozjgNryP4J3jVmNHl0w5N"));
+    }
+
+    #[test]
+    fn redacts_jwt_with_key_like_segment() {
+        let input = "token=eyJsk-AAAAAAAAAAAAAAAAAAAA.A.A";
+        let output = redact_sensitive(input);
+        assert_eq!(output, "token=[JWT REDACTED]");
     }
 
     #[test]

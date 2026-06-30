@@ -1,9 +1,10 @@
 use crate::api::types::{Agent, HistoryMessage, Session};
 use crate::app::App;
 use crate::id::NousId;
-use crate::msg::ErrorToast;
+use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
-use crate::state::{AgentState, AgentStatus, ChatMessage};
+use crate::state::{AgentState, AgentStatus, ChatMessage, ControlMutationStatus, Overlay};
+use tracing::Instrument;
 
 #[tracing::instrument(skip_all, fields(count = agents.len()))]
 // SAFETY: sanitized at ingestion: all Agent fields from API are sanitized here.
@@ -75,36 +76,117 @@ pub(crate) fn handle_cost_loaded(app: &mut App, daily_total_cents: u32) {
 }
 
 #[tracing::instrument(skip_all)]
-pub(crate) async fn handle_new_session(app: &mut App) {
-    if let Some(ref agent_id) = app.dashboard.focused_agent.clone() {
-        app.dashboard.messages.clear();
-        app.viewport.render.virtual_scroll.clear();
-        app.scroll_to_bottom();
+pub(crate) fn handle_new_session(app: &mut App) {
+    if app.dashboard.new_session_status.is_pending() {
+        return;
+    }
 
-        let session_key = format!("tui-{}", chrono_compact_now());
-        let client = app.client.clone();
-        let agent_id = agent_id.clone();
-        let key = session_key.clone();
-        match client.create_session(&agent_id, &key).await {
-            Ok(session) => {
-                app.dashboard.focused_session_id = Some(session.id.clone());
-                if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == agent_id) {
-                    agent.sessions.push(session);
-                }
+    let Some(agent_id) = app.dashboard.focused_agent.clone() else {
+        let action_id = "session:create:no-agent".to_string();
+        let message = "New session failed: no focused agent".to_string();
+        set_new_session_status(
+            app,
+            ControlMutationStatus::failed(action_id.clone(), message),
+        );
+        app.viewport.error_toast = Some(ErrorToast::new(format!("[{action_id}] no focused agent")));
+        return;
+    };
+
+    let session_key = format!("tui-{}", chrono_compact_now());
+    let action_id = new_session_action_id(&agent_id, &session_key);
+    set_new_session_status(app, ControlMutationStatus::pending(action_id.clone()));
+
+    let client = app.client.clone();
+    let span = tracing::info_span!("create_session", %action_id, %agent_id, %session_key);
+    app.background_tasks.spawn(
+        async move {
+            let result = client
+                .create_session(&agent_id, &session_key)
+                .await
+                .map_err(|e| e.to_string());
+            Msg::NewSessionCompleted {
+                action_id,
+                nous_id: agent_id,
+                session_key,
+                result,
             }
-            Err(e) => {
-                tracing::error!("failed to create session: {e}");
-                app.viewport.error_toast =
-                    Some(ErrorToast::new(format!("New session failed: {e}")));
+        }
+        .instrument(span),
+    );
+}
+
+#[tracing::instrument(skip_all)]
+pub(crate) fn handle_session_picker_new(app: &mut App) {
+    handle_new_session(app);
+}
+
+#[tracing::instrument(skip_all)]
+pub(crate) fn handle_new_session_completed(
+    app: &mut App,
+    action_id: String,
+    nous_id: NousId,
+    _session_key: String,
+    result: Result<Session, String>,
+) {
+    match result {
+        Ok(session) => {
+            let should_close_picker = matches!(
+                &app.layout.overlay,
+                Some(Overlay::SessionPicker(picker))
+                    if matches!(
+                        &picker.new_session_status,
+                        ControlMutationStatus::Pending { action_id: pending_id }
+                            if pending_id == &action_id
+                    )
+            );
+            let mut sessions = sanitize_sessions(vec![session]);
+            let Some(session) = sessions.pop() else {
+                return;
+            };
+            let session_id = session.id.clone();
+            if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
+                agent.sessions.push(session);
             }
+            if app.dashboard.focused_agent.as_ref() == Some(&nous_id) {
+                app.dashboard.messages.clear();
+                app.viewport.render.virtual_scroll.clear();
+                app.viewport.render.markdown_cache.clear();
+                app.viewport.render.static_lines.clear();
+                app.viewport.render.static_message_count = 0;
+                app.dashboard.focused_session_id = Some(session_id.clone());
+                app.dashboard
+                    .saved_sessions
+                    .insert(nous_id.clone(), session_id);
+                app.scroll_to_bottom();
+                app.save_to_active_tab();
+            }
+            set_new_session_status(app, ControlMutationStatus::succeeded(action_id));
+            if should_close_picker {
+                app.layout.overlay = None;
+            }
+        }
+        Err(message) => {
+            let message = sanitize_for_display(&message).into_owned();
+            let status_message = format!("New session failed: {message}");
+            let feedback = format!("[{action_id}] {status_message}");
+            set_new_session_status(
+                app,
+                ControlMutationStatus::failed(action_id.clone(), status_message),
+            );
+            app.viewport.error_toast = Some(ErrorToast::new(feedback));
         }
     }
 }
 
-#[tracing::instrument(skip_all)]
-pub(crate) async fn handle_session_picker_new(app: &mut App) {
-    app.layout.overlay = None;
-    handle_new_session(app).await;
+fn set_new_session_status(app: &mut App, status: ControlMutationStatus) {
+    app.dashboard.new_session_status = status.clone();
+    if let Some(Overlay::SessionPicker(ref mut picker)) = app.layout.overlay {
+        picker.new_session_status = status;
+    }
+}
+
+fn new_session_action_id(agent_id: &NousId, session_key: &str) -> String {
+    format!("session:create:{agent_id}:{session_key}")
 }
 
 #[tracing::instrument(skip_all)]
@@ -306,6 +388,118 @@ fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
 )]
 mod tests {
     use super::*;
+    use crate::app::test_helpers::{test_agent, test_app_with_messages};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::task::JoinHandle;
+
+    async fn failing_server() -> (String, JoinHandle<()>) {
+        let listener = match TcpListener::bind("127.0.0.1:0").await {
+            Ok(listener) => listener,
+            Err(e) => panic!("bind failing test server: {e}"),
+        };
+        let addr = match listener.local_addr() {
+            Ok(addr) => addr,
+            Err(e) => panic!("read failing test server address: {e}"),
+        };
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _addr)) = listener.accept().await else {
+                    break;
+                };
+                let _connection = tokio::spawn(async move {
+                    let mut request = [0_u8; 1024];
+                    if stream.read(&mut request).await.is_err() {
+                        return;
+                    }
+                    let response = concat!(
+                        "HTTP/1.1 500 Internal Server Error\r\n",
+                        "content-type: text/plain\r\n",
+                        "content-length: 19\r\n",
+                        "connection: close\r\n",
+                        "\r\n",
+                        "backend unavailable"
+                    );
+                    if let Err(e) = stream.write_all(response.as_bytes()).await {
+                        tracing::debug!("failed to write test response: {e}");
+                    }
+                });
+            }
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn point_app_at(app: &mut App, url: &str) {
+        app.config.url = url.to_string();
+        app.client = match crate::api::client::ApiClient::new(url, None) {
+            Ok(client) => client,
+            Err(e) => panic!("test ApiClient::new failed: {e}"),
+        };
+    }
+
+    async fn drain_one_background(app: &mut App) {
+        let Some(result) = app.background_tasks.join_next().await else {
+            panic!("expected one background task");
+        };
+        let msg = match result {
+            Ok(msg) => msg,
+            Err(e) => panic!("background task failed: {e}"),
+        };
+        app.update(msg).await;
+    }
+
+    #[tokio::test]
+    async fn new_session_failure_keeps_current_transcript_and_reports_action_id() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app_with_messages(vec![("user", "hello"), ("assistant", "world")]);
+        point_app_at(&mut app, &url);
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(Session {
+            id: "session-old".into(),
+            nous_id: "syn".into(),
+            key: "main".to_string(),
+            status: None,
+            message_count: 2,
+            session_type: None,
+            updated_at: None,
+            display_name: None,
+        });
+        app.dashboard.agents.push(agent);
+        app.dashboard.focused_agent = Some("syn".into());
+        app.dashboard.focused_session_id = Some("session-old".into());
+
+        handle_new_session(&mut app);
+
+        assert!(matches!(
+            app.dashboard.new_session_status,
+            ControlMutationStatus::Pending { .. }
+        ));
+        assert_eq!(app.dashboard.messages.len(), 2);
+        assert_eq!(
+            app.dashboard.focused_session_id.as_deref(),
+            Some("session-old")
+        );
+
+        drain_one_background(&mut app).await;
+
+        assert_eq!(app.dashboard.messages.len(), 2);
+        assert_eq!(
+            app.dashboard.focused_session_id.as_deref(),
+            Some("session-old")
+        );
+        assert!(matches!(
+            &app.dashboard.new_session_status,
+            ControlMutationStatus::Failed { action_id, .. }
+                if action_id.starts_with("session:create:syn:tui-")
+        ));
+        assert!(
+            app.viewport
+                .error_toast
+                .as_ref()
+                .is_some_and(|toast| toast.message.contains("session:create:syn:tui-"))
+        );
+        assert_eq!(app.dashboard.agents[0].sessions.len(), 1);
+    }
 
     #[test]
     fn extract_text_content_plain_string() {
@@ -527,6 +721,8 @@ mod tests {
         let mut app = test_app();
         let messages = vec![
             HistoryMessage {
+                id: None,
+                seq: None,
                 role: "user".to_string(),
                 content: Some(serde_json::Value::String("hello".to_string())),
                 created_at: None,
@@ -534,6 +730,8 @@ mod tests {
                 tool_name: None,
             },
             HistoryMessage {
+                id: None,
+                seq: None,
                 role: "system".to_string(),
                 content: Some(serde_json::Value::String("system prompt".to_string())),
                 created_at: None,
@@ -541,6 +739,8 @@ mod tests {
                 tool_name: None,
             },
             HistoryMessage {
+                id: None,
+                seq: None,
                 role: "assistant".to_string(),
                 content: Some(serde_json::Value::String("response".to_string())),
                 created_at: None,

@@ -11,6 +11,8 @@ use sha2::{Digest as _, Sha256};
 use tower::ServiceExt;
 
 use super::helpers::*;
+use crate::idempotency::LookupResult;
+use crate::turn_buffer::TurnBufferHandle;
 
 const HEX_HIGH_NIBBLE_SHIFT: u8 = 4;
 const HEX_LOW_NIBBLE_MASK: u8 = 0x0f;
@@ -82,6 +84,156 @@ fn lower_hex_char(nibble: u8) -> char {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct SseFrame {
+    id: Option<String>,
+    event: Option<String>,
+    data: serde_json::Value,
+}
+
+fn collect_sse_frames(body: &str) -> Vec<SseFrame> {
+    let mut frames = Vec::new();
+    let mut id = None;
+    let mut event = None;
+    let mut data_lines = Vec::new();
+
+    for line in body.lines() {
+        if line.is_empty() {
+            push_sse_frame(&mut frames, &mut id, &mut event, &mut data_lines);
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("id:") {
+            id = Some(value.trim().to_owned());
+        } else if let Some(value) = line.strip_prefix("event:") {
+            event = Some(value.trim().to_owned());
+        } else if let Some(value) = line.strip_prefix("data:") {
+            data_lines.push(value.trim().to_owned());
+        }
+    }
+    push_sse_frame(&mut frames, &mut id, &mut event, &mut data_lines);
+
+    frames
+}
+
+fn push_sse_frame(
+    frames: &mut Vec<SseFrame>,
+    id: &mut Option<String>,
+    event: &mut Option<String>,
+    data_lines: &mut Vec<String>,
+) {
+    if data_lines.is_empty() {
+        *id = None;
+        *event = None;
+        return;
+    }
+    let data = data_lines.join("\n");
+    frames.push(SseFrame {
+        id: id.take(),
+        event: event.take(),
+        data: serde_json::from_str(&data).expect("SSE data must be JSON"),
+    });
+    data_lines.clear();
+}
+
+fn frame_types(frames: &[SseFrame]) -> Vec<String> {
+    frames
+        .iter()
+        .map(|frame| frame.data["type"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+fn find_frame<'a>(frames: &'a [SseFrame], event_type: &str) -> &'a SseFrame {
+    frames
+        .iter()
+        .find(|frame| frame.data["type"].as_str() == Some(event_type))
+        .unwrap_or_else(|| panic!("missing {event_type} in frames: {frames:?}"))
+}
+
+fn tool_replay_events(session_id: &str, turn_id: &str) -> [(&'static str, serde_json::Value); 4] {
+    [
+        (
+            "message_start",
+            serde_json::json!({
+                "type": "message_start",
+                "status": "accepted",
+                "session_id": session_id,
+                "nous_id": "syn",
+                "turn_id": turn_id,
+                "request_id": "req-tool-replay",
+            }),
+        ),
+        (
+            "tool_use",
+            serde_json::json!({
+                "type": "tool_use",
+                "id": "toolu_4865",
+                "name": "read_file",
+                "input": {"path": "/tmp/alice.txt"},
+            }),
+        ),
+        (
+            "tool_result",
+            serde_json::json!({
+                "type": "tool_result",
+                "tool_use_id": "toolu_4865",
+                "content": "synthetic contents",
+                "is_error": false,
+            }),
+        ),
+        (
+            "message_complete",
+            serde_json::json!({
+                "type": "message_complete",
+                "stop_reason": "end_turn",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "cache_read_tokens": 2,
+                    "cache_write_tokens": 1,
+                },
+                "request_id": "req-tool-replay",
+            }),
+        ),
+    ]
+}
+
+async fn seed_completed_tool_replay(
+    state: &Arc<AppState>,
+    session_id: &str,
+    key: &str,
+    turn_id: &str,
+) {
+    let buffer = state
+        .turn_buffer_registry
+        .get_or_create(session_id, turn_id)
+        .await;
+    let handle = TurnBufferHandle::new(buffer);
+    for (event_type, event) in tool_replay_events(session_id, turn_id) {
+        handle.record(event_type, &event.to_string()).await;
+    }
+    handle.mark_completed().await;
+
+    let fingerprint = body_fingerprint("Hello!");
+    assert!(matches!(
+        state
+            .idempotency_cache
+            .check_or_insert("test-user", key, session_id, &fingerprint),
+        LookupResult::Miss
+    ));
+    state.idempotency_cache.complete(
+        "test-user",
+        key,
+        session_id,
+        &fingerprint,
+        StatusCode::OK,
+        serde_json::json!({
+            "turn_id": turn_id,
+            "status": "completed",
+        })
+        .to_string(),
+    );
+}
+
 #[tokio::test]
 async fn idempotency_key_absent_works_normally() {
     let (state, _dir) = test_state().await;
@@ -112,7 +264,7 @@ async fn idempotency_key_first_request_succeeds() {
 }
 
 #[tokio::test]
-async fn idempotency_key_replay_returns_cached_completion() {
+async fn idempotency_key_replay_returns_original_event_sequence() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
     let created = create_test_session(&router).await;
@@ -122,13 +274,15 @@ async fn idempotency_key_replay_returns_cached_completion() {
     let resp1 = router.clone().oneshot(req1).await.unwrap();
     assert_eq!(resp1.status(), StatusCode::OK);
     let body1 = body_string(resp1).await;
-
-    let original_stop_reason = body1
-        .lines()
-        .find(|l| l.starts_with("data:"))
-        .and_then(|l| serde_json::from_str::<serde_json::Value>(l.trim_start_matches("data:")).ok())
-        .and_then(|v| v["stop_reason"].as_str().map(str::to_owned))
-        .unwrap_or_default();
+    let original_frames = collect_sse_frames(&body1);
+    assert_eq!(
+        frame_types(&original_frames),
+        vec!["message_start", "text_delta", "message_complete"]
+    );
+    let original_start = find_frame(&original_frames, "message_start");
+    let turn_id = original_start.data["turn_id"].as_str().unwrap().to_owned();
+    assert_eq!(original_start.id.as_deref(), Some("1"));
+    assert_eq!(original_start.data["session_id"], id);
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -136,16 +290,70 @@ async fn idempotency_key_replay_returns_cached_completion() {
     let resp2 = router.clone().oneshot(req2).await.unwrap();
     assert_eq!(resp2.status(), StatusCode::OK);
     let body2 = body_string(resp2).await;
-    assert!(
-        body2.contains("message_complete"),
-        "replayed response should contain message_complete event, got: {body2}"
+    let replay_frames = collect_sse_frames(&body2);
+
+    assert_eq!(
+        replay_frames, original_frames,
+        "idempotency replay must return the recorded turn event sequence"
     );
-    if !original_stop_reason.is_empty() {
-        assert!(
-            body2.contains(&original_stop_reason),
-            "replayed stop_reason should match original '{original_stop_reason}', got: {body2}"
-        );
-    }
+    assert_eq!(
+        find_frame(&replay_frames, "message_start").data["turn_id"],
+        turn_id.as_str()
+    );
+    assert!(
+        replay_frames
+            .iter()
+            .all(|frame| frame.id.as_deref() != Some("0")),
+        "replay must preserve recorded event ids, not synthesize seq=0"
+    );
+
+    let complete = find_frame(&replay_frames, "message_complete");
+    assert_eq!(complete.id.as_deref(), Some("3"));
+    assert_eq!(complete.data["stop_reason"], "end_turn");
+    assert_eq!(complete.data["usage"]["input_tokens"], 10);
+    assert_eq!(complete.data["usage"]["output_tokens"], 5);
+    assert!(complete.data["usage"]["cache_read_tokens"].is_u64());
+    assert!(complete.data["usage"]["cache_write_tokens"].is_u64());
+}
+
+#[tokio::test]
+async fn idempotency_key_replay_preserves_tool_events() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+    let key = "tool-replay-key-4865";
+    let turn_id = "turn-tool-replay-4865";
+    seed_completed_tool_replay(&state, id, key, turn_id).await;
+
+    let req = send_message_req(id, Some(key));
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    let frames = collect_sse_frames(&body);
+
+    assert_eq!(
+        frame_types(&frames),
+        vec![
+            "message_start",
+            "tool_use",
+            "tool_result",
+            "message_complete"
+        ]
+    );
+    assert_eq!(
+        find_frame(&frames, "message_start").data["turn_id"],
+        turn_id
+    );
+    assert_eq!(find_frame(&frames, "tool_use").data["id"], "toolu_4865");
+    assert_eq!(
+        find_frame(&frames, "tool_result").data["tool_use_id"],
+        "toolu_4865"
+    );
+    assert_eq!(
+        find_frame(&frames, "message_complete").data["usage"]["cache_read_tokens"],
+        2
+    );
 }
 
 #[tokio::test]
@@ -200,15 +408,30 @@ async fn idempotency_key_in_flight_returns_409() {
     // WHY: Pre-seeding the cache with the test principal ("test-user") and the
     // raw key simulates an in-flight request and triggers the 409 Conflict path.
     let key = "inflight-key-001";
-    state
-        .idempotency_cache
-        .check_or_insert("test-user", key, id, &body_fingerprint("Hello!"));
+    let turn_id = "turn-inflight-4865";
+    assert!(matches!(
+        state.idempotency_cache.check_or_insert_with_in_flight_body(
+            "test-user",
+            key,
+            id,
+            &body_fingerprint("Hello!"),
+            Some(
+                serde_json::json!({
+                    "turn_id": turn_id,
+                    "status": "running",
+                })
+                .to_string(),
+            ),
+        ),
+        LookupResult::Miss
+    ));
 
     let req = send_message_req(id, Some(key));
     let resp = router.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CONFLICT);
     let body = body_json(resp).await;
-    assert_eq!(body["error"]["code"], "conflict");
+    assert_eq!(body["error"]["code"], "stream_turn_conflict");
+    assert_eq!(body["error"]["details"]["turn_id"], turn_id);
 }
 
 #[tokio::test]

@@ -334,6 +334,173 @@ impl RoutingDecision {
     }
 }
 
+/// Whether an interactive turn reached a normal completion.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CompletionStatus {
+    /// The turn did not complete normally.
+    #[default]
+    Incomplete,
+    /// The turn completed normally.
+    Completed,
+}
+
+/// Whether the user corrected or rejected an interactive turn.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CorrectionStatus {
+    /// No correction or rejection was observed.
+    #[default]
+    Clear,
+    /// The user corrected or rejected the turn.
+    Corrected,
+}
+
+/// Whether a runtime guard intervened in an interactive turn.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum InterventionStatus {
+    /// The guard did not intervene.
+    #[default]
+    Clear,
+    /// The guard intervened and replaced the response.
+    Triggered,
+}
+
+/// Whether an interactive turn stayed within its budget.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum BudgetStatus {
+    /// The turn stayed within its budget.
+    #[default]
+    WithinLimit,
+    /// The turn exceeded its budget or cost threshold.
+    Exceeded,
+}
+
+/// Whether the provider reported a failure for an interactive turn.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ProviderStatus {
+    /// No provider-side failure was observed.
+    #[default]
+    Available,
+    /// A provider-side failure occurred.
+    Failed,
+}
+
+/// Real outcome dimensions for an interactive turn.
+///
+/// Replaces the coarse "non-degraded == success" heuristic with explicit
+/// signals that can be audited and fed into the empirical router. The
+/// dimensions are intentionally independent so that future routers can learn
+/// from partial failure patterns rather than a single collapsed boolean.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct InteractiveOutcome {
+    /// Whether the turn completed normally.
+    pub completion: CompletionStatus,
+    /// Whether the user corrected or rejected the turn.
+    pub user_correction: CorrectionStatus,
+    /// Ratio of tool calls that errored, in [0.0, 1.0].
+    pub tool_error_rate: f64,
+    /// Whether a loop guard fired and replaced the response.
+    pub loop_guard: InterventionStatus,
+    /// Whether a mistake brake fired and replaced the response.
+    pub mistake_brake: InterventionStatus,
+    /// Whether the turn exceeded its budget/cost threshold.
+    pub budget: BudgetStatus,
+    /// Whether a provider-side failure occurred.
+    pub provider: ProviderStatus,
+    /// Optional explicit user rating (e.g., -1/0/+1).
+    pub explicit_user_rating: Option<i8>,
+}
+
+impl InteractiveOutcome {
+    /// Maximum tool-error rate still considered a successful turn.
+    ///
+    /// WHY: a single tool failure in a multi-tool turn can be normal recovery;
+    /// routing signal should degrade only when errors dominate the turn.
+    const MAX_ACCEPTABLE_TOOL_ERROR_RATE: f64 = 0.5;
+
+    /// Construct an interactive outcome with neutral failure modifiers.
+    ///
+    /// Correction, guard, budget, and provider signals default to clear states;
+    /// pass [`CompletionStatus::Incomplete`] when the turn itself failed.
+    #[must_use]
+    pub fn new(completion: CompletionStatus, tool_error_rate: f64) -> Self {
+        Self {
+            completion,
+            tool_error_rate,
+            ..Self::default()
+        }
+    }
+
+    /// Attach the observed user-correction signal.
+    #[must_use]
+    pub fn with_user_correction(mut self, status: CorrectionStatus) -> Self {
+        self.user_correction = status;
+        self
+    }
+
+    /// Attach the observed loop-guard signal.
+    #[must_use]
+    pub fn with_loop_guard(mut self, status: InterventionStatus) -> Self {
+        self.loop_guard = status;
+        self
+    }
+
+    /// Attach the observed mistake-brake signal.
+    #[must_use]
+    pub fn with_mistake_brake(mut self, status: InterventionStatus) -> Self {
+        self.mistake_brake = status;
+        self
+    }
+
+    /// Attach the observed budget signal.
+    #[must_use]
+    pub fn with_budget(mut self, status: BudgetStatus) -> Self {
+        self.budget = status;
+        self
+    }
+
+    /// Attach the observed provider signal.
+    #[must_use]
+    pub fn with_provider(mut self, status: ProviderStatus) -> Self {
+        self.provider = status;
+        self
+    }
+
+    /// Attach an explicit user rating.
+    #[must_use]
+    pub fn with_explicit_user_rating(mut self, rating: Option<i8>) -> Self {
+        self.explicit_user_rating = rating;
+        self
+    }
+
+    /// Collapse the outcome dimensions into a single routing success boolean.
+    ///
+    /// A turn is a routing success only when it completed normally, was not
+    /// corrected, had few tool errors, was not interrupted by a guard/brake,
+    /// stayed within budget, and had no provider failure.
+    #[must_use]
+    pub fn is_success(&self) -> bool {
+        self.completion == CompletionStatus::Completed
+            && self.user_correction == CorrectionStatus::Clear
+            && self.tool_error_rate < Self::MAX_ACCEPTABLE_TOOL_ERROR_RATE
+            && self.loop_guard == InterventionStatus::Clear
+            && self.mistake_brake == InterventionStatus::Clear
+            && self.budget == BudgetStatus::WithinLimit
+            && self.provider == ProviderStatus::Available
+            && self.explicit_user_rating.is_none_or(|r| r >= 0)
+    }
+}
+
 /// Outcome of a completed turn, fed back via [`Router::after_action`].
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -341,10 +508,17 @@ pub struct TurnOutcome {
     /// The provider identifier that handled this turn.
     pub provider: ProviderId,
 
+    /// The model identifier used for this turn, if known separately from the
+    /// provider. Kept distinct from `provider` to support #4798.
+    pub model: Option<Arc<str>>,
+
     /// Task category for the aggregation key.
     pub task_category: TaskCategory,
 
     /// Whether the turn completed successfully.
+    ///
+    /// WHY: kept as a derived, collapsed boolean so the store can continue to
+    /// aggregate success rates without understanding every dimension.
     pub success: bool,
 
     /// Whether the response path was the interactive (nous) path.
@@ -352,13 +526,20 @@ pub struct TurnOutcome {
     /// `false` means dispatch (energeia). Used for observability; the storage
     /// backend is the same regardless of path.
     pub is_interactive: bool,
+
+    /// Interactive outcome dimensions used to derive `success` and for audit.
+    ///
+    /// `None` for dispatch-path outcomes or older interactive records.
+    pub interactive_outcome: Option<InteractiveOutcome>,
 }
 
 impl TurnOutcome {
     /// Construct a new turn outcome.
     ///
     /// WHY: same `#[non_exhaustive]` constructor rationale as
-    /// [`RequestFeatures::new`].
+    /// [`RequestFeatures::new`]. The collapsed `success` boolean is supplied
+    /// directly; use [`Self::with_interactive_outcome`] when the underlying
+    /// dimensions are known.
     pub fn new(
         provider: ProviderId,
         task_category: TaskCategory,
@@ -367,9 +548,33 @@ impl TurnOutcome {
     ) -> Self {
         Self {
             provider,
+            model: None,
             task_category,
             success,
             is_interactive,
+            interactive_outcome: None,
+        }
+    }
+
+    /// Construct an interactive outcome from its real signal dimensions.
+    ///
+    /// `success` is derived from `interactive_outcome.is_success()` so the
+    /// empirical store cannot accidentally learn from a proxy boolean.
+    #[must_use]
+    pub fn with_interactive_outcome(
+        provider: ProviderId,
+        model: Option<Arc<str>>,
+        task_category: TaskCategory,
+        is_interactive: bool,
+        interactive_outcome: InteractiveOutcome,
+    ) -> Self {
+        Self {
+            provider,
+            model,
+            task_category,
+            success: interactive_outcome.is_success(),
+            is_interactive,
+            interactive_outcome: Some(interactive_outcome),
         }
     }
 }
@@ -485,5 +690,114 @@ mod tests {
         assert!(f.candidate_allowed_by_boundary(&ProviderId::new("local")));
         assert!(f.candidate_allowed_by_boundary(&ProviderId::new("embedded")));
         assert!(f.candidate_allowed_by_boundary(&ProviderId::new("unknown")));
+    }
+
+    #[test]
+    fn interactive_outcome_success_requires_clean_completion() {
+        let good = InteractiveOutcome {
+            completion: CompletionStatus::Completed,
+            user_correction: CorrectionStatus::Clear,
+            tool_error_rate: 0.0,
+            loop_guard: InterventionStatus::Clear,
+            mistake_brake: InterventionStatus::Clear,
+            budget: BudgetStatus::WithinLimit,
+            provider: ProviderStatus::Available,
+            explicit_user_rating: None,
+        };
+        assert!(good.is_success());
+    }
+
+    #[test]
+    fn interactive_outcome_failure_modes_do_not_count_as_success() {
+        let base = InteractiveOutcome {
+            completion: CompletionStatus::Completed,
+            user_correction: CorrectionStatus::Clear,
+            tool_error_rate: 0.0,
+            loop_guard: InterventionStatus::Clear,
+            mistake_brake: InterventionStatus::Clear,
+            budget: BudgetStatus::WithinLimit,
+            provider: ProviderStatus::Available,
+            explicit_user_rating: None,
+        };
+
+        assert!(
+            !InteractiveOutcome {
+                completion: CompletionStatus::Incomplete,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                user_correction: CorrectionStatus::Corrected,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                tool_error_rate: 1.0,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                loop_guard: InterventionStatus::Triggered,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                mistake_brake: InterventionStatus::Triggered,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                budget: BudgetStatus::Exceeded,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                provider: ProviderStatus::Failed,
+                ..base.clone()
+            }
+            .is_success()
+        );
+        assert!(
+            !InteractiveOutcome {
+                explicit_user_rating: Some(-1),
+                ..base
+            }
+            .is_success()
+        );
+    }
+
+    #[test]
+    fn turn_outcome_with_interactive_outcome_derives_success() {
+        let failed = InteractiveOutcome {
+            completion: CompletionStatus::Completed,
+            user_correction: CorrectionStatus::Clear,
+            tool_error_rate: 1.0,
+            loop_guard: InterventionStatus::Clear,
+            mistake_brake: InterventionStatus::Clear,
+            budget: BudgetStatus::WithinLimit,
+            provider: ProviderStatus::Available,
+            explicit_user_rating: None,
+        };
+        let outcome = TurnOutcome::with_interactive_outcome(
+            ProviderId::new("p"),
+            None,
+            TaskCategory::Feature,
+            true,
+            failed,
+        );
+        assert!(!outcome.success);
+        assert!(outcome.interactive_outcome.is_some());
     }
 }

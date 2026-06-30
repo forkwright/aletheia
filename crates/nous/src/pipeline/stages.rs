@@ -39,6 +39,11 @@ use super::{
     ReflectionStatus, TurnResult, assemble_context_conditional_with_cache, check_guard,
 };
 
+struct CachedDistillation {
+    summary: String,
+    source_id: Option<String>,
+}
+
 struct ProviderRecallBridge<'a> {
     providers: &'a ProviderRegistry,
     model: &'a str,
@@ -129,6 +134,32 @@ impl mneme::side_query::SideQueryRanker for ProviderRecallBridge<'_> {
             .take(max_results)
             .collect())
     }
+}
+
+fn provider_name_for_model(providers: &ProviderRegistry, model: &str) -> Option<String> {
+    providers
+        .providers()
+        .into_iter()
+        .find(|provider| provider.match_specificity(model).is_some())
+        .map(|provider| provider.name().to_owned())
+}
+
+fn cached_distillation_for_session(
+    store: &SessionStore,
+    session_id: &str,
+) -> Result<Option<CachedDistillation>, mneme::error::Error> {
+    let Some(message) = store
+        .get_history_filtered(session_id, Some(1), Some(1))?
+        .into_iter()
+        .find(|message| message.seq == 0 && !message.is_distilled)
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(CachedDistillation {
+        source_id: Some(format!("message:{}:{}", message.session_id, message.id)),
+        summary: message.content,
+    }))
 }
 
 #[expect(
@@ -369,12 +400,11 @@ pub(super) async fn run_history_stage(
             reason = "usize→i64: message length fits in i64"
         )]
         let token_estimate = (input.content.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast
-        ctx.messages.push(PipelineMessage {
-            role: "user".to_owned(),
-            content: input.content.clone(),
+        ctx.messages.push(PipelineMessage::text(
+            "user",
+            input.content.clone(),
             token_estimate,
-            cache_breakpoint: false,
-        });
+        ));
     }
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
@@ -727,6 +757,7 @@ pub(super) async fn run_execute_stage(
     emitter: &EventEmitter,
     hooks: Option<&HookRegistry>,
     session_store: Option<&Mutex<SessionStore>>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
     time_budget.begin_stage("execute");
     let span = info_span!(
@@ -754,6 +785,7 @@ pub(super) async fn run_execute_stage(
                 approval_gate,
                 hooks,
                 execute_deadline,
+                audit_log,
             )
             .await
         } else {
@@ -768,6 +800,7 @@ pub(super) async fn run_execute_stage(
                 approval_gate,
                 hooks,
                 execute_deadline,
+                audit_log,
             )
             .await
         }
@@ -809,7 +842,7 @@ pub(super) async fn run_execute_stage(
                 match tokio::time::timeout(std::time::Duration::from_millis(50), store_mutex.lock())
                     .await
                 {
-                    Ok(store) => match store.get_distillation_summary(&input.session.id) {
+                    Ok(store) => match cached_distillation_for_session(&store, &input.session.id) {
                         Ok(summary) => summary,
                         Err(e) => {
                             // WHY(#5245): a store read error is distinct from a genuine
@@ -841,11 +874,23 @@ pub(super) async fn run_execute_stage(
             });
 
             span.record("status", "degraded");
-            crate::degraded_mode::build_degraded_response(
+            let routed_model = crate::execute::routed_model_for_turn(ctx, config, providers, tools);
+            let attempt = crate::degraded_mode::DegradedAttemptContext {
+                attempted_provider: provider_name_for_model(providers, &routed_model),
+                configured_model: config.generation.model.clone(),
+                routed_model,
+                source_id: recent_distillation
+                    .as_ref()
+                    .and_then(|distillation| distillation.source_id.clone()),
+            };
+            crate::degraded_mode::build_degraded_response_with_provenance(
                 &config.id,
                 &input.session.id,
                 err,
-                recent_distillation.as_deref(),
+                recent_distillation
+                    .as_ref()
+                    .map(|distillation| distillation.summary.as_str()),
+                attempt,
             )
         }
         Err(err) => {
@@ -1218,17 +1263,17 @@ fn apply_recall_result(
         Ok(recall_result) => {
             if let Some(ref section) = recall_result.recall_section {
                 if late_inject_anchor {
-                    ctx.messages.push(PipelineMessage {
-                        role: "system".to_owned(),
-                        content: section.clone(),
-                        #[expect(
-                            clippy::cast_possible_wrap,
-                            clippy::as_conversions,
-                            reason = "u64→i64: recall tokens fit in i64"
-                        )]
-                        token_estimate: recall_result.tokens_consumed as i64, // kanon:ignore RUST/as-cast
-                        cache_breakpoint: false,
-                    });
+                    #[expect(
+                        clippy::cast_possible_wrap,
+                        clippy::as_conversions,
+                        reason = "u64→i64: recall tokens fit in i64"
+                    )]
+                    let token_estimate = recall_result.tokens_consumed as i64; // kanon:ignore RUST/as-cast
+                    ctx.messages.push(PipelineMessage::text(
+                        "system",
+                        section.clone(),
+                        token_estimate,
+                    ));
                 } else if let Some(ref mut prompt) = ctx.system_prompt {
                     prompt.push_str("\n\n");
                     prompt.push_str(section);

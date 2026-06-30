@@ -7,6 +7,7 @@
 //! re-parsing raw response bodies.
 
 use serde::Deserialize;
+use serde_json::Value;
 
 pub use keryx::error::{
     ApiError, AuthSnafu, HttpSnafu, InvalidTokenSnafu, RateLimitedSnafu, Result, ServerSnafu,
@@ -18,8 +19,8 @@ pub use keryx::error::{
 /// transport `ApiError` to surface machine-readable diagnostics —
 /// correlation IDs, validation details, retry hints — to UIs without
 /// re-parsing raw bodies.
-#[derive(Debug, Clone, Deserialize)]
-pub struct ServerErrorDetail {
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct ErrorResponse {
     /// Machine-readable error code (e.g. `"session_not_found"`).
     pub code: String,
     /// Human-readable error message.
@@ -29,12 +30,52 @@ pub struct ServerErrorDetail {
     pub request_id: Option<String>,
     /// Optional structured details (e.g. retry timing, validation
     /// errors from pylon's `FieldError` list).
-    pub details: Option<serde_json::Value>,
+    pub details: Option<Value>,
+}
+
+/// Backward-compatible alias for the structured pylon error body.
+pub type ServerErrorDetail = ErrorResponse;
+
+/// Structured pylon error body annotated with its HTTP status.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorEnvelope {
+    /// HTTP status code from the response.
+    pub status: u16,
+    /// Structured error body from the response.
+    pub error: ErrorResponse,
+}
+
+impl ErrorResponse {
+    /// Format this error body for operator-facing UI surfaces.
+    #[must_use]
+    pub fn display_message(&self) -> String {
+        format_error_fields_for_display(
+            &self.message,
+            None,
+            Some(&self.code),
+            self.request_id.as_deref(),
+            self.details.as_ref(),
+        )
+    }
+}
+
+impl ErrorEnvelope {
+    /// Format this status-bearing envelope for operator-facing UI surfaces.
+    #[must_use]
+    pub fn display_message(&self) -> String {
+        format_error_fields_for_display(
+            &self.error.message,
+            Some(self.status),
+            Some(&self.error.code),
+            self.error.request_id.as_deref(),
+            self.error.details.as_ref(),
+        )
+    }
 }
 
 #[derive(Deserialize)]
 struct PylonErrorEnvelope {
-    error: ServerErrorDetail,
+    error: ErrorResponse,
 }
 
 /// Parse the canonical pylon error envelope `{error:{code,message,...}}`
@@ -44,10 +85,72 @@ struct PylonErrorEnvelope {
 /// the canonical nested `error` object. Callers should fall back to
 /// the HTTP status and reason phrase when `None` is returned.
 #[must_use]
-pub fn parse_pylon_error_body(body: &str) -> Option<ServerErrorDetail> {
+pub fn parse_pylon_error_body(body: &str) -> Option<ErrorResponse> {
     serde_json::from_str::<PylonErrorEnvelope>(body)
         .ok()
         .map(|e| e.error)
+}
+
+/// Parse a pylon error envelope and attach the HTTP status code.
+#[must_use]
+pub fn parse_pylon_error_envelope(status: u16, body: &str) -> Option<ErrorEnvelope> {
+    parse_pylon_error_body(body).map(|error| ErrorEnvelope { status, error })
+}
+
+/// Format an HTTP error body for direct display in first-party UIs.
+///
+/// Canonical pylon envelopes render with status, code, request ID, and
+/// structured details. Legacy flat `{message: ...}` and `{error: "..."}`
+/// bodies are still accepted for older servers.
+#[must_use]
+pub fn format_http_error_body(status: u16, reason: &str, body: &str) -> String {
+    parse_pylon_error_envelope(status, body).map_or_else(
+        || legacy_flat_error_message(body).unwrap_or_else(|| format!("{status} {reason}")),
+        |envelope| envelope.display_message(),
+    )
+}
+
+/// Format known error fields for direct display in first-party UIs.
+///
+/// Missing optional fields are omitted. When only `message` is available,
+/// the message is returned unchanged for compatibility with legacy stream
+/// events.
+#[must_use]
+pub fn format_error_fields_for_display(
+    message: &str,
+    status: Option<u16>,
+    code: Option<&str>,
+    request_id: Option<&str>,
+    details: Option<&Value>,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(status) = status {
+        parts.push(format!("status {status}"));
+    }
+    if let Some(code) = code.filter(|value| !value.is_empty()) {
+        parts.push(format!("code {code}"));
+    }
+    if let Some(request_id) = request_id.filter(|value| !value.is_empty()) {
+        parts.push(format!("request_id {request_id}"));
+    }
+    if let Some(details) = details {
+        parts.push(format!("details {details}"));
+    }
+
+    if parts.is_empty() {
+        message.to_string()
+    } else {
+        format!("{message} ({})", parts.join("; "))
+    }
+}
+
+fn legacy_flat_error_message(body: &str) -> Option<String> {
+    serde_json::from_str::<Value>(body).ok().and_then(|json| {
+        json.get("message")
+            .or_else(|| json.get("error"))
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    })
 }
 
 /// Extract a `Retry-After` delta-seconds value from response headers.
@@ -107,6 +210,51 @@ mod tests {
     }
 
     #[test]
+    fn parse_pylon_error_envelope_preserves_status() {
+        let body = r#"{"error":{"code":"not_found","message":"resource not found","request_id":"req-404"}}"#;
+        let envelope =
+            parse_pylon_error_envelope(404, body).expect("canonical envelope should parse");
+        assert_eq!(envelope.status, 404);
+        assert_eq!(envelope.error.code, "not_found");
+        assert_eq!(envelope.error.request_id.as_deref(), Some("req-404"));
+    }
+
+    #[test]
+    fn format_http_error_body_preserves_pylon_envelope_details() {
+        let body = r#"{"error":{"code":"validation_error","message":"invalid input","request_id":"req-xyz","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
+        let message = format_http_error_body(422, "Unprocessable Entity", body);
+
+        assert!(message.contains("invalid input"));
+        assert!(message.contains("status 422"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-xyz"));
+        assert!(message.contains(r#""field":"message""#));
+        assert!(message.contains(r#""code":"required""#));
+    }
+
+    #[test]
+    fn format_error_fields_without_optional_fields_returns_message() {
+        assert_eq!(
+            format_error_fields_for_display("provider unavailable", None, None, None, None),
+            "provider unavailable"
+        );
+    }
+
+    #[test]
+    fn format_error_fields_preserves_stream_request_id() {
+        assert_eq!(
+            format_error_fields_for_display(
+                "provider unavailable",
+                None,
+                None,
+                Some("req-stream"),
+                None,
+            ),
+            "provider unavailable (request_id req-stream)"
+        );
+    }
+
+    #[test]
     fn flat_message_field_returns_none() {
         // Legacy flat response format — not the canonical pylon envelope.
         // Callers must fall back to HTTP status + reason phrase.
@@ -118,6 +266,24 @@ mod tests {
     fn flat_error_string_returns_none() {
         let body = r#"{"error":"bad request"}"#;
         assert!(parse_pylon_error_body(body).is_none());
+    }
+
+    #[test]
+    fn format_http_error_body_accepts_legacy_flat_message() {
+        let body = r#"{"message":"something went wrong"}"#;
+        assert_eq!(
+            format_http_error_body(400, "Bad Request", body),
+            "something went wrong"
+        );
+    }
+
+    #[test]
+    fn format_http_error_body_accepts_legacy_error_string() {
+        let body = r#"{"error":"bad request"}"#;
+        assert_eq!(
+            format_http_error_body(400, "Bad Request", body),
+            "bad request"
+        );
     }
 
     #[test]

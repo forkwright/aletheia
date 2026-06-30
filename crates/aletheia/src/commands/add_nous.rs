@@ -9,6 +9,7 @@ use koina::system::{Environment, RealSystem};
 use taxis::oikos::Oikos;
 
 use crate::error::Result;
+use crate::provider_config::{ensure_provider_model, parse_cli_provider, validate_cli_provider};
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct AddNousArgs {
@@ -80,10 +81,7 @@ fn validate_name(name: &str) -> Result<()> {
 }
 
 fn validate_provider(provider: &str) -> Result<()> {
-    match provider {
-        "anthropic" | "openai" => Ok(()),
-        other => whatever!("unsupported provider: {other}\nSupported providers: anthropic, openai"),
-    }
+    validate_cli_provider(provider)
 }
 
 fn validate_model(model: &str) -> Result<()> {
@@ -271,6 +269,8 @@ fn prepare_config_update(oikos: &Oikos, args: &AddNousArgs) -> Result<PreparedCo
         );
     }
 
+    let provider = parse_cli_provider(&args.provider)?;
+
     // WHY: workspace is relative to ALETHEIA_ROOT so the config stays portable.
     let workspace = format!("nous/{}", args.name);
     let mut entry = toml_edit::Table::new();
@@ -315,6 +315,8 @@ fn prepare_config_update(oikos: &Oikos, args: &AddNousArgs) -> Result<PreparedCo
     })?;
 
     list.push(entry);
+
+    ensure_provider_model(&mut doc, provider, &args.model)?;
 
     // WHY: prove the config directory is writable before scaffolding.
     ensure_writable(&config_path)?;
@@ -681,6 +683,93 @@ mod tests {
         assert!(
             !result.contains("/nous/bob"),
             "workspace must not be absolute"
+        );
+    }
+
+    #[test]
+    fn update_config_openai_appends_provider_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+
+        let args = AddNousArgs {
+            name: "alice".to_owned(),
+            provider: "openai".to_owned(),
+            model: "gpt-5".to_owned(),
+        };
+        update_config(&oikos, &args).unwrap();
+
+        let result = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        let config: taxis::config::AletheiaConfig = toml::from_str(&result).unwrap();
+        assert_eq!(config.providers.len(), 1);
+        let provider = config.providers.first().unwrap();
+        assert_eq!(provider.kind, taxis::config::ProviderKind::OpenAi);
+        assert_eq!(provider.api_key_env.as_deref(), Some("OPENAI_API_KEY"));
+        assert_eq!(provider.models, ["gpt-5"]);
+    }
+
+    #[test]
+    fn update_config_openai_reuses_provider_entry_for_new_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        std::fs::create_dir_all(dir.path().join("config")).unwrap();
+
+        update_config(
+            &oikos,
+            &AddNousArgs {
+                name: "alice".to_owned(),
+                provider: "openai".to_owned(),
+                model: "gpt-5".to_owned(),
+            },
+        )
+        .unwrap();
+        update_config(
+            &oikos,
+            &AddNousArgs {
+                name: "bob".to_owned(),
+                provider: "openai".to_owned(),
+                model: "gpt-4.1".to_owned(),
+            },
+        )
+        .unwrap();
+
+        let result = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        let config: taxis::config::AletheiaConfig = toml::from_str(&result).unwrap();
+        assert_eq!(
+            config.providers.len(),
+            1,
+            "OpenAI models should share one provider entry"
+        );
+        let provider = config.providers.first().unwrap();
+        assert_eq!(provider.models, ["gpt-5", "gpt-4.1"]);
+    }
+
+    #[test]
+    fn run_openai_provider_updates_registry_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let _oikos = init_instance(&dir);
+
+        let args = AddNousArgs {
+            name: "openai-agent".to_owned(),
+            provider: "openai".to_owned(),
+            model: "gpt-5".to_owned(),
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(run(Some(&dir.path().to_path_buf()), &args))
+            .unwrap();
+
+        let result = std::fs::read_to_string(dir.path().join("config/aletheia.toml")).unwrap();
+        let config: taxis::config::AletheiaConfig = toml::from_str(&result).unwrap();
+        assert!(
+            config.providers.iter().any(|provider| provider.kind
+                == taxis::config::ProviderKind::OpenAi
+                && provider.models == ["gpt-5"]),
+            "add-nous --provider openai must create a routable provider entry: {result}"
+        );
+        assert!(
+            dir.path().join("nous/openai-agent/SOUL.md").exists(),
+            "run should scaffold the new agent"
         );
     }
 

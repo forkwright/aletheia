@@ -70,17 +70,18 @@ must keep the tier names consistent.
 ## CI configuration
 
 The PR gate (`.github/workflows/gate-attestation.yml`) first validates test-tier
-feature wiring with `scripts/check-test-tier-features.py`, then enforces the
+feature wiring with `scripts/check-test-tier-features.py` and release feature
+policy/docs freshness with `scripts/release-feature-policy.py`, then enforces the
 **test-core** tier with
 `cargo nextest run --profile ci --workspace --features test-core`, after
 CI-exact fmt and clippy. The `ci` nextest profile writes JUnit output to
 `target/nextest/ci/junit.xml`; the gate uploads that file and nextest logs when
 tests fail. The release pipeline
 (`.github/workflows/release.yml`) additionally runs
-`cargo test --workspace --exclude proskenion` and a `feature-check` matrix
-that compiles a set of optional per-crate features (aletheia `mcp` /
-provider features / `energeia`, organon `computer-use` / `bookkeeper` /
-`energeia` / `z3`, hermeneus provider features) one at a time.
+`cargo test --workspace --exclude proskenion` and a generated `feature-check`
+matrix from `cargo metadata`. The generator checks every workspace feature
+except exclusions documented in `scripts/release-feature-policy.toml`, and it
+validates this document's feature table before emitting the release matrices.
 
 The Online Tests workflow exercises `test-full` on its schedule, by manual
 dispatch, and for PRs labeled `online-tests`, `test-full`, or

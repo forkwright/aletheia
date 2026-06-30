@@ -40,8 +40,7 @@ fn note_def() -> ToolDef {
         PropertyDef {
             property_type: PropertyType::String,
             description: "note content".to_owned(),
-            enum_values: None,
-            default: None,
+            ..Default::default()
         },
     );
     ToolDef {

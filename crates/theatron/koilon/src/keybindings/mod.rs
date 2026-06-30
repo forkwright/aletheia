@@ -125,6 +125,7 @@ mod tests {
             input: serde_json::Value::Null,
             risk: "low".to_string(),
             reason: "test".to_string(),
+            status: crate::state::ControlMutationStatus::Idle,
         }));
         let contexts = current_contexts(&app);
         assert!(contexts.contains(&KeyContext::ToolApproval));
