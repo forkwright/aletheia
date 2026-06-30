@@ -20,6 +20,12 @@ struct NousLabels {
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct NousProviderLabels {
+    nous_id: String,
+    provider: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct NousStageLabels {
     nous_id: String,
     stage: String,
@@ -59,7 +65,8 @@ struct StreamEventDroppedLabels {
 
 // ── Metric families ──
 
-static PIPELINE_TURNS_TOTAL: LazyLock<Family<NousLabels, Counter>> = LazyLock::new(Family::default);
+static PIPELINE_TURNS_TOTAL: LazyLock<Family<NousProviderLabels, Counter>> =
+    LazyLock::new(Family::default);
 
 fn pipeline_stage_histogram() -> Histogram {
     Histogram::new([0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 30.0, 60.0])
@@ -176,10 +183,11 @@ pub(crate) fn record_stage(nous_id: &str, stage: &str, duration_secs: f64) {
 }
 
 /// Record a completed turn.
-pub(crate) fn record_turn(nous_id: &str) {
+pub(crate) fn record_turn(nous_id: &str, provider: &str) {
     PIPELINE_TURNS_TOTAL
-        .get_or_create(&NousLabels {
+        .get_or_create(&NousProviderLabels {
             nous_id: nous_id.to_owned(),
+            provider: provider.to_owned(),
         })
         .inc();
 }
@@ -218,8 +226,10 @@ fn record_pipeline_event(name: &str, labels: &[(&str, String)], value: f64) {
             }
         }
         "TurnCompleted" => {
-            if let Some(nous_id) = label(labels, "nous_id") {
-                record_turn(nous_id);
+            if let (Some(nous_id), Some(provider)) =
+                (label(labels, "nous_id"), label(labels, "provider"))
+            {
+                record_turn(nous_id, provider);
             }
         }
         _ => {
@@ -381,7 +391,7 @@ mod tests {
     fn register_exposes_all_metrics() {
         let r = fresh_registry();
         record_stage("n1", "context", 0.001);
-        record_turn("n1");
+        record_turn("n1", "unknown");
         record_error("n1", "execute", "timeout");
         record_cache_usage("n1", 5, 5);
         record_background_failure("n1", "extract");
@@ -428,12 +438,14 @@ mod tests {
     #[test]
     fn record_turn_increments_counter() {
         let r = fresh_registry();
-        record_turn("agent-b");
-        record_turn("agent-b");
-        record_turn("agent-b");
+        record_turn("agent-b", "local-proxy");
+        record_turn("agent-b", "local-proxy");
+        record_turn("agent-b", "local-proxy");
         let out = encode(&r);
         assert!(
-            out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-b\"} 3"),
+            out.contains(
+                "aletheia_pipeline_turns_total{nous_id=\"agent-b\",provider=\"local-proxy\"} 3"
+            ),
             "got: {out}"
         );
     }
@@ -447,6 +459,7 @@ mod tests {
         emitter.emit(&crate::pipeline::events::TurnCompleted {
             nous_id: "agent-e".to_owned(),
             model: "test-model".to_owned(),
+            provider: Some("anthropic-cloud".to_owned()),
             duration_ms: 100,
             input_tokens: 10,
             output_tokens: 10,
@@ -455,7 +468,9 @@ mod tests {
         });
         let out = encode(&r);
         assert!(
-            out.contains("aletheia_pipeline_turns_total{nous_id=\"agent-e\"} 1"),
+            out.contains(
+                "aletheia_pipeline_turns_total{nous_id=\"agent-e\",provider=\"anthropic-cloud\"} 1"
+            ),
             "TurnCompleted should increment the counter exactly once, got: {out}"
         );
     }

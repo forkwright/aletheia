@@ -308,6 +308,7 @@ pub fn build_degraded_response_with_provenance(
             }),
             reasoning: String::new(),
             model_used,
+            provider_used: None,
             tool_surface_hashes: Vec::new(),
         }
     } else {
@@ -340,6 +341,7 @@ pub fn build_degraded_response_with_provenance(
             }),
             reasoning: String::new(),
             model_used,
+            provider_used: None,
             tool_surface_hashes: Vec::new(),
         }
     }

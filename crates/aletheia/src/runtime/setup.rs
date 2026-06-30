@@ -17,7 +17,9 @@ use agora::router::MessageRouter;
 use agora::semeion::SignalProvider;
 use agora::semeion::client::SignalClient;
 use agora::types::ChannelProvider;
+use hermeneus::RetryPolicy;
 use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
+use hermeneus::concurrency::ConcurrencyConfig;
 use hermeneus::openai::{
     OpenAiApiFamily as HermeneusOpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig,
 };
@@ -30,7 +32,7 @@ use mneme::embedding::{DegradedEmbeddingProvider, EmbeddingProvider, create_prov
 use nous::manager::NousManager;
 use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
+    RefreshingCredentialProvider, claude_code_credential_path, claude_code_provider,
 };
 use taxis::config::{AletheiaConfig, EmbeddingSettings};
 use taxis::oikos::Oikos;
@@ -51,6 +53,24 @@ enum ProviderPlanEntry<'a> {
     AutoCodex,
     #[cfg(feature = "kimi-provider")]
     AutoKimi,
+}
+
+fn retry_policy_from_config(config: &AletheiaConfig) -> RetryPolicy {
+    RetryPolicy {
+        max_retries: config.retry.max_attempts,
+        backoff_base_ms: config.retry.backoff_base_ms,
+        backoff_max_ms: config.retry.backoff_max_ms,
+    }
+}
+
+fn concurrency_config_from_provider_behavior(
+    behavior: &taxis::config::ProviderBehaviorConfig,
+) -> ConcurrencyConfig {
+    ConcurrencyConfig {
+        ewma_alpha: behavior.concurrency_ewma_alpha,
+        latency_threshold_secs: behavior.concurrency_latency_threshold_secs,
+        ..ConcurrencyConfig::default()
+    }
 }
 
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
@@ -101,9 +121,16 @@ pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) ->
         // the sovereignty-first policy.
         _ => hermeneus::provider::PromptCacheMode::Disabled,
     };
+    // WHY(#5044): `[retry]` is the single operator-facing owner for provider
+    // retry attempts/backoff. `providerBehavior` owns provider timing,
+    // concurrency, and routing controls.
+    let retry_policy = retry_policy_from_config(config);
+    let concurrency = concurrency_config_from_provider_behavior(&config.provider_behavior);
     let provider_config = ProviderConfig {
         pricing,
         prompt_cache_mode,
+        retry_policy,
+        concurrency,
         ..ProviderConfig::default()
     };
 
@@ -146,12 +173,8 @@ fn build_anthropic_credential_chain(
     let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
-    let claude_code_path = config
-        .credential
-        .claude_code_credentials
-        .as_ref()
-        .map(std::path::PathBuf::from)
-        .or_else(claude_code_default_path);
+    let claude_code_path =
+        claude_code_credential_path(config.credential.claude_code_credentials.as_deref());
 
     if cred_source == "claude-code"
         && let Some(ref cc_path) = claude_code_path
@@ -360,7 +383,7 @@ fn register_declared_provider(
 
     match entry.kind {
         ProviderKind::OpenAi | ProviderKind::OpenAiCompatible => {
-            register_declared_openai(registry, entry, oikos);
+            register_declared_openai(registry, entry, oikos, provider_config, behavior);
         }
         ProviderKind::Anthropic => register_declared_anthropic(
             registry,
@@ -388,41 +411,14 @@ fn register_declared_openai(
     registry: &mut ProviderRegistry,
     entry: &taxis::config::LlmProviderConfig,
     oikos: &Oikos,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
 ) {
-    use taxis::config::ProviderKind;
-
-    let api_family = configured_openai_api_family(entry);
-    let base_url = if entry.kind == ProviderKind::OpenAi {
-        entry
-            .base_url
-            .clone()
-            .unwrap_or_else(|| OpenAiProviderConfig::default().base_url)
-    } else if let Some(base_url) = entry.base_url.clone() {
-        base_url
-    } else {
-        warn!(
-            provider = %entry.name,
-            "OpenAI-compatible provider missing base_url — skipping"
-        );
+    let Some(cfg) = openai_config_for_entry(entry, oikos, provider_config, behavior) else {
         return;
     };
-    let api_key = openai_api_key(entry, oikos);
-    let cfg = OpenAiProviderConfig {
-        name: entry.name.clone(),
-        base_url,
-        api_key,
-        models: entry.models.clone(),
-        api_family,
-        // WHY (#3736): the operator-declared deployment target
-        // was previously logged below but never threaded to the
-        // provider, so every OpenAI-compat provider silently
-        // inherited the `Cloud` trait default. That broke the
-        // air-gap claim in `docs/AIR-GAPPED.md` — the recall
-        // filter stripped `Internal` / `Confidential` facts
-        // from traffic bound for loopback llama.cpp / logismos.
-        deployment_target: map_deployment_target(entry.deployment_target),
-        ..OpenAiProviderConfig::default()
-    };
+    let api_family = cfg.api_family;
+
     match OpenAiProvider::new(cfg) {
         Ok(provider) => {
             info!(
@@ -440,6 +436,51 @@ fn register_declared_openai(
             "failed to init OpenAI-compatible provider"
         ),
     }
+}
+
+fn openai_config_for_entry(
+    entry: &taxis::config::LlmProviderConfig,
+    oikos: &Oikos,
+    provider_config: &ProviderConfig,
+    behavior: &ProviderBehavior,
+) -> Option<OpenAiProviderConfig> {
+    use taxis::config::ProviderKind;
+
+    let api_family = configured_openai_api_family(entry);
+    let base_url = if entry.kind == ProviderKind::OpenAi {
+        entry
+            .base_url
+            .clone()
+            .unwrap_or_else(|| OpenAiProviderConfig::default().base_url)
+    } else if let Some(base_url) = entry.base_url.clone() {
+        base_url
+    } else {
+        warn!(
+            provider = %entry.name,
+            "OpenAI-compatible provider missing base_url — skipping"
+        );
+        return None;
+    };
+    let api_key = openai_api_key(entry, oikos);
+    Some(OpenAiProviderConfig {
+        name: entry.name.clone(),
+        base_url,
+        api_key,
+        models: entry.models.clone(),
+        api_family,
+        request_timeout: behavior.non_streaming_timeout,
+        retry_policy: provider_config.retry_policy,
+        concurrency: provider_config.concurrency.clone(),
+        // WHY (#3736): the operator-declared deployment target
+        // was previously logged below but never threaded to the
+        // provider, so every OpenAI-compat provider silently
+        // inherited the `Cloud` trait default. That broke the
+        // air-gap claim in `docs/AIR-GAPPED.md` — the recall
+        // filter stripped `Internal` / `Confidential` facts
+        // from traffic bound for loopback llama.cpp / logismos.
+        deployment_target: map_deployment_target(entry.deployment_target),
+        ..OpenAiProviderConfig::default()
+    })
 }
 
 fn openai_api_key(entry: &taxis::config::LlmProviderConfig, oikos: &Oikos) -> Option<SecretString> {
@@ -1294,6 +1335,31 @@ mod tests {
                 _lock: lock,
             }
         }
+
+        #[expect(
+            unsafe_code,
+            reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; tests serialize env access with ENV_LOCK"
+        )]
+        fn set_and_remove_many(
+            set_key: &'static str,
+            value: &str,
+            remove_keys: &[&'static str],
+        ) -> Self {
+            let lock = ENV_LOCK.lock().expect("lock env var mutex");
+            let mut originals = Vec::with_capacity(remove_keys.len() + 1);
+            originals.push((set_key, std::env::var_os(set_key)));
+            // SAFETY: ENV_LOCK serializes all test env mutations in this module.
+            unsafe { std::env::set_var(set_key, value) };
+            for &key in remove_keys {
+                originals.push((key, std::env::var_os(key)));
+                // SAFETY: ENV_LOCK serializes all test env mutations in this module.
+                unsafe { std::env::remove_var(key) };
+            }
+            Self {
+                originals,
+                _lock: lock,
+            }
+        }
     }
 
     #[expect(
@@ -1541,6 +1607,52 @@ mod tests {
     }
 
     #[test]
+    fn taxis_retry_and_provider_behavior_map_to_openai_runtime_config() {
+        let mut config = AletheiaConfig::default();
+        config.retry.max_attempts = 2;
+        config.retry.backoff_base_ms = 250;
+        config.retry.backoff_max_ms = 4_000;
+        config.provider_behavior.non_streaming_timeout_secs = 17;
+        config.provider_behavior.concurrency_ewma_alpha = 0.25;
+        config.provider_behavior.concurrency_latency_threshold_secs = 3.5;
+
+        let provider_config = ProviderConfig {
+            retry_policy: retry_policy_from_config(&config),
+            concurrency: concurrency_config_from_provider_behavior(&config.provider_behavior),
+            ..ProviderConfig::default()
+        };
+        let behavior = ProviderBehavior {
+            non_streaming_timeout: std::time::Duration::from_secs(
+                config.provider_behavior.non_streaming_timeout_secs,
+            ),
+            sse_retry_ms: config.provider_behavior.sse_default_retry_ms,
+        };
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let oikos = Oikos::from_root(oikos_dir.path());
+        let entry = local_openai_provider("local-runtime", "qwen-runtime");
+
+        let openai_config = openai_config_for_entry(&entry, &oikos, &provider_config, &behavior)
+            .expect("local OpenAI-compatible config should build");
+
+        assert_eq!(
+            openai_config.request_timeout,
+            std::time::Duration::from_secs(17),
+            "providerBehavior.nonStreamingTimeoutSecs must reach OpenAI providers"
+        );
+        assert_eq!(openai_config.retry_policy.max_retries, 2);
+        assert_eq!(openai_config.retry_policy.backoff_base_ms, 250);
+        assert_eq!(openai_config.retry_policy.backoff_max_ms, 4_000);
+        assert!(
+            (openai_config.concurrency.ewma_alpha - 0.25).abs() < f64::EPSILON,
+            "providerBehavior.concurrencyEwmaAlpha must reach the limiter config"
+        );
+        assert!(
+            (openai_config.concurrency.latency_threshold_secs - 3.5).abs() < f64::EPSILON,
+            "providerBehavior.concurrencyLatencyThresholdSecs must reach the limiter config"
+        );
+    }
+
+    #[test]
     fn declared_provider_order_wins_before_credential_chain_anthropic() {
         let _env = EnvVarGuard::set("ANTHROPIC_API_KEY", "sk-test-123");
         let model = koina::models::names::sonnet();
@@ -1699,6 +1811,74 @@ mod tests {
             .expect("declared local provider should register without legacy credential discovery");
 
         assert_eq!(provider.name(), "local-only");
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes a fake Claude Code credential file under a temp HOME"
+    )]
+    #[test]
+    fn auto_source_ignores_home_claude_code_credentials_without_opt_in() {
+        let fake_home = tempfile::tempdir().expect("create fake home");
+        let claude_dir = fake_home.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
+        std::fs::write(
+            claude_dir.join(".credentials.json"),
+            r#"{"accessToken":"sk-ant-oat-local"}"#,
+        )
+        .expect("write fake Claude Code credentials");
+        let fake_home = fake_home
+            .path()
+            .to_str()
+            .expect("temp home path should be utf-8");
+        let _env = EnvVarGuard::set_and_remove_many(
+            "HOME",
+            fake_home,
+            &[
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_CREDS",
+            ],
+        );
+        let config = AletheiaConfig::default();
+
+        let registry = build_test_provider_registry(&config);
+
+        assert!(
+            registry
+                .find_provider(koina::models::names::sonnet())
+                .is_none(),
+            "credential.source = auto must not discover $HOME/.claude credentials unless configured"
+        );
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes a fake Claude Code credential file under a temp dir"
+    )]
+    #[test]
+    fn auto_source_uses_explicit_claude_code_creds_env_path() {
+        let fixture = tempfile::tempdir().expect("create fake credential fixture");
+        let cc_path = fixture.path().join("claude-code.json");
+        std::fs::write(&cc_path, r#"{"token":"sk-ant-api-from-cc"}"#)
+            .expect("write fake Claude Code credentials");
+        let cc_path = cc_path.to_str().expect("temp path should be utf-8");
+        let _env = EnvVarGuard::set_and_remove_many(
+            "CLAUDE_CODE_CREDS",
+            cc_path,
+            &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+        );
+        let config = AletheiaConfig::default();
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let oikos = Oikos::from_root(oikos_dir.path());
+
+        let chain = build_anthropic_credential_chain(&config, &oikos, "auto");
+        let credential = chain
+            .get_credential()
+            .expect("explicit Claude Code credential path should resolve");
+
+        assert_eq!(credential.secret.expose_secret(), "sk-ant-api-from-cc");
+        assert_eq!(credential.source, CredentialSource::File);
     }
 
     #[test]

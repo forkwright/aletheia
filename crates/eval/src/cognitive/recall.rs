@@ -59,22 +59,13 @@ pub(crate) fn compute_recall_at_k(
         .filter(|item| top_k.contains(item.as_str()))
         .count();
 
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "count values are small enough for lossless f64 conversion"
-    )]
-    let score = found as f64 / total_relevant as f64; // SAFETY: count values small; exact in f64 mantissa
+    let score = usize_to_f64(found) / usize_to_f64(total_relevant);
 
-    #[expect(
-        clippy::as_conversions,
-        clippy::cast_precision_loss,
-        reason = "count values are small enough for lossless f64 conversion"
-    )]
-    let precision = if top_k.is_empty() {
+    let actual_k = retrieved.len().min(k);
+    let precision = if actual_k == 0 {
         0.0
     } else {
-        found as f64 / top_k.len() as f64
+        usize_to_f64(found) / usize_to_f64(actual_k)
     };
 
     RecallScore {
@@ -84,6 +75,10 @@ pub(crate) fn compute_recall_at_k(
         found,
         total_relevant,
     }
+}
+
+fn usize_to_f64(value: usize) -> f64 {
+    f64::from(u32::try_from(value).unwrap_or(u32::MAX))
 }
 
 /// Compute recall at all standard k values (1, 5, 10, 20).
@@ -530,6 +525,11 @@ mod tests {
             (score.score - 0.5).abs() < f64::EPSILON,
             "duplicate retrieved items: 1 unique match out of 2 relevant = 0.5, got {}",
             score.score
+        );
+        assert!(
+            (score.precision - 1.0 / 3.0).abs() < f64::EPSILON,
+            "duplicate retrieved items: 1 unique match in 3 retrieved slots = 1/3 precision, got {}",
+            score.precision
         );
     }
 }
