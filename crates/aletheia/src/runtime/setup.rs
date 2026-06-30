@@ -32,7 +32,7 @@ use mneme::embedding::{DegradedEmbeddingProvider, EmbeddingProvider, create_prov
 use nous::manager::NousManager;
 use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider, claude_code_default_path, claude_code_provider,
+    RefreshingCredentialProvider, claude_code_credential_path, claude_code_provider,
 };
 use taxis::config::{AletheiaConfig, EmbeddingSettings};
 use taxis::oikos::Oikos;
@@ -173,12 +173,8 @@ fn build_anthropic_credential_chain(
     let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
-    let claude_code_path = config
-        .credential
-        .claude_code_credentials
-        .as_ref()
-        .map(std::path::PathBuf::from)
-        .or_else(claude_code_default_path);
+    let claude_code_path =
+        claude_code_credential_path(config.credential.claude_code_credentials.as_deref());
 
     if cred_source == "claude-code"
         && let Some(ref cc_path) = claude_code_path
@@ -1339,6 +1335,31 @@ mod tests {
                 _lock: lock,
             }
         }
+
+        #[expect(
+            unsafe_code,
+            reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; tests serialize env access with ENV_LOCK"
+        )]
+        fn set_and_remove_many(
+            set_key: &'static str,
+            value: &str,
+            remove_keys: &[&'static str],
+        ) -> Self {
+            let lock = ENV_LOCK.lock().expect("lock env var mutex");
+            let mut originals = Vec::with_capacity(remove_keys.len() + 1);
+            originals.push((set_key, std::env::var_os(set_key)));
+            // SAFETY: ENV_LOCK serializes all test env mutations in this module.
+            unsafe { std::env::set_var(set_key, value) };
+            for &key in remove_keys {
+                originals.push((key, std::env::var_os(key)));
+                // SAFETY: ENV_LOCK serializes all test env mutations in this module.
+                unsafe { std::env::remove_var(key) };
+            }
+            Self {
+                originals,
+                _lock: lock,
+            }
+        }
     }
 
     #[expect(
@@ -1790,6 +1811,74 @@ mod tests {
             .expect("declared local provider should register without legacy credential discovery");
 
         assert_eq!(provider.name(), "local-only");
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes a fake Claude Code credential file under a temp HOME"
+    )]
+    #[test]
+    fn auto_source_ignores_home_claude_code_credentials_without_opt_in() {
+        let fake_home = tempfile::tempdir().expect("create fake home");
+        let claude_dir = fake_home.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
+        std::fs::write(
+            claude_dir.join(".credentials.json"),
+            r#"{"accessToken":"sk-ant-oat-local"}"#,
+        )
+        .expect("write fake Claude Code credentials");
+        let fake_home = fake_home
+            .path()
+            .to_str()
+            .expect("temp home path should be utf-8");
+        let _env = EnvVarGuard::set_and_remove_many(
+            "HOME",
+            fake_home,
+            &[
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_CREDS",
+            ],
+        );
+        let config = AletheiaConfig::default();
+
+        let registry = build_test_provider_registry(&config);
+
+        assert!(
+            registry
+                .find_provider(koina::models::names::sonnet())
+                .is_none(),
+            "credential.source = auto must not discover $HOME/.claude credentials unless configured"
+        );
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes a fake Claude Code credential file under a temp dir"
+    )]
+    #[test]
+    fn auto_source_uses_explicit_claude_code_creds_env_path() {
+        let fixture = tempfile::tempdir().expect("create fake credential fixture");
+        let cc_path = fixture.path().join("claude-code.json");
+        std::fs::write(&cc_path, r#"{"token":"sk-ant-api-from-cc"}"#)
+            .expect("write fake Claude Code credentials");
+        let cc_path = cc_path.to_str().expect("temp path should be utf-8");
+        let _env = EnvVarGuard::set_and_remove_many(
+            "CLAUDE_CODE_CREDS",
+            cc_path,
+            &["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+        );
+        let config = AletheiaConfig::default();
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let oikos = Oikos::from_root(oikos_dir.path());
+
+        let chain = build_anthropic_credential_chain(&config, &oikos, "auto");
+        let credential = chain
+            .get_credential()
+            .expect("explicit Claude Code credential path should resolve");
+
+        assert_eq!(credential.secret.expose_secret(), "sk-ant-api-from-cc");
+        assert_eq!(credential.source, CredentialSource::File);
     }
 
     #[test]
