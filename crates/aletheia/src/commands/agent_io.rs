@@ -259,7 +259,7 @@ pub(crate) struct InitArgs {
     #[arg(long)]
     pub non_interactive: bool,
     /// Anthropic API key. Sets credential source to 'api-key'.
-    /// Omit to use 'auto' resolution (api-key -> env -> claude-code)
+    /// Omit to use 'auto' resolution (credential file -> keyring -> env)
     #[arg(long, env = "ANTHROPIC_API_KEY")]
     pub api_key: Option<String>,
     /// Authentication mode: none, token (default: none)

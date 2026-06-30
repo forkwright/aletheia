@@ -184,6 +184,7 @@ struct RecipesMeta {
 #[derive(Debug, Clone)]
 pub struct RecipeRegistry {
     recipes: HashMap<String, Recipe>,
+    recipe_order: Vec<String>,
 }
 
 impl RecipeRegistry {
@@ -192,6 +193,7 @@ impl RecipeRegistry {
     pub fn empty() -> Self {
         Self {
             recipes: HashMap::new(),
+            recipe_order: Vec::new(),
         }
     }
 
@@ -226,7 +228,16 @@ impl RecipeRegistry {
         })?;
 
         let mut recipes = HashMap::with_capacity(file.recipe.len());
+        let mut recipe_order = Vec::with_capacity(file.recipe.len());
         for recipe in file.recipe {
+            validate_recipe(&recipe)?;
+            if recipes.contains_key(&recipe.name) {
+                return Err(error::RecipeLoadingSnafu {
+                    message: format!("duplicate recipe name '{}'", recipe.name),
+                }
+                .build());
+            }
+
             info!(
                 name = %recipe.name,
                 description = %recipe.description,
@@ -235,11 +246,16 @@ impl RecipeRegistry {
                 validations = recipe.validation.len(),
                 "loaded recipe"
             );
-            recipes.insert(recipe.name.clone(), recipe);
+            let name = recipe.name.clone();
+            recipe_order.push(name.clone());
+            recipes.insert(name, recipe);
         }
 
         debug!(recipe_count = recipes.len(), "recipe registry ready");
-        Ok(Self { recipes })
+        Ok(Self {
+            recipes,
+            recipe_order,
+        })
     }
 
     /// Look up a recipe by exact name.
@@ -278,7 +294,7 @@ impl RecipeRegistry {
         let lower = task_description.to_lowercase();
         let mut best: Option<(&Recipe, usize)> = None;
 
-        for recipe in self.recipes.values() {
+        for recipe in self.ordered_recipes() {
             let score = recipe
                 .task_keywords
                 .iter()
@@ -344,7 +360,7 @@ impl RecipeRegistry {
     #[must_use]
     pub fn all_reference_paths(&self) -> Vec<PathBuf> {
         let mut paths = Vec::new();
-        for recipe in self.recipes.values() {
+        for recipe in self.ordered_recipes() {
             for file in &recipe.file {
                 if file.path.starts_with("_llm/") || file.path.starts_with("CLAUDE.md") {
                     paths.push(PathBuf::from(&file.path));
@@ -355,12 +371,63 @@ impl RecipeRegistry {
         paths.dedup();
         paths
     }
+
+    fn ordered_recipes(&self) -> impl Iterator<Item = &Recipe> {
+        self.recipe_order
+            .iter()
+            .filter_map(|name| self.recipes.get(name))
+    }
 }
 
 impl Default for RecipeRegistry {
     fn default() -> Self {
         Self::empty()
     }
+}
+
+fn validate_recipe(recipe: &Recipe) -> Result<()> {
+    for validation in &recipe.validation {
+        if validation_contains_non_evidence_marker(validation) {
+            return Err(error::RecipeLoadingSnafu {
+                message: format!(
+                    "recipe '{}' validation is marked as non-evidence: '{}'",
+                    recipe.name, validation.task
+                ),
+            }
+            .build());
+        }
+
+        if validation.success && !task_cites_tracked_work(&validation.task) {
+            return Err(error::RecipeLoadingSnafu {
+                message: format!(
+                    "recipe '{}' success=true validation must cite tracked work as #<digits>: '{}'",
+                    recipe.name, validation.task
+                ),
+            }
+            .build());
+        }
+    }
+
+    Ok(())
+}
+
+fn validation_contains_non_evidence_marker(validation: &RecipeValidation) -> bool {
+    text_contains_non_evidence_marker(&validation.task)
+        || validation
+            .note
+            .as_deref()
+            .is_some_and(text_contains_non_evidence_marker)
+}
+
+fn text_contains_non_evidence_marker(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("hypothetical")
+}
+
+fn task_cites_tracked_work(task: &str) -> bool {
+    task.as_bytes()
+        .windows(2)
+        .any(|pair| matches!(pair, [b'#', digit] if digit.is_ascii_digit()))
 }
 
 #[cfg(test)]
@@ -391,7 +458,7 @@ level = "instructions"
 path = "CLAUDE.md"
 
 [[recipe.validation]]
-task = "test task"
+task = "test task (#1)"
 baseline_tokens = 10000
 recipe_tokens = 5000
 success = true
@@ -438,6 +505,34 @@ path = "_llm/L3-api-index/{crate}.md"
         let recipe = registry.select_for_task("I need a cold start orientation");
         assert!(recipe.is_some());
         assert_eq!(recipe.unwrap().name, "cold_start");
+    }
+
+    #[test]
+    fn select_by_keyword_uses_file_order_for_ties() {
+        let toml = r#"
+[meta]
+version = 1
+description = "test"
+generated_at = "2026-01-01T00:00:00Z"
+
+[[recipe]]
+name = "first"
+description = "First matching recipe"
+use_case = "tie"
+token_budget = 1000
+task_keywords = ["shared"]
+
+[[recipe]]
+name = "second"
+description = "Second matching recipe"
+use_case = "tie"
+token_budget = 1000
+task_keywords = ["shared"]
+"#;
+
+        let registry = RecipeRegistry::from_toml(toml).unwrap();
+        let recipe = registry.select_for_task("shared task").unwrap();
+        assert_eq!(recipe.name, "first");
     }
 
     #[test]
@@ -509,5 +604,61 @@ path = "_llm/L3-api-index/{crate}.md"
     fn from_toml_rejects_invalid_toml() {
         let result = RecipeRegistry::from_toml("this is not { valid toml");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_toml_rejects_hypothetical_validation_records() {
+        let toml = r#"
+[meta]
+version = 1
+description = "test"
+generated_at = "2026-01-01T00:00:00Z"
+
+[[recipe]]
+name = "tooling"
+description = "Tooling"
+use_case = "tools"
+token_budget = 1000
+
+[[recipe.validation]]
+task = "feat(tooling): add next phase (# hypothetical follow-up)"
+baseline_tokens = 10000
+recipe_tokens = 5000
+success = true
+"#;
+
+        let err = RecipeRegistry::from_toml(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("non-evidence"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn from_toml_rejects_success_without_tracked_task_evidence() {
+        let toml = r#"
+[meta]
+version = 1
+description = "test"
+generated_at = "2026-01-01T00:00:00Z"
+
+[[recipe]]
+name = "tooling"
+description = "Tooling"
+use_case = "tools"
+token_budget = 1000
+
+[[recipe.validation]]
+task = "feat(tooling): add next phase"
+baseline_tokens = 10000
+recipe_tokens = 5000
+success = true
+"#;
+
+        let err = RecipeRegistry::from_toml(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("tracked work"),
+            "unexpected error: {err}"
+        );
     }
 }

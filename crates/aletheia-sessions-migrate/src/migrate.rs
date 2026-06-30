@@ -1,6 +1,6 @@
 //! Top-level migration orchestration.
 //!
-//! `run_migration` is the single entry point: open `SQLite` read-only,
+//! `stage_migration` is the orchestration entry point: open `SQLite` read-only,
 //! validate schema, optionally read everything for a dry-run plan, then
 //! open the fjall staging destination, verify it, and publish atomically.
 //!
@@ -15,7 +15,8 @@
 //! destination and atomically renames it into place only after every
 //! per-session bundle, the blackboard, and global counters have committed.
 //! If the process is interrupted, the leftover staging directory is detected
-//! on the next run and refused unless the operator passes `--force`.
+//! on the next run and refused unless the operator explicitly requests
+//! replacement.
 //!
 //! # Orphan recovery
 //!
@@ -31,7 +32,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use graphe::types::{
     AgentNote, BlackboardRow, Message, Session, SessionMetrics, SessionOrigin, SessionStatus,
@@ -44,7 +45,7 @@ use tracing::{info, warn};
 use crate::dest::{Destination, TableCounts, is_empty_or_absent};
 use crate::error::{
     AtomicRenameFailedSnafu, DestinationNotEmptySnafu, IoSnafu, MigrationIncompleteSnafu, Result,
-    SqliteOpenSnafu, SqliteSnafu, VerificationFailedSnafu,
+    SqliteOpenSnafu, SqliteSnafu,
 };
 use crate::schema;
 use crate::source::{self, DistillationRecord, LegacyExtras, SessionRow};
@@ -52,7 +53,7 @@ use crate::verify::{VerificationReport, run_verification};
 
 /// Field-mapping documentation, exported so tests can sanity-check it
 /// stays in sync with the actual mapper.
-pub const FIELD_MAPPING_DOC: &str = include_str!("../FIELD_MAPPING.md");
+pub(crate) const FIELD_MAPPING_DOC: &str = include_str!("../FIELD_MAPPING.md");
 
 /// `SQLite` busy-timeout applied to the source connection so a transient
 /// lock contender does not abort the migration. The migrator is the only
@@ -63,54 +64,54 @@ const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Suffix for the staging directory created next to the final destination.
 const STAGING_SUFFIX: &str = "staging";
 
-/// Suffix for the backup directory created when `--force` overwrites an
-/// existing destination.
+/// Suffix segment for backup directories created when replacement publishes
+/// over an existing destination.
 const BACKUP_SUFFIX: &str = "backup";
 
-/// Default deterministic per-session sample count retained for the
-/// compatibility portion of verification reports.
-const DEFAULT_VERIFY_SAMPLES: usize = 16;
+const BACKUP_MARKER_MAGIC: &str = "aletheia-sessions-migrate backup\n";
 
 /// What the migrator plans to do (used by `--dry-run`).
 #[derive(Debug, Clone)]
-pub struct MigrationPlan {
+pub(crate) struct MigrationPlan {
     /// Path to the `SQLite` source DB.
-    pub source: PathBuf,
-    /// Path the migrator would write fjall data to.
-    pub dest: PathBuf,
+    pub(crate) source: PathBuf,
     /// Per-table counts read from the source (excludes synthesised orphans).
-    pub counts: TableCounts,
+    pub(crate) counts: TableCounts,
     /// First `session_id` the migrator would touch, for log line cross-reference.
-    pub sample_session_id: Option<String>,
+    pub(crate) sample_session_id: Option<String>,
     /// Sessions that carry non-default `thinking_*` / `working_state` /
     /// `distillation_priming` columns; preserved in `migration_legacy`.
-    pub legacy_extras_present: usize,
+    pub(crate) legacy_extras_present: usize,
+    /// Legacy-only field entries that would be written to `migration_legacy`.
+    pub(crate) legacy_sidecar_entries_present: usize,
     /// Orphan messages (session row missing) that the migrator would
     /// preserve under synthesised orphan-recovery sessions.
-    pub orphan_messages_detected: usize,
+    pub(crate) orphan_messages_detected: usize,
     /// Number of distinct orphan `session_ids` the migrator would synthesise.
-    pub orphan_sessions_to_synthesise: usize,
+    pub(crate) orphan_sessions_to_synthesise: usize,
 }
 
 /// What the migrator actually did.
 #[derive(Debug, Clone)]
-pub struct MigrationReport {
+pub(crate) struct MigrationReport {
     /// Path to the `SQLite` source DB.
-    pub source: PathBuf,
+    pub(crate) source: PathBuf,
     /// Path the migrator wrote fjall data to.
-    pub dest: PathBuf,
+    pub(crate) dest: PathBuf,
     /// Per-table counts written (sessions includes synthesised orphans).
-    pub counts: TableCounts,
+    pub(crate) counts: TableCounts,
     /// Sessions whose legacy extras were preserved in `migration_legacy`.
-    pub legacy_extras_preserved: usize,
+    pub(crate) legacy_extras_preserved: usize,
+    /// Legacy-only field entries preserved in `migration_legacy`.
+    pub(crate) legacy_sidecar_entries_preserved: usize,
     /// Count of orphan messages (whose parent session row was missing in
     /// the legacy DB) that were preserved under synthesised
     /// `orphan-recovery` sessions.
-    pub orphan_messages_recovered: usize,
+    pub(crate) orphan_messages_recovered: usize,
     /// Number of synthesised orphan-recovery sessions.
-    pub orphan_sessions_synthesised: usize,
+    pub(crate) orphan_sessions_synthesised: usize,
     /// Wall time of the migration.
-    pub elapsed_secs: f64,
+    pub(crate) elapsed_secs: f64,
 }
 
 /// All data read from the source `SQLite` DB, ready for the destination
@@ -122,6 +123,7 @@ pub(crate) struct SourceData {
     pub(crate) distillations: Vec<DistillationRecord>,
     pub(crate) notes: Vec<AgentNote>,
     pub(crate) blackboard: Vec<BlackboardRow>,
+    pub(crate) legacy_sidecars: Vec<source::LegacySidecarEntry>,
     orphans: OrphanReport,
     legacy_extras_preserved: usize,
 }
@@ -130,19 +132,25 @@ pub(crate) struct SourceData {
 /// published to the final destination.
 ///
 /// Dropping the guard without calling [`Self::publish`] removes the staging
-/// directory and restores any backup created for `--force` overwrites.
-pub struct StagedMigration {
+/// directory and restores any backup created for replacement publishes.
+pub(crate) struct StagedMigration {
     staging_dir: PathBuf,
     final_dir: PathBuf,
-    backup_dir: Option<PathBuf>,
+    backup: Option<BackupPaths>,
     report: MigrationReport,
     published: bool,
+}
+
+#[derive(Debug, Clone)]
+struct BackupPaths {
+    dir: PathBuf,
+    marker: PathBuf,
 }
 
 impl StagedMigration {
     /// Read-only access to the migration report for the staged data.
     #[must_use]
-    pub fn report(&self) -> &MigrationReport {
+    pub(crate) fn report(&self) -> &MigrationReport {
         &self.report
     }
 
@@ -151,7 +159,7 @@ impl StagedMigration {
     /// # Errors
     ///
     /// Propagates `SQLite` and fjall scan errors.
-    pub fn verify(&self, source: &Path, samples: usize) -> Result<VerificationReport> {
+    pub(crate) fn verify(&self, source: &Path, samples: usize) -> Result<VerificationReport> {
         run_verification(source, &self.staging_dir, samples)
     }
 
@@ -161,11 +169,14 @@ impl StagedMigration {
     ///
     /// Returns [`crate::error::Error::AtomicRenameFailed`] if the final
     /// atomic rename cannot complete.
-    pub fn publish(mut self) -> Result<MigrationReport> {
+    pub(crate) fn publish(mut self) -> Result<MigrationReport> {
+        if let Some(ref backup) = self.backup {
+            rotate_destination_to_backup(&self.final_dir, backup)?;
+        }
         atomic_rename_dir(&self.staging_dir, &self.final_dir)?;
         self.published = true;
-        if let Some(ref backup) = self.backup_dir {
-            let _ = fs::remove_dir_all(backup);
+        if let Some(ref backup) = self.backup {
+            cleanup_marker_owned_backup(backup);
         }
         Ok(self.report.clone())
     }
@@ -177,14 +188,16 @@ impl Drop for StagedMigration {
             return;
         }
 
-        // Migration failed or was abandoned: remove the partial staging
-        // directory so later tooling does not treat it as authoritative.
-        let _ = fs::remove_dir_all(&self.staging_dir);
+        if let Err(source) = fs::remove_dir_all(&self.staging_dir) {
+            warn!(
+                error = %source,
+                staging = %self.staging_dir.display(),
+                "failed to remove abandoned migration staging directory"
+            );
+        }
 
-        // Restore the backup so the operator does not lose the prior store
-        // when `--force` overwrite was in progress.
-        if let Some(ref backup) = self.backup_dir {
-            let _ = fs::rename(backup, &self.final_dir);
+        if let Some(ref backup) = self.backup {
+            restore_backup(&self.final_dir, backup);
         }
     }
 }
@@ -195,7 +208,7 @@ impl Drop for StagedMigration {
 ///
 /// Returns [`crate::error::Error::SqliteOpen`] when the source path
 /// cannot be opened or the busy-timeout PRAGMA fails to apply.
-pub fn open_source(path: &Path) -> Result<Connection> {
+pub(crate) fn open_source(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -215,7 +228,7 @@ pub fn open_source(path: &Path) -> Result<Connection> {
 /// # Errors
 ///
 /// Propagates schema validation failures and any source read errors.
-pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
+pub(crate) fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
     let conn = open_source(source)?;
     schema::validate(&conn)?;
     let session_rows = source::read_sessions(&conn)?;
@@ -224,6 +237,7 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
     let dists = source::read_distillations(&conn)?;
     let notes = source::read_notes(&conn)?;
     let blackboard = source::read_blackboard(&conn)?;
+    let legacy_sidecars = source::read_legacy_sidecars(&conn)?;
     let legacy_extras_present = session_rows
         .iter()
         .filter(|s| s.legacy.is_non_default())
@@ -231,7 +245,6 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
     let orphans = detect_orphans(&session_rows, &messages, &usage, &dists, &notes);
     let plan = MigrationPlan {
         source: source.to_path_buf(),
-        dest: PathBuf::new(),
         counts: TableCounts {
             sessions: session_rows.len(),
             messages: messages.len(),
@@ -242,32 +255,11 @@ pub fn run_dry_run(source: &Path) -> Result<MigrationPlan> {
         },
         sample_session_id: session_rows.first().map(|s| s.session.id.clone()),
         legacy_extras_present,
+        legacy_sidecar_entries_present: legacy_sidecars.len(),
         orphan_messages_detected: orphans.orphan_message_count,
         orphan_sessions_to_synthesise: orphans.synthetic_sessions.len(),
     };
     Ok(plan)
-}
-
-/// Run a full migration. Reads source, validates, writes fjall to a staging
-/// directory, verifies every migrated partition, then atomically renames it
-/// to `dest`.
-///
-/// # Errors
-///
-/// Propagates schema validation failures, source read errors, any fjall
-/// write failure, or an atomic-rename error as the structured error type
-/// defined in [`crate::error`].
-pub fn run_migration(source: &Path, dest: &Path, force: bool) -> Result<MigrationReport> {
-    let staged = stage_migration(source, dest, force)?;
-    let verification = staged.verify(source, DEFAULT_VERIFY_SAMPLES)?;
-    if !verification.ok() {
-        return Err(VerificationFailedSnafu {
-            mismatches: verification.mismatches.len(),
-            summary: verification.mismatches.join("; "),
-        }
-        .build());
-    }
-    staged.publish()
 }
 
 /// Stage a full migration without publishing it.
@@ -275,21 +267,24 @@ pub fn run_migration(source: &Path, dest: &Path, force: bool) -> Result<Migratio
 /// Returns a [`StagedMigration`] guard that owns the staging directory.
 /// Call [`StagedMigration::publish`] to atomically rename the staging
 /// directory to `dest`. Dropping the guard without publishing cleans up
-/// the staging directory and restores any backup created for a `--force`
+/// the staging directory and restores any backup created for a replacement
 /// overwrite.
 ///
 /// # Errors
 ///
 /// Returns [`crate::error::Error::MigrationIncomplete`] when a previous
-/// run left a staging directory behind and `force` is false,
+/// run left a staging directory behind and `replace_existing` is false,
 /// [`crate::error::Error::DestinationNotEmpty`] when `dest` is non-empty
-/// and `force` is false, or any source/fjall error.
-pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<StagedMigration> {
+/// and `replace_existing` is false, or any source/fjall error.
+pub(crate) fn stage_migration(
+    source: &Path,
+    dest: &Path,
+    replace_existing: bool,
+) -> Result<StagedMigration> {
     let started = Instant::now();
     let staging_dir = dest.with_extension(STAGING_SUFFIX);
-    let backup_dir = dest.with_extension(BACKUP_SUFFIX);
 
-    let dest_existed = prepare_destination_dirs(dest, force, &staging_dir, &backup_dir)?;
+    let dest_existed = prepare_destination_dirs(dest, replace_existing, &staging_dir)?;
 
     // Read and validate the source before touching the destination.
     let conn = open_source(source)?;
@@ -297,14 +292,19 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
 
     let source_data = load_source_data(&conn)?;
 
-    // Move an existing destination out of the way when `--force` is set.
-    // This is done after source validation so we do not wipe live data for
-    // an invalid migration input.
-    if dest_existed {
-        rotate_destination_to_backup(dest, &backup_dir)?;
-    }
-
-    let counts = write_staging(&staging_dir, &source_data)?;
+    let counts = match write_staging(&staging_dir, &source_data) {
+        Ok(counts) => counts,
+        Err(err) => {
+            if let Err(source) = fs::remove_dir_all(&staging_dir) {
+                warn!(
+                    error = %source,
+                    staging = %staging_dir.display(),
+                    "failed to remove migration staging directory after write error"
+                );
+            }
+            return Err(err);
+        }
+    };
 
     fsync_dir(dest.parent().unwrap_or_else(|| Path::new(".")))?;
 
@@ -313,6 +313,7 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
         dest: dest.to_path_buf(),
         counts,
         legacy_extras_preserved: source_data.legacy_extras_preserved,
+        legacy_sidecar_entries_preserved: source_data.legacy_sidecars.len(),
         orphan_messages_recovered: source_data.orphans.orphan_message_count,
         orphan_sessions_synthesised: source_data.orphans.synthetic_sessions.len(),
         elapsed_secs: started.elapsed().as_secs_f64(),
@@ -321,22 +322,21 @@ pub fn stage_migration(source: &Path, dest: &Path, force: bool) -> Result<Staged
     Ok(StagedMigration {
         staging_dir,
         final_dir: dest.to_path_buf(),
-        backup_dir: if dest_existed { Some(backup_dir) } else { None },
+        backup: dest_existed.then(|| unique_backup_paths(dest)),
         report,
         published: false,
     })
 }
 
 /// Check destination preconditions and clean up leftover staging when
-/// `force` is set. Returns whether a non-empty destination already exists.
+/// replacement is set. Returns whether a non-empty destination already exists.
 fn prepare_destination_dirs(
     dest: &Path,
-    force: bool,
+    replace_existing: bool,
     staging_dir: &Path,
-    backup_dir: &Path,
 ) -> Result<bool> {
     if staging_dir.exists() {
-        if !force {
+        if !replace_existing {
             return Err(MigrationIncompleteSnafu {
                 path: dest.to_path_buf(),
                 marker: staging_dir.display().to_string(),
@@ -352,31 +352,147 @@ fn prepare_destination_dirs(
     }
 
     let dest_existed = dest.exists() && !is_empty_or_absent(dest)?;
-    if dest_existed && !force {
+    if dest_existed && !replace_existing {
         return Err(DestinationNotEmptySnafu {
             path: dest.to_path_buf(),
         }
         .build());
     }
 
-    if backup_dir.exists() {
-        fs::remove_dir_all(backup_dir).context(IoSnafu {
-            context: format!("removing old backup directory {}", backup_dir.display()),
-        })?;
-    }
-
     Ok(dest_existed)
 }
 
 /// Rotate an existing destination directory to the backup path.
-fn rotate_destination_to_backup(dest: &Path, backup_dir: &Path) -> Result<()> {
-    fs::rename(dest, backup_dir).context(IoSnafu {
+fn rotate_destination_to_backup(dest: &Path, backup: &BackupPaths) -> Result<()> {
+    fs::rename(dest, &backup.dir).context(IoSnafu {
         context: format!(
             "moving existing destination {} to backup {}",
             dest.display(),
-            backup_dir.display()
+            backup.dir.display()
         ),
-    })
+    })?;
+    let marker = format!(
+        "{BACKUP_MARKER_MAGIC}dest={}\nbackup={}\n",
+        dest.display(),
+        backup.dir.display()
+    );
+    fs::write(&backup.marker, marker).context(IoSnafu {
+        context: format!("writing backup marker {}", backup.marker.display()),
+    })?;
+    fsync_dir(dest.parent().unwrap_or_else(|| Path::new(".")))?;
+    Ok(())
+}
+
+fn unique_backup_paths(dest: &Path) -> BackupPaths {
+    let parent = dest.parent().unwrap_or_else(|| Path::new("."));
+    let base = dest
+        .file_name()
+        .map_or_else(|| "destination".into(), |name| name.to_string_lossy());
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    let pid = std::process::id();
+
+    for attempt in 0..1024u16 {
+        let dir = parent.join(format!("{base}.{BACKUP_SUFFIX}-{stamp}-{pid}-{attempt}"));
+        let marker = backup_marker_path(&dir);
+        if !dir.exists() && !marker.exists() {
+            return BackupPaths { dir, marker };
+        }
+    }
+
+    let dir = parent.join(format!("{base}.{BACKUP_SUFFIX}-{stamp}-{pid}-fallback"));
+    let marker = backup_marker_path(&dir);
+    BackupPaths { dir, marker }
+}
+
+fn backup_marker_path(backup_dir: &Path) -> PathBuf {
+    let mut marker = backup_dir.as_os_str().to_os_string();
+    marker.push(".marker");
+    PathBuf::from(marker)
+}
+
+fn cleanup_marker_owned_backup(backup: &BackupPaths) {
+    if !backup_marker_is_owned(backup) {
+        warn!(
+            backup = %backup.dir.display(),
+            marker = %backup.marker.display(),
+            "leaving replacement backup in place because marker ownership was not confirmed"
+        );
+        return;
+    }
+
+    if let Err(source) = fs::remove_dir_all(&backup.dir) {
+        warn!(
+            error = %source,
+            backup = %backup.dir.display(),
+            "failed to remove replacement backup after publish"
+        );
+        return;
+    }
+
+    remove_backup_marker(backup);
+}
+
+fn backup_marker_is_owned(backup: &BackupPaths) -> bool {
+    match fs::read_to_string(&backup.marker) {
+        Ok(contents) => contents.starts_with(BACKUP_MARKER_MAGIC),
+        Err(source) => {
+            warn!(
+                error = %source,
+                marker = %backup.marker.display(),
+                "failed to read replacement backup marker"
+            );
+            false
+        }
+    }
+}
+
+fn restore_backup(final_dir: &Path, backup: &BackupPaths) {
+    if !backup.dir.exists() {
+        return;
+    }
+    if final_dir.exists() {
+        warn!(
+            final_dir = %final_dir.display(),
+            backup = %backup.dir.display(),
+            "leaving replacement backup in place because final destination exists"
+        );
+        return;
+    }
+
+    if let Err(source) = fs::rename(&backup.dir, final_dir) {
+        warn!(
+            error = %source,
+            final_dir = %final_dir.display(),
+            backup = %backup.dir.display(),
+            "failed to restore replacement backup"
+        );
+        return;
+    }
+
+    remove_backup_marker(backup);
+    if let Err(err) = fsync_dir(final_dir.parent().unwrap_or_else(|| Path::new("."))) {
+        warn!(
+            error = ?err,
+            final_dir = %final_dir.display(),
+            "failed to fsync restored destination parent directory"
+        );
+    }
+}
+
+fn remove_backup_marker(backup: &BackupPaths) {
+    match fs::remove_file(&backup.marker) {
+        Ok(()) => {}
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
+        Err(source) => {
+            warn!(
+                error = %source,
+                marker = %backup.marker.display(),
+                "failed to remove replacement backup marker"
+            );
+        }
+    }
 }
 
 /// Read every table from the validated source connection and return the
@@ -389,6 +505,7 @@ pub(crate) fn load_source_data(conn: &Connection) -> Result<SourceData> {
     let dists = source::read_distillations(conn)?;
     let notes = source::read_notes(conn)?;
     let blackboard = source::read_blackboard(conn)?;
+    let legacy_sidecars = source::read_legacy_sidecars(conn)?;
     info!(
         sessions = session_rows.len(),
         messages = messages.len(),
@@ -396,6 +513,7 @@ pub(crate) fn load_source_data(conn: &Connection) -> Result<SourceData> {
         distillations = dists.len(),
         notes = notes.len(),
         blackboard = blackboard.len(),
+        legacy_sidecars = legacy_sidecars.len(),
         "source loaded"
     );
 
@@ -428,6 +546,7 @@ pub(crate) fn load_source_data(conn: &Connection) -> Result<SourceData> {
         distillations: dists,
         notes,
         blackboard,
+        legacy_sidecars,
         orphans,
         legacy_extras_preserved,
     })
@@ -443,6 +562,7 @@ fn write_staging(staging_dir: &Path, source_data: &SourceData) -> Result<TableCo
         &source_data.distillations,
         &source_data.notes,
         &source_data.blackboard,
+        &source_data.legacy_sidecars,
     )?;
 
     // Make the staging store durable before the atomic publish.
