@@ -307,10 +307,10 @@ async fn run_tool_with_limits(
         while let Some(event) = event_rx.recv().await {
             if let crate::stream::TurnStreamEvent::ToolApprovalRequired { tool_id, .. } = event {
                 let _ = decision_tx
-                    .send(crate::approval::ApprovalDecision {
+                    .send(crate::approval::ApprovalDecision::new(
                         tool_id,
-                        choice: crate::approval::ApprovalChoice::Approved,
-                    })
+                        crate::approval::ApprovalChoice::Approved,
+                    ))
                     .await;
             }
         }
@@ -385,10 +385,10 @@ async fn enable_tool_activation_persists_to_next_turn() {
         while let Some(event) = event_rx.recv().await {
             if let crate::stream::TurnStreamEvent::ToolApprovalRequired { tool_id, .. } = event {
                 let _ = decision_tx
-                    .send(crate::approval::ApprovalDecision {
+                    .send(crate::approval::ApprovalDecision::new(
                         tool_id,
-                        choice: crate::approval::ApprovalChoice::Approved,
-                    })
+                        crate::approval::ApprovalChoice::Approved,
+                    ))
                     .await;
             }
         }
@@ -585,10 +585,10 @@ async fn reload_config_updates_tool_limits_for_existing_actor() {
         while let Some(event) = event_rx.recv().await {
             if let crate::stream::TurnStreamEvent::ToolApprovalRequired { tool_id, .. } = event {
                 let _ = decision_tx
-                    .send(crate::approval::ApprovalDecision {
+                    .send(crate::approval::ApprovalDecision::new(
                         tool_id,
-                        choice: crate::approval::ApprovalChoice::Approved,
-                    })
+                        crate::approval::ApprovalChoice::Approved,
+                    ))
                     .await;
             }
         }

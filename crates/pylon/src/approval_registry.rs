@@ -142,15 +142,12 @@ mod tests {
                 Some("sess-1"),
                 "turn-1",
                 "t-1",
-                ApprovalDecision {
-                    tool_id: "t-1".to_owned(),
-                    choice: ApprovalChoice::Approved,
-                }
+                ApprovalDecision::new("t-1", ApprovalChoice::Approved)
             )
             .await
         );
         let decision = rx.recv().await.expect("decision");
-        assert_eq!(decision.tool_id, "t-1");
+        assert_eq!(decision.tool_id.as_str(), "t-1");
     }
 
     #[tokio::test]
@@ -161,10 +158,7 @@ mod tests {
                 Some("missing"),
                 "turn-x",
                 "tool-x",
-                ApprovalDecision {
-                    tool_id: "tool-x".to_owned(),
-                    choice: ApprovalChoice::Approved,
-                }
+                ApprovalDecision::new("tool-x", ApprovalChoice::Approved)
             )
             .await
         );
@@ -206,10 +200,7 @@ mod tests {
                 Some("sess"),
                 "turn-a",
                 "tool-b",
-                ApprovalDecision {
-                    tool_id: "tool-b".to_owned(),
-                    choice: ApprovalChoice::Approved,
-                }
+                ApprovalDecision::new("tool-b", ApprovalChoice::Approved)
             )
             .await,
             "stale tool id must not route to another turn"
@@ -219,17 +210,14 @@ mod tests {
                 Some("sess"),
                 "turn-b",
                 "tool-b",
-                ApprovalDecision {
-                    tool_id: "tool-b".to_owned(),
-                    choice: ApprovalChoice::Denied,
-                }
+                ApprovalDecision::new("tool-b", ApprovalChoice::Denied)
             )
             .await
         );
 
         assert!(rx_a.try_recv().is_err());
         let decision = rx_b.recv().await.expect("turn-b decision");
-        assert_eq!(decision.tool_id, "tool-b");
+        assert_eq!(decision.tool_id.as_str(), "tool-b");
         assert_eq!(decision.choice, ApprovalChoice::Denied);
     }
 

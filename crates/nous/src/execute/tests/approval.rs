@@ -144,10 +144,7 @@ async fn reversibility_class_call_blocks_until_approved() {
     let gate = ApprovalGate::new(decision_rx, Duration::from_secs(5));
 
     decision_tx
-        .send(ApprovalDecision {
-            tool_id: "tool-1".to_owned(),
-            choice: ApprovalChoice::Approved,
-        })
+        .send(ApprovalDecision::new("tool-1", ApprovalChoice::Approved))
         .await
         .expect("send approval");
 
@@ -207,10 +204,7 @@ async fn reversibility_class_call_denied_skips_execution() {
     let gate = ApprovalGate::new(decision_rx, Duration::from_secs(5));
 
     decision_tx
-        .send(ApprovalDecision {
-            tool_id: "tool-1".to_owned(),
-            choice: ApprovalChoice::Denied,
-        })
+        .send(ApprovalDecision::new("tool-1", ApprovalChoice::Denied))
         .await
         .expect("send denial");
 

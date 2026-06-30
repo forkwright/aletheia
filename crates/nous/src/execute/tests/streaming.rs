@@ -578,10 +578,7 @@ async fn streaming_fallback_uses_approval_gate_for_mandatory_tool() {
     let (decision_tx, decision_rx) = tokio::sync::mpsc::channel::<ApprovalDecision>(4);
     let gate = ApprovalGate::new(decision_rx, Duration::from_secs(5));
     decision_tx
-        .send(ApprovalDecision {
-            tool_id: "toolu_1".to_owned(),
-            choice: ApprovalChoice::Denied,
-        })
+        .send(ApprovalDecision::new("toolu_1", ApprovalChoice::Denied))
         .await
         .expect("send denial");
 

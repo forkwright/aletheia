@@ -99,10 +99,7 @@ pub async fn resolve(
             Some(&session_id),
             &body.turn_id,
             &body.tool_id,
-            ApprovalDecision {
-                tool_id: body.tool_id.clone(),
-                choice,
-            },
+            ApprovalDecision::new(body.tool_id.clone(), choice),
         )
         .await;
 
@@ -199,10 +196,7 @@ async fn resolve_path_decision(
             None,
             &turn_id,
             &tool_id,
-            ApprovalDecision {
-                tool_id: tool_id.clone(),
-                choice,
-            },
+            ApprovalDecision::new(tool_id.clone(), choice),
         )
         .await;
 
