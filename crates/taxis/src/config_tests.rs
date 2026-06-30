@@ -354,8 +354,8 @@ fn resolve_merges_agent_overrides() {
         id: "syn".to_owned(),
         name: Some("Synthetic".to_owned()),
         model: Some(ModelSpec {
-            primary: "claude-opus-4-6".to_owned(),
-            fallbacks: vec!["claude-sonnet-4-6".to_owned()],
+            primary: ModelRoute::new("claude-opus-4-6"),
+            fallbacks: vec![ModelRoute::new("claude-sonnet-4-6")],
             retries_before_fallback: 2,
         }),
         workspace: "/home/user/nous/syn".to_owned(),

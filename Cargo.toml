@@ -147,6 +147,7 @@ utoipa = { version = "5", features = ["axum_extras"] }
 reqwest = { version = "0.13", default-features = false, features = [
     "rustls-no-provider",
     "json",
+    "form",
     "http2",
     "query",
 ] }

@@ -509,8 +509,8 @@ fn resolve_merges_agent_overrides() {
         id: "syn".to_owned(),
         name: Some("Synthetic".to_owned()),
         model: Some(ModelSpec {
-            primary: "claude-opus-4-6".to_owned(),
-            fallbacks: vec!["claude-sonnet-4-6".to_owned()],
+            primary: ModelRoute::new("claude-opus-4-6"),
+            fallbacks: vec![ModelRoute::new("claude-sonnet-4-6")],
             retries_before_fallback: 2,
         }),
         workspace: "/home/user/nous/syn".to_owned(),
@@ -561,6 +561,45 @@ fn resolve_merges_agent_overrides() {
         AgencyLevel::Standard,
         "agency should default to standard when not overridden"
     );
+}
+
+#[test]
+fn model_routes_parse_provider_overrides() {
+    let toml = r#"
+[agents.defaults.model]
+primary = { model = "shared-model", provider = "local-proxy" }
+fallbacks = [
+    { model = "shared-model", provider = "anthropic-cloud" },
+    "other-model",
+]
+retriesBeforeFallback = 1
+"#;
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse routed model config");
+    let resolved = resolve_nous(&config, "syn");
+
+    assert_eq!(resolved.model.primary, Arc::<str>::from("shared-model"));
+    assert_eq!(
+        resolved.model.primary_provider.as_deref(),
+        Some("local-proxy")
+    );
+    assert_eq!(
+        resolved.model.fallbacks,
+        vec![
+            Arc::<str>::from("shared-model"),
+            Arc::<str>::from("other-model")
+        ]
+    );
+    assert_eq!(
+        resolved
+            .model
+            .fallback_providers
+            .iter()
+            .map(|provider| provider.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("anthropic-cloud"), None]
+    );
+    assert_eq!(resolved.model.retries_before_fallback, 1);
 }
 
 #[test]

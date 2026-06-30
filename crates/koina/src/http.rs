@@ -33,6 +33,9 @@ pub const BLOCKED_HOSTNAMES: &[&str] = &[
 /// TLS-protected URL scheme, including the `://` separator.
 pub const HTTPS_SCHEME_PREFIX: &str = "https://";
 
+const HTTPS_SCHEME_BYTES: &[u8] = b"https";
+const HTTP_SCHEME_NAME_LEN: usize = 4;
+
 /// Byte sequence of the plaintext HTTP scheme prefix (`h t t p : / /`).
 ///
 /// WHY: kept as a byte-array literal so the plaintext scheme token
@@ -65,23 +68,84 @@ pub fn has_http_or_https_scheme(url: &str) -> bool {
     url.as_bytes().get(..HTTP_SCHEME_BYTES.len()) == Some(HTTP_SCHEME_BYTES)
 }
 
+/// Returns `true` when `url` is HTTPS or targets a loopback host over plaintext HTTP.
+///
+/// WHY(#5055): provider credentials are sent in headers, so plaintext
+/// exceptions must be based on the parsed URL host rather than a string prefix.
+#[must_use]
+pub fn is_secure_or_plaintext_loopback_url(url: &str) -> bool {
+    let Ok(parsed) = url.parse::<reqwest::Url>() else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+
+    if parsed.scheme().as_bytes() == HTTPS_SCHEME_BYTES {
+        return true;
+    }
+
+    if !is_plaintext_http_scheme(parsed.scheme()) {
+        return false;
+    }
+
+    is_loopback_host(host)
+}
+
 /// Returns `true` when `url` targets a loopback host over plaintext HTTP.
 ///
-/// Matches `http://localhost*`, `http://127.0.0.1*`, and `http://[::1]*`.
+/// Matches exact `localhost`, IPv4 127.0.0.0/8, and IPv6 loopback hosts.
 /// WHY: centralises loopback detection so callers don't embed bare
 /// `"http://"` literals in their source, which trips
 /// `SECURITY/insecure-transport`.
 #[must_use]
 pub fn is_plaintext_loopback_url(url: &str) -> bool {
-    // WHY: peel off the plaintext HTTP scheme via byte inspection, then
-    // check that the remaining host part is a loopback token.
-    if !has_http_or_https_scheme(url) || url.starts_with(HTTPS_SCHEME_PREFIX) {
-        return false;
-    }
-    let Some(rest) = url.get(HTTP_SCHEME_BYTES.len()..) else {
+    let Ok(parsed) = url.parse::<reqwest::Url>() else {
         return false;
     };
-    rest.starts_with("localhost") || rest.starts_with("127.0.0.1") || rest.starts_with("[::1]")
+
+    if !is_plaintext_http_scheme(parsed.scheme()) {
+        return false;
+    }
+
+    parsed.host_str().is_some_and(is_loopback_host)
+}
+
+/// Redact URL userinfo before including a provider base URL in diagnostics.
+///
+/// WHY(#5055): rejection diagnostics are useful, but provider URLs may contain
+/// userinfo credentials and malformed URLs should not be echoed back verbatim.
+#[must_use]
+pub fn transport_url_for_diagnostic(url: &str) -> String {
+    let Ok(mut parsed) = url.parse::<reqwest::Url>() else {
+        return "<invalid URL>".to_owned();
+    };
+
+    if parsed.password().is_some() && parsed.set_password(None).is_err() {
+        return "<redacted URL>".to_owned();
+    }
+
+    if !parsed.username().is_empty() && parsed.set_username("").is_err() {
+        return "<redacted URL>".to_owned();
+    }
+
+    parsed.to_string()
+}
+
+fn is_plaintext_http_scheme(scheme: &str) -> bool {
+    HTTP_SCHEME_BYTES.get(..HTTP_SCHEME_NAME_LEN) == Some(scheme.as_bytes())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let ip_host = host
+        .strip_prefix('[')
+        .and_then(|without_prefix| without_prefix.strip_suffix(']'))
+        .unwrap_or(host);
+
+    host.eq_ignore_ascii_case("localhost")
+        || ip_host
+            .parse::<IpAddr>()
+            .is_ok_and(|ip_addr| ip_addr.is_loopback())
 }
 
 /// Future returned by [`HostResolver`] implementations.
@@ -219,13 +283,54 @@ mod tests {
     fn detects_plaintext_loopback() {
         assert!(is_plaintext_loopback_url("http://localhost:8080"));
         assert!(is_plaintext_loopback_url("http://127.0.0.1:8080"));
+        assert!(is_plaintext_loopback_url("http://127.42.0.9:8080"));
         assert!(is_plaintext_loopback_url("http://[::1]:8080"));
+        assert!(is_plaintext_loopback_url("http://[0:0:0:0:0:0:0:1]:8080"));
+        assert!(is_plaintext_loopback_url(
+            "http://operator:secret@localhost:8080/v1" // pii-allow: test fixture exercising loopback-URL credential handling
+        ));
     }
 
     #[test]
     fn non_loopback_is_not_plaintext_loopback() {
         assert!(!is_plaintext_loopback_url("http://example.com"));
         assert!(!is_plaintext_loopback_url("https://localhost:8080"));
+        assert!(!is_plaintext_loopback_url("http://localhost.evil.example"));
+        assert!(!is_plaintext_loopback_url(
+            "http://127.0.0.1.evil.example:8080"
+        ));
+        assert!(!is_plaintext_loopback_url(
+            "http://localhost@evil.example/v1"
+        ));
+        assert!(!is_plaintext_loopback_url("http://[::1"));
+        assert!(!is_plaintext_loopback_url("http://127.0.0.1:bad/v1"));
+    }
+
+    #[test]
+    fn secure_or_plaintext_loopback_rejects_spoofed_hosts() {
+        assert!(is_secure_or_plaintext_loopback_url(
+            "https://api.example.com/v1"
+        ));
+        assert!(is_secure_or_plaintext_loopback_url(
+            "http://user:pass@127.0.0.2:8080/v1"
+        ));
+        assert!(!is_secure_or_plaintext_loopback_url(
+            "http://localhost.evil.example/v1"
+        ));
+        assert!(!is_secure_or_plaintext_loopback_url(
+            "http://127.0.0.1.evil.example/v1"
+        ));
+        assert!(!is_secure_or_plaintext_loopback_url("https://"));
+        assert!(!is_secure_or_plaintext_loopback_url("not a url"));
+    }
+
+    #[test]
+    fn transport_url_diagnostic_redacts_userinfo() {
+        assert_eq!(
+            transport_url_for_diagnostic("http://operator:secret@localhost.evil.example/v1"), // pii-allow: test fixture asserting userinfo redaction
+            "http://localhost.evil.example/v1"
+        );
+        assert_eq!(transport_url_for_diagnostic("http://[::1"), "<invalid URL>");
     }
 
     #[test]

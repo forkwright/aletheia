@@ -470,13 +470,21 @@ streams the turn as `TurnStreamEvent` SSE events (used by TUI and desktop client
 
 | Type | Fields |
 |------|--------|
-| `turn_start` | `session_id, nous_id, turn_id` |
-| `thinking_delta` | `thinking` |
+| `message_start` | `session_id, nous_id, turn_id, request_id?` |
+| `provider_message_start` | `usage` |
+| `provider_content_block_start` | `index, block_type` |
+| `provider_input_json_delta` | `partial_json` |
+| `provider_content_block_stop` | `index` |
+| `provider_message_stop` | `stop_reason, usage` |
+| `provider_unsupported_event` | `event_type` |
+| `thinking_delta` | `text` |
 | `text_delta` | `text` |
-| `tool_start` | `id, name, input` |
-| `tool_result` | `tool_use_id, content, is_error` |
-| `turn_complete` | `stop_reason, usage, thinking_tokens, tool_iterations` |
-| `error` | `code, message` |
+| `tool_use` | `tool_name, tool_id, input` |
+| `tool_approval_required` | `turn_id, tool_name, tool_id, input, risk, reason` |
+| `tool_approval_resolved` | `tool_id, decision` |
+| `tool_result` | `tool_name, tool_id, result, is_error, duration_ms` |
+| `message_complete` | `outcome` |
+| `error` | `code, message, request_id?` |
 
 ---
 

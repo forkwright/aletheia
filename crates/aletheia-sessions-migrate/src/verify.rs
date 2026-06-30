@@ -32,50 +32,50 @@ use crate::source::{DistillationRecord, LegacyExtras};
 
 /// Verification result for one migrated fjall partition.
 #[derive(Debug, Clone, Serialize)]
-pub struct PartitionVerification {
+pub(crate) struct PartitionVerification {
     /// Partition name.
-    pub partition: String,
+    pub(crate) partition: String,
     /// Expected key/value entry count derived from the source.
-    pub source_entry_count: usize,
+    pub(crate) source_entry_count: usize,
     /// Actual key/value entry count found in fjall.
-    pub dest_entry_count: usize,
+    pub(crate) dest_entry_count: usize,
     /// Expected deterministic key/value SHA-256, hex encoded.
-    pub source_sha256: String,
+    pub(crate) source_sha256: String,
     /// Actual deterministic key/value SHA-256, hex encoded.
-    pub dest_sha256: String,
+    pub(crate) dest_sha256: String,
     /// Whether count and hash matched.
-    pub ok: bool,
+    pub(crate) ok: bool,
 }
 
 /// Result of a `--verify` run.
 #[derive(Debug, Clone, Serialize)]
-pub struct VerificationReport {
+pub(crate) struct VerificationReport {
     /// Number of per-session samples spot-checked.
-    pub samples_checked: usize,
+    pub(crate) samples_checked: usize,
     /// Each detected mismatch as a human-readable line.
-    pub mismatches: Vec<String>,
+    pub(crate) mismatches: Vec<String>,
     /// Sessions known to the source (real rows + distinct orphan IDs).
-    pub source_session_count: usize,
+    pub(crate) source_session_count: usize,
     /// Sessions present in dest fjall.
-    pub dest_session_count: usize,
+    pub(crate) dest_session_count: usize,
     /// Messages in source.
-    pub source_message_count: usize,
+    pub(crate) source_message_count: usize,
     /// Messages in dest fjall.
-    pub dest_message_count: usize,
+    pub(crate) dest_message_count: usize,
     /// Whether the SHA-256 of every message body matches between stores.
-    pub message_body_hash_match: bool,
+    pub(crate) message_body_hash_match: bool,
     /// Source-side hash, hex-encoded.
-    pub source_message_body_sha256: String,
+    pub(crate) source_message_body_sha256: String,
     /// Destination-side hash, hex-encoded.
-    pub dest_message_body_sha256: String,
+    pub(crate) dest_message_body_sha256: String,
     /// Complete per-partition verification results.
-    pub partition_checks: Vec<PartitionVerification>,
+    pub(crate) partition_checks: Vec<PartitionVerification>,
 }
 
 impl VerificationReport {
     /// Did every check pass?
     #[must_use]
-    pub fn ok(&self) -> bool {
+    pub(crate) fn ok(&self) -> bool {
         self.mismatches.is_empty()
     }
 }
@@ -89,7 +89,11 @@ type PartitionMap = BTreeMap<&'static str, EntryMap>;
 ///
 /// Propagates `SQLite`, source-mapping, JSON encoding, numeric range, and
 /// fjall scan errors.
-pub fn run_verification(source: &Path, dest: &Path, samples: usize) -> Result<VerificationReport> {
+pub(crate) fn run_verification(
+    source: &Path,
+    dest: &Path,
+    samples: usize,
+) -> Result<VerificationReport> {
     let conn = open_source(source)?;
     schema::validate(&conn)?;
     let source_data = load_source_data(&conn)?;
@@ -253,6 +257,10 @@ fn source_expected_partitions(source_data: &SourceData) -> Result<PartitionMap> 
     }
 
     add_blackboard_entries(&mut partitions, &source_data.blackboard)?;
+    add_legacy_sidecar_entries(
+        partition_mut(&mut partitions, "migration_legacy"),
+        &source_data.legacy_sidecars,
+    );
     add_counter_entries(&mut partitions, source_data)?;
 
     Ok(partitions)
@@ -419,6 +427,12 @@ fn add_blackboard_entries(partitions: &mut PartitionMap, rows: &[BlackboardRow])
         insert_bytes(blackboard, row.key.as_bytes(), json_vec("blackboard", row)?);
     }
     Ok(())
+}
+
+fn add_legacy_sidecar_entries(entries: &mut EntryMap, rows: &[crate::source::LegacySidecarEntry]) {
+    for row in rows {
+        insert_bytes(entries, row.key.as_bytes(), row.value.clone());
+    }
 }
 
 fn add_counter_entries(partitions: &mut PartitionMap, source_data: &SourceData) -> Result<()> {

@@ -211,20 +211,16 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
         }
 
         if let Some(model) = defaults.get("model") {
-            if let Some(primary) = model.get("primary").and_then(Value::as_str)
-                && primary.is_empty()
-            {
-                errors.push("agents.defaults.model.primary must not be empty".to_owned());
+            if let Some(primary) = model.get("primary") {
+                validate_model_route(primary, "agents.defaults.model.primary", errors);
             }
             if let Some(fallbacks) = model.get("fallbacks").and_then(Value::as_array) {
                 for (i, fallback) in fallbacks.iter().enumerate() {
-                    if let Some(s) = fallback.as_str()
-                        && s.is_empty()
-                    {
-                        errors.push(format!(
-                            "agents.defaults.model.fallbacks[{i}] must not be empty"
-                        ));
-                    }
+                    validate_model_route(
+                        fallback,
+                        &format!("agents.defaults.model.fallbacks[{i}]"),
+                        errors,
+                    );
                 }
             }
         }
@@ -260,6 +256,38 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
                 "bootstrapMaxTokens ({boot}) must be less than contextTokens ({ctx})"
             ));
         }
+    }
+}
+
+fn validate_model_route(value: &Value, path: &str, errors: &mut Vec<String>) {
+    match value {
+        Value::String(model) if model.is_empty() => {
+            errors.push(format!("{path} must not be empty"));
+        }
+        Value::Object(fields) => {
+            for field in fields.keys() {
+                if field != "model" && field != "provider" {
+                    errors.push(format!(
+                        "{path}.{field} is not a recognized model route field"
+                    ));
+                }
+            }
+            match fields.get("model").and_then(Value::as_str) {
+                Some("") => {
+                    errors.push(format!("{path}.model must not be empty"));
+                }
+                None => {
+                    errors.push(format!("{path}.model must be a string"));
+                }
+                Some(_) => {}
+            }
+            if let Some(provider) = fields.get("provider").and_then(Value::as_str)
+                && provider.is_empty()
+            {
+                errors.push(format!("{path}.provider must not be empty"));
+            }
+        }
+        _ => {}
     }
 }
 

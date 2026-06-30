@@ -12,10 +12,22 @@ use super::{
 pub struct ResolvedModelConfig {
     /// Primary model identifier.
     pub primary: Arc<str>,
+    /// Optional provider instance name for the primary model.
+    pub primary_provider: Option<Arc<str>>,
     /// Ordered fallback models.
     pub fallbacks: Vec<Arc<str>>,
+    /// Optional provider instance names for fallback models, by index.
+    pub fallback_providers: Vec<Option<Arc<str>>>,
     /// How many times to retry the current model before trying the next fallback.
     pub retries_before_fallback: u32,
+}
+
+struct ResolvedModelSelection {
+    primary: Arc<str>,
+    primary_provider: Option<Arc<str>>,
+    fallbacks: Vec<Arc<str>>,
+    fallback_providers: Vec<Option<Arc<str>>>,
+    retries_before_fallback: u32,
 }
 
 /// Token budget limits for an agent.
@@ -106,28 +118,53 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
     let defaults = &config.agents.defaults;
     let agent = config.agents.list.iter().find(|a| a.id == nous_id);
 
-    let (model, fallbacks, retries_before_fallback): (Arc<str>, Vec<Arc<str>>, u32) =
-        match agent.and_then(|a| a.model.as_ref()) {
-            Some(spec) => (
-                Arc::from(spec.primary.as_str()),
-                spec.fallbacks
-                    .iter()
-                    .map(|s| Arc::from(s.as_str()))
-                    .collect(),
-                spec.retries_before_fallback,
-            ),
-            None => (
-                Arc::from(defaults.model_defaults.model.primary.as_str()),
-                defaults
-                    .model_defaults
-                    .model
-                    .fallbacks
-                    .iter()
-                    .map(|s| Arc::from(s.as_str()))
-                    .collect(),
-                defaults.model_defaults.model.retries_before_fallback,
-            ),
-        };
+    let model_selection = match agent.and_then(|a| a.model.as_ref()) {
+        Some(spec) => ResolvedModelSelection {
+            primary: Arc::from(spec.primary.as_str()),
+            primary_provider: spec.primary.provider.as_deref().map(Arc::<str>::from),
+            fallbacks: spec
+                .fallbacks
+                .iter()
+                .map(|s| Arc::from(s.as_str()))
+                .collect(),
+            fallback_providers: spec
+                .fallbacks
+                .iter()
+                .map(|s| s.provider.as_deref().map(Arc::<str>::from))
+                .collect(),
+            retries_before_fallback: spec.retries_before_fallback,
+        },
+        None => ResolvedModelSelection {
+            primary: Arc::from(defaults.model_defaults.model.primary.as_str()),
+            primary_provider: defaults
+                .model_defaults
+                .model
+                .primary
+                .provider
+                .as_deref()
+                .map(Arc::<str>::from),
+            fallbacks: defaults
+                .model_defaults
+                .model
+                .fallbacks
+                .iter()
+                .map(|s| Arc::from(s.as_str()))
+                .collect(),
+            fallback_providers: defaults
+                .model_defaults
+                .model
+                .fallbacks
+                .iter()
+                .map(|s| s.provider.as_deref().map(Arc::<str>::from))
+                .collect(),
+            retries_before_fallback: defaults.model_defaults.model.retries_before_fallback,
+        },
+    };
+    let model = model_selection.primary;
+    let model_provider = model_selection.primary_provider;
+    let fallbacks = model_selection.fallbacks;
+    let fallback_providers = model_selection.fallback_providers;
+    let retries_before_fallback = model_selection.retries_before_fallback;
 
     let agency = agent.and_then(|a| a.agency).unwrap_or(defaults.agency);
 
@@ -200,7 +237,9 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         name,
         model: ResolvedModelConfig {
             primary: model,
+            primary_provider: model_provider,
             fallbacks,
+            fallback_providers,
             retries_before_fallback,
         },
         limits: TokenLimits {

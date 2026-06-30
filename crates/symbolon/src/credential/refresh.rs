@@ -18,6 +18,8 @@ use super::providers::FileCredentialProvider;
 use super::{OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, REFRESH_CHECK_INTERVAL_SECS, unix_epoch_ms};
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig};
 
+const CLAUDE_CODE_CREDS_ENV: &str = "CLAUDE_CODE_CREDS";
+
 /// Outcome of an OAuth refresh attempt.
 pub(super) enum RefreshOutcome {
     /// Refresh succeeded.
@@ -39,11 +41,29 @@ pub(super) enum RefreshOutcome {
 /// WHY: bundled as a named struct so `persist_refresh_success` stays within
 /// clippy's argument-count limit while keeping all fields named.
 pub(super) struct RefreshSuccessPayload {
-    pub access_token: SecretString,
-    pub refresh_token: SecretString,
-    pub expires_in: u64,
-    pub scope: Option<String>,
-    pub subscription_type: Option<String>,
+    access_token: SecretString,
+    refresh_token: SecretString,
+    expires_in: u64,
+    scope: Option<String>,
+    subscription_type: Option<String>,
+}
+
+impl RefreshSuccessPayload {
+    fn new(
+        access_token: SecretString,
+        refresh_token: SecretString,
+        expires_in: u64,
+        scope: Option<String>,
+        subscription_type: Option<String>,
+    ) -> Self {
+        Self {
+            access_token,
+            refresh_token,
+            expires_in,
+            scope,
+            subscription_type,
+        }
+    }
 }
 
 /// Minimum `expires_in` accepted from OAuth responses (seconds).
@@ -51,6 +71,7 @@ const MIN_EXPIRES_IN_SECS: u64 = 60;
 
 /// Maximum `expires_in` accepted from OAuth responses (seconds).
 const MAX_EXPIRES_IN_SECS: u64 = 86400;
+const MAX_OAUTH_ERROR_PREVIEW_CHARS: usize = 160;
 
 fn default_expires_in() -> u64 {
     28800 // NOTE: 8 hours
@@ -97,6 +118,7 @@ impl RefreshState {
 /// The `RwLock` allows concurrent readers (`get_credential` calls) with a
 /// single writer (the background refresh task), so LLM requests are not
 /// blocked during a token refresh, which may take 100-500ms.
+// kanon:ignore RUST/pub-visibility -- WHY: re-exported as symbolon::credential credential-provider API and constructed by the aletheia runtime.
 pub struct RefreshingCredentialProvider {
     /// Current OAuth token and refresh metadata. `None` after a fatal
     /// refresh failure. Writers: the background refresh task (exclusive).
@@ -452,13 +474,13 @@ async fn refresh_loop(
                     &path,
                     &mut mtime_tracker,
                     &circuit_breaker,
-                    RefreshSuccessPayload {
+                    RefreshSuccessPayload::new(
                         access_token,
                         refresh_token,
                         expires_in,
                         scope,
                         subscription_type,
-                    },
+                    ),
                 );
             }
             RefreshOutcome::InvalidGrant => {
@@ -493,14 +515,15 @@ pub(super) async fn do_refresh(
 ) -> RefreshOutcome {
     // NOTE: Anthropic OAuth endpoint expects form-urlencoded, not JSON.
     // This matches RFC 6749 Section 4.1.3 for token refresh requests.
-    let body = format!(
-        "grant_type=refresh_token&refresh_token={refresh_token}&client_id={OAUTH_CLIENT_ID}",
-    );
+    let form = [
+        ("grant_type", "refresh_token"),
+        ("refresh_token", refresh_token),
+        ("client_id", OAUTH_CLIENT_ID),
+    ];
 
     let resp = match client
         .post(token_url)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body)
+        .form(&form)
         .timeout(Duration::from_secs(30))
         .send()
         .await
@@ -518,18 +541,24 @@ pub(super) async fn do_refresh(
             warn!("failed to read OAuth error response body: {e}");
             String::new()
         });
+        let error_response = serde_json::from_str::<OAuthErrorResponse>(&body_text).ok();
+        let error_code = error_response
+            .as_ref()
+            .map_or("unparseable_oauth_error", |err_resp| {
+                err_resp.error.as_str()
+            });
+        let body_preview = oauth_error_body_preview(&body_text, error_response.as_ref());
 
         // WHY: `invalid_grant` means the refresh token is revoked, expired, or
         // otherwise permanently invalid; retrying will never succeed — the user
         // must re-authenticate to obtain a new refresh token.
-        if let Ok(err_resp) = serde_json::from_str::<OAuthErrorResponse>(&body_text)
-            && err_resp.error == "invalid_grant"
-        {
+        if error_code == "invalid_grant" {
             // WHY: error_description is provider-controlled and may contain account
-            // identifiers or token fragments — log only the normalized error code
+            // identifiers or token fragments — log only normalized structured fields.
             error!(
                 status = %status,
-                error = %err_resp.error,
+                oauth_error = %error_code,
+                body_preview = %body_preview,
                 "OAuth refresh token is invalid — re-authentication required. \
                  Run `aletheia auth login` or re-authorize via Claude Code to obtain \
                  a new refresh token."
@@ -537,8 +566,14 @@ pub(super) async fn do_refresh(
             return RefreshOutcome::InvalidGrant;
         }
 
-        // WHY: raw body may contain provider-echoed request material; log only status
-        warn!(status = %status, "OAuth refresh returned error");
+        // WHY: raw body may contain provider-echoed request material; log only
+        // structured status/code plus a sanitized bounded preview.
+        warn!(
+            status = %status,
+            oauth_error = %error_code,
+            body_preview = %body_preview,
+            "OAuth refresh returned error"
+        );
         return RefreshOutcome::TransientError;
     }
 
@@ -562,6 +597,31 @@ pub(super) async fn do_refresh(
             warn!(error = %e, "failed to parse OAuth refresh response");
             RefreshOutcome::TransientError
         }
+    }
+}
+
+fn oauth_error_body_preview(
+    body_text: &str,
+    error_response: Option<&OAuthErrorResponse>,
+) -> String {
+    if let Some(error_response) = error_response {
+        return truncate_oauth_error_preview(
+            &serde_json::json!({ "error": error_response.error.as_str() }).to_string(),
+        );
+    }
+    if body_text.is_empty() {
+        return "[empty OAuth error body]".to_owned();
+    }
+    format!("[redacted OAuth error body: {} bytes]", body_text.len())
+}
+
+fn truncate_oauth_error_preview(preview: &str) -> String {
+    let mut chars = preview.chars();
+    let truncated: String = chars.by_ref().take(MAX_OAUTH_ERROR_PREVIEW_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
 }
 
@@ -624,17 +684,65 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
     Ok(updated)
 }
 
-/// Default path to the Claude Code credentials file.
+fn expand_tilde_path(path: &str, env: &impl Environment) -> PathBuf {
+    if path == "~" {
+        return env
+            .var_os("HOME")
+            .map_or_else(|| PathBuf::from(path), PathBuf::from);
+    }
+
+    if let Some(rest) = path.strip_prefix("~/")
+        && let Some(home) = env.var_os("HOME")
+    {
+        return PathBuf::from(home).join(rest);
+    }
+
+    PathBuf::from(path)
+}
+
+pub(super) fn claude_code_credential_path_with_env(
+    configured_path: Option<&str>,
+    env: &impl Environment,
+) -> Option<PathBuf> {
+    if let Some(path) = env
+        .var_os(CLAUDE_CODE_CREDS_ENV)
+        .filter(|path| !path.is_empty())
+    {
+        if let Some(path_str) = path.to_str() {
+            return Some(expand_tilde_path(path_str, env));
+        }
+        return Some(PathBuf::from(path));
+    }
+
+    configured_path
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(|path| expand_tilde_path(path, env))
+}
+
+/// Resolve an explicitly configured Claude Code credentials file.
 ///
-/// Returns `~/.claude/.credentials.json`, resolving `~` via `$HOME`.
-/// Returns `None` if `$HOME` is not set.
+/// Precedence is:
+///
+/// 1. `CLAUDE_CODE_CREDS`
+/// 2. `configured_path` from Aletheia configuration
+///
+/// Returns `None` when neither is set. Claude Code's private
+/// `~/.claude/.credentials.json` path is intentionally not discovered by
+/// default; operators must opt in by setting the env var or config path.
 #[must_use]
+// kanon:ignore RUST/pub-visibility -- WHY: aletheia runtime setup consumes this re-export to resolve the configured Claude Code credential path.
+pub fn claude_code_credential_path(configured_path: Option<&str>) -> Option<PathBuf> {
+    claude_code_credential_path_with_env(configured_path, &RealSystem)
+}
+
+/// Backward-compatible explicit Claude Code credential path lookup.
+///
+/// Returns `CLAUDE_CODE_CREDS` when set, otherwise `None`.
+#[must_use]
+// kanon:ignore RUST/pub-visibility -- WHY: pylon health checks and aletheia credential commands consume this re-export for explicit Claude Code credential detection.
 pub fn claude_code_default_path() -> Option<PathBuf> {
-    RealSystem.var_os("HOME").map(|home| {
-        PathBuf::from(home)
-            .join(".claude")
-            .join(".credentials.json")
-    })
+    claude_code_credential_path(None)
 }
 
 /// Build a credential provider from a Claude Code credentials file.
@@ -645,14 +753,12 @@ pub fn claude_code_default_path() -> Option<PathBuf> {
 ///
 /// Returns `None` if the file does not exist or cannot be parsed.
 #[must_use]
+// kanon:ignore RUST/pub-visibility -- WHY: aletheia runtime setup consumes this re-export to build the configured Claude Code provider.
 pub fn claude_code_provider(path: &Path) -> Option<Box<dyn CredentialProvider>> {
     claude_code_provider_with_config(path, CircuitBreakerConfig::default())
 }
 
-/// Build a credential provider with a custom circuit breaker configuration.
-///
-/// See [`claude_code_provider`] for behavior details.
-pub fn claude_code_provider_with_config(
+fn claude_code_provider_with_config(
     path: &Path,
     cb_config: CircuitBreakerConfig,
 ) -> Option<Box<dyn CredentialProvider>> {
@@ -677,6 +783,9 @@ pub fn claude_code_provider_with_config(
     Some(Box::new(FileCredentialProvider::new(path.to_path_buf())))
 }
 
+#[cfg(test)]
+#[path = "refresh_path_tests.rs"]
+mod refresh_path_tests;
 #[cfg(test)]
 #[path = "refresh_tests.rs"]
 mod refresh_tests;

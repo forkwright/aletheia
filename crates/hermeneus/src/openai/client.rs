@@ -166,11 +166,19 @@ impl Default for OpenAiProviderConfig {
     }
 }
 
+/// Returns true when the URL uses TLS or is safe to use without TLS.
+///
+/// WHY(#5055): delegate to the parsed shared policy so compatible providers
+/// cannot whitelist suffix-spoofed loopback-looking hosts.
+fn has_allowed_transport(url: &str) -> bool {
+    koina::http::is_secure_or_plaintext_loopback_url(url)
+}
+
 /// Returns true when the URL is safe to use without TLS.
 ///
-/// WHY: delegate to `koina::http::is_plaintext_loopback_url` so the plaintext
-/// HTTP scheme literal lives in exactly one audited place.
-fn is_loopback_url(url: &str) -> bool {
+/// WHY: first-party Responses API auth is optional only for plaintext loopback
+/// compatible endpoints.
+fn is_plaintext_loopback_url(url: &str) -> bool {
     koina::http::is_plaintext_loopback_url(url)
 }
 
@@ -193,11 +201,11 @@ impl OpenAiProvider {
     /// built or the base URL is non-loopback HTTP (credentials would be
     /// sent in cleartext).
     pub fn new(config: OpenAiProviderConfig) -> Result<Self> {
-        if !config.base_url.starts_with("https://") && !is_loopback_url(&config.base_url) {
+        if !has_allowed_transport(&config.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "OpenAI-compatible base URL must use HTTPS or loopback (got {:?})",
-                    config.base_url
+                    koina::http::transport_url_for_diagnostic(&config.base_url)
                 ),
             }
             .build());
@@ -208,7 +216,7 @@ impl OpenAiProvider {
         // targeted at api.openai.com must be authenticated.
         if config.api_family == OpenAiApiFamily::Responses
             && config.api_key.is_none()
-            && !is_loopback_url(&config.base_url)
+            && !is_plaintext_loopback_url(&config.base_url)
         {
             return Err(error::ProviderInitSnafu {
                 message: "first-party OpenAI provider requires an API key; set api_key_env or use provider_type = \"openai-compatible\" for loopback endpoints".to_owned(),
@@ -608,9 +616,7 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                parsed
-                    .into_response()
-                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+                parsed.into_response()
             }
             OpenAiApiFamily::Responses => {
                 let parsed: ResponsesResponse = serde_json::from_str(text).map_err(|e| {
@@ -619,9 +625,7 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                parsed
-                    .into_response()
-                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+                parsed.into_response()
             }
         }
     }

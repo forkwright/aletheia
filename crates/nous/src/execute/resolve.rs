@@ -7,13 +7,13 @@ use tracing::{debug, warn};
 
 use hermeneus::complexity::{ComplexityInput, route_model};
 use hermeneus::provider::{
-    DeploymentTarget, LlmProvider, ProviderRegistry, ProviderResolutionError, ProviderRoute,
+    DeploymentTarget, LlmProvider, ProviderRegistry, ProviderResolutionError,
 };
 use hermeneus::types::{ContentBlock, ServerToolDefinition};
 use koina::id::ToolName;
 use organon::types::ToolContext;
 
-use crate::config::NousConfig;
+use crate::config::{ModelProviderRoute, NousConfig};
 use crate::error;
 use crate::pipeline::PipelineContext;
 
@@ -39,8 +39,22 @@ pub(super) fn resolve_turn_model(
     providers: &ProviderRegistry,
     tool_count: usize,
 ) -> String {
+    resolve_turn_route(ctx, config, providers, tool_count).model
+}
+
+/// Resolve the model/provider route to use for this turn.
+pub(super) fn resolve_turn_route(
+    ctx: &PipelineContext,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    tool_count: usize,
+) -> ModelProviderRoute {
+    let configured_route = ModelProviderRoute {
+        model: config.generation.model.clone(),
+        provider: config.generation.provider.clone(),
+    };
     if !config.generation.complexity.enabled {
-        return config.generation.model.clone();
+        return configured_route;
     }
 
     // WHY: complexity routing scores the most recent user message — the one
@@ -64,7 +78,8 @@ pub(super) fn resolve_turn_model(
 
     let decision = route_model(&input, &config.generation.complexity);
     let deployment_target = providers
-        .find_provider(&config.generation.model)
+        .resolve_provider(&configured_route.model, configured_route.provider_route())
+        .ok()
         .map_or(DeploymentTarget::Cloud, LlmProvider::deployment_target);
     let configured_local = matches!(
         deployment_target,
@@ -88,23 +103,33 @@ pub(super) fn resolve_turn_model(
             complexity_tier = %decision.complexity.tier,
             "complexity routing preserved local deployment target"
         );
-        return config.generation.model.clone();
+        return configured_route;
     }
 
-    decision.model
+    if decision.model == configured_route.model {
+        configured_route
+    } else {
+        ModelProviderRoute::model_only(decision.model)
+    }
 }
 
-/// Resolve the LLM provider for `model` and verify it is not marked down.
+/// Resolve the LLM provider for `route` and verify it is not marked down.
 pub(super) fn resolve_provider_checked<'a>(
     providers: &'a ProviderRegistry,
-    model: &str,
+    route: &ModelProviderRoute,
 ) -> error::Result<&'a dyn LlmProvider> {
     providers
-        .resolve_provider(model, ProviderRoute::ModelOnly)
+        .resolve_provider(&route.model, route.provider_route())
         .map_err(|err| {
             let message = match err {
                 ProviderResolutionError::NoProvider { model } => {
                     format!("no provider for model: {model}")
+                }
+                ProviderResolutionError::ProviderNotFound { name, model } => {
+                    format!("provider '{name}' is not registered for model: {model}")
+                }
+                ProviderResolutionError::ProviderDoesNotSupportModel { name, model } => {
+                    format!("provider '{name}' does not support model: {model}")
                 }
                 ProviderResolutionError::ProviderUnavailable { name, health } => {
                     format!("provider '{name}' is currently unavailable: {health:?}")

@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use hermeneus::provider::ProviderRoute;
 use nous::pipeline::TurnResult;
 use nous::stream::TurnStreamEvent;
 
@@ -51,6 +52,48 @@ const ASCII_LOWER_A: u8 = b'a';
 type AxumEventStream =
     Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send + 'static>>;
 type BoxedSse = Sse<KeepAliveStream<AxumEventStream>>;
+
+fn usage_data_from_provider(usage: hermeneus::types::Usage) -> UsageData {
+    UsageData {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens,
+        cache_write_tokens: usage.cache_write_tokens,
+    }
+}
+
+fn provider_stream_event_to_turn_event(event: LlmStreamEvent) -> PylonTurnStreamEvent {
+    match event {
+        LlmStreamEvent::TextDelta { text } => PylonTurnStreamEvent::TextDelta { text },
+        LlmStreamEvent::ThinkingDelta { thinking } => {
+            PylonTurnStreamEvent::ThinkingDelta { text: thinking }
+        }
+        LlmStreamEvent::InputJsonDelta { partial_json } => {
+            PylonTurnStreamEvent::ProviderInputJsonDelta { partial_json }
+        }
+        LlmStreamEvent::ContentBlockStart { index, block_type } => {
+            PylonTurnStreamEvent::ProviderContentBlockStart { index, block_type }
+        }
+        LlmStreamEvent::ContentBlockStop { index } => {
+            PylonTurnStreamEvent::ProviderContentBlockStop { index }
+        }
+        LlmStreamEvent::MessageStart { usage } => PylonTurnStreamEvent::ProviderMessageStart {
+            usage: usage_data_from_provider(usage),
+        },
+        LlmStreamEvent::MessageStop { stop_reason, usage } => {
+            PylonTurnStreamEvent::ProviderMessageStop {
+                stop_reason: stop_reason.as_str().to_owned(),
+                usage: usage_data_from_provider(usage),
+            }
+        }
+        LlmStreamEvent::UnsupportedEvent { event_type } => {
+            PylonTurnStreamEvent::ProviderUnsupportedEvent { event_type }
+        }
+        _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
+            event_type: "unknown".to_owned(),
+        },
+    }
+}
 
 fn boxed_event_stream<S>(stream: S) -> AxumEventStream
 where
@@ -89,6 +132,7 @@ fn turn_complete_event_payload(
         "cache_write_tokens": result.usage.cache_write_tokens,
         "stop_reason": result.stop_reason.as_str(),
         "model": result.model_used.as_str(),
+        "provider": result.provider_used.as_deref(),
     })
 }
 
@@ -339,11 +383,26 @@ pub async fn send_message(
     if let Some(config) = state.nous_manager.get_config(nous_id)
         && state
             .provider_registry
-            .find_provider(&config.generation.model)
-            .is_none()
+            .resolve_provider(
+                &config.generation.model,
+                config
+                    .generation
+                    .provider
+                    .as_deref()
+                    .map_or(ProviderRoute::ModelOnly, ProviderRoute::Explicit),
+            )
+            .is_err()
     {
+        let provider = config
+            .generation
+            .provider
+            .as_deref()
+            .map_or_else(String::new, |provider| format!(" via provider {provider}"));
         return Err(InternalSnafu {
-            message: format!("no provider for model {}", config.generation.model),
+            message: format!(
+                "no provider for model {}{}",
+                config.generation.model, provider
+            ),
         }
         .build());
     }
@@ -583,6 +642,7 @@ pub async fn send_message(
                             cache_read_tokens: 0,
                             cache_write_tokens: 0,
                         },
+                        provider: None,
                         request_id: Some(request_id_str.clone()),
                     };
                     if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
@@ -620,8 +680,8 @@ pub async fn send_message(
 ///
 /// Accepts a `StreamTurnRequest` (`nous_id`, `message`, `session_key`, `client_turn_id`) and
 /// returns SSE events in `TurnStreamEvent` format (used by TUI and desktop clients):
-/// `message_start`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`,
-/// `message_complete`, `error`.
+/// `message_start`, provider lifecycle events, `text_delta`, `thinking_delta`, `tool_use`,
+/// `tool_result`, `message_complete`, `error`.
 #[utoipa::path(
     post,
     path = "/api/v1/sessions/stream",
@@ -872,11 +932,8 @@ pub async fn stream_turn(
         async move {
             while let Some(event) = nous_rx.recv().await {
                 let turn_event = match event {
-                    TurnStreamEvent::LlmDelta(LlmStreamEvent::TextDelta { text }) => {
-                        PylonTurnStreamEvent::TextDelta { text }
-                    }
-                    TurnStreamEvent::LlmDelta(LlmStreamEvent::ThinkingDelta { thinking }) => {
-                        PylonTurnStreamEvent::ThinkingDelta { text: thinking }
+                    TurnStreamEvent::LlmDelta(llm_event) => {
+                        provider_stream_event_to_turn_event(llm_event)
                     }
                     TurnStreamEvent::ToolStart {
                         tool_id,
@@ -928,7 +985,9 @@ pub async fn stream_turn(
                         is_error,
                         duration_ms,
                     },
-                    _ => continue,
+                    _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
+                        event_type: "unknown_turn_stream_event".to_owned(),
+                    },
                 };
                 let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
                     continue;
@@ -999,6 +1058,7 @@ pub async fn stream_turn(
                             nous_id: aid.clone(),
                             session_id: sid.clone(),
                             model: Some(result.model_used.clone()),
+                            provider: result.provider_used.clone(),
                             tool_calls: result.tool_calls.len(),
                             input_tokens: result.usage.input_tokens,
                             output_tokens: result.usage.output_tokens,
@@ -1074,6 +1134,7 @@ pub async fn stream_turn(
                             nous_id: aid,
                             session_id: sid,
                             model: configured_model,
+                            provider: None,
                             tool_calls: 0,
                             input_tokens: 0,
                             output_tokens: 0,
@@ -1662,6 +1723,7 @@ async fn emit_turn_result_events_buffered(
             cache_read_tokens: result.usage.cache_read_tokens,
             cache_write_tokens: result.usage.cache_write_tokens,
         },
+        provider: result.provider_used.clone(),
         request_id: request_id.map(ToOwned::to_owned),
     };
     if let Some(recorded) = record_sse_event(buf, &event).await {

@@ -271,6 +271,59 @@ async fn primary_success_records_observed_model_used() {
 }
 
 #[tokio::test]
+async fn explicit_provider_route_wins_when_multiple_providers_claim_model() {
+    let anthropic = Arc::new(
+        MockProvider::with_responses(vec![make_text_response_for_model(
+            "cloud answer",
+            "shared-model",
+        )])
+        .named("anthropic-cloud")
+        .models(&["shared-model"]),
+    );
+    let local = Arc::new(
+        MockProvider::with_responses(vec![make_text_response_for_model(
+            "local answer",
+            "shared-model",
+        )])
+        .named("local-proxy")
+        .models(&["shared-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&anthropic))));
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&local))));
+
+    let mut config = test_config();
+    config.generation.model = "shared-model".to_owned();
+    config.generation.provider = Some("local-proxy".to_owned());
+    let session = SessionState::new("test-session".to_owned(), "main".to_owned(), &config);
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &session,
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute with explicit provider route");
+
+    assert_eq!(result.content, "local answer");
+    assert_eq!(result.model_used, "shared-model");
+    assert_eq!(result.provider_used.as_deref(), Some("local-proxy"));
+    assert!(
+        anthropic.captured_requests().is_empty(),
+        "registration-order provider must not receive explicitly routed request"
+    );
+    assert_eq!(
+        local.captured_requests().len(),
+        1,
+        "explicit provider should receive the request"
+    );
+}
+
+#[tokio::test]
 async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
     let primary = Arc::new(FallbackSequenceProvider::new(
         "primary",
@@ -434,7 +487,7 @@ async fn configured_fallback_reports_aggregate_when_all_models_fail() {
 
     let msg = err.to_string();
     assert!(
-        msg.contains("all models in fallback chain failed")
+        msg.contains("all model routes in fallback chain failed")
             && msg.contains("test-model")
             && msg.contains("fallback-model"),
         "error should aggregate failed models, got: {msg}"

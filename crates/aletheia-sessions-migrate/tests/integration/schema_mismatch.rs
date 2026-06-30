@@ -8,10 +8,9 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
-use aletheia_sessions_migrate::run_migration;
 use rusqlite::Connection;
+
+use crate::{common, run_migration};
 
 #[test]
 fn rejects_wrong_user_version() {
@@ -70,5 +69,29 @@ fn rejects_missing_table() {
     assert!(
         msg.contains("messages") || msg.contains("usage") || msg.contains("blackboard"),
         "expected missing-table name in error; got: {msg}"
+    );
+}
+
+#[test]
+fn rejects_missing_promised_legacy_extra_column() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let src = tmp.path().join("source.db");
+    let dest = tmp.path().join("dest.fjall");
+
+    {
+        let conn = Connection::open(&src).expect("create source");
+        let ddl = common::SCHEMA_SQL.replace("    thinking_enabled INTEGER DEFAULT 0,\n", "");
+        conn.execute_batch(&ddl).expect("ddl without legacy extra");
+    }
+
+    let err = run_migration(&src, &dest, false).expect_err("rejects missing legacy extra");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("sessions"),
+        "expected sessions table in error; got: {msg}"
+    );
+    assert!(
+        msg.contains("thinking_enabled"),
+        "expected missing legacy extra column in error; got: {msg}"
     );
 }

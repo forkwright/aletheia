@@ -92,6 +92,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Provider response violated the expected adapter contract.
+    #[snafu(display("provider contract violation: {message}"))]
+    ProviderContract {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Model not supported by this provider.
     #[snafu(display("model not supported: {model}"))]
     UnsupportedModel {
@@ -197,7 +205,8 @@ impl koina::error_class::Classifiable for Error {
             Error::AuthFailed { .. }
             | Error::UnsupportedModel { .. }
             | Error::ApiError { .. }
-            | Error::ParseResponse { .. } => ErrorClass::Permanent,
+            | Error::ParseResponse { .. }
+            | Error::ProviderContract { .. } => ErrorClass::Permanent,
         }
     }
 
@@ -255,7 +264,7 @@ impl koina::error_class::Classifiable for Error {
                 max_attempts: 3,
                 backoff_base_ms: 2_000,
             },
-            Error::ParseResponse { .. } => ErrorAction::Escalate,
+            Error::ParseResponse { .. } | Error::ProviderContract { .. } => ErrorAction::Escalate,
         }
     }
 }
