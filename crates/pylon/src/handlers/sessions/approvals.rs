@@ -23,34 +23,46 @@ use crate::extract::{Claims, require_nous_access, require_role};
 use crate::handlers::sessions::find_session;
 use crate::state::SessionsState;
 
-koina::newtype_id!(
-    /// Turn identifier carried by an approval request.
-    pub struct ApprovalTurnId(String)
-);
+/// Turn identifier carried by an approval request.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[serde(transparent)]
+struct ApprovalTurnId(String);
 
-koina::newtype_id!(
-    /// Tool-call identifier carried by an approval request.
-    pub struct ApprovalToolId(String)
-);
+impl ApprovalTurnId {
+    fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+/// Tool-call identifier carried by an approval request.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[serde(transparent)]
+struct ApprovalToolId(String);
+
+impl ApprovalToolId {
+    fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
 
 /// Operator decision payload for a pending tool approval.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApprovalRequest {
     /// The `turn_id` from the matching `message_start` or `tool_approval_required` event.
     #[schema(value_type = String)]
-    pub turn_id: ApprovalTurnId,
+    turn_id: ApprovalTurnId,
     /// The `tool_use_id` from the matching `tool_approval_required` event.
     #[schema(value_type = String)]
-    pub tool_id: ApprovalToolId,
+    tool_id: ApprovalToolId,
     /// `"approved"` or `"denied"`.
-    pub decision: String,
+    decision: String,
 }
 
 /// Acknowledgement of a routed decision.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApprovalResponse {
     /// `true` if the decision was routed to an active turn.
-    pub routed: bool,
+    routed: bool,
 }
 
 /// `POST /api/v1/sessions/{session_id}/approvals` — resolve a pending tool approval.

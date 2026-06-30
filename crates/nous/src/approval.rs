@@ -6,7 +6,9 @@
 //! whose sender lives in the caller (e.g. pylon's per-turn registry,
 //! koilon's overlay handler).
 
+use std::borrow::Borrow;
 use std::collections::{HashMap, hash_map::Entry};
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -100,28 +102,81 @@ impl Default for ApprovalPolicy {
     }
 }
 
-koina::newtype_id!(
-    /// Identifier for a provider-emitted tool call awaiting approval.
-    pub struct ApprovalToolId(String)
-);
+/// Identifier for a provider-emitted tool call awaiting approval.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ApprovalToolId(String);
+
+impl ApprovalToolId {
+    /// Create a tool approval identifier from the provider tool-use id.
+    fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// The provider tool-use id.
+    fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl fmt::Display for ApprovalToolId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl AsRef<str> for ApprovalToolId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for ApprovalToolId {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl From<String> for ApprovalToolId {
+    fn from(id: String) -> Self {
+        Self::new(id)
+    }
+}
+
+impl From<&str> for ApprovalToolId {
+    fn from(id: &str) -> Self {
+        Self::new(id)
+    }
+}
 
 /// A user's decision on a single tool approval request.
 #[derive(Debug, Clone)]
 pub struct ApprovalDecision {
     /// The `tool_id` this decision applies to. Must match the `tool_use_id`
     /// surfaced in the matching `TurnStreamEvent::ToolApprovalRequired`.
-    pub tool_id: ApprovalToolId,
+    tool_id: ApprovalToolId,
     /// Approve or deny.
-    pub choice: ApprovalChoice,
+    choice: ApprovalChoice,
 }
 
 impl ApprovalDecision {
     /// Construct a decision for the given tool call ID and choice.
-    pub fn new(tool_id: impl Into<ApprovalToolId>, choice: ApprovalChoice) -> Self {
+    pub fn new(tool_id: impl Into<String>, choice: ApprovalChoice) -> Self {
         Self {
-            tool_id: tool_id.into(),
+            tool_id: ApprovalToolId::new(tool_id),
             choice,
         }
+    }
+
+    /// The provider tool-use id this decision targets.
+    #[must_use]
+    pub fn tool_id(&self) -> &str {
+        self.tool_id.as_str()
+    }
+
+    /// Operator choice carried by this decision.
+    #[must_use]
+    pub const fn choice(&self) -> ApprovalChoice {
+        self.choice
     }
 }
 

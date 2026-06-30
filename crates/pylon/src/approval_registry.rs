@@ -26,6 +26,7 @@ struct ApprovalEntry {
 
 /// Concurrent map from `(turn_id, tool_id)` → approval-decision sender.
 #[derive(Default)]
+// kanon:ignore RUST/pub-visibility — AppState is public; aletheia runtime and integration tests construct this registry.
 pub struct ApprovalRegistry {
     inner: Mutex<HashMap<ApprovalKey, ApprovalEntry>>,
 }
@@ -38,7 +39,7 @@ impl ApprovalRegistry {
     }
 
     /// Create a guard for a streaming turn.
-    pub fn register_turn(self: &Arc<Self>, session_id: String, turn_id: String) -> Guard {
+    pub(crate) fn register_turn(self: &Arc<Self>, session_id: String, turn_id: String) -> Guard {
         Guard {
             registry: Arc::clone(self),
             session_id: Some(session_id),
@@ -47,7 +48,7 @@ impl ApprovalRegistry {
     }
 
     /// Register one pending tool approval for an active turn.
-    pub async fn register_tool(
+    pub(crate) async fn register_tool(
         &self,
         session_id: &str,
         turn_id: &str,
@@ -72,7 +73,7 @@ impl ApprovalRegistry {
     /// When `session_id` is `Some`, it must match the pending entry's session
     /// context. Returns `false` if no exact pending entry exists, the session
     /// context does not match, or the receiver has dropped.
-    pub async fn try_send(
+    pub(crate) async fn try_send(
         &self,
         session_id: Option<&str>,
         turn_id: &str,
@@ -101,12 +102,20 @@ impl ApprovalRegistry {
 
     async fn remove_turn(&self, session_id: &str, turn_id: &str) {
         let mut map = self.inner.lock().await;
-        map.retain(|key, entry| key.turn_id != turn_id || entry.session_id != session_id);
+        remove_turn_entries(&mut map, session_id, turn_id);
     }
 }
 
+fn remove_turn_entries(
+    map: &mut HashMap<ApprovalKey, ApprovalEntry>,
+    session_id: &str,
+    turn_id: &str,
+) {
+    map.retain(|key, entry| key.turn_id != turn_id || entry.session_id != session_id);
+}
+
 /// RAII guard that unregisters a turn's pending senders when dropped.
-pub struct Guard {
+pub(crate) struct Guard {
     registry: Arc<ApprovalRegistry>,
     session_id: Option<String>,
     turn_id: Option<String>,
@@ -115,6 +124,11 @@ pub struct Guard {
 impl Drop for Guard {
     fn drop(&mut self) {
         if let (Some(sid), Some(turn_id)) = (self.session_id.take(), self.turn_id.take()) {
+            if let Ok(mut map) = self.registry.inner.try_lock() {
+                remove_turn_entries(&mut map, &sid, &turn_id);
+                return;
+            }
+
             let registry = Arc::clone(&self.registry);
             let span = tracing::debug_span!(
                 "approval_registry.remove_turn",
@@ -156,7 +170,7 @@ mod tests {
             .await
         );
         let decision = rx.recv().await.expect("decision");
-        assert_eq!(decision.tool_id.as_str(), "t-1");
+        assert_eq!(decision.tool_id(), "t-1");
     }
 
     #[tokio::test]
@@ -186,9 +200,6 @@ mod tests {
                 tool_id: "t-2".to_owned(),
             }));
         }
-        // Allow the spawned removal task to run.
-        tokio::task::yield_now().await;
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         assert!(reg.inner.lock().await.is_empty());
     }
 
@@ -226,8 +237,8 @@ mod tests {
 
         assert!(rx_a.try_recv().is_err());
         let decision = rx_b.recv().await.expect("turn-b decision");
-        assert_eq!(decision.tool_id.as_str(), "tool-b");
-        assert_eq!(decision.choice, ApprovalChoice::Denied);
+        assert_eq!(decision.tool_id(), "tool-b");
+        assert_eq!(decision.choice(), ApprovalChoice::Denied);
     }
 
     #[tokio::test]
@@ -243,8 +254,6 @@ mod tests {
             .await;
 
         drop(guard_a);
-        tokio::task::yield_now().await;
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         let map = reg.inner.lock().await;
         assert!(!map.contains_key(&ApprovalKey {
