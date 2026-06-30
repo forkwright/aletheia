@@ -13,8 +13,7 @@ const RESERVED_WORKSPACE_PATHS: &[&str] = &[
 
 const KEY_EXTENSIONS: &[&str] = &["key", "pem", "p12", "pfx"];
 
-// pii-allow: SSH filename constants guarding access, not key material.
-const SSH_KEY_PREFIXES: &[&str] = &["id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "id_xmss"];
+const SSH_KEY_PREFIXES: &[&str] = &["id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "id_xmss"]; // pii-allow: SSH filename constants guarding access, not key material.
 
 const PROVIDER_CONFIG_DIRS: &[&str] = &[".claude", ".codex"];
 

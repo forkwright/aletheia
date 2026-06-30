@@ -1,21 +1,20 @@
 //! Running the migrator twice on the same
-//! source-and-dest must not corrupt data. Without `--force`, the second
-//! run errors loudly. With `--force`, the second run replays the same
-//! data on top of the existing keys (overwrite semantics).
+//! source-and-dest must not corrupt data. Without replacement, the second
+//! run errors loudly. With replacement, the second run replays the same
+//! data over the existing store.
 
 #![expect(
     clippy::expect_used,
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
-use aletheia_sessions_migrate::run_migration;
 use graphe::store::SessionStore;
 use rusqlite::Connection;
 
+use crate::{common, run_migration};
+
 #[test]
-fn second_run_without_force_errors_loudly() {
+fn second_run_without_replacement_errors_loudly() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
     let dest = tmp.path().join("dest.fjall");
@@ -49,18 +48,25 @@ fn second_run_without_force_errors_loudly() {
     let r = run_migration(&src, &dest, false).expect("first run");
     assert_eq!(r.counts.sessions, 1);
 
-    // Second run without --force fails with a clear message.
+    // Second run without replacement fails with a clear message.
     let err = run_migration(&src, &dest, false).expect_err("second run errors");
     let msg = format!("{err:#}");
     assert!(
         msg.contains("non-empty"),
         "expected 'non-empty' guard message; got: {msg}"
     );
-    assert!(msg.contains("--force"), "expected --force hint in: {msg}");
+    assert!(
+        msg.contains("--replace-existing"),
+        "expected replacement hint in: {msg}"
+    );
+    assert!(
+        msg.contains("--i-understand-this-replaces-destination"),
+        "expected confirmation hint in: {msg}"
+    );
 }
 
 #[test]
-fn second_run_with_force_overwrites_idempotently() {
+fn second_run_with_replacement_overwrites_idempotently() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = tmp.path().join("source.db");
     let dest = tmp.path().join("dest.fjall");
@@ -93,7 +99,7 @@ fn second_run_with_force_overwrites_idempotently() {
     }
 
     let _ = run_migration(&src, &dest, false).expect("first run");
-    let _ = run_migration(&src, &dest, true).expect("second run (force)");
+    let _ = run_migration(&src, &dest, true).expect("second run with replacement");
 
     // After the double-run, the data must still be exactly one session
     // with five messages — overwrite semantics, not duplication.
