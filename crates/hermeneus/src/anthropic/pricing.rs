@@ -1,10 +1,8 @@
-//! Cost estimation and retry backoff utilities.
+//! Cost estimation utilities.
 
 use std::collections::HashMap;
 
 use crate::provider::ModelPricing;
-
-pub(crate) use crate::retry::backoff_delay;
 
 /// Derive the model family name by stripping the last dash-separated segment.
 ///

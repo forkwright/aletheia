@@ -8,8 +8,8 @@ use snafu::prelude::*;
 use koina::secret::SecretString;
 
 use super::error::{
-    ApiError, AuthSnafu, HttpSnafu, RateLimitedSnafu, Result, ServerSnafu, parse_pylon_error_body,
-    parse_retry_after_secs,
+    ApiError, HttpSnafu, RateLimitedSnafu, Result, ServerSnafu, format_http_error_body,
+    parse_pylon_error_body, parse_retry_after_secs,
 };
 use super::types::{
     Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
@@ -210,7 +210,6 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load agents",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "agents request").await?;
         let wrapper: AgentsResponse = resp.json().await.context(HttpSnafu {
             operation: "agents response",
@@ -223,7 +222,6 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
-    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[must_use]
     #[expect(
@@ -232,18 +230,16 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn sessions(&self, nous_id: &str) -> Result<Vec<Session>> {
-        let encoded = keryx::url::encode_path_segment(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/sessions?nous_id={encoded}"),
+                &super::routes::sessions::sessions_for_agent_path(nous_id),
             )
             .send()
             .await
             .context(HttpSnafu {
                 operation: "load sessions",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "sessions request").await?;
         let wrapper: SessionsResponse = resp.json().await.context(HttpSnafu {
             operation: "sessions response",
@@ -256,7 +252,6 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
-    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[must_use]
     #[expect(
@@ -268,7 +263,7 @@ impl ApiClient {
         &self,
         params: &ListSessionsRequest,
     ) -> Result<PaginatedSessionsResponse> {
-        let mut path = String::from("/api/v1/sessions");
+        let mut path = super::routes::sessions::sessions_path().to_string();
         let mut sep = '?';
 
         let mut push_param = |name: &str, value: &str| {
@@ -276,7 +271,7 @@ impl ApiClient {
             sep = '&';
             path.push_str(name);
             path.push('=');
-            path.extend(form_urlencoded::byte_serialize(value.as_bytes()));
+            path.push_str(&super::routes::encoding::query_value(value));
         };
 
         if let Some(nous_id) = &params.nous_id {
@@ -286,7 +281,7 @@ impl ApiClient {
             push_param("search", search);
         }
         if let Some(status) = &params.status {
-            push_param("status", status);
+            push_param("status", status.as_str());
         }
         if let Some(limit) = params.limit {
             push_param("limit", &limit.to_string());
@@ -302,7 +297,6 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load sessions paginated",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "sessions paginated request").await?;
         let wrapper: PaginatedSessionsResponse = resp.json().await.context(HttpSnafu {
             operation: "sessions paginated response",
@@ -315,7 +309,6 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
-    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[must_use]
     #[expect(
@@ -324,18 +317,16 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn history(&self, session_id: &str) -> Result<Vec<HistoryMessage>> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/sessions/{encoded}/history"),
+                &super::routes::sessions::session_history_path(session_id),
             )
             .send()
             .await
             .context(HttpSnafu {
                 operation: "load history",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "history request").await?;
         let wrapper: HistoryResponse = resp.json().await.context(HttpSnafu {
             operation: "history response",
@@ -362,7 +353,6 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "create session",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "create session request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "create session response",
@@ -377,11 +367,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn archive_session(&self, session_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
-                &format!("/api/v1/sessions/{encoded}/archive"),
+                &super::routes::sessions::session_archive_path(session_id),
             )
             .send()
             .await
@@ -400,11 +389,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn unarchive_session(&self, session_id: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::POST,
-                &format!("/api/v1/sessions/{encoded}/unarchive"),
+                &super::routes::sessions::session_unarchive_path(session_id),
             )
             .send()
             .await
@@ -423,11 +411,10 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn rename_session(&self, session_id: &str, name: &str) -> Result<()> {
-        let encoded = keryx::url::encode_path_segment(session_id);
         let resp = self
             .request(
                 reqwest::Method::PUT,
-                &format!("/api/v1/sessions/{encoded}/name"),
+                &super::routes::sessions::session_name_path(session_id),
             )
             .json(&serde_json::json!({ "name": name }))
             .send()
@@ -492,7 +479,6 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
-    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[must_use]
     #[expect(
@@ -501,18 +487,16 @@ impl ApiClient {
     )]
     #[tracing::instrument(skip(self))]
     pub async fn tools(&self, nous_id: &str) -> Result<Vec<NousTool>> {
-        let encoded = keryx::url::encode_path_segment(nous_id);
         let resp = self
             .request(
                 reqwest::Method::GET,
-                &format!("/api/v1/nous/{encoded}/tools"),
+                &super::routes::nous::agent_tools_path(nous_id),
             )
             .send()
             .await
             .context(HttpSnafu {
                 operation: "load tools",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "tools request").await?;
         let wrapper: NousToolsResponse = resp.json().await.context(HttpSnafu {
             operation: "tools response",
@@ -525,7 +509,6 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
-    /// Returns [`ApiError::Auth`] if the server rejects the authentication token.
     /// Returns [`ApiError::Server`] if the server returns a non-success status.
     #[must_use]
     #[expect(
@@ -541,7 +524,6 @@ impl ApiClient {
             .context(HttpSnafu {
                 operation: "load config",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "config request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "config response",
@@ -560,16 +542,17 @@ impl ApiClient {
         section: &str,
         data: &serde_json::Value,
     ) -> Result<serde_json::Value> {
-        let encoded = keryx::url::encode_path_segment(section);
         let resp = self
-            .request(reqwest::Method::PUT, &format!("/api/v1/config/{encoded}"))
+            .request(
+                reqwest::Method::PUT,
+                &super::routes::config::section_path(section),
+            )
             .json(data)
             .send()
             .await
             .context(HttpSnafu {
                 operation: "update config",
             })?;
-        Self::check_auth(&resp)?;
         let resp = Self::check_status(resp, "config update request").await?;
         resp.json().await.context(HttpSnafu {
             operation: "config update response",
@@ -770,18 +753,14 @@ impl ApiClient {
         Ok(())
     }
 
-    fn check_auth(resp: &Response) -> Result<()> {
-        if resp.status() == StatusCode::UNAUTHORIZED || resp.status() == StatusCode::FORBIDDEN {
-            return AuthSnafu.fail();
-        }
-        Ok(())
-    }
-
     /// Consumes a response, returning it unchanged if 2xx.
     ///
     /// On non-2xx:
-    /// - 429 → [`ApiError::RateLimited`] with `retry_after_secs` parsed
-    ///   from the `Retry-After` header (delta-seconds form only).
+    /// - 429 without a canonical pylon envelope → [`ApiError::RateLimited`]
+    ///   with `retry_after_secs` parsed from the `Retry-After` header
+    ///   (delta-seconds form only).
+    /// - 429 with a canonical pylon envelope → [`ApiError::Server`] so
+    ///   request IDs and structured details survive to first-party UIs.
     /// - Other → [`ApiError::Server`] with the human-readable message
     ///   extracted from the canonical pylon envelope
     ///   `{error:{code,message,...}}`; falls back to `"{status} {reason}"`
@@ -794,6 +773,16 @@ impl ApiClient {
 
         if status == StatusCode::TOO_MANY_REQUESTS {
             let retry_after_secs = parse_retry_after_secs(resp.headers());
+            // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
+            let body = resp.text().await.unwrap_or_default();
+            if let Some(detail) = parse_pylon_error_body(&body) {
+                return ServerSnafu {
+                    operation,
+                    status: status.as_u16(),
+                    message: detail.display_message(),
+                }
+                .fail();
+            }
             return RateLimitedSnafu {
                 operation,
                 retry_after_secs,
@@ -804,8 +793,10 @@ impl ApiClient {
         let reason = status.canonical_reason().unwrap_or("Unknown");
         // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
         let body = resp.text().await.unwrap_or_default();
-        let message = parse_pylon_error_body(&body)
-            .map_or_else(|| format!("{} {}", status.as_u16(), reason), |d| d.message);
+        let message = parse_pylon_error_body(&body).map_or_else(
+            || format_http_error_body(status.as_u16(), reason, &body),
+            |detail| detail.display_message(),
+        );
         ServerSnafu {
             operation,
             status: status.as_u16(),
@@ -831,7 +822,37 @@ impl ApiClient {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::expect_used, reason = "test helper failures should panic")]
+
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::time::Duration;
+
     use super::*;
+
+    fn serve_http_error_once(
+        status_line: &'static str,
+        headers: &'static str,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 2048];
+            let _ = stream.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\nconnection: close\r\n{headers}\r\n{body}"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write HTTP error test response");
+        });
+        (format!("http://{addr}"), handle)
+    }
 
     #[test]
     fn rest_client_builds_with_timeout() {
@@ -862,5 +883,74 @@ mod tests {
             client.raw_client(),
             client.streaming_client()
         ));
+    }
+
+    #[tokio::test]
+    async fn rest_http_error_preserves_pylon_envelope() {
+        let body = r#"{"error":{"code":"validation_error","message":"invalid request","request_id":"req-rest","details":{"errors":[{"field":"nous_id","code":"required","message":"nous_id is required"}]}}}"#;
+        let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", "", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let Err(err) = client.agents().await else {
+            panic!("agents request should fail");
+        };
+        server.join().expect("test server thread should finish");
+
+        let ApiError::Server {
+            status, message, ..
+        } = err
+        else {
+            panic!("expected Server error");
+        };
+        assert_eq!(status, 422);
+        assert!(message.contains("invalid request"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-rest"));
+        assert!(message.contains(r#""field":"nous_id""#));
+    }
+
+    #[tokio::test]
+    async fn rest_rate_limit_with_pylon_envelope_preserves_body() {
+        let body = r#"{"error":{"code":"rate_limited","message":"rate limited, retry after 9s","request_id":"req-rate","details":{"retry_after_secs":9}}}"#;
+        let (base_url, server) =
+            serve_http_error_once("429 Too Many Requests", "retry-after: 9\r\n", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let Err(err) = client.agents().await else {
+            panic!("agents request should fail");
+        };
+        server.join().expect("test server thread should finish");
+
+        let ApiError::Server {
+            status, message, ..
+        } = err
+        else {
+            panic!("expected Server error with pylon envelope");
+        };
+        assert_eq!(status, 429);
+        assert!(message.contains("rate limited, retry after 9s"));
+        assert!(message.contains("code rate_limited"));
+        assert!(message.contains("request_id req-rate"));
+        assert!(message.contains(r#""retry_after_secs":9"#));
+    }
+
+    #[tokio::test]
+    async fn rest_legacy_rate_limit_keeps_retry_after_variant() {
+        let (base_url, server) =
+            serve_http_error_once("429 Too Many Requests", "retry-after: 7\r\n", "not json");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let Err(err) = client.agents().await else {
+            panic!("agents request should fail");
+        };
+        server.join().expect("test server thread should finish");
+
+        let ApiError::RateLimited {
+            retry_after_secs, ..
+        } = err
+        else {
+            panic!("expected legacy RateLimited error");
+        };
+        assert_eq!(retry_after_secs, Some(7));
     }
 }

@@ -8,9 +8,12 @@
 use std::time::{Duration, Instant};
 
 use dioxus::prelude::*;
+use skene::events::StreamEvent;
+use themelion::ThemeMode;
 use tokio_util::sync::CancellationToken;
 
 use crate::api::client::authenticated_streaming_client;
+use crate::app::Route;
 use crate::components::chat::{
     ChatMessage as LegacyChatMessage, ChatState, ChatStateManager, MessageRole,
 };
@@ -23,19 +26,26 @@ use crate::components::planning_card::PlanningCard;
 use crate::components::routing_indicator::{RoutingIndicator, update_routing_stage};
 use crate::components::session_tabs::SessionTabsView;
 use crate::components::tool_panel::ToolPanel;
+use crate::services::export::messages_to_markdown;
 use crate::services::file_watcher::{self, FileChangeTracker};
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
 use crate::state::chat::{ChatMessage, ChatSelection};
-use crate::state::commands::CommandStore;
-use crate::state::connection::ConnectionConfig;
+use crate::state::commands::{
+    CommandAction, CommandDestination, CommandExecutionState, CommandResolution, CommandStore,
+    CommandUiState,
+};
+use crate::state::connection::{ConnectionConfig, ConnectionState};
 use crate::state::input::InputState;
 use crate::state::pipeline::{PipelineStage, RoutingState};
 use crate::state::platform::WindowState;
+use crate::state::settings::{AppearanceSettings, KeybindingStore, ServerConfigStore};
 use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::chat_helpers::{format_tool_call, render_approval};
-use crate::views::chat_selection::activate_chat_selection;
+use crate::views::chat_selection::{
+    activate_chat_selection, history_messages_to_legacy, oldest_history_seq, parse_history_messages,
+};
 
 /// Estimated message height in pixels for virtual scroll calculations.
 const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
@@ -43,26 +53,408 @@ const ESTIMATED_MSG_HEIGHT: f64 = 80.0;
 /// Number of messages to load initially and per pagination chunk.
 const PAGE_SIZE: usize = 100;
 
+/// Server-side page size for chat history fetches.
+const HISTORY_PAGE_SIZE_QUERY: u32 = 100;
+
 /// Scroll threshold in pixels from the top to trigger loading older messages.
 const LOAD_MORE_THRESHOLD: f64 = 200.0;
+
+/// Outer UI guard for a turn stream that has not reached a terminal event.
+const UI_STREAM_TIMEOUT: Duration = Duration::from_secs(600);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatHistoryStatus {
+    Idle,
+    LoadingInitial,
+    LoadingOlder,
+    Loaded,
+    Error(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ChatHistoryState {
+    status: ChatHistoryStatus,
+    total_count: Option<usize>,
+    oldest_seq: Option<i64>,
+}
+
+impl Default for ChatHistoryState {
+    fn default() -> Self {
+        Self {
+            status: ChatHistoryStatus::Idle,
+            total_count: None,
+            oldest_seq: None,
+        }
+    }
+}
+
+impl ChatHistoryState {
+    fn loading_initial(total_count: Option<usize>) -> Self {
+        Self {
+            status: ChatHistoryStatus::LoadingInitial,
+            total_count,
+            oldest_seq: None,
+        }
+    }
+
+    fn loading_older(&self) -> Self {
+        Self {
+            status: ChatHistoryStatus::LoadingOlder,
+            total_count: self.total_count,
+            oldest_seq: self.oldest_seq,
+        }
+    }
+
+    fn loaded(total_count: Option<usize>, oldest_seq: Option<i64>) -> Self {
+        Self {
+            status: ChatHistoryStatus::Loaded,
+            total_count,
+            oldest_seq,
+        }
+    }
+
+    fn failed(message: String, total_count: Option<usize>, oldest_seq: Option<i64>) -> Self {
+        Self {
+            status: ChatHistoryStatus::Error(message),
+            total_count,
+            oldest_seq,
+        }
+    }
+
+    fn is_loading(&self) -> bool {
+        matches!(
+            self.status,
+            ChatHistoryStatus::LoadingInitial | ChatHistoryStatus::LoadingOlder
+        )
+    }
+
+    fn is_initial_loading(&self) -> bool {
+        self.status == ChatHistoryStatus::LoadingInitial
+    }
+
+    fn is_loading_older(&self) -> bool {
+        self.status == ChatHistoryStatus::LoadingOlder
+    }
+
+    fn is_loaded(&self) -> bool {
+        self.status == ChatHistoryStatus::Loaded
+    }
+
+    fn error(&self) -> Option<&str> {
+        match &self.status {
+            ChatHistoryStatus::Error(message) => Some(message),
+            _ => None,
+        }
+    }
+
+    fn has_older_server_history(&self, loaded_count: usize) -> bool {
+        self.oldest_seq.is_some() && self.total_count.is_some_and(|total| total > loaded_count)
+    }
+}
+
+fn history_total_count(selection: &ChatSelection) -> Option<usize> {
+    selection
+        .message_count
+        .and_then(|count| usize::try_from(count).ok())
+}
+
+fn active_session_matches(state: &ChatState, selection: &ChatSelection) -> bool {
+    state.agent_id.as_ref() == Some(&selection.agent_id)
+        && state.session_key.as_deref() == Some(selection.session_key.as_str())
+}
+
+fn chat_history_url(
+    base_url: &str,
+    session_id: &skene::id::SessionId,
+    before: Option<i64>,
+) -> String {
+    let base = base_url.trim_end_matches('/');
+    let encoded: String = keryx::url::encode_path_segment(session_id.as_ref());
+    let mut url =
+        format!("{base}/api/v1/sessions/{encoded}/history?limit={HISTORY_PAGE_SIZE_QUERY}");
+    if let Some(before_seq) = before {
+        url.push_str("&before=");
+        url.push_str(&before_seq.to_string());
+    }
+    url
+}
+
+fn route_for_command_destination(destination: CommandDestination) -> Route {
+    match destination {
+        CommandDestination::Chat => Route::Chat {},
+        CommandDestination::Files => Route::Files {},
+        CommandDestination::Planning => Route::Planning {},
+        CommandDestination::Memory => Route::Memory {},
+        CommandDestination::Metrics => Route::Metrics {},
+        CommandDestination::Ops => Route::Ops {},
+        CommandDestination::Sessions => Route::Sessions {},
+        CommandDestination::Settings => Route::Settings {},
+    }
+}
+
+fn command_destination_label(destination: CommandDestination) -> &'static str {
+    match destination {
+        CommandDestination::Chat => "Chat",
+        CommandDestination::Files => "Theke",
+        CommandDestination::Planning => "Planning",
+        CommandDestination::Memory => "Memory",
+        CommandDestination::Metrics => "Metrics",
+        CommandDestination::Ops => "Ops",
+        CommandDestination::Sessions => "Sessions",
+        CommandDestination::Settings => "Settings",
+    }
+}
+
+fn command_state_toast(state: &CommandExecutionState) -> (ToastSeverity, String) {
+    match state {
+        CommandExecutionState::Succeeded { message, .. } => {
+            (ToastSeverity::Success, message.clone())
+        }
+        CommandExecutionState::Failed { message, .. } => (ToastSeverity::Error, message.clone()),
+        CommandExecutionState::Disabled { name, reason } => (
+            ToastSeverity::Warning,
+            format!("/{name} is disabled: {reason}"),
+        ),
+        CommandExecutionState::Unknown { name } => {
+            (ToastSeverity::Warning, format!("Unknown command: /{name}"))
+        }
+    }
+}
+
+fn push_command_toast(severity: ToastSeverity, message: impl Into<String>) {
+    if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
+        toast_store.write().push(severity, message.into());
+    }
+}
+
+#[derive(Clone, Copy)]
+struct CommandRuntime {
+    command_ui: Signal<CommandUiState>,
+    cmd_store: Signal<CommandStore>,
+    legacy_state: Signal<ChatState>,
+    connection_state: Signal<ConnectionState>,
+    theme_mode: Signal<ThemeMode>,
+    appearance: Signal<AppearanceSettings>,
+    server_store: Signal<ServerConfigStore>,
+    keybindings: Signal<KeybindingStore>,
+    nav: dioxus_router::Navigator,
+}
+
+fn execute_command_input(raw: String, runtime: CommandRuntime) {
+    let mut command_ui = runtime.command_ui;
+    let mut cmd_store = runtime.cmd_store;
+    let mut legacy_state = runtime.legacy_state;
+    let mut connection_state = runtime.connection_state;
+    let mut theme_mode = runtime.theme_mode;
+    let mut appearance = runtime.appearance;
+    let server_store = runtime.server_store;
+    let keybindings = runtime.keybindings;
+    let nav = runtime.nav;
+
+    command_ui.write().palette_open = false;
+
+    let resolution = cmd_store.write().resolve_slash(&raw);
+    let invocation = match resolution {
+        CommandResolution::Ready(invocation) => invocation,
+        CommandResolution::Rejected(state) => {
+            let (severity, message) = command_state_toast(&state);
+            push_command_toast(severity, message);
+            return;
+        }
+    };
+
+    let name = invocation.command.name.clone();
+    match invocation.command.action.clone() {
+        CommandAction::ShowHelp => {
+            command_ui.write().help_visible = true;
+            let message = "Opened keyboard shortcuts";
+            cmd_store.write().record_success(&name, message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::ClearChat => {
+            legacy_state.write().messages.clear();
+            let message = "Cleared visible chat history";
+            cmd_store.write().record_success(&name, message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::ToggleTheme => {
+            let next = if *theme_mode.read() == ThemeMode::Dark {
+                ThemeMode::Light
+            } else {
+                ThemeMode::Dark
+            };
+            theme_mode.set(next);
+            appearance.write().theme = next.slug().to_string();
+            crate::services::settings_config::save_state(
+                &server_store.read(),
+                &appearance.read(),
+                &keybindings.read(),
+            );
+            let message = format!("Theme set to {}", next.label());
+            cmd_store.write().record_success(&name, &message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::Disconnect => {
+            let message = "Disconnected from server";
+            cmd_store.write().record_success(&name, message);
+            push_command_toast(ToastSeverity::Success, message);
+            connection_state.set(ConnectionState::Disconnected);
+        }
+        CommandAction::ExportMarkdown => {
+            let messages: Vec<ChatMessage> = legacy_state.read().project_messages(None);
+            if messages.is_empty() {
+                let message = "Nothing to export — start a conversation first";
+                cmd_store.write().record_failure(&name, message);
+                push_command_toast(ToastSeverity::Warning, message);
+                return;
+            }
+
+            let md = messages_to_markdown(&messages);
+            let Ok(escaped) = serde_json::to_string(&md) else {
+                let message = "Could not prepare conversation export";
+                cmd_store.write().record_failure(&name, message);
+                push_command_toast(ToastSeverity::Error, message);
+                return;
+            };
+
+            let js = format!("navigator.clipboard.writeText({escaped})");
+            let mut command_store = cmd_store;
+            spawn(async move {
+                if let Err(error) = document::eval(&js).await {
+                    tracing::warn!(%error, "failed to copy conversation markdown to clipboard");
+                    let message = "Could not copy conversation to clipboard";
+                    command_store.write().record_failure("export", message);
+                    push_command_toast(ToastSeverity::Error, message);
+                    return;
+                }
+
+                let message = "Conversation copied to clipboard";
+                command_store.write().record_success("export", message);
+                push_command_toast(ToastSeverity::Success, message);
+            });
+        }
+        CommandAction::Navigate(destination) => {
+            let label = command_destination_label(destination);
+            nav.push(route_for_command_destination(destination));
+            let message = format!("Opened {label}");
+            cmd_store.write().record_success(&name, &message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+        CommandAction::OpenToolDetails {
+            agent_id,
+            tool_name,
+        } => {
+            nav.push(Route::MetricsToolDetail {
+                tool_name: tool_name.clone(),
+            });
+            let message = format!("Opened {tool_name} details for {agent_id}");
+            cmd_store.write().record_success(&name, &message);
+            push_command_toast(ToastSeverity::Success, message);
+        }
+    }
+}
+
+fn fetch_chat_history_page(
+    cfg: ConnectionConfig,
+    selection: ChatSelection,
+    before: Option<i64>,
+    replace: bool,
+    mut legacy_state: Signal<ChatState>,
+    mut history_state: Signal<ChatHistoryState>,
+) {
+    let Some(session_id) = selection.session_id.clone() else {
+        history_state.set(ChatHistoryState::loaded(None, None));
+        return;
+    };
+
+    let total_count = history_total_count(&selection).or(history_state.read().total_count);
+    if replace {
+        history_state.set(ChatHistoryState::loading_initial(total_count));
+    } else {
+        let next_state = {
+            let current = history_state.read();
+            current.loading_older()
+        };
+        history_state.set(next_state);
+    }
+
+    spawn(async move {
+        let client = crate::api::client::authenticated_client(&cfg);
+        let url = chat_history_url(&cfg.server_url, &session_id, before);
+
+        let result = match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => match resp.text().await {
+                Ok(text) => parse_history_messages(&text),
+                Err(e) => Err(format!("read history: {e}")),
+            },
+            Ok(resp) => Err(format!("history request failed: {}", resp.status())),
+            Err(e) => Err(format!("history connection error: {e}")),
+        };
+
+        if !active_session_matches(&legacy_state.read(), &selection) {
+            return;
+        }
+
+        let previous = history_state.read().clone();
+        match result {
+            Ok(messages) => {
+                let page_oldest_seq = oldest_history_seq(&messages);
+                let oldest_seq =
+                    page_oldest_seq.or(if replace { None } else { previous.oldest_seq });
+                let mut loaded_messages = history_messages_to_legacy(&messages);
+
+                {
+                    let mut state = legacy_state.write();
+                    if replace {
+                        state.messages = loaded_messages;
+                    } else {
+                        let existing = std::mem::take(&mut state.messages);
+                        loaded_messages.extend(existing);
+                        state.messages = loaded_messages;
+                    }
+                }
+
+                history_state.set(ChatHistoryState::loaded(total_count, oldest_seq));
+            }
+            Err(message) => {
+                history_state.set(ChatHistoryState::failed(
+                    message,
+                    total_count,
+                    previous.oldest_seq,
+                ));
+            }
+        }
+    });
+}
 
 /// Chat view with virtualized scrolling, markdown rendering, and agent switching.
 #[component]
 pub(crate) fn Chat() -> Element {
     let mut legacy_state = use_signal(ChatState::default);
+    let mut history_state = use_signal(ChatHistoryState::default);
     let mut input_state = use_signal(InputState::default);
     let mut cancel_token = use_signal(CancellationToken::new);
-    let mut palette_open = use_signal(|| false);
     let config: Signal<ConnectionConfig> = use_context();
     let cmd_store = use_context::<Signal<CommandStore>>();
+    let command_ui = use_context::<Signal<CommandUiState>>();
     let mut agent_store = use_context::<Signal<AgentStore>>();
     let mut tab_bar = use_context::<Signal<TabBar>>();
     let mut routing_signal = use_context::<Signal<Option<RoutingState>>>();
     let mut pending_chat_selection = use_context::<Signal<Option<ChatSelection>>>();
     let mut window_state = use_context::<Signal<WindowState>>();
+    let connection_state = use_context::<Signal<ConnectionState>>();
+    let theme_mode = use_context::<Signal<ThemeMode>>();
+    let appearance = use_context::<Signal<AppearanceSettings>>();
+    let server_store = use_context::<Signal<ServerConfigStore>>();
+    let keybindings = use_context::<Signal<KeybindingStore>>();
+    let nav = use_navigator();
 
     // WHY: Track last user message to enable retry on stream failure.
     let mut last_user_message = use_signal(String::new);
+    // WHY(#4793): Retry must reuse the same client turn id so the server can
+    // resolve it to the existing persisted/replayable turn instead of creating
+    // a duplicate user action.
+    let mut last_client_turn_id = use_signal(String::new);
     // WHY: Track stream start time for elapsed-time indicator and timeout
     // escalation messages (30s "taking longer", 5m "abort and retry").
     let mut stream_start_time = use_signal(|| None::<Instant>);
@@ -107,13 +499,28 @@ pub(crate) fn Chat() -> Element {
             return;
         };
 
-        activate_chat_selection(
+        let activation = activate_chat_selection(
             &selection,
             &mut legacy_state.write(),
             &mut agent_store.write(),
             &mut tab_bar.write(),
             &mut window_state.write(),
         );
+        if activation.session_changed {
+            loaded_page_count.set(1);
+            if selection.session_id.is_some() {
+                fetch_chat_history_page(
+                    config.read().clone(),
+                    selection,
+                    None,
+                    true,
+                    legacy_state,
+                    history_state,
+                );
+            } else {
+                history_state.set(ChatHistoryState::default());
+            }
+        }
         pending_chat_selection.set(None);
     });
 
@@ -138,8 +545,26 @@ pub(crate) fn Chat() -> Element {
     // loaded_page_count * PAGE_SIZE messages are projected (#3321, #3323).
     let total_message_count = legacy_state.read().messages.len();
     let loaded_limit = loaded_page_count() * PAGE_SIZE;
-    let has_more_history = total_message_count > loaded_limit;
+    let history_snapshot = history_state.read().clone();
+    let server_has_more_history = history_snapshot.has_older_server_history(total_message_count);
+    let has_more_history = total_message_count > loaded_limit || server_has_more_history;
     let messages: Vec<ChatMessage> = legacy_state.read().project_messages(Some(loaded_limit));
+    let active_history_selection = {
+        let bar = tab_bar.read();
+        bar.active_tab().and_then(|tab| {
+            let session_id = tab.session_id.clone()?;
+            let session_key = tab.session_key.clone()?;
+            Some(ChatSelection {
+                agent_id: tab.agent_id.clone(),
+                session_id: Some(session_id),
+                session_key,
+                title: tab.title.clone(),
+                message_count: tab.message_count,
+            })
+        })
+    };
+    let scroll_history_selection = active_history_selection.clone();
+    let click_history_selection = active_history_selection.clone();
 
     let total_messages = messages.len();
     let (range_start, range_end) = visible_range(
@@ -187,35 +612,31 @@ pub(crate) fn Chat() -> Element {
         // Without this, rapid Ctrl+Enter could spawn two concurrent tasks.
         legacy_state.write().streaming.is_streaming = true;
 
-        // WHY: Slash commands beginning with `/` are intercepted here so the
-        // palette can handle them. Unrecognised commands get a toast warning
-        // so the operator knows the input was not silently eaten.
-        if let Some(command_text) = text.strip_prefix('/') {
-            let cmd_name = command_text.split_whitespace().next().unwrap_or("");
-            let known = cmd_store.read().filtered.iter().any(|c| c.name == cmd_name);
-            if !known && let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
-                toast_store.write().push(
-                    ToastSeverity::Warning,
-                    format!("Unknown command: /{cmd_name}"),
-                );
-            }
-            palette_open.set(false);
-            legacy_state.write().streaming.is_streaming = false;
-            return;
-        }
-
         // WHY: Clear any previous error so the retry banner disappears
         // when the user sends a new message.
         legacy_state.write().streaming.error = None;
 
+        let retry_same_bubble = is_retry && legacy_state.read().last_is_user_message(&text);
+        let client_turn_id = if retry_same_bubble {
+            let existing = last_client_turn_id.read().clone();
+            if existing.is_empty() {
+                koina::ulid::Ulid::new().to_string()
+            } else {
+                existing
+            }
+        } else {
+            koina::ulid::Ulid::new().to_string()
+        };
+
         last_user_message.set(text.clone());
+        last_client_turn_id.set(client_turn_id.clone());
         stream_start_time.set(Some(Instant::now()));
         elapsed_tick.set(0);
 
         // WHY: A retry re-sends the failed turn in place. The original user
         // bubble is already the last history entry, so appending again would
         // render the same message twice (or more on repeated retries).
-        let already_last = is_retry && legacy_state.read().last_is_user_message(&text);
+        let already_last = retry_same_bubble;
         if !already_last {
             legacy_state.write().messages.push(LegacyChatMessage {
                 role: MessageRole::User,
@@ -274,12 +695,13 @@ pub(crate) fn Chat() -> Element {
                 &nous_id,
                 &session_key,
                 &text,
+                &client_turn_id,
                 new_token.clone(),
             );
 
             let mut manager = ChatStateManager::new();
             let mut file_tracker = FileChangeTracker::new();
-            let timeout = tokio::time::sleep(Duration::from_secs(600));
+            let timeout = tokio::time::sleep(UI_STREAM_TIMEOUT);
             tokio::pin!(timeout);
 
             // WHY: Derive agent display name for the routing indicator.
@@ -303,12 +725,28 @@ pub(crate) fn Chat() -> Element {
             loop {
                 let event = tokio::select! {
                     biased;
-                    _ = new_token.cancelled() => break,
-                    _ = &mut timeout => {
+                    _ = new_token.cancelled() => {
                         let mut state = legacy_state.write();
-                        state.streaming.error =
-                            Some("stream timed out after 10 minutes".to_string());
-                        state.streaming.is_streaming = false;
+                        if manager.apply(
+                            StreamEvent::TurnAbort {
+                                reason: "cancelled by user".to_string(),
+                            },
+                            &mut state,
+                        ) {
+                            tracing::trace!("applied chat stream cancellation");
+                        }
+                        break;
+                    }
+                    _ = &mut timeout => {
+                        new_token.cancel();
+                        let message = format!(
+                            "stream timed out after {} minutes; stream task cancelled",
+                            UI_STREAM_TIMEOUT.as_secs() / 60
+                        );
+                        let mut state = legacy_state.write();
+                        if manager.apply(StreamEvent::Error(message), &mut state) {
+                            tracing::trace!("applied chat stream timeout");
+                        }
                         break;
                     }
                     event = rx.recv() => event,
@@ -344,7 +782,6 @@ pub(crate) fn Chat() -> Element {
                 // WHY: Update routing indicator stage from stream events.
                 // This gives the operator real-time visibility into what
                 // the pipeline is doing (#2411 transparent routing).
-                use skene::events::StreamEvent;
                 let new_stage = match &event {
                     StreamEvent::TurnStart { .. } => Some(PipelineStage::Recalling),
                     StreamEvent::TextDelta(_) => Some(PipelineStage::Thinking),
@@ -389,7 +826,25 @@ pub(crate) fn Chat() -> Element {
         });
     };
 
-    let on_submit = move |text: String| send_message(text, false);
+    let command_runtime = CommandRuntime {
+        command_ui,
+        cmd_store,
+        legacy_state,
+        connection_state,
+        theme_mode,
+        appearance,
+        server_store,
+        keybindings,
+        nav,
+    };
+
+    let on_submit = move |text: String| {
+        if text.trim_start().starts_with('/') {
+            execute_command_input(text, command_runtime);
+        } else {
+            send_message(text, false);
+        }
+    };
 
     let on_abort = move |()| {
         cancel_token.read().cancel();
@@ -437,11 +892,29 @@ pub(crate) fn Chat() -> Element {
                             font-size: var(--text-xl);
                             color: var(--text-secondary);
                         ",
-                        "Start a conversation"
+                        if history_snapshot.is_initial_loading() {
+                            "Loading session history"
+                        } else if history_snapshot.error().is_some() {
+                            "Could not load session history"
+                        } else if history_snapshot.is_loaded() && active_history_selection.is_some()
+                        {
+                            "No messages in this session"
+                        } else {
+                            "Start a conversation"
+                        }
                     }
                     div {
                         style: "font-size: var(--text-sm);",
-                        "Type a message below to begin."
+                        if let Some(err) = history_snapshot.error() {
+                            "{err}"
+                        } else if history_snapshot.is_initial_loading() {
+                            "Fetching the saved transcript."
+                        } else if history_snapshot.is_loaded() && active_history_selection.is_some()
+                        {
+                            "Type a message below to continue."
+                        } else {
+                            "Type a message below to begin."
+                        }
                     }
                 }
             } else {
@@ -464,6 +937,7 @@ pub(crate) fn Chat() -> Element {
                                 return '{}';
                             })()
                         "#;
+                        let selection_for_scroll = scroll_history_selection.clone();
                         spawn(async move {
                             if let Ok(val) = document::eval(js).await {
                                 let text = val.to_string();
@@ -473,8 +947,23 @@ pub(crate) fn Chat() -> Element {
                                         scroll_top.set(top);
                                         // WHY: Load older messages when the user scrolls
                                         // near the top of the viewport (#3321).
-                                        if top < LOAD_MORE_THRESHOLD && has_more_history {
-                                            loaded_page_count.set(loaded_page_count() + 1);
+                                        if top < LOAD_MORE_THRESHOLD {
+                                            if total_message_count > loaded_limit {
+                                                loaded_page_count.set(loaded_page_count() + 1);
+                                            } else if server_has_more_history
+                                                && !history_state.read().is_loading()
+                                                && let Some(selection) = selection_for_scroll.clone()
+                                                && let Some(before_seq) = history_state.read().oldest_seq
+                                            {
+                                                fetch_chat_history_page(
+                                                    config.read().clone(),
+                                                    selection,
+                                                    Some(before_seq),
+                                                    false,
+                                                    legacy_state,
+                                                    history_state,
+                                                );
+                                            }
                                         }
                                     }
                                     if let Some(h) = parsed.get("height").and_then(|v| v.as_f64())
@@ -502,9 +991,28 @@ pub(crate) fn Chat() -> Element {
                                 cursor: pointer;\
                             ",
                             onclick: move |_| {
-                                loaded_page_count.set(loaded_page_count() + 1);
+                                if total_message_count > loaded_limit {
+                                    loaded_page_count.set(loaded_page_count() + 1);
+                                } else if server_has_more_history
+                                    && !history_state.read().is_loading()
+                                    && let Some(selection) = click_history_selection.clone()
+                                    && let Some(before_seq) = history_state.read().oldest_seq
+                                {
+                                    fetch_chat_history_page(
+                                        config.read().clone(),
+                                        selection,
+                                        Some(before_seq),
+                                        false,
+                                        legacy_state,
+                                        history_state,
+                                    );
+                                }
                             },
-                            "Scroll up or click to load older messages ({total_message_count} total)"
+                            if history_snapshot.is_loading_older() {
+                                "Loading older messages..."
+                            } else {
+                                "Scroll up or click to load older messages ({total_message_count} loaded)"
+                            }
                         }
                     }
 
@@ -715,10 +1223,9 @@ pub(crate) fn Chat() -> Element {
             RoutingIndicator {}
 
             CommandPaletteView {
-                is_open: *palette_open.read(),
-                on_execute: move |_cmd: String| {
-                    palette_open.set(false);
-                    // NOTE: Command execution feeds back into the input bar.
+                is_open: command_ui.read().palette_open,
+                on_execute: move |cmd: String| {
+                    execute_command_input(cmd, command_runtime);
                 },
             }
 
@@ -739,7 +1246,10 @@ pub(crate) fn Chat() -> Element {
                         gap: var(--space-3);
                         font-size: var(--text-sm);
                     ",
-                    span { "{err}" }
+                    span {
+                        style: "min-width: 0; overflow-wrap: anywhere; white-space: normal;",
+                        "{err}"
+                    }
                     button {
                         style: "
                             background: var(--status-error);

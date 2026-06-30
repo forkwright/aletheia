@@ -100,6 +100,10 @@ fn defaults_are_sensible() {
         "default rate limit should be 60 rpm"
     );
     assert!(
+        !config.gateway.rate_limit.trust_proxy,
+        "trust_proxy should default to false to prevent IP spoofing bypasses"
+    );
+    assert!(
         config.channels.signal.enabled,
         "signal channel should be enabled by default"
     );
@@ -195,6 +199,10 @@ fn serde_roundtrip() {
         "gateway port should survive serde roundtrip"
     );
     assert!(
+        !back.gateway.rate_limit.trust_proxy,
+        "trust_proxy should survive serde roundtrip as false by default"
+    );
+    assert!(
         back.channels.signal.enabled,
         "signal channel enabled should survive serde roundtrip"
     );
@@ -210,6 +218,35 @@ fn serde_roundtrip() {
         back.embedding.dimension, 384,
         "embedding dimension should survive serde roundtrip"
     );
+}
+
+#[test]
+fn gateway_rate_limit_trust_proxy_roundtrips() {
+    let mut config = AletheiaConfig::default();
+    config.gateway.rate_limit.enabled = true;
+    config.gateway.rate_limit.trust_proxy = true;
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let back: AletheiaConfig = serde_json::from_str(&json).expect("deserialize");
+
+    assert!(back.gateway.rate_limit.enabled);
+    assert!(back.gateway.rate_limit.trust_proxy);
+}
+
+#[test]
+fn gateway_rate_limit_trust_proxy_parses_from_toml() {
+    let toml = r"
+[gateway.rateLimit]
+enabled = true
+requestsPerMinute = 120
+trustProxy = true
+";
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse rate limit config");
+
+    assert!(config.gateway.rate_limit.enabled);
+    assert_eq!(config.gateway.rate_limit.requests_per_minute, 120);
+    assert!(config.gateway.rate_limit.trust_proxy);
 }
 
 #[test]
@@ -399,6 +436,8 @@ fn tools_config_deserializes_to_typed_config() {
 type = "http"
 endpoint = "https://example.com/search"
 method = "get"
+groups = ["read", "mcp"]
+reversibility = "fully_reversible"
 
 [tools.optional.local_mcp]
 type = "mcp"
@@ -410,6 +449,14 @@ args = ["--stdio"]
     let search = config.tools.required.get("search").expect("search tool");
     assert_eq!(search.kind, ExternalToolKind::Http);
     assert_eq!(search.method, ExternalToolMethod::Get);
+    assert_eq!(
+        search.groups.as_deref(),
+        Some(&[ExternalToolGroupId::Read, ExternalToolGroupId::Mcp][..])
+    );
+    assert_eq!(
+        search.reversibility,
+        Some(ExternalToolReversibility::FullyReversible)
+    );
     assert_eq!(
         search.endpoint.as_deref(),
         Some("https://example.com/search")
@@ -462,8 +509,8 @@ fn resolve_merges_agent_overrides() {
         id: "syn".to_owned(),
         name: Some("Synthetic".to_owned()),
         model: Some(ModelSpec {
-            primary: "claude-opus-4-6".to_owned(),
-            fallbacks: vec!["claude-sonnet-4-6".to_owned()],
+            primary: ModelRoute::new("claude-opus-4-6"),
+            fallbacks: vec![ModelRoute::new("claude-sonnet-4-6")],
             retries_before_fallback: 2,
         }),
         workspace: "/home/user/nous/syn".to_owned(),
@@ -514,6 +561,45 @@ fn resolve_merges_agent_overrides() {
         AgencyLevel::Standard,
         "agency should default to standard when not overridden"
     );
+}
+
+#[test]
+fn model_routes_parse_provider_overrides() {
+    let toml = r#"
+[agents.defaults.model]
+primary = { model = "shared-model", provider = "local-proxy" }
+fallbacks = [
+    { model = "shared-model", provider = "anthropic-cloud" },
+    "other-model",
+]
+retriesBeforeFallback = 1
+"#;
+
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse routed model config");
+    let resolved = resolve_nous(&config, "syn");
+
+    assert_eq!(resolved.model.primary, Arc::<str>::from("shared-model"));
+    assert_eq!(
+        resolved.model.primary_provider.as_deref(),
+        Some("local-proxy")
+    );
+    assert_eq!(
+        resolved.model.fallbacks,
+        vec![
+            Arc::<str>::from("shared-model"),
+            Arc::<str>::from("other-model")
+        ]
+    );
+    assert_eq!(
+        resolved
+            .model
+            .fallback_providers
+            .iter()
+            .map(|provider| provider.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("anthropic-cloud"), None]
+    );
+    assert_eq!(resolved.model.retries_before_fallback, 1);
 }
 
 #[test]
@@ -685,7 +771,9 @@ fn embedding_override_from_json() {
         "embedding": {
             "provider": "candle",
             "model": "BAAI/bge-small-en-v1.5",
-            "dimension": 512
+            "dimension": 512,
+            "baseUrl": "http://127.0.0.1:5005/v1",
+            "apiKeyEnv": "ALETHEIA_EMBEDDING_KEY"
         }
     }"#;
     let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
@@ -701,6 +789,39 @@ fn embedding_override_from_json() {
     assert_eq!(
         config.embedding.dimension, 512,
         "embedding dimension override should be parsed from json"
+    );
+    assert_eq!(
+        config.embedding.base_url,
+        Some("http://127.0.0.1:5005/v1".to_owned()),
+        "embedding baseUrl should be parsed from json"
+    );
+    assert_eq!(
+        config.embedding.api_key_env,
+        Some("ALETHEIA_EMBEDDING_KEY".to_owned()),
+        "embedding apiKeyEnv should be parsed from json"
+    );
+}
+
+#[test]
+fn embedding_env_overlay_alias_keys_deserialize() {
+    let json = r#"{
+        "embedding": {
+            "provider": "openai-compat",
+            "dimension": 512,
+            "baseurl": "http://127.0.0.1:5005/v1",
+            "apikeyenv": "ALETHEIA_EMBEDDING_KEY"
+        }
+    }"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding aliases");
+    assert_eq!(
+        config.embedding.base_url,
+        Some("http://127.0.0.1:5005/v1".to_owned()),
+        "lowercase baseurl alias should parse for env overlay"
+    );
+    assert_eq!(
+        config.embedding.api_key_env,
+        Some("ALETHEIA_EMBEDDING_KEY".to_owned()),
+        "lowercase apikeyenv alias should parse for env overlay"
     );
 }
 
@@ -973,6 +1094,10 @@ fn mirrored_defaults_provider_behavior() {
     assert_eq!(
         config.provider_behavior.concurrency_latency_threshold_secs,
         hermeneus::concurrency::DEFAULT_LATENCY_THRESHOLD_SECS
+    );
+    assert_eq!(
+        config.provider_behavior.complexity_routing_enabled,
+        hermeneus::complexity::ComplexityConfig::default().enabled
     );
     assert_eq!(
         config.provider_behavior.complexity_low_threshold,

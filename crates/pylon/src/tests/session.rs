@@ -5,10 +5,27 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
+use mneme::store::{FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest};
+use mneme::types::{Role as MnemeRole, UsageRecord};
 use tower::ServiceExt;
 use tracing::Instrument;
 
 use super::helpers::*;
+
+#[test]
+fn skene_session_lifecycle_values_match_backend_session_statuses() {
+    let client_values: Vec<&str> = skene::api::types::SessionLifecycle::ALL
+        .iter()
+        .map(|status| status.as_str())
+        .collect();
+    let backend_values: Vec<&str> = mneme::types::SessionStatus::ALL
+        .iter()
+        .map(|status| status.as_str())
+        .collect();
+
+    assert_eq!(client_values, backend_values);
+    assert!(!client_values.contains(&"idle"));
+}
 
 #[tokio::test]
 async fn create_session_returns_201() {
@@ -582,6 +599,104 @@ async fn history_messages_have_expected_fields() {
     assert!(msg["role"].is_string());
     assert!(msg["content"].is_string());
     assert!(msg["created_at"].is_string());
+}
+
+#[tokio::test]
+async fn replay_export_includes_tool_usage_turn_and_failure_fields() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    {
+        let store = state.session_store.lock().await;
+        let usage = UsageRecord {
+            session_id: id.to_owned(),
+            turn_seq: 42,
+            input_tokens: 10,
+            output_tokens: 4,
+            cache_read_tokens: 2,
+            cache_write_tokens: 1,
+            model: Some("mock-model".to_owned()),
+        };
+        let messages = vec![FinalizeMessage {
+            role: MnemeRole::ToolResult,
+            content: "permission denied",
+            tool_call_id: Some("toolu-replay"),
+            tool_name: Some("read_file"),
+            token_estimate: 3,
+        }];
+        let audits = vec![FinalizeToolAuditRecord {
+            turn_seq: 42,
+            tool_call_id: "toolu-replay",
+            tool_name: "read_file",
+            duration_ms: 25,
+            is_error: true,
+            outcome: "error",
+            result: Some("permission denied"),
+            approval: Some("approved"),
+            receipt: Some("receipt-replay"),
+        }];
+        store
+            .finalize_turn(&FinalizeTurnRequest {
+                session_id: id,
+                nous_id: "syn",
+                session_key: "test-session",
+                model: Some("mock-model"),
+                parent_session_id: None,
+                messages: &messages,
+                usage: Some(&usage),
+                tool_audit_records: &audits,
+                completion_note: None,
+            })
+            .unwrap();
+        store
+            .add_note(
+                id,
+                "syn",
+                "context",
+                &serde_json::json!({
+                    "version": 1,
+                    "turn_id": "01JREPLAYTURN0000000000001",
+                    "session_id": id,
+                    "nous_id": "syn",
+                    "status": "failed",
+                    "stage": "execute",
+                    "error_code": "tool_failed",
+                    "error_message": "permission denied",
+                    "model": "mock-model",
+                    "messages_persisted": 1,
+                    "expected_messages": 3,
+                    "created_at": "2026-06-28T00:00:00Z"
+                })
+                .to_string(),
+            )
+            .unwrap();
+    }
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}/replay")))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["exportType"], "sessionReplay");
+    assert_eq!(body["session"]["id"], id);
+    assert_eq!(body["messages"][0]["role"], "tool_result");
+    assert_eq!(body["messages"][0]["toolCallId"], "toolu-replay");
+    assert_eq!(body["usageRecords"][0]["turnSeq"], 42);
+    assert_eq!(body["usageRecords"][0]["cacheWriteTokens"], 1);
+    assert_eq!(body["toolAuditRecords"][0]["toolCallId"], "toolu-replay");
+    assert_eq!(body["toolAuditRecords"][0]["isError"], true);
+    assert_eq!(body["toolAuditRecords"][0]["outcome"], "error");
+    assert_eq!(
+        body["turnAttempts"][0]["turnId"],
+        "01JREPLAYTURN0000000000001"
+    );
+    assert_eq!(body["turnAttempts"][0]["status"], "failed");
+    assert_eq!(body["turnAttempts"][0]["errorCode"], "tool_failed");
 }
 
 #[tokio::test]

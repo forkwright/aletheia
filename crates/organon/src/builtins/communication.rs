@@ -181,6 +181,7 @@ fn message_def() -> ToolDef {
                         description: "Recipient: phone (+1234567890), group (group:ID), or username (u:handle)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -190,6 +191,7 @@ fn message_def() -> ToolDef {
                         description: "Message text to send (markdown supported)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -217,6 +219,7 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Target nous ID (e.g., 'syn', 'eiron', 'arbor')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -226,6 +229,7 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Question or request to send".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -235,6 +239,7 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Target session key (default: 'ask:<caller>')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -244,13 +249,14 @@ fn sessions_ask_def() -> ToolDef {
                         description: "Max wait time in seconds (default: 120)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(120)),
+                        ..Default::default()
                     },
                 ),
             ]),
             required: vec!["agentId".to_owned(), "message".to_owned()],
         },
         category: ToolCategory::Communication,
-        reversibility: Reversibility::Reversible,
+        reversibility: Reversibility::Irreversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Mcp],
         tags: vec![ToolTag::Execute],
@@ -271,6 +277,7 @@ fn sessions_send_def() -> ToolDef {
                         description: "Target nous ID".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -280,6 +287,7 @@ fn sessions_send_def() -> ToolDef {
                         description: "Message to send".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -289,6 +297,7 @@ fn sessions_send_def() -> ToolDef {
                         description: "Target session key (default: 'main')".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -325,8 +334,8 @@ mod tests {
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        CrossNousService, MessageService, ServerToolConfig, ToolContext, ToolHttpClients,
-        ToolInput, ToolServices,
+        ApprovalRequirement, CrossNousService, MessageService, Reversibility, ServerToolConfig,
+        ToolContext, ToolHttpClients, ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {
@@ -454,6 +463,26 @@ mod tests {
             def.input_schema.required,
             vec!["agentId", "message"],
             "expected def.input_schema.required to equal vec![\"agentId\", \"message\"]"
+        );
+    }
+
+    #[tokio::test]
+    async fn sessions_ask_def_is_irreversible_mandatory_approval() {
+        install_crypto_provider();
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let name = ToolName::from_static("sessions_ask");
+        let def = reg.get_def(&name).expect("found");
+        assert_eq!(
+            def.reversibility,
+            Reversibility::Irreversible,
+            "expected sessions_ask reversibility to be Irreversible: outbound message is \
+             delivered before any reply is received and cannot be unsent"
+        );
+        assert_eq!(
+            ApprovalRequirement::from(def.reversibility),
+            ApprovalRequirement::Mandatory,
+            "expected ApprovalRequirement::from(Irreversible) to be Mandatory"
         );
     }
 

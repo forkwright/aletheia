@@ -231,11 +231,10 @@ async fn identity_continuity_pins_top_facts_and_late_injects_anchor() {
 }
 
 #[tokio::test]
-async fn identity_continuity_reflection_flag_is_set_but_stage_is_no_op() {
-    // SKIPPED partially: the reflection stage is wired (reflection_enabled=true)
-    // but the current implementation is a no-op because KnowledgeStore is not in
-    // the pipeline signature today. We verify the flag is set correctly; the
-    // actual insight emission will be testable once the store is plumbed in.
+async fn identity_continuity_reflection_flag_is_set() {
+    // Reflection persistence is covered in nous pipeline tests. This substrate
+    // test verifies the identity-continuity profile still enables the runtime
+    // stage and trims pinned facts consistently.
     let mut config = NousConfig {
         id: Arc::from("test"),
         recall_profile: RecallProfile::IdentityContinuity,

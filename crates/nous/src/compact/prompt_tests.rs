@@ -48,42 +48,12 @@ fn test_dream_consolidation_preserves_tool_trail() {
 fn test_token_budget_summarizes_60_percent() {
     // Simulate a mock LLM that returns the first 40% of the history text.
     let messages = vec![
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "a".repeat(500),
-            token_estimate: 125,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "b".repeat(500),
-            token_estimate: 125,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "c".repeat(500),
-            token_estimate: 125,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "d".repeat(500),
-            token_estimate: 125,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "recent question".to_owned(),
-            token_estimate: 4,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "recent answer".to_owned(),
-            token_estimate: 4,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("user", "a".repeat(500), 125),
+        PipelineMessage::text("assistant", "b".repeat(500), 125),
+        PipelineMessage::text("user", "c".repeat(500), 125),
+        PipelineMessage::text("assistant", "d".repeat(500), 125),
+        PipelineMessage::text("user", "recent question", 4),
+        PipelineMessage::text("assistant", "recent answer", 4),
     ];
     let config = CompactConfig {
         preserve_turns: 2,

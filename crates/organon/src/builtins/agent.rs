@@ -12,8 +12,9 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, SpawnContext, SpawnRequest, SpawnResult,
-    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
+    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, SpawnContext,
+    SpawnRequest, SpawnResult, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput,
+    ToolResult, ToolTag,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
@@ -115,17 +116,32 @@ impl ToolExecutor for SessionsDispatchExecutor {
 
             let mut join_set = tokio::task::JoinSet::new();
 
-            for task_val in tasks {
-                let role = task_val
-                    .get("role")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("coder")
-                    .to_owned();
-                let task_text = task_val
-                    .get("task")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_owned();
+            for (index, task_val) in tasks.iter().enumerate() {
+                let Some(task_obj) = task_val.as_object() else {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}]: expected task object"
+                    )));
+                };
+                let Some(role) = dispatch_task_string(task_obj, "role") else {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].role: missing or invalid field"
+                    )));
+                };
+                if role.is_empty() {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].role: field must not be empty"
+                    )));
+                }
+                let Some(task_text) = dispatch_task_string(task_obj, "task") else {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].task: missing or invalid field"
+                    )));
+                };
+                if task_text.is_empty() {
+                    return Ok(ToolResult::error(format!(
+                        "tasks[{index}].task: field must not be empty"
+                    )));
+                }
                 let model = task_val
                     .get("model")
                     .and_then(|v| v.as_str())
@@ -136,8 +152,8 @@ impl ToolExecutor for SessionsDispatchExecutor {
                     .unwrap_or(default_timeout);
 
                 let request = SpawnRequest {
-                    role,
-                    task: task_text,
+                    role: role.to_owned(),
+                    task: task_text.to_owned(),
                     model,
                     allowed_tools: None,
                     timeout_secs: timeout,
@@ -155,6 +171,13 @@ impl ToolExecutor for SessionsDispatchExecutor {
             Ok(aggregate_dispatch_results(join_set, parent_cancel).await)
         })
     }
+}
+
+fn dispatch_task_string<'a>(
+    task_obj: &'a serde_json::Map<String, serde_json::Value>,
+    field: &str,
+) -> Option<&'a str> {
+    task_obj.get(field).and_then(serde_json::Value::as_str)
 }
 
 /// Drain a `JoinSet` of sub-agent spawn futures into a single
@@ -296,6 +319,7 @@ fn sessions_spawn_def() -> ToolDef {
                             "runner".to_owned(),
                         ]),
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -305,6 +329,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Task instruction for the sub-agent".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -314,6 +339,7 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Model override (default: role-based)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -323,13 +349,14 @@ fn sessions_spawn_def() -> ToolDef {
                         description: "Max execution time in seconds (default: 300)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(300)),
+                        ..Default::default()
                     },
                 ),
             ]),
             required: vec!["role".to_owned(), "task".to_owned()],
         },
         category: ToolCategory::Agent,
-        reversibility: Reversibility::PartiallyReversible,
+        reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::SpawnSubtask],
         tags: vec![ToolTag::Spawn],
@@ -356,6 +383,59 @@ fn sessions_dispatch_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        items: Some(Box::new(PropertyDef {
+                            property_type: PropertyType::Object,
+                            description: "Task to dispatch to a sub-agent".to_owned(),
+                            properties: Some(IndexMap::from([
+                                (
+                                    "role".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::String,
+                                        description: "Sub-agent role".to_owned(),
+                                        enum_values: Some(vec![
+                                            "coder".to_owned(),
+                                            "reviewer".to_owned(),
+                                            "researcher".to_owned(),
+                                            "explorer".to_owned(),
+                                            "runner".to_owned(),
+                                        ]),
+                                        ..Default::default()
+                                    },
+                                ),
+                                (
+                                    "task".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::String,
+                                        description: "Task instruction for the sub-agent"
+                                            .to_owned(),
+                                        ..Default::default()
+                                    },
+                                ),
+                                (
+                                    "model".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::String,
+                                        description: "Model override (default: role-based)"
+                                            .to_owned(),
+                                        ..Default::default()
+                                    },
+                                ),
+                                (
+                                    "timeoutSeconds".to_owned(),
+                                    PropertyDef {
+                                        property_type: PropertyType::Number,
+                                        description: "Max execution time in seconds".to_owned(),
+                                        ..Default::default()
+                                    },
+                                ),
+                            ])),
+                            required: Some(vec!["role".to_owned(), "task".to_owned()]),
+                            additional_properties: Some(AdditionalProperties::Bool(false)),
+                            ..Default::default()
+                        })),
+                        min_items: Some(1),
+                        max_items: Some(10),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -365,6 +445,7 @@ fn sessions_dispatch_def() -> ToolDef {
                         description: "Default timeout for all tasks (default: 300)".to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(300)),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -394,7 +475,7 @@ mod tests {
     use koina::id::{NousId, SessionId, ToolName};
     use taxis::config::ToolLimitsConfig;
 
-    use crate::registry::ToolRegistry;
+    use crate::registry::{ToolExecutor, ToolRegistry};
     use crate::testing::install_crypto_provider;
     use crate::types::{
         ServerToolConfig, SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolContext,
@@ -607,12 +688,65 @@ mod tests {
             tool_use_id: "tu_1".to_owned(),
             arguments: serde_json::json!({"tasks": tasks}),
         };
-        let result = reg.execute(&input, &ctx).await.expect("execute");
+        // WHY(#4741): schema now enforces max_items:10 on tasks before the executor runs.
+        let err = reg
+            .execute(&input, &ctx)
+            .await
+            .expect_err("schema should reject >10 tasks");
+        assert!(
+            err.to_string().contains("above maximum 10"),
+            "expected schema error about max items: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_executor_rejects_missing_and_empty_task_fields() {
+        let spawn = Arc::new(MockSpawnService);
+        let ctx = mock_ctx_with_spawn(spawn);
+        let executor = super::SessionsDispatchExecutor;
+
+        let input = ToolInput {
+            name: ToolName::from_static("sessions_dispatch"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"tasks": [{}, {"role": "coder", "task": ""}]}),
+        };
+        let result = executor.execute(&input, &ctx).await.expect("execute");
         assert!(result.is_error, "expected result.is_error to be true");
         assert!(
-            result.content.text_summary().contains("Too many tasks"),
-            "expected result.content.text_summary().contains(\"Too many tasks\") to be true"
+            result.content.text_summary().contains("tasks[0].role"),
+            "expected error to name first invalid field, got: {}",
+            result.content.text_summary()
         );
+
+        let cases = [
+            (
+                serde_json::json!({"tasks": [{"role": "coder"}]}),
+                "tasks[0].task",
+            ),
+            (
+                serde_json::json!({"tasks": [{"role": "", "task": "write code"}]}),
+                "tasks[0].role",
+            ),
+            (
+                serde_json::json!({"tasks": [{"role": "coder", "task": ""}]}),
+                "tasks[0].task",
+            ),
+        ];
+
+        for (arguments, expected) in cases {
+            let input = ToolInput {
+                name: ToolName::from_static("sessions_dispatch"),
+                tool_use_id: "tu_1".to_owned(),
+                arguments,
+            };
+            let result = executor.execute(&input, &ctx).await.expect("execute");
+            assert!(result.is_error, "expected {expected} to fail");
+            assert!(
+                result.content.text_summary().contains(expected),
+                "expected error to contain {expected}, got: {}",
+                result.content.text_summary()
+            );
+        }
     }
 
     #[tokio::test]

@@ -18,12 +18,13 @@ use tracing::{Instrument as _, info, info_span};
 
 use koina::secret::SecretString;
 
+use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::anthropic::pricing::estimate_cost;
+use crate::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ModelPricing};
-use crate::retry::backoff_delay;
 use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::error::{map_error_response, map_request_error};
@@ -99,9 +100,10 @@ pub struct OpenAiProviderConfig {
     /// Per-request timeout override. Defaults to 2 minutes (matches
     /// Anthropic's non-streaming default).
     pub request_timeout: Duration,
-    /// Maximum retries on transient failures (5xx, timeout, connection
-    /// reset). Defaults to 3.
-    pub max_retries: u32,
+    /// Retry attempts and exponential backoff policy for transient failures.
+    pub retry_policy: RetryPolicy,
+    /// Adaptive concurrency limiter settings for this provider instance.
+    pub concurrency: ConcurrencyConfig,
     /// Which OpenAI API family to speak. Defaults to Chat Completions for
     /// backwards-compatible local `OpenAI`-compatible endpoints; Aletheia's
     /// first-party `openai` config path sets this to [`OpenAiApiFamily::Responses`].
@@ -135,7 +137,8 @@ impl std::fmt::Debug for OpenAiProviderConfig {
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .field("models", &self.models)
             .field("request_timeout", &self.request_timeout)
-            .field("max_retries", &self.max_retries)
+            .field("retry_policy", &self.retry_policy)
+            .field("concurrency", &self.concurrency)
             .field("api_family", &self.api_family)
             .field("deployment_target", &self.deployment_target)
             .field("pricing_models", &self.pricing.len())
@@ -151,7 +154,8 @@ impl Default for OpenAiProviderConfig {
             api_key: None,
             models: Vec::new(),
             request_timeout: Duration::from_mins(2),
-            max_retries: 3,
+            retry_policy: RetryPolicy::default(),
+            concurrency: ConcurrencyConfig::default(),
             api_family: OpenAiApiFamily::ChatCompletions,
             // WHY(#3736): mirror the trait default so `..Default::default()`
             // does not silently downgrade a caller-specified target.
@@ -162,11 +166,19 @@ impl Default for OpenAiProviderConfig {
     }
 }
 
+/// Returns true when the URL uses TLS or is safe to use without TLS.
+///
+/// WHY(#5055): delegate to the parsed shared policy so compatible providers
+/// cannot whitelist suffix-spoofed loopback-looking hosts.
+fn has_allowed_transport(url: &str) -> bool {
+    koina::http::is_secure_or_plaintext_loopback_url(url)
+}
+
 /// Returns true when the URL is safe to use without TLS.
 ///
-/// WHY: delegate to `koina::http::is_plaintext_loopback_url` so the plaintext
-/// HTTP scheme literal lives in exactly one audited place.
-fn is_loopback_url(url: &str) -> bool {
+/// WHY: first-party Responses API auth is optional only for plaintext loopback
+/// compatible endpoints.
+fn is_plaintext_loopback_url(url: &str) -> bool {
     koina::http::is_plaintext_loopback_url(url)
 }
 
@@ -175,6 +187,7 @@ pub struct OpenAiProvider {
     client: Client,
     config: OpenAiProviderConfig,
     health: Arc<ProviderHealthTracker>,
+    concurrency: Arc<AdaptiveConcurrencyLimiter>,
     /// Merged pricing table (config-supplied; empty = unpriced local model).
     pricing: HashMap<String, ModelPricing>,
 }
@@ -188,11 +201,11 @@ impl OpenAiProvider {
     /// built or the base URL is non-loopback HTTP (credentials would be
     /// sent in cleartext).
     pub fn new(config: OpenAiProviderConfig) -> Result<Self> {
-        if !config.base_url.starts_with("https://") && !is_loopback_url(&config.base_url) {
+        if !has_allowed_transport(&config.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "OpenAI-compatible base URL must use HTTPS or loopback (got {:?})",
-                    config.base_url
+                    koina::http::transport_url_for_diagnostic(&config.base_url)
                 ),
             }
             .build());
@@ -203,7 +216,7 @@ impl OpenAiProvider {
         // targeted at api.openai.com must be authenticated.
         if config.api_family == OpenAiApiFamily::Responses
             && config.api_key.is_none()
-            && !is_loopback_url(&config.base_url)
+            && !is_plaintext_loopback_url(&config.base_url)
         {
             return Err(error::ProviderInitSnafu {
                 message: "first-party OpenAI provider requires an API key; set api_key_env or use provider_type = \"openai-compatible\" for loopback endpoints".to_owned(),
@@ -224,6 +237,10 @@ impl OpenAiProvider {
         let pricing = config.pricing.clone();
         Ok(Self {
             client,
+            concurrency: Arc::new(AdaptiveConcurrencyLimiter::new(
+                config.name.clone(),
+                config.concurrency.clone(),
+            )),
             config,
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             pricing,
@@ -268,7 +285,20 @@ impl OpenAiProvider {
             llm.retries = tracing::field::Empty,
             llm.stream = false,
         );
-        self.execute_inner(request).instrument(span).await
+        self.execute_with_concurrency(request)
+            .instrument(span)
+            .await
+    }
+
+    async fn execute_with_concurrency(
+        &self,
+        request: &CompletionRequest,
+    ) -> Result<CompletionResponse> {
+        let permit = self.concurrency.acquire().await;
+        let start = Instant::now();
+        let result = self.execute_inner(request).await;
+        permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());
+        result
     }
 
     async fn execute_inner(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
@@ -286,9 +316,10 @@ impl OpenAiProvider {
 
         let mut last_error: Option<error::Error> = None;
 
-        for attempt in 0..=self.config.max_retries {
+        for attempt in 0..=self.config.retry_policy.max_retries {
             if attempt > 0 {
-                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
+                tokio::time::sleep(self.config.retry_policy.delay(attempt, last_error.as_ref()))
+                    .await;
             }
             let headers = self.build_headers()?;
 
@@ -358,7 +389,7 @@ impl OpenAiProvider {
             last_error = Some(err);
         }
 
-        tracing::Span::current().record("llm.retries", self.config.max_retries);
+        tracing::Span::current().record("llm.retries", self.config.retry_policy.max_retries);
         tracing::Span::current().record("llm.status", "error");
         crate::metrics::record_completion(&self.config.name, 0, 0, 0.0, false);
         crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
@@ -385,11 +416,27 @@ impl OpenAiProvider {
             llm.retries = tracing::field::Empty,
             llm.stream = true,
         );
-        self.execute_streaming_inner(request, on_event)
+        self.execute_streaming_with_concurrency(request, on_event)
             .instrument(span)
             .await
     }
 
+    async fn execute_streaming_with_concurrency(
+        &self,
+        request: &CompletionRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<CompletionResponse> {
+        let permit = self.concurrency.acquire().await;
+        let start = Instant::now();
+        let result = self.execute_streaming_inner(request, on_event).await;
+        permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());
+        result
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "WHY(#5044): streaming retry loop records each terminal path while applying configured retry policy"
+    )]
     async fn execute_streaming_inner(
         &self,
         request: &CompletionRequest,
@@ -410,9 +457,10 @@ impl OpenAiProvider {
         // retrying would duplicate it. Track across attempts — once true, never retry.
         let mut content_started = false;
 
-        for attempt in 0..=self.config.max_retries {
+        for attempt in 0..=self.config.retry_policy.max_retries {
             if attempt > 0 {
-                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
+                tokio::time::sleep(self.config.retry_policy.delay(attempt, last_error.as_ref()))
+                    .await;
             }
 
             let mut response = match self.send_streaming_request(&url, &body).await {
@@ -493,7 +541,7 @@ impl OpenAiProvider {
         }
 
         tracing::Span::current().record("llm.duration_ms", elapsed_millis_u64(start));
-        tracing::Span::current().record("llm.retries", self.config.max_retries);
+        tracing::Span::current().record("llm.retries", self.config.retry_policy.max_retries);
         tracing::Span::current().record("llm.status", "error");
         crate::metrics::record_completion(&self.config.name, 0, 0, 0.0, false);
         crate::metrics::record_latency(&request.model, "error", start.elapsed().as_secs_f64());
@@ -568,9 +616,7 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                parsed
-                    .into_response()
-                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+                parsed.into_response()
             }
             OpenAiApiFamily::Responses => {
                 let parsed: ResponsesResponse = serde_json::from_str(text).map_err(|e| {
@@ -579,9 +625,7 @@ impl OpenAiProvider {
                     }
                     .build()
                 })?;
-                parsed
-                    .into_response()
-                    .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
+                parsed.into_response()
             }
         }
     }
@@ -761,6 +805,14 @@ impl LlmProvider for OpenAiProvider {
         on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.execute_streaming(request, on_event))
+    }
+}
+
+fn concurrency_outcome(result: &Result<CompletionResponse>) -> RequestOutcome {
+    match result {
+        Ok(_) => RequestOutcome::Success,
+        Err(err) if err.is_retryable() => RequestOutcome::Overload,
+        Err(_) => RequestOutcome::Neutral,
     }
 }
 

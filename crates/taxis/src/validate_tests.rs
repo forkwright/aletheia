@@ -97,6 +97,61 @@ fn accepts_valid_gateway() {
 }
 
 #[test]
+fn accepts_rate_limit_with_trust_proxy_when_enabled() {
+    let section = json!({
+        "rateLimit": {
+            "enabled": true,
+            "requestsPerMinute": 60,
+            "trustProxy": true
+        }
+    });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "trustProxy may be true when rate limiting is enabled"
+    );
+}
+
+#[test]
+fn rejects_trust_proxy_without_enabled_rate_limit() {
+    let section = json!({
+        "rateLimit": {
+            "enabled": false,
+            "trustProxy": true
+        }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "trustProxy without enabled rate limiting is a dead config branch"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("trustProxy")),
+        "error should mention trustProxy: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_enabled_rate_limit_with_zero_requests_per_minute() {
+    let section = json!({
+        "rateLimit": {
+            "enabled": true,
+            "requestsPerMinute": 0
+        }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "enabled rate limiting must have a positive requestsPerMinute"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("requestsPerMinute")),
+        "error should mention requestsPerMinute: {err:?}"
+    );
+}
+
+#[test]
 fn rejects_disabled_csrf_without_acknowledgement() {
     let section = json!({ "csrf": { "enabled": false } });
     let result = validate_section("gateway", &section);
@@ -206,6 +261,9 @@ fn accepts_provider_type_and_deployment_aliases() {
         {
             "name": "codex-seat",
             "providerType": "codex_oauth",
+            "binary": "bin/codex",
+            "workdir": "workspace",
+            "timeoutSecs": 30,
             "deploymentTarget": "cloud",
             "models": ["codex/gpt-5-codex"]
         }
@@ -237,6 +295,9 @@ fn provider_aliases_deserialize_to_typed_config() {
             {
                 "name": "codex-seat",
                 "providerType": "codex-oauth",
+                "binary": "bin/codex",
+                "workdir": "workspace",
+                "timeoutSecs": 30,
                 "deploymentTarget": "cloud",
                 "models": ["codex/gpt-5-codex"]
             }
@@ -269,6 +330,56 @@ fn provider_aliases_deserialize_to_typed_config() {
     assert_eq!(
         config.providers[2].deployment_target,
         crate::config::DeploymentTarget::Cloud
+    );
+    assert_eq!(
+        config.providers[2].binary.as_deref(),
+        Some(std::path::Path::new("bin/codex"))
+    );
+    assert_eq!(
+        config.providers[2].workdir.as_deref(),
+        Some(std::path::Path::new("workspace"))
+    );
+    assert_eq!(config.providers[2].timeout_secs, Some(30));
+}
+
+#[test]
+fn rejects_invalid_subprocess_provider_fields() {
+    let section = json!([
+        {
+            "name": "cc-seat",
+            "providerType": "claude-code",
+            "baseUrl": "https://api.anthropic.com",
+            "timeoutSecs": 1,
+            "models": [""]
+        },
+        {
+            "name": "openai-cloud",
+            "providerType": "openai",
+            "binary": "bin/openai"
+        }
+    ]);
+
+    let result = validate_section("providers", &section);
+    assert!(
+        result.is_err(),
+        "invalid subprocess fields should be rejected"
+    );
+    let errors = result.unwrap_err().errors.join("\n");
+    assert!(
+        errors.contains("baseUrl is not valid for subprocess"),
+        "HTTP-only fields should be rejected for subprocess providers: {errors}"
+    );
+    assert!(
+        errors.contains("timeoutSecs must be between 5 and 3600"),
+        "subprocess timeout range should be enforced: {errors}"
+    );
+    assert!(
+        errors.contains("models[0] must be a non-empty string"),
+        "empty model IDs should be rejected: {errors}"
+    );
+    assert!(
+        errors.contains("binary is only valid"),
+        "subprocess-only fields should be rejected on HTTP providers: {errors}"
     );
 }
 
@@ -422,6 +533,68 @@ fn accepts_valid_embedding() {
 }
 
 #[test]
+fn rejects_unknown_embedding_provider() {
+    let section = json!({ "provider": "telepathy", "dimension": 384 });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "unknown embedding provider should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|error| error.contains("telepathy")),
+        "error should mention the unknown provider: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_openai_compat_without_base_url() {
+    let section = json!({ "provider": "openai-compat", "dimension": 384 });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "openai-compatible embedding config should require an endpoint"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|error| error.contains("baseUrl")),
+        "error should mention embedding.baseUrl: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_empty_embedding_api_key_env() {
+    let section = json!({
+        "provider": "voyage",
+        "apiKeyEnv": " ",
+        "dimension": 1024
+    });
+    let result = validate_section("embedding", &section);
+    assert!(
+        result.is_err(),
+        "empty embedding apiKeyEnv should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|error| error.contains("apiKeyEnv")),
+        "error should mention embedding.apiKeyEnv: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_openai_compat_with_base_url() {
+    let section = json!({
+        "provider": "openai-compat",
+        "baseUrl": "http://127.0.0.1:5005/v1",
+        "dimension": 384
+    });
+    assert!(
+        validate_section("embedding", &section).is_ok(),
+        "openai-compatible embedding config with endpoint should be accepted structurally"
+    );
+}
+
+#[test]
 fn accepts_valid_external_http_tool() {
     let section = json!({
         "required": {
@@ -429,6 +602,8 @@ fn accepts_valid_external_http_tool() {
                 "type": "http",
                 "endpoint": "http://localhost:3100",
                 "method": "post",
+                "groups": ["mcp"],
+                "reversibility": "irreversible",
                 "description": "Search service"
             }
         },
@@ -447,10 +622,78 @@ fn accepts_valid_external_http_tool() {
 }
 
 #[test]
+fn rejects_required_http_tool_missing_safety_policy() {
+    let section = json!({
+        "required": {
+            "bad": {
+                "type": "http",
+                "endpoint": "http://localhost:3100",
+                "method": "post"
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "required HTTP tool without policy should be rejected"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("groups") && err.contains("reversibility"),
+        "error should mention both missing policy fields: {err}"
+    );
+}
+
+#[test]
+fn accepts_optional_http_tool_missing_safety_policy() {
+    let section = json!({
+        "optional": {
+            "reader": {
+                "type": "http",
+                "endpoint": "https://example.com/api",
+                "method": "get"
+            }
+        }
+    });
+    assert!(
+        validate_section("tools", &section).is_ok(),
+        "optional HTTP tools may rely on conservative runtime defaults"
+    );
+}
+
+#[test]
+fn rejects_http_tool_invalid_safety_policy() {
+    let section = json!({
+        "required": {
+            "bad": {
+                "type": "http",
+                "endpoint": "http://localhost:3100",
+                "groups": ["unknown"],
+                "reversibility": "instant_undo"
+            }
+        }
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "invalid HTTP tool policy should be rejected"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("invalid group") && err.contains("instant_undo"),
+        "error should identify invalid policy values: {err}"
+    );
+}
+
+#[test]
 fn rejects_http_tool_missing_endpoint() {
     let section = json!({
         "required": {
-            "bad": { "type": "http" }
+            "bad": {
+                "type": "http",
+                "groups": ["mcp"],
+                "reversibility": "irreversible"
+            }
         }
     });
     let result = validate_section("tools", &section);
@@ -890,6 +1133,39 @@ fn validate_config_rejects_invalid_tool_iterations() {
     assert!(
         err.errors.iter().any(|e| e.contains("maxToolIterations")),
         "error should mention maxToolIterations, got: {err:?}"
+    );
+}
+
+#[test]
+fn validate_config_rejects_required_http_tool_missing_policy() {
+    let mut config = AletheiaConfig::default();
+    config.tools.required.insert(
+        "search".to_owned(),
+        crate::config::ExternalToolEntry {
+            kind: crate::config::ExternalToolKind::Http,
+            endpoint: Some("https://example.com/search".to_owned()),
+            command: None,
+            args: Vec::new(),
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            description: None,
+            method: crate::config::ExternalToolMethod::Post,
+            groups: None,
+            reversibility: None,
+            auth: None,
+        },
+    );
+
+    let result = validate_config(&config);
+    assert!(
+        result.is_err(),
+        "required HTTP tools without explicit policy should be rejected"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("tools.required.search.groups")
+            && err.contains("tools.required.search.reversibility"),
+        "error should identify both missing policy fields: {err}"
     );
 }
 

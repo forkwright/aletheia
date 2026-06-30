@@ -136,6 +136,55 @@ async fn detailed_health_checks_have_expected_shape() {
 }
 
 #[tokio::test]
+async fn detailed_health_exposes_credential_runtime_state() {
+    let (app, _dir) = app_with_anthropic_provider().await;
+
+    // Trigger a mutation so the runtime manager records an effect.
+    let add = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "anthropic",
+                "key": "sk-test-health-secret",
+                "role": "backup"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::CREATED);
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/health"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_json(resp).await;
+    let checks = body["checks"].as_array().expect("checks is array");
+    let runtime_check = checks
+        .iter()
+        .find(|c| c["name"] == "credential_runtime")
+        .expect("credential_runtime check present");
+    assert_eq!(runtime_check["status"], "pass");
+
+    let details = runtime_check["details"]
+        .as_object()
+        .expect("details object");
+    let supported = details["supported_providers"]
+        .as_array()
+        .expect("supported_providers array");
+    assert!(supported.iter().any(|p| p == "anthropic"));
+
+    let last_effect = details["last_effect"]
+        .as_object()
+        .expect("last_effect object");
+    assert_eq!(last_effect["provider"], "anthropic");
+    assert_eq!(last_effect["effect"], "restart_required");
+}
+
+#[tokio::test]
 async fn metrics_returns_200_with_prometheus_content_type() {
     let (app, _dir) = app().await;
     let resp = app

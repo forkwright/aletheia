@@ -53,3 +53,6 @@ jobs:
 
           print(f"All {len(files)} YAML file(s) valid")
           EOF
+
+      - name: Validate automation PR gate policy
+        run: python3 scripts/check-automation-pr-gates.py

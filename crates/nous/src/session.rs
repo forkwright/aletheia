@@ -1,9 +1,10 @@
 //! Session manager: creates, finds, and manages agent sessions.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
+use koina::id::ToolName;
 use koina::ulid::Ulid;
 use organon::receipts::{ReceiptLedger, ReceiptSigner};
 use organon::types::ToolGroupId;
@@ -26,6 +27,7 @@ pub struct SessionState {
     pub nous_id: String,
     pub session_key: String, // kanon:ignore RUST/plain-string-secret
 
+    /// Configured default model for this session.
     pub model: String,
     pub thinking_enabled: bool,
     pub thinking_budget: u32,
@@ -50,6 +52,12 @@ pub struct SessionState {
     pub receipt_signer: ReceiptSigner,
     /// Per-session in-memory ledger of all emitted tool receipts.
     pub receipt_ledger: Arc<Mutex<ReceiptLedger>>,
+    /// Per-session dynamically activated tools.
+    ///
+    /// WHY(#4715): `enable_tool` is documented as session-scoped. The actor
+    /// owns the session, so each turn receives a clone of this shared set
+    /// instead of starting from an empty turn-local activation set.
+    pub active_tools: Arc<RwLock<HashSet<ToolName>>>,
     /// Extended loop detector: doom-loop, ping-pong, and no-progress.
     ///
     /// WHY: persisted per-session so patterns are tracked across turns.
@@ -93,6 +101,7 @@ impl SessionState {
             brake_tripped: false,
             receipt_signer: ReceiptSigner::new_session(),
             receipt_ledger: Arc::new(Mutex::new(ReceiptLedger::default())),
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
             loop_guard: hermeneus::loop_detector::LoopGuard::new(),
             surprise_calculator: mneme::surprise::SurpriseCalculator::with_alpha(
                 config.recall.surprise_ema_alpha,
@@ -133,8 +142,17 @@ impl SessionState {
     /// globally unique dedup key, even after actor restarts with session
     /// adoption from the database.
     pub fn next_turn(&mut self) -> u64 {
+        self.next_turn_with_id(None)
+    }
+
+    /// Advance to the next turn using a caller-supplied canonical turn ID.
+    ///
+    /// WHY(#4793): the streaming HTTP gateway emits the public turn ID before
+    /// dispatching into the actor. Passing that ULID through keeps SSE replay
+    /// buffers, approval routing, and durable finalize records aligned.
+    pub fn next_turn_with_id(&mut self, turn_id: Option<Ulid>) -> u64 {
         self.turn += 1;
-        self.turn_id = Ulid::new();
+        self.turn_id = turn_id.unwrap_or_default();
         // WHY: update last_accessed so LRU eviction correctly keeps active sessions
         // over idle ones. Without this, eviction is effectively creation-time ordering
         // because Instant::now() is only set in new(). (#3253)

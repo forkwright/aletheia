@@ -2,10 +2,12 @@
 //! Distillation wiring: trigger logic and orchestration.
 
 use snafu::ResultExt;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use hermeneus::provider::LlmProvider;
-use hermeneus::types::{Content, Message as HermeneusMessage, Role as HermeneusRole};
+use hermeneus::types::{
+    Content, ContentBlock, Message as HermeneusMessage, Role as HermeneusRole, ToolResultContent,
+};
 use melete::distill::{DistillConfig, DistillEngine, DistillResult};
 #[cfg(feature = "knowledge-store")]
 use melete::flush::{FlushItem, MemoryFlush};
@@ -350,13 +352,20 @@ pub fn commit_memory_flush(
     nous_id: &str,
     result: &DistillResult,
     history: &[mneme::types::Message],
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<usize> {
     if result.memory_flush.is_empty() {
         return Ok(0);
     }
 
     verify_memory_flush(&result.memory_flush, history)?;
-    persist_memory_flush_items(knowledge_store, &result.memory_flush, session_id, nous_id)
+    persist_memory_flush_items(
+        knowledge_store,
+        &result.memory_flush,
+        session_id,
+        nous_id,
+        project_id,
+    )
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -365,17 +374,18 @@ pub(crate) fn persist_memory_flush_items(
     flush: &MemoryFlush,
     session_id: &str,
     nous_id: &str,
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<usize> {
     let mut inserted = 0usize;
     for (kind, item) in flush_items(flush) {
-        let fact = fact_from_flush_item(kind, item, session_id, nous_id)?;
+        let fact = fact_from_flush_item(kind, item, session_id, nous_id, project_id)?;
         knowledge_store
             .insert_fact(&fact)
             .context(error::KnowledgeStoreSnafu)?;
         inserted = inserted.saturating_add(1);
     }
     if let Some(task_state) = flush.task_state.as_deref() {
-        let fact = fact_from_content("task_state", task_state, session_id, nous_id)?;
+        let fact = fact_from_content("task_state", task_state, session_id, nous_id, project_id)?;
         knowledge_store
             .insert_fact(&fact)
             .context(error::KnowledgeStoreSnafu)?;
@@ -420,8 +430,9 @@ fn fact_from_flush_item(
     item: &FlushItem,
     session_id: &str,
     nous_id: &str,
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<mneme::knowledge::Fact> {
-    fact_from_content(kind, &item.content, session_id, nous_id)
+    fact_from_content(kind, &item.content, session_id, nous_id, project_id)
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -430,6 +441,7 @@ fn fact_from_content(
     content: &str,
     session_id: &str,
     nous_id: &str,
+    project_id: Option<&mneme::workspace::ProjectId>,
 ) -> error::Result<mneme::knowledge::Fact> {
     use mneme::id::FactId;
     use mneme::knowledge::{
@@ -450,8 +462,8 @@ fn fact_from_content(
         nous_id: nous_id.to_owned(),
         fact_type: fact_type.clone(),
         content: content.to_owned(),
-        scope: Some(MemoryScope::Project),
-        project_id: None,
+        scope: project_id.map(|_| MemoryScope::Project),
+        project_id: project_id.cloned(),
         sensitivity: mneme::knowledge::FactSensitivity::Public,
         visibility: Visibility::Private,
         temporal: FactTemporal {
@@ -492,13 +504,51 @@ pub fn convert_to_hermeneus_messages(history: &[mneme::types::Message]) -> Vec<H
             };
             HermeneusMessage {
                 role,
-                content: Content::Text(msg.content.clone()),
+                content: distillation_content_for_message(msg),
                 cache_breakpoint: false,
             }
         })
         .collect()
 }
 
+fn distillation_content_for_message(msg: &mneme::types::Message) -> Content {
+    match msg.role {
+        MnemeRole::Assistant => match (&msg.tool_call_id, &msg.tool_name) {
+            (Some(tool_call_id), Some(tool_name)) => match serde_json::from_str(&msg.content) {
+                Ok(input) => Content::Blocks(vec![ContentBlock::ToolUse {
+                    id: tool_call_id.clone(),
+                    name: tool_name.clone(),
+                    input,
+                }]),
+                Err(error) => {
+                    warn!(
+                        tool_call_id = %tool_call_id,
+                        tool_name = %tool_name,
+                        %error,
+                        "historical distillation tool-use input is not valid JSON; using assistant text content"
+                    );
+                    Content::Text(msg.content.clone())
+                }
+            },
+            _ => Content::Text(msg.content.clone()),
+        },
+        MnemeRole::ToolResult => {
+            if let Some(tool_call_id) = &msg.tool_call_id {
+                Content::Blocks(vec![ContentBlock::ToolResult {
+                    tool_use_id: tool_call_id.clone(),
+                    content: ToolResultContent::Text(msg.content.clone()),
+                    is_error: None,
+                }])
+            } else {
+                warn!(
+                    "historical distillation tool-result message is missing tool_call_id; using text content"
+                );
+                Content::Text(msg.content.clone())
+            }
+        }
+        _ => Content::Text(msg.content.clone()),
+    }
+}
 #[expect(
     clippy::indexing_slicing,
     reason = "test: vec indices are valid after asserting len"
@@ -787,9 +837,13 @@ mod tests {
         let history = vec![mneme_message(
             "alice chose rust for the substrate. bob owns the deployment checklist.",
         )];
+        let project =
+            mneme::workspace::ProjectId::from_git_remote("https://github.com/acme/alpha.git")
+                .expect("valid project");
 
         let inserted =
-            commit_memory_flush(&store, "ses-1", "nous-1", &result, &history).expect("commit");
+            commit_memory_flush(&store, "ses-1", "nous-1", &result, &history, Some(&project))
+                .expect("commit");
 
         assert_eq!(inserted, 3);
         let facts = store.list_all_facts(10).expect("list facts");
@@ -799,6 +853,12 @@ mod tests {
                 .iter()
                 .all(|fact| fact.scope == Some(mneme::knowledge::MemoryScope::Project)),
             "memory flush facts must preserve project scope"
+        );
+        assert!(
+            facts
+                .iter()
+                .all(|fact| fact.project_id.as_ref() == Some(&project)),
+            "project-scoped memory flush facts must carry the current project ID"
         );
         assert!(
             facts.iter().any(|fact| fact.fact_type == "task_state"
@@ -820,7 +880,7 @@ mod tests {
         let result = distill_result_with_flush(flush);
         let history = vec![mneme_message("alice chose rust for the substrate")];
 
-        let err = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history)
+        let err = commit_memory_flush(&store, "ses-1", "nous-1", &result, &history, None)
             .expect_err("probe must reject ungrounded flush");
 
         assert!(
@@ -864,6 +924,18 @@ mod tests {
                 id: 3,
                 session_id: "s".to_owned(),
                 seq: 3,
+                role: MnemeRole::Assistant,
+                content: r#"{"path":"README.md"}"#.to_owned(),
+                tool_call_id: Some("tc-1".to_owned()),
+                tool_name: Some("read".to_owned()),
+                token_estimate: 0,
+                is_distilled: false,
+                created_at: String::new(),
+            },
+            mneme::types::Message {
+                id: 4,
+                session_id: "s".to_owned(),
+                seq: 4,
                 role: MnemeRole::ToolResult,
                 content: "tool output".to_owned(),
                 tool_call_id: Some("tc-1".to_owned()),
@@ -874,9 +946,39 @@ mod tests {
             },
         ];
         let converted = convert_to_hermeneus_messages(&messages);
-        assert_eq!(converted.len(), 3);
+        assert_eq!(converted.len(), 4);
         assert_eq!(converted[0].role, HermeneusRole::System);
         assert_eq!(converted[1].role, HermeneusRole::User);
-        assert_eq!(converted[2].role, HermeneusRole::User);
+        assert_eq!(converted[2].role, HermeneusRole::Assistant);
+        assert_eq!(converted[3].role, HermeneusRole::User);
+        match &converted[2].content {
+            Content::Blocks(blocks) => match &blocks[0] {
+                ContentBlock::ToolUse { id, name, input } => {
+                    assert_eq!(id, "tc-1");
+                    assert_eq!(name, "read");
+                    assert_eq!(input["path"], "README.md");
+                }
+                other => panic!("expected tool_use block, got {other:?}"),
+            },
+            other => panic!("expected typed assistant content, got {other:?}"),
+        }
+        match &converted[3].content {
+            Content::Blocks(blocks) => match &blocks[0] {
+                ContentBlock::ToolResult {
+                    tool_use_id,
+                    content,
+                    is_error,
+                } => {
+                    assert_eq!(tool_use_id, "tc-1");
+                    assert_eq!(*is_error, None);
+                    match content {
+                        ToolResultContent::Text(text) => assert_eq!(text, "tool output"),
+                        other => panic!("expected text tool result, got {other:?}"),
+                    }
+                }
+                other => panic!("expected tool_result block, got {other:?}"),
+            },
+            other => panic!("expected typed tool result content, got {other:?}"),
+        }
     }
 }

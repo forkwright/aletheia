@@ -41,6 +41,7 @@ pub(super) fn epitropos_def() -> ToolDef {
                         description: "GitHub project slug (owner/repo)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -52,6 +53,7 @@ pub(super) fn epitropos_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -63,6 +65,7 @@ pub(super) fn epitropos_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default()
                     },
                 ),
             ]),

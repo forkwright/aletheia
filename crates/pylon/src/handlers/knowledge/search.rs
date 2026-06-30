@@ -4,6 +4,7 @@ use axum::Json;
 use axum::extract::{Query, State};
 
 use crate::error::{ApiError, BadRequestSnafu};
+use crate::extract::Claims;
 use crate::state::KnowledgeState;
 
 #[cfg(feature = "knowledge-store")]
@@ -19,7 +20,7 @@ use super::{
 async fn score_facts_for_query(
     state: &KnowledgeState,
     q: &str,
-    nous_id: Option<&str>,
+    policy: &super::KnowledgeReadPolicy<'_>,
     limit: usize,
     now: jiff::Timestamp,
 ) -> Result<mneme::recall::explain::RecallExplanation, ApiError> {
@@ -34,7 +35,7 @@ async fn score_facts_for_query(
     // WHY(#1252): the caller-supplied nous_id must reach get_stored_facts - a
     // hardcoded nous_id: None makes the store return empty for agent-scoped facts.
     let facts_query = FactsQuery {
-        nous_id: nous_id.map(ToOwned::to_owned),
+        nous_id: policy.single_target_nous_id().map(ToOwned::to_owned),
         sort: default_sort(),
         order: default_order(),
         filter: None,
@@ -44,14 +45,14 @@ async fn score_facts_for_query(
         offset: 0,
         include_forgotten: true,
     };
-    let all_facts = get_stored_facts(state, &facts_query);
+    let all_facts = get_stored_facts(state, policy, &facts_query);
     let engine = build_recall_engine(state).await;
 
     Ok(mneme::recall::explain::explain_recall(
         &engine,
         &all_facts,
         q,
-        nous_id,
+        policy.single_target_nous_id(),
         now,
         limit.min(max_search_limit),
     ))
@@ -98,6 +99,7 @@ async fn build_recall_engine(state: &KnowledgeState) -> mneme::recall::RecallEng
 /// side effects beyond not returning a response.
 pub async fn search(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     if query.q.trim().is_empty() {
@@ -107,10 +109,11 @@ pub async fn search(
         .build());
     }
 
+    let policy = super::KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
     let explanation = score_facts_for_query(
         &state,
         &query.q,
-        query.nous_id.as_deref(),
+        &policy,
         query.limit,
         jiff::Timestamp::now(),
     )
@@ -156,6 +159,7 @@ pub async fn search(
 /// side effects beyond not returning a response.
 pub async fn explain(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(query): Query<ExplainQuery>,
 ) -> Result<Json<ExplainResponse>, ApiError> {
     if query.q.trim().is_empty() {
@@ -165,10 +169,11 @@ pub async fn explain(
         .build());
     }
 
+    let policy = super::KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
     let explanation = score_facts_for_query(
         &state,
         &query.q,
-        query.nous_id.as_deref(),
+        &policy,
         query.limit,
         jiff::Timestamp::now(),
     )
@@ -249,8 +254,11 @@ pub async fn explain(
 /// side effects beyond not returning a response.
 pub async fn timeline(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Query(mut query): Query<TimelineQuery>,
 ) -> Result<Json<TimelineResponse>, ApiError> {
+    let policy = super::KnowledgeReadPolicy::from_single_nous(&claims, query.nous_id.as_deref())?;
+    query.nous_id = policy.single_target_nous_id().map(ToOwned::to_owned);
     let max_facts_limit = state.config.read().await.api_limits.max_facts_limit;
     query.limit = query.limit.min(max_facts_limit);
 
@@ -265,7 +273,7 @@ pub async fn timeline(
         offset: 0,
         include_forgotten: false,
     };
-    let facts = get_stored_facts(&state, &timeline_query);
+    let facts = get_stored_facts(&state, &policy, &timeline_query);
     let mut events: Vec<TimelineEvent> = Vec::new();
 
     for fact in &facts {
@@ -315,6 +323,7 @@ pub async fn timeline(
 
 pub(super) fn get_stored_facts(
     state: &KnowledgeState,
+    policy: &super::KnowledgeReadPolicy<'_>,
     query: &FactsQuery,
 ) -> Vec<mneme::knowledge::Fact> {
     #[cfg(feature = "knowledge-store")]
@@ -327,14 +336,14 @@ pub(super) fn get_stored_facts(
             store.list_all_facts(fetch_limit)
         };
         match result {
-            Ok(facts) => return facts,
+            Ok(facts) => return policy.filter_facts(facts),
             Err(e) => {
                 tracing::warn!(error = %e, "failed to query knowledge store");
             }
         }
     }
     #[cfg(not(feature = "knowledge-store"))]
-    let _ = (state, query);
+    let _ = (state, policy, query);
     Vec::new()
 }
 
@@ -363,6 +372,7 @@ pub(super) fn get_fact_relationships(
 
 pub(super) fn get_entity_relationships(
     state: &KnowledgeState,
+    policy: &super::KnowledgeReadPolicy<'_>,
     entity_id: &str,
 ) -> Result<Vec<EntityRelationship>, ApiError> {
     #[cfg(feature = "knowledge-store")]
@@ -383,6 +393,7 @@ pub(super) fn get_entity_relationships(
                 message: e.to_string(),
                 location: snafu::location!(),
             })?;
+        let visible_entities = super::visible_entity_ids(state, policy)?;
 
         let mut views = Vec::new();
         for relationship in relationships {
@@ -395,6 +406,12 @@ pub(super) fn get_entity_relationships(
             } else {
                 continue;
             };
+            if visible_entities
+                .as_ref()
+                .is_some_and(|allowed| !allowed.contains(&entity_id))
+            {
+                continue;
+            }
             let entity_name = entity_names
                 .get(&entity_id)
                 .cloned()
@@ -415,7 +432,7 @@ pub(super) fn get_entity_relationships(
     }
 
     #[cfg(not(feature = "knowledge-store"))]
-    let _ = (state, entity_id);
+    let _ = (state, policy, entity_id);
 
     Err(ApiError::ServiceUnavailable {
         message: "knowledge store not enabled on this server".to_owned(),

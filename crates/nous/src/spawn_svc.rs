@@ -164,17 +164,35 @@ impl SpawnServiceImpl {
         // treats that as unrestricted, which lets an unknown-role spawn run
         // exec/rm/http_request/sessions_dispatch with no operator approval
         // (the parent's approval gate doesn't follow into the child).
+        // WHY(#5877): track whether we fall through to the conservative allowlist so
+        // `tool_groups` can be paired with a matching Read-group policy. Without this,
+        // `resolve_availability` returns `Denied(GroupPolicy)` before the allowlist
+        // gate fires, leaving the spawned agent with zero accessible tools (ADR-005).
+        let using_conservative_allowlist = request.allowed_tools.is_none()
+            && template
+                .as_ref()
+                .and_then(|t| t.tool_policy.to_allowlist())
+                .is_none();
+
         let tool_allowlist = request
             .allowed_tools
             .clone()
             .or_else(|| template.as_ref().and_then(|t| t.tool_policy.to_allowlist()))
             .or_else(|| Some(conservative_spawn_allowlist()));
 
-        let tool_groups = template
-            .as_ref()
-            .map_or_else(organon::types::ToolGroupPolicy::default, |t| {
-                t.tool_groups.clone()
-            });
+        let tool_groups = if using_conservative_allowlist {
+            // WHY(#5877, ADR-005): pair the conservative read-only allowlist with a
+            // matching group policy; without this `resolve_availability` gates on
+            // `DenyAll` before the allowlist check fires, leaving the spawned agent
+            // with zero accessible tools.
+            organon::types::ToolGroupPolicy::Groups(vec![organon::types::ToolGroupId::Read])
+        } else {
+            template
+                .as_ref()
+                .map_or_else(organon::types::ToolGroupPolicy::default, |t| {
+                    t.tool_groups.clone()
+                })
+        };
 
         let session_key = format!(
             "spawn:{}",
@@ -191,7 +209,9 @@ impl SpawnServiceImpl {
             name: None,
             generation: crate::config::NousGenerationConfig {
                 model,
+                provider: None,
                 fallback_models: Vec::new(),
+                fallback_providers: Vec::new(),
                 retries_before_fallback: 2,
                 context_window: CONTEXT_TOKENS,
                 max_output_tokens: MAX_OUTPUT_TOKENS,
@@ -311,7 +331,13 @@ impl SpawnService for SpawnServiceImpl {
                 let actor_cancel = ephemeral_cancel.clone();
                 let (cross_tx, cross_rx) = if let Some(router) = router.as_ref() {
                     let (tx, rx) = tokio::sync::mpsc::channel(32);
-                    router.register(&spawn_id, tx.clone()).await;
+                    router
+                        .register_with_address_mask(
+                            &spawn_id,
+                            tx.clone(),
+                            crate::cross::AddressMask::for_agent_privacy(config.private),
+                        )
+                        .await;
                     (Some(tx), Some(rx))
                 } else {
                     (None, None)
@@ -883,6 +909,52 @@ mod tests {
         assert!(resolve_role("").is_none());
         assert!(resolve_role("analyst").is_none());
         assert!(resolve_role("planner").is_none());
+    }
+
+    #[test]
+    fn conservative_fallback_uses_read_group_policy() {
+        // WHY(#5877, ADR-005): unrecognized-role spawns must pair the
+        // conservative allowlist with `ToolGroupPolicy::Groups([Read])` so
+        // `resolve_availability` does not deny allowlist tools before they are
+        // checked. A `DenyAll` group policy (the previous default) caused every
+        // conservative-allowlist tool to be denied before the allowlist gate.
+        use organon::types::{ToolGroupId, ToolGroupPolicy};
+
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "analyst".to_owned(), // unrecognized — no Role template
+                task: "Read the workspace".to_owned(),
+                model: None,
+                allowed_tools: None, // no explicit allowlist — triggers conservative path
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+
+        // Group policy must be Read-only, not DenyAll.
+        assert_eq!(
+            config.tool_groups,
+            ToolGroupPolicy::Groups(vec![ToolGroupId::Read]),
+            "conservative-fallback spawn must use Read group policy, not DenyAll"
+        );
+
+        // Allowlist must include every conservative read-only tool.
+        let allowlist = config
+            .tool_allowlist
+            .expect("conservative allowlist must be Some");
+        assert!(
+            !allowlist.is_empty(),
+            "conservative allowlist must be non-empty"
+        );
+        for expected in ["read", "grep", "find", "ls", "view_file", "memory_search"] {
+            assert!(
+                allowlist.iter().any(|s| s == expected),
+                "conservative allowlist missing expected tool: {expected}"
+            );
+        }
     }
 
     #[tokio::test]

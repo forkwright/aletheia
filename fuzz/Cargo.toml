@@ -16,6 +16,7 @@ toml = "1.0"
 jiff = "0.2"
 
 # Target crates
+eidos = { path = "../crates/eidos" }
 hermeneus = { path = "../crates/hermeneus" }
 koina = { path = "../crates/koina" }
 mneme = { path = "../crates/mneme", features = ["mneme-engine"] }
@@ -35,13 +36,16 @@ rust-version = "1.85"
 name = "fuzz_tool_dispatch"
 path = "fuzz_targets/fuzz_tool_dispatch.rs"
 doc = false
+test = false
 
 [[bin]]
 name = "fuzz_config_parsing"
 path = "fuzz_targets/fuzz_config_parsing.rs"
 doc = false
+test = false
 
 [[bin]]
 name = "fuzz_knowledge_roundtrip"
 path = "fuzz_targets/fuzz_knowledge_roundtrip.rs"
 doc = false
+test = false

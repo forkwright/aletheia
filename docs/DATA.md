@@ -98,15 +98,24 @@ aletheia backup
 ```
 
 Creates a local whole-instance backup set at `instance/data/backups/instance/{timestamp}/`.
-Each set includes `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
-`config/`, and present workspace directories (`workspace/nous`, `workspace/shared`,
-`workspace/theke`). Optional local data such as archives and prompt/prosoche audit
-logs is copied when present. The command does not upload data to cloud storage.
+Each set includes `manifest.json`, all knowledge cohorts under
+`stores/knowledge.fjall`, `stores/sessions.db`, and present runtime stores such
+as `stores/auth.fjall`, `stores/daemon-task-state`, and
+`stores/cron-locks.fjall`. It also includes `config/` and present workspace
+directories (`workspace/nous`, `workspace/shared`, `workspace/theke`). Optional
+local data such as archives and prompt/prosoche audit logs is copied when
+present. The command does not upload data to cloud storage.
 
 Verify a set before relying on it for recovery:
 
 ```bash
 aletheia backup verify instance/data/backups/instance/<timestamp>
+```
+
+Restore a verified set with manifest-driven staging and rollback:
+
+```bash
+aletheia backup restore instance/data/backups/instance/<timestamp>
 ```
 
 ### List backups

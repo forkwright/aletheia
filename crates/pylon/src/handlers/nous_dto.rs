@@ -57,14 +57,31 @@ pub struct NousSummary {
     pub enabled: bool,
     /// Primary LLM model assigned to this agent.
     pub model: String,
+    /// Provider instance selected for the primary model, when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// Fallback models tried after primary-model failures.
     pub fallback_models: Vec<String>,
+    /// Provider instances selected for fallback models, by index.
+    pub fallback_providers: Vec<Option<String>>,
     /// Per-model provider readiness for the agent's model chain.
     pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Lifecycle status (e.g. `"active"`).
     pub status: String,
     /// Tool toggle summaries for the agent.
     pub tools: Vec<ToolSummary>,
+    /// Whether the requested config change was persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_applied: Option<bool>,
+    /// Whether the running actor/runtime now reflects the requested state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_applied: Option<bool>,
+    /// Whether a config reload is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reload_required: Option<bool>,
+    /// Whether a process restart is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_required: Option<bool>,
 }
 
 /// Detailed status of a single nous agent.
@@ -74,12 +91,23 @@ pub struct NousStatus {
     pub id: String,
     /// Primary LLM model assigned to this agent.
     pub model: String,
+    /// Provider instance selected for the primary model, when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// Fallback models tried after primary-model failures.
     pub fallback_models: Vec<String>,
+    /// Provider instances selected for fallback models, by index.
+    pub fallback_providers: Vec<Option<String>>,
     /// Number of primary-model attempts before moving to the fallback chain.
     pub retries_before_fallback: u32,
     /// Whether complexity-based model routing is enabled.
     pub complexity_routing_enabled: bool,
+    /// Score below which deterministic no-LLM handling is eligible.
+    pub complexity_no_llm_threshold: u32,
+    /// Score at or below which Haiku-class routing is selected.
+    pub complexity_low_threshold: u32,
+    /// Score at or above which Opus-class routing is selected.
+    pub complexity_high_threshold: u32,
     /// Per-model provider readiness for the agent's model chain.
     pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
     /// Maximum context window in tokens.
@@ -107,6 +135,17 @@ pub struct NousStatus {
     /// This does not change the actor lifecycle; it is an independent signal used by the
     /// detailed health endpoint to surface repeated background-work failures.
     pub background_health_degraded: bool,
+    /// Current cross-nous inbound address mask for this agent.
+    pub address_mask: AddressMaskStatus,
+}
+
+/// Diagnostic view of a cross-nous inbound address mask.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AddressMaskStatus {
+    /// Stable mask kind: `public`, `operator_only`, or `allow_list`.
+    pub kind: String,
+    /// Sender ids allowed by an `allow_list` mask.
+    pub allowed_senders: Vec<String>,
 }
 
 /// Response listing tools available to a nous agent.
@@ -114,10 +153,26 @@ pub struct NousStatus {
 pub struct ToolsResponse {
     /// Tool summaries.
     pub tools: Vec<ToolSummary>,
+    /// Whether the requested config change was persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_applied: Option<bool>,
+    /// Whether the running actor/runtime now reflects the requested state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub live_applied: Option<bool>,
+    /// Whether a config reload is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reload_required: Option<bool>,
+    /// Whether a process restart is required before the requested state is live.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_required: Option<bool>,
 }
 
 /// Brief description of a registered tool.
 #[derive(Debug, Serialize, ToSchema)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "WHY(#4919): public wire DTO keeps independent metadata booleans flat for Skene/desktop backward-compatible decoding"
+)]
 pub struct ToolSummary {
     /// Tool name as sent to the LLM.
     pub name: String,
@@ -125,8 +180,27 @@ pub struct ToolSummary {
     pub enabled: bool,
     /// Human-readable description.
     pub description: String,
-    /// Tool category (e.g. `"Builtin"`, `"Pack"`).
+    /// Semantic tool category (e.g. `"workspace"`, `"memory"`, `"research"`).
     pub category: String,
+    /// Reversibility metadata used to derive approval policy.
+    pub reversibility: String,
+    /// Approval requirement derived from reversibility/capability metadata.
+    pub approval: String,
+    /// Whether the tool's default metadata requires an operator approval prompt.
+    pub requires_approval: bool,
+    /// Whether the tool's default metadata marks it as side-effecting or destructive.
+    pub destructive: bool,
+    /// Tool groups used by policy resolution.
+    pub groups: Vec<String>,
+    /// Tool source plane, e.g. `"organon_builtin"` or `"runtime_bridged_mcp"`.
+    pub source_plane: String,
+    /// Effective policy state for this agent: `"callable"`, `"inactive"`, or `"denied"`.
+    pub policy_state: String,
+    /// Reason the tool is unavailable under the current agent policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
+    /// Whether metadata came from the server-owned tool surface rather than client heuristics.
+    pub metadata_verified: bool,
     /// Whether the tool activates automatically without explicit configuration.
     ///
     /// When `false` the tool is lazy and must be activated via `enable_tool`

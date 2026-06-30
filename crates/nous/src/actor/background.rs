@@ -124,6 +124,11 @@ impl NousActor {
         let mut config = extraction_config.clone();
         #[cfg(not(feature = "gliner"))]
         let mut config = extraction_config.clone();
+        if config.project_id.is_none() {
+            config
+                .project_id
+                .clone_from(&self.pipeline_config.project_id);
+        }
         config.provider = match self.config.behavior.knowledge_extraction_provider {
             taxis::config::BookkeepingProviderKind::Llm => {
                 mneme::extract::BookkeepingProviderKind::Llm
@@ -373,6 +378,7 @@ impl NousActor {
         let providers = Arc::clone(&self.services.providers);
         #[cfg(feature = "knowledge-store")]
         let knowledge_store = self.stores.knowledge_store.as_ref().map(Arc::clone);
+        let project_id = self.pipeline_config.project_id.clone();
         let nous_id = self.id.clone();
         let span =
             tracing::info_span!("distillation", nous.id = %nous_id, session.id = %session_id);
@@ -401,6 +407,7 @@ impl NousActor {
                         session_id,
                         nous_id.clone(),
                         config,
+                        project_id,
                     ) => {}
                 }
                 // NOTE: guard Drop handles flag.store(false) for both normal and panic paths
@@ -411,7 +418,7 @@ impl NousActor {
     }
 
     #[cfg(feature = "knowledge-store")]
-    pub(super) fn maybe_run_auto_dream(&self) {
+    pub(super) async fn maybe_run_auto_dream(&mut self) {
         let (Some(session_store), Some(knowledge_store)) = (
             self.stores.session_store.as_ref(),
             self.stores.knowledge_store.as_ref(),
@@ -449,59 +456,44 @@ impl NousActor {
         dream_config.distill_config.model = config.model;
         dream_config.distill_config.verbatim_tail = config.verbatim_tail;
 
-        let engine = Arc::new(melete::dream::DreamEngine::new(dream_config));
-        let source: Arc<dyn melete::dream::TranscriptSource> =
-            Arc::new(SessionStoreTranscriptSource::new(Arc::clone(session_store)));
-        let target: Arc<dyn melete::dream::ConsolidationTarget> = Arc::new(
-            KnowledgeStoreConsolidationTarget::new(Arc::clone(knowledge_store)),
+        // WHY: keep one engine per actor so `last_scan_at` survives across turns
+        // and the 10-minute intra-day throttle is not reset every turn (#5700).
+        let engine = self
+            .runtime
+            .auto_dream_engine
+            .get_or_insert_with(|| Arc::new(melete::dream::DreamEngine::new(dream_config)));
+        let engine = engine.clone();
+
+        let source: Arc<dyn melete::dream::TranscriptSource> = Arc::new(
+            SessionStoreTranscriptSource::new(Arc::clone(session_store), self.id.clone()),
         );
-        engine.on_turn_complete(&source, &target, &provider);
+        let target: Arc<dyn melete::dream::ConsolidationTarget> =
+            Arc::new(KnowledgeStoreConsolidationTarget::new(
+                Arc::clone(knowledge_store),
+                self.pipeline_config.project_id.clone(),
+            ));
+        engine.on_turn_complete(&source, &target, &provider).await;
     }
 }
 
 #[cfg(feature = "knowledge-store")]
-// kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex in block_in_place sync bridge; held only for brief session CRUD
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
 struct SessionStoreTranscriptSource {
-    // kanon:ignore RUST/no-arc-mutex-anti-pattern — std::sync::Mutex in block_in_place sync bridge; held only for brief session CRUD
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
     store: Arc<Mutex<SessionStore>>,
+    /// Nous ID whose sessions are eligible for consolidation.
+    ///
+    /// WHY: restricts index scans to this actor's partition of the session
+    /// store instead of scanning every session row (#5700).
+    nous_id: String,
 }
 
 #[cfg(feature = "knowledge-store")]
-// kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in sync SessionStore adapter
+// kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
 impl SessionStoreTranscriptSource {
-    // kanon:ignore RUST/no-arc-mutex-anti-pattern — same: std::sync::Mutex in sync SessionStore adapter
-    fn new(store: Arc<Mutex<SessionStore>>) -> Self {
-        Self { store }
-    }
-
-    fn sessions_since(
-        &self,
-        since: jiff::Timestamp,
-    ) -> std::result::Result<Vec<mneme::types::Session>, std::io::Error> {
-        let store = self.store.try_lock().map_err(|e| {
-            std::io::Error::other(format!(
-                "session store busy during auto-dream transcript scan: {e}"
-            ))
-        })?;
-        Self::list_sessions_since(&store, since)
-    }
-
-    fn list_sessions_since(
-        store: &SessionStore,
-        since: jiff::Timestamp,
-    ) -> std::result::Result<Vec<mneme::types::Session>, std::io::Error> {
-        let sessions = store
-            .list_sessions(None)
-            .map_err(|e| std::io::Error::other(e.to_string()))?
-            .into_iter()
-            .filter(|session| {
-                session
-                    .updated_at
-                    .parse::<jiff::Timestamp>()
-                    .is_ok_and(|updated_at| updated_at >= since)
-            })
-            .collect();
-        Ok(sessions)
+    // kanon:ignore RUST/no-arc-mutex-anti-pattern — tokio::sync::Mutex in sync SessionStore adapter; held only for brief store ops
+    fn new(store: Arc<Mutex<SessionStore>>, nous_id: String) -> Self {
+        Self { store, nous_id }
     }
 }
 
@@ -511,7 +503,14 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
         &self,
         since: jiff::Timestamp,
     ) -> std::result::Result<usize, std::io::Error> {
-        self.sessions_since(since).map(|sessions| sessions.len())
+        let store = self.store.try_lock().map_err(|e| {
+            std::io::Error::other(format!(
+                "session store busy during auto-dream transcript scan: {e}"
+            ))
+        })?;
+        store
+            .count_sessions_since(since, &self.nous_id)
+            .map_err(|e| std::io::Error::other(e.to_string()))
     }
 
     fn load_transcripts_since(
@@ -523,16 +522,18 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
                 "session store busy during auto-dream transcript load: {e}"
             ))
         })?;
-        let sessions = Self::list_sessions_since(&store, since)?;
-        sessions
+        let session_ids = store
+            .list_session_ids_since(since, &self.nous_id)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        session_ids
             .into_iter()
-            .map(|session| {
+            .map(|session_id| {
                 let history = store
-                    .get_history(&session.id, None)
+                    .get_history(&session_id, None)
                     .map_err(|e| std::io::Error::other(e.to_string()))?;
                 Ok(melete::dream::SessionTranscript {
-                    session_id: session.id,
-                    nous_id: session.nous_id,
+                    session_id,
+                    nous_id: self.nous_id.clone(),
                     messages: crate::distillation::convert_to_hermeneus_messages(&history),
                 })
             })
@@ -543,12 +544,13 @@ impl melete::dream::TranscriptSource for SessionStoreTranscriptSource {
 #[cfg(feature = "knowledge-store")]
 struct KnowledgeStoreConsolidationTarget {
     store: Arc<KnowledgeStore>,
+    project_id: Option<mneme::workspace::ProjectId>,
 }
 
 #[cfg(feature = "knowledge-store")]
 impl KnowledgeStoreConsolidationTarget {
-    fn new(store: Arc<KnowledgeStore>) -> Self {
-        Self { store }
+    fn new(store: Arc<KnowledgeStore>, project_id: Option<mneme::workspace::ProjectId>) -> Self {
+        Self { store, project_id }
     }
 }
 
@@ -564,6 +566,7 @@ impl melete::dream::ConsolidationTarget for KnowledgeStoreConsolidationTarget {
             flush,
             "auto-dream",
             nous_id,
+            self.project_id.as_ref(),
         )
         .map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(melete::dream::MergeReport {
@@ -967,6 +970,8 @@ async fn run_background_distillation(
     session_id: String,
     nous_id: String,
     config: crate::distillation::DistillTriggerConfig,
+    #[cfg(feature = "knowledge-store")] project_id: Option<mneme::workspace::ProjectId>,
+    #[cfg(not(feature = "knowledge-store"))] _project_id: Option<mneme::workspace::ProjectId>,
 ) {
     let Some(provider) = providers.find_provider(&config.model) else {
         warn!(
@@ -1036,6 +1041,7 @@ async fn run_background_distillation(
             &nous_id,
             &result,
             &history,
+            project_id.as_ref(),
         )
     {
         warn!(nous_id = %nous_id, session_id = %session_id, error = %e, "failed to commit distillation memory flush");
@@ -1212,7 +1218,7 @@ mod tests {
             .expect("append message"); // kanon:ignore RUST/expect - test asserts setup invariant
 
         let store = Arc::new(tokio::sync::Mutex::new(store));
-        let source = SessionStoreTranscriptSource::new(Arc::clone(&store));
+        let source = SessionStoreTranscriptSource::new(Arc::clone(&store), nous_id.to_owned());
 
         let since = jiff::Timestamp::from_second(1_600_000_000).expect("valid epoch"); // kanon:ignore RUST/expect - test asserts fixed timestamp
 

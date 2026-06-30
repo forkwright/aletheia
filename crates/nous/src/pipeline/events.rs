@@ -85,8 +85,10 @@ pub(crate) struct TurnCompleted {
     /// Agent identifier.
     // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
     pub(crate) nous_id: String,
-    /// Model name.
+    /// Observed model name for the completed turn.
     pub(crate) model: String,
+    /// Observed provider instance for the completed turn.
+    pub(crate) provider: Option<String>,
     /// Total duration in milliseconds.
     pub(crate) duration_ms: u64,
     /// Input tokens consumed.
@@ -110,9 +112,10 @@ impl InternalEvent for TurnCompleted {
 
     fn log_message(&self) -> String {
         format!(
-            "turn completed for {} (model={}, {}ms, in={}, out={}, tools={}, stages={})",
+            "turn completed for {} (model={}, provider={}, {}ms, in={}, out={}, tools={}, stages={})",
             self.nous_id,
             self.model,
+            self.provider.as_deref().unwrap_or("unknown"),
             self.duration_ms,
             self.input_tokens,
             self.output_tokens,
@@ -122,7 +125,15 @@ impl InternalEvent for TurnCompleted {
     }
 
     fn metric_labels(&self) -> Vec<(&'static str, String)> {
-        vec![("nous_id", self.nous_id.clone())]
+        vec![
+            ("nous_id", self.nous_id.clone()),
+            (
+                "provider",
+                self.provider
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_owned()),
+            ),
+        ]
     }
 }
 
@@ -224,6 +235,49 @@ impl InternalEvent for StageSkipped {
     }
 }
 
+/// Reflection stage completed with a durable-state outcome.
+pub(crate) struct ReflectionOutcome {
+    /// Agent identifier.
+    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    pub(crate) nous_id: String,
+    /// Reflection outcome status.
+    pub(crate) status: &'static str,
+    /// Number of reflected facts persisted.
+    pub(crate) facts_emitted: u32,
+}
+
+impl InternalEvent for ReflectionOutcome {
+    fn event_name(&self) -> &'static str {
+        "ReflectionOutcome"
+    }
+
+    fn log_level(&self) -> LogLevel {
+        match self.status {
+            "completed" => LogLevel::Info,
+            "failed" => LogLevel::Warn,
+            _ => LogLevel::Debug,
+        }
+    }
+
+    fn log_message(&self) -> String {
+        format!(
+            "reflection {} for {} (facts_emitted={})",
+            self.status, self.nous_id, self.facts_emitted
+        )
+    }
+
+    fn metric_labels(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("nous_id", self.nous_id.clone()),
+            ("status", self.status.to_owned()),
+        ]
+    }
+
+    fn metric_value(&self) -> f64 {
+        f64::from(self.facts_emitted)
+    }
+}
+
 /// A pipeline stage timed out.
 pub(crate) struct StageTimeout {
     /// Agent identifier.
@@ -303,6 +357,7 @@ mod tests {
         let event = TurnCompleted {
             nous_id: "test-agent".to_owned(),
             model: "test-model".to_owned(),
+            provider: Some("test-provider".to_owned()),
             duration_ms: 1234,
             input_tokens: 1000,
             output_tokens: 500,
@@ -313,6 +368,7 @@ mod tests {
         let msg = event.log_message();
         assert!(msg.contains("1234"), "message includes duration");
         assert!(msg.contains("test-model"), "message includes model");
+        assert!(msg.contains("test-provider"), "message includes provider");
     }
 
     #[test]

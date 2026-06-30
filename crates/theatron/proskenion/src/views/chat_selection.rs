@@ -1,10 +1,19 @@
 //! Shared chat activation helpers for cross-view navigation.
 
+use skene::api::types::{HistoryMessage, HistoryResponse};
+
 use crate::components::chat::ChatState;
+use crate::components::chat::{ChatMessage as LegacyChatMessage, MessageRole};
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
 use crate::state::chat::ChatSelection;
 use crate::state::platform::WindowState;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChatActivation {
+    /// Whether the active agent/session changed.
+    pub session_changed: bool,
+}
 
 pub(crate) fn activate_chat_selection(
     selection: &ChatSelection,
@@ -12,13 +21,12 @@ pub(crate) fn activate_chat_selection(
     agent_store: &mut AgentStore,
     tab_bar: &mut TabBar,
     window_state: &mut WindowState,
-) {
+) -> ChatActivation {
     let session_changed = legacy_state.agent_id.as_ref() != Some(&selection.agent_id)
         || legacy_state.session_key.as_deref() != Some(selection.session_key.as_str());
 
     if session_changed {
         legacy_state.messages.clear();
-        legacy_state.streaming = Default::default();
     }
     legacy_state.agent_id = Some(selection.agent_id.clone());
     legacy_state.session_key = Some(selection.session_key.clone());
@@ -37,14 +45,93 @@ pub(crate) fn activate_chat_selection(
         tab.agent_id == selection.agent_id
             && tab.session_key.as_deref() == Some(selection.session_key.as_str())
     }) {
+        if let Some(tab) = tab_bar.tabs.get_mut(idx) {
+            if tab.session_id.is_none() {
+                tab.session_id = selection.session_id.clone();
+            }
+            if tab.message_count.is_none() {
+                tab.message_count = selection.message_count;
+            }
+        }
         tab_bar.active = idx;
     } else {
-        let idx = tab_bar.create_for_session(
-            selection.agent_id.clone(),
-            selection.session_key.clone(),
-            selection.title.clone(),
-        );
+        let idx = match selection.session_id.clone() {
+            Some(session_id) => tab_bar.create_for_existing_session(
+                selection.agent_id.clone(),
+                session_id,
+                selection.session_key.clone(),
+                selection.message_count,
+                selection.title.clone(),
+            ),
+            _ => tab_bar.create_for_session(
+                selection.agent_id.clone(),
+                selection.session_key.clone(),
+                selection.title.clone(),
+            ),
+        };
         tab_bar.active = idx;
+    }
+
+    ChatActivation { session_changed }
+}
+
+pub(crate) fn parse_history_messages(text: &str) -> Result<Vec<HistoryMessage>, String> {
+    match serde_json::from_str::<HistoryResponse>(text) {
+        Ok(wrapper) => Ok(wrapper.messages),
+        Err(wrapper_err) => match serde_json::from_str::<Vec<HistoryMessage>>(text) {
+            Ok(messages) => Ok(messages),
+            Err(list_err) => Err(format!(
+                "parse history response: wrapper error: {wrapper_err}; list error: {list_err}"
+            )),
+        },
+    }
+}
+
+pub(crate) fn history_messages_to_legacy(messages: &[HistoryMessage]) -> Vec<LegacyChatMessage> {
+    messages
+        .iter()
+        .filter_map(history_message_to_legacy)
+        .collect()
+}
+
+pub(crate) fn oldest_history_seq(messages: &[HistoryMessage]) -> Option<i64> {
+    messages.iter().filter_map(|msg| msg.seq).min()
+}
+
+fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessage> {
+    let role = match message.role.as_str() {
+        "user" => MessageRole::User,
+        "assistant" | "system" | "tool" => MessageRole::Assistant,
+        other => {
+            tracing::debug!(role = other, "skipping unsupported history message role");
+            return None;
+        }
+    };
+
+    let tool_calls = if message.role == "tool" || message.tool_name.is_some() {
+        1
+    } else {
+        0
+    };
+
+    Some(LegacyChatMessage {
+        role,
+        content: history_content_to_string(message.content.as_ref()),
+        model: message.model.clone(),
+        tool_calls,
+        input_tokens: 0,
+        output_tokens: 0,
+        thinking: None,
+        tool_call_details: Vec::new(),
+        plans: Vec::new(),
+    })
+}
+
+fn history_content_to_string(content: Option<&serde_json::Value>) -> String {
+    match content {
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(value) => serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string()),
+        None => String::new(),
     }
 }
 
@@ -52,10 +139,9 @@ pub(crate) fn activate_chat_selection(
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use skene::api::types::Agent;
-    use skene::id::NousId;
+    use skene::id::{NousId, SessionId};
 
     use super::*;
-    use crate::components::chat::{ChatMessage as LegacyChatMessage, MessageRole};
 
     fn agent(id: &str) -> Agent {
         Agent {
@@ -93,7 +179,7 @@ mod tests {
         let mut tab_bar = TabBar::new();
         let mut window_state = WindowState::default();
 
-        activate_chat_selection(
+        let activation = activate_chat_selection(
             &selection(),
             &mut chat_state,
             &mut agent_store,
@@ -101,6 +187,7 @@ mod tests {
             &mut window_state,
         );
 
+        assert!(activation.session_changed);
         assert_eq!(agent_store.active_id.as_deref(), Some("syn"));
         assert_eq!(chat_state.agent_id.as_deref(), Some("syn"));
         assert_eq!(chat_state.session_key.as_deref(), Some("incident-review"));
@@ -142,7 +229,7 @@ mod tests {
         );
         let mut window_state = WindowState::default();
 
-        activate_chat_selection(
+        let activation = activate_chat_selection(
             &selection(),
             &mut chat_state,
             &mut agent_store,
@@ -150,7 +237,121 @@ mod tests {
             &mut window_state,
         );
 
+        assert!(!activation.session_changed);
         assert_eq!(chat_state.messages.len(), 1);
         assert_eq!(tab_bar.len(), 1);
+    }
+
+    #[test]
+    fn activate_chat_selection_keeps_existing_session_metadata_on_tab() {
+        let mut chat_state = ChatState::default();
+        let mut agent_store = AgentStore::new();
+        agent_store.load_from_api(vec![agent("syn")]);
+        let mut tab_bar = TabBar::new();
+        let mut window_state = WindowState::default();
+        let selection = ChatSelection::for_existing_session(
+            NousId::from("syn"),
+            SessionId::from("session-id"),
+            "incident-review".to_string(),
+            "Incident Review".to_string(),
+            4,
+        );
+
+        activate_chat_selection(
+            &selection,
+            &mut chat_state,
+            &mut agent_store,
+            &mut tab_bar,
+            &mut window_state,
+        );
+
+        let active_tab = tab_bar.active_tab().unwrap();
+        assert_eq!(active_tab.session_id.as_deref(), Some("session-id"));
+        assert_eq!(active_tab.message_count, Some(4));
+    }
+
+    #[test]
+    fn activating_existing_session_loads_history_messages() {
+        let mut chat_state = ChatState::default();
+        let mut agent_store = AgentStore::new();
+        agent_store.load_from_api(vec![agent("syn")]);
+        let mut tab_bar = TabBar::new();
+        let mut window_state = WindowState::default();
+        let selection = ChatSelection::for_existing_session(
+            NousId::from("syn"),
+            SessionId::from("session-id"),
+            "incident-review".to_string(),
+            "Incident Review".to_string(),
+            2,
+        );
+        let json = r#"{
+            "messages": [
+                {"id": 1, "seq": 1, "role": "user", "content": "What happened?"},
+                {"id": 2, "seq": 2, "role": "assistant", "content": "Recovered the transcript.", "model": "claude-opus-4-6"}
+            ]
+        }"#;
+
+        activate_chat_selection(
+            &selection,
+            &mut chat_state,
+            &mut agent_store,
+            &mut tab_bar,
+            &mut window_state,
+        );
+        let messages = parse_history_messages(json).unwrap();
+        chat_state.messages = history_messages_to_legacy(&messages);
+
+        assert_eq!(oldest_history_seq(&messages), Some(1));
+        assert_eq!(chat_state.messages.len(), 2);
+        assert_eq!(chat_state.messages[0].role, MessageRole::User);
+        assert_eq!(chat_state.messages[0].content, "What happened?");
+        assert_eq!(chat_state.messages[1].role, MessageRole::Assistant);
+        assert_eq!(chat_state.messages[1].content, "Recovered the transcript.");
+        assert_eq!(
+            chat_state.messages[1].model.as_deref(),
+            Some("claude-opus-4-6")
+        );
+    }
+
+    #[test]
+    fn activating_existing_session_preserves_live_stream_state() {
+        let mut chat_state = ChatState::default();
+        chat_state.messages.push(LegacyChatMessage {
+            role: MessageRole::User,
+            content: "old draft".to_string(),
+            model: None,
+            tool_calls: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            thinking: None,
+            tool_call_details: Vec::new(),
+            plans: Vec::new(),
+        });
+        chat_state.streaming.is_streaming = true;
+        chat_state.streaming.text = "partial answer".to_string();
+        let mut agent_store = AgentStore::new();
+        agent_store.load_from_api(vec![agent("syn")]);
+        let mut tab_bar = TabBar::new();
+        let mut window_state = WindowState::default();
+        let selection = ChatSelection::for_existing_session(
+            NousId::from("syn"),
+            SessionId::from("session-id"),
+            "incident-review".to_string(),
+            "Incident Review".to_string(),
+            4,
+        );
+
+        let activation = activate_chat_selection(
+            &selection,
+            &mut chat_state,
+            &mut agent_store,
+            &mut tab_bar,
+            &mut window_state,
+        );
+
+        assert!(activation.session_changed);
+        assert!(chat_state.messages.is_empty());
+        assert!(chat_state.streaming.is_streaming);
+        assert_eq!(chat_state.streaming.text, "partial answer");
     }
 }

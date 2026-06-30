@@ -4,7 +4,7 @@ use tracing::Instrument;
 
 use crate::schedule::TaskStatus;
 
-use super::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunner, truncate_output};
+use super::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunner};
 
 impl TaskRunner {
     /// Get status of all registered tasks.
@@ -103,8 +103,17 @@ impl TaskRunner {
                                     .output
                                     .as_deref()
                                     .filter(|s| !s.is_empty())
-                                    .unwrap_or("task reported failure");
-                                self.record_task_failure(&task_id, reason);
+                                    .map_or_else(
+                                        || "task reported failure".to_owned(),
+                                        |output| {
+                                            super::safe_output_for_mode(
+                                                output,
+                                                self.output_mode,
+                                                &self.daemon_behavior,
+                                            )
+                                        },
+                                    );
+                                self.record_task_failure(&task_id, &reason);
                             }
                             TaskOutcome::Skipped => {
                                 self.record_task_skip(&task_id);
@@ -112,22 +121,24 @@ impl TaskRunner {
                         }
                     }
                     Ok(Err(e)) => {
+                        let error = super::redact_task_text(&e.to_string());
                         tracing::warn!(
                             task_id = %task_id,
-                            error = %e,
+                            error = %error,
                             duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
                             "spawned task failed"
                         );
-                        self.record_task_failure(&task_id, &e.to_string());
+                        self.record_task_failure(&task_id, &error);
                     }
                     Err(e) => {
-                        self.report_watchdog_exit(&task_id, &e.to_string());
+                        let error = super::redact_task_text(&e.to_string());
+                        self.report_watchdog_exit(&task_id, &error);
                         tracing::warn!(
                             task_id = %task_id,
-                            error = %e,
+                            error = %error,
                             "spawned task panicked or was cancelled"
                         );
-                        self.record_task_failure(&task_id, &e.to_string());
+                        self.record_task_failure(&task_id, &error);
                     }
                 }
                 self.unregister_watchdog_process(&task_id);
@@ -141,17 +152,16 @@ impl TaskRunner {
             return;
         };
 
+        let output = super::safe_output_for_mode(output, self.output_mode, &self.daemon_behavior);
         match self.output_mode {
+            DaemonOutputMode::Summary => {
+                tracing::info!(task_id = %task_id, output = %output, "task output summary");
+            }
             DaemonOutputMode::Full => {
-                tracing::debug!(task_id = %task_id, output = %output, "task output");
+                tracing::debug!(task_id = %task_id, output = %output, "task output (full redacted)");
             }
             DaemonOutputMode::Brief => {
-                let truncated = truncate_output(
-                    output,
-                    Some(self.daemon_behavior.runner_output_brief_head_lines),
-                    Some(self.daemon_behavior.runner_output_brief_tail_lines),
-                );
-                tracing::info!(task_id = %task_id, output = %truncated, "task output (brief)");
+                tracing::info!(task_id = %task_id, output = %output, "task output (brief)");
             }
         }
     }
@@ -217,20 +227,22 @@ impl TaskRunner {
                         );
                     }
                     Ok(r) => {
+                        let output = r.output.as_deref().map(super::redact_task_text);
                         tracing::warn!(
                             nous_id = %nous_id,
                             source_task = %task_id_owned,
-                            output = ?r.output,
+                            output = ?output,
                             "self-prompt dispatch returned failure"
                         );
                         crate::metrics::record_background_failure(&nous_id, task_name);
                     }
                     Err(e) => {
+                        let error = super::redact_task_text(&e.to_string());
                         tracing::error!(
                             task = task_name,
                             nous_id = %nous_id,
                             source_task = %task_id_owned,
-                            error = %e,
+                            error = %error,
                             "background task failed"
                         );
                         crate::metrics::record_background_failure(&nous_id, task_name);

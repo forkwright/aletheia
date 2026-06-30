@@ -93,6 +93,8 @@ pub struct EmbeddingSettings {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub dimension: Option<usize>,
+    pub base_url: Option<String>,
+    pub api_key_env: Option<String>,
 }
 
 /// Schema for the `data` config section.

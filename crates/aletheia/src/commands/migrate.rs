@@ -3,6 +3,7 @@
 //! Copies an entire Aletheia instance tree to a new location, normalizing
 //! absolute paths in the configuration so they are portable.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
@@ -95,21 +96,7 @@ pub(crate) fn run(args: &MigrateArgs) -> Result<()> {
         normalize_config(&source, &dest, &mut manifest)?;
     }
 
-    let knowledge_db = dest.join("data").join("knowledge.fjall");
-    if !args.dry_run && knowledge_db.exists() {
-        let result = crate::commands::backup::verify_backup(&knowledge_db)?;
-        if let Some(err) = result.first_error {
-            whatever!("destination knowledge store verification failed: {err}");
-        }
-        println!(
-            "Knowledge store verification: PASS ({} keys)",
-            result.total_keys
-        );
-    } else if args.dry_run {
-        println!("Knowledge store verification: SKIPPED (dry run)");
-    } else {
-        println!("Knowledge store verification: SKIPPED (no knowledge.fjall found)");
-    }
+    verify_migrated_stores(&source, &dest, args.dry_run, &mut manifest)?;
 
     print_manifest(&manifest, args.dry_run);
 
@@ -123,6 +110,275 @@ struct MigrateManifest {
     files_copied: u64,
     bytes_copied: u64,
     paths_rewritten: Vec<String>,
+    store_verifications: Vec<StoreVerificationEntry>,
+}
+
+#[derive(Debug)]
+struct StoreVerificationEntry {
+    name: &'static str,
+    status: StoreVerificationStatus,
+    detail: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StoreVerificationStatus {
+    Pass,
+    Skipped,
+}
+
+impl StoreVerificationStatus {
+    fn cli_label(self) -> &'static str {
+        match self {
+            Self::Pass => "PASS",
+            Self::Skipped => "SKIPPED",
+        }
+    }
+
+    fn manifest_label(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Skipped => "skipped",
+        }
+    }
+}
+
+const KNOWLEDGE_STORE: &str = "knowledge.fjall";
+const SESSION_STORE: &str = "sessions.db";
+
+const SESSION_PARTITIONS: &[&str] = &[
+    "sessions",
+    "messages",
+    "usage",
+    "tool_audit",
+    "distillations",
+    "notes",
+    "blackboard",
+    "counters",
+];
+
+fn verify_migrated_stores(
+    source: &Path,
+    dest: &Path,
+    dry_run: bool,
+    manifest: &mut MigrateManifest,
+) -> Result<()> {
+    verify_knowledge_store(source, dest, dry_run, manifest)?;
+    verify_session_store(source, dest, dry_run, manifest)
+}
+
+fn verify_knowledge_store(
+    source: &Path,
+    dest: &Path,
+    dry_run: bool,
+    manifest: &mut MigrateManifest,
+) -> Result<()> {
+    let source_path = source.join("data").join(KNOWLEDGE_STORE);
+    let dest_path = dest.join("data").join(KNOWLEDGE_STORE);
+
+    if dry_run {
+        record_store_verification(
+            manifest,
+            KNOWLEDGE_STORE,
+            StoreVerificationStatus::Skipped,
+            "dry run",
+        );
+        print_store_verification(
+            "Knowledge store",
+            StoreVerificationStatus::Skipped,
+            "dry run",
+        );
+        return Ok(());
+    }
+
+    if !source_path.exists() {
+        record_store_verification(
+            manifest,
+            KNOWLEDGE_STORE,
+            StoreVerificationStatus::Skipped,
+            "absent in source",
+        );
+        print_store_verification(
+            "Knowledge store",
+            StoreVerificationStatus::Skipped,
+            "no knowledge.fjall found in source",
+        );
+        return Ok(());
+    }
+
+    if !dest_path.exists() {
+        whatever!(
+            "destination knowledge store missing after migration: {}",
+            dest_path.display()
+        );
+    }
+
+    let result = match oikonomos::maintenance::InstanceBackup::verify_fjall_store_tree(
+        KNOWLEDGE_STORE,
+        &dest_path,
+    ) {
+        Ok(Some(result)) => result,
+        Ok(None) => whatever!(
+            "destination knowledge store verification failed: not a fjall store or fjall cohort tree: {}",
+            dest_path.display()
+        ),
+        Err(err) => whatever!("destination knowledge store verification failed: {err}"),
+    };
+
+    let detail = format!("{} keys", result.total_keys);
+    record_store_verification(
+        manifest,
+        KNOWLEDGE_STORE,
+        StoreVerificationStatus::Pass,
+        detail.clone(),
+    );
+    print_store_verification("Knowledge store", StoreVerificationStatus::Pass, &detail);
+    Ok(())
+}
+
+fn verify_session_store(
+    source: &Path,
+    dest: &Path,
+    dry_run: bool,
+    manifest: &mut MigrateManifest,
+) -> Result<()> {
+    let source_path = source.join("data").join(SESSION_STORE);
+    let dest_path = dest.join("data").join(SESSION_STORE);
+
+    if dry_run {
+        record_store_verification(
+            manifest,
+            SESSION_STORE,
+            StoreVerificationStatus::Skipped,
+            "dry run",
+        );
+        print_store_verification("Session store", StoreVerificationStatus::Skipped, "dry run");
+        return Ok(());
+    }
+
+    if !source_path.exists() {
+        record_store_verification(
+            manifest,
+            SESSION_STORE,
+            StoreVerificationStatus::Skipped,
+            "absent in source",
+        );
+        print_store_verification(
+            "Session store",
+            StoreVerificationStatus::Skipped,
+            "no sessions.db found in source",
+        );
+        return Ok(());
+    }
+
+    let source_metadata = std::fs::metadata(&source_path)
+        .whatever_context("failed to read source session store metadata")?;
+    if source_metadata.is_file() {
+        verify_legacy_session_file_was_copied(&dest_path)?;
+        record_store_verification(
+            manifest,
+            SESSION_STORE,
+            StoreVerificationStatus::Skipped,
+            "legacy file-shaped sessions.db; current fjall verification not applicable",
+        );
+        print_store_verification(
+            "Session store",
+            StoreVerificationStatus::Skipped,
+            "legacy file-shaped sessions.db; current fjall verification not applicable",
+        );
+        return Ok(());
+    }
+
+    if !source_metadata.is_dir() {
+        whatever!(
+            "source session store has unsupported shape: {}",
+            source_path.display()
+        );
+    }
+    if !dest_path.exists() {
+        whatever!(
+            "destination session store missing after migration: {}",
+            dest_path.display()
+        );
+    }
+    if !dest_path.is_dir() {
+        whatever!(
+            "destination session store is not a current fjall directory: {}",
+            dest_path.display()
+        );
+    }
+
+    let result = match oikonomos::maintenance::FjallBackup::verify_store(&dest_path) {
+        Ok(result) => result,
+        Err(err) => whatever!("destination session store verification failed: {err}"),
+    };
+    if let Some(err) = result.first_error {
+        whatever!("destination session store verification failed: {err}");
+    }
+    verify_session_partitions(&result)?;
+
+    let detail = format!("{} keys", result.total_keys);
+    record_store_verification(
+        manifest,
+        SESSION_STORE,
+        StoreVerificationStatus::Pass,
+        detail.clone(),
+    );
+    print_store_verification("Session store", StoreVerificationStatus::Pass, &detail);
+    Ok(())
+}
+
+fn verify_legacy_session_file_was_copied(dest_path: &Path) -> Result<()> {
+    if !dest_path.exists() {
+        whatever!(
+            "destination session store missing after migration: {}",
+            dest_path.display()
+        );
+    }
+    if !dest_path.is_file() {
+        whatever!(
+            "destination legacy session store is not a file: {}",
+            dest_path.display()
+        );
+    }
+    Ok(())
+}
+
+fn verify_session_partitions(result: &oikonomos::maintenance::FjallVerifyResult) -> Result<()> {
+    let actual: BTreeSet<&str> = result
+        .partition_counts
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    let missing = SESSION_PARTITIONS
+        .iter()
+        .copied()
+        .filter(|partition| !actual.contains(partition))
+        .collect::<Vec<_>>();
+
+    if !missing.is_empty() {
+        whatever!(
+            "destination session store verification failed: missing current fjall partition(s): {}",
+            missing.join(", ")
+        );
+    }
+    Ok(())
+}
+
+fn record_store_verification(
+    manifest: &mut MigrateManifest,
+    name: &'static str,
+    status: StoreVerificationStatus,
+    detail: impl Into<String>,
+) {
+    manifest.store_verifications.push(StoreVerificationEntry {
+        name,
+        status,
+        detail: detail.into(),
+    });
+}
+
+fn print_store_verification(label: &str, status: StoreVerificationStatus, detail: &str) {
+    println!("{} verification: {} ({detail})", label, status.cli_label());
 }
 
 fn absolute_path(path: &Path) -> Result<PathBuf> {
@@ -460,6 +716,19 @@ fn print_manifest(manifest: &MigrateManifest, dry_run: bool) {
             println!("    {path}");
         }
     }
+    if manifest.store_verifications.is_empty() {
+        println!("  Store verification: none");
+    } else {
+        println!("  Store verification:");
+        for entry in &manifest.store_verifications {
+            println!(
+                "    {}: {} ({})",
+                entry.name,
+                entry.status.manifest_label(),
+                entry.detail
+            );
+        }
+    }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -472,6 +741,54 @@ fn print_manifest(manifest: &MigrateManifest, dry_run: bool) {
 )]
 mod tests {
     use super::*;
+
+    fn create_minimal_instance(root: &Path) {
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::write(root.join("config/aletheia.toml"), "port = 1\n").unwrap();
+    }
+
+    fn make_fjall_store(path: &Path) {
+        std::fs::create_dir_all(path).unwrap();
+        let db = fjall::SingleWriterTxDatabase::builder(path)
+            .worker_threads_unchecked(0)
+            .open()
+            .unwrap();
+        let partition = db
+            .keyspace("test_data", fjall::KeyspaceCreateOptions::default)
+            .unwrap();
+        partition.insert("key", b"value").unwrap();
+        db.persist(fjall::PersistMode::SyncAll).unwrap();
+        drop(db);
+    }
+
+    fn make_current_session_store(path: &Path) {
+        let store = mneme::store::SessionStore::open(path).unwrap();
+        store.ensure_durable().unwrap();
+        drop(store);
+    }
+
+    fn make_corrupt_current_session_store(path: &Path) {
+        make_current_session_store(path);
+        let db = fjall::SingleWriterTxDatabase::builder(path)
+            .worker_threads_unchecked(0)
+            .open()
+            .unwrap();
+        let sessions = db
+            .keyspace("sessions", fjall::KeyspaceCreateOptions::default)
+            .unwrap();
+        sessions.insert("bad-session", b"not-json").unwrap();
+        db.persist(fjall::PersistMode::SyncAll).unwrap();
+        drop(db);
+    }
+
+    fn store_entry<'a>(manifest: &'a MigrateManifest, name: &str) -> &'a StoreVerificationEntry {
+        manifest
+            .store_verifications
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap()
+    }
 
     #[test]
     fn maybe_rewrite_path_rewrites_source_absolute() {
@@ -567,6 +884,125 @@ mod tests {
 
         let dest_entries: Vec<_> = std::fs::read_dir(dest.path()).unwrap().collect();
         assert!(dest_entries.is_empty(), "dry run should not copy files");
+    }
+
+    #[test]
+    fn migrate_succeeds_with_knowledge_store_and_absent_sessions() {
+        let src = tempfile::tempdir().unwrap();
+        create_minimal_instance(src.path());
+        make_fjall_store(&src.path().join("data/knowledge.fjall/shared"));
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: false,
+            follow_symlinks: false,
+        };
+
+        run(&args).unwrap();
+
+        assert!(
+            dest.path()
+                .join("migrated/data/knowledge.fjall/shared/version")
+                .is_file()
+        );
+        assert!(!dest.path().join("migrated/data/sessions.db").exists());
+    }
+
+    #[test]
+    fn migrate_verifies_current_fjall_sessions_store() {
+        let src = tempfile::tempdir().unwrap();
+        create_minimal_instance(src.path());
+        make_current_session_store(&src.path().join("data/sessions.db"));
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: false,
+            follow_symlinks: false,
+        };
+
+        run(&args).unwrap();
+
+        assert!(
+            dest.path()
+                .join("migrated/data/sessions.db/version")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn migrated_store_verification_rejects_missing_current_sessions_dest() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(src.path().join("data")).unwrap();
+        std::fs::create_dir_all(dest.path().join("data")).unwrap();
+        make_current_session_store(&src.path().join("data/sessions.db"));
+
+        let mut manifest = MigrateManifest::default();
+        let result = verify_migrated_stores(src.path(), dest.path(), false, &mut manifest);
+
+        assert!(result.is_err(), "missing destination sessions.db must fail");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("destination session store missing"),
+            "expected missing sessions error: {msg}"
+        );
+    }
+
+    #[test]
+    fn migrate_rejects_corrupt_current_sessions_store() {
+        let src = tempfile::tempdir().unwrap();
+        create_minimal_instance(src.path());
+        make_corrupt_current_session_store(&src.path().join("data/sessions.db"));
+
+        let dest = tempfile::tempdir().unwrap();
+        let args = MigrateArgs {
+            source: src.path().to_path_buf(),
+            dest: dest.path().join("migrated"),
+            dry_run: false,
+            follow_symlinks: false,
+        };
+
+        let result = run(&args);
+
+        assert!(
+            result.is_err(),
+            "corrupt destination session store must fail"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("destination session store verification failed"),
+            "expected verification failure: {msg}"
+        );
+        assert!(
+            msg.contains("bad-session"),
+            "expected corrupt key in error: {msg}"
+        );
+    }
+
+    #[test]
+    fn migrated_store_verification_skips_legacy_file_shaped_sessions() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(src.path().join("data")).unwrap();
+        std::fs::create_dir_all(dest.path().join("data")).unwrap();
+        std::fs::write(src.path().join("data/sessions.db"), "legacy sqlite").unwrap();
+        std::fs::write(dest.path().join("data/sessions.db"), "legacy sqlite").unwrap();
+
+        let mut manifest = MigrateManifest::default();
+
+        verify_migrated_stores(src.path(), dest.path(), false, &mut manifest).unwrap();
+
+        let sessions = store_entry(&manifest, SESSION_STORE);
+        assert_eq!(sessions.status, StoreVerificationStatus::Skipped);
+        assert!(
+            sessions.detail.contains("legacy file-shaped"),
+            "expected legacy skip detail: {}",
+            sessions.detail
+        );
     }
 
     #[test]

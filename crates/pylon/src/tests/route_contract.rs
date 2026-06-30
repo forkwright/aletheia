@@ -26,3 +26,24 @@ fn skene_client_routes_exist_in_pylon_openapi() {
         );
     }
 }
+
+#[test]
+fn gateway_client_session_replay_route_exists_in_pylon_openapi() {
+    let spec = crate::openapi::openapi_value_for_auth_mode("token");
+    let paths = spec
+        .get("paths")
+        .and_then(serde_json::Value::as_object)
+        .expect("OpenAPI spec must contain paths");
+
+    assert!(
+        paths
+            .get("/api/v1/sessions/{id}/replay")
+            .and_then(|path| path.get("get"))
+            .is_some(),
+        "gateway client session replay route must be present in OpenAPI"
+    );
+    assert_eq!(
+        crate::client::routes::session_replay("session/needs encoding"),
+        "/api/v1/sessions/session%2Fneeds%20encoding/replay"
+    );
+}

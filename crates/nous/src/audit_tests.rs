@@ -94,15 +94,16 @@ fn build_audit_record_includes_filtered_recall_facts() {
         tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
-    let record = build_audit_record(
-        &ctx,
-        &session,
-        &config,
-        &providers,
-        &tools,
-        &tool_ctx,
-        PromptAuditRecordOptions::default(),
-    );
+    let record = build_audit_record(PromptAuditRecordInput {
+        ctx: &ctx,
+        session: &session,
+        config: &config,
+        observed_model: &config.generation.model,
+        providers: &providers,
+        tools: &tools,
+        tool_ctx: &tool_ctx,
+        options: PromptAuditRecordOptions::default(),
+    });
 
     assert_eq!(record.deployment_target, "cloud");
     assert!(record.tool_surface_hash.starts_with("ts1:"));
@@ -147,20 +148,58 @@ fn build_audit_record_omits_filtered_recall_facts_when_disabled() {
         tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
-    let record = build_audit_record(
-        &ctx,
-        &session,
-        &config,
-        &providers,
-        &tools,
-        &tool_ctx,
-        PromptAuditRecordOptions {
+    let record = build_audit_record(PromptAuditRecordInput {
+        ctx: &ctx,
+        session: &session,
+        config: &config,
+        observed_model: &config.generation.model,
+        providers: &providers,
+        tools: &tools,
+        tool_ctx: &tool_ctx,
+        options: PromptAuditRecordOptions {
             include_filtered_ids: false,
         },
-    );
+    });
 
     assert_eq!(record.fact_ids_included, vec!["fact-public"]);
     assert!(record.fact_ids_filtered.is_empty());
+}
+
+#[test]
+fn build_audit_record_uses_observed_model_for_provider_attribution() {
+    let mut config = crate::config::NousConfig::default();
+    config.generation.model = "primary-model".to_owned();
+    let session = crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
+    let ctx = crate::pipeline::PipelineContext::default();
+    let mut providers = hermeneus::provider::ProviderRegistry::new();
+    providers.register(Box::new(
+        hermeneus::test_utils::MockProvider::new("fallback answer").models(&["fallback-model"]),
+    ));
+    let tools = organon::registry::ToolRegistry::new();
+    let tool_ctx = organon::types::ToolContext {
+        nous_id: koina::id::NousId::new("alice").expect("valid synthetic nous id"),
+        session_id: koina::id::SessionId::new(),
+        turn_number: 0,
+        workspace: std::path::PathBuf::from("/tmp/aletheia-test"),
+        allowed_roots: vec![std::path::PathBuf::from("/tmp")],
+        services: None,
+        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
+        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+    };
+
+    let record = build_audit_record(PromptAuditRecordInput {
+        ctx: &ctx,
+        session: &session,
+        config: &config,
+        observed_model: "fallback-model",
+        providers: &providers,
+        tools: &tools,
+        tool_ctx: &tool_ctx,
+        options: PromptAuditRecordOptions::default(),
+    });
+
+    assert_eq!(record.model, "fallback-model");
+    assert_eq!(record.provider, "mock");
 }
 
 #[test]

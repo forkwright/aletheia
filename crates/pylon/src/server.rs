@@ -166,6 +166,10 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let metrics_registry = koina::metrics::MetricsRegistry::new();
     metrics_registry.with_registry(crate::metrics::register);
 
+    let credential_runtime = Arc::new(crate::credential_runtime::CredentialRuntimeManager::new(
+        Arc::clone(&provider_registry),
+    ));
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -175,6 +179,7 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         workspace_root,
         jwt_manager,
         auth_facade,
+        credential_runtime,
         start_time: Instant::now(),
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
         none_role: aletheia_config.gateway.auth.none_role.clone(),

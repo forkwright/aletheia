@@ -46,6 +46,7 @@ pub(crate) fn test_app() -> App {
             context_tokens_total: None,
             saved_sessions: HashMap::new(),
             submitted_decisions: Vec::new(),
+            new_session_status: ControlMutationStatus::Idle,
         },
         connection: ConnectionState {
             sse: None,

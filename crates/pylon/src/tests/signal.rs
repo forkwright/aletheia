@@ -108,6 +108,10 @@ fn minimal_app_state() -> Arc<AppState> {
     crate::metrics::init(&metrics_registry);
     let workspace_root = crate::state::resolve_workspace_root(&oikos, None);
 
+    let credential_runtime = Arc::new(crate::credential_runtime::CredentialRuntimeManager::new(
+        Arc::clone(&provider_registry),
+    ));
+
     Arc::new(AppState {
         session_store,
         nous_manager: Arc::new(nous_manager),
@@ -122,6 +126,7 @@ fn minimal_app_state() -> Arc<AppState> {
             })
             .expect("auth facade"),
         ),
+        credential_runtime,
         start_time: Instant::now(),
         auth_mode: "token".to_owned(),
         none_role: "admin".to_owned(),

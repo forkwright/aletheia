@@ -48,6 +48,7 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `gateway.csrf.headerValue` | **Cold** | Expected value captured by CSRF middleware at startup |
 | `gateway.rateLimit.enabled` | Hot | Rate limiting can be toggled at runtime |
 | `gateway.rateLimit.requestsPerMinute` | Hot | Rate limit threshold read per-request |
+| `gateway.rateLimit.trustProxy` | **Cold** | Rate limiter is built with this flag at startup |
 | `gateway.rateLimit.perUser.enabled` | Hot | Per-user rate limiting toggle |
 | `gateway.rateLimit.perUser.defaultRpm` | Hot | Per-user default rate limit |
 | `gateway.rateLimit.perUser.defaultBurst` | Hot | Per-user burst allowance |

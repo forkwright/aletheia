@@ -2,7 +2,9 @@
 
 use axum::Json;
 use axum::extract::State;
+use organon::types::{ApprovalRequirement, Reversibility, ToolDef};
 use symbolon::types::Role;
+use tracing::warn;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
@@ -10,7 +12,9 @@ use crate::state::OpsState;
 
 #[path = "ops_dto.rs"]
 mod ops_dto;
-pub use ops_dto::{LiveInvocationEntry, OpsToolsResponse, ToolCatalogEntry};
+pub use ops_dto::{LiveInvocationEntry, OpsToolsResponse, ToolCatalogEntry, ToolHistoryEntry};
+
+const RECENT_TOOL_HISTORY_LIMIT: usize = 100;
 
 fn metrics_snapshot() -> (u64, u64) {
     let registry = koina::metrics::MetricsRegistry::new();
@@ -41,13 +45,79 @@ fn metrics_snapshot() -> (u64, u64) {
     (total_calls, total_errors)
 }
 
+fn history_entry(record: mneme::types::ToolAuditRecord) -> ToolHistoryEntry {
+    let receipt_state = if record.receipt.is_some() {
+        "present"
+    } else {
+        "absent"
+    }
+    .to_owned();
+
+    ToolHistoryEntry {
+        id: record.id,
+        session_id: record.session_id,
+        nous_id: record.nous_id,
+        turn_seq: record.turn_seq,
+        tool_call_id: record.tool_call_id,
+        tool_name: record.tool_name,
+        duration_ms: record.duration_ms,
+        is_error: record.is_error,
+        outcome: record.outcome,
+        result: record.result,
+        approval: record.approval,
+        receipt_state,
+        receipt: record.receipt,
+        created_at: record.created_at,
+    }
+}
+
+fn approval_requires_prompt(approval: ApprovalRequirement) -> bool {
+    matches!(
+        approval,
+        ApprovalRequirement::Required | ApprovalRequirement::Mandatory
+    )
+}
+
+fn reversibility_is_destructive(reversibility: Reversibility) -> bool {
+    matches!(
+        reversibility,
+        Reversibility::PartiallyReversible | Reversibility::Irreversible
+    )
+}
+
+fn catalog_entry(def: &ToolDef, has_origin: bool) -> ToolCatalogEntry {
+    let approval = ApprovalRequirement::from(def.reversibility);
+    ToolCatalogEntry {
+        name: def.name.as_str().to_owned(),
+        description: def.description.clone(),
+        id: def.name.as_str().to_owned(),
+        category: def.category.to_string(),
+        reversibility: def.reversibility.to_string(),
+        approval: approval.to_string(),
+        requires_approval: approval_requires_prompt(approval),
+        destructive: reversibility_is_destructive(def.reversibility),
+        groups: def
+            .groups
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
+        source_plane: if has_origin {
+            "runtime_bridged_mcp"
+        } else {
+            "organon_builtin"
+        }
+        .to_owned(),
+        metadata_verified: true,
+    }
+}
+
 /// GET /api/v1/ops/tools: summarize the live tool registry and metrics.
 ///
 /// The registry catalog is sourced from organon's live tool registry. Live
 /// invocations are tracked by organon's metrics module and removed when the
 /// execution guard drops. Totals and errors are read from the organon
-/// Prometheus families. Chronological tool-call history is not persisted, so
-/// `history_unavailable` is `true`.
+/// Prometheus families. Chronological tool-call history is sourced from
+/// mneme's bounded recent tool audit records.
 #[utoipa::path(
     get,
     path = "/api/v1/ops/tools",
@@ -67,11 +137,7 @@ pub async fn tools(
         .tool_registry
         .definitions()
         .into_iter()
-        .map(|def| ToolCatalogEntry {
-            name: def.name.as_str().to_owned(),
-            description: def.description.clone(),
-            id: def.name.as_str().to_owned(),
-        })
+        .map(|def| catalog_entry(def, state.tool_registry.origin(&def.name).is_some()))
         .collect();
 
     let live_invocations = organon::metrics::live_invocations()
@@ -84,12 +150,35 @@ pub async fn tools(
         .collect();
 
     let (total_calls, total_errors) = metrics_snapshot();
+    let state_clone = state.clone();
+    let history_result = tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.blocking_lock();
+        store
+            .recent_tool_audit_records(RECENT_TOOL_HISTORY_LIMIT)
+            .map_err(ApiError::from)
+    })
+    .await;
+    let (history, history_unavailable) = match history_result {
+        Ok(Ok(records)) => (
+            records.into_iter().map(history_entry).collect::<Vec<_>>(),
+            false,
+        ),
+        Ok(Err(err)) => {
+            warn!(error = %err, "failed to read tool audit history");
+            (Vec::new(), true)
+        }
+        Err(err) => {
+            warn!(error = %err, "tool audit history task failed");
+            (Vec::new(), true)
+        }
+    };
 
     Ok(Json(OpsToolsResponse {
         catalog,
         live_invocations,
+        history,
         total_calls,
         total_errors,
-        history_unavailable: true,
+        history_unavailable,
     }))
 }

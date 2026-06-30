@@ -254,6 +254,50 @@ async fn subscribe_replays_from_last_event_id() {
         !text.contains("\"fact_id\":\"f-1\""),
         "event 1 should not be replayed, got: {text}"
     );
+    assert!(
+        !text.contains("event: stream_gap"),
+        "next retained event should replay without a gap, got: {text}"
+    );
+    assert!(
+        !text.contains("event: stream_expired"),
+        "covered cursor should not expire the stream, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn subscribe_replays_without_gap_when_next_event_is_retained() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    // WHY: The test EventBus has capacity 256. Publish 257 events so id 1 is
+    // evicted, but id 2 is still retained. Last-Event-ID=1 is therefore fully
+    // resumable and must not produce a gap control event.
+    for i in 0..257 {
+        state
+            .event_bus
+            .publish(DomainEvent::new(
+                state.event_bus.next_id(),
+                "fact.created",
+                serde_json::json!({"fact_id": format!("f-{i}")}),
+            ))
+            .await;
+    }
+
+    let req = authed_get("/api/v1/events/subscribe?topics=fact.created&last_event_id=1");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        !text.contains("event: stream_gap"),
+        "id 2 is retained, so reconnect after id 1 should not gap: {text}"
+    );
+    assert!(
+        text.contains("\"fact_id\":\"f-1\""),
+        "expected replay of retained id 2, got: {text}"
+    );
 }
 
 #[tokio::test]
@@ -262,7 +306,8 @@ async fn subscribe_reports_gap_for_too_old_last_event_id() {
     let router = build_router(Arc::clone(&state), &test_security_config());
 
     // WHY: The test EventBus has capacity 256. Publish 258 events so the
-    // journal evicts id 1 and 2, making last_event_id=1 unrecoverable.
+    // journal retains id 3 onward. Reconnecting after id 1 can replay id 3
+    // onward, but id 2 is unrecoverable and must be reported exactly.
     for i in 0..258 {
         state
             .event_bus
@@ -286,8 +331,62 @@ async fn subscribe_reports_gap_for_too_old_last_event_id() {
         "expected stream_gap control event, got: {text}"
     );
     assert!(
-        text.contains("first_missed_id"),
-        "expected gap metadata, got: {text}"
+        text.contains("\"reason\":\"retained_events_evicted\""),
+        "expected gap reason, got: {text}"
+    );
+    assert!(
+        text.contains("\"first_missed_id\":2"),
+        "expected exact first missed id, got: {text}"
+    );
+    assert!(
+        text.contains("\"last_missed_id\":2"),
+        "expected exact last missed id, got: {text}"
+    );
+    assert!(
+        text.contains("\"oldest_retained_id\":3"),
+        "expected retained tail metadata, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn subscribe_expired_cursor_still_receives_new_live_events() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get("/api/v1/events/subscribe?topics=fact.created&last_event_id=500");
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    // WHY(#4910): A cursor from a prior process can be greater than every id in
+    // this in-memory journal. After the typed expiration event, new live events
+    // from the current process must not be filtered behind that stale id.
+    state
+        .event_bus
+        .publish(DomainEvent::new(
+            state.event_bus.next_id(),
+            "fact.created",
+            serde_json::json!({"fact_id": "f-live", "nous_id": "syn"}),
+        ))
+        .await;
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: stream_expired"),
+        "expected stream_expired control event, got: {text}"
+    );
+    assert!(
+        text.contains("\"reason\":\"journal_empty\""),
+        "expected empty-journal reason, got: {text}"
+    );
+    assert!(
+        text.contains("\"requested_last_event_id\":500"),
+        "expected requested cursor metadata, got: {text}"
+    );
+    assert!(
+        text.contains("\"fact_id\":\"f-live\""),
+        "stale cursor must not suppress new live events, got: {text}"
     );
 }
 

@@ -262,16 +262,15 @@ fn print_storage(oikos: &taxis::oikos::Oikos, server_data_dir: Option<&str>, col
 
     let data_dir = oikos.data();
     if data_dir.exists() {
-        print_file_size("sessions.db", &oikos.sessions_db());
-        let plans_db = data_dir.join("plans.db");
-        print_file_size("plans.db", &plans_db);
+        print_path_size("sessions.db", &oikos.sessions_db());
+        print_path_size("planning.db", &data_dir.join("planning.db"));
     } else if let Some(dir_str) = server_data_dir {
         // WHY: server reports its own data dir path; use it when local oikos
         // discovery failed (e.g. aletheia status run from a different directory).
         let server_data = std::path::Path::new(dir_str);
         if server_data.exists() {
-            print_file_size("sessions.db", &server_data.join("sessions.db"));
-            print_file_size("plans.db", &server_data.join("plans.db"));
+            print_path_size("sessions.db", &server_data.join("sessions.db"));
+            print_path_size("planning.db", &server_data.join("planning.db"));
         } else {
             // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
             println!("    (data directory: {dir_str})");
@@ -284,17 +283,73 @@ fn print_storage(oikos: &taxis::oikos::Oikos, server_data_dir: Option<&str>, col
     println!();
 }
 
-fn print_file_size(label: &str, path: &Path) {
-    match std::fs::metadata(path) {
-        Ok(meta) => {
+fn print_path_size(label: &str, path: &Path) {
+    match storage_path_info(path) {
+        Ok(info) => {
             // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
-            println!("    {:<18}{}", label, format_bytes(meta.len()));
+            println!(
+                "    {:<18}{} ({})",
+                label,
+                format_bytes(info.size_bytes),
+                info.shape
+            );
         }
         Err(_) => {
             // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
             println!("    {label:<18}(not found)");
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StoragePathInfo {
+    size_bytes: u64,
+    shape: StoragePathShape,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StoragePathShape {
+    File,
+    Directory,
+}
+
+impl std::fmt::Display for StoragePathShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::File => write!(f, "file"),
+            Self::Directory => write!(f, "directory"),
+        }
+    }
+}
+
+fn storage_path_info(path: &Path) -> std::io::Result<StoragePathInfo> {
+    let metadata = std::fs::metadata(path)?;
+    if metadata.is_dir() {
+        Ok(StoragePathInfo {
+            size_bytes: directory_size(path)?,
+            shape: StoragePathShape::Directory,
+        })
+    } else {
+        Ok(StoragePathInfo {
+            size_bytes: metadata.len(),
+            shape: StoragePathShape::File,
+        })
+    }
+}
+
+fn directory_size(path: &Path) -> std::io::Result<u64> {
+    let mut total = 0u64;
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = entry.metadata()?;
+        if metadata.is_dir() {
+            total += directory_size(&path)?;
+        } else {
+            total += metadata.len();
+        }
+    }
+    Ok(total)
 }
 
 /// Format seconds as human-readable duration.
@@ -344,6 +399,13 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write as _;
+
+    #[expect(clippy::expect_used, reason = "test setup")]
+    fn write_test_file(path: &Path, contents: &[u8]) {
+        let mut file = std::fs::File::create(path).expect("create test file");
+        file.write_all(contents).expect("write test file");
+    }
 
     #[test]
     fn format_uptime_seconds() {
@@ -394,6 +456,34 @@ mod tests {
     fn format_bytes_gb() {
         let bytes = 1_610_612_736_u64; // 1.5 GB
         assert_eq!(format_bytes(bytes), "1.5 GB");
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn storage_path_info_reports_file_size_and_shape() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let path = dir.path().join("sessions.db");
+        write_test_file(&path, b"legacy");
+
+        let info = storage_path_info(&path).expect("read storage info");
+
+        assert_eq!(info.size_bytes, 6);
+        assert_eq!(info.shape, StoragePathShape::File);
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn storage_path_info_reports_recursive_directory_size_and_shape() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let store = dir.path().join("sessions.db");
+        std::fs::create_dir_all(store.join("nested")).expect("create nested dir");
+        write_test_file(&store.join("root.dat"), b"abc");
+        write_test_file(&store.join("nested/leaf.dat"), b"de");
+
+        let info = storage_path_info(&store).expect("read storage info");
+
+        assert_eq!(info.size_bytes, 5);
+        assert_eq!(info.shape, StoragePathShape::Directory);
     }
 
     /// Verify that `print_storage` shows file sizes (not the "not found" message)

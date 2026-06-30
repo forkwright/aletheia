@@ -41,6 +41,7 @@ fn sse_event_type_message_complete() {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
         },
+        provider: None,
         request_id: None,
     };
     assert_eq!(event.event_type(), "message_complete");
@@ -76,6 +77,7 @@ fn sse_event_message_complete_serialization() {
             cache_read_tokens: 10,
             cache_write_tokens: 5,
         },
+        provider: Some("local-proxy".to_owned()),
         request_id: Some("req-789".to_owned()),
     };
     let json = serde_json::to_value(&event).unwrap();
@@ -83,6 +85,7 @@ fn sse_event_message_complete_serialization() {
     assert_eq!(json["stop_reason"], "end_turn");
     assert_eq!(json["usage"]["input_tokens"], 100);
     assert_eq!(json["usage"]["output_tokens"], 50);
+    assert_eq!(json["provider"], "local-proxy");
     assert_eq!(json["request_id"], "req-789");
 }
 
@@ -171,6 +174,7 @@ fn tui_event_message_complete_type() {
             nous_id: "syn".to_owned(),
             session_id: "s1".to_owned(),
             model: Some("mock".to_owned()),
+            provider: None,
             tool_calls: 0,
             input_tokens: 10,
             output_tokens: 5,
@@ -186,10 +190,16 @@ fn tui_event_message_complete_type() {
 #[test]
 fn tui_event_error_type() {
     let event = crate::stream::TurnStreamEvent::Error {
+        code: "provider_unavailable".to_owned(),
         message: "fail".to_owned(),
-        request_id: None,
+        request_id: Some("req-123".to_owned()),
     };
     assert_eq!(event.event_type(), "error");
+    let json = serde_json::to_value(&event).unwrap();
+    assert_eq!(json["type"], "error");
+    assert_eq!(json["code"], "provider_unavailable");
+    assert_eq!(json["message"], "fail");
+    assert_eq!(json["request_id"], "req-123");
 }
 
 #[test]
@@ -216,6 +226,7 @@ fn tui_event_message_complete_serialization() {
             nous_id: "syn".to_owned(),
             session_id: "s1".to_owned(),
             model: Some("claude".to_owned()),
+            provider: Some("anthropic-cloud".to_owned()),
             tool_calls: 2,
             input_tokens: 100,
             output_tokens: 50,
@@ -230,6 +241,7 @@ fn tui_event_message_complete_serialization() {
     let outcome = &json["outcome"];
     assert_eq!(outcome["text"], "response");
     assert_eq!(outcome["nous_id"], "syn");
+    assert_eq!(outcome["provider"], "anthropic-cloud");
     assert_eq!(outcome["tool_calls"], 2);
     assert_eq!(outcome["cache_read_tokens"], 10);
     assert_eq!(outcome["cache_write_tokens"], 20);
@@ -293,6 +305,7 @@ fn message_complete_is_terminal_after_error_event() {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
         },
+        provider: None,
         request_id: Some("req-123".to_owned()),
     };
 
@@ -316,6 +329,7 @@ fn sse_event_message_complete_includes_cache_tokens() {
             cache_read_tokens: 1000,
             cache_write_tokens: 200,
         },
+        provider: None,
         request_id: None,
     };
     let json = serde_json::to_value(&event).unwrap();

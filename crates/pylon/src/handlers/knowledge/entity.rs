@@ -14,6 +14,15 @@ use crate::state::KnowledgeState;
 use super::FlagSeverity;
 use super::{EntityMemory, FlagRequest, MergeRequest};
 
+fn require_unscoped_entity_write(claims: &Claims) -> Result<(), ApiError> {
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot mutate aggregate knowledge entities",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(feature = "knowledge-store")]
 use mneme::engine::DataValue;
 #[cfg(feature = "knowledge-store")]
@@ -181,13 +190,18 @@ fn list_entity_pending_merge_links(
 )]
 pub async fn get_entity(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<mneme::knowledge::Entity>, ApiError> {
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
+    let policy = super::KnowledgeReadPolicy::from_claims(&claims)?;
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = &policy;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let entity = get_entity_from_store(store, &id)?;
+        policy.require_entity(&state, &id)?;
         return Ok(Json(entity));
     }
 
@@ -215,15 +229,20 @@ pub async fn get_entity(
 )]
 pub async fn entity_memories(
     State(state): State<KnowledgeState>,
+    claims: Claims,
     Path(id): Path<String>,
 ) -> Result<Json<Vec<EntityMemory>>, ApiError> {
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
+    let policy = super::KnowledgeReadPolicy::from_claims(&claims)?;
+    #[cfg(not(feature = "knowledge-store"))]
+    let _ = &policy;
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
         let _entity = get_entity_from_store(store, &id)?;
+        policy.require_entity(&state, &id)?;
         let script = r"
-            ?[fact_id, content, nous_id, source_session_id, confidence, recorded_at] :=
+            ?[fact_id, content, nous_id, source_session_id, confidence, recorded_at, visibility] :=
                 *fact_entities{fact_id, entity_id},
                 entity_id = $entity_id,
                 *facts{
@@ -233,6 +252,7 @@ pub async fn entity_memories(
                     confidence,
                     source_session_id,
                     recorded_at,
+                    visibility,
                     is_forgotten,
                     superseded_by
                 },
@@ -251,10 +271,20 @@ pub async fn entity_memories(
 
         let mut memories = Vec::with_capacity(rows.row_count());
         for row in 0..rows.row_count() {
+            let nous_id = rows.get_string(row, "nous_id").unwrap_or_default();
+            let visibility =
+                super::visibility_from_row(rows.get_string(row, "visibility").as_deref());
+            if !policy.allows_fact_parts(&nous_id, visibility) {
+                continue;
+            }
             memories.push(EntityMemory {
                 id: rows.get_string(row, "fact_id").unwrap_or_default(),
                 content: rows.get_string(row, "content").unwrap_or_default(),
-                agent: rows.get_string(row, "nous_id"),
+                agent: if nous_id.is_empty() {
+                    None
+                } else {
+                    Some(nous_id)
+                },
                 session: rows.get_string(row, "source_session_id"),
                 confidence: rows.get_f64(row, "confidence").unwrap_or_default(),
                 created_at: rows.get_string(row, "recorded_at"),
@@ -293,6 +323,7 @@ pub async fn merge_entities(
     Json(body): Json<MergeRequest>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
+    require_unscoped_entity_write(&claims)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &body;
 
@@ -354,6 +385,7 @@ pub async fn flag_entity(
     Json(body): Json<FlagRequest>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
+    require_unscoped_entity_write(&claims)?;
 
     if body.reason.trim().is_empty() {
         return Err(ApiError::BadRequest {
@@ -414,6 +446,7 @@ pub async fn delete_entity(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     require_role(&claims, Role::Operator)?;
+    require_unscoped_entity_write(&claims)?;
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &id;
 

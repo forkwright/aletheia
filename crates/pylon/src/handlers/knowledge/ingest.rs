@@ -7,7 +7,7 @@ use tracing::instrument;
 use symbolon::types::Role;
 
 use crate::error::{ApiError, BadRequestSnafu, ValidationFailedSnafu};
-use crate::extract::{Claims, require_role};
+use crate::extract::{Claims, require_nous_access, require_role};
 use crate::state::KnowledgeState;
 
 #[path = "ingest_dto.rs"]
@@ -49,28 +49,25 @@ pub async fn ingest(
 ) -> Result<Json<IngestResponse>, ApiError> {
     require_role(&claims, Role::Operator)?;
 
-    if body.content.is_empty() {
+    let IngestRequest {
+        content,
+        format,
+        nous_id,
+    } = body;
+
+    if content.is_empty() {
         return Err(BadRequestSnafu {
             message: "content must not be empty".to_owned(),
         }
         .build());
     }
 
-    if body.nous_id.is_empty() {
-        return Err(ValidationFailedSnafu {
-            errors: vec![crate::error::FieldError {
-                field: "nous_id".to_owned(),
-                code: "required".to_owned(),
-                message: "must not be empty".to_owned(),
-            }],
-        }
-        .build());
-    }
-
-    let format = parse_ingest_format(&body.format)?;
+    let target_nous_id = resolve_ingest_target(&claims, &nous_id)?;
+    let format = parse_ingest_format(&format)?;
     let config = mneme::ingest::IngestConfig::default();
+    let target_for_ingest = target_nous_id.clone();
     let facts = tokio::task::spawn_blocking(move || {
-        mneme::ingest::ingest_content(&body.content, format, &config, &body.nous_id)
+        mneme::ingest::ingest_content(&content, format, &config, &target_for_ingest)
     })
     .await
     .map_err(|e| ApiError::Internal {
@@ -81,6 +78,9 @@ pub async fn ingest(
         message: e.to_string(),
         location: snafu::location!(),
     })?;
+    super::require_facts_nous_access(&claims, facts.iter())?;
+    super::require_facts_match_target(facts.iter(), &target_nous_id)?;
+
     #[cfg(not(feature = "knowledge-store"))]
     let _ = &facts;
 
@@ -111,6 +111,8 @@ pub async fn ingest(
         }
 
         tracing::info!(
+            operator = %claims.sub,
+            target_nous_id = %target_nous_id,
             inserted = result.inserted,
             skipped = result.skipped,
             "knowledge ingestion complete"
@@ -125,6 +127,26 @@ pub async fn ingest(
         message: "knowledge store not available".to_owned(),
         location: snafu::location!(),
     })
+}
+
+fn resolve_ingest_target(claims: &Claims, requested_nous_id: &str) -> Result<String, ApiError> {
+    let requested_nous_id = requested_nous_id.trim();
+    if requested_nous_id.is_empty() {
+        if let Some(scoped_nous_id) = &claims.nous_id {
+            return Ok(scoped_nous_id.clone());
+        }
+        return Err(ValidationFailedSnafu {
+            errors: vec![crate::error::FieldError {
+                field: "nous_id".to_owned(),
+                code: "required".to_owned(),
+                message: "must not be empty".to_owned(),
+            }],
+        }
+        .build());
+    }
+
+    require_nous_access(claims, requested_nous_id)?;
+    Ok(requested_nous_id.to_owned())
 }
 
 /// Insert `facts` into `store`, returning the response summary plus the

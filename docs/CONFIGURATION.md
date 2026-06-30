@@ -38,6 +38,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [credential](#credential)
 - [providers](#providers)
 - [provider capability matrix](#provider-capability-matrix)
+- [providerBehavior](#providerbehavior)
 - [data](#data)
 - [nous_behavior](#nous_behavior)
 - [daemon_behavior](#daemon_behavior)
@@ -61,8 +62,8 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model.primary` | string | `"claude-sonnet-4-6"` | Primary model ID |
-| `model.fallbacks` | string[] | `[]` | Fallback model IDs, tried in order |
+| `model.primary` | string or object | `"claude-sonnet-4-6"` | Primary model route. String form is a model ID; object form is `{ model, provider }` to pin a named provider. |
+| `model.fallbacks` | array of strings or objects | `[]` | Fallback model routes, tried in order. String entries use model-only routing; object entries can pin a named provider. |
 | `contextTokens` | u32 | `200000` | Context window budget (tokens) |
 | `maxOutputTokens` | u32 | `16384` | Max tokens per response |
 | `bootstrapMaxTokens` | u32 | `40000` | Max tokens for bootstrap context injection |
@@ -124,6 +125,18 @@ primary = "claude-opus-4-6"
 fallbacks = ["claude-sonnet-4-6"]
 ```
 
+Model routes also accept an object form when a specific provider instance should
+serve the request:
+
+```toml
+[agents.list.model]
+primary = { model = "claude-sonnet-4-6", provider = "local-proxy" }
+fallbacks = [
+  { model = "claude-sonnet-4-6", provider = "anthropic-cloud" },
+  "claude-haiku-4-6",
+]
+```
+
 `toolGroups` is fail-closed. If the field is absent, set to `"deny"`, or set
 to `[]`, the agent receives no grouped tools. Use `"all"` only for an explicit
 admin/full-access policy; use an array for normal role-limited access.
@@ -132,6 +145,32 @@ admin/full-access policy; use an array for normal role-limited access.
 `recall`, `history`, `guard`, `execute`, `finalize`, `reflection`, and
 `total`). These are runtime pipeline limits; top-level actor and manager
 timeouts live under `nous_behavior`.
+
+## tools
+
+Runtime-bridged external tools are declared under `[tools.required]` and
+`[tools.optional]`. For `type = "http"`, `groups` uses the same labels as
+`agents.defaults.toolGroups`, and `reversibility` is one of
+`"fully_reversible"`, `"reversible"`, `"partially_reversible"`, or
+`"irreversible"`. Required HTTP tools must declare both fields. Optional HTTP
+tools may omit them; the runtime defaults to `groups = ["mcp"]` and
+`reversibility = "irreversible"`, which requires approval.
+
+```toml
+[tools.required.search]
+type = "http"
+endpoint = "https://tools.example/search"
+method = "get"
+groups = ["read", "mcp"]
+reversibility = "fully_reversible"
+
+[tools.optional.webhook]
+type = "http"
+endpoint = "https://tools.example/webhook"
+method = "post"
+groups = ["mcp"]
+reversibility = "irreversible"
+```
 
 ---
 
@@ -186,13 +225,17 @@ secrets; the runtime config API redacts it.
 Per-IP rate limiting for API endpoints. Requests that exceed the limit receive
 `429 Too Many Requests` with a `Retry-After` header indicating when to retry.
 
-The client IP is read from `X-Forwarded-For` or `X-Real-IP` (reverse proxy)
-and falls back to `127.0.0.1` for direct connections.
+By default the client IP is the peer TCP socket address and proxy headers are
+ignored, so untrusted clients cannot spoof their IP. When pylon runs behind a
+trusted reverse proxy that strips or overwrites `X-Forwarded-For` and
+`X-Real-IP` from untrusted clients, set `trust_proxy = true` to use those
+headers for rate-limit keying.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Whether rate limiting is active |
 | `requests_per_minute` | u32 | `60` | Maximum requests per minute per client IP |
+| `trust_proxy` | bool | `false` | Trust proxy headers for client IP (only behind a trusted reverse proxy) |
 
 ```toml
 [gateway]
@@ -354,9 +397,11 @@ Embedding provider for the recall pipeline (vector search over knowledge).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | string | `"mock"` | Provider type: `"mock"`, `"candle"`, `"openai-compat"`, `"voyage"` |
+| `provider` | string | `"candle"` | Provider type: `"candle"`, `"openai-compat"`, `"voyage"` |
 | `model` | string | -- | Provider-specific model name |
 | `dimension` | usize | `384` | Output vector dimension (must match HNSW index) |
+| `baseUrl` | string | -- | Required for `"openai-compat"`; optional override for `"voyage"` |
+| `apiKeyEnv` | string | -- | Environment variable containing the provider API key |
 
 ```toml
 [embedding]
@@ -365,7 +410,13 @@ model = "BAAI/bge-small-en-v1.5"
 dimension = 384
 ```
 
-The `mock` provider returns zero vectors, useful for development without loading ML models.
+`openai-compat` and `voyage` require a binary built with the `openai-embed`
+feature. `openai-compat` also requires `baseUrl`, for example
+`"http://127.0.0.1:5005/v1"`. `voyage` requires a credential from `apiKeyEnv`
+or `VOYAGE_API_KEY`; its endpoint defaults to `https://api.voyageai.com/v1`.
+
+The internal `mock` provider is compiled only for test-support builds. Normal
+runtime binaries reject `provider = "mock"` with an actionable config error.
 
 ---
 
@@ -375,30 +426,33 @@ Controls how the server discovers LLM API credentials. The `source` field select
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, then env vars, then Claude Code credentials), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer Claude Code credentials) |
-| `claude_code_credentials` | string | `null` | Override path to the Claude Code credentials file. Resolves to `~/.claude/.credentials.json` when unset. |
+| `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, keyring when enabled, then env vars), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer explicitly configured Claude Code credentials) |
+| `claudeCodeCredentials` | string | `null` | Explicit path to the Claude Code credentials file. `CLAUDE_CODE_CREDS` takes precedence. When unset, Claude Code credentials are not probed. |
 
 ```toml
 [credential]
 source = "auto"
-claude_code_credentials = "~/.claude/.credentials.json"
+claudeCodeCredentials = "~/.claude/.credentials.json"
 ```
 
 ---
 
 ## providers
 
-`[[providers]]` entries declare available LLM providers declaratively. The runtime registers them in list order; model routing picks the first provider that advertises the requested model. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and registered in `crates/aletheia/src/runtime/setup.rs`.
+`[[providers]]` entries declare available LLM providers declaratively. When the list is non-empty, it is the complete provider-ordering contract: the runtime registers entries in list order, and model-only routing picks the first provider that advertises the requested model at the highest match specificity. A model route with `provider = "<name>"` targets that exact provider instance and fails if the provider is missing or does not advertise the requested model. When no provider is pinned, equal-specificity duplicate model claims fall back to the list order. When the list is empty, startup preserves the legacy single-Anthropic fallback from the top-level credential chain. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and planned in `crates/aletheia/src/runtime/setup.rs`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | yes | Operator-facing label, must be unique across the list. |
 | `providerType` | string | yes | `anthropic`, `openai`, `openai-compatible`, `claude-code`, or `codex-oauth`. |
-| `apiFamily` | string | no | For `openai`: `responses` (default) or `chat-completions`. For `openai-compatible`: `chat-completions` (default). Ignored for other kinds. |
-| `baseUrl` | string | no | HTTP base URL. Required for `openai-compatible`; optional for `anthropic` (defaults to `https://api.anthropic.com`); ignored for subprocess adapters. |
-| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. |
+| `apiFamily` | string | no | For `openai`: `responses` (default) or `chat-completions`. For `openai-compatible`: `chat-completions` (default). Not valid for subprocess adapters. |
+| `baseUrl` | string | no | HTTP base URL. Required for `openai-compatible`; optional for `anthropic` (defaults to `https://api.anthropic.com`). Not valid for subprocess adapters. |
+| `apiKeyEnv` | string | no | Environment variable holding the API key. Read at startup via `std::env::var`. Optional for loopback providers without auth. For `anthropic`, omit this to use the top-level credential chain at the entry's declared position. Not valid for subprocess adapters. |
+| `binary` | string | no | Subprocess provider CLI path (`claude` or `codex`). Omit to resolve from `PATH` and well-known user install directories. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
+| `workdir` | string | no | Subprocess working directory. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
+| `timeoutSecs` | integer | no | Subprocess wall-clock timeout, 5-3600 seconds. Only valid for `claude-code` and `codex-oauth`; defaults to 300 seconds. |
 | `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
-| `models` | string[] | no | Model identifiers this provider advertises. The first provider in list order claiming a model wins. |
+| `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity model-only matches use list order. Provider-pinned routes require the named provider to advertise the model. |
 
 ```toml
 [[providers]]
@@ -422,19 +476,72 @@ providerType = "openai-compatible"
 baseUrl = "http://127.0.0.1:8088/v1"
 deploymentTarget = "embedded"
 models = ["llama3.1-70b"]
+
+[[providers]]
+name = "cc-seat"
+providerType = "claude-code"
+binary = "bin/claude"
+workdir = "workspaces/default"
+timeoutSecs = 300
+deploymentTarget = "cloud"
+models = ["cc/claude-sonnet-4-6"]
 ```
+
+Subprocess provider entries are declarative routing entries. They are different
+from `[credential].source = "claude-code"`, which only controls the credential
+chain used by an Anthropic HTTP provider. They are also different from Cargo
+feature flags: `cc-provider` and `codex-provider` compile the adapters into the
+binary, but a non-empty `[[providers]]` list must still declare the subprocess
+provider explicitly. If a config declares a subprocess provider that the binary
+was not built to support, startup and `aletheia check-config` fail with an
+actionable provider error.
 
 ### Provider capability matrix
 
 | Provider path | Credential source | Simple chat + recall | Aletheia organon tool-loop | Notes |
 |---|---|---|---|---|
-| Native Anthropic provider | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` | yes | yes | Messages API. Declarative `anthropic` entries require `apiKeyEnv` to avoid double-registering the first-party provider. |
+| Native Anthropic provider | `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` | yes | yes | Messages API. Declarative `anthropic` entries without `apiKeyEnv` use the top-level credential chain at their list position; entries with `apiKeyEnv` use that static-key endpoint. |
 | OpenAI cloud (`openai`) | `OPENAI_API_KEY` | yes | yes | First-party `/v1/responses` by default; set `apiFamily = "chat-completions"` for the legacy endpoint. |
 | OpenAI-compatible local/third-party (`openai-compatible`) | Optional (`apiKeyEnv`) | yes | yes | `/v1/chat/completions` wire format for llama.cpp, ollama, vllm, and compatible proxies. |
-| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); registered via the credential chain, declarative entries are accepted but skipped by the registry to avoid duplicates. |
-| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); registered via the credential chain, declarative entries are accepted but do not change startup behavior. |
+| Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); declarative entries use `name`, `models`, `binary`, `workdir`, and `timeoutSecs`. |
+| Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); declarative entries use `name`, `models`, `binary`, `workdir`, and `timeoutSecs`. |
 
-The `aletheia add-nous` scaffolding command validates only `anthropic` and `openai` provider strings and checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Other provider kinds must be configured manually in `aletheia.toml`.
+The `aletheia add-nous` scaffolding command supports `anthropic` and `openai` provider strings. It checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` and creates or updates the matching `[[providers]]` entry when the generated agent needs declarative provider routing. Other provider kinds must be configured manually in `aletheia.toml`.
+
+---
+
+## providerBehavior
+
+Provider behavior controls timeouts, stream retry defaults, adaptive concurrency,
+and opt-in per-turn complexity routing.
+
+Complexity routing is disabled by default. When `complexityRoutingEnabled` is
+`false`, `complexityLowThreshold` and `complexityHighThreshold` are retained in
+the effective runtime config and status output for diagnostics, but they do not
+change the selected turn model. When enabled, scores at or below the low
+threshold route to the fast tier and scores at or above the high threshold route
+to the high-capability tier.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `nonStreamingTimeoutSecs` | u64 | `120` | Timeout in seconds for non-streaming LLM requests. |
+| `sseDefaultRetryMs` | u64 | `1000` | Default retry delay from SSE stream retry fields. |
+| `concurrencyEwmaAlpha` | f64 | `0.8` | EWMA smoothing factor for adaptive provider concurrency. |
+| `concurrencyLatencyThresholdSecs` | f64 | `30.0` | Latency threshold above which adaptive concurrency is reduced. |
+| `complexityRoutingEnabled` | bool | `false` | Enable per-turn complexity scoring to choose tier models. |
+| `complexityLowThreshold` | u32 | `30` | Enabled-routing score at or below which the fast tier is selected. |
+| `complexityHighThreshold` | u32 | `70` | Enabled-routing score at or above which the high-capability tier is selected. |
+
+```toml
+[providerBehavior]
+complexityRoutingEnabled = true
+complexityLowThreshold = 25
+complexityHighThreshold = 80
+```
+
+The effective thresholds for a running agent are exposed by
+`GET /api/v1/nous/{id}` as `complexity_no_llm_threshold`,
+`complexity_low_threshold`, and `complexity_high_threshold`.
 
 ---
 
@@ -512,6 +619,7 @@ Daemon watchdog, prosoche anomaly detection, and runner output summarization.
 | `watchdog_backoff_base_secs` | u64 | `2` | Base watchdog restart backoff |
 | `watchdog_backoff_cap_secs` | u64 | `300` | Maximum watchdog restart backoff |
 | `prosoche_anomaly_sample_size` | usize | `15` | Samples used for prosoche anomaly detection |
+| `runner_output_mode` | enum | `"summary"` | Task output policy: `"summary"` emits metadata only, `"brief"` adds a redacted excerpt, `"full"` emits full redacted output and should only be used for private diagnostics |
 | `runner_output_brief_head_lines` | usize | `5` | Head lines kept in task output summaries |
 | `runner_output_brief_tail_lines` | usize | `3` | Tail lines kept in task output summaries |
 
@@ -616,7 +724,8 @@ shows them as `planned`/`unavailable` (`crates/aletheia/src/commands/maintenance
 
 - `embedding-refresh` — requires an `EmbeddingProvider` bridge.
 - `knowledge-gc` / edge pruning — no concrete store contract.
-- `index-maintenance` — no concrete store contract.
+- `index-maintenance` — rebuilds the gnosis code-graph index on a fixed hourly
+  interval when `knowledge_maintenance.enabled = true`.
 - `graph-health-check` — no concrete diagnostic contract.
 
 Implemented knowledge-maintenance tasks also return `unavailable` when the
@@ -849,6 +958,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_ENV_FILE` | `shared/bin/start.sh` | Env file sourced at startup. Defaults to `$ALETHEIA_ROOT/config/env`, the canonical env-file owner. |
 | `ALETHEIA_NOUS` | shared tools (`shared/bin/scholar`) | Nous workspace directory. Defaults to `$ALETHEIA_ROOT/nous`. |
 | `ALETHEIA_CREDS` | `shared/bin/start.sh`, `credential-refresh`, `scripts/health-monitor.sh` | Anthropic credential JSON path. Defaults to `$ALETHEIA_ROOT/config/credentials/anthropic.json`. |
+| `CLAUDE_CODE_CREDS` | credential provider chain, `shared/bin/start.sh`, `credential-refresh` | Opt-in path to a Claude Code credentials JSON file. Takes precedence over `credential.claudeCodeCredentials`; unset means the runtime does not probe Claude Code's private default store. |
 | `ALETHEIA_MEMORY_USER` | `shared/bin/start.sh` | Identity attributed to stored memory. Defaults to the current `whoami`. |
 | `ALETHEIA_SHARED` | instance nous templates | Shared-resources root referenced by agent templates (`$ALETHEIA_SHARED/config/...`). |
 | `ALETHEIA_THEKE` | instance nous templates | Vault (theke) root referenced by agent templates (`$ALETHEIA_THEKE/<domain>`). |
@@ -866,7 +976,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `SEMANTIC_SCHOLAR_API_KEY` | `shared/bin/scholar` | Optional Semantic Scholar API key for higher rate limits. |
 | `ANTHROPIC_API_KEY` | credential provider chain | Anthropic API key. May live in `config/env` or the process environment. |
 | `ANTHROPIC_AUTH_TOKEN` | credential provider chain | Anthropic OAuth token, usually maintained by credential tooling. |
-| `VOYAGE_API_KEY` | embedding provider | Optional remote embedding provider credential. Local candle embeddings do not need it. |
+| `VOYAGE_API_KEY` | embedding provider | Voyage embedding credential when `embedding.apiKeyEnv` is unset. Local candle embeddings do not need it. |
 | `BRAVE_SEARCH_API_KEY` | shared research tools | Optional Brave Search credential for `web_search` and operator-installed tools. |
 | `PERPLEXITY_API_KEY` | shared research tools | Optional Perplexity credential for `shared/bin/pplx`. |
 | `RESEARCH_EMAIL` | shared research tools | Contact email used in scholarly API user agents. |
@@ -884,6 +994,8 @@ prefix and double underscores for nesting:
 | `gateway.port` | `ALETHEIA_GATEWAY__PORT` |
 | `gateway.bind` | `ALETHEIA_GATEWAY__BIND` |
 | `embedding.provider` | `ALETHEIA_EMBEDDING__PROVIDER` |
+| `embedding.baseUrl` | `ALETHEIA_EMBEDDING__BASEURL` |
+| `embedding.apiKeyEnv` | `ALETHEIA_EMBEDDING__APIKEYENV` |
 | `channels.signal.enabled` | `ALETHEIA_CHANNELS__SIGNAL__ENABLED` |
 
 Provider credentials such as `ANTHROPIC_API_KEY` are read by the credential
@@ -896,6 +1008,7 @@ These are read only by maintainer and CI tooling, not by the public runtime path
 | Variable | Owner | Meaning |
 |----------|-------|---------|
 | `ALETHEIA_AUTH_TOKEN` | `scripts/smoke-proskenion.sh` | Bearer token written to the temporary desktop config during the smoke check. |
+| `ALETHEIA_EVAL_COVERAGE_POLICY` | `aletheia eval` | Eval coverage gate. Defaults to `ci`; use `smoke-dev` only for local exploratory runs that may intentionally tolerate skips. |
 | `ALETHEIA_EVAL_TOKEN` | `scripts/benchmark.sh` | Auth token used when the benchmarked instance requires authentication. |
 | `ALETHEIA_SMOKE_PORT` | `scripts/smoke-proskenion.sh` | Port for the smoke check's local server. Defaults to a random port in `39000-40999`. |
 | `ALETHEIA_SMOKE_KEEP_LOGS` | `scripts/smoke-proskenion.sh` | Set to `1` to retain temporary smoke logs on success. |

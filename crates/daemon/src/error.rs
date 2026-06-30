@@ -114,6 +114,18 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Source traversal was refused by backup safety policy.
+    #[snafu(display(
+        "backup traversal refused {reason}: {relative_path} under source root {source_root}"
+    ))]
+    BackupTraversalPolicy {
+        reason: String,
+        relative_path: String,
+        source_root: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result` with daemon's [`Error`] type.

@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use koina::id::{NousId, SessionId};
+use koina::ulid::Ulid;
 use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
 use tokio::sync::mpsc;
@@ -33,6 +34,7 @@ pub(super) struct StreamingTurnRequest {
     // kanon:ignore RUST/plain-string-secret — session_key is a HashMap lookup identifier (not an auth secret)
     pub session_key: String,
     pub session_id: Option<String>,
+    pub turn_id: Option<Ulid>,
     pub content: String,
     pub stream_tx: mpsc::Sender<TurnStreamEvent>,
     /// Operator approval gate for reversibility-class tool calls (#3958).
@@ -98,12 +100,11 @@ impl NousActor {
             self.record_drift_metrics(session_key, turn_result);
 
             // WHY: record the turn outcome in the empirical router so both the
-            // dispatch path (energeia) and the interactive path benefit from the
-            // same success-rate signal. The success heuristic is: the turn
-            // completed without degradation (i.e. the LLM was reachable and
-            // returned a result). A more precise signal (e.g. user acceptance)
-            // requires a future hook.
-            self.record_router_outcome(content, turn_result);
+            // dispatch path (energeia) and the interactive path benefit from
+            // real success-rate signals. Success is derived from interactive
+            // outcome dimensions (tool errors, guard/brake intervention,
+            // budget) rather than the coarse "non-degraded == success" proxy.
+            self.record_router_outcome(session_key, content, turn_result);
 
             self.maybe_spawn_extraction(
                 content,
@@ -118,7 +119,7 @@ impl NousActor {
             self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &source_session_id);
             self.maybe_spawn_distillation(session_key).await;
             #[cfg(feature = "knowledge-store")]
-            self.maybe_run_auto_dream();
+            self.maybe_run_auto_dream().await;
         }
 
         self.active_session = None;
@@ -181,6 +182,7 @@ impl NousActor {
         let StreamingTurnRequest {
             session_key,
             session_id,
+            turn_id,
             content,
             stream_tx,
             approval_gate,
@@ -199,6 +201,7 @@ impl NousActor {
             .execute_streaming_turn_with_panic_boundary(
                 &session_key,
                 session_id.as_deref(),
+                turn_id,
                 &content,
                 &stream_tx,
                 approval_gate,
@@ -238,6 +241,7 @@ impl NousActor {
             .spawn_pipeline_task(
                 session_key,
                 session_id,
+                None,
                 content,
                 None,
                 None,
@@ -257,6 +261,7 @@ impl NousActor {
         &mut self,
         session_key: &str,
         session_id: Option<&str>,
+        turn_id: Option<Ulid>,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -267,6 +272,7 @@ impl NousActor {
             .spawn_pipeline_task(
                 session_key,
                 session_id,
+                turn_id,
                 content,
                 Some(stream_tx.clone()),
                 approval_gate,
@@ -301,6 +307,7 @@ impl NousActor {
         &mut self,
         session_key: &str,
         db_session_id: Option<&str>,
+        turn_id: Option<Ulid>,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -318,7 +325,7 @@ impl NousActor {
                 SessionState::new(id, session_key.to_owned(), &self.config)
             });
 
-        session.next_turn();
+        session.next_turn_with_id(turn_id);
 
         // WHY: surprise is episodic — advance the running session prior with
         // this turn's content here, on the authoritative SessionState, so the
@@ -401,9 +408,7 @@ impl NousActor {
             workspace: self.config.workspace.clone(),
             allowed_roots: self.config.allowed_roots.clone(),
             services: self.services.tool_services.clone(),
-            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
-                std::collections::HashSet::new(),
-            )),
+            active_tools: Arc::clone(&session.active_tools),
             tool_config: self.services.tool_config.clone(),
         };
 
@@ -462,6 +467,10 @@ impl NousActor {
         let vector_search = self.stores.vector_search.clone();
         #[cfg(feature = "knowledge-store")]
         let text_search = self.stores.text_search.clone();
+        #[cfg(feature = "knowledge-store")]
+        let knowledge_store = self.stores.knowledge_store.clone();
+        #[cfg(not(feature = "knowledge-store"))]
+        let knowledge_store = None;
         let session_store = self.stores.session_store.clone();
         // WHY: share the bootstrap file cache across the spawned pipeline task
         // so cached workspace reads are reused turn-to-turn (#3388).
@@ -495,6 +504,7 @@ impl NousActor {
                                     embedding_provider.as_deref(),
                                     vector_search.as_deref(),
                                     text_search_ref,
+                                    knowledge_store,
                                     session_store.as_deref(),
                                     extra_bootstrap,
                                     Some(stx),
@@ -518,6 +528,7 @@ impl NousActor {
                                     embedding_provider.as_deref(),
                                     vector_search.as_deref(),
                                     text_search_ref,
+                                    knowledge_store,
                                     session_store.as_deref(),
                                     extra_bootstrap,
                                     None,

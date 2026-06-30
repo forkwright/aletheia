@@ -38,6 +38,20 @@ pub(crate) enum BackupAction {
         /// Path to the backup directory
         path: PathBuf,
     },
+    /// Restore a whole-instance backup set into the current instance
+    Restore {
+        /// Backup set path or name under instance/data/backups/instance
+        backup_set: PathBuf,
+        /// Restore while the service may be live. Unsafe: writers can race restore.
+        #[arg(long)]
+        force_live: bool,
+        /// Restore only matching manifest entry names, backup paths, or target paths
+        #[arg(long = "include")]
+        include: Vec<String>,
+        /// Exclude matching manifest entry names, backup paths, or target paths
+        #[arg(long = "exclude")]
+        exclude: Vec<String>,
+    },
 }
 
 #[expect(
@@ -73,6 +87,15 @@ pub(crate) struct BackupArgs {
 pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<()> {
     match &args.action {
         Some(BackupAction::Verify { path }) => run_verify(path),
+        Some(BackupAction::Restore {
+            backup_set,
+            force_live,
+            include,
+            exclude,
+        }) => {
+            let oikos = super::resolve_oikos(instance_root)?;
+            run_restore(&oikos, backup_set, *force_live, include, exclude)
+        }
         Some(BackupAction::List { json }) => {
             let oikos = super::resolve_oikos(instance_root)?;
             let keep = configured_retention_count(&oikos);
@@ -135,13 +158,6 @@ fn run_verify(path: &Path) -> Result<()> {
     run_verify_fjall(path)
 }
 
-pub(crate) fn verify_backup(path: &Path) -> Result<oikonomos::maintenance::FjallVerifyResult> {
-    use oikonomos::maintenance::FjallBackup;
-
-    FjallBackup::verify_store(path)
-        .map_err(|e| crate::error::Error::msg(format!("failed to verify backup: {e}")))
-}
-
 fn run_verify_instance(path: &Path) -> Result<()> {
     use oikonomos::maintenance::InstanceBackup;
 
@@ -197,6 +213,60 @@ fn run_verify_fjall(path: &Path) -> Result<()> {
 
     println!("Status: PASS");
     Ok(())
+}
+
+fn run_restore(
+    oikos: &taxis::oikos::Oikos,
+    backup_set: &Path,
+    force_live: bool,
+    include: &[String],
+    exclude: &[String],
+) -> Result<()> {
+    use oikonomos::maintenance::{InstanceBackup, InstanceBackupConfig, InstanceRestoreOptions};
+
+    let backup_path = resolve_backup_set_path(oikos, backup_set);
+    let config = InstanceBackupConfig {
+        enabled: true,
+        instance_root: oikos.root().to_path_buf(),
+        backup_dir: oikos.backups().join("instance"),
+        interval_hours: 24,
+        retention_count: configured_retention_count(oikos),
+        additional_workspaces: Vec::new(),
+    };
+    let manager = InstanceBackup::new(config);
+    let report = manager
+        .restore_backup(&InstanceRestoreOptions {
+            backup_path: backup_path.clone(),
+            force_live,
+            include: include.to_vec(),
+            exclude: exclude.to_vec(),
+        })
+        .map_err(|e| crate::error::Error::msg(format!("failed to restore backup set: {e}")))?;
+
+    println!(
+        "Whole-instance backup restored: {} ({} entries, {} bytes, {} live entries replaced)",
+        report.backup_path.display(),
+        report.entries_restored,
+        report.bytes_copied,
+        report.live_entries_replaced,
+    );
+    if report.entries_skipped > 0 {
+        println!("Skipped {} manifest entries.", report.entries_skipped);
+    }
+    Ok(())
+}
+
+fn resolve_backup_set_path(oikos: &taxis::oikos::Oikos, backup_set: &Path) -> PathBuf {
+    if backup_set.exists() {
+        return backup_set.to_path_buf();
+    }
+    if backup_set.components().count() == 1 {
+        let named = oikos.backups().join("instance").join(backup_set);
+        if named.exists() {
+            return named;
+        }
+    }
+    backup_set.to_path_buf()
 }
 
 // ── Instance backup operations ─────────────────────────────────────────────
@@ -381,6 +451,7 @@ mod tests {
                 agent_id: None,
                 workspace_source_class: None,
                 exclusion_reason: None,
+                sha256: None,
             }],
             optional_stores: Vec::new(),
             workspace_omissions: Vec::new(),
@@ -389,6 +460,7 @@ mod tests {
             snapshot_protocol_version: String::from("aletheia-instance-backup-v1-snapshot-1"),
             quiesced: false,
             store_generations: std::collections::HashMap::new(),
+            symlink_policy: String::from("reject"),
         };
         write_text_file(
             &backup_path.join("manifest.json"),

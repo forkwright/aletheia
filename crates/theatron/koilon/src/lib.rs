@@ -185,6 +185,15 @@ async fn run_loop(mut terminal: DefaultTerminal, app: &mut App) -> error::Result
                 Event::Stream(stream_event)
             }
 
+            Some(result) = app.background_tasks.join_next() => {
+                match result {
+                    Ok(msg) => Event::Background(msg),
+                    Err(e) => Event::Background(crate::msg::Msg::ShowError(
+                        format!("Background task failed: {e}")
+                    )),
+                }
+            }
+
             _ = tick.tick() => {
                 Event::Tick
             }

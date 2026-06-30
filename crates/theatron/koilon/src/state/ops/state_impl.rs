@@ -1,13 +1,17 @@
 //! OpsState struct definition and methods.
 
+use std::collections::HashMap;
+
 use crate::id::ToolId;
 
 use super::OpsDiffEntry;
 use super::helpers::{
-    categorize_tool, extract_primary_arg, parse_diff_from_output, truncate_error,
+    extract_primary_arg, parse_diff_from_output, truncate_error, unverified_tool_metadata,
 };
 use super::summary::OpsSummary;
-use super::types::{FocusedPane, OpsAutoShow, OpsThinkingBlock, OpsToolCall, OpsToolStatus};
+use super::types::{
+    FocusedPane, OpsAutoShow, OpsThinkingBlock, OpsToolCall, OpsToolStatus, ToolMetadata,
+};
 
 /// Full state for the operations pane.
 #[derive(Debug, Clone)]
@@ -37,6 +41,8 @@ pub struct OpsState {
     pub(crate) turn_started_at: Option<std::time::Instant>,
     /// When true, show all tool calls including successful ones. Default: false (show only errors).
     pub(crate) show_all_successful: bool,
+    /// Server-owned tool metadata keyed by sanitized tool name.
+    pub(crate) tool_metadata: HashMap<String, ToolMetadata>,
 }
 
 impl Default for OpsState {
@@ -57,6 +63,7 @@ impl Default for OpsState {
             summary: OpsSummary::default(),
             turn_started_at: None,
             show_all_successful: false,
+            tool_metadata: HashMap::new(),
         }
     }
 }
@@ -101,6 +108,11 @@ impl OpsState {
     /// Toggle visibility of all successful tool calls.
     pub(crate) fn toggle_show_all(&mut self) {
         self.show_all_successful = !self.show_all_successful;
+    }
+
+    /// Replace the server-owned metadata cache used for future tool calls.
+    pub(crate) fn replace_tool_metadata(&mut self, metadata: HashMap<String, ToolMetadata>) {
+        self.tool_metadata = metadata;
     }
 
     /// Switch keyboard focus between panes.
@@ -196,7 +208,12 @@ impl OpsState {
         let primary_arg = input_json
             .as_deref()
             .and_then(|j| extract_primary_arg(j, &name));
-        let category = categorize_tool(&name);
+        let metadata = self
+            .tool_metadata
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| unverified_tool_metadata(&name));
+        let category = metadata.category;
         self.tool_calls.push(OpsToolCall {
             name,
             tool_id,
@@ -208,6 +225,8 @@ impl OpsState {
             primary_arg,
             error_message: None,
             category,
+            risk: metadata.risk,
+            metadata,
             started_at: std::time::Instant::now(),
         });
     }

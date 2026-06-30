@@ -151,6 +151,63 @@ fn mock_text_response(text: &str) -> CompletionResponse {
     }
 }
 
+struct RecordingSequenceProvider {
+    responses: std::sync::Mutex<Vec<CompletionResponse>>,
+    request_tool_names: std::sync::Mutex<Vec<Vec<String>>>,
+}
+
+struct ArcRecordingSequenceProvider(Arc<RecordingSequenceProvider>);
+
+impl RecordingSequenceProvider {
+    fn new(responses: Vec<CompletionResponse>) -> Self {
+        Self {
+            responses: std::sync::Mutex::new(responses),
+            request_tool_names: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn request_tool_names(&self) -> Vec<Vec<String>> {
+        self.request_tool_names
+            .lock()
+            .expect("request tool names lock")
+            .clone()
+    }
+}
+
+impl LlmProvider for ArcRecordingSequenceProvider {
+    fn complete<'a>(
+        &'a self,
+        request: &'a CompletionRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = hermeneus::error::Result<CompletionResponse>>
+                + Send
+                + 'a,
+        >,
+    > {
+        let tool_names = request.tools.iter().map(|tool| tool.name.clone()).collect();
+        self.0
+            .request_tool_names
+            .lock()
+            .expect("request tool names lock")
+            .push(tool_names);
+        let response = self.0.responses.lock().expect("responses lock").remove(0);
+        Box::pin(async move { Ok(response) })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["test-model"]
+    }
+
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "WHY(#4715): LlmProvider trait requires returning &str"
+    )]
+    fn name(&self) -> &str {
+        "recording-sequence"
+    }
+}
+
 fn tool_response_provider(tool_name: &str, input: serde_json::Value) -> Arc<ProviderRegistry> {
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
@@ -275,6 +332,117 @@ async fn run_tool_with_limits(
     join.await.expect("actor join");
     drop(dir);
     result
+}
+
+#[tokio::test]
+async fn enable_tool_activation_persists_to_next_turn() {
+    let provider = Arc::new(RecordingSequenceProvider::new(vec![
+        mock_tool_response(
+            "enable_tool",
+            "tool-enable",
+            serde_json::json!({ "name": "web_fetch" }),
+        ),
+        mock_text_response("enabled"),
+        mock_text_response("still enabled"),
+    ]));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcRecordingSequenceProvider(Arc::clone(
+        &provider,
+    ))));
+
+    let (dir, oikos) = test_oikos();
+    let config = test_config_with_tools(oikos.nous_dir("test-agent"));
+    let (handle, join, _active_turn, _turn_started_at_ms) = spawn(
+        config,
+        PipelineConfig::default(),
+        Arc::new(providers),
+        builtins_registry(),
+        oikos,
+        None,
+        None,
+        None,
+        #[cfg(feature = "knowledge-store")]
+        None,
+        None,
+        Vec::new(),
+        None,
+        None,
+        CancellationToken::new(),
+        taxis::config::NousBehaviorConfig::default(),
+        Arc::new(taxis::config::ToolLimitsConfig::default()),
+        None,
+        None,
+        None,
+    );
+
+    // WHY(#4828): enable_tool is approval-required. This test verifies that an
+    // operator-approved activation persists, not that no-gate turns may mutate
+    // the active tool surface.
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(64);
+    let (decision_tx, decision_rx) = tokio::sync::mpsc::channel(8);
+    let gate = crate::approval::ApprovalGate::new(decision_rx, std::time::Duration::from_secs(10));
+    let approver = tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            if let crate::stream::TurnStreamEvent::ToolApprovalRequired { tool_id, .. } = event {
+                let _ = decision_tx
+                    .send(crate::approval::ApprovalDecision {
+                        tool_id,
+                        choice: crate::approval::ApprovalChoice::Approved,
+                    })
+                    .await;
+            }
+        }
+    });
+    let first = handle
+        .send_turn_streaming_with_approval(
+            "main",
+            None,
+            "enable web fetch",
+            event_tx,
+            Some(gate),
+            std::time::Duration::from_secs(30),
+            CancellationToken::new(),
+        )
+        .await
+        .expect("first turn");
+    approver.abort();
+    let activation = first.tool_calls.first().expect("enable_tool call");
+    assert_eq!(activation.name, "enable_tool");
+    assert!(
+        !activation.is_error,
+        "enable_tool should activate web_fetch: {activation:?}"
+    );
+
+    let second = handle
+        .send_turn("main", "continue with the same session")
+        .await
+        .expect("second turn");
+    assert_eq!(second.content, "still enabled");
+
+    handle.shutdown().await.expect("shutdown");
+    join.await.expect("actor join");
+    drop(dir);
+
+    let requests = provider.request_tool_names();
+    let [first_request, refreshed_first_turn, second_turn, ..] = requests.as_slice() else {
+        panic!("expected at least three LLM requests, got {requests:?}");
+    };
+    assert!(
+        !has_tool(first_request, "web_fetch"),
+        "web_fetch should start inactive: {first_request:?}"
+    );
+    assert!(
+        has_tool(refreshed_first_turn, "web_fetch"),
+        "web_fetch should be active after enable_tool in the first turn: {refreshed_first_turn:?}"
+    );
+    assert!(
+        has_tool(second_turn, "web_fetch"),
+        "web_fetch activation must persist into the next turn: {second_turn:?}"
+    );
+}
+
+fn has_tool(names: &[String], expected: &str) -> bool {
+    names.iter().any(|name| name == expected)
 }
 
 #[tokio::test]
@@ -660,6 +828,7 @@ fn make_turn_result(
         degraded: None,
         reasoning: String::new(),
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     }
 }
@@ -680,6 +849,7 @@ fn make_tool_call_with_result(
         result: result.map(str::to_owned),
         is_error,
         duration_ms: 10,
+        approval: None,
         receipt: None,
     }
 }

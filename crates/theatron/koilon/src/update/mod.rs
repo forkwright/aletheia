@@ -127,6 +127,16 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::OverlayDown => overlay::handle_overlay_down(app),
         Msg::OverlaySelect => overlay::handle_overlay_select(app).await,
         Msg::ToolApprovalAlwaysAllow => overlay::handle_tool_approval_always_allow(app),
+        Msg::ToolApprovalCompleted {
+            action_id,
+            turn_id,
+            tool_id,
+            tool_name,
+            action,
+            result,
+        } => overlay::handle_tool_approval_completed(
+            app, action_id, turn_id, tool_id, tool_name, action, result,
+        ),
         Msg::OverlayFilter(c) => {
             if matches!(
                 &app.layout.overlay,
@@ -275,8 +285,14 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::CostLoaded { daily_total_cents } => api::handle_cost_loaded(app, daily_total_cents),
         // NOTE: auth/API errors handled upstream, no local state update needed
         Msg::AuthResult(_) | Msg::ApiError(_) => {}
-        Msg::NewSession => api::handle_new_session(app).await,
-        Msg::SessionPickerNewSession => api::handle_session_picker_new(app).await,
+        Msg::NewSession => api::handle_new_session(app),
+        Msg::SessionPickerNewSession => api::handle_session_picker_new(app),
+        Msg::NewSessionCompleted {
+            action_id,
+            nous_id,
+            session_key,
+            result,
+        } => api::handle_new_session_completed(app, action_id, nous_id, session_key, result),
         Msg::SessionPickerArchive => api::handle_session_picker_archive(app).await,
         Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
         Msg::SettingsSaved => settings::handle_saved(app),

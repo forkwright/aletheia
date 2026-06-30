@@ -18,25 +18,25 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
-use hermeneus::fallback::FallbackConfig;
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{DeploymentTarget, ProviderRegistry};
 use hermeneus::types::{
-    CompletionRequest, Content, ContentBlock, Message, Role, ServerToolDefinition, StopReason,
-    ThinkingConfig, ToolResultContent,
+    CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
+    ServerToolDefinition, StopReason, ThinkingConfig,
 };
 use organon::registry::ToolRegistry;
 use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
 
 use self::dispatch::{
-    DispatchResult, ToolDispatchPolicy, build_messages, classify_signals, dispatch_tools,
+    DispatchResult, ToolDispatchItem, ToolDispatchPolicy, build_messages, classify_signals,
+    dispatch_tool_items,
 };
 use self::resolve::{
     process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
-    resolve_turn_model,
+    resolve_turn_model, resolve_turn_route,
 };
 use crate::approval::ApprovalGate;
-use crate::config::NousConfig;
+use crate::config::{ModelProviderRoute, NousConfig};
 use crate::error;
 use crate::hooks::registry::HookRegistry;
 use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResultRecord};
@@ -49,6 +49,68 @@ use crate::stream::TurnStreamEvent;
 const STOP_REASON_MAX_TOOL_ITERATIONS: &str = "max_tool_iterations";
 const STOP_REASON_CLIENT_DISCONNECT: &str = "client_disconnect";
 const STOP_REASON_TURN_TIMEOUT: &str = "turn_timeout";
+
+struct LlmCompletion {
+    response: CompletionResponse,
+    model: String,
+    provider: String,
+}
+
+type LlmCallFuture<'a> = std::pin::Pin<
+    Box<dyn std::future::Future<Output = hermeneus::error::Result<LlmCompletion>> + Send + 'a>,
+>;
+
+/// Resolve the routed model for a turn using the same approximation as execute.
+pub(crate) fn routed_model_for_turn(
+    ctx: &PipelineContext,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    tools: &ToolRegistry,
+) -> String {
+    let tool_count = config.tool_allowlist.as_ref().map_or_else(
+        || tools.definitions_for_policy(&config.tool_groups).len(),
+        Vec::len,
+    );
+    resolve_turn_model(ctx, config, providers, tool_count)
+}
+
+fn fallback_config(config: &NousConfig) -> Option<model_fallback::RegistryFallbackConfig> {
+    if config.generation.fallback_models.is_empty() {
+        return None;
+    }
+
+    let fallback_routes = config
+        .generation
+        .fallback_models
+        .iter()
+        .enumerate()
+        .map(|(index, model)| ModelProviderRoute {
+            model: model.clone(),
+            provider: config
+                .generation
+                .fallback_providers
+                .get(index)
+                .and_then(Clone::clone),
+        })
+        .collect();
+
+    Some(model_fallback::RegistryFallbackConfig {
+        fallback_routes,
+        retries_before_fallback: config.generation.retries_before_fallback,
+    })
+}
+
+fn provider_deployment_target(providers: &ProviderRegistry, provider_name: &str) -> String {
+    providers
+        .providers()
+        .into_iter()
+        .find(|provider| provider.name() == provider_name)
+        .map_or(DeploymentTarget::Cloud, |provider| {
+            provider.deployment_target()
+        })
+        .as_str()
+        .to_owned()
+}
 
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
@@ -79,7 +141,7 @@ pub async fn execute(
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     execute_with_deadline(
-        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None,
+        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None, None,
     )
     .await
 }
@@ -90,7 +152,7 @@ pub async fn execute(
 )]
 #[expect(
     clippy::too_many_arguments,
-    reason = "shared execute core accepts optional streaming and approval adapters"
+    reason = "shared execute core accepts optional streaming, approval, deadline, and audit adapters"
 )]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub(crate) async fn execute_with_deadline(
@@ -104,6 +166,7 @@ pub(crate) async fn execute_with_deadline(
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
     deadline: Option<Instant>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
     // WHY: resolve the turn model once — complexity routing pins a tier for
     // the whole turn so tool-iteration continuations don't oscillate between
@@ -115,7 +178,9 @@ pub(crate) async fn execute_with_deadline(
         || tools.definitions_for_policy(&config.tool_groups).len(),
         Vec::len,
     );
-    let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
+    let turn_route = resolve_turn_route(ctx, config, providers, tool_count);
+    let mut model_used = turn_route.model.clone();
+    let mut provider_used = None;
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -144,10 +209,7 @@ pub(crate) async fn execute_with_deadline(
             enabled: true,
             budget_tokens: config.generation.thinking_budget,
         });
-    let fallback_config = (!config.generation.fallback_models.is_empty()).then(|| FallbackConfig {
-        fallback_models: config.generation.fallback_models.clone(),
-        retries_before_fallback: config.generation.retries_before_fallback,
-    });
+    let fallback_config = fallback_config(config);
 
     // WHY: hoist the config server_tools Vec into an Arc once per turn so the
     // per-iteration backward-compat clone becomes a pointer bump (#3389).
@@ -196,7 +258,7 @@ pub(crate) async fn execute_with_deadline(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        tool_surface_hashes.insert(surface_hash);
+        tool_surface_hashes.insert(surface_hash.clone());
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
@@ -210,7 +272,7 @@ pub(crate) async fn execute_with_deadline(
         // has refcount > 1 and the underlying Vec is shared across turns, so
         // only this leaf clone pays. Still cheaper than rebuilding every turn.
         let request = CompletionRequest {
-            model: turn_model.clone(),
+            model: turn_route.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
@@ -237,17 +299,37 @@ pub(crate) async fn execute_with_deadline(
             // tokio::time::timeout accepts a single future type regardless of whether
             // the fallback path (async fn → impl Future) or the direct path
             // (provider.complete → Pin<Box<dyn Future>>) is taken.
-            let llm_fut: std::pin::Pin<Box<dyn std::future::Future<Output = _> + Send + '_>> =
-                if let Some(fallback_config) = &fallback_config {
-                    Box::pin(model_fallback::complete_with_registry_fallback(
+            let llm_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
+                let request_ref = &request;
+                let route_ref = &turn_route;
+                Box::pin(async move {
+                    let completion = model_fallback::complete_with_registry_fallback(
                         providers,
-                        &request,
+                        request_ref,
+                        route_ref,
                         fallback_config,
-                    ))
-                } else {
-                    let provider = resolve_provider_checked(providers, &turn_model)?;
-                    provider.complete(&request)
-                };
+                    )
+                    .await?;
+                    Ok(LlmCompletion {
+                        response: completion.response,
+                        model: completion.model,
+                        provider: completion.provider,
+                    })
+                })
+            } else {
+                let provider = resolve_provider_checked(providers, &turn_route)?;
+                let requested_model = turn_route.model.clone();
+                let provider_name = provider.name().to_owned();
+                let request_ref = &request;
+                Box::pin(async move {
+                    let response = provider.complete(request_ref).await?;
+                    Ok(LlmCompletion {
+                        response,
+                        model: requested_model,
+                        provider: provider_name,
+                    })
+                })
+            };
             if let Some(deadline) = deadline {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
@@ -268,22 +350,53 @@ pub(crate) async fn execute_with_deadline(
         };
 
         let response = match completion {
-            Ok(resp) => {
+            Ok(completion) => {
                 if fallback_config.is_none() {
-                    let provider = resolve_provider_checked(providers, &turn_model)?;
-                    providers.record_success(provider.name());
+                    providers.record_success(&completion.provider);
                 }
-                resp
+                model_used = completion.model;
+                provider_used = Some(completion.provider);
+                completion.response
             }
             Err(e) => {
                 if fallback_config.is_none()
-                    && let Ok(provider) = resolve_provider_checked(providers, &turn_model)
+                    && let Ok(provider) = resolve_provider_checked(providers, &turn_route)
                 {
                     providers.record_error(provider.name(), &e);
                 }
                 return Err(e).context(error::LlmSnafu);
             }
         };
+
+        // WHY(#4831): log one prompt audit record per outbound CompletionRequest
+        // using the actual model/provider/route and effective tool surface for
+        // this iteration, not the top-level config defaults.
+        if let Some(log) = audit_log {
+            let provider_name = provider_used
+                .as_deref()
+                .map_or_else(|| "unknown".to_owned(), ToOwned::to_owned);
+            let deployment_target = provider_deployment_target(providers, &provider_name);
+            let mut audit_request = request.clone();
+            audit_request.model.clone_from(&model_used);
+            let record = crate::audit::build_audit_record_for_request(
+                crate::audit::PromptAuditRequestRecordInput {
+                    ctx,
+                    session,
+                    model: &model_used,
+                    request: &audit_request,
+                    provider: &provider_name,
+                    deployment_target: &deployment_target,
+                    surface_hash: &surface_hash,
+                    options: log.record_options(),
+                    chars_per_token: usize::try_from(config.generation.chars_per_token.max(1))
+                        .unwrap_or(4),
+                    request_id: Some(koina::ulid::Ulid::new().to_string()),
+                },
+            );
+            if let Err(e) = log.log_request(&record) {
+                tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
+            }
+        }
 
         let hermeneus::types::CompletionResponse {
             content: response_content,
@@ -352,51 +465,49 @@ pub(crate) async fn execute_with_deadline(
             cache_breakpoint: false,
         });
 
-        let effective_tool_uses = dispatch_policy.filter_tool_uses(
-            extracted.tool_uses,
-            tools,
-            tool_ctx,
-            stream_tx,
-            &mut all_tool_calls,
-            &mut denied_blocks,
-        );
+        let dispatch_items = dispatch_policy.filter_tool_uses(extracted.tool_uses, tools);
 
         // WHY: before_tool hooks run after allowlist filtering but before dispatch,
         // so hooks can deny individual tool calls based on budget/scope/policy.
-        let effective_tool_uses = if let Some(hook_registry) = hooks {
+        let dispatch_items = if let Some(hook_registry) = hooks {
             let hook_ctx = ToolHookContext {
                 nous_id: &session.nous_id,
                 turn_usage: &total_usage,
                 tool_allowlist: config.tool_allowlist.as_deref(),
             };
-            let mut hook_allowed = Vec::with_capacity(effective_tool_uses.len());
-            for (id, name, input) in effective_tool_uses {
-                match hook_registry
-                    .run_before_tool(&name, &input, &hook_ctx)
-                    .await
-                {
-                    ToolHookResult::Allow => hook_allowed.push((id, name, input)),
-                    ToolHookResult::Deny { reason } => {
-                        warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
-                        denied_blocks.push(ContentBlock::ToolResult {
-                            tool_use_id: id,
-                            content: ToolResultContent::Text(reason),
-                            is_error: Some(true),
-                        });
+            let mut hook_filtered = Vec::with_capacity(dispatch_items.len());
+            for item in dispatch_items {
+                match item {
+                    ToolDispatchItem::Ready { id, name, input } => {
+                        match hook_registry
+                            .run_before_tool(&name, &input, &hook_ctx)
+                            .await
+                        {
+                            ToolHookResult::Allow => {
+                                hook_filtered.push(ToolDispatchItem::ready(id, name, input));
+                            }
+                            ToolHookResult::Deny { reason } => {
+                                warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
+                                hook_filtered.push(ToolDispatchItem::denied_by_hook(
+                                    id, name, input, reason,
+                                ));
+                            }
+                        }
                     }
+                    ToolDispatchItem::Denied { .. } => hook_filtered.push(item),
                 }
             }
-            hook_allowed
+            hook_filtered
         } else {
-            effective_tool_uses
+            dispatch_items
         };
 
         let all_tool_calls_before = all_tool_calls.len();
         let DispatchResult {
             mut blocks,
             loop_warning,
-        } = dispatch_tools(
-            &effective_tool_uses,
+        } = dispatch_tool_items(
+            &dispatch_items,
             tools,
             tool_ctx,
             &mut loop_detector,
@@ -415,13 +526,19 @@ pub(crate) async fn execute_with_deadline(
         // Hooks run in priority order but do not short-circuit (tool is already executed).
         if let Some(hook_registry) = hooks {
             for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
+                if !dispatch_items
+                    .iter()
+                    .any(|item| item.ready_input_for(&tool_call.id).is_some())
+                {
+                    continue;
+                }
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
                     tool_name: &tool_call.name,
-                    tool_input: effective_tool_uses
+                    tool_input: dispatch_items
                         .iter()
-                        .find(|(_, name, _)| name == &tool_call.name)
-                        .map_or(&serde_json::Value::Null, |(_, _, input)| input),
+                        .find_map(|item| item.ready_input_for(&tool_call.id))
+                        .unwrap_or(&serde_json::Value::Null),
                     tool_result: ToolResultRecord::from_option(tool_call.result.as_deref()),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
@@ -470,7 +587,8 @@ pub(crate) async fn execute_with_deadline(
             all_tool_calls,
             total_usage,
             reasoning_parts.join("\n"),
-            turn_model,
+            model_used,
+            provider_used,
             tool_surface_hashes.into_iter().collect(),
         ));
     }
@@ -498,7 +616,8 @@ pub(crate) async fn execute_with_deadline(
         stop_reason: final_stop_reason,
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
-        model_used: turn_model,
+        model_used,
+        provider_used,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }
@@ -515,6 +634,7 @@ fn build_turn_budget_exceeded_result(
     usage: TurnUsage,
     reasoning: String,
     model_used: String,
+    provider_used: Option<String>,
     tool_surface_hashes: Vec<String>,
 ) -> TurnResult {
     let banner =
@@ -531,6 +651,7 @@ fn build_turn_budget_exceeded_result(
         }),
         reasoning,
         model_used,
+        provider_used,
         tool_surface_hashes,
     }
 }
@@ -611,6 +732,7 @@ pub async fn execute_streaming(
         approval_gate,
         hooks,
         None,
+        None,
     )
     .await
 }
@@ -619,14 +741,15 @@ pub async fn execute_streaming(
 ///
 /// The deadline is observed at safe boundaries (between LLM calls and after
 /// tool results have been processed) and around the LLM call itself, so tool
-/// side effects are never orphaned by a timeout.
+/// side effects are never orphaned by a timeout. Accepts an optional prompt
+/// audit log so the pipeline can record one row per outbound request.
 #[expect(
     clippy::too_many_lines,
     reason = "streaming agent loop parallels execute() with provider callback — one cohesive operation"
 )]
 #[expect(
     clippy::too_many_arguments,
-    reason = "streaming execute requires provider, tools, context, stream channel, hooks, and deadline"
+    reason = "streaming execute requires provider, tools, context, stream channel, hooks, deadline, and audit log"
 )]
 #[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
 pub(crate) async fn execute_streaming_with_deadline(
@@ -640,17 +763,21 @@ pub(crate) async fn execute_streaming_with_deadline(
     approval_gate: Option<&ApprovalGate>,
     hooks: Option<&HookRegistry>,
     deadline: Option<Instant>,
+    audit_log: Option<&crate::audit::PromptAuditLog>,
 ) -> error::Result<TurnResult> {
-    // WHY: resolve the streaming turn model once — same reasoning as execute().
-    // Must come before find_streaming_provider so the streaming provider is
-    // looked up for the actual model the turn will use.
+    // WHY: resolve the streaming turn route once — same reasoning as execute().
+    // Must come before checking streaming support so an explicit provider pin
+    // cannot be bypassed by another model-only streaming provider.
     let tool_count = config.tool_allowlist.as_ref().map_or_else(
         || tools.definitions_for_policy(&config.tool_groups).len(),
         Vec::len,
     );
-    let turn_model = resolve_turn_model(ctx, config, providers, tool_count);
+    let turn_route = resolve_turn_route(ctx, config, providers, tool_count);
+    let mut model_used = turn_route.model.clone();
+    let mut provider_used = None;
 
-    let Some(streaming_provider) = providers.find_streaming_provider(&turn_model) else {
+    let streaming_provider = resolve_provider_checked(providers, &turn_route)?;
+    if !streaming_provider.supports_streaming() {
         return execute_with_deadline(
             ctx,
             session,
@@ -662,11 +789,10 @@ pub(crate) async fn execute_streaming_with_deadline(
             approval_gate,
             hooks,
             deadline,
+            audit_log,
         )
         .await;
-    };
-
-    let provider = resolve_provider_checked(providers, &turn_model)?;
+    }
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -696,6 +822,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             enabled: true,
             budget_tokens: config.generation.thinking_budget,
         });
+    let fallback_config = fallback_config(config);
 
     // WHY: hoist config server_tools Vec into Arc once per turn (#3389).
     let config_server_tools: Arc<Vec<ServerToolDefinition>> = Arc::new(config.server_tools.clone());
@@ -742,13 +869,13 @@ pub(crate) async fn execute_streaming_with_deadline(
             }),
         );
         let surface_hash = surface.hash().as_str().to_owned();
-        tool_surface_hashes.insert(surface_hash);
+        tool_surface_hashes.insert(surface_hash.clone());
         let _surface_binding = tool_ctx.bind_effective_surface(Arc::clone(&surface));
         let dispatch_policy = ToolDispatchPolicy::new(surface);
         let tool_defs = dispatch_policy.tool_definitions();
 
         let request = CompletionRequest {
-            model: turn_model.clone(),
+            model: turn_route.model.clone(),
             system: ctx.system_prompt.clone(),
             messages: messages.clone(),
             max_tokens: config.generation.max_output_tokens,
@@ -775,16 +902,51 @@ pub(crate) async fn execute_streaming_with_deadline(
                 record_llm_stream_send_error(nous_id.as_ref(), &event, &e);
             }
         };
-        let streaming_fut = streaming_provider.complete_streaming(&request, &mut on_event);
-        let response = if let Some(deadline) = deadline {
+
+        // WHY(#4713): box both streaming branches so the deadline wrapper sees
+        // one future type whether the configured fallback chain is active or not.
+        let request_ref = &request;
+        let streaming_fut: LlmCallFuture<'_> = if let Some(fallback_config) = &fallback_config {
+            let route_ref = &turn_route;
+            Box::pin(async move {
+                let completion = model_fallback::complete_streaming_with_registry_fallback(
+                    providers,
+                    request_ref,
+                    route_ref,
+                    fallback_config,
+                    &mut on_event,
+                )
+                .await?;
+                Ok(LlmCompletion {
+                    response: completion.response,
+                    model: completion.model,
+                    provider: completion.provider,
+                })
+            })
+        } else {
+            let requested_model = turn_route.model.clone();
+            let provider_name = streaming_provider.name().to_owned();
+            Box::pin(async move {
+                let response = streaming_provider
+                    .complete_streaming(request_ref, &mut on_event)
+                    .await?;
+                Ok(LlmCompletion {
+                    response,
+                    model: requested_model,
+                    provider: provider_name,
+                })
+            })
+        };
+
+        let completion = if let Some(deadline) = deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 turn_budget_exceeded = true;
                 STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
                 break;
             }
-            if let Ok(resp) = tokio::time::timeout(remaining, streaming_fut).await {
-                resp
+            if let Ok(result) = tokio::time::timeout(remaining, streaming_fut).await {
+                result
             } else {
                 turn_budget_exceeded = true;
                 STOP_REASON_TURN_TIMEOUT.clone_into(&mut final_stop_reason);
@@ -793,13 +955,49 @@ pub(crate) async fn execute_streaming_with_deadline(
         } else {
             streaming_fut.await
         };
-        let response = match response {
-            Ok(resp) => {
-                providers.record_success(provider.name());
-                resp
+        let response = match completion {
+            Ok(completion) => {
+                if fallback_config.is_none() {
+                    providers.record_success(&completion.provider);
+                }
+                model_used = completion.model;
+                provider_used = Some(completion.provider);
+
+                // WHY(#4831): log the outbound streaming request with actual route/surface.
+                if let Some(log) = audit_log {
+                    let provider_name = provider_used
+                        .as_deref()
+                        .map_or_else(|| "unknown".to_owned(), ToOwned::to_owned);
+                    let deployment_target = provider_deployment_target(providers, &provider_name);
+                    let mut audit_request = request.clone();
+                    audit_request.model.clone_from(&model_used);
+                    let record = crate::audit::build_audit_record_for_request(
+                        crate::audit::PromptAuditRequestRecordInput {
+                            ctx,
+                            session,
+                            model: &model_used,
+                            request: &audit_request,
+                            provider: &provider_name,
+                            deployment_target: &deployment_target,
+                            surface_hash: &surface_hash,
+                            options: log.record_options(),
+                            chars_per_token: usize::try_from(
+                                config.generation.chars_per_token.max(1),
+                            )
+                            .unwrap_or(4),
+                            request_id: Some(koina::ulid::Ulid::new().to_string()),
+                        },
+                    );
+                    if let Err(e) = log.log_request(&record) {
+                        tracing::warn!(error = %e, "prompt audit log write failed — continuing turn");
+                    }
+                }
+                completion.response
             }
             Err(e) => {
-                providers.record_error(provider.name(), &e);
+                if fallback_config.is_none() {
+                    providers.record_error(streaming_provider.name(), &e);
+                }
                 return Err(e).context(error::LlmSnafu);
             }
         };
@@ -882,50 +1080,48 @@ pub(crate) async fn execute_streaming_with_deadline(
             cache_breakpoint: false,
         });
 
-        let effective_tool_uses = dispatch_policy.filter_tool_uses(
-            extracted.tool_uses,
-            tools,
-            tool_ctx,
-            Some(stream_tx),
-            &mut all_tool_calls,
-            &mut denied_blocks,
-        );
+        let dispatch_items = dispatch_policy.filter_tool_uses(extracted.tool_uses, tools);
 
         // WHY: before_tool hooks filter tool calls before streaming dispatch
-        let effective_tool_uses = if let Some(hook_registry) = hooks {
+        let dispatch_items = if let Some(hook_registry) = hooks {
             let hook_ctx = ToolHookContext {
                 nous_id: &session.nous_id,
                 turn_usage: &total_usage,
                 tool_allowlist: config.tool_allowlist.as_deref(),
             };
-            let mut hook_allowed = Vec::with_capacity(effective_tool_uses.len());
-            for (id, name, input) in effective_tool_uses {
-                match hook_registry
-                    .run_before_tool(&name, &input, &hook_ctx)
-                    .await
-                {
-                    ToolHookResult::Allow => hook_allowed.push((id, name, input)),
-                    ToolHookResult::Deny { reason } => {
-                        warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
-                        denied_blocks.push(ContentBlock::ToolResult {
-                            tool_use_id: id,
-                            content: ToolResultContent::Text(reason),
-                            is_error: Some(true),
-                        });
+            let mut hook_filtered = Vec::with_capacity(dispatch_items.len());
+            for item in dispatch_items {
+                match item {
+                    ToolDispatchItem::Ready { id, name, input } => {
+                        match hook_registry
+                            .run_before_tool(&name, &input, &hook_ctx)
+                            .await
+                        {
+                            ToolHookResult::Allow => {
+                                hook_filtered.push(ToolDispatchItem::ready(id, name, input));
+                            }
+                            ToolHookResult::Deny { reason } => {
+                                warn!(tool = %name, tool_use_id = %id, reason = %reason, "tool call denied by hook");
+                                hook_filtered.push(ToolDispatchItem::denied_by_hook(
+                                    id, name, input, reason,
+                                ));
+                            }
+                        }
                     }
+                    ToolDispatchItem::Denied { .. } => hook_filtered.push(item),
                 }
             }
-            hook_allowed
+            hook_filtered
         } else {
-            effective_tool_uses
+            dispatch_items
         };
 
         let all_tool_calls_before = all_tool_calls.len();
         let DispatchResult {
             mut blocks,
             loop_warning,
-        } = dispatch_tools(
-            &effective_tool_uses,
+        } = dispatch_tool_items(
+            &dispatch_items,
             tools,
             tool_ctx,
             &mut loop_detector,
@@ -944,13 +1140,19 @@ pub(crate) async fn execute_streaming_with_deadline(
         // Hooks run in priority order but do not short-circuit (tool is already executed).
         if let Some(hook_registry) = hooks {
             for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
+                if !dispatch_items
+                    .iter()
+                    .any(|item| item.ready_input_for(&tool_call.id).is_some())
+                {
+                    continue;
+                }
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
                     tool_name: &tool_call.name,
-                    tool_input: effective_tool_uses
+                    tool_input: dispatch_items
                         .iter()
-                        .find(|(_, name, _)| name == &tool_call.name)
-                        .map_or(&serde_json::Value::Null, |(_, _, input)| input),
+                        .find_map(|item| item.ready_input_for(&tool_call.id))
+                        .unwrap_or(&serde_json::Value::Null),
                     tool_result: ToolResultRecord::from_option(tool_call.result.as_deref()),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,
@@ -999,7 +1201,8 @@ pub(crate) async fn execute_streaming_with_deadline(
             all_tool_calls,
             total_usage,
             reasoning_parts.join("\n"),
-            turn_model,
+            model_used,
+            provider_used,
             tool_surface_hashes.into_iter().collect(),
         ));
     }
@@ -1027,7 +1230,8 @@ pub(crate) async fn execute_streaming_with_deadline(
         stop_reason: final_stop_reason,
         degraded: None,
         reasoning: reasoning_parts.join("\n"),
-        model_used: turn_model,
+        model_used,
+        provider_used,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
     })
 }

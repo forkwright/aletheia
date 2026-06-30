@@ -24,6 +24,7 @@ fn tool_def_serde_roundtrip() {
                     description: "File path".to_owned(),
                     enum_values: None,
                     default: None,
+                    ..Default::default()
                 },
             )]),
             required: vec!["path".to_owned()],
@@ -59,6 +60,7 @@ fn input_schema_to_json_schema() {
                     description: "File path".to_owned(),
                     enum_values: None,
                     default: None,
+                    ..Default::default()
                 },
             ),
             (
@@ -68,6 +70,7 @@ fn input_schema_to_json_schema() {
                     description: "Maximum lines".to_owned(),
                     enum_values: None,
                     default: Some(serde_json::json!(100)),
+                    ..Default::default()
                 },
             ),
         ]),
@@ -234,6 +237,7 @@ fn test_input_schema_enum_values_serialized_in_json_schema() {
                 description: "Type".to_owned(),
                 enum_values: Some(vec!["a".to_owned(), "b".to_owned()]),
                 default: None,
+                ..Default::default()
             },
         )]),
         required: vec![],

@@ -4,9 +4,11 @@ use std::process::Command;
 use tracing::warn;
 
 use mneme::workspace::ProjectId;
-use nous::config::{NousConfig, PipelineConfig};
+use nous::config::{HookConfig, NousConfig, NousLimits, PipelineConfig};
 use organon::types::{ToolGroupId, ToolGroupPolicy};
-use taxis::config::{AgentToolGroupPolicy, AletheiaConfig, resolve_nous};
+use taxis::config::{
+    AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, ResolvedNousConfig, resolve_nous,
+};
 use taxis::oikos::Oikos;
 
 fn resolve_config_path(oikos: &Oikos, configured: &str) -> PathBuf {
@@ -78,16 +80,71 @@ fn resolve_tool_group_policy(agent_id: &str, policy: &AgentToolGroupPolicy) -> T
     }
 }
 
-pub(super) fn build_nous_runtime_config(
+fn build_nous_limits(
+    max_tool_iterations: u32,
+    max_tool_result_bytes: u32,
+    behavior: &AgentBehaviorDefaults,
     config: &AletheiaConfig,
-    oikos: &Oikos,
+) -> NousLimits {
+    NousLimits {
+        max_tool_iterations,
+        loop_detection_threshold: behavior.safety_loop_detection_threshold,
+        consecutive_error_threshold: behavior.safety_consecutive_error_threshold,
+        loop_max_warnings: behavior.safety_loop_max_warnings,
+        session_token_cap: behavior.safety_session_token_cap,
+        max_tool_result_bytes,
+        max_consecutive_tool_only_iterations: behavior.safety_max_consecutive_tool_only_iterations,
+        consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
+        loop_detection_window: config.nous_behavior.loop_detection_window,
+        cycle_detection_max_len: config.nous_behavior.cycle_detection_max_len,
+    }
+}
+
+fn build_hook_config(behavior: &AgentBehaviorDefaults) -> HookConfig {
+    HookConfig {
+        cost_control_enabled: behavior.hooks_cost_control_enabled,
+        turn_token_budget: behavior.hooks_turn_token_budget,
+        scope_enforcement_enabled: behavior.hooks_scope_enforcement_enabled,
+        correction_hooks_enabled: behavior.hooks_correction_hooks_enabled,
+        audit_logging_enabled: behavior.hooks_audit_logging_enabled,
+        ..HookConfig::default()
+    }
+}
+
+fn build_complexity_config(
+    config: &AletheiaConfig,
+    sonnet_model: &str,
+) -> hermeneus::complexity::ComplexityConfig {
+    hermeneus::complexity::ComplexityConfig {
+        enabled: config.provider_behavior.complexity_routing_enabled,
+        low_threshold: config.provider_behavior.complexity_low_threshold,
+        high_threshold: config.provider_behavior.complexity_high_threshold,
+        sonnet_model: sonnet_model.to_owned(),
+        ..hermeneus::complexity::ComplexityConfig::default()
+    }
+}
+
+struct PackRuntimeOverlay {
+    domains: Vec<String>,
+    model: String,
+    provider: Option<String>,
+    max_tool_iterations: u32,
+}
+
+fn apply_pack_overlays(
+    resolved: &ResolvedNousConfig,
     packs: &[thesauros::loader::LoadedPack],
     agent_id: &str,
-) -> (NousConfig, PipelineConfig) {
-    let resolved = resolve_nous(config, agent_id);
+) -> PackRuntimeOverlay {
     let mut domains = resolved.domains.clone();
     let mut model = resolved.model.primary.to_string();
+    let mut provider = resolved
+        .model
+        .primary_provider
+        .as_deref()
+        .map(ToString::to_string);
     let mut max_tool_iterations = resolved.capabilities.max_tool_iterations;
+
     for pack in packs {
         for domain in pack.domains_for_agent(agent_id) {
             if !domains.contains(&domain) {
@@ -96,6 +153,7 @@ pub(super) fn build_nous_runtime_config(
         }
         if let Some(pack_model) = pack.model_for_agent(agent_id) {
             model = pack_model;
+            provider = None;
         }
         if let Some(agency) = pack.agency_for_agent(agent_id) {
             max_tool_iterations = match agency.as_str() {
@@ -115,18 +173,44 @@ pub(super) fn build_nous_runtime_config(
         }
     }
 
+    PackRuntimeOverlay {
+        domains,
+        model,
+        provider,
+        max_tool_iterations,
+    }
+}
+
+pub(super) fn build_nous_runtime_config(
+    config: &AletheiaConfig,
+    oikos: &Oikos,
+    packs: &[thesauros::loader::LoadedPack],
+    agent_id: &str,
+) -> (NousConfig, PipelineConfig) {
+    let resolved = resolve_nous(config, agent_id);
+    let overlay = apply_pack_overlays(&resolved, packs, agent_id);
+
     let workspace = resolve_config_path(oikos, &resolved.workspace);
     let project_id = detect_project_id(&workspace);
+    let behavior = resolved.behavior.clone();
+    let complexity = build_complexity_config(config, &overlay.model);
     let mut nous_config = NousConfig {
         id: resolved.id,
         name: resolved.name,
         generation: nous::config::NousGenerationConfig {
-            model,
+            model: overlay.model,
+            provider: overlay.provider,
             fallback_models: resolved
                 .model
                 .fallbacks
                 .iter()
                 .map(ToString::to_string)
+                .collect(),
+            fallback_providers: resolved
+                .model
+                .fallback_providers
+                .iter()
+                .map(|provider| provider.as_deref().map(ToString::to_string))
                 .collect(),
             retries_before_fallback: resolved.model.retries_before_fallback,
             context_window: resolved.limits.context_tokens,
@@ -136,23 +220,17 @@ pub(super) fn build_nous_runtime_config(
             thinking_budget: resolved.limits.thinking_budget,
             chars_per_token: resolved.limits.chars_per_token,
             prosoche_model: resolved.prosoche_model.to_string(),
-            complexity: hermeneus::complexity::ComplexityConfig::default(),
+            complexity,
             extraction_model: None,
             distillation_model: None,
         },
-        limits: nous::config::NousLimits {
-            max_tool_iterations,
-            loop_detection_threshold: 3,
-            consecutive_error_threshold: 4,
-            loop_max_warnings: 2,
-            session_token_cap: 500_000,
-            max_tool_result_bytes: resolved.limits.max_tool_result_bytes,
-            max_consecutive_tool_only_iterations: 3,
-            consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
-            loop_detection_window: config.nous_behavior.loop_detection_window,
-            cycle_detection_max_len: config.nous_behavior.cycle_detection_max_len,
-        },
-        domains,
+        limits: build_nous_limits(
+            overlay.max_tool_iterations,
+            resolved.limits.max_tool_result_bytes,
+            &behavior,
+            config,
+        ),
+        domains: overlay.domains,
         private: resolved.private,
         episteme_cohort: resolved.episteme_cohort,
         workspace,
@@ -163,8 +241,8 @@ pub(super) fn build_nous_runtime_config(
         recall_profile: resolved.recall_profile.into(),
         tool_allowlist: resolved.tool_allowlist,
         tool_groups: resolve_tool_group_policy(agent_id, &resolved.tool_groups),
-        hooks: nous::config::HookConfig::default(),
-        behavior: resolved.behavior,
+        hooks: build_hook_config(&behavior),
+        behavior,
     };
     // WHY: thread the knowledge-config surprise/evidence recall knobs into the
     // recall engine. The From<RecallSettings> conversion cannot carry these —
@@ -181,6 +259,7 @@ pub(super) fn build_nous_runtime_config(
     if let Some(model) = nous_config.generation.extraction_model.as_deref() {
         model.clone_into(&mut extraction_cfg.model);
     }
+    extraction_cfg.project_id.clone_from(&project_id);
     (
         nous_config,
         PipelineConfig {
@@ -190,4 +269,138 @@ pub(super) fn build_nous_runtime_config(
             ..PipelineConfig::default()
         },
     )
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test setup assertions")]
+mod tests {
+    use hermeneus::complexity::{ComplexityConfig, ComplexityInput, ModelTier, route_model};
+    use taxis::config::{AgentBehaviorDefaults, AletheiaConfig, NousDefinition};
+    use taxis::oikos::Oikos;
+    use tempfile::TempDir;
+
+    use super::build_nous_runtime_config;
+
+    fn build_complexity_from_config(config: &AletheiaConfig) -> ComplexityConfig {
+        let instance = TempDir::new().expect("create instance temp directory");
+        let oikos = Oikos::from_root(instance.path());
+
+        let (nous_config, _pipeline_config) =
+            build_nous_runtime_config(config, &oikos, &[], "custom");
+
+        nous_config.generation.complexity
+    }
+
+    #[test]
+    fn resolved_behavior_drives_runtime_limits_and_hooks() {
+        let mut config = AletheiaConfig::default();
+        let behavior = AgentBehaviorDefaults {
+            safety_loop_detection_threshold: 7,
+            safety_consecutive_error_threshold: 8,
+            safety_loop_max_warnings: 9,
+            safety_session_token_cap: 123_456,
+            safety_max_consecutive_tool_only_iterations: 6,
+            hooks_cost_control_enabled: false,
+            hooks_turn_token_budget: 42,
+            hooks_scope_enforcement_enabled: false,
+            hooks_correction_hooks_enabled: false,
+            hooks_audit_logging_enabled: false,
+            ..AgentBehaviorDefaults::default()
+        };
+        config.agents.list.push(NousDefinition {
+            id: "custom".to_owned(),
+            workspace: "nous/custom".to_owned(),
+            behavior: Some(behavior.clone()),
+            ..NousDefinition::default()
+        });
+        let instance = TempDir::new().expect("create instance temp directory");
+        let oikos = Oikos::from_root(instance.path());
+
+        let (nous_config, _pipeline_config) =
+            build_nous_runtime_config(&config, &oikos, &[], "custom");
+
+        assert_eq!(nous_config.limits.loop_detection_threshold, 7);
+        assert_eq!(nous_config.limits.consecutive_error_threshold, 8);
+        assert_eq!(nous_config.limits.loop_max_warnings, 9);
+        assert_eq!(nous_config.limits.session_token_cap, 123_456);
+        assert_eq!(nous_config.limits.max_consecutive_tool_only_iterations, 6);
+        assert!(!nous_config.hooks.cost_control_enabled);
+        assert_eq!(nous_config.hooks.turn_token_budget, 42);
+        assert!(!nous_config.hooks.scope_enforcement_enabled);
+        assert!(!nous_config.hooks.correction_hooks_enabled);
+        assert!(!nous_config.hooks.audit_logging_enabled);
+        assert!(
+            nous_config.hooks.self_audit_enabled,
+            "schema-unbacked hook fields should keep their runtime defaults"
+        );
+        assert!(
+            nous_config.hooks.working_checkpoint_enabled,
+            "schema-unbacked hook fields should keep their runtime defaults"
+        );
+        assert_eq!(
+            nous_config.behavior.safety_loop_detection_threshold,
+            behavior.safety_loop_detection_threshold
+        );
+    }
+
+    #[test]
+    fn provider_behavior_maps_to_runtime_complexity_config() {
+        let mut config = AletheiaConfig::default();
+        config.agents.defaults.model_defaults.model.primary =
+            taxis::config::ModelRoute::new("balanced-tier");
+        config.provider_behavior.complexity_routing_enabled = true;
+        config.provider_behavior.complexity_low_threshold = 41;
+        config.provider_behavior.complexity_high_threshold = 82;
+
+        let complexity = build_complexity_from_config(&config);
+
+        assert!(
+            complexity.enabled,
+            "providerBehavior.complexityRoutingEnabled should drive Nous complexity routing"
+        );
+        assert_eq!(complexity.low_threshold, 41);
+        assert_eq!(complexity.high_threshold, 82);
+        assert_eq!(
+            complexity.sonnet_model, "balanced-tier",
+            "balanced tier should preserve the resolved turn model"
+        );
+    }
+
+    #[test]
+    fn provider_behavior_thresholds_change_boundary_route_decisions() {
+        let mut config = AletheiaConfig::default();
+        config.provider_behavior.complexity_routing_enabled = true;
+        config.provider_behavior.complexity_low_threshold = 5;
+        config.provider_behavior.complexity_high_threshold = 95;
+        let baseline = build_complexity_from_config(&config);
+
+        config.provider_behavior.complexity_low_threshold = 4;
+        let lowered_low = build_complexity_from_config(&config);
+
+        let routine = ComplexityInput::new("quick question: what port does the server use?");
+        assert_eq!(
+            route_model(&routine, &baseline).complexity.tier,
+            ModelTier::Haiku
+        );
+        assert_eq!(
+            route_model(&routine, &lowered_low).complexity.tier,
+            ModelTier::Sonnet,
+            "score 5 should leave Haiku once low threshold drops below the boundary"
+        );
+
+        config.provider_behavior.complexity_low_threshold = 5;
+        config.provider_behavior.complexity_high_threshold = 96;
+        let raised_high = build_complexity_from_config(&config);
+
+        let complex = ComplexityInput::new("think hard about the migration strategy");
+        assert_eq!(
+            route_model(&complex, &baseline).complexity.tier,
+            ModelTier::Opus
+        );
+        assert_eq!(
+            route_model(&complex, &raised_high).complexity.tier,
+            ModelTier::Sonnet,
+            "score 95 should leave Opus once high threshold rises above the boundary"
+        );
+    }
 }

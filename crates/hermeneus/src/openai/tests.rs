@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use wiremock::matchers::{body_string_contains, method, path};
@@ -87,6 +88,114 @@ async fn non_streaming_text_round_trip() {
         ContentBlock::Text { text, .. } => assert_eq!(text, "hello back"),
         other => panic!("expected Text, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn configured_non_streaming_timeout_cancels_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(Duration::from_millis(500))
+                .set_body_json(serde_json::json!({
+                    "id": "chatcmpl-timeout",
+                    "model": "qwen",
+                    "choices": [{
+                        "message": { "role": "assistant", "content": "too late" },
+                        "finish_reason": "stop",
+                        "index": 0
+                    }],
+                    "usage": { "prompt_tokens": 6, "completion_tokens": 2, "total_tokens": 8 }
+                })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "test-openai-timeout".to_owned(),
+        base_url: format!("{}/v1", server.uri()),
+        models: vec!["qwen".to_owned()],
+        request_timeout: Duration::from_millis(50),
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..crate::RetryPolicy::default()
+        },
+        ..OpenAiProviderConfig::default()
+    })
+    .expect("provider construct");
+
+    let start = Instant::now();
+    let err = provider
+        .complete(&basic_request("qwen"))
+        .await
+        .expect_err("configured timeout should abort the request");
+
+    assert!(
+        start.elapsed() < Duration::from_millis(450),
+        "request should end before the mock response delay"
+    );
+    assert!(
+        matches!(err, Error::ApiRequest { .. }),
+        "timeout should surface as ApiRequest, got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn configured_retry_policy_controls_attempts_and_backoff() {
+    let server = MockServer::start().await;
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_responder = Arc::clone(&attempts);
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(move |_request: &wiremock::Request| {
+            if attempts_for_responder.fetch_add(1, Ordering::SeqCst) == 0 {
+                ResponseTemplate::new(500).set_body_json(serde_json::json!({
+                    "error": { "message": "temporary overload" }
+                }))
+            } else {
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "id": "chatcmpl-retry",
+                    "model": "qwen",
+                    "choices": [{
+                        "message": { "role": "assistant", "content": "recovered" },
+                        "finish_reason": "stop",
+                        "index": 0
+                    }],
+                    "usage": { "prompt_tokens": 6, "completion_tokens": 2, "total_tokens": 8 }
+                }))
+            }
+        })
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "test-openai-retry-policy".to_owned(),
+        base_url: format!("{}/v1", server.uri()),
+        models: vec!["qwen".to_owned()],
+        retry_policy: crate::RetryPolicy {
+            max_retries: 1,
+            backoff_base_ms: 200,
+            backoff_max_ms: 200,
+        },
+        ..OpenAiProviderConfig::default()
+    })
+    .expect("provider construct");
+
+    let start = Instant::now();
+    let resp = provider
+        .complete(&basic_request("qwen"))
+        .await
+        .expect("retry should recover");
+
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(resp.id, "chatcmpl-retry");
+    assert!(
+        start.elapsed() >= Duration::from_millis(125),
+        "configured 200ms jittered backoff should delay the retry"
+    );
 }
 
 #[tokio::test]
@@ -439,7 +548,10 @@ async fn streaming_retries_retryable_http_error_before_sse() {
         name: "test-openai-responses".to_owned(),
         base_url: format!("{}/v1", server.uri()),
         models: vec!["gpt-5".to_owned()],
-        max_retries: 1,
+        retry_policy: crate::RetryPolicy {
+            max_retries: 1,
+            ..crate::RetryPolicy::default()
+        },
         api_family: OpenAiApiFamily::Responses,
         ..OpenAiProviderConfig::default()
     })
@@ -507,7 +619,10 @@ async fn streaming_retries_request_send_failure_before_sse() {
         name: "test-openai-responses".to_owned(),
         base_url: format!("http://{addr}/v1"),
         models: vec!["gpt-5".to_owned()],
-        max_retries: 1,
+        retry_policy: crate::RetryPolicy {
+            max_retries: 1,
+            ..crate::RetryPolicy::default()
+        },
         api_family: OpenAiApiFamily::Responses,
         ..OpenAiProviderConfig::default()
     })
@@ -543,7 +658,10 @@ async fn streaming_does_not_retry_non_retryable_http_error() {
         name: "test-openai-responses".to_owned(),
         base_url: format!("{}/v1", server.uri()),
         models: vec!["gpt-5".to_owned()],
-        max_retries: 2,
+        retry_policy: crate::RetryPolicy {
+            max_retries: 2,
+            ..crate::RetryPolicy::default()
+        },
         api_family: OpenAiApiFamily::Responses,
         ..OpenAiProviderConfig::default()
     })
@@ -642,7 +760,10 @@ async fn streaming_retries_sse_connection_reset_before_content() {
         name: "test-openai-sse-retry".to_owned(),
         base_url: format!("http://{addr}/v1"),
         models: vec!["gpt-5".to_owned()],
-        max_retries: 1,
+        retry_policy: crate::RetryPolicy {
+            max_retries: 1,
+            ..crate::RetryPolicy::default()
+        },
         api_family: OpenAiApiFamily::Responses,
         ..OpenAiProviderConfig::default()
     })
@@ -723,7 +844,10 @@ async fn streaming_does_not_retry_sse_error_after_content_started() {
         name: "test-openai-content-gate".to_owned(),
         base_url: format!("http://{addr}/v1"),
         models: vec!["gpt-5".to_owned()],
-        max_retries: 2,
+        retry_policy: crate::RetryPolicy {
+            max_retries: 2,
+            ..crate::RetryPolicy::default()
+        },
         api_family: OpenAiApiFamily::Responses,
         ..OpenAiProviderConfig::default()
     })

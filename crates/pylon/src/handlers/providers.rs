@@ -10,6 +10,8 @@ use serde::Deserialize;
 use symbolon::types::Role;
 use utoipa::IntoParams;
 
+use hermeneus::provider::{ProviderResolutionError, ProviderRoute};
+
 use crate::error::{ApiError, BadRequestSnafu};
 use crate::extract::{Claims, require_role};
 use crate::state::ProvidersState;
@@ -156,21 +158,45 @@ pub fn resolve_model_readiness(
     registry: &hermeneus::provider::ProviderRegistry,
     models: &[String],
 ) -> Vec<ModelProviderReadiness> {
-    models
+    let routes: Vec<(String, Option<String>)> =
+        models.iter().map(|model| (model.clone(), None)).collect();
+    resolve_model_route_readiness(registry, &routes)
+}
+
+/// Resolve readiness for model/provider route identifiers.
+pub fn resolve_model_route_readiness(
+    registry: &hermeneus::provider::ProviderRegistry,
+    routes: &[(String, Option<String>)],
+) -> Vec<ModelProviderReadiness> {
+    // kanon:ignore RUST/pub-visibility
+    // WHY: pylon builds the route list from runtime nous config, where model
+    // and provider are already owned strings. Borrowing a tuple slice avoids
+    // adding a pylon DTO just for this internal helper.
+    routes
         .iter()
-        .map(|model| {
-            let (provider, health) = registry.find_provider(model).map_or_else(
-                || (None, None),
-                |p| {
-                    let health = registry.provider_health(p.name()).unwrap_or(
+        .map(|(model, provider_name)| {
+            let route = provider_name
+                .as_deref()
+                .map_or(ProviderRoute::ModelOnly, ProviderRoute::Explicit);
+            let (provider, health) = match registry.resolve_provider(model, route) {
+                Ok(provider) => {
+                    let health = registry.provider_health(provider.name()).unwrap_or(
                         hermeneus::health::ProviderHealth::Down {
                             since: jiff::Timestamp::now(),
                             reason: hermeneus::health::DownReason::ConsecutiveFailures,
                         },
                     );
-                    (Some(p.name().to_owned()), Some(health))
-                },
-            );
+                    (Some(provider.name().to_owned()), Some(health))
+                }
+                Err(ProviderResolutionError::ProviderUnavailable { name, health }) => {
+                    (Some(name), Some(health))
+                }
+                Err(
+                    ProviderResolutionError::NoProvider { .. }
+                    | ProviderResolutionError::ProviderNotFound { .. }
+                    | ProviderResolutionError::ProviderDoesNotSupportModel { .. },
+                ) => (provider_name.clone(), None),
+            };
 
             ModelProviderReadiness {
                 model: model.clone(),
@@ -364,6 +390,9 @@ mod tests {
             base_url: None,
             api_key_env: Some("OPENAI_API_KEY".to_owned()),
             api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
             deployment_target: taxis::config::DeploymentTarget::Cloud,
             models: Vec::new(),
         };

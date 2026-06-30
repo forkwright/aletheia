@@ -38,6 +38,9 @@ Key substrate properties as of the 2026-05-08 refresh:
   are intentionally separate from the in-process `organon::registry::ToolRegistry`.
 - **Auth facade:** `symbolon::AuthFacade` is the admin-token verification and
   revocation boundary shared by `pylon` and `diaporeia`.
+- **MCP/HTTP RBAC parity:** `diaporeia` must preserve verified caller claims,
+  including `nous_id` scope, and enforce the same target-agent boundaries as
+  `pylon` for sessions, agent workspace resources, and knowledge operations.
 - **Bounded stages:** `nous` carries per-stage timeout configuration for LLM
   execution and actor-manager operations.
 - **Knowledge schema v11:** `eidos::Visibility` and `eidos::MemoryScope` travel
@@ -175,9 +178,10 @@ generated inventory is `_llm/L1-workspace.md`.
 
 `hermeneus` owns the provider trait and concrete provider clients. `taxis`
 owns the serialized `[[providers]]` config shape, including `providerType`,
-`baseUrl`, `apiKeyEnv`, `models`, and `deploymentTarget`. The `aletheia`
-binary joins those layers in `runtime/setup.rs` by registering the configured
-providers in list order.
+`baseUrl`, `apiKeyEnv`, subprocess `binary`/`workdir`/`timeoutSecs`, `models`,
+and `deploymentTarget`. The `aletheia` binary joins those layers in
+`runtime/setup.rs` by building a provider plan and registering providers in list
+order.
 
 Current provider families:
 
@@ -195,10 +199,14 @@ Current provider families:
 ollama, vllm) and always uses chat completions.
 
 Declarative `[[providers]]` entries are the supported configuration surface;
-see `docs/CONFIGURATION.md#providers` for the full field reference. Subprocess
-adapters (`claude-code`, `codex-oauth`) are primarily registered through their
-credential-chain feature paths; declarative entries for those kinds are
-accepted but currently do not alter startup behavior.
+see `docs/CONFIGURATION.md#providers` for the full field reference. When the
+list is non-empty, it is the complete provider-ordering contract. An
+`anthropic` entry without `apiKeyEnv` uses the legacy top-level credential
+chain at that entry's declared position; an empty list preserves the legacy
+single-Anthropic fallback and its feature-gated startup shortcuts. Feature-gated
+subprocess adapters (`claude-code`, `codex-oauth`) must be declared in the list
+to participate in declarative ordering, and declarations fail startup/config
+validation when the corresponding adapter feature is absent.
 
 Local OpenAI-compatible servers continue to use the Chat Completions-compatible
 shape:

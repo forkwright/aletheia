@@ -1,42 +1,26 @@
 //! Credential management panel: display, validate, rotate, add, and remove credentials.
 
 use dioxus::prelude::*;
+use skene::api::routes::system::{
+    credential_rotate_url, credential_url, credential_validate_url, credentials_url,
+};
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::credentials::{
-    CredentialEntry, CredentialRole, CredentialStore, ValidationStatus, mask_key,
+    CredentialEntry, CredentialRole, CredentialStore, ValidationStatus, canonicalize_masked_key,
 };
 use crate::state::fetch::FetchState;
 
-const CREDENTIALS_PATH: &str = "/api/v1/system/credentials";
-
-fn credentials_url(base: &str) -> String {
-    format!("{}{}", base.trim_end_matches('/'), CREDENTIALS_PATH)
-}
-
-fn credential_url(base: &str, id: &str) -> String {
-    format!("{}/{id}", credentials_url(base))
-}
-
-fn credential_validate_url(base: &str, id: &str) -> String {
-    format!("{}/{id}/validate", credentials_url(base))
-}
-
-fn credential_rotate_url(base: &str, provider: &str) -> String {
-    let encoded = keryx::url::encode_path_segment(provider);
-    format!("{}/rotate?provider={encoded}", credentials_url(base))
-}
-
 // ── API types ──
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 struct CredentialsListResponse {
     #[serde(default)]
     credentials: Vec<CredentialApiEntry>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 struct CredentialApiEntry {
     #[serde(default)]
     id: String,
@@ -44,9 +28,9 @@ struct CredentialApiEntry {
     provider: String,
     #[serde(default)]
     role: String,
-    /// Key value from API. Must be masked before use if it is not already masked.
+    /// Key value from API. Must be canonicalized before use.
     #[serde(default)]
-    masked_key: String, // kanon:ignore RUST/plain-string-secret -- API payload is masked before it enters UI state (#3988)
+    masked_key: String, // kanon:ignore RUST/plain-string-secret -- transient API field is canonicalized before entering reactive CredentialEntry state (#4876); this type does not derive Debug
     #[serde(default)]
     status: String,
     #[serde(default)]
@@ -69,12 +53,7 @@ impl CredentialApiEntry {
             "expired" => ValidationStatus::Expired,
             _ => ValidationStatus::Untested,
         };
-        // SAFETY: mask any full key value before it enters reactive state.
-        let masked = if self.masked_key.starts_with("...") {
-            self.masked_key
-        } else {
-            mask_key(&self.masked_key)
-        };
+        let masked = canonicalize_masked_key(&self.masked_key);
         CredentialEntry {
             id: self.id,
             provider: self.provider,
@@ -101,7 +80,7 @@ fn serialize_secret_expose<S: serde::Serializer>(
     serializer.serialize_str(secret.expose_secret())
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize)]
 struct AddCredentialRequest {
     provider: String,
     /// Raw key -- cleared from reactive state immediately after spawn.
@@ -307,7 +286,13 @@ pub(crate) fn CredentialsView() -> Element {
 
     let mut show_add = use_signal(|| false);
     let mut add_provider = use_signal(String::new);
-    let mut add_key = use_signal(String::new);
+    // WHY(#4876): browser password controls and input events necessarily carry
+    // plaintext while typing. Keep the value in SecretString, never derive
+    // Debug for request/payload types that can contain it, and remount the input
+    // whenever the signal is cleared so plaintext does not linger in UI state.
+    let mut add_key: Signal<koina::secret::SecretString> =
+        use_signal(|| koina::secret::SecretString::from(String::new()));
+    let mut add_key_epoch = use_signal(|| 0u64);
     let mut add_role: Signal<CredentialRole> = use_signal(|| CredentialRole::Primary);
     let mut add_error: Signal<Option<String>> = use_signal(|| None);
 
@@ -348,15 +333,22 @@ pub(crate) fn CredentialsView() -> Element {
 
     let mut do_add = move || {
         let provider = add_provider.read().trim().to_string();
-        let key = add_key.read().trim().to_string();
         let role = *add_role.read();
 
         if provider.is_empty() {
             add_error.set(Some("Provider is required.".to_string()));
+            add_key.set(koina::secret::SecretString::from(String::new()));
+            add_key_epoch.set(add_key_epoch() + 1);
             return;
         }
-        if key.is_empty() {
+        let key_is_empty = {
+            let key = add_key.read();
+            key.expose_secret().trim().is_empty()
+        };
+        if key_is_empty {
             add_error.set(Some("Key is required.".to_string()));
+            add_key.set(koina::secret::SecretString::from(String::new()));
+            add_key_epoch.set(add_key_epoch() + 1);
             return;
         }
         add_error.set(None);
@@ -367,14 +359,18 @@ pub(crate) fn CredentialsView() -> Element {
         };
         let payload = AddCredentialRequest {
             provider,
-            key: koina::secret::SecretString::from(key),
+            key: {
+                let key = add_key.read();
+                koina::secret::SecretString::from(key.expose_secret().trim().to_owned())
+            },
             role: role_str,
         };
         let cfg = config.read().clone();
 
         // WHY: Clear key immediately before spawning so the raw value does not
         // linger in reactive state after the async task begins.
-        add_key.set(String::new());
+        add_key.set(koina::secret::SecretString::from(String::new()));
+        add_key_epoch.set(add_key_epoch() + 1);
 
         spawn(async move {
             let client = authenticated_client(&cfg);
@@ -469,12 +465,12 @@ pub(crate) fn CredentialsView() -> Element {
                             style: "{FORM_GROUP}",
                             span { style: "{FORM_LABEL}", "API Key" }
                             input {
+                                key: "credential-key-{add_key_epoch}",
                                 style: "{FORM_INPUT}",
                                 r#type: "password",
                                 placeholder: "sk-...",
-                                value: "{add_key}",
                                 oninput: move |evt: Event<FormData>| {
-                                    add_key.set(evt.value().clone());
+                                    add_key.set(koina::secret::SecretString::from(evt.value().clone()));
                                     add_error.set(None);
                                 },
                             }
@@ -514,7 +510,8 @@ pub(crate) fn CredentialsView() -> Element {
                                 add_error.set(None);
                                 // WHY: Clear key field on cancel to avoid stale
                                 // credential values persisting in state.
-                                add_key.set(String::new());
+                                add_key.set(koina::secret::SecretString::from(String::new()));
+                                add_key_epoch.set(add_key_epoch() + 1);
                             },
                             "Cancel"
                         }
@@ -776,6 +773,19 @@ fn CredentialCard(
 mod tests {
     use super::*;
 
+    fn api_entry(masked_key: &str) -> CredentialApiEntry {
+        CredentialApiEntry {
+            id: "anthropic:primary".to_string(),
+            provider: "anthropic".to_string(),
+            role: "primary".to_string(),
+            masked_key: masked_key.to_string(),
+            status: "valid".to_string(),
+            last_validated: None,
+            requests_today: 0,
+            tokens_today: 0,
+        }
+    }
+
     #[test]
     fn credentials_urls_use_versioned_system_api() {
         let base = "http://localhost:8080/";
@@ -786,15 +796,32 @@ mod tests {
         );
         assert_eq!(
             credential_url(base, "anthropic:backup"),
-            "http://localhost:8080/api/v1/system/credentials/anthropic:backup"
+            "http://localhost:8080/api/v1/system/credentials/anthropic%3Abackup"
         );
         assert_eq!(
             credential_validate_url(base, "anthropic:primary"),
-            "http://localhost:8080/api/v1/system/credentials/anthropic:primary/validate"
+            "http://localhost:8080/api/v1/system/credentials/anthropic%3Aprimary/validate"
         );
         assert_eq!(
-            credential_rotate_url(base, "open ai"),
-            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open%20ai"
+            credential_rotate_url(base, "open ai/a?b#c:100%"),
+            "http://localhost:8080/api/v1/system/credentials/rotate?provider=open+ai%2Fa%3Fb%23c%3A100%25"
         );
+    }
+
+    #[test]
+    fn api_entry_canonicalizes_malformed_prefixed_mask() {
+        let entry = api_entry("...raw-secret-material").into_entry();
+
+        assert_eq!(entry.masked_key, "...????");
+        assert!(!entry.masked_key.contains("raw"));
+        assert!(!entry.masked_key.contains("material"));
+    }
+
+    #[test]
+    fn api_entry_masks_unprefixed_raw_key() {
+        let entry = api_entry("sk-test-secret-1234").into_entry();
+
+        assert_eq!(entry.masked_key, "...1234");
+        assert!(!entry.masked_key.contains("test-secret"));
     }
 }

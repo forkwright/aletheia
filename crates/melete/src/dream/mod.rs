@@ -298,19 +298,30 @@ impl DreamEngine {
     /// 3. Merges extracted facts INTO the knowledge graph
     /// 4. Marks contradicted facts for stale decay
     /// 5. Updates the lock file mtime on success, rolls back on failure
-    pub fn on_turn_complete(
+    pub async fn on_turn_complete(
         self: &Arc<Self>,
         source: &Arc<dyn TranscriptSource>,
         target: &Arc<dyn ConsolidationTarget>,
         provider: &Arc<dyn LlmProvider>,
     ) {
-        // NOTE: quick inline check before spawning.
-        let acquired = match self.check_gates(source.as_ref()) {
-            Ok(Some(lock)) => lock,
-            Ok(None) => return,
-            Err(e) => {
-                tracing::warn!(error = %e, "auto-dream gate check failed");
-                return;
+        // WHY: the gate check performs a synchronous store scan; run it on the
+        // blocking pool so the nous actor event loop is not stalled. The
+        // consolidation spawn itself stays on the async runtime.
+        let acquired = {
+            let engine = Arc::clone(self);
+            let source = Arc::clone(source);
+            let check = tokio::task::spawn_blocking(move || engine.check_gates(source.as_ref()));
+            match check.await {
+                Ok(Ok(Some(lock))) => lock,
+                Ok(Ok(None)) => return,
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "auto-dream gate check failed");
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "auto-dream gate check panicked");
+                    return;
+                }
             }
         };
 

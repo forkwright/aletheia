@@ -20,7 +20,7 @@ use symbolon::types::Role;
 use taxis::config::NousDefinition;
 
 mod common;
-use common::{StateBuilder, issue_token};
+use common::{StateBuilder, issue_token, issue_token_with_nous_id};
 
 /// Build a test router in stateless+json mode.
 fn test_router(state: &Arc<DiaporeiaState>) -> axum::Router {
@@ -54,6 +54,19 @@ fn resources_list_request(id: u64) -> Body {
     Body::from(req.to_string())
 }
 
+/// Build a JSON-RPC `resources/read` request body.
+fn resources_read_request(id: u64, uri: &str) -> Body {
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "resources/read",
+        "params": {
+            "uri": uri,
+        },
+    });
+    Body::from(req.to_string())
+}
+
 /// Extract the MCP resource list from a JSON-RPC response.
 async fn extract_resources(response: axum::response::Response) -> Vec<serde_json::Value> {
     assert_eq!(response.status(), StatusCode::OK);
@@ -66,6 +79,15 @@ async fn extract_resources(response: axum::response::Response) -> Vec<serde_json
         .and_then(|r| r.as_array())
         .cloned()
         .unwrap_or_default()
+}
+
+/// Extract the MCP error code from a JSON-RPC response.
+async fn extract_error_code(response: axum::response::Response) -> Option<i64> {
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    json.get("error")?.get("code")?.as_i64()
 }
 
 /// Add an agent to the in-memory config and create its workspace files under
@@ -132,6 +154,77 @@ async fn resources_list_includes_config_and_existing_workspace_files() {
     assert!(
         !uris.contains(&"aletheia://nous/syn/memory"),
         "missing memory file must not be listed"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn scoped_operator_resources_list_filters_workspace_files_to_scope() {
+    let (state, jwt, _tmp) = StateBuilder::new().build();
+    add_agent_with_workspace(&state, "syn", &["SOUL.md"]).await;
+    add_agent_with_workspace(&state, "demiurge", &["SOUL.md"]).await;
+
+    let token = issue_token_with_nous_id(&jwt, "operator-syn", Role::Operator, "syn");
+    let router = test_router(&state);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header(header::HOST, "localhost")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json, text/event-stream")
+                .body(resources_list_request(1))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let resources = extract_resources(response).await;
+    let uris: Vec<&str> = resources
+        .iter()
+        .filter_map(|r| r.get("uri").and_then(|u| u.as_str()))
+        .collect();
+
+    assert!(
+        uris.contains(&"aletheia://nous/syn/soul"),
+        "scoped operator must see in-scope workspace files"
+    );
+    assert!(
+        !uris.contains(&"aletheia://nous/demiurge/soul"),
+        "scoped operator must not be shown sibling workspace files"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn scoped_operator_resources_read_rejects_cross_agent_workspace_file() {
+    let (state, jwt, _tmp) = StateBuilder::new().build();
+    add_agent_with_workspace(&state, "demiurge", &["SOUL.md"]).await;
+
+    let token = issue_token_with_nous_id(&jwt, "operator-syn", Role::Operator, "syn");
+    let router = test_router(&state);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header(header::HOST, "localhost")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json, text/event-stream")
+                .body(resources_read_request(1, "aletheia://nous/demiurge/soul"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        extract_error_code(response).await,
+        Some(-32001),
+        "cross-agent resource read must return MCP unauthorized"
     );
 }
 

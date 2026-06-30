@@ -8,6 +8,7 @@ mod cli;
 mod commands;
 mod daemon_bridge;
 mod dispatch;
+mod embedding_config;
 mod error;
 mod external_tools;
 mod init;
@@ -18,6 +19,7 @@ mod knowledge_maintenance;
 #[cfg(feature = "migrate-qdrant")]
 mod migrate_memory;
 mod planning_adapter;
+mod provider_config;
 #[cfg(feature = "recall")]
 mod recall_sources;
 mod runtime;

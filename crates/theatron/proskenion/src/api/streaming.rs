@@ -2,7 +2,9 @@
 //!
 //! Each call to `stream_turn` starts a new HTTP SSE request and returns
 //! a receiver that yields `StreamEvent`s. The stream is self-terminating:
-//! it closes after `TurnComplete`, `TurnAbort`, or `Error`.
+//! it closes after `TurnComplete` or `TurnAbort`. A stream `error` event is
+//! diagnostic; terminal failed turns are represented by `TurnComplete` with
+//! `outcome.stop_reason == Some("error")` and `outcome.error.is_some()`.
 //!
 //! # Abort support
 //!
@@ -15,7 +17,7 @@
 //!
 //! ```ignore
 //! let cancel = CancellationToken::new();
-//! let mut rx = stream_turn(client, &url, &agent, &key, &msg, cancel.child_token());
+//! let mut rx = stream_turn(client, &url, &agent, &key, &msg, &turn_id, cancel.child_token());
 //!
 //! // In a coroutine:
 //! while let Some(event) = rx.recv().await {
@@ -32,15 +34,27 @@
 //! cancel.cancel();
 //! ```
 
+use std::time::Duration;
+
 use futures_util::StreamExt;
 use reqwest::Client;
+use skene::api::streaming::STREAM_READ_TIMEOUT;
 use skene::sse::SseStream;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+use skene::api::error::{format_error_fields_for_display, format_http_error_body};
 use skene::events::StreamEvent;
 use skene::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+
+struct StreamTurnRequest<'a> {
+    base_url: &'a str,
+    nous_id: &'a str,
+    session_key: &'a str,
+    message: &'a str,
+    client_turn_id: &'a str,
+}
 
 /// Start streaming a turn response.
 ///
@@ -57,15 +71,40 @@ pub(crate) fn stream_turn(
     nous_id: &str,
     session_key: &str,
     message: &str,
+    client_turn_id: &str,
     cancel: CancellationToken,
 ) -> mpsc::Receiver<StreamEvent> {
+    stream_turn_with_read_timeout(
+        client,
+        StreamTurnRequest {
+            base_url,
+            nous_id,
+            session_key,
+            message,
+            client_turn_id,
+        },
+        cancel,
+        STREAM_READ_TIMEOUT,
+    )
+}
+
+fn stream_turn_with_read_timeout(
+    client: Client,
+    request: StreamTurnRequest<'_>,
+    cancel: CancellationToken,
+    read_timeout: Duration,
+) -> mpsc::Receiver<StreamEvent> {
     let (tx, rx) = mpsc::channel(256);
-    let url = format!("{}/api/v1/sessions/stream", base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/api/v1/sessions/stream",
+        request.base_url.trim_end_matches('/')
+    );
 
     let body = serde_json::json!({
-        "message": message,
-        "nous_id": nous_id,
-        "session_key": session_key,
+        "message": request.message,
+        "nous_id": request.nous_id,
+        "session_key": request.session_key,
+        "client_turn_id": request.client_turn_id,
     });
 
     let builder = client
@@ -132,17 +171,35 @@ pub(crate) fn stream_turn(
                     }
                     return;
                 }
-                event = es.next() => event,
+                event = tokio::time::timeout(read_timeout, es.next()) => event,
             };
 
-            let Some(event) = maybe_event else { break };
+            let event = match maybe_event {
+                Ok(Some(event)) => event,
+                Ok(None) => break,
+                Err(_elapsed) => {
+                    // WHY(#4564): Desktop per-turn streaming must use the
+                    // same stale-read policy as skene so a silent SSE stream
+                    // cannot outlive the UI indefinitely.
+                    tracing::warn!(
+                        timeout_secs = read_timeout.as_secs(),
+                        "stream read timeout — treating as error"
+                    );
+                    if tx
+                        .send(StreamEvent::Error("stream timeout".to_string()))
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("stream receiver dropped before timeout error");
+                    }
+                    break;
+                }
+            };
 
             if let Some(parsed) = parse_stream_event(&event.event, &event.data) {
                 let is_terminal = matches!(
                     &parsed,
-                    StreamEvent::TurnComplete { .. }
-                        | StreamEvent::TurnAbort { .. }
-                        | StreamEvent::Error(_)
+                    StreamEvent::TurnComplete { .. } | StreamEvent::TurnAbort { .. }
                 );
                 if tx.send(parsed).await.is_err() {
                     break;
@@ -160,15 +217,7 @@ pub(crate) fn stream_turn(
 
 /// Extract a human-readable error message from an HTTP error response body.
 fn extract_error_message(body: &str, status_code: u16, reason: &str) -> String {
-    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
-        json.get("message")
-            .or_else(|| json.get("error"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("{status_code} {reason}"))
-    } else {
-        format!("{status_code} {reason}")
-    }
+    format_http_error_body(status_code, reason, body)
 }
 
 fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
@@ -318,9 +367,7 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         "turn_abort" => Some(StreamEvent::TurnAbort {
             reason: str_field(&json, "reason", event_type)?.to_string(),
         }),
-        "error" => Some(StreamEvent::Error(
-            str_field(&json, "message", event_type)?.to_string(),
-        )),
+        "error" => Some(StreamEvent::Error(stream_error_message(&json, event_type)?)),
         "plan_proposed" => {
             let plan = json
                 .get("plan")
@@ -363,9 +410,147 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
     }
 }
 
+fn stream_error_message(json: &serde_json::Value, event_type: &str) -> Option<String> {
+    let message = str_field(json, "message", event_type)?;
+    Some(format_error_fields_for_display(
+        message,
+        None,
+        json.get("code").and_then(serde_json::Value::as_str),
+        json.get("request_id")
+            .or_else(|| json.get("requestId"))
+            .and_then(serde_json::Value::as_str),
+        json.get("details"),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc as std_mpsc;
+
     use super::*;
+
+    struct HangingSseServer {
+        base_url: String,
+        ready_rx: Option<std_mpsc::Receiver<()>>,
+        done_tx: std_mpsc::Sender<()>,
+        handle: std::thread::JoinHandle<()>,
+    }
+
+    impl HangingSseServer {
+        async fn wait_ready(&mut self) {
+            let ready_rx = self
+                .ready_rx
+                .take()
+                .expect("ready receiver should only be awaited once");
+            tokio::task::spawn_blocking(move || ready_rx.recv_timeout(Duration::from_secs(2)))
+                .await
+                .expect("ready wait task should finish")
+                .expect("SSE response headers should be sent");
+        }
+
+        fn finish(self) {
+            match self.done_tx.send(()) {
+                Ok(()) => {}
+                Err(_closed) => {}
+            }
+            self.handle
+                .join()
+                .expect("hanging SSE server thread should finish");
+        }
+    }
+
+    struct ScriptedSseServer {
+        base_url: String,
+        handle: std::thread::JoinHandle<()>,
+    }
+
+    impl ScriptedSseServer {
+        fn finish(self) {
+            self.handle
+                .join()
+                .expect("scripted SSE server thread should finish");
+        }
+    }
+
+    fn install_crypto() {
+        // Another test may already have installed the process-wide provider.
+        match rustls::crypto::ring::default_provider().install_default() {
+            Ok(()) => {}
+            Err(_already_installed) => {}
+        }
+    }
+
+    fn streaming_test_client() -> Client {
+        install_crypto();
+        Client::builder()
+            .build()
+            .expect("build streaming test client")
+    }
+
+    fn serve_hanging_sse_once() -> HangingSseServer {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let (ready_tx, ready_rx) = std_mpsc::channel();
+        let (done_tx, done_rx) = std_mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set request read timeout");
+            let mut buf = [0_u8; 2048];
+            let read = stream.read(&mut buf).expect("read stream request");
+            assert!(read > 0, "client should send an HTTP request");
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: keep-alive\r\n\r\n",
+                )
+                .expect("write SSE response headers");
+            stream.flush().expect("flush SSE response headers");
+            ready_tx.send(()).expect("signal SSE response ready");
+            match done_rx.recv_timeout(Duration::from_secs(2)) {
+                Ok(()) => {}
+                Err(std_mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std_mpsc::RecvTimeoutError::Disconnected) => {}
+            }
+        });
+
+        HangingSseServer {
+            base_url: format!("http://{addr}"),
+            ready_rx: Some(ready_rx),
+            done_tx,
+            handle,
+        }
+    }
+
+    fn serve_sse_response_once(body: &'static str) -> ScriptedSseServer {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set request read timeout");
+            let mut buf = [0_u8; 2048];
+            let read = stream.read(&mut buf).expect("read stream request");
+            assert!(read > 0, "client should send an HTTP request");
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n",
+                )
+                .expect("write SSE response headers");
+            stream
+                .write_all(body.as_bytes())
+                .expect("write scripted SSE body");
+            stream.flush().expect("flush scripted SSE response");
+        });
+
+        ScriptedSseServer {
+            base_url: format!("http://{addr}"),
+            handle,
+        }
+    }
 
     #[test]
     fn parse_text_delta_valid() {
@@ -541,6 +726,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_error_event_preserves_code_request_id_and_details() {
+        let data = r#"{"code":"provider_unavailable","message":"provider unavailable","request_id":"req-stream","details":{"provider":"synthetic"}}"#;
+        let result = parse_stream_event("error", data);
+        let Some(StreamEvent::Error(message)) = result else {
+            panic!("expected Error");
+        };
+        assert!(message.contains("provider unavailable"));
+        assert!(message.contains("code provider_unavailable"));
+        assert!(message.contains("request_id req-stream"));
+        assert!(message.contains(r#""provider":"synthetic""#));
+    }
+
+    #[test]
     fn parse_turn_abort() {
         let data = r#"{"reason":"guard rejected"}"#;
         let result = parse_stream_event("turn_abort", data);
@@ -569,6 +767,120 @@ mod tests {
         let data = r#"{"foo":"bar"}"#;
         let result = parse_stream_event("custom:event", data);
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn stream_turn_read_timeout_emits_error_and_closes() {
+        let mut server = serve_hanging_sse_once();
+        let client = streaming_test_client();
+        let cancel = CancellationToken::new();
+        let mut rx = stream_turn_with_read_timeout(
+            client,
+            StreamTurnRequest {
+                base_url: &server.base_url,
+                nous_id: "syn",
+                session_key: "main",
+                message: "hello",
+                client_turn_id: "turn-timeout",
+            },
+            cancel,
+            Duration::from_millis(50),
+        );
+
+        server.wait_ready().await;
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("read timeout error should arrive promptly")
+            .expect("timeout should be delivered as a stream event");
+
+        assert!(matches!(event, StreamEvent::Error(ref message) if message == "stream timeout"));
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after timeout")
+                .is_none()
+        );
+        server.finish();
+    }
+
+    #[tokio::test]
+    async fn stream_turn_continues_after_error_until_message_complete() {
+        let server = serve_sse_response_once(concat!(
+            "event: error\n",
+            "data: {\"type\":\"error\",\"code\":\"provider_error\",\"message\":\"provider unavailable\",\"request_id\":\"req-1\"}\n\n",
+            "event: message_complete\n",
+            "data: {\"type\":\"message_complete\",\"outcome\":{\"text\":\"\",\"nous_id\":\"syn\",\"session_id\":\"s1\",\"model\":\"mock\",\"tool_calls\":0,\"input_tokens\":0,\"output_tokens\":0,\"cache_read_tokens\":0,\"cache_write_tokens\":0,\"stop_reason\":\"error\",\"error\":\"provider unavailable\"}}\n\n",
+        ));
+        let client = streaming_test_client();
+        let cancel = CancellationToken::new();
+        let mut rx = stream_turn_with_read_timeout(
+            client,
+            StreamTurnRequest {
+                base_url: &server.base_url,
+                nous_id: "syn",
+                session_key: "main",
+                message: "hello",
+                client_turn_id: "turn-error-complete",
+            },
+            cancel,
+            Duration::from_secs(2),
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("diagnostic error should arrive promptly")
+            .expect("diagnostic error should be delivered as a stream event");
+        assert!(
+            matches!(event, StreamEvent::Error(ref message) if message.contains("provider unavailable"))
+        );
+
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("message_complete should arrive after diagnostic error")
+            .expect("message_complete should be delivered as a stream event");
+        let StreamEvent::TurnComplete { outcome } = event else {
+            panic!("expected TurnComplete after diagnostic error");
+        };
+        assert_eq!(outcome.stop_reason.as_deref(), Some("error"));
+        assert_eq!(outcome.error.as_deref(), Some("provider unavailable"));
+        server.finish();
+    }
+
+    #[tokio::test]
+    async fn stream_turn_cancellation_emits_abort_and_closes() {
+        let mut server = serve_hanging_sse_once();
+        let client = streaming_test_client();
+        let cancel = CancellationToken::new();
+        let mut rx = stream_turn_with_read_timeout(
+            client,
+            StreamTurnRequest {
+                base_url: &server.base_url,
+                nous_id: "syn",
+                session_key: "main",
+                message: "hello",
+                client_turn_id: "turn-cancel",
+            },
+            cancel.clone(),
+            Duration::from_secs(5),
+        );
+
+        server.wait_ready().await;
+        cancel.cancel();
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("cancellation should arrive promptly")
+            .expect("cancellation should be delivered as a stream event");
+
+        assert!(
+            matches!(event, StreamEvent::TurnAbort { ref reason } if reason == "cancelled by user")
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                .await
+                .expect("stream should close after cancellation")
+                .is_none()
+        );
+        server.finish();
     }
 
     #[test]
@@ -604,6 +916,17 @@ mod tests {
             extract_error_message(body, 429, "Too Many Requests"),
             "rate limited"
         );
+    }
+
+    #[test]
+    fn extract_error_message_preserves_pylon_envelope() {
+        let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
+        let message = extract_error_message(body, 422, "Unprocessable Entity");
+        assert!(message.contains("invalid stream request"));
+        assert!(message.contains("status 422"));
+        assert!(message.contains("code validation_error"));
+        assert!(message.contains("request_id req-http"));
+        assert!(message.contains(r#""field":"message""#));
     }
 
     #[test]

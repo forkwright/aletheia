@@ -32,7 +32,7 @@ pub(crate) mod navigation;
 pub(crate) mod notifications;
 /// Planning project, requirements, and roadmap state.
 pub(crate) mod planning;
-/// System tray, global hotkeys, window persistence, and quick input state.
+/// Window persistence and quick input state.
 pub mod platform;
 /// Session list, detail, and selection state.
 pub(crate) mod sessions;

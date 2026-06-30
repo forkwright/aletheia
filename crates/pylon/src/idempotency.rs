@@ -58,7 +58,11 @@ struct RequestContext {
 /// The state of a cached idempotency entry.
 enum EntryState {
     /// Request is currently being processed.
-    InFlight,
+    InFlight {
+        /// Optional replay metadata for callers that can expose a canonical
+        /// in-flight resource identity to duplicate requests.
+        body: Option<String>,
+    },
     /// Request completed: cached response ready to replay.
     Completed { status: StatusCode, body: String },
 }
@@ -79,7 +83,7 @@ pub(crate) enum LookupResult {
         body: String,
     },
     /// A request with this key is still in progress.
-    Conflict,
+    Conflict { body: Option<String> },
     /// This key was already bound to a different session or request body.
     Rejected { reason: RejectionReason },
 }
@@ -171,6 +175,22 @@ impl IdempotencyCache {
         session_id: &str,
         body_fingerprint: &str,
     ) -> LookupResult {
+        self.check_or_insert_with_in_flight_body(principal, key, session_id, body_fingerprint, None)
+    }
+
+    /// Look up a tuple, storing optional in-flight metadata on miss.
+    ///
+    /// WHY(#4865): streaming endpoints need a canonical turn id even while the
+    /// original request is still running, so duplicate requests can return a
+    /// typed conflict tied to the existing turn instead of an anonymous 409.
+    pub(crate) fn check_or_insert_with_in_flight_body(
+        &self,
+        principal: &str,
+        key: &str,
+        session_id: &str,
+        body_fingerprint: &str,
+        in_flight_body: Option<String>,
+    ) -> LookupResult {
         let composite = composite_key(principal, key);
         let context = request_context(session_id, body_fingerprint);
         let mut inner = self.lock_inner();
@@ -188,7 +208,7 @@ impl IdempotencyCache {
                 };
             }
             return match &entry.state {
-                EntryState::InFlight => LookupResult::Conflict,
+                EntryState::InFlight { body } => LookupResult::Conflict { body: body.clone() },
                 EntryState::Completed { status, body } => LookupResult::Hit {
                     status: *status,
                     body: body.clone(),
@@ -207,7 +227,9 @@ impl IdempotencyCache {
             composite,
             CacheEntry {
                 context,
-                state: EntryState::InFlight,
+                state: EntryState::InFlight {
+                    body: in_flight_body,
+                },
                 created_at: Instant::now(),
             },
         );
@@ -307,7 +329,7 @@ mod tests {
 
         assert!(matches!(
             cache.check_or_insert(principal, key, session_id, body_fingerprint),
-            LookupResult::Conflict
+            LookupResult::Conflict { .. }
         ));
 
         cache.complete(
@@ -439,7 +461,7 @@ mod tests {
         // Bob's entry is in-flight until he completes; a second call from Bob is a Conflict.
         assert!(matches!(
             cache.check_or_insert("bob", key, session_id, body_fingerprint),
-            LookupResult::Conflict
+            LookupResult::Conflict { .. }
         ));
 
         // Bob completing his entry does not disturb Alice's cached entry.
@@ -492,7 +514,7 @@ mod tests {
         assert!(
             matches!(
                 cache.check_or_insert("bob", key, session_id, body_fingerprint),
-                LookupResult::Conflict
+                LookupResult::Conflict { .. }
             ),
             "bob's in-flight entry must be unaffected"
         );
@@ -539,7 +561,7 @@ mod tests {
             match self {
                 Self::Miss => write!(f, "Miss"),
                 Self::Hit { status, .. } => write!(f, "Hit({status})"),
-                Self::Conflict => write!(f, "Conflict"),
+                Self::Conflict { .. } => write!(f, "Conflict"),
                 Self::Rejected { reason } => write!(f, "Rejected({reason:?})"),
             }
         }

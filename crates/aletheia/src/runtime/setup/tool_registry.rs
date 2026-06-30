@@ -175,7 +175,7 @@ fn build_energeia_services(
         .map(|task| task.name.clone())
         .collect();
 
-    let default_model = &config.agents.defaults.model_defaults.model.primary;
+    let default_model = config.agents.defaults.model_defaults.model.primary.as_str();
     let engine: Arc<dyn energeia::engine::DispatchEngine> =
         Arc::new(energeia::http::HttpEngine::new(default_model));
     let qa: Arc<dyn energeia::qa::QaGate> = Arc::new(MechanicalQaGate);

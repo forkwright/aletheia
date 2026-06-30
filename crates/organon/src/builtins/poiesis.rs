@@ -75,6 +75,7 @@ pub(crate) fn json_data_property(description: &str) -> PropertyDef {
         description: format!("{description} Also accepts a JSON string for legacy callers."),
         enum_values: None,
         default: None,
+        ..Default::default()
     }
 }
 
@@ -450,6 +451,7 @@ fn generate_document_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -470,6 +472,7 @@ fn generate_document_def() -> ToolDef {
                             "xlsx".to_owned(),
                         ]),
                         default: Some(serde_json::json!("odt")),
+                        ..Default::default()
                     },
                 ),
                 (
@@ -479,6 +482,7 @@ fn generate_document_def() -> ToolDef {
                         description: "Document title (default: Untitled Document)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -488,6 +492,7 @@ fn generate_document_def() -> ToolDef {
                         description: "Document author (optional)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -500,6 +505,7 @@ fn generate_document_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -615,6 +621,7 @@ fn lint_report_def() -> ToolDef {
                         description: "Report text to lint (inline)".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -624,6 +631,7 @@ fn lint_report_def() -> ToolDef {
                         description: "Path to report file to lint".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -635,6 +643,7 @@ fn lint_report_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -729,6 +738,7 @@ fn verify_report_def() -> ToolDef {
                         description: "Inline JSON verify manifest string".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -738,6 +748,7 @@ fn verify_report_def() -> ToolDef {
                         description: "Path to a verify manifest JSON file".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -910,6 +921,7 @@ fn render_typst_report_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -919,6 +931,7 @@ fn render_typst_report_def() -> ToolDef {
                         description: "Built-in template slug (e.g. `default`).".to_owned(),
                         enum_values: Some(typst_template_enum_values()),
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -930,6 +943,7 @@ fn render_typst_report_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -946,6 +960,7 @@ fn render_typst_report_def() -> ToolDef {
                                 .to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),
@@ -1107,6 +1122,7 @@ fn qa_gate_def() -> ToolDef {
                         description: "Document text to lint".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
                 (
@@ -1116,6 +1132,7 @@ fn qa_gate_def() -> ToolDef {
                         description: "Optional JSON-serialized Factbase to validate".to_owned(),
                         enum_values: None,
                         default: None,
+                        ..Default::default()
                     },
                 ),
             ]),

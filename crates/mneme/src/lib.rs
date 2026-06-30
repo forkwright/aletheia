@@ -113,22 +113,26 @@ pub mod knowledge_error {
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 pub mod portability {
     pub use graphe::portability::{
-        AGENT_FILE_VERSION, AgentFile, ExportMetadata, ExportedMessage, ExportedNote,
-        ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge, GraphData,
-        KnowledgeExport, MemoryData, NousInfo, OmittedSection, TruncationRecord, WorkspaceData,
+        AGENT_FILE_VERSION, AgentFile, BinaryFileData, ExportMetadata, ExportedMessage,
+        ExportedNote, ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge,
+        GraphData, KnowledgeExport, MemoryData, NousInfo, OmittedSection, TruncationRecord,
+        WorkspaceData,
     };
 }
 
 /// Session store — fjall LSM-tree backend.
 pub mod store {
-    pub use graphe::store::SessionStore;
+    pub use graphe::store::{
+        FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
+        FinalizeTurnResult, SessionStore,
+    };
 }
 
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types {
     pub use graphe::types::{
         AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin,
-        SessionStatus, SessionType, UsageRecord,
+        SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
     };
     pub use graphe::types::{
         ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,
@@ -138,9 +142,8 @@ pub mod types {
 
 /// Idempotent turn-finalization primitives.
 ///
-/// WHY: `nous::finalize` uses `usage_exists_for_turn` as the dedup guard, but
-/// messages are appended before usage is recorded. The types here let
-/// downstream detect and recover partially finalized turns (#4691).
+/// WHY: finalized turns must carry durable lifecycle evidence so downstream
+/// recovery can distinguish pending attempts from completed turns (#4691).
 pub mod finalize;
 
 /// Working-memory checkpoint storage contract.
@@ -349,14 +352,18 @@ pub mod skills {
 
 /// Structured tracing subscriber that captures operational events as Datalog facts.
 pub mod trace_ingest {
-    pub use episteme::trace_ingest::{OPS_DDL, TraceEvent, TraceIngestLayer, ensure_ops_schema};
+    #[cfg(feature = "mneme-engine")]
+    pub use episteme::trace_ingest::ensure_ops_schema;
+    pub use episteme::trace_ingest::{OPS_DDL, TraceEvent, TraceIngestLayer};
 }
 
 /// Multi-agent verification protocol.
 pub mod verification {
+    #[cfg(feature = "mneme-engine")]
+    pub use episteme::verification::detect_conflict;
     pub use episteme::verification::{
         Conflict, ConflictKind, DEFAULT_VERIFICATION_THRESHOLD, ResolveError, VerificationOutcome,
-        detect_conflict, publish_fact, resolve_conflict, vote_on_proposal,
+        publish_fact, resolve_conflict, vote_on_proposal,
     };
 }
 

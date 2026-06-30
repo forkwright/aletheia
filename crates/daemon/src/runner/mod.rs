@@ -19,17 +19,21 @@ use crate::schedule::BuiltinTask;
 
 /// Output mode for daemon logging.
 ///
-/// WHY: daemon logs should be scannable; full model responses and tool results
-/// flood the log when running in production.
+/// WHY(#4948): daemon command output can contain secrets, prompts, session
+/// text, or private paths. The default is metadata-only; full output requires
+/// explicit opt-in and still passes through best-effort redaction.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DaemonOutputMode {
-    /// Full output  -  all tool results and model responses logged verbatim.
+    /// Metadata only: status when available, byte counts, line counts, and
+    /// stable digests. No output excerpt is included.
     #[default]
-    Full,
-    /// Brief output  -  tool results truncated to first/last N lines, model
-    /// responses logged at info level with truncation.
+    Summary,
+    /// Summary metadata plus a small redacted excerpt.
     Brief,
+    /// Full redacted output. Unsafe/private: use only for controlled
+    /// diagnostics, because redaction cannot prove every sensitive value.
+    Full,
 }
 
 mod inflight;
@@ -41,7 +45,11 @@ mod supervision;
 /// Systemd notify integration for daemon lifecycle signaling.
 pub mod systemd;
 mod tracking;
+#[cfg(test)]
 pub(crate) use output::truncate_output;
+pub(crate) use output::{
+    command_context, process_output_report, redact_task_text, safe_output_for_mode,
+};
 use supervision::TaskWatchdog;
 
 // kanon:ignore RUST/struct-too-many-fields — TaskRunner is a cohesive actor struct: all fields are required for per-nous task scheduling, execution, and lifecycle management
@@ -213,7 +221,7 @@ impl TaskRunner {
             knowledge_store: None,
             in_flight: HashMap::new(),
             state_store: None,
-            output_mode: DaemonOutputMode::Full,
+            output_mode: DaemonOutputMode::Summary,
             daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),
@@ -240,7 +248,7 @@ impl TaskRunner {
             knowledge_store: None,
             in_flight: HashMap::new(),
             state_store: None,
-            output_mode: DaemonOutputMode::Full,
+            output_mode: DaemonOutputMode::Summary,
             daemon_behavior: DaemonBehaviorConfig::default(),
             self_prompt_limiter: crate::self_prompt::SelfPromptLimiter::new(1),
             self_prompt_config: crate::self_prompt::SelfPromptConfig::default(),

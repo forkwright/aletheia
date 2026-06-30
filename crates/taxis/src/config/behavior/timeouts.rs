@@ -54,7 +54,7 @@ impl Default for CapacityConfig {
 
 /// Deployment-tunable LLM retry and backoff parameters.
 ///
-/// Controls how the Anthropic provider retries transient failures. Defaults
+/// Controls how Hermeneus HTTP providers retry transient failures. Defaults
 /// match the constants in `hermeneus::models` so that omitting this section
 /// produces identical behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]

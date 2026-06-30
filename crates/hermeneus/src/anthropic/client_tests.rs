@@ -12,7 +12,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use koina::secret::SecretString;
 
 use super::*;
-use crate::anthropic::pricing::{backoff_delay, estimate_cost, model_family};
+use crate::anthropic::pricing::{estimate_cost, model_family};
 use crate::error::Error;
 use crate::models::BACKOFF_MAX_MS;
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ProviderConfig};
@@ -24,7 +24,11 @@ fn test_config_with(base_url: &str) -> ProviderConfig {
         api_key: Some(SecretString::from("test-key")),
         base_url: Some(base_url.to_owned()),
         default_model: None,
-        max_retries: Some(0),
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..crate::RetryPolicy::default()
+        },
+        concurrency: crate::concurrency::ConcurrencyConfig::default(),
         pricing: HashMap::new(),
         cc_mimicry: None,
         prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
@@ -87,6 +91,62 @@ fn from_config_empty_api_key() {
     assert!(
         matches!(err, Error::ProviderInit { .. }),
         "expected ProviderInit, got: {err:?}"
+    );
+}
+
+#[test]
+fn from_config_rejects_spoofed_loopback_without_leaking_credentials() {
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("sk-secret-5055")),
+        base_url: Some("http://operator:url-secret@127.0.0.1.evil.example/v1".to_owned()), // pii-allow: test fixture asserting credential non-leak
+        ..ProviderConfig::default()
+    };
+    let err = AnthropicProvider::from_config(&config).expect_err("spoofed host must fail");
+    let message = err.to_string();
+
+    assert!(message.contains("HTTPS"), "unexpected error: {message}");
+    assert!(
+        message.contains("127.0.0.1.evil.example"),
+        "diagnostic should keep the rejected host: {message}"
+    );
+    assert!(
+        !message.contains("url-secret"),
+        "diagnostic must redact URL userinfo: {message}"
+    );
+    assert!(
+        !message.contains("sk-secret-5055"),
+        "diagnostic must not include API keys: {message}"
+    );
+}
+
+#[test]
+fn with_credential_provider_rejects_spoofed_loopback_without_leaking_credentials() {
+    use std::sync::Arc;
+
+    let config = ProviderConfig {
+        base_url: Some("http://operator:url-secret@localhost.evil.example/v1".to_owned()), // pii-allow: test fixture asserting credential non-leak
+        ..ProviderConfig::default()
+    };
+    let credential_provider = Arc::new(StaticCredentialProvider {
+        key: SecretString::from("dynamic-secret-5055"),
+    });
+
+    let err = AnthropicProvider::with_credential_provider(credential_provider, &config)
+        .expect_err("spoofed host must fail");
+    let message = err.to_string();
+
+    assert!(message.contains("HTTPS"), "unexpected error: {message}");
+    assert!(
+        message.contains("localhost.evil.example"),
+        "diagnostic should keep the rejected host: {message}"
+    );
+    assert!(
+        !message.contains("url-secret"),
+        "diagnostic must redact URL userinfo: {message}"
+    );
+    assert!(
+        !message.contains("dynamic-secret-5055"),
+        "diagnostic must not include credential provider secrets: {message}"
     );
 }
 
@@ -236,6 +296,106 @@ async fn complete_success() {
     );
 }
 
+#[tokio::test]
+#[expect(
+    deprecated,
+    reason = "set_linger(Duration::ZERO) sends RST immediately and does not block; test-only"
+)]
+async fn complete_streaming_retries_pre_content_connection_reset() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind test listener");
+    let addr = listener.local_addr().expect("read listener address");
+    let call_count = Arc::new(AtomicUsize::new(0));
+    let call_count_server = Arc::clone(&call_count);
+
+    let good_sse = concat!(
+        "event: message_start\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_sse_retry\",\"model\":\"claude-opus-4-20250514\",\"usage\":{\"input_tokens\":3,\"output_tokens\":0}}}\n\n",
+        "event: content_block_start\n",
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+        "event: content_block_delta\n",
+        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Ok\"}}\n\n",
+        "event: message_delta\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n",
+        "event: message_stop\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+
+    let server = tokio::spawn(async move {
+        {
+            let (mut socket, _) = listener.accept().await.expect("accept attempt 1");
+            call_count_server.fetch_add(1, Ordering::SeqCst);
+            let mut buf = vec![0_u8; 4096];
+            loop {
+                let n = socket.read(&mut buf).await.expect("read request 1");
+                if n == 0 || buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\n")
+                .await
+                .expect("write attempt 1 headers");
+            socket
+                .set_linger(Some(Duration::ZERO))
+                .expect("set reset linger");
+            drop(socket);
+        }
+
+        {
+            let (mut socket, _) = listener.accept().await.expect("accept attempt 2");
+            call_count_server.fetch_add(1, Ordering::SeqCst);
+            let mut buf = vec![0_u8; 4096];
+            loop {
+                let n = socket.read(&mut buf).await.expect("read request 2");
+                if n == 0 || buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                good_sse.len(),
+                good_sse
+            );
+            socket
+                .write_all(response.as_bytes())
+                .await
+                .expect("write retry response");
+        }
+    });
+
+    let mut config = test_config_with(&format!("http://{addr}"));
+    config.retry_policy.max_retries = 1;
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+
+    let mut events = Vec::new();
+    let response = provider
+        .complete_streaming(&test_request(), |event| events.push(event))
+        .await
+        .expect("streaming should retry after pre-content reset");
+
+    server.await.expect("server task completes");
+
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        2,
+        "pre-content connection reset should be retried once"
+    );
+    assert_eq!(response.id, "msg_sse_retry");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, StreamEvent::TextDelta { text } if text == "Ok")),
+        "retry response text delta should be emitted: {events:?}"
+    );
+}
+
 /// #3406: every outbound request must carry a training opt-out header.
 /// Sovereignty default — not configurable.
 #[tokio::test]
@@ -350,7 +510,7 @@ async fn complete_auth_failure_not_retried() {
         .await;
 
     let mut config = test_config_with(&server.uri());
-    config.max_retries = Some(2);
+    config.retry_policy.max_retries = 2;
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     let err = provider
         .complete(&test_request())
@@ -377,7 +537,7 @@ async fn complete_bad_request_not_retried() {
         .await;
 
     let mut config = test_config_with(&server.uri());
-    config.max_retries = Some(2);
+    config.retry_policy.max_retries = 2;
     let provider = AnthropicProvider::from_config(&config).expect("valid config");
     let err = provider
         .complete(&test_request())
@@ -681,7 +841,7 @@ fn backoff_delay_respects_retry_after() {
         retry_after_ms: 5000_u64,
     }
     .build();
-    let delay = backoff_delay(1, Some(&err));
+    let delay = crate::RetryPolicy::default().delay(1, Some(&err));
     assert_eq!(
         delay,
         Duration::from_secs(5),
@@ -691,9 +851,10 @@ fn backoff_delay_respects_retry_after() {
 
 #[test]
 fn backoff_delay_exponential_growth() {
-    let d1 = backoff_delay(1, None);
-    let d2 = backoff_delay(2, None);
-    let d3 = backoff_delay(3, None);
+    let policy = crate::RetryPolicy::default();
+    let d1 = policy.delay(1, None);
+    let d2 = policy.delay(2, None);
+    let d3 = policy.delay(3, None);
     assert!(d1 < d2, "attempt 2 delay should exceed attempt 1");
     assert!(d2 < d3, "attempt 3 delay should exceed attempt 2");
     assert!(
@@ -794,7 +955,10 @@ fn compute_attribution_returns_none_for_environment_credential() {
     let config = ProviderConfig {
         base_url: Some("https://api.anthropic.com".to_owned()),
         cc_mimicry: Some(true),
-        max_retries: Some(0),
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..crate::RetryPolicy::default()
+        },
         ..ProviderConfig::default()
     };
     let provider = AnthropicProvider::with_credential_provider(Arc::new(EnvKeyProvider), &config)
@@ -848,7 +1012,10 @@ fn compute_attribution_returns_some_for_oauth_credential() {
     let config = ProviderConfig {
         base_url: Some("https://api.anthropic.com".to_owned()),
         cc_mimicry: Some(true),
-        max_retries: Some(0),
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..crate::RetryPolicy::default()
+        },
         ..ProviderConfig::default()
     };
     let provider = AnthropicProvider::with_credential_provider(Arc::new(OAuthProvider), &config)

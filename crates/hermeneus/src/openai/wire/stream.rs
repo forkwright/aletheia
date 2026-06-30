@@ -104,6 +104,10 @@ struct PendingToolCall {
     id: String,
     name: String,
     arguments: String,
+    /// Whether a `ContentBlockStart` has been emitted for this tool call.
+    started: bool,
+    /// Content block index matching the final [`CompletionResponse::content`] array.
+    block_index: u32,
 }
 
 impl OpenAiStreamAccumulator {
@@ -116,6 +120,20 @@ impl OpenAiStreamAccumulator {
             stop_reason: StopReason::EndTurn,
             usage: Usage::default(),
             text_block_open: false,
+        }
+    }
+
+    /// Compute the content-block index for a tool call at `tool_calls[index]`.
+    ///
+    /// WHY: OpenAI Chat Completions exposes tool-call indices local to the
+    /// `tool_calls` array, but hermeneus content-block indices are global to the
+    /// final `content` array. Text always precedes tool calls in that array, so
+    /// shift tool-call indices by one when a text block is present.
+    fn tool_block_index(&self, tool_call_index: u32) -> u32 {
+        if self.text_block_open || !self.text_buf.is_empty() {
+            tool_call_index + 1
+        } else {
+            tool_call_index
         }
     }
 
@@ -174,6 +192,7 @@ impl OpenAiStreamAccumulator {
 
         // Tool-call deltas → buffered, partial_json emitted per increment.
         for tc in choice.delta.tool_calls {
+            let block_index = self.tool_block_index(tc.index);
             let pending = self
                 .tool_calls
                 .entry(tc.index)
@@ -181,7 +200,16 @@ impl OpenAiStreamAccumulator {
                     id: String::new(),
                     name: String::new(),
                     arguments: String::new(),
+                    started: false,
+                    block_index,
                 });
+            if !pending.started {
+                on_event(StreamEvent::ContentBlockStart {
+                    index: pending.block_index,
+                    block_type: "tool_use".to_owned(),
+                });
+                pending.started = true;
+            }
             if let Some(id) = tc.id
                 && !id.is_empty()
             {
@@ -210,7 +238,7 @@ impl OpenAiStreamAccumulator {
     pub(crate) fn finish<F: FnMut(StreamEvent) + ?Sized>(
         self,
         on_event: &mut F,
-    ) -> CompletionResponse {
+    ) -> Result<CompletionResponse> {
         let Self {
             id,
             model,
@@ -233,16 +261,22 @@ impl OpenAiStreamAccumulator {
             });
         }
         for (_, tc) in tool_calls {
+            if tc.started {
+                on_event(StreamEvent::ContentBlockStop {
+                    index: tc.block_index,
+                });
+            }
+            let input = parse_arguments(&tc.arguments, "OpenAI Chat Completions stream", &tc.name)?;
             content.push(ContentBlock::ToolUse {
                 id: tc.id,
                 name: tc.name,
-                input: parse_arguments(&tc.arguments),
+                input,
             });
         }
 
         on_event(StreamEvent::MessageStop { stop_reason, usage });
 
-        CompletionResponse {
+        Ok(CompletionResponse {
             id,
             model,
             stop_reason,
@@ -250,7 +284,7 @@ impl OpenAiStreamAccumulator {
             usage,
             cost_usd: None,
             duration_ms: None,
-        }
+        })
     }
 }
 
@@ -371,7 +405,7 @@ impl ChatSseParser {
             }
             .build());
         }
-        Ok(self.accumulator.finish(on_event))
+        self.accumulator.finish(on_event)
     }
 }
 
@@ -422,6 +456,10 @@ struct ResponsesStreamAccumulator {
     model: String,
     text_buf: String,
     tool_calls: BTreeMap<String, PendingResponsesToolCall>,
+    /// Order in which each `call_id`/`item_id` first appeared in the stream.
+    /// WHY: The Responses API does not assign a numeric tool-call index; we
+    /// synthesize stable content-block indices from first-arrival order.
+    call_order: Vec<String>,
     completed: Option<CompletionResponse>,
     usage: Usage,
     text_block_open: bool,
@@ -432,6 +470,12 @@ struct PendingResponsesToolCall {
     id: String,
     name: String,
     arguments: String,
+    /// Whether a `ContentBlockStart` has been emitted for this tool call.
+    started: bool,
+    /// Whether a `ContentBlockStop` has been emitted for this tool call.
+    stopped: bool,
+    /// Content block index matching the final [`CompletionResponse::content`] array.
+    block_index: u32,
 }
 
 impl ResponsesStreamAccumulator {
@@ -441,10 +485,38 @@ impl ResponsesStreamAccumulator {
             model: String::new(),
             text_buf: String::new(),
             tool_calls: BTreeMap::new(),
+            call_order: Vec::new(),
             completed: None,
             usage: Usage::default(),
             text_block_open: false,
             message_started: false,
+        }
+    }
+
+    /// Compute the content-block index for a tool call at `call_order[position]`.
+    ///
+    /// WHY: Text blocks precede tool calls in the final `content` array, so
+    /// shift tool-call indices by one when a text block has been opened.
+    fn tool_block_index(&self, position: u32) -> u32 {
+        if self.text_block_open || !self.text_buf.is_empty() {
+            position + 1
+        } else {
+            position
+        }
+    }
+
+    /// Return the stable content-block position for `key`, allocating one if new.
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "WHY(#5049): content block positions bounded by stream output size, fits u32"
+    )]
+    fn position_for_call(&mut self, key: &str) -> u32 {
+        if let Some(pos) = self.call_order.iter().position(|id| id == key) {
+            pos as u32 // kanon:ignore RUST/as-cast
+        } else {
+            self.call_order.push(key.to_owned());
+            (self.call_order.len() - 1) as u32 // kanon:ignore RUST/as-cast
         }
     }
 
@@ -468,62 +540,27 @@ impl ResponsesStreamAccumulator {
                 }
             }
             "response.function_call_arguments.delta" => {
-                let key = event
-                    .call_id
-                    .clone()
-                    .or(event.item_id.clone())
-                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
-                let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
-                    PendingResponsesToolCall {
-                        id: key,
-                        name: event.name.clone().unwrap_or_default(),
-                        arguments: String::new(),
-                    }
-                });
-                if let Some(delta) = event.delta
-                    && !delta.is_empty()
-                {
-                    pending.arguments.push_str(&delta);
-                    on_event(StreamEvent::InputJsonDelta {
-                        partial_json: delta,
-                    });
-                }
+                self.handle_fn_call_delta(
+                    event.call_id,
+                    event.item_id,
+                    event.name,
+                    event.delta,
+                    on_event,
+                );
             }
             "response.function_call_arguments.done" => {
-                let key = event
-                    .call_id
-                    .clone()
-                    .or(event.item_id.clone())
-                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
-                let pending = self.tool_calls.entry(key.clone()).or_insert_with(|| {
-                    PendingResponsesToolCall {
-                        id: key,
-                        name: String::new(),
-                        arguments: String::new(),
-                    }
-                });
-                if let Some(call_id) = event.call_id
-                    && !call_id.is_empty()
-                {
-                    pending.id = call_id;
-                }
-                if let Some(name) = event.name
-                    && !name.is_empty()
-                {
-                    pending.name = name;
-                }
-                if let Some(arguments) = event.arguments {
-                    pending.arguments = arguments;
-                }
+                self.handle_fn_call_done(
+                    event.call_id,
+                    event.item_id,
+                    event.name,
+                    event.arguments,
+                    on_event,
+                );
             }
             "response.completed" => {
                 if let Some(response) = event.response {
                     self.capture_response_metadata(&response, on_event);
-                    self.completed = Some(
-                        response
-                            .into_response()
-                            .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())?,
-                    );
+                    self.completed = Some(response.into_response()?);
                 }
             }
             "response.failed" => {
@@ -539,10 +576,100 @@ impl ResponsesStreamAccumulator {
                 .build());
             }
             _ => {
-                // Ignore Responses event types this adapter does not surface.
+                // WHY: Unknown Responses event types are provider drift, not silence.
+                // Emit a typed unsupported event so streaming consumers can see that
+                // the response was partially represented.
+                on_event(StreamEvent::UnsupportedEvent {
+                    event_type: event.event_type.clone(),
+                });
             }
         }
         Ok(())
+    }
+
+    fn handle_fn_call_delta<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        call_id: Option<String>,
+        item_id: Option<String>,
+        name: Option<String>,
+        delta: Option<String>,
+        on_event: &mut F,
+    ) {
+        let key = call_id.or(item_id).unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
+        let position = self.position_for_call(&key);
+        let block_index = self.tool_block_index(position);
+        let pending =
+            self.tool_calls
+                .entry(key.clone())
+                .or_insert_with(|| PendingResponsesToolCall {
+                    id: key,
+                    name: name.unwrap_or_default(),
+                    arguments: String::new(),
+                    started: false,
+                    stopped: false,
+                    block_index,
+                });
+        if !pending.started {
+            on_event(StreamEvent::ContentBlockStart {
+                index: pending.block_index,
+                block_type: "tool_use".to_owned(),
+            });
+            pending.started = true;
+        }
+        if let Some(d) = delta
+            && !d.is_empty()
+        {
+            pending.arguments.push_str(&d);
+            on_event(StreamEvent::InputJsonDelta { partial_json: d });
+        }
+    }
+
+    fn handle_fn_call_done<F: FnMut(StreamEvent) + ?Sized>(
+        &mut self,
+        call_id: Option<String>,
+        item_id: Option<String>,
+        name: Option<String>,
+        arguments: Option<String>,
+        on_event: &mut F,
+    ) {
+        let key = call_id.clone().or(item_id).unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<String>.or(Option<String>), not Result — empty string fallback is correct
+        let position = self.position_for_call(&key);
+        let block_index = self.tool_block_index(position);
+        let pending =
+            self.tool_calls
+                .entry(key.clone())
+                .or_insert_with(|| PendingResponsesToolCall {
+                    id: key,
+                    name: String::new(),
+                    arguments: String::new(),
+                    started: false,
+                    stopped: false,
+                    block_index,
+                });
+        if let Some(id) = call_id
+            && !id.is_empty()
+        {
+            pending.id = id;
+        }
+        if let Some(n) = name
+            && !n.is_empty()
+        {
+            pending.name = n;
+        }
+        if let Some(args) = arguments {
+            pending.arguments = args;
+        }
+        if !pending.started {
+            on_event(StreamEvent::ContentBlockStart {
+                index: pending.block_index,
+                block_type: "tool_use".to_owned(),
+            });
+            pending.started = true;
+        }
+        on_event(StreamEvent::ContentBlockStop {
+            index: pending.block_index,
+        });
+        pending.stopped = true;
     }
 
     fn capture_response_metadata<F: FnMut(StreamEvent) + ?Sized>(
@@ -586,12 +713,16 @@ impl ResponsesStreamAccumulator {
         }
     }
 
-    fn finish<F: FnMut(StreamEvent) + ?Sized>(self, on_event: &mut F) -> CompletionResponse {
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(
+        self,
+        on_event: &mut F,
+    ) -> Result<CompletionResponse> {
         let Self {
             id,
             model,
             text_buf,
             tool_calls,
+            call_order,
             completed,
             usage,
             text_block_open,
@@ -602,7 +733,23 @@ impl ResponsesStreamAccumulator {
             on_event(StreamEvent::ContentBlockStop { index: 0 });
         }
 
-        let resp = completed.unwrap_or_else(|| {
+        // WHY: Emit ContentBlockStop for any tool call whose `done` event was
+        // missing or arrived out of order. Iterate in first-arrival order so
+        // indices stay aligned with the ContentBlockStart events already emitted.
+        for key in &call_order {
+            if let Some(pending) = tool_calls.get(key)
+                && pending.started
+                && !pending.stopped
+            {
+                on_event(StreamEvent::ContentBlockStop {
+                    index: pending.block_index,
+                });
+            }
+        }
+
+        let resp = if let Some(completed) = completed {
+            completed
+        } else {
             let mut content = Vec::new();
             if !text_buf.is_empty() {
                 content.push(ContentBlock::Text {
@@ -610,12 +757,18 @@ impl ResponsesStreamAccumulator {
                     citations: None,
                 });
             }
-            for (_, call) in tool_calls {
-                content.push(ContentBlock::ToolUse {
-                    id: call.id,
-                    name: call.name,
-                    input: parse_arguments(&call.arguments),
-                });
+            // WHY: Preserve the first-arrival order used for streaming content-block
+            // indices so that emitted indices match the final `content` array.
+            for key in &call_order {
+                if let Some(call) = tool_calls.get(key) {
+                    let input =
+                        parse_arguments(&call.arguments, "OpenAI Responses stream", &call.name)?;
+                    content.push(ContentBlock::ToolUse {
+                        id: call.id.clone(),
+                        name: call.name.clone(),
+                        input,
+                    });
+                }
             }
             let stop_reason = if content
                 .iter()
@@ -634,13 +787,13 @@ impl ResponsesStreamAccumulator {
                 cost_usd: None,
                 duration_ms: None,
             }
-        });
+        };
 
         on_event(StreamEvent::MessageStop {
             stop_reason: resp.stop_reason,
             usage: resp.usage,
         });
-        resp
+        Ok(resp)
     }
 }
 
@@ -729,7 +882,7 @@ impl ResponsesSseParser {
             }
             .build());
         }
-        Ok(self.accumulator.finish(on_event))
+        self.accumulator.finish(on_event)
     }
 }
 
@@ -759,6 +912,7 @@ pub(crate) async fn parse_responses_sse_response(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
@@ -766,7 +920,7 @@ pub(crate) async fn parse_responses_sse_response(
 mod tests {
     use super::*;
 
-    fn process_chunks(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+    fn process_chunks_result(chunks: &[&str]) -> (Vec<StreamEvent>, Result<CompletionResponse>) {
         let mut acc = OpenAiStreamAccumulator::new();
         let mut events = Vec::new();
         for chunk_json in chunks {
@@ -777,15 +931,29 @@ mod tests {
         (events, resp)
     }
 
-    fn process_responses_events(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+    fn process_chunks(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+        let (events, resp) = process_chunks_result(chunks);
+        (events, resp.unwrap())
+    }
+
+    fn process_responses_events_result(
+        chunks: &[&str],
+    ) -> (Vec<StreamEvent>, Result<CompletionResponse>) {
         let mut acc = ResponsesStreamAccumulator::new();
         let mut events = Vec::new();
         for event_json in chunks {
             let event: ResponsesStreamEvent = serde_json::from_str(event_json).unwrap();
-            acc.process_event(event, &mut |e| events.push(e)).unwrap();
+            if let Err(err) = acc.process_event(event, &mut |e| events.push(e)) {
+                return (events, Err(err));
+            }
         }
         let resp = acc.finish(&mut |e| events.push(e));
         (events, resp)
+    }
+
+    fn process_responses_events(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+        let (events, resp) = process_responses_events_result(chunks);
+        (events, resp.unwrap())
     }
 
     #[test]
@@ -830,37 +998,41 @@ mod tests {
     }
 
     #[test]
-    fn malformed_tool_call_deltas_become_parse_error_object() {
-        let (_, resp) = process_chunks(&[
+    fn malformed_tool_call_deltas_return_provider_contract_error() {
+        let (_, resp) = process_chunks_result(&[
             r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{not"}}]}}]}"#,
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" json"}}]}}]}"#,
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
         ]);
-        assert_eq!(resp.stop_reason, StopReason::ToolUse);
-        match &resp.content[0] {
-            ContentBlock::ToolUse { id, name, input } => {
-                assert_eq!(id, "c1");
-                assert_eq!(name, "f");
-                assert!(
-                    input.is_object(),
-                    "malformed streaming arguments must be an object, not a string: {input:?}"
-                );
-                let Some(obj) = input.as_object() else {
-                    panic!("malformed streaming arguments should produce an object: {input:?}");
-                };
-                assert!(
-                    obj.get("_parse_error")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s.starts_with("malformed tool input:")),
-                    "expected _parse_error field: {input:?}"
-                );
-                assert!(
-                    obj.contains_key("_raw_input"),
-                    "expected _raw_input field: {input:?}"
-                );
-            }
-            _ => panic!("expected ToolUse"),
-        }
+        let err = resp.expect_err("malformed streaming Chat arguments should fail");
+        assert!(
+            matches!(
+                err,
+                Error::ProviderContract { ref message, .. }
+                    if message.contains("OpenAI Chat Completions stream")
+                        && message.contains("'f'")
+                        && message.contains("not valid JSON")
+            ),
+            "expected ProviderContract for malformed Chat stream arguments, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn responses_stream_malformed_function_arguments_return_provider_contract_error() {
+        let (_, resp) = process_responses_events_result(&[
+            r#"{"type":"response.completed","response":{"id":"r1","model":"gpt-5","status":"completed","output":[{"type":"function_call","call_id":"call-1","name":"f","arguments":"{not json"}]}}"#,
+        ]);
+        let err = resp.expect_err("malformed Responses stream arguments should fail");
+        assert!(
+            matches!(
+                err,
+                Error::ProviderContract { ref message, .. }
+                    if message.contains("OpenAI Responses")
+                        && message.contains("'f'")
+                        && message.contains("not valid JSON")
+            ),
+            "expected ProviderContract for malformed Responses stream arguments, got {err:?}"
+        );
     }
 
     #[test]
@@ -1058,6 +1230,236 @@ mod tests {
         assert!(
             matches!(err, Error::ApiRequest { ref message, .. } if message.contains("error")),
             "expected ApiRequest error after error event, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn emits_tool_call_content_block_lifecycle() {
+        let (events, resp) = process_chunks(&[
+            r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{\"a\":"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::ToolUse);
+        match &resp.content[0] {
+            ContentBlock::ToolUse { id, name, input } => {
+                assert_eq!(id, "c1");
+                assert_eq!(name, "f");
+                assert_eq!(input["a"], 1);
+            }
+            _ => panic!("expected ToolUse"),
+        }
+        let start_idx = events.iter().position(|e| {
+            matches!(e, StreamEvent::ContentBlockStart { index: 0, block_type } if block_type == "tool_use")
+        });
+        let stop_idx = events
+            .iter()
+            .position(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }));
+        assert!(start_idx.is_some(), "expected tool-use ContentBlockStart");
+        assert!(stop_idx.is_some(), "expected tool-use ContentBlockStop");
+        assert!(
+            start_idx < stop_idx,
+            "ContentBlockStart must precede ContentBlockStop"
+        );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            StreamEvent::InputJsonDelta { partial_json } if partial_json == "{\"a\":"
+        )));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            StreamEvent::InputJsonDelta { partial_json } if partial_json == "1}"
+        )));
+    }
+
+    #[test]
+    fn emits_lifecycle_for_multiple_interleaved_tool_calls() {
+        let (events, resp) = process_chunks(&[
+            r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f1","arguments":"{\"a\":"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"c2","function":{"name":"f2","arguments":"{\"b\":"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"2}"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::ToolUse);
+        assert_eq!(resp.content.len(), 2);
+        let starts: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ContentBlockStart { index, block_type }
+                    if block_type == "tool_use" =>
+                {
+                    Some(*index)
+                }
+                _ => None,
+            })
+            .collect();
+        let stops: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ContentBlockStop { index } => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert!(starts.contains(&0));
+        assert!(starts.contains(&1));
+        assert!(stops.contains(&0));
+        assert!(stops.contains(&1));
+    }
+
+    #[test]
+    fn tool_call_block_index_shifts_when_text_precedes() {
+        let (events, resp) = process_chunks(&[
+            r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"content":"Using tool"}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{\"a\":1}"}}]}}]}"#,
+            r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::ToolUse);
+        assert_eq!(resp.content.len(), 2);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            StreamEvent::ContentBlockStart { index: 0, block_type } if block_type == "text"
+        )));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            StreamEvent::ContentBlockStart { index: 1, block_type } if block_type == "tool_use"
+        )));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::ContentBlockStop { index: 1 }))
+        );
+    }
+
+    #[test]
+    fn responses_emits_tool_call_content_block_lifecycle() {
+        let (events, resp) = process_responses_events(&[
+            r#"{"type":"response.in_progress","response":{"id":"r1","model":"gpt-5","status":"in_progress","output":[],"usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f","delta":"{\"a\":"}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f","delta":"1}"}"#,
+            r#"{"type":"response.function_call_arguments.done","call_id":"call-1","name":"f","arguments":"{\"a\":1}"}"#,
+            r#"{"type":"response.completed","response":{"id":"r1","model":"gpt-5","status":"completed","output":[{"type":"function_call","call_id":"call-1","name":"f","arguments":"{\"a\":1}"}],"usage":{"input_tokens":2,"output_tokens":5,"total_tokens":7}}}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::ToolUse);
+        match &resp.content[0] {
+            ContentBlock::ToolUse { id, name, input } => {
+                assert_eq!(id, "call-1");
+                assert_eq!(name, "f");
+                assert_eq!(input["a"], 1);
+            }
+            _ => panic!("expected ToolUse"),
+        }
+        let start_idx = events.iter().position(|e| {
+            matches!(e, StreamEvent::ContentBlockStart { index: 0, block_type } if block_type == "tool_use")
+        });
+        let stop_idx = events
+            .iter()
+            .position(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }));
+        assert!(start_idx.is_some(), "expected tool-use ContentBlockStart");
+        assert!(stop_idx.is_some(), "expected tool-use ContentBlockStop");
+        assert!(
+            start_idx < stop_idx,
+            "ContentBlockStart must precede ContentBlockStop"
+        );
+        assert!(events.iter().any(|e| matches!(
+            e,
+            StreamEvent::InputJsonDelta { partial_json } if partial_json == "{\"a\":"
+        )));
+    }
+
+    #[test]
+    fn responses_emits_lifecycle_for_multiple_tool_calls() {
+        let (events, resp) = process_responses_events(&[
+            r#"{"type":"response.in_progress","response":{"id":"r1","model":"gpt-5","status":"in_progress","output":[],"usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f1","delta":"{\"a\":"}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-2","name":"f2","delta":"{\"b\":"}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f1","delta":"1}"}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-2","name":"f2","delta":"2}"}"#,
+            r#"{"type":"response.function_call_arguments.done","call_id":"call-1","name":"f1","arguments":"{\"a\":1}"}"#,
+            r#"{"type":"response.function_call_arguments.done","call_id":"call-2","name":"f2","arguments":"{\"b\":2}"}"#,
+            r#"{"type":"response.completed","response":{"id":"r1","model":"gpt-5","status":"completed","output":[{"type":"function_call","call_id":"call-1","name":"f1","arguments":"{\"a\":1}"},{"type":"function_call","call_id":"call-2","name":"f2","arguments":"{\"b\":2}"}],"usage":{"input_tokens":2,"output_tokens":5,"total_tokens":7}}}"#,
+        ]);
+        assert_eq!(resp.stop_reason, StopReason::ToolUse);
+        assert_eq!(resp.content.len(), 2);
+        let starts: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ContentBlockStart { index, block_type }
+                    if block_type == "tool_use" =>
+                {
+                    Some(*index)
+                }
+                _ => None,
+            })
+            .collect();
+        let stops: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ContentBlockStop { index } => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert!(starts.contains(&0));
+        assert!(starts.contains(&1));
+        assert!(stops.contains(&0));
+        assert!(stops.contains(&1));
+    }
+
+    #[test]
+    fn responses_no_duplicate_content_block_stop_when_done_fires() {
+        // WHY: handle_fn_call_done emits ContentBlockStop; finish_inner must not
+        // re-emit it for the same tool call, producing exactly one stop event.
+        let (events, _resp) = process_responses_events(&[
+            r#"{"type":"response.in_progress","response":{"id":"r1","model":"gpt-5","status":"in_progress","output":[],"usage":{"input_tokens":2,"output_tokens":0,"total_tokens":2}}}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f","delta":"{\"a\":"}"#,
+            r#"{"type":"response.function_call_arguments.delta","call_id":"call-1","name":"f","delta":"1}"}"#,
+            r#"{"type":"response.function_call_arguments.done","call_id":"call-1","name":"f","arguments":"{\"a\":1}"}"#,
+            r#"{"type":"response.completed","response":{"id":"r1","model":"gpt-5","status":"completed","output":[{"type":"function_call","call_id":"call-1","name":"f","arguments":"{\"a\":1}"}],"usage":{"input_tokens":2,"output_tokens":5,"total_tokens":7}}}"#,
+        ]);
+        let stop_count = events
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::ContentBlockStop { index: 0 }))
+            .count();
+        assert_eq!(
+            stop_count, 1,
+            "expected exactly one ContentBlockStop for index 0, got {stop_count}"
+        );
+    }
+
+    #[test]
+    fn responses_unknown_stream_event_emits_unsupported_event() {
+        let (events, resp) = process_responses_events(&[
+            r#"{
+                "type": "response.created",
+                "response": {
+                    "id": "resp-unknown-event",
+                    "model": "gpt-5",
+                    "status": "in_progress",
+                    "output": [],
+                    "usage": { "input_tokens": 0, "output_tokens": 0 }
+                }
+            }"#,
+            r#"{
+                "type": "response.future_unknown_event",
+                "item_id": "x"
+            }"#,
+            r#"{
+                "type": "response.completed",
+                "response": {
+                    "id": "resp-unknown-event",
+                    "model": "gpt-5",
+                    "status": "completed",
+                    "output": [{ "type": "message", "content": [{ "type": "output_text", "text": "ok" }] }],
+                    "usage": { "input_tokens": 1, "output_tokens": 1 }
+                }
+            }"#,
+        ]);
+        assert_eq!(resp.content.len(), 1);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                StreamEvent::UnsupportedEvent { event_type } if event_type == "response.future_unknown_event"
+            )),
+            "expected UnsupportedEvent for unknown Responses stream event type, got {events:?}"
         );
     }
 }

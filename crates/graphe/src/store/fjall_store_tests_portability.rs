@@ -7,7 +7,7 @@
 
 use crate::test_fixtures::test_store;
 use crate::types::{
-    Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
+    AgentNote, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
 };
 
 fn seed_session(store: &super::super::SessionStore) -> String {
@@ -340,4 +340,195 @@ fn force_import_with_changed_nous_id_removes_stale_nous_index() {
         new_listing.iter().any(|s| s.id == "ses-nous-move"),
         "session must appear under new nous_id after force-overwrite"
     );
+}
+
+#[test]
+fn insert_message_raw_preserves_tool_metadata() {
+    let store = test_store();
+    let s = store
+        .create_session("ses-toolmeta", "syn", "main", None, None)
+        .expect("create");
+
+    let msg = Message {
+        id: 7,
+        session_id: s.id.clone(),
+        seq: 3,
+        role: Role::ToolResult,
+        content: "file contents".to_owned(),
+        tool_call_id: Some("call-42".to_owned()),
+        tool_name: Some("read_file".to_owned()),
+        token_estimate: 4,
+        is_distilled: false,
+        created_at: "2024-08-10T09:00:00Z".to_owned(),
+    };
+    store.insert_message_raw(&msg).expect("raw insert");
+
+    let raw = store.get_history_raw(&s.id, None).expect("read raw");
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0].tool_call_id.as_deref(), Some("call-42"));
+    assert_eq!(raw[0].tool_name.as_deref(), Some("read_file"));
+    assert_eq!(raw[0].role, Role::ToolResult);
+}
+
+#[test]
+fn import_note_preserves_created_at_and_id() {
+    let store = test_store();
+    let s = store
+        .create_session("ses-note-imp", "syn", "main", None, None)
+        .expect("create");
+
+    // WHY: `add_note` stamps "now", so it cannot be used for faithful restore.
+    let live_id = store
+        .add_note(&s.id, "syn", "task", "live note")
+        .expect("add live note");
+
+    let imported = AgentNote {
+        id: 123,
+        session_id: s.id.clone(),
+        nous_id: "syn".to_owned(),
+        category: "decision".to_owned(),
+        content: "imported note".to_owned(),
+        created_at: "2024-07-01T10:00:00Z".to_owned(),
+    };
+    store.import_note(&imported).expect("import note");
+
+    let notes = store.get_notes(&s.id).expect("get notes");
+    assert_eq!(notes.len(), 2, "both live and imported notes must exist");
+
+    let restored = notes
+        .iter()
+        .find(|n| n.content == "imported note")
+        .expect("imported note must be present");
+    assert_eq!(restored.id, 123, "provided note id must be preserved");
+    assert_eq!(
+        restored.created_at, "2024-07-01T10:00:00Z",
+        "provided note timestamp must be preserved"
+    );
+    assert_eq!(restored.category, "decision");
+
+    let live = notes
+        .iter()
+        .find(|n| n.content == "live note")
+        .expect("live note must be present");
+    assert_eq!(live.id, live_id);
+    assert_ne!(
+        live.created_at, "2024-07-01T10:00:00Z",
+        "add_note must continue to stamp its own time"
+    );
+}
+
+#[test]
+fn lossless_session_round_trip_exceeds_default_message_limit() {
+    // WHY: the old default `--max-messages` was 500; a lossless round-trip must
+    // survive more than that many messages.
+    const MESSAGE_COUNT: usize = 505;
+    let source = test_store();
+    let session = source
+        .create_session("ses-lossless", "syn", "main", None, None)
+        .expect("create session");
+
+    for i in 1..=MESSAGE_COUNT {
+        let (role, tool_call_id, tool_name) = if i % 5 == 0 {
+            (
+                Role::ToolResult,
+                Some(format!("call-{i}")),
+                Some(format!("tool-{i}")),
+            )
+        } else {
+            (Role::User, None, None)
+        };
+        source
+            .append_message(
+                &session.id,
+                role,
+                &format!("msg-{i}"),
+                tool_call_id.as_deref(),
+                tool_name.as_deref(),
+                1,
+            )
+            .expect("append message");
+    }
+
+    source
+        .add_note(&session.id, "syn", "task", "live note")
+        .expect("add note");
+    source
+        .import_note(&AgentNote {
+            id: 99,
+            session_id: session.id.clone(),
+            nous_id: "syn".to_owned(),
+            category: "context".to_owned(),
+            content: "imported note".to_owned(),
+            created_at: "2024-09-20T12:34:56Z".to_owned(),
+        })
+        .expect("import note");
+
+    let raw_history = source
+        .get_history_raw(&session.id, None)
+        .expect("read raw history");
+    assert_eq!(
+        raw_history.len(),
+        MESSAGE_COUNT,
+        "raw history must include every message"
+    );
+
+    let tool_messages: Vec<_> = raw_history
+        .iter()
+        .filter(|m| m.role == Role::ToolResult)
+        .collect();
+    assert!(!tool_messages.is_empty(), "tool messages must survive");
+    for m in &tool_messages {
+        assert!(
+            m.tool_call_id.is_some() && m.tool_name.is_some(),
+            "tool metadata must round-trip"
+        );
+    }
+
+    // WHY: export/import must round-trip through a fresh store without silently
+    // dropping rows or mutating timestamps.
+    let dest = test_store();
+    dest.import_session(&session, false)
+        .expect("import session");
+    for m in &raw_history {
+        dest.insert_message_raw(m).expect("import message");
+    }
+    for note in source.get_notes(&session.id).expect("source notes") {
+        dest.import_note(&note).expect("import note");
+    }
+
+    let dest_history = dest
+        .get_history_raw(&session.id, None)
+        .expect("dest raw history");
+    assert_eq!(dest_history.len(), MESSAGE_COUNT);
+
+    let dest_notes = dest.get_notes(&session.id).expect("dest notes");
+    assert_eq!(dest_notes.len(), 2);
+    let imported_back = dest_notes
+        .iter()
+        .find(|n| n.content == "imported note")
+        .expect("imported note must survive");
+    assert_eq!(
+        imported_back.created_at, "2024-09-20T12:34:56Z",
+        "note timestamp must survive round-trip"
+    );
+    assert_eq!(imported_back.id, 99, "note id must survive round-trip");
+}
+
+#[test]
+fn import_session_adjusts_session_count() {
+    let store = test_store();
+    let session = store
+        .create_session("ses-1", "syn", "main", None, None)
+        .expect("create");
+    assert_eq!(store.session_count(), 1);
+
+    let mut imported = session.clone();
+    imported.id = "ses-2".to_owned();
+    imported.session_key = "secondary".to_owned();
+    store.import_session(&imported, false).expect("import new");
+    assert_eq!(store.session_count(), 2);
+
+    // Re-importing the same session with force must not change the count.
+    store.import_session(&imported, true).expect("re-import");
+    assert_eq!(store.session_count(), 2);
 }

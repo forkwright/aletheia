@@ -28,6 +28,7 @@
 use dioxus::prelude::*;
 
 use crate::app::Route;
+use crate::state::commands::{CommandStore, CommandUiState};
 
 /// A keyboard action decoded from a raw keydown event.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,9 +110,9 @@ pub(crate) fn decode_key(event: &KeyboardData) -> KeyAction {
 /// Call this inside the `Layout` component. Returns an event handler closure
 /// to attach to the root `div`.
 pub(crate) fn use_global_keyboard(
-    mut palette_open: Signal<bool>,
+    mut command_ui: Signal<CommandUiState>,
+    mut command_store: Signal<CommandStore>,
     mut sidebar_collapsed: Signal<bool>,
-    mut help_visible: Signal<bool>,
 ) -> impl FnMut(Event<KeyboardData>) {
     move |evt: Event<KeyboardData>| {
         match decode_key(&evt.data()) {
@@ -120,26 +121,29 @@ pub(crate) fn use_global_keyboard(
                 nav.push(route);
             }
             KeyAction::OpenPalette => {
-                let current = *palette_open.read();
-                palette_open.set(!current);
+                let current = command_ui.read().palette_open;
+                if !current {
+                    command_store.write().filter_by_prefix("");
+                }
+                command_ui.write().palette_open = !current;
             }
             KeyAction::ToggleSidebar => {
                 let current = *sidebar_collapsed.read();
                 sidebar_collapsed.set(!current);
             }
             KeyAction::ToggleHelp => {
-                let current = *help_visible.read();
-                help_visible.set(!current);
+                let current = command_ui.read().help_visible;
+                command_ui.write().help_visible = !current;
             }
             KeyAction::FocusSearch => {
                 // NOTE: Each view handles search focus internally.
                 // We dispatch Ctrl+F to let views react via their own key handlers.
             }
             KeyAction::Dismiss => {
-                if *help_visible.read() {
-                    help_visible.set(false);
-                } else if *palette_open.read() {
-                    palette_open.set(false);
+                if command_ui.read().help_visible {
+                    command_ui.write().help_visible = false;
+                } else if command_ui.read().palette_open {
+                    command_ui.write().palette_open = false;
                 }
             }
             _ => {} // NOTE: unbound key combinations are intentionally ignored

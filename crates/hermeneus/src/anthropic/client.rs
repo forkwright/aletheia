@@ -14,6 +14,8 @@ use tracing::{Instrument as _, info, info_span};
 use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
 
+use crate::RetryPolicy;
+use crate::concurrency::{AdaptiveConcurrencyLimiter, RequestOutcome};
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{
@@ -24,9 +26,9 @@ use crate::types::{CompletionRequest, CompletionResponse};
 use super::stream::{StreamAccumulator, StreamEvent, parse_sse_response};
 use super::wire::WireRequest;
 
-use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, DEFAULT_MAX_RETRIES};
+use crate::models::{DEFAULT_API_VERSION, DEFAULT_BASE_URL};
 
-use super::pricing::{backoff_delay, estimate_cost_with_cache};
+use super::pricing::estimate_cost_with_cache;
 
 /// Runtime-configurable provider behavior overrides.
 ///
@@ -81,7 +83,8 @@ pub struct AnthropicProvider {
     client: Client,
     credential_provider: Arc<dyn CredentialProvider>,
     endpoint: ApiEndpoint,
-    max_retries: u32,
+    retry_policy: RetryPolicy,
+    concurrency: Arc<AdaptiveConcurrencyLimiter>,
     pricing: HashMap<String, ModelPricing>,
     health: Arc<ProviderHealthTracker>,
     /// CC profile for request mimicry. `Some` when using OAuth credentials.
@@ -159,12 +162,12 @@ const ANTHROPIC_TRAINING_OPTOUT_HEADERS: &[&str] =
 /// that overrides the shorter client-level default.
 const STREAMING_TIMEOUT: Duration = Duration::from_mins(10);
 
-/// Returns true when the URL is safe to use without TLS.
+/// Returns true when the URL uses TLS or is safe to use without TLS.
 ///
-/// Localhost addresses never leave the machine, so cleartext is acceptable
-/// for local dev servers and test mocks.
-fn is_loopback_url(url: &str) -> bool {
-    url.starts_with("http://localhost") || url.starts_with("http://127.0.0.1")
+/// WHY(#5055): delegate to the parsed shared policy so Anthropic-compatible
+/// providers cannot whitelist suffix-spoofed loopback-looking hosts.
+fn has_allowed_transport(url: &str) -> bool {
+    koina::http::is_secure_or_plaintext_loopback_url(url)
 }
 
 fn build_http_client() -> Result<Client> {
@@ -219,6 +222,7 @@ impl AnthropicProvider {
                 .build()
             })?;
 
+        let name = instance_name(config);
         let provider = Self {
             client: build_http_client()?,
             credential_provider: Arc::new(StaticCredentialProvider {
@@ -231,7 +235,11 @@ impl AnthropicProvider {
                     .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
                 api_version: DEFAULT_API_VERSION.to_owned(),
             },
-            max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+            retry_policy: config.retry_policy,
+            concurrency: Arc::new(AdaptiveConcurrencyLimiter::new(
+                name.clone(),
+                config.concurrency.clone(),
+            )),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile: None, // API key mode — no mimicry needed
@@ -241,20 +249,18 @@ impl AnthropicProvider {
             ),
             prompt_cache_mode: config.prompt_cache_mode,
             meta: InstanceMeta {
-                name: instance_name(config),
+                name,
                 models: models_from_config(config),
                 has_operator_model_refs: !config.models.is_empty(),
                 deployment_target: config.deployment_target,
             },
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.endpoint.base_url.starts_with("https://")
-            && !is_loopback_url(&provider.endpoint.base_url)
-        {
+        if !has_allowed_transport(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
-                    provider.endpoint.base_url
+                    koina::http::transport_url_for_diagnostic(&provider.endpoint.base_url)
                 ),
             }
             .build());
@@ -287,6 +293,7 @@ impl AnthropicProvider {
             None
         };
 
+        let name = instance_name(config);
         let provider = Self {
             client: build_http_client()?,
             credential_provider: provider,
@@ -297,7 +304,11 @@ impl AnthropicProvider {
                     .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned()),
                 api_version: DEFAULT_API_VERSION.to_owned(),
             },
-            max_retries: config.max_retries.unwrap_or(DEFAULT_MAX_RETRIES),
+            retry_policy: config.retry_policy,
+            concurrency: Arc::new(AdaptiveConcurrencyLimiter::new(
+                name.clone(),
+                config.concurrency.clone(),
+            )),
             pricing: Self::merge_pricing(config),
             health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
             cc_profile,
@@ -307,20 +318,18 @@ impl AnthropicProvider {
             ),
             prompt_cache_mode: config.prompt_cache_mode,
             meta: InstanceMeta {
-                name: instance_name(config),
+                name,
                 models: models_from_config(config),
                 has_operator_model_refs: !config.models.is_empty(),
                 deployment_target: config.deployment_target,
             },
         };
         // TODO(#2178): add allow_insecure config field
-        if !provider.endpoint.base_url.starts_with("https://")
-            && !is_loopback_url(&provider.endpoint.base_url)
-        {
+        if !has_allowed_transport(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
-                    provider.endpoint.base_url
+                    koina::http::transport_url_for_diagnostic(&provider.endpoint.base_url)
                 ),
             }
             .build());
@@ -374,9 +383,21 @@ impl AnthropicProvider {
             llm.retries = tracing::field::Empty,
             llm.stream = true,
         );
-        self.complete_streaming_inner(request, &mut on_event)
+        self.complete_streaming_with_concurrency(request, &mut on_event)
             .instrument(span)
             .await
+    }
+
+    async fn complete_streaming_with_concurrency(
+        &self,
+        request: &CompletionRequest,
+        on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Result<CompletionResponse> {
+        let permit = self.concurrency.acquire().await;
+        let start = Instant::now();
+        let result = self.complete_streaming_inner(request, on_event).await;
+        permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());
+        result
     }
 
     #[expect(
@@ -408,14 +429,14 @@ impl AnthropicProvider {
 
         let mut last_error = None;
 
-        for attempt in 0..=self.max_retries {
+        for attempt in 0..=self.retry_policy.max_retries {
             if attempt > 0 {
                 tracing::warn!(
                     attempt,
-                    max = self.max_retries,
+                    max = self.retry_policy.max_retries,
                     "retrying streaming request after transient error"
                 );
-                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
+                tokio::time::sleep(self.retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
             let credential_source = self.credential_source();
@@ -491,9 +512,13 @@ impl AnthropicProvider {
             )
             .await;
 
+            let stream_result = match stream_result {
+                Ok(()) => accumulator.finish(),
+                Err(e) => Err(e),
+            };
+
             match stream_result {
-                Ok(()) => {
-                    let mut resp = accumulator.finish();
+                Ok(mut resp) => {
                     self.health.record_success();
                     let duration_ms =
                         u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -566,7 +591,7 @@ impl AnthropicProvider {
                         );
                         return Err(e);
                     }
-                    if matches!(e, error::Error::RateLimited { .. }) {
+                    if e.is_retryable() {
                         tracing::warn!("SSE stream returned retryable error before content");
                         self.health.record_error(&e);
                         last_error = Some(e);
@@ -597,7 +622,7 @@ impl AnthropicProvider {
         {
             tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64); // kanon:ignore RUST/as-cast
         }
-        tracing::Span::current().record("llm.retries", self.max_retries);
+        tracing::Span::current().record("llm.retries", self.retry_policy.max_retries);
         // WHY: when retries are exhausted after 429s (HTTP rate-limit or SSE
         // overload events), the terminal span must report "rate_limited" so
         // operators can distinguish exhausted rate-limit sequences from true
@@ -856,9 +881,20 @@ impl AnthropicProvider {
             llm.retries = tracing::field::Empty,
             llm.stream = false,
         );
-        self.execute_with_retry_inner(request)
+        self.execute_with_retry_with_concurrency(request)
             .instrument(span)
             .await
+    }
+
+    async fn execute_with_retry_with_concurrency(
+        &self,
+        request: &CompletionRequest,
+    ) -> Result<CompletionResponse> {
+        let permit = self.concurrency.acquire().await;
+        let start = Instant::now();
+        let result = self.execute_with_retry_inner(request).await;
+        permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());
+        result
     }
 
     #[expect(
@@ -898,9 +934,9 @@ impl AnthropicProvider {
         // deduplicates if our first request actually succeeded but we timed out.
         let idempotency_key = koina::uuid::uuid_v4();
 
-        for attempt in 0..=self.max_retries {
+        for attempt in 0..=self.retry_policy.max_retries {
             if attempt > 0 {
-                tokio::time::sleep(backoff_delay(attempt, last_error.as_ref())).await;
+                tokio::time::sleep(self.retry_policy.delay(attempt, last_error.as_ref())).await;
             }
 
             let credential_source = self.credential_source();
@@ -911,7 +947,7 @@ impl AnthropicProvider {
 
             // CodeQL: cleartext-transmission false positive. Both constructors
             // (`from_config` and `with_credential_provider`) reject non-HTTPS base
-            // URLs unless the target is loopback (localhost / 127.0.0.1). The
+            // URLs unless the parsed host is loopback. The
             // `endpoint.base_url` is immutable after construction, so by the time
             // we reach this request the scheme has already been validated.
             let response = match self
@@ -1034,7 +1070,7 @@ impl AnthropicProvider {
         {
             tracing::Span::current().record("llm.duration_ms", start.elapsed().as_millis() as u64); // kanon:ignore RUST/as-cast
         }
-        tracing::Span::current().record("llm.retries", self.max_retries);
+        tracing::Span::current().record("llm.retries", self.retry_policy.max_retries);
         let terminal_status = if last_error
             .as_ref()
             .is_some_and(|e| matches!(e, error::Error::RateLimited { .. }))
@@ -1136,7 +1172,15 @@ impl LlmProvider for AnthropicProvider {
         request: &'a CompletionRequest,
         on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
-        Box::pin(self.complete_streaming_inner(request, on_event))
+        Box::pin(self.complete_streaming_with_concurrency(request, on_event))
+    }
+}
+
+fn concurrency_outcome(result: &Result<CompletionResponse>) -> RequestOutcome {
+    match result {
+        Ok(_) => RequestOutcome::Success,
+        Err(err) if err.is_retryable() => RequestOutcome::Overload,
+        Err(_) => RequestOutcome::Neutral,
     }
 }
 
@@ -1146,7 +1190,7 @@ impl std::fmt::Debug for AnthropicProvider {
             .field("credential_provider", &self.credential_provider.name())
             .field("base_url", &self.endpoint.base_url)
             .field("api_version", &self.endpoint.api_version)
-            .field("max_retries", &self.max_retries)
+            .field("retry_policy", &self.retry_policy)
             .finish_non_exhaustive()
     }
 }

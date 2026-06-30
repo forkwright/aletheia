@@ -8,7 +8,8 @@
 //! WHY(#4910): The bus also keeps a bounded in-memory journal of recent events
 //! so that SSE reconnects with `Last-Event-ID` can replay missed events. Events
 //! that have fallen out of the journal are reported as a typed `stream_gap`
-//! event rather than silently lost.
+//! event, and cursors outside the current journal are reported as typed
+//! `stream_expired` events, rather than silently losing continuity.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -35,19 +36,46 @@ impl DomainEvent {
     }
 }
 
+/// Why a reconnecting subscriber cannot be resumed from its requested cursor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JournalGapReason {
+    /// The requested cursor is older than the retained journal tail.
+    RetainedEventsEvicted,
+    /// The client supplied a cursor but this process has no retained events.
+    JournalEmpty,
+    /// The requested cursor is newer than the newest event in this process.
+    CursorBeyondJournal,
+}
+
+impl JournalGapReason {
+    #[must_use]
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::RetainedEventsEvicted => "retained_events_evicted",
+            Self::JournalEmpty => "journal_empty",
+            Self::CursorBeyondJournal => "cursor_beyond_journal",
+        }
+    }
+}
+
+/// Continuity failure details for a reconnecting subscriber.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct JournalGap {
+    pub(crate) reason: JournalGapReason,
+    pub(crate) requested_last_event_id: u64,
+    pub(crate) first_missed_id: Option<u64>,
+    pub(crate) last_missed_id: Option<u64>,
+    pub(crate) oldest_retained_id: Option<u64>,
+    pub(crate) newest_retained_id: Option<u64>,
+    pub(crate) reset_event_id: u64,
+}
+
 /// Snapshot of the journal for a reconnecting subscriber.
 pub(crate) struct JournalSnapshot {
     /// Events with `id > last_id` that are still retained in the journal.
     pub(crate) replay: Vec<DomainEvent>,
-    /// True if `last_id` is older than the oldest retained event, meaning some
-    /// events are unrecoverable.
-    pub(crate) has_gap: bool,
-    /// First id that was dropped from the journal (meaningful only when `has_gap`
-    /// is true).
-    pub(crate) gap_first_missed_id: u64,
-    /// Last id that was dropped from the journal (meaningful only when `has_gap`
-    /// is true).
-    pub(crate) gap_last_missed_id: u64,
+    /// Typed continuity failure, if the requested cursor cannot be resumed.
+    pub(crate) gap: Option<JournalGap>,
 }
 
 /// In-process broadcast bus for domain events.
@@ -58,8 +86,9 @@ pub(crate) struct JournalSnapshot {
 ///
 /// WHY(#4910): A bounded in-memory journal is kept alongside the broadcast
 /// channel so that reconnecting clients can resume the stream with
-/// `Last-Event-ID`. The journal is bounded; events that fall out of it are
-/// reported via a typed gap event.
+/// `Last-Event-ID`. The journal is bounded; events that fall out of it or
+/// cursors from a different process lifetime are reported via typed control
+/// events.
 pub struct EventBus {
     tx: broadcast::Sender<DomainEvent>,
     next_id: AtomicU64,
@@ -117,10 +146,9 @@ impl EventBus {
 
     /// Subscribe and collect retained events with `id > last_id`.
     ///
-    /// The returned snapshot contains replay events and a live receiver. If
-    /// `last_id` is older than the oldest retained journal entry, `has_gap` is
-    /// set and the caller must inject a typed `stream_gap` event before the
-    /// replayed events.
+    /// The returned snapshot contains replay events and a live receiver. If the
+    /// requested cursor is not covered by the retained journal, `gap` is set and
+    /// the caller must inject a typed control event before any replayed events.
     pub(crate) async fn subscribe_from(
         &self,
         last_id: u64,
@@ -131,20 +159,50 @@ impl EventBus {
 
         let mut snapshot = JournalSnapshot {
             replay: Vec::new(),
-            has_gap: false,
-            gap_first_missed_id: 0,
-            gap_last_missed_id: 0,
+            gap: None,
         };
 
-        if let (Some(oldest), Some(_newest)) = (oldest_id, newest_id) {
-            if last_id > 0 && oldest > last_id {
-                // The client's last-seen event has been evicted from the journal;
-                // continuity from last_id cannot be guaranteed.
-                snapshot.has_gap = true;
-                snapshot.gap_first_missed_id = last_id + 1;
-                snapshot.gap_last_missed_id = oldest;
+        match (oldest_id, newest_id) {
+            (Some(oldest), Some(newest)) => {
+                if last_id > newest {
+                    snapshot.gap = Some(JournalGap {
+                        reason: JournalGapReason::CursorBeyondJournal,
+                        requested_last_event_id: last_id,
+                        first_missed_id: None,
+                        last_missed_id: None,
+                        oldest_retained_id: Some(oldest),
+                        newest_retained_id: Some(newest),
+                        reset_event_id: newest,
+                    });
+                } else if last_id > 0 && last_id.saturating_add(1) < oldest {
+                    // Events strictly between the client's cursor and the oldest
+                    // retained event are unrecoverable. The oldest retained event
+                    // itself is still replayed, so it is not part of the missed
+                    // range.
+                    snapshot.gap = Some(JournalGap {
+                        reason: JournalGapReason::RetainedEventsEvicted,
+                        requested_last_event_id: last_id,
+                        first_missed_id: Some(last_id + 1),
+                        last_missed_id: Some(oldest - 1),
+                        oldest_retained_id: Some(oldest),
+                        newest_retained_id: Some(newest),
+                        reset_event_id: oldest - 1,
+                    });
+                }
+                snapshot.replay = journal.iter().filter(|e| e.id > last_id).cloned().collect();
             }
-            snapshot.replay = journal.iter().filter(|e| e.id > last_id).cloned().collect();
+            _ if last_id > 0 => {
+                snapshot.gap = Some(JournalGap {
+                    reason: JournalGapReason::JournalEmpty,
+                    requested_last_event_id: last_id,
+                    first_missed_id: None,
+                    last_missed_id: None,
+                    oldest_retained_id: None,
+                    newest_retained_id: None,
+                    reset_event_id: 0,
+                });
+            }
+            _ => {}
         }
 
         let rx = self.tx.subscribe();
@@ -244,13 +302,12 @@ mod tests {
         let (snapshot, _rx) = bus.subscribe_from(id1).await;
         assert_eq!(snapshot.replay.len(), 1);
         assert_eq!(snapshot.replay[0].id, id2);
-        assert!(!snapshot.has_gap);
+        assert_eq!(snapshot.gap, None);
     }
 
     #[tokio::test]
-    async fn subscribe_from_reports_gap_when_last_id_too_old() {
+    async fn subscribe_from_does_not_gap_when_next_event_is_retained() {
         let bus = EventBus::new(2);
-        // Fill the journal so that id1 is evicted.
         let id1 = bus.next_id();
         bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)))
             .await;
@@ -262,12 +319,87 @@ mod tests {
             .await;
 
         let (snapshot, _rx) = bus.subscribe_from(id1).await;
-        assert!(snapshot.has_gap);
-        assert_eq!(snapshot.gap_first_missed_id, id2);
-        assert_eq!(snapshot.gap_last_missed_id, id2);
+        assert_eq!(snapshot.gap, None);
         assert_eq!(snapshot.replay.len(), 2);
         assert_eq!(snapshot.replay[0].id, id2);
         assert_eq!(snapshot.replay[1].id, id3);
+    }
+
+    #[tokio::test]
+    async fn subscribe_from_reports_gap_when_last_id_too_old() {
+        let bus = EventBus::new(2);
+        let id1 = bus.next_id();
+        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)))
+            .await;
+        let id2 = bus.next_id();
+        bus.publish(DomainEvent::new(id2, "t", serde_json::json!(2)))
+            .await;
+        let id3 = bus.next_id();
+        bus.publish(DomainEvent::new(id3, "t", serde_json::json!(3)))
+            .await;
+        let id4 = bus.next_id();
+        bus.publish(DomainEvent::new(id4, "t", serde_json::json!(4)))
+            .await;
+
+        let (snapshot, _rx) = bus.subscribe_from(id1).await;
+        assert_eq!(
+            snapshot.gap,
+            Some(JournalGap {
+                reason: JournalGapReason::RetainedEventsEvicted,
+                requested_last_event_id: id1,
+                first_missed_id: Some(id2),
+                last_missed_id: Some(id2),
+                oldest_retained_id: Some(id3),
+                newest_retained_id: Some(id4),
+                reset_event_id: id2,
+            })
+        );
+        assert_eq!(snapshot.replay.len(), 2);
+        assert_eq!(snapshot.replay[0].id, id3);
+        assert_eq!(snapshot.replay[1].id, id4);
+    }
+
+    #[tokio::test]
+    async fn subscribe_from_reports_expired_when_cursor_is_ahead() {
+        let bus = EventBus::new(2);
+        let id1 = bus.next_id();
+        bus.publish(DomainEvent::new(id1, "t", serde_json::json!(1)))
+            .await;
+
+        let (snapshot, _rx) = bus.subscribe_from(99).await;
+        assert_eq!(
+            snapshot.gap,
+            Some(JournalGap {
+                reason: JournalGapReason::CursorBeyondJournal,
+                requested_last_event_id: 99,
+                first_missed_id: None,
+                last_missed_id: None,
+                oldest_retained_id: Some(id1),
+                newest_retained_id: Some(id1),
+                reset_event_id: id1,
+            })
+        );
+        assert!(snapshot.replay.is_empty());
+    }
+
+    #[tokio::test]
+    async fn subscribe_from_reports_expired_when_journal_is_empty() {
+        let bus = EventBus::new(2);
+
+        let (snapshot, _rx) = bus.subscribe_from(99).await;
+        assert_eq!(
+            snapshot.gap,
+            Some(JournalGap {
+                reason: JournalGapReason::JournalEmpty,
+                requested_last_event_id: 99,
+                first_missed_id: None,
+                last_missed_id: None,
+                oldest_retained_id: None,
+                newest_retained_id: None,
+                reset_event_id: 0,
+            })
+        );
+        assert!(snapshot.replay.is_empty());
     }
 
     #[tokio::test]
@@ -284,6 +416,6 @@ mod tests {
         assert_eq!(snapshot.replay.len(), 2);
         assert_eq!(snapshot.replay[0].id, id1);
         assert_eq!(snapshot.replay[1].id, id2);
-        assert!(!snapshot.has_gap);
+        assert_eq!(snapshot.gap, None);
     }
 }

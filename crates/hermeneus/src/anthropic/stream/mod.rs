@@ -14,7 +14,7 @@ use crate::types::{StopReason, Usage};
 #[derive(Debug, Clone)]
 #[expect(
     missing_docs,
-    reason = "variant fields (text, thinking, partial_json, index, block_type, usage, stop_reason) are self-documenting by name"
+    reason = "variant fields (text, thinking, partial_json, index, block_type, usage, stop_reason, event_type) are self-documenting by name"
 )]
 #[non_exhaustive]
 pub enum StreamEvent {
@@ -48,11 +48,34 @@ pub enum StreamEvent {
         /// Final cumulative token usage for the entire message.
         usage: Usage,
     },
+    /// A provider-specific stream event type this adapter does not yet surface.
+    ///
+    /// WHY: Unknown event types are provider drift, not silence. Emitting them
+    /// lets streaming consumers observe when the response was partially represented.
+    UnsupportedEvent {
+        /// The raw event type string from the provider.
+        event_type: String,
+    },
 }
 
 mod accumulator;
 
 pub(crate) use accumulator::StreamAccumulator;
+
+/// Format an error and its full source chain into a single message string.
+///
+/// WHY(#5875): reqwest's Display can hide the underlying transport cause
+/// ("connection reset by peer"). `is_retryable()` scans for those cause words
+/// when deciding whether a pre-content streaming failure can be retried.
+fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
+    let mut parts = vec![format!("{prefix}: {err}")];
+    let mut source = err.source();
+    while let Some(s) = source {
+        parts.push(s.to_string());
+        source = s.source();
+    }
+    parts.join(": ")
+}
 
 #[cfg(test)]
 pub(crate) fn parse_sse_stream(
@@ -154,7 +177,7 @@ pub(crate) async fn parse_sse_response(
     loop {
         let chunk = response.chunk().await.map_err(|e| {
             error::ApiRequestSnafu {
-                message: format!("stream read error: {e}"),
+                message: error_chain_message("stream read error", &e),
             }
             .build()
         })?;
@@ -215,7 +238,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         let mut events = Vec::new();
         parse_sse_stream(reader, &mut acc, &mut |e| events.push(e), 1000).unwrap();
-        let response = acc.finish();
+        let response = acc.finish().unwrap();
         (events, response)
     }
 

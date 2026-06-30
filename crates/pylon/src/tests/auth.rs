@@ -169,6 +169,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         workspace_root: state.workspace_root.clone(),
         jwt_manager: Arc::clone(&state.jwt_manager),
         auth_facade: Arc::clone(&state.auth_facade),
+        credential_runtime: Arc::clone(&state.credential_runtime),
         start_time: state.start_time,
         config: Arc::clone(&state.config),
         config_tx,

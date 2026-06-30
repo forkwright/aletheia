@@ -12,6 +12,55 @@ use koina::secret::SecretString;
 
 use crate::id::{GitSha, NousId, PlanId, SessionId, TurnId};
 
+/// Backend-owned lifecycle status for a session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum SessionLifecycle {
+    /// Session is live and accepting new messages.
+    Active,
+    /// Session has been closed and retained for history.
+    Archived,
+    /// Session has been compacted into a distillation summary.
+    Distilled,
+}
+
+impl SessionLifecycle {
+    /// Known lifecycle values in backend wire order.
+    pub const ALL: &[Self] = &[Self::Active, Self::Archived, Self::Distilled];
+
+    /// Return the wire-format string for this lifecycle status.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Archived => "archived",
+            Self::Distilled => "distilled",
+        }
+    }
+
+    /// Parse a known lifecycle status from the wire-format string.
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "archived" => Some(Self::Archived),
+            "distilled" => Some(Self::Distilled),
+            _ => None,
+        }
+    }
+
+    /// Human-readable label for controls.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Active => "Active",
+            Self::Archived => "Archived",
+            Self::Distilled => "Distilled",
+        }
+    }
+}
+
 /// A registered agent (nous) in the system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
@@ -104,9 +153,9 @@ pub struct ListSessionsRequest {
     /// Free-text search across session key and display name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search: Option<String>,
-    /// Filter to sessions in this status.
+    /// Filter to sessions in this lifecycle status.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
+    pub status: Option<SessionLifecycle>,
     /// Maximum number of sessions to return.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
@@ -118,6 +167,12 @@ pub struct ListSessionsRequest {
 /// A single message from session history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryMessage {
+    /// Database row ID, when returned by the server.
+    #[serde(default)]
+    pub id: Option<i64>,
+    /// Sequence number within the session, when returned by the server.
+    #[serde(default)]
+    pub seq: Option<i64>,
     /// Role: "user", "assistant", or "tool".
     pub role: String,
     /// Message content (text or structured).
@@ -505,12 +560,52 @@ pub struct PaginatedSessionsResponse {
 
 /// A tool available to an agent, with its enablement state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "WHY(#4919): mirrors Pylon's flat tool metadata wire DTO; grouping booleans would complicate backward-compatible deserialization"
+)]
 pub struct NousTool {
     /// Tool name.
     pub name: String,
     /// Whether the tool is enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// Human-readable description.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Semantic server-owned category.
+    #[serde(default)]
+    pub category: Option<String>,
+    /// Reversibility metadata used to derive approval policy.
+    #[serde(default)]
+    pub reversibility: Option<String>,
+    /// Approval requirement derived from reversibility/capability metadata.
+    #[serde(default)]
+    pub approval: Option<String>,
+    /// Whether approval is required before execution.
+    #[serde(default)]
+    pub requires_approval: bool,
+    /// Whether the tool is side-effecting or destructive.
+    #[serde(default)]
+    pub destructive: bool,
+    /// Tool groups used by policy resolution.
+    #[serde(default)]
+    pub groups: Vec<String>,
+    /// Tool source plane.
+    #[serde(default)]
+    pub source_plane: Option<String>,
+    /// Effective policy state for the active agent.
+    #[serde(default)]
+    pub policy_state: Option<String>,
+    /// Reason the tool is unavailable under the active policy.
+    #[serde(default)]
+    pub unavailable_reason: Option<String>,
+    /// Whether metadata came from the server-owned tool surface.
+    #[serde(default)]
+    pub metadata_verified: bool,
+    /// Whether the tool activates automatically without explicit configuration.
+    #[serde(default)]
+    pub auto_activate: bool,
 }
 
 fn default_true() -> bool {

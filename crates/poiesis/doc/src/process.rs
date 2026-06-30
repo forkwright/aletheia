@@ -1,5 +1,6 @@
 //! Bounded subprocess helpers for render and probe commands.
 
+use std::ffi::OsStr;
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::process::{Command, Output, Stdio}; // kanon:ignore RUST/no-direct-process-command — this module is the subprocess substrate for poiesis-doc
 use std::time::Duration;
@@ -22,6 +23,11 @@ pub(crate) enum CommandOutputError {
         kill_error: Option<String>,
         wait_error: Option<String>,
     },
+}
+
+/// Construct a subprocess command inside the poiesis-doc process boundary.
+pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
+    Command::new(program) // kanon:ignore RUST/no-direct-process-command — this module is the subprocess substrate for poiesis-doc
 }
 
 pub(crate) fn output_with_timeout(
@@ -89,7 +95,7 @@ mod tests {
 
     #[test]
     fn output_with_timeout_kills_slow_process() {
-        let mut cmd = Command::new("sh");
+        let mut cmd = command("sh");
         cmd.arg("-c").arg("sleep 5");
 
         let err = output_with_timeout(&mut cmd, Duration::from_millis(20))

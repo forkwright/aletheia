@@ -17,6 +17,7 @@ use crate::skill::SkillContent;
 use crate::skills::{
     ContentEvidenceRef, SkillCandidate, ToolCallRecord, candidate::SkillObservationEvidence,
 };
+use crate::utils::{compute_name_similarity, compute_tool_overlap};
 
 /// Errors from the skill extraction pipeline.
 #[derive(Debug, Snafu)]
@@ -293,69 +294,6 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
     } else {
         dot / denom
     }
-}
-
-/// Compute Jaccard overlap between two tool lists.
-///
-/// Returns 1.0 for identical non-empty sets and 0.0 for disjoint sets or when
-/// both lists are empty.
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "tool list lengths are small (<50); precision loss is negligible"
-)]
-fn compute_tool_overlap(a: &[String], b: &[String]) -> f64 {
-    // WHY: Two skills with no tools share no overlap; a 1.0 score would make
-    // the dedup heuristic treat any pair of no-tool skills as duplicates.
-    if a.is_empty() && b.is_empty() {
-        return 0.0;
-    }
-    let set_a: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
-    let set_b: std::collections::HashSet<&str> = b.iter().map(String::as_str).collect();
-    let intersection = set_a.intersection(&set_b).count();
-    let union = set_a.union(&set_b).count();
-    if union == 0 {
-        0.0
-    } else {
-        #[expect(
-            clippy::as_conversions,
-            reason = "usize→f64: set sizes are small; precision loss is negligible"
-        )]
-        {
-            intersection as f64 / union as f64
-        }
-    }
-}
-
-/// Simple name similarity: longest common subsequence ratio.
-#[expect(
-    clippy::cast_precision_loss,
-    clippy::as_conversions,
-    clippy::indexing_slicing,
-    reason = "DP table: indices are bounded by loop ranges; usize→f64 for small string lengths"
-)]
-fn compute_name_similarity(a: &str, b: &str) -> f64 {
-    let a_lower = a.to_lowercase();
-    let b_lower = b.to_lowercase();
-    let a_chars: Vec<char> = a_lower.chars().collect();
-    let b_chars: Vec<char> = b_lower.chars().collect();
-
-    if a_chars.is_empty() || b_chars.is_empty() {
-        return 0.0;
-    }
-
-    let mut dp = vec![vec![0usize; b_chars.len() + 1]; a_chars.len() + 1];
-    for (i, ac) in a_chars.iter().enumerate() {
-        for (j, bc) in b_chars.iter().enumerate() {
-            dp[i + 1][j + 1] = if ac == bc {
-                dp[i][j] + 1
-            } else {
-                dp[i + 1][j].max(dp[i][j + 1])
-            };
-        }
-    }
-
-    let lcs = dp[a_chars.len()][b_chars.len()];
-    lcs as f64 / a_chars.len().max(b_chars.len()) as f64
 }
 
 const EXTRACTION_SYSTEM_PROMPT: &str = r#"You are a skill extraction engine for an AI agent system. Your job is to analyze tool call patterns and produce structured skill definitions.

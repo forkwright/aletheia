@@ -12,6 +12,8 @@
 //!   identity (nous). Read tools fail closed when this is unset.
 //! - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` — enable write tools. The capability is
 //!   configured out-of-band and is never accepted as a tool argument.
+//! - `ALETHEIA_MEMORY_MCP_ADMIN_DIAGNOSTICS` — allow full store-path
+//!   diagnostics when the write token is also configured.
 //! - `RUST_LOG` — tracing filter; defaults to `info`. Logs go to stderr so
 //!   stdout stays clean for JSON-RPC.
 //!

@@ -63,6 +63,7 @@ impl RuntimeBuilder {
             "embedding",
             "channels",
             "bindings",
+            "providers",
             "tools",
         ] {
             if let Some(section_value) = config_value.get(section) {
@@ -76,6 +77,24 @@ impl RuntimeBuilder {
             } else {
                 print_line(format_args!("  [pass] {section} (using defaults)"));
             }
+        }
+
+        match crate::embedding_config::validate_embedding_settings(&self.config.embedding) {
+            Ok(()) => print_line(format_args!("  [pass] embedding.provider runtime")),
+            Err(error) => {
+                print_line(format_args!("  [FAIL] embedding.provider runtime: {error}"));
+                all_ok = false;
+            }
+        }
+
+        let provider_errors = super::validate::provider_runtime_errors(&self.config, &self.oikos);
+        if provider_errors.is_empty() {
+            print_line(format_args!("  [pass] providers runtime"));
+        } else {
+            for error in provider_errors {
+                print_line(format_args!("  [FAIL] providers runtime: {error}"));
+            }
+            all_ok = false;
         }
 
         for agent in &self.config.agents.list {

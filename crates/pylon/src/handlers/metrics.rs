@@ -55,16 +55,9 @@ pub async fn expose(
     }
     let uptime = state.start_time.elapsed().as_secs_f64();
 
-    let session_count = state
-        .session_store
-        .lock()
-        .await
-        .list_sessions(None)
-        .ok()
-        .map_or(0, |sessions| {
-            // NOTE: session count fits in i64; saturate on theoretical overflow.
-            i64::try_from(sessions.len()).unwrap_or(i64::MAX)
-        });
+    let session_count = state.session_store.lock().await.session_count();
+    // NOTE: session count fits in i64; saturate on theoretical overflow.
+    let session_count = i64::try_from(session_count).unwrap_or(i64::MAX);
 
     crate::metrics::update_system_gauges(uptime, session_count);
 

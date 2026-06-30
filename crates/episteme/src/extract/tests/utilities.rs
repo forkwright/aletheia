@@ -64,6 +64,7 @@ fn config_returns_same_config() {
         events_only_prompt: false,
         default_tier: crate::knowledge::EpistemicTier::Inferred,
         detect_conflict: false,
+        project_id: None,
     };
     let engine = ExtractionEngine::new(config);
     let got = engine.config();

@@ -24,6 +24,8 @@ pub mod enable_tool;
 pub mod energeia;
 /// Filesystem navigation tools (grep, find, ls).
 pub mod filesystem;
+/// Shared protected-path policy for filesystem mutation tools.
+pub(crate) mod filesystem_policy;
 /// Filesystem mutation tools (mkdir, mv, cp, rm).
 pub mod fs_ops;
 /// Git read-only and non-destructive operations (status, log, diff, branch, checkout).
@@ -53,6 +55,8 @@ pub mod render_graph_audit;
 pub mod render_pptx_report;
 /// JSON-first XLSX report tool (`render_xlsx_report`).
 pub mod render_xlsx_report;
+/// Report runtime dependency doctor (Pandoc, LaTeX, Chromium, Typst).
+pub mod report_runtime_health;
 /// Web research tools (web_fetch).
 pub mod research;
 /// Scaffold report tool: generates a new report project from embedded templates.
@@ -235,6 +239,7 @@ pub(crate) fn register_domain_tools(
     #[cfg(feature = "bookkeeper")]
     bookkeeper::register(registry)?;
     poiesis::register(registry)?;
+    report_runtime_health::register(registry)?;
     intake_report::register(registry)?;
     scaffold_report::register(registry)?;
     render_docx_report::register(registry)?;

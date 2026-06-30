@@ -257,6 +257,75 @@ The marker is #d.marker.
     }
 
     #[test]
+    fn eval_report_template_renders_memory_benchmark_statistics() {
+        let data = serde_json::json!({
+            "benchmark": "LongMemEval",
+            "total": 3,
+            "scored": 3,
+            "errors": 0,
+            "timeouts": 0,
+            "no_answers": 0,
+            "statistics": {
+                "f1_ci_low": 0.5,
+                "f1_ci_high": 0.9,
+                "em_ci_low": 0.4,
+                "em_ci_high": 0.8,
+                "n_resamples": 2000,
+                "method": "percentile bootstrap"
+            },
+            "publishability": {
+                "publishable": true,
+                "minimum_scored_questions": 2,
+                "reasons": []
+            },
+            "comparisons": [
+                {
+                    "metric": "f1",
+                    "label": "baseline_vs_candidate f1",
+                    "status": "complete",
+                    "matched_questions": 3,
+                    "statistics": {
+                        "label": "baseline_vs_candidate f1",
+                        "n_a": 3,
+                        "n_b": 3,
+                        "mean_a": 0.4,
+                        "mean_b": 0.7,
+                        "ci_a": {
+                            "point": 0.4,
+                            "ci_low": 0.2,
+                            "ci_high": 0.6,
+                            "confidence": 0.95,
+                            "n_resamples": 2000
+                        },
+                        "ci_b": {
+                            "point": 0.7,
+                            "ci_low": 0.5,
+                            "ci_high": 0.9,
+                            "confidence": 0.95,
+                            "n_resamples": 2000
+                        },
+                        "effect": {
+                            "d": -0.5,
+                            "ci_low": -0.8,
+                            "ci_high": -0.2,
+                            "interpretation": "medium"
+                        },
+                        "p_raw": 0.04,
+                        "p_adjusted": 0.04,
+                        "significant_raw": true,
+                        "significant_adjusted": true
+                    }
+                }
+            ]
+        });
+        let pdf = render_template(templates::EVAL_REPORT, &data)
+            .expect("benchmark eval-report template must render");
+        assert!(pdf.starts_with(b"%PDF-"), "output must be PDF");
+        assert!(pdf.len() > 500, "template PDF should be >500 bytes");
+        assert!(pdf.len() < 5_000_000, "template PDF should be <5MB");
+    }
+
+    #[test]
     fn graph_audit_template_renders_sample_fixture() {
         let data = serde_json::json!({
             "summary": {

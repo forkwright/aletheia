@@ -75,17 +75,14 @@ struct Caller {
 /// scope.
 ///
 /// Returns `None` only when auth info is unavailable or the token is invalid.
-async fn extract_caller(
+fn extract_caller(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
 ) -> Option<Caller> {
-    let config = server.state.config.read().await;
-
     // NOTE: Single-operator mode has no auth; use the configured default role.
-    if config.gateway.auth.mode == "none" {
-        let role = config
-            .gateway
-            .auth
+    if server.state.auth_mode == "none" {
+        let role = server
+            .state
             .none_role
             .parse::<Role>()
             .ok()
@@ -106,21 +103,20 @@ async fn extract_caller(
 
     let token = header.strip_prefix(BEARER_PREFIX)?;
 
-    // WHY(#3337): When jwt_manager is available, validate the signature
-    // instead of just decoding the payload. This prevents role spoofing
-    // on direct MCP connections that bypass the gateway.
-    if let Some(ref jwt) = server.state.jwt_manager {
-        return jwt.validate(token).ok().map(|claims| Caller {
+    // WHY(#4750): validate through AuthFacade so MCP honors the same
+    // revocation store and access-token checks as Pylon HTTP routes.
+    if let Some(ref auth_facade) = server.state.auth_facade {
+        return auth_facade.validate_token(token).ok().map(|claims| Caller {
             sub: claims.sub,
             role: claims.role,
             nous_id: claims.nous_id,
         });
     }
 
-    // INVARIANT: jwt_manager must be Some when auth_mode != "none".
+    // INVARIANT: auth_facade must be Some when auth_mode != "none".
     // Fail closed: reject rather than granting access via unsigned decode.
     tracing::error!(
-        "INVARIANT violation: jwt_manager is None but auth_mode != \"none\" — denying MCP tool access"
+        "INVARIANT violation: auth_facade is None but auth_mode != \"none\"; denying MCP tool access"
     );
     None
 }
@@ -133,13 +129,11 @@ async fn extract_caller(
 /// `none_role`, falling back to `Readonly` when the config is malformed.
 ///
 /// Returns `None` only when auth info is unavailable or the token is invalid.
-async fn extract_role(
+fn extract_role(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
 ) -> Option<Role> {
-    extract_caller(server, context)
-        .await
-        .map(|caller| caller.role)
+    extract_caller(server, context).map(|caller| caller.role)
 }
 
 /// Check if the caller has operator-level access or above.
@@ -147,11 +141,11 @@ async fn extract_role(
 /// Returns `true` if:
 /// - Auth mode is "none" (single-operator mode)
 /// - Caller has `Role::Operator` or `Role::Admin`
-async fn is_operator_or_above(
+fn is_operator_or_above(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
 ) -> bool {
-    match extract_role(server, context).await {
+    match extract_role(server, context) {
         Some(role) => role >= Role::Operator,
         None => false,
     }
@@ -161,18 +155,18 @@ async fn is_operator_or_above(
 ///
 /// Used by tools and resources that need RBAC enforcement beyond the
 /// operator-or-above check (e.g. session creation, config access).
-async fn require_role(
+fn require_role(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
     minimum: Role,
     operation: &str,
-) -> Result<(), rmcp::ErrorData> {
-    let role = extract_role(server, context).await;
-    match role {
-        Some(r) if r >= minimum => Ok(()),
-        Some(r) => {
+) -> Result<Caller, rmcp::ErrorData> {
+    let caller = extract_caller(server, context);
+    match caller {
+        Some(caller) if caller.role >= minimum => Ok(caller),
+        Some(caller) => {
             tracing::warn!(
-                caller_role = %r,
+                caller_role = %caller.role,
                 required_role = %minimum,
                 operation,
                 "MCP RBAC denied",
@@ -346,6 +340,34 @@ fn effective_nous_id(caller: &Caller, operation: &str) -> Result<String, rmcp::E
     } else {
         Ok(caller.nous_id.clone().unwrap_or_else(|| caller.sub.clone()))
     }
+}
+
+/// Read a fact and verify the caller may act on the owning nous.
+#[cfg(feature = "knowledge-store")]
+fn read_fact_for_caller(
+    store: &mneme::knowledge_store::KnowledgeStore,
+    caller: &Caller,
+    fact_id: &str,
+    operation: &str,
+) -> Result<mneme::knowledge::Fact, rmcp::ErrorData> {
+    let mut facts = store.read_facts_by_id(fact_id).map_err(|e| {
+        rmcp::ErrorData::from(
+            KnowledgeStoreSnafu {
+                message: e.to_string(),
+            }
+            .build(),
+        )
+    })?;
+    let fact = facts.pop().ok_or_else(|| {
+        rmcp::ErrorData::from(
+            FactNotFoundSnafu {
+                id: fact_id.to_owned(),
+            }
+            .build(),
+        )
+    })?;
+    require_nous_access_for_caller(caller, &fact.nous_id, operation)?;
+    Ok(fact)
 }
 
 /// Check that the knowledge graph MCP surface is enabled.
@@ -554,7 +576,8 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "session_create").await?;
+        let caller = require_role(self, &context, Role::Operator, "session_create")?;
+        require_nous_access_for_caller(&caller, &params.nous_id, "session_create")?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
         parse_session_or_agent_id(&params.nous_id).map_err(|e| {
             rmcp::ErrorData::from(
@@ -627,7 +650,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "session_list requires authentication".to_owned(),
             }
@@ -706,7 +729,8 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "session_message").await?;
+        let caller = require_role(self, &context, Role::Operator, "session_message")?;
+        require_nous_access_for_caller(&caller, &params.nous_id, "session_message")?;
         let handle = self
             .state
             .nous_manager
@@ -725,7 +749,9 @@ impl DiaporeiaServer {
 
         // WHY: drain stream events in the background so the channel doesn't
         // back-pressure the actor; MCP has no server-push, so events are
-        // discarded.
+        // discarded. No approval gate is wired for this MCP request-response
+        // path; shared dispatch auto-executes None/Advisory tools and
+        // policy-denies Required/Mandatory tools.
         let drain = tokio::spawn(
             async move { while stream_rx.recv().await.is_some() {} }
                 .instrument(tracing::info_span!("diaporeia.mcp.stream_drain")),
@@ -758,7 +784,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "session_history requires authentication".to_owned(),
             }
@@ -820,7 +846,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "nous_list requires authentication".to_owned(),
             }
@@ -881,7 +907,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "nous_status requires authentication".to_owned(),
             }
@@ -960,7 +986,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "nous_tools requires authentication".to_owned(),
             }
@@ -1038,7 +1064,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_search requires authentication".to_owned(),
             }
@@ -1092,7 +1118,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_recall requires authentication".to_owned(),
             }
@@ -1166,7 +1192,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_get requires authentication".to_owned(),
             }
@@ -1233,7 +1259,10 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "knowledge_insert").await?;
+        let caller = require_role(self, &context, Role::Operator, "knowledge_insert")?;
+        let effective_nous =
+            resolve_nous_scope(&caller, Some(&params.nous_id), "knowledge_insert")?
+                .unwrap_or_else(|| params.nous_id.clone());
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -1270,7 +1299,7 @@ impl DiaporeiaServer {
 
             let fact = Fact {
                 id: fact_id.clone(),
-                nous_id: params.nous_id.clone(),
+                nous_id: effective_nous.clone(),
                 fact_type: "knowledge".to_string(),
                 content: params.content.clone(),
                 scope: None,
@@ -1311,7 +1340,7 @@ impl DiaporeiaServer {
 
             let json = serde_json::to_string_pretty(&serde_json::json!({
                 "fact_id": fact_id.as_str(),
-                "nous_id": params.nous_id,
+                "nous_id": effective_nous,
                 "sensitivity": sensitivity.as_str(),
             }))
             .context(SerializationSnafu {})
@@ -1342,7 +1371,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "knowledge_forget").await?;
+        let caller = require_role(self, &context, Role::Operator, "knowledge_forget")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -1360,6 +1389,7 @@ impl DiaporeiaServer {
                     .build(),
                 )
             })?;
+            read_fact_for_caller(&store, &caller, fact_id.as_str(), "knowledge_forget")?;
 
             let reason = params
                 .reason
@@ -1425,7 +1455,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_graph_neighbors requires authentication".to_owned(),
             }
@@ -1475,7 +1505,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "repomix_templates_list").await?;
+        require_role(self, &context, Role::Agent, "repomix_templates_list")?;
         require_repomix(self).await?;
 
         let templates = crate::repomix::list_templates();
@@ -1497,7 +1527,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "repomix_template_get").await?;
+        require_role(self, &context, Role::Agent, "repomix_template_get")?;
         require_repomix(self).await?;
 
         let template = crate::repomix::get_template(&params.name).map_err(rmcp::ErrorData::from)?;
@@ -1529,7 +1559,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "repomix_pack").await?;
+        require_role(self, &context, Role::Operator, "repomix_pack")?;
         let config = require_repomix(self).await?;
 
         let workspace_root = crate::repomix::detect_workspace_root().ok_or_else(|| {
@@ -1588,7 +1618,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "config_get").await?;
+        require_role(self, &context, Role::Operator, "config_get")?;
         let config = self.state.config.read().await;
 
         let redacted = serde_json::json!({
@@ -1632,7 +1662,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "creds_set").await?;
+        require_role(self, &context, Role::Operator, "creds_set")?;
 
         let vault = self
             .state
@@ -1664,7 +1694,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "creds_list").await?;
+        require_role(self, &context, Role::Operator, "creds_list")?;
 
         let vault = self
             .state
@@ -1698,7 +1728,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "creds_rm").await?;
+        require_role(self, &context, Role::Operator, "creds_rm")?;
 
         let vault = self
             .state
@@ -1730,8 +1760,8 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "system_health").await?;
-        let show_reliability = is_operator_or_above(self, &context).await;
+        require_role(self, &context, Role::Agent, "system_health")?;
+        let show_reliability = is_operator_or_above(self, &context);
         let health = self.state.nous_manager.check_health().await;
         let uptime = self.state.start_time.elapsed();
 
@@ -1784,7 +1814,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "memory_note requires authentication".to_owned(),
             }
@@ -1926,7 +1956,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "memory_blackboard requires authentication".to_owned(),
             }
@@ -2099,7 +2129,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).await.ok_or_else(|| {
+        let caller = extract_caller(self, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "memory_search requires authentication".to_owned(),
             }
@@ -2172,7 +2202,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "memory_correct").await?;
+        let caller = require_role(self, &context, Role::Operator, "memory_correct")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2210,6 +2240,11 @@ impl DiaporeiaServer {
                     .build(),
                 )
             })?;
+            require_nous_access_for_caller(&caller, &old_fact.nous_id, "memory_correct")?;
+            let requested_nous_id = params.nous_id.as_deref().unwrap_or(&old_fact.nous_id);
+            let effective_nous =
+                resolve_nous_scope(&caller, Some(requested_nous_id), "memory_correct")?
+                    .unwrap_or_else(|| requested_nous_id.to_owned());
 
             let now = jiff::Timestamp::now();
             let new_fact_id_str = format!("f-mcp-corrected-{}", koina::uuid::uuid_v4());
@@ -2224,7 +2259,7 @@ impl DiaporeiaServer {
 
             let new_fact = Fact {
                 id: new_fact_id.clone(),
-                nous_id: params.nous_id.unwrap_or_else(|| old_fact.nous_id.clone()),
+                nous_id: effective_nous,
                 fact_type: old_fact.fact_type.clone(),
                 content: params.new_content,
                 scope: old_fact.scope,
@@ -2312,7 +2347,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "memory_retract").await?;
+        let caller = require_role(self, &context, Role::Operator, "memory_retract")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2330,6 +2365,7 @@ impl DiaporeiaServer {
                     .build(),
                 )
             })?;
+            read_fact_for_caller(&store, &caller, fact_id.as_str(), "memory_retract")?;
 
             let reason = params
                 .reason
@@ -2386,7 +2422,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "memory_forget").await?;
+        let caller = require_role(self, &context, Role::Operator, "memory_forget")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2404,6 +2440,7 @@ impl DiaporeiaServer {
                     .build(),
                 )
             })?;
+            read_fact_for_caller(&store, &caller, fact_id.as_str(), "memory_forget")?;
 
             let reason = params
                 .reason
@@ -2596,7 +2633,7 @@ mod tests {
             )),
             tool_registry: Arc::new(organon::registry::ToolRegistry::new()),
             oikos,
-            jwt_manager: None,
+            auth_facade: None,
             start_time: Instant::now(),
             config: Arc::new(tokio::sync::RwLock::new(config)),
             auth_mode: "none".to_owned(),

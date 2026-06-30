@@ -18,6 +18,11 @@ use super::{
     DEFAULT_MAX_LOG_ENTRIES, DEFAULT_REPLY_TIMEOUT, DeliveryEntry, DeliveryLog, DeliveryState,
 };
 
+pub(super) struct RouteEntry {
+    sender: mpsc::Sender<CrossNousEnvelope>,
+    address_mask: AddressMask,
+}
+
 /// RAII guard that removes the ask graph edge and pending reply entry when the
 /// ask future is dropped without completing normally (e.g. task abort or
 /// `select!` branch cancellation).
@@ -73,10 +78,10 @@ impl Drop for AskCleanupGuard {
 
 /// Routes messages between nous actors using their IDs as keys.
 pub struct CrossNousRouter {
-    /// Maps nous id to its inbox sender. Invariant: every spawned actor has
-    /// exactly one entry; removed on unregister. Held briefly during
-    /// send/register/unregister.
-    pub(super) routes: Arc<RwLock<HashMap<String, mpsc::Sender<CrossNousEnvelope>>>>,
+    /// Maps nous id to its inbox sender and inbound address policy. Invariant:
+    /// every spawned actor has exactly one entry; removed on unregister. Held
+    /// briefly during send/register/unregister.
+    pub(super) routes: Arc<RwLock<HashMap<String, RouteEntry>>>,
     /// Maps correlation id to the one-shot reply channel for an in-flight ask.
     /// Invariant: each ask inserts one entry; consumed exactly once on reply
     /// or removed on timeout, delivery failure, or cancellation.
@@ -88,9 +93,12 @@ pub struct CrossNousRouter {
     /// Invariant: an edge exists iff a pending ask is outstanding between
     /// the two nodes; removed when the reply arrives or the ask times out.
     pub(super) ask_graph: Arc<RwLock<AskGraph>>,
-    /// Inbound address policy keyed by target nous id. Missing entries use
-    /// [`AddressMask::Public`].
-    address_masks: Arc<RwLock<HashMap<String, AddressMask>>>,
+    /// Inbound address policy set before a route is registered.
+    ///
+    /// Missing masks use [`AddressMask::Public`]. Production manager
+    /// registration passes an explicit mask derived from agent privacy; this
+    /// fallback only applies to direct router registrations without policy.
+    pending_address_masks: Arc<RwLock<HashMap<String, AddressMask>>>,
 }
 
 impl Clone for CrossNousRouter {
@@ -100,7 +108,7 @@ impl Clone for CrossNousRouter {
             pending_replies: Arc::clone(&self.pending_replies),
             delivery_log: Arc::clone(&self.delivery_log),
             ask_graph: Arc::clone(&self.ask_graph),
-            address_masks: Arc::clone(&self.address_masks),
+            pending_address_masks: Arc::clone(&self.pending_address_masks),
         }
     }
 }
@@ -120,15 +128,22 @@ impl CrossNousRouter {
             pending_replies: Arc::new(RwLock::new(HashMap::new())),
             delivery_log: Arc::new(RwLock::new(DeliveryLog::new(max_log_entries))),
             ask_graph: Arc::new(RwLock::new(AskGraph::new())),
-            address_masks: Arc::new(RwLock::new(HashMap::new())),
+            pending_address_masks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Register a nous actor's inbox so it can receive cross-nous messages.
     ///
+    /// Direct registrations use any pending mask set by
+    /// [`Self::set_address_mask`] and otherwise default to
+    /// [`AddressMask::Public`]. Manager-owned actors should call
+    /// [`Self::register_with_address_mask`] so private-agent routes are never
+    /// left to the public fallback.
+    ///
     /// # Cancel safety
     ///
-    /// Cancel-safe. Uses a single `RwLock::write` + `insert`.
+    /// Cancel-safe. Uses short `RwLock::write` sections with no partial
+    /// message delivery.
     #[instrument(skip(self, sender))]
     pub async fn register(
         &self,
@@ -136,7 +151,49 @@ impl CrossNousRouter {
         sender: mpsc::Sender<CrossNousEnvelope>,
     ) {
         let id = nous_id.into();
-        self.routes.write().await.insert(id, sender);
+        let address_mask = self
+            .pending_address_masks
+            .write()
+            .await
+            .remove(&id)
+            .unwrap_or_default();
+        self.register_route(id, sender, address_mask).await;
+    }
+
+    /// Register a nous actor's inbox with an explicit inbound address policy.
+    ///
+    /// Use this for production actors whose route policy comes from effective
+    /// agent configuration.
+    ///
+    /// # Cancel safety
+    ///
+    /// Cancel-safe. Uses short `RwLock::write` sections with no partial
+    /// message delivery.
+    #[instrument(skip(self, sender))]
+    pub async fn register_with_address_mask(
+        &self,
+        nous_id: impl Into<String> + std::fmt::Debug,
+        sender: mpsc::Sender<CrossNousEnvelope>,
+        address_mask: AddressMask,
+    ) {
+        let id = nous_id.into();
+        self.pending_address_masks.write().await.remove(&id);
+        self.register_route(id, sender, address_mask).await;
+    }
+
+    async fn register_route(
+        &self,
+        id: String,
+        sender: mpsc::Sender<CrossNousEnvelope>,
+        address_mask: AddressMask,
+    ) {
+        self.routes.write().await.insert(
+            id,
+            RouteEntry {
+                sender,
+                address_mask,
+            },
+        );
     }
 
     /// Remove a nous actor's route, preventing further message delivery.
@@ -152,18 +209,47 @@ impl CrossNousRouter {
 
     /// Set or update the inbound address policy for a target nous.
     ///
-    /// Missing entries are treated as [`AddressMask::Public`], so callers only
-    /// need to set masks for restricted targets.
+    /// If the route is not registered yet, the mask is stored and applied to a
+    /// later direct [`Self::register`] call. Missing entries are treated as
+    /// [`AddressMask::Public`].
     #[instrument(skip(self))]
     pub async fn set_address_mask(
         &self,
         nous_id: impl Into<String> + std::fmt::Debug,
         mask: AddressMask,
     ) {
-        self.address_masks
-            .write()
+        let id = nous_id.into();
+        {
+            let mut routes = self.routes.write().await;
+            if let Some(entry) = routes.get_mut(&id) {
+                entry.address_mask = mask;
+                return;
+            }
+        }
+        self.pending_address_masks.write().await.insert(id, mask);
+    }
+
+    /// Return the current effective address policy for a nous id.
+    ///
+    /// Registered routes return their live mask. Unregistered ids return a
+    /// pending mask when one exists, otherwise [`AddressMask::Public`].
+    pub async fn address_mask(&self, nous_id: &str) -> AddressMask {
+        if let Some(mask) = self
+            .routes
+            .read()
             .await
-            .insert(nous_id.into(), mask);
+            .get(nous_id)
+            .map(|entry| entry.address_mask.clone())
+        {
+            return mask;
+        }
+
+        self.pending_address_masks
+            .read()
+            .await
+            .get(nous_id)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Fire-and-forget send. Returns `Delivered` on success.
@@ -177,7 +263,7 @@ impl CrossNousRouter {
         let to = message.to.clone();
 
         let routes = self.routes.read().await;
-        let Some(sender) = routes.get(&to).cloned() else {
+        let Some(route) = routes.get(&to) else {
             drop(routes);
             self.log_delivery(
                 &message,
@@ -188,9 +274,11 @@ impl CrossNousRouter {
             .await;
             return NousNotFoundSnafu { nous_id: to }.fail();
         };
+        let sender = route.sender.clone();
+        let address_mask = route.address_mask.clone();
         drop(routes);
 
-        self.enforce_address_mask(&message).await?;
+        self.enforce_address_mask(&message, &address_mask).await?;
 
         let message_for_log = message.clone();
         let envelope = CrossNousEnvelope { message };
@@ -279,7 +367,7 @@ impl CrossNousRouter {
         reply_rx: oneshot::Receiver<CrossNousReply>,
     ) -> error::Result<CrossNousReply> {
         let routes = self.routes.read().await;
-        let Some(sender) = routes.get(to).cloned() else {
+        let Some(route) = routes.get(to) else {
             drop(routes);
             self.pending_replies.write().await.remove(&message.id);
             self.log_delivery(
@@ -294,9 +382,11 @@ impl CrossNousRouter {
             }
             .fail();
         };
+        let sender = route.sender.clone();
+        let address_mask = route.address_mask.clone();
         drop(routes);
 
-        if let Err(e) = self.enforce_address_mask(message).await {
+        if let Err(e) = self.enforce_address_mask(message, &address_mask).await {
             self.pending_replies.write().await.remove(&message.id);
             return Err(e);
         }
@@ -383,15 +473,11 @@ impl CrossNousRouter {
         self.pending_replies.read().await.len()
     }
 
-    async fn enforce_address_mask(&self, message: &CrossNousMessage) -> error::Result<()> {
-        let mask = self
-            .address_masks
-            .read()
-            .await
-            .get(&message.to)
-            .cloned()
-            .unwrap_or_default();
-
+    async fn enforce_address_mask(
+        &self,
+        message: &CrossNousMessage,
+        mask: &AddressMask,
+    ) -> error::Result<()> {
         if mask.permits(&message.from) {
             return Ok(());
         }

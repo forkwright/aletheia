@@ -22,6 +22,7 @@ use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 
 use crate::approval_registry::ApprovalRegistry;
+use crate::credential_runtime::CredentialRuntimeManager;
 use crate::event_bus::EventBus;
 use crate::idempotency::IdempotencyCache;
 use crate::turn_buffer::TurnBufferRegistry;
@@ -44,6 +45,9 @@ pub struct AppState {
     pub jwt_manager: Arc<JwtManager>,
     /// Revocation-aware authentication facade.
     pub auth_facade: Arc<AuthFacade>,
+    /// Runtime credential manager: knows the canonical credential root,
+    /// provider registry metadata, supported providers, and mutation effects.
+    pub credential_runtime: Arc<CredentialRuntimeManager>,
     /// Server start instant for uptime calculation.
     pub start_time: Instant,
     /// Runtime configuration, updatable via config API.
@@ -188,6 +192,8 @@ pub struct HealthState {
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Active embedding provider (for degraded-mode reporting, #3380).
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Runtime credential manager for health/capability output (#4872).
+    pub credential_runtime: Arc<CredentialRuntimeManager>,
 }
 
 impl FromRef<Arc<AppState>> for HealthState {
@@ -200,6 +206,7 @@ impl FromRef<Arc<AppState>> for HealthState {
             oikos: Arc::clone(&state.oikos),
             config: Arc::clone(&state.config),
             embedding_provider: state.embedding_provider.clone(),
+            credential_runtime: Arc::clone(&state.credential_runtime),
         }
     }
 }
@@ -233,12 +240,15 @@ impl FromRef<Arc<AppState>> for MetricsState {
 pub struct OpsState {
     /// Registry of tools available to nous agents.
     pub tool_registry: Arc<ToolRegistry>,
+    /// Persistent session and message storage.
+    pub session_store: Arc<Mutex<SessionStore>>,
 }
 
 impl FromRef<Arc<AppState>> for OpsState {
     fn from_ref(state: &Arc<AppState>) -> Self {
         Self {
             tool_registry: Arc::clone(&state.tool_registry),
+            session_store: Arc::clone(&state.session_store),
         }
     }
 }

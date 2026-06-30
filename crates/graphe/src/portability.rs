@@ -19,11 +19,13 @@ use serde::{Deserialize, Serialize};
 /// - **v2** (#4163): faithful round-trip. Producers populate every populated
 ///   slot from live stores; consumers preserve session status, timestamps,
 ///   metrics, and per-message `created_at`/`is_distilled` on import.
+/// - **v3** (#4590): binary workspace files include base64 contents, byte
+///   count, and sha256 so import restores bytes instead of path-only entries.
 ///
 /// The version bump declares the fidelity contract: consumers MUST reject
 /// older versions (or pipe them through a migration) so they cannot silently
-/// drop fields that v2 expects to round-trip.
-pub const AGENT_FILE_VERSION: u32 = 2;
+/// drop fields that the current version expects to round-trip.
+pub const AGENT_FILE_VERSION: u32 = 3;
 
 /// Machine-readable metadata describing the completeness of an export.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -38,6 +40,9 @@ pub struct ExportMetadata {
     /// Slots where the exported data was truncated by operator request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub truncations: Vec<TruncationRecord>,
+    /// Workspace symbolic-link traversal policy used by the exporter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_symlink_policy: Option<String>,
 }
 
 /// A section that was omitted from an export.
@@ -107,7 +112,7 @@ pub struct NousInfo {
     pub config: serde_json::Value,
 }
 
-/// Workspace file snapshot: text content included, binary paths listed.
+/// Workspace file snapshot: text content included, binary bytes encoded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[expect(
@@ -117,6 +122,22 @@ pub struct NousInfo {
 pub struct WorkspaceData {
     pub files: HashMap<String, String>,
     pub binary_files: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub binary_file_contents: Vec<BinaryFileData>,
+}
+
+/// Binary workspace file payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[expect(
+    missing_docs,
+    reason = "portability struct fields are self-documenting by name"
+)]
+pub struct BinaryFileData {
+    pub path: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub contents_base64: String,
 }
 
 /// Session snapshot with full message history and metadata.
@@ -303,6 +324,13 @@ mod tests {
                     ("config.yaml".to_owned(), "key: value\n".to_owned()),
                 ]),
                 binary_files: vec!["avatar.png".to_owned()],
+                binary_file_contents: vec![BinaryFileData {
+                    path: "avatar.png".to_owned(),
+                    size_bytes: 4,
+                    sha256: "0f4636c78f65d3639ece5a064b5ae753e3408614a14fb18ab4d7540d2c248543"
+                        .to_owned(),
+                    contents_base64: "iVBORw==".to_owned(),
+                }],
             },
             sessions: vec![ExportedSession {
                 id: "ses-001".to_owned(),
@@ -378,6 +406,7 @@ mod tests {
         assert_eq!(restored.nous.id, original.nous.id);
         assert_eq!(restored.workspace.files.len(), 2);
         assert_eq!(restored.workspace.binary_files.len(), 1);
+        assert_eq!(restored.workspace.binary_file_contents.len(), 1);
         assert_eq!(restored.sessions.len(), 1);
         assert_eq!(restored.sessions[0].messages.len(), 2);
         assert_eq!(restored.sessions[0].notes.len(), 1);
@@ -395,6 +424,10 @@ mod tests {
 
         let ws = value.get("workspace").expect("workspace key must exist");
         assert!(ws.get("binaryFiles").is_some(), "missing binaryFiles");
+        assert!(
+            ws.get("binaryFileContents").is_some(),
+            "missing binaryFileContents"
+        );
         assert!(ws.get("binary_files").is_none(), "snake_case leaked");
 
         let session = &value["sessions"][0];
@@ -472,7 +505,7 @@ mod tests {
 
     #[test]
     fn format_version_constant() {
-        assert_eq!(AGENT_FILE_VERSION, 2);
+        assert_eq!(AGENT_FILE_VERSION, 3);
     }
 
     #[test]

@@ -28,6 +28,7 @@ use koina::secret::SecretString;
 use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use symbolon::types::Role;
 use taxis::config::AletheiaConfig;
@@ -129,18 +130,22 @@ impl StateBuilder {
             taxis::config::ToolLimitsConfig::default(),
         ));
 
-        let jwt_manager = Arc::new(JwtManager::new(JwtConfig {
+        let jwt_config = JwtConfig {
             signing_key: SecretString::from(self.signing_key.clone()),
             access_ttl: Duration::from_hours(1),
             refresh_ttl: Duration::from_hours(24),
             issuer: "aletheia-diaporeia-tests".to_owned(),
             ..JwtConfig::default()
-        }));
+        };
+        let jwt_manager = Arc::new(JwtManager::new(jwt_config.clone()));
+        let auth_facade = Arc::new(
+            AuthFacade::in_memory(AuthConfig { jwt: jwt_config }).expect("in-memory auth facade"),
+        );
 
-        let jwt_for_state = if self.auth_mode == "none" {
+        let auth_for_state = if self.auth_mode == "none" {
             None
         } else {
-            Some(Arc::clone(&jwt_manager))
+            Some(auth_facade)
         };
 
         let mut cfg = AletheiaConfig::default();
@@ -158,7 +163,7 @@ impl StateBuilder {
             nous_manager,
             tool_registry,
             oikos,
-            jwt_manager: jwt_for_state,
+            auth_facade: auth_for_state,
             start_time: Instant::now(),
             config,
             auth_mode: self.auth_mode,

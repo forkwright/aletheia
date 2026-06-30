@@ -3,6 +3,35 @@ use koina::secret::SecretString;
 use crate::api::types::*;
 use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub(crate) enum ToolApprovalAction {
+    Approve,
+    Deny,
+    AlwaysAllow,
+    AutoApprove,
+}
+
+impl ToolApprovalAction {
+    pub(crate) const fn action_key(self) -> &'static str {
+        match self {
+            Self::Approve => "approve",
+            Self::Deny => "deny",
+            Self::AlwaysAllow => "always-allow",
+            Self::AutoApprove => "auto-approve",
+        }
+    }
+
+    pub(crate) const fn label(self) -> &'static str {
+        match self {
+            Self::Approve => "approval",
+            Self::Deny => "denial",
+            Self::AlwaysAllow => "always-allow approval",
+            Self::AutoApprove => "auto-approval",
+        }
+    }
+}
+
 /// Every possible state transition in the application.
 /// No I/O happens here: only data describing what happened.
 #[derive(Debug)]
@@ -112,6 +141,20 @@ pub enum Msg {
     OverlayFilterBackspace,
     /// Approve a tool call and add it to the session-scoped always-allow list.
     ToolApprovalAlwaysAllow,
+    ToolApprovalCompleted {
+        action_id: String,
+        turn_id: TurnId,
+        tool_id: ToolId,
+        tool_name: Option<String>,
+        action: ToolApprovalAction,
+        result: Result<(), String>,
+    },
+    NewSessionCompleted {
+        action_id: String,
+        nous_id: NousId,
+        session_key: String,
+        result: Result<Session, String>,
+    },
 
     SseConnected,
     SseDisconnected,

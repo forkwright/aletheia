@@ -81,12 +81,24 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     let checks = tokio::time::timeout(OVERALL_TIMEOUT, async {
         // WHY: read config once before spawning concurrent checks so each check
         // does not contend on the config lock.
-        let (clock_skew_leeway, expiry_warning_threshold, prosoche) = {
+        let (
+            clock_skew_leeway,
+            expiry_warning_threshold,
+            prosoche,
+            gateway_security_check,
+            rate_limiting_check,
+        ) = {
             let config = state.config.read().await;
             (
                 config.api_limits.clock_skew_leeway_secs,
                 config.api_limits.expiry_warning_threshold_secs,
                 config.maintenance.prosoche.clone(),
+                gateway_security_check(&config.gateway.auth.mode, &config.gateway.bind),
+                rate_limiting_check(
+                    config.gateway.rate_limit.enabled,
+                    config.gateway.rate_limit.trust_proxy,
+                    config.gateway.rate_limit.per_user.enabled,
+                ),
             )
         };
 
@@ -101,8 +113,8 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
         let provider_check = check_provider_availability(state);
         let credential_check =
             check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
+        let credential_runtime_check = check_credential_runtime(state).await;
         let embedding_check = check_embedding_provider(state);
-        let gateway_security_check = check_gateway_security(state).await;
         let prosoche_check = check_prosoche_heartbeat_path(&prosoche);
 
         // WHY: synchronous and cheap — the snapshot is a few atomic reads plus a
@@ -121,7 +133,9 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             check_provider_reachability(state),
             config_check,
             gateway_security_check,
+            rate_limiting_check,
             credential_check,
+            credential_runtime_check,
             storage_check,
             embedding_check,
             nous_poller_check,
@@ -170,11 +184,6 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     )
 }
 
-async fn check_gateway_security(state: &HealthState) -> HealthCheck {
-    let config = state.config.read().await;
-    gateway_security_check(&config.gateway.auth.mode, &config.gateway.bind)
-}
-
 fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
     if auth_mode == "none" && !taxis::validate::is_loopback_bind(bind) {
         return HealthCheck {
@@ -202,6 +211,51 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
         status: "pass".to_owned(),
         message: None,
         details: None,
+    }
+}
+
+/// Build the rate-limiting diagnostics check.
+///
+/// Reports the active keying strategy so the control plane can show whether
+/// rate limits are keyed by peer socket, forwarded client IP, or authenticated
+/// user. Per-user rate limiting takes precedence when enabled; otherwise the
+/// per-IP limiter follows the `trust_proxy` flag.
+fn rate_limiting_check(enabled: bool, trust_proxy: bool, per_user_enabled: bool) -> HealthCheck {
+    let keying = if per_user_enabled {
+        "authenticated_user"
+    } else if enabled {
+        if trust_proxy {
+            "forwarded_client_ip"
+        } else {
+            "peer_socket"
+        }
+    } else {
+        "disabled"
+    };
+
+    let message = if per_user_enabled {
+        "per-user rate limiting enabled; keyed by authenticated user".to_owned()
+    } else if enabled {
+        let keying_phrase = if trust_proxy {
+            "forwarded client IP"
+        } else {
+            "peer socket"
+        };
+        format!("per-IP rate limiting enabled; keyed by {keying_phrase}")
+    } else {
+        "rate limiting disabled".to_owned()
+    };
+
+    HealthCheck {
+        name: "rate_limiting".to_owned(),
+        status: "pass".to_owned(),
+        message: Some(message),
+        details: Some(serde_json::json!({
+            "enabled": enabled,
+            "trust_proxy": trust_proxy,
+            "per_user_enabled": per_user_enabled,
+            "keying": keying,
+        })),
     }
 }
 
@@ -807,7 +861,7 @@ fn check_credential_validity(
         HealthCheck {
             name: "credential_validity".to_owned(),
             status: "warn".to_owned(),
-            message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no Claude Code credentials)".to_owned()),
+            message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no explicit Claude Code credentials)".to_owned()),
             details: None,
         }
     }
@@ -905,6 +959,35 @@ fn provider_credential_scope_check(state: &HealthState) -> Option<HealthCheck> {
 fn provider_uses_anthropic_credentials(name: &str) -> bool {
     let normalized = name.to_ascii_lowercase();
     normalized.contains("anthropic") || normalized.contains("claude")
+}
+
+/// Report runtime credential-management state: supported providers and the
+/// effect of the most recent mutation (#4872).
+async fn check_credential_runtime(state: &HealthState) -> HealthCheck {
+    let supported = state.credential_runtime.supported_providers();
+    let last_effect = state.credential_runtime.last_effect().await;
+
+    let details = serde_json::json!({
+        "supported_providers": supported,
+        "last_effect": last_effect,
+    });
+
+    let message = if let Some(ref effect) = last_effect {
+        Some(format!(
+            "last mutation for '{}' returned '{}'",
+            effect.provider,
+            effect.effect.as_str()
+        ))
+    } else {
+        Some(format!("supported providers: {}", supported.join(", ")))
+    };
+
+    HealthCheck {
+        name: "credential_runtime".to_owned(),
+        status: "pass".to_owned(),
+        message,
+        details: Some(details),
+    }
 }
 
 /// Check if the data directory is writable.
@@ -1087,6 +1170,60 @@ mod tests {
         let check = gateway_security_check("none", "0.0.0.0");
         assert_eq!(check.status, "fail");
         assert_eq!(check.name, "gateway_security");
+    }
+
+    #[test]
+    fn rate_limiting_check_reports_disabled_when_off() {
+        let check = rate_limiting_check(false, false, false);
+        assert_eq!(check.name, "rate_limiting");
+        assert_eq!(check.status, "pass");
+        let details = check.details.unwrap();
+        assert_eq!(details["enabled"], false);
+        assert_eq!(details["keying"], "disabled");
+        assert!(check.message.as_deref().unwrap().contains("disabled"));
+    }
+
+    #[test]
+    fn rate_limiting_check_reports_peer_socket_by_default() {
+        let check = rate_limiting_check(true, false, false);
+        assert_eq!(check.status, "pass");
+        let details = check.details.unwrap();
+        assert_eq!(details["keying"], "peer_socket");
+        assert!(
+            check.message.as_deref().unwrap().contains("peer socket"),
+            "message should name peer socket keying: {:?}",
+            check.message
+        );
+    }
+
+    #[test]
+    fn rate_limiting_check_reports_forwarded_ip_when_trusted() {
+        let check = rate_limiting_check(true, true, false);
+        assert_eq!(check.status, "pass");
+        let details = check.details.unwrap();
+        assert_eq!(details["keying"], "forwarded_client_ip");
+        assert!(
+            check.message.as_deref().unwrap().contains("forwarded"),
+            "message should name forwarded IP keying: {:?}",
+            check.message
+        );
+    }
+
+    #[test]
+    fn rate_limiting_check_reports_authenticated_user_when_per_user_enabled() {
+        let check = rate_limiting_check(true, false, true);
+        assert_eq!(check.status, "pass");
+        let details = check.details.unwrap();
+        assert_eq!(details["keying"], "authenticated_user");
+        assert!(
+            check
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("authenticated user"),
+            "message should name authenticated-user keying: {:?}",
+            check.message
+        );
     }
 
     #[test]

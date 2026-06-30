@@ -76,6 +76,9 @@ pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
     app.connection.streaming_thinking.clear();
     app.connection.streaming_tool_calls.clear();
     app.viewport.render.markdown_cache.clear();
+    if let Some(agent_id) = app.dashboard.focused_agent.clone() {
+        app.load_tools_for_agent(&agent_id).await;
+    }
     app.load_focused_session().await;
     app.restore_scroll_state();
 }
@@ -95,6 +98,8 @@ pub(crate) async fn handle_next_agent(app: &mut App) {
         let next = (idx + 1) % app.dashboard.agents.len();
         let id = app.dashboard.agents[next].id.clone();
         app.dashboard.focused_agent = Some(id);
+        let agent_id = app.dashboard.agents[next].id.clone();
+        app.load_tools_for_agent(&agent_id).await;
         app.load_focused_session().await;
         app.restore_scroll_state();
     }
@@ -120,6 +125,8 @@ pub(crate) async fn handle_prev_agent(app: &mut App) {
         // kanon:ignore RUST/indexing-slicing — prev is derived from a validated agent index (idx) and modulo arithmetic
         let id = app.dashboard.agents[prev].id.clone();
         app.dashboard.focused_agent = Some(id);
+        let agent_id = app.dashboard.agents[prev].id.clone();
+        app.load_tools_for_agent(&agent_id).await;
         app.load_focused_session().await;
         app.restore_scroll_state();
     }

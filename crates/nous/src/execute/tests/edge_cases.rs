@@ -8,6 +8,7 @@ use organon::types::ToolDiagnostics;
 use super::*;
 
 use crate::execute::spawn_guard::enforce_spawn_isolation;
+use crate::history::{HistoryConfig, load_history};
 
 // ── spawn-class isolation guard (#186) ───────────────────────────────────────
 
@@ -361,6 +362,7 @@ fn classify_signals_edit_is_code_generation() {
         result: Some("ok".to_owned()),
         is_error: false,
         duration_ms: 10,
+        approval: None,
         receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
@@ -379,6 +381,7 @@ fn classify_signals_web_fetch_is_research() {
         result: Some("html".to_owned()),
         is_error: false,
         duration_ms: 10,
+        approval: None,
         receipt: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
@@ -398,6 +401,7 @@ fn classify_signals_multiple_flags() {
             result: Some("ok".to_owned()),
             is_error: false,
             duration_ms: 10,
+            approval: None,
             receipt: None,
         },
         ToolCall {
@@ -407,6 +411,7 @@ fn classify_signals_multiple_flags() {
             result: None,
             is_error: true,
             duration_ms: 5,
+            approval: None,
             receipt: None,
         },
     ];
@@ -467,24 +472,9 @@ async fn max_iterations_one_exits_immediately() {
 #[test]
 fn build_messages_maps_roles_correctly() {
     let msgs = vec![
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "Hello".to_owned(),
-            token_estimate: 1,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "Hi".to_owned(),
-            token_estimate: 1,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "unknown".to_owned(),
-            content: "?".to_owned(),
-            token_estimate: 1,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("user", "Hello", 1),
+        PipelineMessage::text("assistant", "Hi", 1),
+        PipelineMessage::text("unknown", "?", 1),
     ];
     let built = build_messages(&msgs);
     assert_eq!(
@@ -502,6 +492,149 @@ fn build_messages_maps_roles_correctly() {
         Role::User,
         "unknown role should fall back to Role::User"
     ); // unknown maps to User
+}
+
+fn store_with_persisted_tool_history() -> mneme::store::SessionStore {
+    use mneme::store::{
+        FinalizeMessage, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore,
+    };
+    use mneme::types::Role as StoreRole;
+
+    let store = SessionStore::open_in_memory().expect("open store");
+    let messages = [
+        FinalizeMessage {
+            role: StoreRole::User,
+            content: "Read README.md",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 4,
+        },
+        FinalizeMessage {
+            role: StoreRole::Assistant,
+            content: r#"{"path":"README.md"}"#,
+            tool_call_id: Some("toolu_5012"),
+            tool_name: Some("read_file"),
+            token_estimate: 0,
+        },
+        FinalizeMessage {
+            role: StoreRole::ToolResult,
+            content: "[tool:read_file@1970-01-01T00:00:00Z] file contents",
+            tool_call_id: Some("toolu_5012"),
+            tool_name: Some("read_file"),
+            token_estimate: 8,
+        },
+        FinalizeMessage {
+            role: StoreRole::Assistant,
+            content: "Done.",
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 2,
+        },
+    ];
+    let audits = [FinalizeToolAuditRecord {
+        turn_seq: 1,
+        tool_call_id: "toolu_5012",
+        tool_name: "read_file",
+        duration_ms: 42,
+        is_error: false,
+        outcome: "success",
+        result: Some("file contents"),
+        approval: Some("approved"),
+        receipt: Some("receipt-token"),
+    }];
+    store
+        .finalize_turn(&FinalizeTurnRequest {
+            session_id: "ses-typed-history",
+            nous_id: "test-agent",
+            session_key: "main",
+            model: Some("test-model"),
+            parent_session_id: None,
+            messages: &messages,
+            usage: None,
+            tool_audit_records: &audits,
+            completion_note: None,
+        })
+        .expect("finalize turn");
+    store
+}
+
+fn assert_loaded_tool_history(pipeline_messages: &[PipelineMessage]) {
+    assert_eq!(pipeline_messages[1].role, "assistant");
+    assert_eq!(
+        pipeline_messages[1].tool_call_id.as_deref(),
+        Some("toolu_5012")
+    );
+    assert_eq!(pipeline_messages[2].role, "tool_result");
+    assert_eq!(pipeline_messages[2].tool_name.as_deref(), Some("read_file"));
+    assert_eq!(pipeline_messages[2].tool_is_error, Some(false));
+    assert_eq!(pipeline_messages[2].tool_duration_ms, Some(42));
+    assert_eq!(
+        pipeline_messages[2].tool_approval.as_deref(),
+        Some("approved")
+    );
+    assert_eq!(
+        pipeline_messages[2].tool_receipt.as_deref(),
+        Some("receipt-token")
+    );
+}
+
+fn assert_typed_tool_use(message: &hermeneus::types::Message) {
+    assert_eq!(message.role, Role::Assistant);
+    let hermeneus::types::Content::Blocks(tool_use_blocks) = &message.content else {
+        panic!("assistant tool call should be typed content");
+    };
+    match &tool_use_blocks[0] {
+        ContentBlock::ToolUse { id, name, input } => {
+            assert_eq!(id, "toolu_5012");
+            assert_eq!(name, "read_file");
+            assert_eq!(input["path"], "README.md");
+        }
+        other => panic!("expected tool_use block, got {other:?}"),
+    }
+}
+
+fn assert_typed_tool_result(message: &hermeneus::types::Message) {
+    assert_eq!(message.role, Role::User);
+    let hermeneus::types::Content::Blocks(tool_result_blocks) = &message.content else {
+        panic!("tool result should be typed content");
+    };
+    match &tool_result_blocks[0] {
+        ContentBlock::ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+        } => {
+            assert_eq!(tool_use_id, "toolu_5012");
+            assert_eq!(*is_error, Some(false));
+            match content {
+                hermeneus::types::ToolResultContent::Text(text) => {
+                    assert!(text.contains("file contents"));
+                }
+                other => panic!("expected text tool result, got {other:?}"),
+            }
+        }
+        other => panic!("expected tool_result block, got {other:?}"),
+    }
+}
+
+#[test]
+fn persisted_tool_history_builds_typed_context_blocks() {
+    let store = store_with_persisted_tool_history();
+    let config = HistoryConfig {
+        max_messages: 10,
+        reserve_for_current: 0,
+        include_tool_messages: true,
+    };
+    let (pipeline_messages, result) =
+        load_history(&store, "ses-typed-history", 10_000, &config, "next").expect("load history");
+
+    assert_eq!(result.messages_loaded, 4);
+    assert_loaded_tool_history(&pipeline_messages);
+
+    let built = build_messages(&pipeline_messages);
+    assert_typed_tool_use(&built[1]);
+    assert_typed_tool_result(&built[2]);
+    assert_eq!(built.last().expect("current message").role, Role::User);
 }
 
 #[tokio::test]

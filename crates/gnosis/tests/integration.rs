@@ -1,9 +1,9 @@
 //! Integration test: build index against the aletheia workspace, then run
 //! real queries.
 //!
-//! The `symbol_rdeps_finds_many_callers` test is marked `#[ignore]` because
-//! it runs `cargo metadata` and parses the full workspace — expected wall time
-//! is 3-8 seconds on a typical workstation. Run it with:
+//! The full-workspace tests below are ignored because they run `cargo metadata`
+//! and parse the full workspace — expected wall time is 3-8 seconds on a
+//! typical workstation. Run one with:
 //!
 //! ```text
 //! cargo nextest run -p gnosis --features test-core -- --include-ignored symbol_rdeps_finds_many_callers
@@ -44,7 +44,7 @@ mod workspace_integration {
     /// lower bound validates that the index is actually populated and queries
     /// execute without error.
     #[test]
-    #[ignore = "parses full workspace — takes 3-8s; run with --include-ignored"]
+    #[ignore = "parses full workspace (3-8s) — see #5615"]
     fn symbol_rdeps_finds_many_callers() {
         let root = workspace_root();
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -75,7 +75,7 @@ mod workspace_integration {
     /// Verify that `impl_search("Stamped")` returns results (there should be
     /// multiple impls of the `Stamped` trait in the workspace).
     #[test]
-    #[ignore = "parses full workspace — takes 3-8s; run with --include-ignored"]
+    #[ignore = "parses full workspace (3-8s) — see #5615"]
     fn impl_search_finds_stamped_impls() {
         let root = workspace_root();
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -94,7 +94,7 @@ mod workspace_integration {
     /// Verify that `crate_rdeps("eidos")` returns multiple crates (nearly
     /// everything depends on eidos).
     #[test]
-    #[ignore = "parses full workspace — takes 3-8s; run with --include-ignored"]
+    #[ignore = "parses full workspace (3-8s) — see #5615"]
     fn crate_rdeps_eidos_returns_many() {
         let root = workspace_root();
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -115,6 +115,7 @@ mod workspace_integration {
 #[cfg(feature = "test-core")]
 #[expect(clippy::expect_used, reason = "integration test assertions")]
 mod synthetic_workspace_integration {
+    use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -180,6 +181,48 @@ edition = "2021"
 
     const FIXTURECORE_LIB: &str = r#"pub trait Message {}
 pub trait Stamped {}
+
+pub fn public_fn() {}
+pub(crate) fn crate_fn() {}
+fn private_fn() {}
+
+pub struct PublicStruct;
+pub(crate) struct CrateStruct;
+struct PrivateStruct;
+
+impl PublicStruct {
+    pub fn public_method(&self) {}
+    pub(crate) fn crate_method(&self) {}
+    fn private_method(&self) {}
+}
+
+pub enum PublicEnum {
+    Variant,
+}
+pub(crate) enum CrateEnum {
+    Variant,
+}
+enum PrivateEnum {
+    Variant,
+}
+
+pub trait PublicTrait {
+    fn public_trait_method(&self);
+}
+pub(crate) trait CrateTrait {
+    fn crate_trait_method(&self);
+}
+trait PrivateTrait {
+    fn private_trait_method(&self);
+}
+
+pub type PublicAlias = PublicStruct;
+pub(crate) type CrateAlias = CrateStruct;
+type PrivateAlias = PrivateStruct;
+
+pub const PUBLIC_CONST: usize = 1;
+pub(crate) const CRATE_CONST: usize = 2;
+const PRIVATE_CONST: usize = 3;
 "#;
 
     const FIXTURECONSUMER_TOML: &str = r#"[package]
@@ -297,5 +340,65 @@ impl fixturecore::Stamped for Observer {}
             "expected fixtureobserver to depend on fixturecore; got: {:?}",
             names
         );
+    }
+
+    #[test]
+    fn symbols_in_filters_private_definitions_in_synthetic_workspace() {
+        let (_tmp, root) = synthetic_workspace_root();
+        let db_tmp = tempfile::tempdir().expect("tempdir");
+        let db_path = db_tmp.path().join("gnosis_synthetic_symbols.fjall");
+
+        let graph = CodeGraph::open(&db_path, &root).expect("open graph");
+        graph.rebuild().expect("rebuild");
+
+        let rows = graph
+            .symbols_in("fixturecore", None)
+            .expect("symbols_in fixturecore");
+        let names: BTreeSet<String> = rows
+            .iter()
+            .filter_map(|row| row.symbol_name.clone())
+            .collect();
+
+        for expected in [
+            "Message",
+            "Stamped",
+            "public_fn",
+            "crate_fn",
+            "PublicStruct",
+            "CrateStruct",
+            "public_method",
+            "crate_method",
+            "PublicEnum",
+            "CrateEnum",
+            "PublicTrait",
+            "CrateTrait",
+            "public_trait_method",
+            "crate_trait_method",
+            "PublicAlias",
+            "CrateAlias",
+            "PUBLIC_CONST",
+            "CRATE_CONST",
+        ] {
+            assert!(
+                names.contains(expected),
+                "expected public-ish symbol {expected}; got: {names:?}"
+            );
+        }
+
+        for private in [
+            "private_fn",
+            "PrivateStruct",
+            "private_method",
+            "PrivateEnum",
+            "PrivateTrait",
+            "private_trait_method",
+            "PrivateAlias",
+            "PRIVATE_CONST",
+        ] {
+            assert!(
+                !names.contains(private),
+                "private symbol {private} must not be indexed; got: {names:?}"
+            );
+        }
     }
 }

@@ -2,6 +2,12 @@
 
 Every feature flag defined in the workspace, how flags interact across crates, and common build recipes.
 
+Release feature coverage is derived from `cargo metadata` by
+`scripts/release-feature-policy.py`. The only hand-maintained release policy is
+`scripts/release-feature-policy.toml`, which records documented exclusions
+such as network-only test tiers and the no-default feature combinations that
+Cargo metadata cannot infer.
+
 ## Feature Table
 
 | Crate | Feature | Default? | Enables | Depends on |
@@ -9,10 +15,11 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **agora** | `test-core` | no | - | - |
 | **agora** | `test-full` | no | - | - |
 | **aletheia** | `default` | **yes** | `tui`, `recall`, `storage-fjall`, `embed-candle`, `cc-provider` | - |
-| **aletheia** | `mcp` | no | MCP server (Model Context Protocol) | `dep:diaporeia`, `dep:rmcp` |
+| **aletheia** | `mcp` | no | MCP server (Model Context Protocol) with recall-backed knowledge tools | `recall`, `dep:diaporeia`, `dep:rmcp` |
 | **aletheia** | `recall` | no | KnowledgeStore vector search + extraction persistence | `nous/knowledge-store`, `mneme/mneme-engine`, `mneme/storage-fjall`, `pylon/knowledge-store` |
 | **aletheia** | `storage-fjall` | no | fjall LSM-tree backend | `mneme/storage-fjall` |
 | **aletheia** | `embed-candle` | no | Local ML embeddings via candle | `mneme/embed-candle` |
+| **aletheia** | `openai-embed` | no | OpenAI-compatible and Voyage embedding providers | `mneme/openai-embed` |
 | **aletheia** | `online-tests` | no | Network-dependent candle tests (HuggingFace downloads at test time) | `mneme/online-tests` |
 | **aletheia** | `migrate-qdrant` | no | `dep:qdrant-client` | `mneme/mneme-engine`, `mneme/storage-fjall` |
 | **aletheia** | `tls` | no | TLS support | `pylon/tls` |
@@ -48,7 +55,6 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **episteme** | `default` | **yes** | `graph-algo`, `reranker` | - |
 | **episteme** | `graph-algo` | no | Graph algorithms | - |
 | **episteme** | `reranker` | no | HTTP cross-encoder reranker | `dep:reqwest`, `dep:rustls`, `dep:tokio` |
-| **episteme** | `local-reranker` | no | Local reranker on the reranker plumbing | `reranker` |
 | **episteme** | `gliner` | no | GLiNER ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `nuextract` | no | NuExtract ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `openai-embed` | no | OpenAI-compatible embedding provider | `dep:reqwest`, `dep:tokio`, `dep:rustls` |
@@ -102,6 +108,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **mneme** | `nuextract` | no | NuExtract bookkeeping provider passthrough | `episteme/nuextract` |
 | **mneme** | `test-support` | no | `MockEmbeddingProvider` and test helpers | `episteme/test-support` |
 | **mneme** | `embed-candle` | no | Candle embedding provider | `episteme/embed-candle` |
+| **mneme** | `openai-embed` | no | OpenAI-compatible and Voyage embedding provider passthrough | `episteme/openai-embed` |
 | **mneme** | `online-tests` | no | Network-dependent candle tests passthrough | `episteme/online-tests` |
 | **mneme** | `mneme-engine` | no | Datalog knowledge engine | `dep:krites`, `graphe/mneme-engine`, `episteme/mneme-engine` |
 | **mneme** | `storage-fjall` | no | fjall knowledge storage | `mneme-engine`, `episteme/storage-fjall` |
@@ -153,7 +160,7 @@ Every feature flag defined in the workspace, how flags interact across crates, a
 | **poiesis-sheet** | `default` | **yes** | `xlsx`, `ods`, `workbook` | - |
 | **poiesis-sheet** | `xlsx` | no | XLSX backend | `dep:rust_xlsxwriter`, `dep:calamine` |
 | **poiesis-sheet** | `ods` | no | ODS backend | `dep:spreadsheet-ods` |
-| **poiesis-sheet** | `workbook` | no | Themed workbook assembly | `dep:poiesis-theme`, `dep:rust_xlsxwriter`, `dep:calamine` |
+| **poiesis-sheet** | `workbook` | no | Themed workbook assembly | `xlsx`, `dep:poiesis-theme` |
 | **poiesis-slides** | `default` | **yes** | `pptx` | - |
 | **poiesis-slides** | `pptx` | no | PPTX backend (hand-rolled OOXML; `quick-xml` and `zip` are unconditional deps) | - |
 | **poiesis-text** | `default` | **yes** | `pdf`, `odt` | - |
@@ -204,7 +211,7 @@ aletheia/embed-candle
 
 | Consumer feature | Dependency feature activated |
 |------------------|------------------------------|
-| `aletheia/mcp` | `dep:diaporeia`, `dep:rmcp` |
+| `aletheia/mcp` | `aletheia/recall`, `dep:diaporeia`, `dep:rmcp` |
 | `aletheia/tls` | `pylon/tls` (`dep:axum-server`) |
 | `aletheia/keyring` | `symbolon/keyring` (`dep:keyring`) |
 | `aletheia/tui` | `dep:koilon` |
@@ -298,6 +305,9 @@ cargo build -p aletheia --no-default-features --features tls
 # Add keyring auth but still skip ML
 cargo build -p aletheia --no-default-features --features tls,keyring
 
+# Minimal MCP server: stdio and HTTP MCP surfaces with recall-backed knowledge tools
+cargo build -p aletheia --no-default-features --features mcp
+
 # Full headless: everything except the TUI
 cargo build -p aletheia --no-default-features --features recall,storage-fjall,embed-candle,cc-provider,tls
 ```
@@ -323,6 +333,8 @@ cargo build -p aletheia --features mcp
 ```
 
 `mcp` is **not** in the default set because it adds auth friction and context-window overhead for local deployments.
+It implies `recall`, because Diaporeia exposes recall-backed knowledge tools and requires the same in-process
+knowledge store wiring that Pylon uses.
 
 ### "I want the desktop UI"
 

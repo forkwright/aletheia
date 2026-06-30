@@ -52,6 +52,55 @@ fn probe_tool_registry() -> ToolRegistry {
     registry
 }
 
+fn metadata_probe_tool_def(
+    name: &str,
+    category: ToolCategory,
+    reversibility: organon::types::Reversibility,
+    groups: Vec<ToolGroupId>,
+) -> ToolDef {
+    ToolDef {
+        name: ToolName::new(name).expect("valid tool name"),
+        description: "Probe tool with misleading name for metadata tests.".to_owned(),
+        extended_description: None,
+        input_schema: InputSchema {
+            properties: vec![].into_iter().collect(),
+            required: Vec::new(),
+        },
+        category,
+        reversibility,
+        auto_activate: true,
+        groups,
+        tags: vec![organon::types::ToolTag::Recon],
+    }
+}
+
+fn metadata_probe_tool_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(
+            metadata_probe_tool_def(
+                "read_but_irreversible",
+                ToolCategory::Communication,
+                organon::types::Reversibility::Irreversible,
+                vec![ToolGroupId::Mcp],
+            ),
+            Box::new(ProbeExecutor),
+        )
+        .expect("register irreversible probe");
+    registry
+        .register(
+            metadata_probe_tool_def(
+                "write_but_reversible",
+                ToolCategory::Research,
+                organon::types::Reversibility::FullyReversible,
+                vec![ToolGroupId::Read],
+            ),
+            Box::new(ProbeExecutor),
+        )
+        .expect("register reversible probe");
+    registry
+}
+
 /// WHY: Unix-only helper that makes a directory read-only for the test body
 /// and reliably restores write permissions when dropped so the tempdir can
 /// be cleaned up.
@@ -82,6 +131,22 @@ impl Drop for ReadOnlyGuard<'_> {
         perms.set_mode(self.orig_mode);
         let _ = std::fs::set_permissions(self.path, perms);
     }
+}
+
+async fn stop_actor_until_channel_closes(state: &AppState, id: &str) {
+    let handle = state.nous_manager.get(id).expect("actor handle");
+    handle.shutdown().await.expect("send shutdown");
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if handle.status().await.is_err() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("actor channel closes");
 }
 
 #[tokio::test]
@@ -227,6 +292,47 @@ async fn get_nous_tools() {
 }
 
 #[tokio::test]
+async fn get_nous_tools_reports_canonical_metadata_for_misleading_names() {
+    let (state, _dir) = test_state().await;
+    let mut state = Arc::try_unwrap(state).unwrap_or_else(|_| panic!("unique app state"));
+    state.tool_registry = Arc::new(metadata_probe_tool_registry());
+    let state = Arc::new(state);
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/nous/syn/tools"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let tools = body["tools"].as_array().expect("tools array");
+    let read_named = tools
+        .iter()
+        .find(|tool| tool["name"] == "read_but_irreversible")
+        .expect("read_but_irreversible present");
+    assert_eq!(read_named["category"], "communication");
+    assert_eq!(read_named["reversibility"], "irreversible");
+    assert_eq!(read_named["approval"], "mandatory");
+    assert_eq!(read_named["requires_approval"], true);
+    assert_eq!(read_named["destructive"], true);
+    assert_eq!(read_named["groups"][0], "mcp");
+    assert_eq!(read_named["source_plane"], "organon_builtin");
+    assert_eq!(read_named["metadata_verified"], true);
+
+    let write_named = tools
+        .iter()
+        .find(|tool| tool["name"] == "write_but_reversible")
+        .expect("write_but_reversible present");
+    assert_eq!(write_named["category"], "research");
+    assert_eq!(write_named["reversibility"], "fully_reversible");
+    assert_eq!(write_named["approval"], "none");
+    assert_eq!(write_named["requires_approval"], false);
+    assert_eq!(write_named["destructive"], false);
+    assert_eq!(write_named["metadata_verified"], true);
+}
+
+#[tokio::test]
 async fn patch_nous_enabled_updates_summary() {
     let (app, _dir) = app().await;
     let req = authed_request(
@@ -240,6 +346,34 @@ async fn patch_nous_enabled_updates_summary() {
     let body = body_json(resp).await;
     assert_eq!(body["id"], "syn");
     assert_eq!(body["enabled"], false);
+    assert_eq!(body["config_applied"], true);
+    assert_eq!(body["live_applied"], true);
+    assert_eq!(body["reload_required"], false);
+    assert_eq!(body["restart_required"], false);
+}
+
+#[tokio::test]
+async fn patch_nous_enabled_reports_persisted_config_when_live_apply_fails() {
+    let (state, _dir) = test_state().await;
+    stop_actor_until_channel_closes(&state, "syn").await;
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn",
+        Some(serde_json::json!({ "enabled": false })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["id"], "syn");
+    assert_eq!(body["enabled"], false);
+    assert_eq!(body["status"], "unknown");
+    assert_eq!(body["config_applied"], true);
+    assert_eq!(body["live_applied"], false);
+    assert_eq!(body["reload_required"], false);
+    assert_eq!(body["restart_required"], true);
 }
 
 #[tokio::test]
@@ -255,6 +389,35 @@ async fn patch_nous_tools_unknown_tool_returns_400() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn patch_nous_tools_reports_reload_required_for_persisted_allowlist() {
+    let (state, _dir) = test_state().await;
+    let mut state = Arc::try_unwrap(state).unwrap_or_else(|_| panic!("unique app state"));
+    state.tool_registry = Arc::new(probe_tool_registry());
+    let state = Arc::new(state);
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_request(
+        "PATCH",
+        "/api/v1/nous/syn/tools",
+        Some(serde_json::json!({ "tool": "probe_tool", "enabled": false })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let tools = body["tools"].as_array().expect("tools array");
+    let probe = tools
+        .iter()
+        .find(|t| t["name"] == "probe_tool")
+        .expect("probe_tool present");
+    assert_eq!(probe["enabled"], false);
+    assert_eq!(body["config_applied"], true);
+    assert_eq!(body["live_applied"], false);
+    assert_eq!(body["reload_required"], true);
+    assert_eq!(body["restart_required"], false);
 }
 
 #[tokio::test]
@@ -312,6 +475,8 @@ async fn nous_status_response_has_all_fields() {
             || body["background_failure_latest_kind"].is_string()
     );
     assert!(body["background_health_degraded"].is_boolean());
+    assert_eq!(body["address_mask"]["kind"], "public");
+    assert!(body["address_mask"]["allowed_senders"].is_array());
 }
 
 #[tokio::test]

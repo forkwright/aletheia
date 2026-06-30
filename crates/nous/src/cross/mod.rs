@@ -26,6 +26,41 @@ pub enum AddressMask {
 }
 
 impl AddressMask {
+    /// Address policy derived from the effective agent privacy flag.
+    ///
+    /// Private nouses only accept operator-originated cross-nous messages.
+    /// Public, shared, and team-scoped nouses remain broadly addressable until
+    /// a future config model adds narrower inbound cohorts.
+    #[must_use]
+    pub fn for_agent_privacy(private: bool) -> Self {
+        if private {
+            Self::OperatorOnly
+        } else {
+            Self::Public
+        }
+    }
+
+    /// Stable diagnostic label for this mask.
+    #[must_use]
+    pub fn diagnostic_kind(&self) -> &'static str {
+        match self {
+            Self::Public => "public",
+            Self::OperatorOnly => "operator_only",
+            Self::AllowList(_) => "allow_list",
+        }
+    }
+
+    /// Sender ids explicitly allowed by this mask.
+    ///
+    /// Empty for masks that do not use an allow-list.
+    #[must_use]
+    pub fn allowed_senders(&self) -> &[String] {
+        match self {
+            Self::AllowList(allowed) => allowed,
+            Self::Public | Self::OperatorOnly => &[],
+        }
+    }
+
     fn permits(&self, sender: &str) -> bool {
         match self {
             Self::Public => true,
@@ -317,6 +352,57 @@ mod tests {
         let envelope = rx.recv().await.unwrap();
         assert_eq!(envelope.message.from, "sender");
         assert_eq!(envelope.message.to, "target");
+    }
+
+    #[tokio::test]
+    async fn register_with_address_mask_exposes_and_enforces_policy() {
+        let router = CrossNousRouter::default();
+        let (tx, mut rx) = mpsc::channel(32);
+        router
+            .register_with_address_mask("target", tx, AddressMask::OperatorOnly)
+            .await;
+
+        assert_eq!(
+            router.address_mask("target").await,
+            AddressMask::OperatorOnly
+        );
+
+        let rejected = CrossNousMessage::new("sender", "target", "hello");
+        let err = router.send(rejected).await.unwrap_err();
+        assert!(err.to_string().contains("address rejected"));
+        assert!(matches!(
+            rx.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+
+        let allowed = CrossNousMessage::new("operator", "target", "hello");
+        let state = router.send(allowed).await.unwrap();
+        assert_eq!(state, DeliveryState::Delivered);
+        assert_eq!(rx.recv().await.unwrap().message.from, "operator");
+    }
+
+    #[tokio::test]
+    async fn set_address_mask_before_register_applies_pending_policy() {
+        let router = CrossNousRouter::default();
+        router
+            .set_address_mask("target", AddressMask::AllowList(vec!["alice".to_owned()]))
+            .await;
+
+        assert_eq!(
+            router.address_mask("target").await,
+            AddressMask::AllowList(vec!["alice".to_owned()])
+        );
+
+        let (tx, mut rx) = mpsc::channel(32);
+        router.register("target", tx).await;
+        let rejected = CrossNousMessage::new("bob", "target", "hello");
+        let err = router.send(rejected).await.unwrap_err();
+        assert!(err.to_string().contains("address rejected"));
+
+        let allowed = CrossNousMessage::new("alice", "target", "hello");
+        let state = router.send(allowed).await.unwrap();
+        assert_eq!(state, DeliveryState::Delivered);
+        assert_eq!(rx.recv().await.unwrap().message.from, "alice");
     }
 
     #[tokio::test]

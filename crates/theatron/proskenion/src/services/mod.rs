@@ -13,6 +13,8 @@ pub(crate) mod file_watcher;
 /// Global keyboard navigation handler.
 pub(crate) mod keybindings;
 pub(crate) mod notification_dispatch;
+/// Desktop bearer-token storage using keyring with encrypted fallback.
+pub(crate) mod secret_store;
 /// Settings config persistence: server list, appearance, keybindings.
 pub(crate) mod settings_config;
 pub mod sse;

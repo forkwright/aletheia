@@ -224,6 +224,8 @@ pub(crate) struct AgentToggle {
     pub name: String,
     pub enabled: bool,
     pub pending: bool,
+    pub apply_state: ToggleApplyState,
+    pub live_status: Option<String>,
 }
 
 /// A tool toggle for a specific agent.
@@ -233,6 +235,67 @@ pub(crate) struct ToolToggle {
     pub tool_name: String,
     pub enabled: bool,
     pub pending: bool,
+    pub apply_state: ToggleApplyState,
+}
+
+/// Runtime effect state for a persisted toggle request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ToggleApplyState {
+    #[default]
+    Synced,
+    Pending,
+    Degraded,
+    ReloadRequired,
+    RestartRequired,
+    Failed,
+}
+
+/// Server-reported effect fields for a toggle mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ToggleActionResult {
+    pub config_applied: bool,
+    pub live_applied: bool,
+    pub reload_required: bool,
+    pub restart_required: bool,
+}
+
+impl ToggleActionResult {
+    #[must_use]
+    pub(crate) fn synced() -> Self {
+        Self {
+            config_applied: true,
+            live_applied: true,
+            reload_required: false,
+            restart_required: false,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn failed() -> Self {
+        Self {
+            config_applied: false,
+            live_applied: false,
+            reload_required: false,
+            restart_required: false,
+        }
+    }
+}
+
+impl ToggleApplyState {
+    #[must_use]
+    pub(crate) fn from_action(result: ToggleActionResult) -> Self {
+        if !result.config_applied {
+            Self::Failed
+        } else if result.restart_required {
+            Self::RestartRequired
+        } else if result.reload_required {
+            Self::ReloadRequired
+        } else if result.live_applied {
+            Self::Synced
+        } else {
+            Self::Pending
+        }
+    }
 }
 
 /// A system-wide feature flag.
@@ -285,17 +348,49 @@ impl ToggleStore {
                 let prev = t.enabled;
                 t.enabled = !prev;
                 t.pending = true;
+                t.apply_state = ToggleApplyState::Synced;
                 prev
             })
     }
 
     /// Resolve an in-flight agent toggle (clear pending state).
     pub(crate) fn resolve_agent(&mut self, id: &NousId, success: bool, prev: bool) {
+        let result = if success {
+            ToggleActionResult::synced()
+        } else {
+            ToggleActionResult::failed()
+        };
+        self.resolve_agent_result(id, prev, None, None, result);
+    }
+
+    /// Resolve an in-flight agent toggle using server-reported runtime effects.
+    pub(crate) fn resolve_agent_result(
+        &mut self,
+        id: &NousId,
+        prev: bool,
+        applied_enabled: Option<bool>,
+        live_status: Option<String>,
+        result: ToggleActionResult,
+    ) {
         if let Some(t) = self.agent_toggles.iter_mut().find(|t| t.id == *id) {
             t.pending = false;
-            if !success {
+            if result.config_applied {
+                if let Some(enabled) = applied_enabled {
+                    t.enabled = enabled;
+                }
+                t.live_status = live_status;
+            } else {
                 t.enabled = prev;
+                t.live_status = None;
             }
+            t.apply_state = if t.live_status.as_deref() == Some("degraded")
+                && !result.live_applied
+                && result.restart_required
+            {
+                ToggleApplyState::Degraded
+            } else {
+                ToggleApplyState::from_action(result)
+            };
         }
     }
 
@@ -308,6 +403,7 @@ impl ToggleStore {
                 let prev = t.enabled;
                 t.enabled = !prev;
                 t.pending = true;
+                t.apply_state = ToggleApplyState::Synced;
                 prev
             })
     }
@@ -320,15 +416,37 @@ impl ToggleStore {
         success: bool,
         prev: bool,
     ) {
+        let result = if success {
+            ToggleActionResult::synced()
+        } else {
+            ToggleActionResult::failed()
+        };
+        self.resolve_tool_result(agent_id, tool_name, prev, None, result);
+    }
+
+    /// Resolve an in-flight tool toggle using server-reported runtime effects.
+    pub(crate) fn resolve_tool_result(
+        &mut self,
+        agent_id: &NousId,
+        tool_name: &str,
+        prev: bool,
+        applied_enabled: Option<bool>,
+        result: ToggleActionResult,
+    ) {
         if let Some(t) = self
             .tool_toggles
             .iter_mut()
             .find(|t| t.agent_id == *agent_id && t.tool_name == tool_name)
         {
             t.pending = false;
-            if !success {
+            if result.config_applied {
+                if let Some(enabled) = applied_enabled {
+                    t.enabled = enabled;
+                }
+            } else {
                 t.enabled = prev;
             }
+            t.apply_state = ToggleApplyState::from_action(result);
         }
     }
 
@@ -474,6 +592,8 @@ mod tests {
             name: "syn".to_string(),
             enabled: true,
             pending: false,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("idle".to_string()),
         });
 
         let prev = store.flip_agent(&nid("syn"));
@@ -492,6 +612,8 @@ mod tests {
             name: "syn".to_string(),
             enabled: false,
             pending: true,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("idle".to_string()),
         });
 
         store.resolve_agent(&nid("syn"), false, true);
@@ -502,6 +624,69 @@ mod tests {
     }
 
     #[test]
+    fn toggle_store_resolve_agent_live_failure_keeps_desired_state() {
+        let mut store = ToggleStore::new();
+        store.agent_toggles.push(AgentToggle {
+            id: nid("syn"),
+            name: "syn".to_string(),
+            enabled: true,
+            pending: true,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("idle".to_string()),
+        });
+
+        store.resolve_agent_result(
+            &nid("syn"),
+            true,
+            Some(false),
+            Some("unknown".to_string()),
+            ToggleActionResult {
+                config_applied: true,
+                live_applied: false,
+                reload_required: false,
+                restart_required: true,
+            },
+        );
+
+        let toggle = &store.agent_toggles[0];
+        assert!(!toggle.enabled, "persisted desired state must stay visible");
+        assert!(!toggle.pending);
+        assert_eq!(toggle.apply_state, ToggleApplyState::RestartRequired);
+        assert_eq!(toggle.live_status.as_deref(), Some("unknown"));
+    }
+
+    #[test]
+    fn toggle_store_resolve_agent_degraded_live_status() {
+        let mut store = ToggleStore::new();
+        store.agent_toggles.push(AgentToggle {
+            id: nid("syn"),
+            name: "syn".to_string(),
+            enabled: false,
+            pending: true,
+            apply_state: ToggleApplyState::Synced,
+            live_status: None,
+        });
+
+        store.resolve_agent_result(
+            &nid("syn"),
+            false,
+            Some(true),
+            Some("degraded".to_string()),
+            ToggleActionResult {
+                config_applied: true,
+                live_applied: false,
+                reload_required: false,
+                restart_required: true,
+            },
+        );
+
+        let toggle = &store.agent_toggles[0];
+        assert!(toggle.enabled);
+        assert_eq!(toggle.apply_state, ToggleApplyState::Degraded);
+        assert_eq!(toggle.live_status.as_deref(), Some("degraded"));
+    }
+
+    #[test]
     fn toggle_store_tools_for_agent() {
         let mut store = ToggleStore::new();
         store.tool_toggles.push(ToolToggle {
@@ -509,18 +694,21 @@ mod tests {
             tool_name: "read".to_string(),
             enabled: true,
             pending: false,
+            apply_state: ToggleApplyState::Synced,
         });
         store.tool_toggles.push(ToolToggle {
             agent_id: nid("mneme"),
             tool_name: "write".to_string(),
             enabled: true,
             pending: false,
+            apply_state: ToggleApplyState::Synced,
         });
         store.tool_toggles.push(ToolToggle {
             agent_id: nid("syn"),
             tool_name: "exec".to_string(),
             enabled: false,
             pending: false,
+            apply_state: ToggleApplyState::Synced,
         });
 
         let syn_tools = store.tools_for_agent(&nid("syn"));
@@ -673,6 +861,7 @@ mod tests {
             tool_name: "read".to_string(),
             enabled: false,
             pending: false,
+            apply_state: ToggleApplyState::Synced,
         });
         let prev = store.flip_tool(&nid("syn"), "read");
         assert_eq!(prev, Some(false));
@@ -695,6 +884,7 @@ mod tests {
             tool_name: "read".to_string(),
             enabled: true,
             pending: true,
+            apply_state: ToggleApplyState::Synced,
         });
         store.resolve_tool(&nid("syn"), "read", true, false);
         let t = &store.tool_toggles[0];
@@ -710,11 +900,45 @@ mod tests {
             tool_name: "read".to_string(),
             enabled: true,
             pending: true,
+            apply_state: ToggleApplyState::Synced,
         });
         store.resolve_tool(&nid("syn"), "read", false, false);
         let t = &store.tool_toggles[0];
         assert!(!t.enabled, "failure restores prev state");
         assert!(!t.pending);
+    }
+
+    #[test]
+    fn toggle_store_resolve_tool_reload_required_keeps_desired_state() {
+        let mut store = ToggleStore::new();
+        store.tool_toggles.push(ToolToggle {
+            agent_id: nid("syn"),
+            tool_name: "read".to_string(),
+            enabled: true,
+            pending: true,
+            apply_state: ToggleApplyState::Synced,
+        });
+
+        store.resolve_tool_result(
+            &nid("syn"),
+            "read",
+            true,
+            Some(false),
+            ToggleActionResult {
+                config_applied: true,
+                live_applied: false,
+                reload_required: true,
+                restart_required: false,
+            },
+        );
+
+        let toggle = &store.tool_toggles[0];
+        assert!(
+            !toggle.enabled,
+            "persisted allowlist state must stay visible"
+        );
+        assert!(!toggle.pending);
+        assert_eq!(toggle.apply_state, ToggleApplyState::ReloadRequired);
     }
 
     #[test]

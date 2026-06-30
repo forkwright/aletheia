@@ -7,7 +7,7 @@ use skene::api::types::Session;
 use skene::id::SessionId;
 
 use crate::state::sessions::{
-    SessionListStore, SessionSelectionStore, SessionSort, format_relative_time,
+    SessionListStore, SessionLoadState, SessionSelectionStore, SessionSort, format_relative_time,
     session_display_status, status_color,
 };
 
@@ -212,6 +212,60 @@ fn group_by_nous(sessions: Vec<Session>) -> Vec<(String, Vec<Session>)> {
     groups
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SessionListStatusView {
+    title: String,
+    detail: Option<String>,
+    is_error: bool,
+    can_retry: bool,
+}
+
+fn session_list_status_view(
+    load_state: &SessionLoadState<()>,
+    visible_count: usize,
+    hidden_count: usize,
+    has_filters: bool,
+) -> Option<SessionListStatusView> {
+    match load_state {
+        SessionLoadState::Loading => Some(SessionListStatusView {
+            title: "Loading sessions...".to_string(),
+            detail: None,
+            is_error: false,
+            can_retry: false,
+        }),
+        SessionLoadState::TransportError(failure)
+        | SessionLoadState::HttpError(failure)
+        | SessionLoadState::ContractError(failure) => Some(SessionListStatusView {
+            title: "Session list failed".to_string(),
+            detail: Some(failure.display_message()),
+            is_error: true,
+            can_retry: true,
+        }),
+        SessionLoadState::Loaded(()) | SessionLoadState::Empty(()) => {
+            if visible_count > 0 {
+                return None;
+            }
+
+            let detail = if hidden_count > 0 {
+                Some(format!(
+                    "{hidden_count} system sessions hidden; toggle System to show them."
+                ))
+            } else if has_filters {
+                Some("Try adjusting your filters or search query.".to_string())
+            } else {
+                None
+            };
+
+            Some(SessionListStatusView {
+                title: "No sessions found".to_string(),
+                detail,
+                is_error: false,
+                can_retry: false,
+            })
+        }
+    }
+}
+
 /// Sort bar above the session list, with the system-session visibility toggle.
 #[component]
 pub(crate) fn SessionSortBar(
@@ -321,6 +375,7 @@ pub(crate) fn SessionList(
     on_select_session: EventHandler<SessionId>,
     on_sort_change: EventHandler<SessionSort>,
     on_load_more: EventHandler<()>,
+    on_retry: EventHandler<()>,
 ) -> Element {
     let show_system = use_signal(|| false);
     let collapsed = use_signal(HashSet::<String>::new);
@@ -343,7 +398,10 @@ pub(crate) fn SessionList(
     let has_more = store.has_more;
     let total_count = store.total_count;
     let has_filters = store.has_active_filters();
+    let load_state = store.load_state.clone();
     drop(store);
+    let status_view =
+        session_list_status_view(&load_state, visible_count, hidden_count, has_filters);
 
     let collapsed_set = collapsed.read().clone();
     let groups: Vec<(String, bool, Vec<Session>)> = group_by_nous(visible)
@@ -395,18 +453,22 @@ pub(crate) fn SessionList(
                 }
             }
             // Grouped session rows
-            if visible_count == 0 {
+            if let Some(status) = status_view {
                 div {
-                    style: "{EMPTY_STYLE}",
+                    style: if status.is_error { "{EMPTY_STYLE} color: var(--status-error);" } else { "{EMPTY_STYLE}" },
                     div { style: "font-size: var(--text-3xl);", "[S]" }
-                    div { style: "font-size: var(--text-md);", "No sessions found" }
-                    if hidden_count > 0 {
-                        div { style: "font-size: var(--text-sm);",
-                            "{hidden_count} system sessions hidden — toggle System to show them."
+                    div { style: "font-size: var(--text-md);", "{status.title}" }
+                    if let Some(detail) = status.detail.as_ref() {
+                        div {
+                            style: "font-size: var(--text-sm); max-width: 420px; text-align: center; word-break: break-word;",
+                            "{detail}"
                         }
-                    } else if has_filters {
-                        div { style: "font-size: var(--text-sm);",
-                            "Try adjusting your filters or search query."
+                    }
+                    if status.can_retry {
+                        button {
+                            style: "{LOAD_MORE_BTN}",
+                            onclick: move |_| on_retry.call(()),
+                            "Retry"
                         }
                     }
                 }
@@ -446,7 +508,7 @@ pub(crate) fn SessionList(
                                         title: session.label().to_string(),
                                         message_count: session.message_count,
                                         updated_at: session.updated_at.clone().unwrap_or_default(),
-                                        status: session_display_status(&session).to_string(),
+                                        status: session_display_status(&session),
                                         is_selected: selection_store.read().is_selected(&session.id),
                                         on_click: move |id: SessionId| on_select_session.call(id),
                                         on_toggle_select: move |id: SessionId| {
@@ -538,5 +600,45 @@ mod tests {
         assert_eq!(groups[0].1.len(), 2);
         assert_eq!(groups[1].0, "ker");
         assert_eq!(groups[1].1.len(), 1);
+    }
+
+    #[test]
+    fn list_status_shows_empty_only_after_successful_empty_load() {
+        let status = match session_list_status_view(&SessionLoadState::Empty(()), 0, 0, false) {
+            Some(status) => status,
+            None => panic!("empty success should render empty copy"),
+        };
+
+        assert_eq!(status.title, "No sessions found");
+        assert!(!status.is_error);
+        assert!(!status.can_retry);
+    }
+
+    #[test]
+    fn list_status_shows_failure_instead_of_empty_copy() {
+        let status = match session_list_status_view(
+            &SessionLoadState::HttpError(crate::state::sessions::SessionLoadFailure {
+                path: "/api/v1/sessions?limit=50".to_string(),
+                status: Some(500),
+                request_id: Some("req-500".to_string()),
+                message: "internal error".to_string(),
+            }),
+            0,
+            0,
+            false,
+        ) {
+            Some(status) => status,
+            None => panic!("failed load should render failure copy"),
+        };
+
+        assert_eq!(status.title, "Session list failed");
+        assert!(status.is_error);
+        assert!(status.can_retry);
+        assert!(
+            status
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("request_id req-500"))
+        );
     }
 }

@@ -15,6 +15,7 @@
 //! | `messages`      | `{session_id}:{seq_padded_20}`                         | JSON `Message`           |
 //! | `messages`      | `next_seq:{session_id}`                                | big-endian `u64`         |
 //! | `usage`         | `{session_id}:{turn_seq_padded_20}`                    | JSON `UsageRecord`       |
+//! | `tool_audit`    | `{global_id_padded_20}`                                | JSON `ToolAuditRecord`   |
 //! | `distillations` | `{session_id}:{auto_id_padded_20}`                     | JSON distillation record |
 //! | `notes`         | `{session_id}:{auto_id_padded_20}`                     | JSON `AgentNote`         |
 //! | `notes`         | `gid:{global_note_id_padded_20}`                       | `{session_id}:{auto_id}` |
@@ -41,6 +42,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use fjall::{KeyspaceCreateOptions, PersistMode, SingleWriterTxDatabase};
@@ -54,7 +56,7 @@ use crate::error::{self, Result};
 use crate::metrics;
 use crate::types::{
     AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
-    SessionType, UsageRecord,
+    SessionType, ToolAuditRecord, UsageRecord,
 };
 
 fn storage_error(message: impl Into<String>) -> error::Error {
@@ -122,6 +124,7 @@ const PARTITIONS: &[&str] = &[
     "sessions",
     "messages",
     "usage",
+    "tool_audit",
     "distillations",
     "notes",
     "blackboard",
@@ -141,6 +144,11 @@ pub struct SessionStore {
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
     _temp_dir: Option<tempfile::TempDir>,
+    /// Approximate number of session rows, maintained by create/delete paths.
+    ///
+    /// WHY: O(1) counter for the Prometheus `/metrics` scrape path; avoids a
+    /// full LSM scan on every scrape (issue #5662).
+    session_count: AtomicUsize,
 }
 
 /// One message to append as part of a batched turn finalization.
@@ -162,11 +170,45 @@ pub struct FinalizeMessage<'a> {
     pub token_estimate: i64,
 }
 
+/// Agent note to append as part of batched turn finalization.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeNote<'a> {
+    /// Note category.
+    pub category: &'a str,
+    /// Serialized note payload.
+    pub content: &'a str,
+}
+
+/// One structured tool audit row to persist with a finalized turn.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeToolAuditRecord<'a> {
+    /// Turn sequence shared with the usage row.
+    pub turn_seq: i64,
+    /// Provider/tool-use identifier for this call.
+    pub tool_call_id: &'a str,
+    /// Registered tool name.
+    pub tool_name: &'a str,
+    /// Execution duration in milliseconds.
+    pub duration_ms: u64,
+    /// Whether the call produced an error result.
+    pub is_error: bool,
+    /// Stable outcome label, currently `"success"` or `"error"`.
+    pub outcome: &'a str,
+    /// Bounded tool result text captured from the execution path.
+    pub result: Option<&'a str>,
+    /// Approval outcome applied before execution, when known.
+    pub approval: Option<&'a str>,
+    /// HMAC receipt token emitted for this tool result, when present.
+    pub receipt: Option<&'a str>,
+}
+
 /// Request to persist a complete conversational turn in a single transaction.
 ///
-/// WHY: grouping session creation, message appends, and usage recording under
-/// one `tx.commit()` followed by one [`SessionStore::ensure_durable`] call
-/// removes the hard fsync-per-write latency floor described in issue #5675.
+/// WHY: grouping session creation, message appends, usage recording, and the
+/// completion marker under one `tx.commit()` followed by one
+/// [`SessionStore::ensure_durable`] call makes retries safe after any
+/// intra-turn write failure (#4614) and removes the hard fsync-per-write
+/// latency floor described in issue #5675.
 #[derive(Debug, Clone, Copy)]
 pub struct FinalizeTurnRequest<'a> {
     /// Session identifier for the turn.
@@ -181,8 +223,12 @@ pub struct FinalizeTurnRequest<'a> {
     pub parent_session_id: Option<&'a str>,
     /// Messages to append, in order.
     pub messages: &'a [FinalizeMessage<'a>],
-    /// Token-usage record for the turn.
-    pub usage: &'a UsageRecord,
+    /// Token-usage record for the turn, when usage recording is enabled.
+    pub usage: Option<&'a UsageRecord>,
+    /// Structured tool audit rows to append with this turn.
+    pub tool_audit_records: &'a [FinalizeToolAuditRecord<'a>],
+    /// Terminal lifecycle note to commit atomically with the turn, when known.
+    pub completion_note: Option<FinalizeNote<'a>>,
 }
 
 /// Result of a batched turn finalization.
@@ -192,6 +238,8 @@ pub struct FinalizeTurnResult {
     pub messages_persisted: usize,
     /// Whether a usage record was written.
     pub usage_recorded: bool,
+    /// Number of structured tool audit records appended.
+    pub tool_audit_records_persisted: usize,
 }
 
 // WHY: the counter is thread-local so concurrent unit tests do not interfere;
@@ -218,6 +266,69 @@ pub(crate) mod test_persist_counter {
     }
 }
 
+#[cfg(test)]
+pub(crate) mod test_finalize_failure {
+    use std::cell::Cell;
+
+    use super::{Result, storage_error};
+
+    thread_local! {
+        static FAIL_AFTER_MESSAGES: Cell<Option<usize>> = const { Cell::new(None) };
+    }
+
+    pub fn fail_after_messages(count: usize) {
+        FAIL_AFTER_MESSAGES.with(|cell| cell.set(Some(count)));
+    }
+
+    pub fn clear() {
+        FAIL_AFTER_MESSAGES.with(|cell| cell.set(None));
+    }
+
+    pub fn maybe_fail_after_messages(messages_persisted: usize) -> Result<()> {
+        FAIL_AFTER_MESSAGES.with(|cell| {
+            let Some(limit) = cell.get() else {
+                return Ok(());
+            };
+            if messages_persisted < limit {
+                return Ok(());
+            }
+            cell.set(None);
+            Err(storage_error(format!(
+                "injected finalize_turn failure after {messages_persisted} messages"
+            )))
+        })
+    }
+}
+
+/// Options passed to the private [`SessionStore::put_note`] write path.
+#[derive(Clone, Copy)]
+struct PutNoteOpts<'a> {
+    created_at: Option<&'a str>,
+    provided_id: Option<i64>,
+    validate_category: bool,
+}
+
+#[derive(Clone, Copy)]
+struct NoteTxParts<'a> {
+    notes: &'a fjall::SingleWriterTxKeyspace,
+    counters: &'a fjall::SingleWriterTxKeyspace,
+    sessions: &'a fjall::SingleWriterTxKeyspace,
+}
+
+struct NoteDeleteKeys {
+    gid_keys: Vec<Vec<u8>>,
+    gid_idx_keys: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Copy)]
+struct PutNoteSpec<'a> {
+    session_id: &'a str,
+    nous_id: &'a str,
+    category: &'a str,
+    content: &'a str,
+    opts: PutNoteOpts<'a>,
+}
+
 impl SessionStore {
     /// Open (or create) a persistent session store at the given path.
     ///
@@ -232,7 +343,7 @@ impl SessionStore {
             }
             .build()
         })?;
-        Ok(Self::from_fjall_db(fdb, path.to_path_buf()))
+        Self::from_fjall_db(fdb, path.to_path_buf())
     }
 
     /// Open an ephemeral session store backed by a `TempDir` (for testing).
@@ -259,16 +370,42 @@ impl SessionStore {
             ._temp_dir
             .as_ref()
             .map_or_else(std::env::temp_dir, |dir| dir.path().join("sessions"));
-        Ok(Self::from_fjall_db(fdb, path))
+        Self::from_fjall_db(fdb, path)
     }
 
-    fn from_fjall_db(fdb: koina::fjall::FjallDb, path: PathBuf) -> Self {
-        Self {
+    fn from_fjall_db(fdb: koina::fjall::FjallDb, path: PathBuf) -> Result<Self> {
+        use fjall::Readable;
+
+        let sessions_part = fdb
+            .db
+            .keyspace("sessions", KeyspaceCreateOptions::default)
+            .map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall session-count partition: {e}"),
+                }
+                .build()
+            })?;
+        let snap = fdb.db.read_tx();
+        let mut count = 0usize;
+        for guard in snap.range::<&str, _>(&sessions_part, ..) {
+            let (k, _v) = guard.into_inner().map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall session-count scan: {e}"),
+                }
+                .build()
+            })?;
+            if !k.starts_with(b"idx:") {
+                count += 1;
+            }
+        }
+
+        Ok(Self {
             db: Arc::new(fdb.db),
             path,
             write_lock: fdb.write_lock,
             _temp_dir: fdb._temp_dir,
-        }
+            session_count: AtomicUsize::new(count),
+        })
     }
 
     /// Path used when opening this Fjall session store.
@@ -363,6 +500,106 @@ impl SessionStore {
         format!("note_gid_idx:{session_id}:{}", pad_u64(global_id))
     }
 
+    fn put_note_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        parts: NoteTxParts<'_>,
+        spec: PutNoteSpec<'_>,
+    ) -> Result<i64> {
+        use fjall::Readable;
+        let PutNoteSpec {
+            session_id,
+            nous_id,
+            category,
+            content,
+            opts,
+        } = spec;
+        let PutNoteOpts {
+            created_at,
+            provided_id,
+            validate_category,
+        } = opts;
+
+        if validate_category && !Self::VALID_CATEGORIES.contains(&category) {
+            return Err(error::StorageSnafu {
+                message: format!(
+                    "CHECK constraint failed: category '{category}' is not valid; \
+                     allowed: {:?}",
+                    Self::VALID_CATEGORIES
+                ),
+            }
+            .build());
+        }
+
+        // WHY: read from the write transaction so batched turn finalization can
+        // create the session row and terminal note atomically.
+        if tx
+            .get(parts.sessions, session_id)
+            .map_err(|e| storage_error(format!("fjall put_note session check: {e}")))?
+            .is_none()
+        {
+            return Err(error::SessionNotFoundSnafu {
+                id: session_id.to_owned(),
+            }
+            .build());
+        }
+
+        let current_local_id = match tx
+            .get(parts.counters, "note_local_id")
+            .map_err(|e| storage_error(format!("fjall note_local_id counter read: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "note_local_id")?,
+        };
+        let current_global_id = match tx
+            .get(parts.counters, "note_global_id")
+            .map_err(|e| storage_error(format!("fjall note_global_id counter read: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "note_global_id")?,
+        };
+
+        // WHY: a non-positive provided id means the caller wants a fresh id,
+        // matching the legacy `add_note` allocation behaviour.
+        let local_id = provided_id
+            .and_then(|id| u64::try_from(id).ok())
+            .filter(|&id| id > 0)
+            .unwrap_or(current_local_id + 1);
+        let global_id = provided_id
+            .and_then(|id| u64::try_from(id).ok())
+            .filter(|&id| id > 0)
+            .unwrap_or(current_global_id + 1);
+
+        let note = AgentNote {
+            id: global_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+            session_id: session_id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            category: category.to_owned(),
+            content: content.to_owned(),
+            created_at: created_at.map_or_else(now_iso, str::to_owned),
+        };
+        let note_data = serde_json::to_vec(&note).context(error::StoredJsonSnafu)?;
+        let local_key = format!("{session_id}:{}", pad_u64(local_id));
+        let gid_key = format!("gid:{}", pad_u64(global_id));
+        let gid_val = format!("{session_id}:{}", pad_u64(local_id));
+        let gid_idx_key = Self::note_gid_index_key(session_id, global_id);
+
+        tx.insert(parts.notes, local_key.as_str(), note_data.as_slice());
+        tx.insert(parts.notes, gid_key.as_str(), gid_val.as_bytes());
+        tx.insert(parts.notes, gid_idx_key.as_str(), b"");
+        tx.insert(
+            parts.counters,
+            "note_local_id",
+            encode_u64(local_id.max(current_local_id)),
+        );
+        tx.insert(
+            parts.counters,
+            "note_global_id",
+            encode_u64(global_id.max(current_global_id)),
+        );
+
+        Ok(global_id as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+    }
+
     fn write_session(&self, session: &Session) -> Result<()> {
         let sessions = self.partition("sessions")?;
         let mut tx = self.db.write_tx();
@@ -404,6 +641,61 @@ impl SessionStore {
         Ok(())
     }
 
+    fn tool_audit_keys_for_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        tool_audit_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+    ) -> Result<Vec<Vec<u8>>> {
+        use fjall::Readable;
+
+        let mut keys = Vec::new();
+        for guard in tx.range::<&str, _>(tool_audit_part, ..) {
+            let (k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall delete_session tool_audit scan: {e}")))?;
+            let record =
+                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?;
+            if record.session_id == session_id {
+                keys.push(k.to_vec());
+            }
+        }
+        Ok(keys)
+    }
+
+    fn note_gid_delete_keys_for_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        notes_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+    ) -> Result<NoteDeleteKeys> {
+        use fjall::Readable;
+
+        // WHY: use the per-session reverse index so deletion is O(notes in
+        // session), not O(total notes across all sessions) (issue #5698).
+        let gid_idx_prefix = format!("note_gid_idx:{session_id}:");
+        let gid_idx_upper = format!("note_gid_idx:{session_id};\x00");
+        let mut gid_keys = Vec::new();
+        let mut gid_idx_keys = Vec::new();
+        for guard in tx.range(notes_part, gid_idx_prefix.as_str()..gid_idx_upper.as_str()) {
+            let (idx_key, _v) = guard.into_inner().map_err(|e| {
+                storage_error(format!("fjall delete_session note_gid_idx scan: {e}"))
+            })?;
+            let idx_str = String::from_utf8_lossy(&idx_key);
+            let global_id = idx_str
+                .rsplit(':')
+                .next()
+                .and_then(|s| s.parse::<u64>().ok())
+                .ok_or_else(|| {
+                    storage_error("corrupt note_gid_idx key: missing global_id".to_owned())
+                })?;
+            gid_idx_keys.push(idx_key.to_vec());
+            gid_keys.push(format!("gid:{}", pad_u64(global_id)).into_bytes());
+        }
+        Ok(NoteDeleteKeys {
+            gid_keys,
+            gid_idx_keys,
+        })
+    }
+
     /// Find or create an active session inside an existing write transaction.
     ///
     /// WHY: lets batched callers (e.g. [`Self::finalize_turn`]) include session
@@ -417,7 +709,7 @@ impl SessionStore {
         session_key: &str,
         model: Option<&str>,
         parent_session_id: Option<&str>,
-    ) -> Result<(Session, bool)> {
+    ) -> Result<(Session, bool, bool)> {
         use fjall::Readable;
 
         if let Some(existing_bytes) = tx
@@ -493,20 +785,21 @@ impl SessionStore {
         Self::write_session_in_tx(tx, sessions_part, &session)?;
         metrics::record_session_created(nous_id, session_type.as_str());
         info!(id, nous_id, session_key, %session_type, "created session");
-        Ok((session, true))
+        Ok((session, true, true))
     }
 
     /// Return an active session, reactivating it if necessary, inside a tx.
     ///
-    /// The returned boolean is `true` when the transaction was mutated
-    /// (reactivation), `false` when the session was already active.
+    /// Returns `(session, mutated, created)`: `mutated` is `true` when the
+    /// transaction was written (reactivation); `created` is always `false`
+    /// because this function only handles existing sessions.
     fn active_or_reactivated_session(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         sessions_part: &fjall::SingleWriterTxKeyspace,
         mut session: Session,
-    ) -> Result<(Session, bool)> {
+    ) -> Result<(Session, bool, bool)> {
         match session.status {
-            SessionStatus::Active => Ok((session, false)),
+            SessionStatus::Active => Ok((session, false, false)),
             SessionStatus::Archived => {
                 // WHY: Archived sessions are lifecycle-closed by operator or
                 // policy action. Silently reactivating them loses the intent
@@ -522,7 +815,7 @@ impl SessionStore {
                 Self::update_session_nous_index(tx, sessions_part, &session, &old_updated_at);
                 Self::write_session_in_tx(tx, sessions_part, &session)?;
                 info!(id = session.id, "reactivated session");
-                Ok((session, true))
+                Ok((session, true, false))
             }
         }
     }
@@ -575,6 +868,16 @@ impl SessionStore {
     pub fn ping(&self) -> Result<()> {
         let _ = self.partition("counters")?;
         Ok(())
+    }
+
+    /// Return the number of sessions in O(1).
+    ///
+    /// WHY: the Prometheus `/metrics` handler scrapes this every 15-30 seconds.
+    /// A full `list_sessions(None)` scan blocks the Tokio worker thread and
+    /// holds the session-store mutex for unbounded time as sessions grow
+    /// (issue #5662).
+    pub fn session_count(&self) -> usize {
+        self.session_count.load(Ordering::Relaxed)
     }
 
     /// Find an active session by nous ID and session key.
@@ -667,6 +970,7 @@ impl SessionStore {
         }
 
         self.write_session(&session)?;
+        self.session_count.fetch_add(1, Ordering::Relaxed);
         metrics::record_session_created(nous_id, session_type.as_str());
         info!(id, nous_id, session_key, %session_type, "created session");
         Ok(session)
@@ -688,7 +992,7 @@ impl SessionStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
         let mut tx = self.db.write_tx();
-        let (session, mutated) = Self::find_or_create_session_in_tx(
+        let (session, mutated, created) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             id,
@@ -705,6 +1009,9 @@ impl SessionStore {
                 .build()
             })?;
             self.ensure_durable()?;
+            if created {
+                self.session_count.fetch_add(1, Ordering::Relaxed);
+            }
         }
         Ok(session)
     }
@@ -770,6 +1077,74 @@ impl SessionStore {
         }
 
         Ok(sessions)
+    }
+
+    /// Count sessions owned by `nous_id` with `updated_at >= since`.
+    ///
+    /// WHY: uses the `idx:nous:{nous_id}:upd:` index instead of
+    /// `list_sessions(None)`, so the auto-dream gate check does not scan or
+    /// deserialize the full session partition.
+    #[instrument(skip(self))]
+    pub fn count_sessions_since(&self, since: jiff::Timestamp, nous_id: &str) -> Result<usize> {
+        use fjall::Readable;
+
+        let sessions_part = self.partition("sessions")?;
+        let snap = self.db.read_tx();
+
+        let prefix = format!("idx:nous:{nous_id}:upd:");
+        let lower = format!("{prefix}{}", since.strftime("%Y-%m-%dT%H:%M:%S%.3fZ"));
+        let upper = {
+            let mut s = prefix.clone();
+            let last = s.pop().unwrap_or('\0');
+            s.push(char::from_u32(u32::from(last) + 1).unwrap_or('\u{FFFF}'));
+            s
+        };
+
+        let mut count = 0;
+        for guard in snap.range(&sessions_part, lower.as_str()..upper.as_str()) {
+            let _ = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall count_sessions_since range: {e}")))?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// List session IDs owned by `nous_id` with `updated_at >= since`.
+    ///
+    /// WHY: index-only scan avoids deserializing sessions that fall outside the
+    /// consolidation window.
+    #[instrument(skip(self))]
+    pub fn list_session_ids_since(
+        &self,
+        since: jiff::Timestamp,
+        nous_id: &str,
+    ) -> Result<Vec<String>> {
+        use fjall::Readable;
+
+        let sessions_part = self.partition("sessions")?;
+        let snap = self.db.read_tx();
+
+        let prefix = format!("idx:nous:{nous_id}:upd:");
+        let lower = format!("{prefix}{}", since.strftime("%Y-%m-%dT%H:%M:%S%.3fZ"));
+        let upper = {
+            let mut s = prefix.clone();
+            let last = s.pop().unwrap_or('\0');
+            s.push(char::from_u32(u32::from(last) + 1).unwrap_or('\u{FFFF}'));
+            s
+        };
+
+        let mut ids = Vec::new();
+        for guard in snap.range(&sessions_part, lower.as_str()..upper.as_str()) {
+            let (k, _v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall list_session_ids_since range: {e}")))?;
+            let key = String::from_utf8_lossy(&k);
+            if let Some(id) = key.rsplit(':').next() {
+                ids.push(id.to_owned());
+            }
+        }
+        Ok(ids)
     }
 
     /// Overwrite the session status field and refresh its `updated_at` timestamp.
@@ -852,6 +1227,7 @@ impl SessionStore {
 
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
+        let tool_audit_part = self.partition("tool_audit")?;
         let distillations_part = self.partition("distillations")?;
         let notes_part = self.partition("notes")?;
 
@@ -880,6 +1256,9 @@ impl SessionStore {
             })
             .collect::<Result<_>>()?;
 
+        let tool_audit_keys =
+            Self::tool_audit_keys_for_session_in_tx(&mut tx, &tool_audit_part, id)?;
+
         let dist_keys: Vec<Vec<u8>> = tx
             .range(
                 &distillations_part,
@@ -901,28 +1280,8 @@ impl SessionStore {
             })
             .collect::<Result<_>>()?;
 
-        // WHY: use the per-session `note_gid_idx:` reverse index so deletion is
-        // O(notes in session) rather than O(total notes across all sessions)
-        // (issue #5698).
-        let gid_idx_prefix = format!("note_gid_idx:{id}:");
-        let gid_idx_upper = format!("note_gid_idx:{id};\x00");
-        let mut gid_keys: Vec<Vec<u8>> = Vec::new();
-        let mut gid_idx_keys: Vec<Vec<u8>> = Vec::new();
-        for guard in tx.range(&notes_part, gid_idx_prefix.as_str()..gid_idx_upper.as_str()) {
-            let (idx_key, _v) = guard.into_inner().map_err(|e| {
-                storage_error(format!("fjall delete_session note_gid_idx scan: {e}"))
-            })?;
-            let idx_str = String::from_utf8_lossy(&idx_key);
-            let global_id = idx_str
-                .rsplit(':')
-                .next()
-                .and_then(|s| s.parse::<u64>().ok())
-                .ok_or_else(|| {
-                    storage_error("corrupt note_gid_idx key: missing global_id".to_owned())
-                })?;
-            gid_idx_keys.push(idx_key.to_vec());
-            gid_keys.push(format!("gid:{}", pad_u64(global_id)).into_bytes());
-        }
+        let note_delete_keys =
+            Self::note_gid_delete_keys_for_session_in_tx(&mut tx, &notes_part, id)?;
 
         for key in &msg_keys {
             tx.remove(&messages_part, key.as_slice());
@@ -932,11 +1291,18 @@ impl SessionStore {
         for key in &usage_keys {
             tx.remove(&usage_part, key.as_slice());
         }
+        for key in &tool_audit_keys {
+            tx.remove(&tool_audit_part, key.as_slice());
+        }
 
         for key in &dist_keys {
             tx.remove(&distillations_part, key.as_slice());
         }
-        for key in note_keys.iter().chain(&gid_keys).chain(&gid_idx_keys) {
+        for key in note_keys
+            .iter()
+            .chain(&note_delete_keys.gid_keys)
+            .chain(&note_delete_keys.gid_idx_keys)
+        {
             tx.remove(&notes_part, key.as_slice());
         }
 
@@ -950,6 +1316,7 @@ impl SessionStore {
             }
             .build()
         })?;
+        self.session_count.fetch_sub(1, Ordering::Relaxed);
 
         Ok(true)
     }
@@ -1678,11 +2045,54 @@ impl SessionStore {
         Ok(())
     }
 
+    fn append_tool_audit_record_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        tool_audit_part: &fjall::SingleWriterTxKeyspace,
+        counters_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+        nous_id: &str,
+        spec: &FinalizeToolAuditRecord<'_>,
+    ) -> Result<()> {
+        use fjall::Readable;
+
+        let id_counter = match tx
+            .get(counters_part, "tool_audit_id")
+            .map_err(|e| storage_error(format!("fjall tool_audit_id counter: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "tool_audit_id")?,
+        } + 1;
+
+        let record = ToolAuditRecord {
+            id: id_counter as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+            session_id: session_id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            turn_seq: spec.turn_seq,
+            tool_call_id: spec.tool_call_id.to_owned(),
+            tool_name: spec.tool_name.to_owned(),
+            duration_ms: spec.duration_ms,
+            is_error: spec.is_error,
+            outcome: spec.outcome.to_owned(),
+            result: spec.result.map(str::to_owned),
+            approval: spec.approval.map(str::to_owned),
+            receipt: spec.receipt.map(str::to_owned),
+            created_at: now_iso(),
+        };
+        let key = pad_u64(id_counter);
+        let data = serde_json::to_vec(&record).context(error::StoredJsonSnafu)?;
+
+        tx.insert(tool_audit_part, key.as_str(), data.as_slice());
+        tx.insert(counters_part, "tool_audit_id", encode_u64(id_counter));
+        Ok(())
+    }
+
     /// Persist a complete conversational turn in a single transaction.
     ///
-    /// This batches session creation, message appends, and usage recording so
-    /// the hot path issues exactly one `ensure_durable()` fsync per logical
-    /// turn instead of one per individual write (issue #5675).
+    /// This batches session creation, message appends, usage recording, and
+    /// the terminal lifecycle marker so a retry can never observe a committed
+    /// prefix of the turn and append it again (#4614). The hot path still
+    /// issues exactly one `ensure_durable()` fsync per logical turn instead of
+    /// one per individual write (issue #5675).
     ///
     /// # Errors
     /// Returns an error if any partition operation, transaction commit, or
@@ -1697,11 +2107,13 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
+        let tool_audit_part = self.partition("tool_audit")?;
+        let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
 
         let mut tx = self.db.write_tx();
 
-        let (mut session, _mutated) = Self::find_or_create_session_in_tx(
+        let (mut session, _mutated, _) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             request.session_id,
@@ -1722,9 +2134,50 @@ impl SessionStore {
                 spec,
             )?;
             messages_persisted += 1;
+            #[cfg(test)]
+            test_finalize_failure::maybe_fail_after_messages(messages_persisted)?;
         }
 
-        Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, request.usage)?;
+        let mut usage_recorded = false;
+        if let Some(usage) = request.usage {
+            Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, usage)?;
+            usage_recorded = true;
+        }
+
+        let mut tool_audit_records_persisted = 0usize;
+        for spec in request.tool_audit_records {
+            Self::append_tool_audit_record_in_tx(
+                &mut tx,
+                &tool_audit_part,
+                &counters_part,
+                session.id.as_str(),
+                request.nous_id,
+                spec,
+            )?;
+            tool_audit_records_persisted += 1;
+        }
+
+        if let Some(note) = request.completion_note {
+            Self::put_note_in_tx(
+                &mut tx,
+                NoteTxParts {
+                    notes: &notes_part,
+                    counters: &counters_part,
+                    sessions: &sessions_part,
+                },
+                PutNoteSpec {
+                    session_id: session.id.as_str(),
+                    nous_id: request.nous_id,
+                    category: note.category,
+                    content: note.content,
+                    opts: PutNoteOpts {
+                        created_at: None,
+                        provided_id: None,
+                        validate_category: true,
+                    },
+                },
+            )?;
+        }
 
         tx.commit().map_err(|e| {
             error::StorageSnafu {
@@ -1740,8 +2193,64 @@ impl SessionStore {
         );
         Ok(FinalizeTurnResult {
             messages_persisted,
-            usage_recorded: true,
+            usage_recorded,
+            tool_audit_records_persisted,
         })
+    }
+
+    /// Get recent tool audit records, newest first bounded by `limit`.
+    #[instrument(skip(self))]
+    pub fn recent_tool_audit_records(&self, limit: usize) -> Result<Vec<ToolAuditRecord>> {
+        use fjall::Readable;
+
+        const MAX_RECENT_TOOL_AUDIT_RECORDS: usize = 200;
+        let limit = limit.min(MAX_RECENT_TOOL_AUDIT_RECORDS);
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let tool_audit_part = self.partition("tool_audit")?;
+        let snap = self.db.read_tx();
+
+        let mut records = Vec::with_capacity(limit);
+        for guard in snap.range::<&str, _>(&tool_audit_part, ..).rev() {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall recent_tool_audit_records: {e}")))?;
+            records.push(
+                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?,
+            );
+            if records.len() >= limit {
+                break;
+            }
+        }
+
+        Ok(records)
+    }
+
+    /// Get all tool audit records for a session, ordered by turn sequence and
+    /// audit insertion order.
+    #[instrument(skip(self))]
+    pub fn tool_audit_records_for_session(&self, session_id: &str) -> Result<Vec<ToolAuditRecord>> {
+        use fjall::Readable;
+
+        let tool_audit_part = self.partition("tool_audit")?;
+        let snap = self.db.read_tx();
+
+        let mut records = Vec::new();
+        for guard in snap.range::<&str, _>(&tool_audit_part, ..) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall tool_audit_records_for_session: {e}")))?;
+            let record =
+                serde_json::from_slice::<ToolAuditRecord>(&v).context(error::StoredJsonSnafu)?;
+            if record.session_id == session_id {
+                records.push(record);
+            }
+        }
+
+        records.sort_by(|a, b| a.turn_seq.cmp(&b.turn_seq).then_with(|| a.id.cmp(&b.id)));
+        Ok(records)
     }
 
     /// Get all usage records for a session, ordered by turn sequence.
@@ -1781,85 +2290,66 @@ impl SessionStore {
         category: &str,
         content: &str,
     ) -> Result<i64> {
-        use fjall::Readable;
+        self.put_note(
+            session_id,
+            nous_id,
+            category,
+            content,
+            PutNoteOpts {
+                created_at: None,
+                provided_id: None,
+                validate_category: true,
+            },
+        )
+    }
 
-        if !Self::VALID_CATEGORIES.contains(&category) {
-            return Err(error::StorageSnafu {
-                message: format!(
-                    "CHECK constraint failed: category '{category}' is not valid; \
-                     allowed: {:?}",
-                    Self::VALID_CATEGORIES
-                ),
-            }
-            .build());
-        }
-
+    /// Shared note write path used by [`Self::add_note`] and the portability
+    /// [`Self::import_note`] entry point.
+    ///
+    /// When `created_at` is `None` the current time is used; when
+    /// `provided_id` is `None` (or non-positive) a fresh local/global id is
+    /// allocated from the counters. Set `validate_category` to `true` only for
+    /// normal operator writes that must respect [`Self::VALID_CATEGORIES`].
+    #[instrument(skip(self, content, opts))]
+    fn put_note(
+        &self,
+        session_id: &str,
+        nous_id: &str,
+        category: &str,
+        content: &str,
+        opts: PutNoteOpts<'_>,
+    ) -> Result<i64> {
         let _guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
-
-        let snap = self.db.read_tx();
-
-        // WHY: referential integrity — reject notes for non-existent sessions (#5027).
         let sessions_part = self.partition("sessions")?;
-        if snap
-            .get(&sessions_part, session_id.as_bytes())
-            .map_err(|e| storage_error(format!("fjall add_note session check: {e}")))?
-            .is_none()
-        {
-            return Err(error::SessionNotFoundSnafu {
-                id: session_id.to_owned(),
-            }
-            .build());
-        }
-
-        let note_id = match snap
-            .get(&counters_part, "note_local_id")
-            .map_err(|e| storage_error(format!("fjall note_local_id counter read: {e}")))?
-        {
-            None => 0u64,
-            Some(b) => try_decode_u64(&b, "note_local_id")?,
-        } + 1;
-        let global_id = match snap
-            .get(&counters_part, "note_global_id")
-            .map_err(|e| storage_error(format!("fjall note_global_id counter read: {e}")))?
-        {
-            None => 0u64,
-            Some(b) => try_decode_u64(&b, "note_global_id")?,
-        } + 1;
-        drop(snap);
-
-        let note = AgentNote {
-            id: global_id as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
-            session_id: session_id.to_owned(),
-            nous_id: nous_id.to_owned(),
-            category: category.to_owned(),
-            content: content.to_owned(),
-            created_at: now_iso(),
-        };
-        let note_data = serde_json::to_vec(&note).context(error::StoredJsonSnafu)?;
-        let local_key = format!("{session_id}:{}", pad_u64(note_id));
-        let gid_key = format!("gid:{}", pad_u64(global_id));
-        let gid_val = format!("{session_id}:{}", pad_u64(note_id));
-        let gid_idx_key = Self::note_gid_index_key(session_id, global_id);
-
         let mut tx = self.db.write_tx();
-        tx.insert(&notes_part, local_key.as_str(), note_data.as_slice());
-        tx.insert(&notes_part, gid_key.as_str(), gid_val.as_bytes());
-        tx.insert(&notes_part, gid_idx_key.as_str(), b"");
-        tx.insert(&counters_part, "note_local_id", encode_u64(note_id));
-        tx.insert(&counters_part, "note_global_id", encode_u64(global_id));
+        let note_id = Self::put_note_in_tx(
+            &mut tx,
+            NoteTxParts {
+                notes: &notes_part,
+                counters: &counters_part,
+                sessions: &sessions_part,
+            },
+            PutNoteSpec {
+                session_id,
+                nous_id,
+                category,
+                content,
+                opts,
+            },
+        )?;
         tx.commit().map_err(|e| {
             error::StorageSnafu {
-                message: format!("fjall add_note: {e}"),
+                message: format!("fjall put_note: {e}"),
             }
             .build()
         })?;
 
-        Ok(global_id as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+        Ok(note_id)
     }
 
     /// Get notes for a session.
@@ -2488,9 +2978,9 @@ impl SessionStore {
         // - `idx:nous:{nous_id}:upd:{ts}:{id}` — orphaned when `nous_id` or
         //   `updated_at` changes; both are embedded in the key prefix.
         let mut tx = self.db.write_tx();
-        if let Some(prev_bytes) = existing_self {
+        if let Some(prev_bytes) = existing_self.as_ref() {
             let prev: Session =
-                serde_json::from_slice(&prev_bytes).context(error::StoredJsonSnafu)?;
+                serde_json::from_slice(prev_bytes).context(error::StoredJsonSnafu)?;
             if prev.nous_id != session.nous_id || prev.session_key != session.session_key {
                 let stale_key_idx = Self::session_key_index_key(&prev.nous_id, &prev.session_key);
                 tx.remove(&sessions_part, stale_key_idx.as_str());
@@ -2545,6 +3035,21 @@ impl SessionStore {
         })?;
         self.ensure_durable()?;
 
+        // WHY: imports can overwrite or displace existing sessions; adjust the
+        // counter to reflect the true delta in session rows (issue #5662).
+        let displaced = existing_key_owner
+            .as_deref()
+            .is_some_and(|owner| owner != session.id.as_str());
+        match (existing_self.is_none(), displaced) {
+            (true, false) => {
+                self.session_count.fetch_add(1, Ordering::Relaxed);
+            }
+            (false, true) => {
+                self.session_count.fetch_sub(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+
         metrics::record_session_created(&session.nous_id, session.session_type.as_str());
         info!(
             id = session.id,
@@ -2553,6 +3058,36 @@ impl SessionStore {
             "imported session"
         );
         Ok(stamped)
+    }
+
+    /// Insert a note exactly as supplied, preserving its `id` and `created_at`.
+    ///
+    /// This is the faithful import counterpart to [`Self::add_note`]. Callers
+    /// restoring from a portable export must use this instead of `add_note`,
+    /// which would overwrite the original timestamp and allocate a new
+    /// identifier.
+    ///
+    /// A non-positive `note.id` is treated as "allocate a fresh id", so files
+    /// that do not record the original identifier still round-trip their
+    /// timestamps.
+    ///
+    /// # Errors
+    /// Returns an error if the owning session does not exist or any commit
+    /// fails.
+    #[instrument(skip(self, note), fields(id = note.id, session_id = %note.session_id))]
+    pub fn import_note(&self, note: &AgentNote) -> Result<()> {
+        self.put_note(
+            &note.session_id,
+            &note.nous_id,
+            &note.category,
+            &note.content,
+            PutNoteOpts {
+                created_at: Some(&note.created_at),
+                provided_id: Some(note.id),
+                validate_category: false,
+            },
+        )?;
+        Ok(())
     }
 }
 

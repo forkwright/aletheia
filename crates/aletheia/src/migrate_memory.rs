@@ -13,9 +13,7 @@ use qdrant_client::qdrant::{
     ScrollPointsBuilder, value, with_payload_selector, with_vectors_selector,
 };
 
-use mneme::embedding::{
-    DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingProvider, create_provider,
-};
+use mneme::embedding::{DegradedEmbeddingProvider, EmbeddingProvider, create_provider};
 use mneme::id::{EmbeddingId, FactId};
 use mneme::knowledge::{
     EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
@@ -72,35 +70,40 @@ pub(crate) async fn run(
         .whatever_context("failed to connect to Qdrant")?;
 
     let config = load_config(&oikos).whatever_context("failed to load instance config")?;
-    let embedding_config = EmbeddingConfig {
-        provider: config.embedding.provider.clone(),
-        model: config.embedding.model.clone(),
-        dimension: Some(config.embedding.dimension),
-        api_key: None,
-        base_url: None,
-    };
-    let embedder: Arc<dyn EmbeddingProvider> = match create_provider(&embedding_config) {
-        Ok(p) => {
-            info!(
-                provider = %config.embedding.provider,
-                dim = config.embedding.dimension,
-                "embedding provider created"
-            );
-            Arc::from(p)
-        }
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                provider = %config.embedding.provider,
-                "embedding provider failed — embeddings will be skipped"
-            );
-            Arc::new(DegradedEmbeddingProvider::new(config.embedding.dimension))
-        }
-    };
+    let metadata_embedding_config = config.embedding.to_embedding_config();
+    let embedder: Arc<dyn EmbeddingProvider> =
+        match crate::embedding_config::runtime_embedding_config(&config.embedding) {
+            Ok(embedding_config) => match create_provider(&embedding_config) {
+                Ok(p) => {
+                    info!(
+                        provider = %config.embedding.provider,
+                        dim = config.embedding.dimension,
+                        "embedding provider created"
+                    );
+                    Arc::from(p)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        provider = %config.embedding.provider,
+                        "embedding provider failed — embeddings will be skipped"
+                    );
+                    Arc::new(DegradedEmbeddingProvider::new(config.embedding.dimension))
+                }
+            },
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    provider = %config.embedding.provider,
+                    "embedding config invalid — embeddings will be skipped"
+                );
+                Arc::new(DegradedEmbeddingProvider::new(config.embedding.dimension))
+            }
+        };
 
     let knowledge_config = KnowledgeConfig {
         dim: config.embedding.dimension,
-        embedding_model: embedding_config.effective_model_name(),
+        embedding_model: metadata_embedding_config.effective_model_name(),
         ..Default::default()
     };
     let knowledgedb = if dry_run {

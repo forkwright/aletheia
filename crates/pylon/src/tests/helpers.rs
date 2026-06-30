@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use hermeneus::provider::ProviderRegistry;
+use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
@@ -99,12 +99,66 @@ pub(super) async fn test_state_with_auth_mode(
     test_state_with_provider_private_and_auth_mode(true, false, auth_mode).await
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "test harness setup is inherently linear — splitting adds indirection without reducing reader burden"
-)]
 async fn test_state_with_provider_private_and_auth_mode(
     with_provider: bool,
+    include_private_nous: bool,
+    auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_provider_name_private_and_auth_mode(
+        with_provider,
+        None,
+        include_private_nous,
+        auth_mode,
+    )
+    .await
+}
+
+async fn test_state_with_provider_name_private_and_auth_mode(
+    with_provider: bool,
+    provider_name: Option<&str>,
+    include_private_nous: bool,
+    auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    let provider = with_provider.then(|| {
+        let name = provider_name.unwrap_or("Hello from mock!");
+        MockProvider::new(name).models(&["mock-model", "claude-opus-4-20250514"])
+    });
+    test_state_with_mock_provider(provider, include_private_nous, auth_mode).await
+}
+
+pub(super) async fn test_state_with_error_provider(
+    message: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_mock_provider(
+        Some(MockProvider::error(message).models(&["mock-model", "claude-opus-4-20250514"])),
+        false,
+        "token",
+    )
+    .await
+}
+
+async fn test_state_with_mock_provider(
+    provider: Option<MockProvider>,
+    include_private_nous: bool,
+    auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_llm_provider(
+        provider.map(|p| {
+            let boxed: Box<dyn LlmProvider> = Box::new(p);
+            boxed
+        }),
+        include_private_nous,
+        auth_mode,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "WHY(#4872): test harness AppState construction with per-provider fixture setup is inherently long; inner expect(disallowed_methods) annotations inflate line count"
+)]
+pub(super) async fn test_state_with_llm_provider(
+    provider: Option<Box<dyn LlmProvider>>,
     include_private_nous: bool,
     auth_mode: &str,
 ) -> (Arc<AppState>, tempfile::TempDir) {
@@ -186,10 +240,8 @@ bind = "localhost"
     let oikos = Arc::new(Oikos::from_root(root));
 
     let mut provider_registry = ProviderRegistry::new();
-    if with_provider {
-        provider_registry.register(Box::new(
-            MockProvider::new("Hello from mock!").models(&["mock-model", "claude-opus-4-20250514"]),
-        ));
+    if let Some(provider) = provider {
+        provider_registry.register(provider);
     }
     let provider_registry = Arc::new(provider_registry);
     let tool_registry = Arc::new(ToolRegistry::new());
@@ -251,6 +303,10 @@ bind = "localhost"
     let metrics_registry = koina::metrics::MetricsRegistry::new();
     crate::metrics::init(&metrics_registry);
 
+    let credential_runtime = Arc::new(crate::credential_runtime::CredentialRuntimeManager::new(
+        Arc::clone(&provider_registry),
+    ));
+
     let state = Arc::new(AppState {
         session_store: Arc::clone(&session_store),
         nous_manager: Arc::new(nous_manager),
@@ -260,6 +316,7 @@ bind = "localhost"
         workspace_root,
         jwt_manager,
         auth_facade,
+        credential_runtime,
         start_time: Instant::now(),
         auth_mode: auth_mode.to_owned(),
         none_role: "admin".to_owned(),
@@ -292,6 +349,19 @@ pub(super) async fn app_no_providers() -> (axum::Router, tempfile::TempDir) {
 
 pub(super) async fn app_with_auth_mode(auth_mode: &str) -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state_with_auth_mode(auth_mode).await;
+    (build_router(state, &test_security_config()), dir)
+}
+
+/// Test helper: app with a registered provider named "anthropic" so that
+/// credential-management mutations exercise the canonical managed-provider path.
+pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = test_state_with_provider_name_private_and_auth_mode(
+        true,
+        Some("anthropic"),
+        false,
+        "token",
+    )
+    .await;
     (build_router(state, &test_security_config()), dir)
 }
 

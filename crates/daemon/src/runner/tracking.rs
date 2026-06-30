@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crate::schedule::{apply_jitter, backoff_delay};
 use crate::state::{TASK_STATE_SCHEMA_VERSION, TaskState};
 
-use super::{RegisteredTask, TaskRunner};
+use super::{RegisteredTask, TaskRunner, redact_task_text};
 
 /// Build a persisted [`TaskState`] snapshot from a registered task.
 ///
@@ -106,6 +106,7 @@ impl TaskRunner {
 
     /// Record a task failure: increment failures, apply backoff, possibly auto-disable.
     pub(super) fn record_task_failure(&mut self, task_id: &str, reason: &str) {
+        let safe_reason = redact_task_text(reason);
         let Some(task) = self.tasks.iter_mut().find(|t| t.def.id == task_id) else {
             return;
         };
@@ -113,7 +114,7 @@ impl TaskRunner {
         crate::metrics::record_cron_execution(&task.def.name, 0.0, false);
         task.consecutive_failures += 1;
         task.last_run = Some(jiff::Timestamp::now());
-        task.last_error = Some(reason.to_owned());
+        task.last_error = Some(safe_reason.clone());
         task.last_errors = 0;
 
         let mut backoff_until_ts: Option<String> = None;
@@ -124,7 +125,7 @@ impl TaskRunner {
                 task_id = %task.def.id,
                 task_name = %task.def.name,
                 failures = task.consecutive_failures,
-                last_error = %reason,
+                last_error = %safe_reason,
                 "task auto-disabled after 3 consecutive failures"
             );
         } else {
@@ -150,7 +151,7 @@ impl TaskRunner {
                 task_name = %task.def.name,
                 failures = task.consecutive_failures,
                 backoff_secs = delay.as_secs(),
-                error = %reason,
+                error = %safe_reason,
                 result = "failure",
                 "task failed  -  backoff applied"
             );

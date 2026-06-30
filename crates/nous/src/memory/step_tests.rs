@@ -131,12 +131,7 @@ fn assemble_steps_empty_stream() {
 
 #[test]
 fn assemble_steps_single_assistant_no_tools() {
-    let messages = vec![PipelineMessage {
-        role: "assistant".to_owned(),
-        content: "hello".to_owned(),
-        token_estimate: 10,
-        cache_breakpoint: false,
-    }];
+    let messages = vec![PipelineMessage::text("assistant", "hello", 10)];
     let steps = assemble_steps(&messages);
     assert_eq!(
         steps.len(),
@@ -150,30 +145,14 @@ fn assemble_steps_single_assistant_no_tools() {
 #[test]
 fn assemble_steps_groups_tools_with_preceding_assistant() {
     let messages = vec![
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "I will read the file".to_owned(),
-            token_estimate: 20,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "[tool:file_read@2024-01-01T00:00:00Z] file content here".to_owned(),
-            token_estimate: 100,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "[tool:bash@2024-01-01T00:00:01Z] ls output".to_owned(),
-            token_estimate: 50,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "Done".to_owned(),
-            token_estimate: 10,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("assistant", "I will read the file", 20),
+        PipelineMessage::text(
+            "user",
+            "[tool:file_read@2024-01-01T00:00:00Z] file content here",
+            100,
+        ),
+        PipelineMessage::text("user", "[tool:bash@2024-01-01T00:00:01Z] ls output", 50),
+        PipelineMessage::text("assistant", "Done", 10),
     ];
     let steps = assemble_steps(&messages);
     assert_eq!(steps.len(), 2, "should produce two steps");
@@ -192,24 +171,9 @@ fn assemble_steps_groups_tools_with_preceding_assistant() {
 #[test]
 fn assemble_steps_user_message_acts_as_boundary() {
     let messages = vec![
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "first".to_owned(),
-            token_estimate: 10,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "regular user message".to_owned(),
-            token_estimate: 5,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "second".to_owned(),
-            token_estimate: 10,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("assistant", "first", 10),
+        PipelineMessage::text("user", "regular user message", 5),
+        PipelineMessage::text("assistant", "second", 10),
     ];
     let steps = assemble_steps(&messages);
     assert_eq!(steps.len(), 2);
@@ -220,32 +184,12 @@ fn assemble_steps_user_message_acts_as_boundary() {
 #[test]
 fn assemble_steps_orphan_tool_attaches_to_previous_step() {
     let messages = vec![
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "plan".to_owned(),
-            token_estimate: 10,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "[tool:bash@2024-01-01T00:00:00Z] output 1".to_owned(),
-            token_estimate: 20,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("assistant", "plan", 10),
+        PipelineMessage::text("user", "[tool:bash@2024-01-01T00:00:00Z] output 1", 20),
         // A regular user message acts as a boundary
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "follow-up".to_owned(),
-            token_estimate: 5,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("user", "follow-up", 5),
         // Orphan tool result with no preceding assistant in this turn
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: "[tool:bash@2024-01-01T00:00:01Z] output 2".to_owned(),
-            token_estimate: 20,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("user", "[tool:bash@2024-01-01T00:00:01Z] output 2", 20),
     ];
     let steps = assemble_steps(&messages);
     // First step gets the first tool, then user message finalizes it.
@@ -262,12 +206,7 @@ fn assemble_steps_orphan_tool_attaches_to_previous_step() {
 #[test]
 fn assemble_steps_multiline_self_note_preserved() {
     let note = "line one\nline two\nline three";
-    let messages = vec![PipelineMessage {
-        role: "assistant".to_owned(),
-        content: note.to_owned(),
-        token_estimate: 30,
-        cache_breakpoint: false,
-    }];
+    let messages = vec![PipelineMessage::text("assistant", note, 30)];
     let steps = assemble_steps(&messages);
     assert_eq!(
         steps[0].self_note, note,
@@ -279,18 +218,12 @@ fn assemble_steps_multiline_self_note_preserved() {
 fn assemble_steps_large_observation_body_no_panic() {
     let big_body = "x".repeat(10_000_000);
     let messages = vec![
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "plan".to_owned(),
-            token_estimate: 10,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: format!("[tool:file_read@2024-01-01T00:00:00Z] {big_body}"),
-            token_estimate: 2_500_000,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("assistant", "plan", 10),
+        PipelineMessage::text(
+            "user",
+            format!("[tool:file_read@2024-01-01T00:00:00Z] {big_body}"),
+            2_500_000,
+        ),
     ];
     let steps = assemble_steps(&messages);
     assert!(
@@ -302,24 +235,9 @@ fn assemble_steps_large_observation_body_no_panic() {
 #[test]
 fn assemble_steps_indices_are_sequential() {
     let messages = vec![
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "a".to_owned(),
-            token_estimate: 1,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "b".to_owned(),
-            token_estimate: 1,
-            cache_breakpoint: false,
-        },
-        PipelineMessage {
-            role: "assistant".to_owned(),
-            content: "c".to_owned(),
-            token_estimate: 1,
-            cache_breakpoint: false,
-        },
+        PipelineMessage::text("assistant", "a", 1),
+        PipelineMessage::text("assistant", "b", 1),
+        PipelineMessage::text("assistant", "c", 1),
     ];
     let steps = assemble_steps(&messages);
     assert_eq!(steps[0].index, 0);

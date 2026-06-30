@@ -13,6 +13,9 @@ use symbolon::types::{Action, ManagedCredential, ManagedCredentialRole, ManagedC
 use tracing::instrument;
 use utoipa::{IntoParams, ToSchema};
 
+use crate::credential_runtime::{
+    CredentialMutationEffect, CredentialRuntimeError, CredentialRuntimeManager,
+};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -22,6 +25,12 @@ use crate::state::AppState;
 pub struct CredentialsListResponse {
     /// Secret-safe credential metadata.
     pub credentials: Vec<CredentialResponse>,
+    /// Runtime effect of the mutation on the live provider chain.
+    ///
+    /// WHY: list responses produced by mutating endpoints (rotate) must expose
+    /// whether the running harness will use the new state without restart.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_effect: Option<CredentialMutationEffect>,
 }
 
 /// Secret-safe credential metadata returned to clients.
@@ -51,6 +60,22 @@ pub struct CredentialResponse {
     /// Usage counters when authoritative telemetry is available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_counters: Option<CredentialUsageCounters>,
+    /// Runtime effect of the mutation that produced this credential response.
+    ///
+    /// WHY: single-credential mutation responses must expose whether the live
+    /// provider chain will use the new state without restart (#4872).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_effect: Option<CredentialMutationEffect>,
+}
+
+/// Response body for a credential removal.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CredentialRemoveResponse {
+    /// Runtime effect of the removal on the live provider chain.
+    ///
+    /// WHY: 204 responses cannot carry a body, so removal now returns 200 with
+    /// an explicit effect so callers know whether a restart is required.
+    pub runtime_effect: CredentialMutationEffect,
 }
 
 /// Usage counters backed by authoritative telemetry.
@@ -118,8 +143,9 @@ pub async fn list_credentials(
     Ok(Json(CredentialsListResponse {
         credentials: credentials
             .into_iter()
-            .map(CredentialResponse::from)
+            .map(|c| CredentialResponse::from_managed(c, None))
             .collect(),
+        runtime_effect: None,
     }))
 }
 
@@ -144,6 +170,11 @@ pub async fn add_credential(
     Json(request): Json<AddCredentialRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     require_credential_operator(&state, &headers)?;
+    let provider = request.provider.trim();
+    state
+        .credential_runtime
+        .validate_provider(provider)
+        .map_err(map_runtime_error)?;
     let role = request
         .role
         .parse::<ManagedCredentialRole>()
@@ -151,11 +182,12 @@ pub async fn add_credential(
     let root = state.oikos.credentials();
     let credential = state
         .auth_facade
-        .add_credential(&root, request.provider.trim(), &request.key, role)
+        .add_credential(&root, provider, &request.key, role)
         .map_err(map_symbolon_error)?;
+    let effect = apply_mutation_effect(&state.credential_runtime, provider).await;
     Ok((
         StatusCode::CREATED,
-        Json(CredentialResponse::from(credential)),
+        Json(CredentialResponse::from_managed(credential, Some(effect))),
     ))
 }
 
@@ -180,12 +212,18 @@ pub async fn validate_credential(
     Path(id): Path<String>,
 ) -> Result<Json<CredentialResponse>, ApiError> {
     require_credential_operator(&state, &headers)?;
+    if let Some(provider) = provider_from_id(&id) {
+        state
+            .credential_runtime
+            .validate_provider(provider)
+            .map_err(map_runtime_error)?;
+    }
     let root = state.oikos.credentials();
     let credential = state
         .auth_facade
         .validate_credential(&root, &id)
         .map_err(map_symbolon_error)?;
-    Ok(Json(CredentialResponse::from(credential)))
+    Ok(Json(CredentialResponse::from_managed(credential, None)))
 }
 
 /// POST /api/v1/system/credentials/rotate: swap primary and backup credentials.
@@ -209,16 +247,23 @@ pub async fn rotate_credentials(
     Query(query): Query<RotateCredentialQuery>,
 ) -> Result<Json<CredentialsListResponse>, ApiError> {
     require_credential_operator(&state, &headers)?;
+    let provider = query.provider.trim();
+    state
+        .credential_runtime
+        .validate_provider(provider)
+        .map_err(map_runtime_error)?;
     let root = state.oikos.credentials();
     let credentials = state
         .auth_facade
-        .rotate_credentials(&root, query.provider.trim())
+        .rotate_credentials(&root, provider)
         .map_err(map_symbolon_error)?;
+    let effect = apply_mutation_effect(&state.credential_runtime, provider).await;
     Ok(Json(CredentialsListResponse {
         credentials: credentials
             .into_iter()
-            .map(CredentialResponse::from)
+            .map(|c| CredentialResponse::from_managed(c, None))
             .collect(),
+        runtime_effect: Some(effect),
     }))
 }
 
@@ -228,7 +273,7 @@ pub async fn rotate_credentials(
     path = "/api/v1/system/credentials/{id}",
     params(("id" = String, Path, description = "Credential id in provider:role form")),
     responses(
-        (status = 204, description = "Credential removed"),
+        (status = 200, description = "Credential removed", body = CredentialRemoveResponse),
         (status = 400, description = "Invalid credential id"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
@@ -242,14 +287,22 @@ pub async fn remove_credential(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<CredentialRemoveResponse>, ApiError> {
     require_credential_operator(&state, &headers)?;
+    let provider = provider_from_id(&id).ok_or_else(|| bad_request("invalid credential id"))?;
+    state
+        .credential_runtime
+        .validate_provider(provider)
+        .map_err(map_runtime_error)?;
     let root = state.oikos.credentials();
     state
         .auth_facade
         .remove_credential(&root, &id)
         .map_err(map_symbolon_error)?;
-    Ok(StatusCode::NO_CONTENT)
+    let effect = apply_mutation_effect(&state.credential_runtime, provider).await;
+    Ok(Json(CredentialRemoveResponse {
+        runtime_effect: effect,
+    }))
 }
 
 fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
@@ -283,6 +336,7 @@ fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<
 fn map_symbolon_error(err: symbolon::error::Error) -> ApiError {
     match err {
         symbolon::error::Error::InvalidApiKey { .. } => bad_request("invalid credential id"),
+        symbolon::error::Error::InvalidCredentialSecret { reason, .. } => bad_request(&reason),
         symbolon::error::Error::NotFound { entity, id, .. } => ApiError::NotFound {
             path: format!("{entity}/{id}"),
             location: snafu::location!(),
@@ -312,6 +366,17 @@ fn map_symbolon_error(err: symbolon::error::Error) -> ApiError {
     }
 }
 
+fn map_runtime_error(err: CredentialRuntimeError) -> ApiError {
+    match err {
+        CredentialRuntimeError::UnsupportedProvider { provider, .. } => ApiError::BadRequest {
+            message: format!(
+                "provider '{provider}' is not supported by runtime credential management"
+            ),
+            location: snafu::location!(),
+        },
+    }
+}
+
 fn bad_request(message: &str) -> ApiError {
     ApiError::BadRequest {
         message: message.to_owned(),
@@ -319,8 +384,11 @@ fn bad_request(message: &str) -> ApiError {
     }
 }
 
-impl From<ManagedCredential> for CredentialResponse {
-    fn from(credential: ManagedCredential) -> Self {
+impl CredentialResponse {
+    fn from_managed(
+        credential: ManagedCredential,
+        runtime_effect: Option<CredentialMutationEffect>,
+    ) -> Self {
         Self {
             id: credential.id,
             provider: credential.provider,
@@ -332,6 +400,7 @@ impl From<ManagedCredential> for CredentialResponse {
             // omit the counters entirely rather than return hardcoded zeros.
             usage_counters_available: false,
             usage_counters: None,
+            runtime_effect,
         }
     }
 }
@@ -342,4 +411,17 @@ fn status_str(status: ManagedCredentialStatus) -> &'static str {
         ManagedCredentialStatus::Expired => "expired",
         _ => "untested",
     }
+}
+
+fn provider_from_id(id: &str) -> Option<&str> {
+    id.split_once(':').map(|(provider, _)| provider)
+}
+
+async fn apply_mutation_effect(
+    credential_runtime: &CredentialRuntimeManager,
+    provider: &str,
+) -> CredentialMutationEffect {
+    let effect = credential_runtime.mutation_effect(provider);
+    credential_runtime.record_effect(provider, effect).await;
+    effect
 }

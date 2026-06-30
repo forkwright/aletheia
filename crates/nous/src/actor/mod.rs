@@ -163,6 +163,12 @@ pub(crate) struct ActorRuntime {
     last_panic_at: Option<Instant>,
     /// Consecutive inbox recv timeouts without a successful message. (#2159)
     consecutive_timeouts: u32,
+    /// Durable auto-dream engine owned by the actor.
+    ///
+    /// WHY: recreating the engine every turn reset `last_scan_at`, disabling
+    /// the 10-minute intra-day scan throttle (#5700).
+    #[cfg(feature = "knowledge-store")]
+    auto_dream_engine: Option<Arc<melete::dream::DreamEngine>>,
 }
 
 /// A single nous agent running as a Tokio actor.
@@ -200,7 +206,7 @@ impl NousActor {
     pub(crate) fn new(
         id: String,
         config: NousConfig,
-        pipeline_config: PipelineConfig,
+        mut pipeline_config: PipelineConfig,
         inbox: mpsc::Receiver<NousMessage>,
         cross_rx: Option<mpsc::Receiver<CrossNousEnvelope>>,
         cross_tx: Option<mpsc::Sender<CrossNousEnvelope>>,
@@ -223,6 +229,13 @@ impl NousActor {
         router: Option<Arc<dyn Router>>,
         cross_router: Option<Arc<crate::cross::CrossNousRouter>>,
     ) -> Self {
+        let project_id = pipeline_config.project_id.clone();
+        if let Some(extraction) = pipeline_config.extraction.as_mut()
+            && extraction.project_id.is_none()
+        {
+            extraction.project_id = project_id;
+        }
+
         #[cfg(feature = "knowledge-store")]
         let skill_loader = knowledge_store
             .as_ref()
@@ -300,6 +313,8 @@ impl NousActor {
                 started_at: Instant::now(),
                 last_panic_at: None,
                 consecutive_timeouts: 0,
+                #[cfg(feature = "knowledge-store")]
+                auto_dream_engine: None,
             },
             drift_detectors: HashMap::new(),
             nous_behavior,
@@ -392,6 +407,7 @@ impl NousActor {
                         NousMessage::StreamingTurn {
                             session_key,
                             session_id,
+                            turn_id,
                             content,
                             stream_tx,
                             approval_gate,
@@ -410,6 +426,7 @@ impl NousActor {
                                 self.handle_streaming_turn(turn::StreamingTurnRequest {
                                     session_key,
                                     session_id,
+                                    turn_id,
                                     content,
                                     stream_tx,
                                     approval_gate,

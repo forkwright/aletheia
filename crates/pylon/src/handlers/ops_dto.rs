@@ -10,6 +10,22 @@ pub struct ToolCatalogEntry {
     pub description: String,
     /// Tool identifier used by the registry.
     pub id: String,
+    /// Semantic tool category.
+    pub category: String,
+    /// Reversibility metadata used to derive approval policy.
+    pub reversibility: String,
+    /// Approval requirement derived from reversibility.
+    pub approval: String,
+    /// Whether the tool's default metadata requires an operator approval prompt.
+    pub requires_approval: bool,
+    /// Whether the tool's default metadata marks it as side-effecting or destructive.
+    pub destructive: bool,
+    /// Tool groups used by policy resolution.
+    pub groups: Vec<String>,
+    /// Tool source plane, e.g. `"organon_builtin"` or `"runtime_bridged_mcp"`.
+    pub source_plane: String,
+    /// Whether metadata came from the server-owned registry.
+    pub metadata_verified: bool,
 }
 
 /// A currently-running tool invocation.
@@ -23,6 +39,39 @@ pub struct LiveInvocationEntry {
     pub elapsed_ms: u64,
 }
 
+/// A recent structured tool invocation from durable turn audit history.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ToolHistoryEntry {
+    /// Store-assigned chronological identifier.
+    pub id: i64,
+    /// Session this tool call belongs to.
+    pub session_id: String,
+    /// Agent that requested the tool call.
+    pub nous_id: String,
+    /// Turn sequence shared with usage records.
+    pub turn_seq: i64,
+    /// Provider/tool-use identifier for this call.
+    pub tool_call_id: String,
+    /// Registered tool name.
+    pub tool_name: String,
+    /// Execution duration in milliseconds.
+    pub duration_ms: u64,
+    /// Whether the call produced an error result.
+    pub is_error: bool,
+    /// Stable outcome label, currently `"success"` or `"error"`.
+    pub outcome: String,
+    /// Bounded tool result text captured from the execution path.
+    pub result: Option<String>,
+    /// Approval outcome applied before execution, when known.
+    pub approval: Option<String>,
+    /// Receipt availability state, either `"present"` or `"absent"`.
+    pub receipt_state: String,
+    /// HMAC receipt token emitted for this tool result, when present.
+    pub receipt: Option<String>,
+    /// ISO 8601 timestamp when this audit row was written.
+    pub created_at: String,
+}
+
 /// Response payload for `GET /api/v1/ops/tools`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct OpsToolsResponse {
@@ -30,13 +79,14 @@ pub struct OpsToolsResponse {
     pub catalog: Vec<ToolCatalogEntry>,
     /// Currently-running tool invocations.
     pub live_invocations: Vec<LiveInvocationEntry>,
+    /// Recent durable tool-call audit records, newest first.
+    pub history: Vec<ToolHistoryEntry>,
     /// Total recorded tool calls from organon metrics.
     pub total_calls: u64,
     /// Total recorded error calls from organon metrics.
     pub total_errors: u64,
     /// Whether chronological tool-call history is unavailable.
     ///
-    /// The current runtime does not persist a per-call history, so this is
-    /// `true` until a history store is added.
+    /// `true` only when the history store cannot be read.
     pub history_unavailable: bool,
 }

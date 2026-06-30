@@ -1,9 +1,7 @@
 //! `StreamAccumulator` state machine for SSE event processing.
 
-use tracing::warn;
-
 use super::super::wire::{WireContentBlockStart, WireDelta, WireStreamEvent, WireUsage};
-use crate::error::Result;
+use crate::error::{self, Result};
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::StreamEvent;
@@ -55,6 +53,25 @@ fn convert_wire_usage(wire: &WireUsage) -> Usage {
         output_tokens: wire.output_tokens,
         cache_write_tokens: wire.cache_creation_input_tokens,
         cache_read_tokens: wire.cache_read_input_tokens,
+    }
+}
+
+fn parse_stream_tool_input(
+    input_json: &str,
+    surface: &str,
+    tool_name: &str,
+) -> Result<serde_json::Value> {
+    if input_json.is_empty() {
+        Ok(serde_json::Value::Object(serde_json::Map::default()))
+    } else {
+        serde_json::from_str(input_json).map_err(|e| {
+            error::ProviderContractSnafu {
+                message: format!(
+                    "{surface} tool call '{tool_name}' input_json_delta was not valid JSON: {e}"
+                ),
+            }
+            .build()
+        })
     }
 }
 
@@ -228,7 +245,12 @@ impl StreamAccumulator {
             }
             WireStreamEvent::MessageDelta { delta, usage } => {
                 self.output_tokens = usage.output_tokens;
-                // NOTE: Cache token deltas are reported in message_delta, not message_start.
+                // INVARIANT: Per the Anthropic streaming API, cache_creation_input_tokens
+                // and cache_read_input_tokens are reported in message_start.usage (assigned in
+                // the MessageStart arm above), not message_delta.usage. WireMessageDeltaUsage
+                // carries these fields with #[serde(default)] so they are always zero in
+                // practice; += is additive for forward compatibility but must produce a
+                // zero increment from this arm under the current protocol.
                 self.cache_write_tokens += usage.cache_creation_input_tokens;
                 self.cache_read_tokens += usage.cache_read_input_tokens;
                 // WHY: Anthropic stop_reason strings we do not recognize are
@@ -260,15 +282,10 @@ impl StreamAccumulator {
     }
 
     /// Build the final `CompletionResponse` from accumulated state.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "stream accumulator converts every supported Anthropic block variant"
-    )]
-    pub(crate) fn finish(self) -> CompletionResponse {
-        let content = self
-            .blocks
-            .into_iter()
-            .map(|b| match b {
+    pub(crate) fn finish(self) -> Result<CompletionResponse> {
+        let mut content = Vec::with_capacity(self.blocks.len());
+        for block in self.blocks {
+            let content_block = match block {
                 BlockBuilder::Text(text) => ContentBlock::Text {
                     text,
                     citations: None,
@@ -278,27 +295,7 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    // WHY: An empty string means no input_json_delta events were sent: the
-                    // tool takes no arguments. Skip parsing to avoid a spurious WARN.
-                    let input = if input_json.is_empty() {
-                        serde_json::Value::Object(serde_json::Map::default())
-                    } else {
-                        match serde_json::from_str(&input_json) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                warn!(
-                                    error = %e,
-                                    tool = %name,
-                                    raw_json = %input_json,
-                                    "tool input JSON parse failed; returning error object to agent"
-                                );
-                                serde_json::json!({
-                                    "_parse_error": format!("malformed tool input: {e}"),
-                                    "_raw_input": input_json,
-                                })
-                            }
-                        }
-                    };
+                    let input = parse_stream_tool_input(&input_json, "Anthropic stream", &name)?;
                     ContentBlock::ToolUse { id, name, input }
                 }
                 BlockBuilder::Thinking { text, signature } => ContentBlock::Thinking {
@@ -314,26 +311,8 @@ impl StreamAccumulator {
                     name,
                     input_json,
                 } => {
-                    // WHY: Same empty-input guard as ToolUse above.
-                    let input = if input_json.is_empty() {
-                        serde_json::Value::Object(serde_json::Map::default())
-                    } else {
-                        match serde_json::from_str(&input_json) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                warn!(
-                                    error = %e,
-                                    tool = %name,
-                                    raw_json = %input_json,
-                                    "server tool input JSON parse failed; returning error object to agent"
-                                );
-                                serde_json::json!({
-                                    "_parse_error": format!("malformed tool input: {e}"),
-                                    "_raw_input": input_json,
-                                })
-                            }
-                        }
-                    };
+                    let input =
+                        parse_stream_tool_input(&input_json, "Anthropic server stream", &name)?;
                     ContentBlock::ServerToolUse { id, name, input }
                 }
                 BlockBuilder::WebSearchToolResult {
@@ -354,10 +333,11 @@ impl StreamAccumulator {
                     stderr,
                     return_code,
                 },
-            })
-            .collect();
+            };
+            content.push(content_block);
+        }
 
-        CompletionResponse {
+        Ok(CompletionResponse {
             id: self.id,
             model: self.model,
             stop_reason: self.stop_reason.unwrap_or(StopReason::EndTurn),
@@ -370,7 +350,7 @@ impl StreamAccumulator {
             },
             cost_usd: None,
             duration_ms: None,
-        }
+        })
     }
 }
 
@@ -436,7 +416,7 @@ mod tests {
         )
         .expect("process should succeed");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         assert_eq!(response.id, "msg_01");
         assert_eq!(response.model, "claude-opus");
         assert_eq!(response.usage.input_tokens, 10);
@@ -491,7 +471,7 @@ mod tests {
         acc.process_event(stop_event("end_turn", 42), &mut on_event, 1000)
             .expect("message stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         assert_eq!(response.content.len(), 1);
         match &response.content[0] {
             ContentBlock::Text { text, .. } => assert_eq!(text, "Hello, world!"),
@@ -544,7 +524,7 @@ mod tests {
         acc.process_event(stop_event("tool_use", 5), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         match &response.content[0] {
             ContentBlock::ToolUse { id, name, input } => {
                 assert_eq!(id, "toolu_1");
@@ -579,7 +559,7 @@ mod tests {
         acc.process_event(stop_event("tool_use", 2), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         match &response.content[0] {
             ContentBlock::ToolUse { input, .. } => {
                 assert!(input.is_object(), "empty input should be empty object");
@@ -590,9 +570,9 @@ mod tests {
     }
 
     #[test]
-    fn accumulator_handles_malformed_tool_json_gracefully() {
-        // WHY: a malformed JSON delta must not crash the accumulator; it
-        // returns an error object so the agent can retry.
+    fn accumulator_rejects_malformed_tool_json_as_provider_contract() {
+        // WHY(#5047): malformed provider tool input must stop at the provider
+        // boundary and never materialize as normal dispatchable tool input.
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
@@ -624,16 +604,17 @@ mod tests {
         acc.process_event(stop_event("tool_use", 3), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
-        match &response.content[0] {
-            ContentBlock::ToolUse { input, .. } => {
-                assert!(
-                    input.get("_parse_error").is_some(),
-                    "malformed JSON should surface as _parse_error: {input:?}"
-                );
-            }
-            _ => panic!("expected ToolUse"),
-        }
+        let err = acc.finish().expect_err("malformed tool JSON should fail");
+        assert!(
+            matches!(
+                err,
+                error::Error::ProviderContract { ref message, .. }
+                    if message.contains("Anthropic stream")
+                        && message.contains("BadTool")
+                        && message.contains("not valid JSON")
+            ),
+            "expected ProviderContract for malformed tool input, got {err:?}"
+        );
     }
 
     #[test]
@@ -679,7 +660,7 @@ mod tests {
         acc.process_event(stop_event("end_turn", 10), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         match &response.content[0] {
             ContentBlock::Thinking {
                 thinking,
@@ -716,7 +697,7 @@ mod tests {
         acc.process_event(stop_event("end_turn", 5), &mut on_event, 1000)
             .expect("stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         assert_eq!(
             response.content.len(),
             3,
@@ -725,13 +706,32 @@ mod tests {
     }
 
     #[test]
-    fn accumulator_accumulates_cache_tokens_from_message_delta() {
+    fn accumulator_cache_tokens_from_message_start_survive_to_finish() {
+        // WHY: The Anthropic API sends cache token counts in message_start.usage,
+        // not message_delta.usage. This verifies values assigned in the MessageStart
+        // arm survive through the MessageDelta arm (which carries zero cache counts
+        // per the current protocol) and into the final CompletionResponse.
         let mut acc = StreamAccumulator::new();
         let mut on_event = |_: StreamEvent| {};
 
-        acc.process_event(start_event("msg_08", "claude-opus"), &mut on_event, 1000)
-            .expect("start");
-        // First message_delta sends some cache_creation tokens
+        acc.process_event(
+            WireStreamEvent::MessageStart {
+                message: WireMessageStart {
+                    id: "msg_08".to_owned(),
+                    model: "claude-opus".to_owned(),
+                    usage: WireUsage {
+                        input_tokens: 10,
+                        output_tokens: 0,
+                        cache_creation_input_tokens: 100,
+                        cache_read_input_tokens: 200,
+                    },
+                },
+            },
+            &mut on_event,
+            1000,
+        )
+        .expect("start");
+        // MessageDelta carries zero cache counts per current Anthropic streaming API.
         acc.process_event(
             WireStreamEvent::MessageDelta {
                 delta: WireMessageDeltaBody {
@@ -739,8 +739,8 @@ mod tests {
                 },
                 usage: WireMessageDeltaUsage {
                     output_tokens: 50,
-                    cache_creation_input_tokens: 100,
-                    cache_read_input_tokens: 200,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
                 },
             },
             &mut on_event,
@@ -748,10 +748,58 @@ mod tests {
         )
         .expect("delta");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         assert_eq!(response.usage.output_tokens, 50);
         assert_eq!(response.usage.cache_write_tokens, 100);
         assert_eq!(response.usage.cache_read_tokens, 200);
+    }
+
+    #[test]
+    fn accumulator_message_delta_cache_fields_are_additive() {
+        // WHY: WireMessageDeltaUsage has cache fields with #[serde(default)], always
+        // zero under the current Anthropic streaming protocol. If they ever become
+        // non-zero (future API evolution), += must not clobber the value already
+        // assigned from message_start. This verifies the additive invariant.
+        let mut acc = StreamAccumulator::new();
+        let mut on_event = |_: StreamEvent| {};
+
+        acc.process_event(
+            WireStreamEvent::MessageStart {
+                message: WireMessageStart {
+                    id: "msg_08b".to_owned(),
+                    model: "claude-opus".to_owned(),
+                    usage: WireUsage {
+                        input_tokens: 10,
+                        output_tokens: 0,
+                        cache_creation_input_tokens: 50,
+                        cache_read_input_tokens: 100,
+                    },
+                },
+            },
+            &mut on_event,
+            1000,
+        )
+        .expect("start");
+        acc.process_event(
+            WireStreamEvent::MessageDelta {
+                delta: WireMessageDeltaBody {
+                    stop_reason: "end_turn".to_owned(),
+                },
+                usage: WireMessageDeltaUsage {
+                    output_tokens: 20,
+                    cache_creation_input_tokens: 10,
+                    cache_read_input_tokens: 5,
+                },
+            },
+            &mut on_event,
+            1000,
+        )
+        .expect("delta");
+
+        let response = acc.finish().expect("finish");
+        // start(50) + delta(10) = 60; start(100) + delta(5) = 105
+        assert_eq!(response.usage.cache_write_tokens, 60);
+        assert_eq!(response.usage.cache_read_tokens, 105);
     }
 
     #[test]
@@ -786,7 +834,7 @@ mod tests {
         acc.process_event(WireStreamEvent::MessageStop {}, &mut on_event, 1000)
             .expect("message stop");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         assert_eq!(response.id, "msg_09");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
     }
@@ -796,7 +844,7 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         acc.process_event(start_event("msg_10", "claude-opus"), &mut |_| {}, 1000)
             .expect("start");
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         assert_eq!(response.stop_reason, StopReason::EndTurn);
     }
 
@@ -820,7 +868,7 @@ mod tests {
         )
         .expect("orphan delta should not error");
 
-        let response = acc.finish();
+        let response = acc.finish().expect("finish");
         assert_eq!(response.content.len(), 0);
     }
 }
