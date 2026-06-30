@@ -725,6 +725,10 @@ mod do_refresh_log_tests {
             !logs_contain("refresh_token="),
             "form-encoded refresh token must not appear in error logs"
         );
+        assert!(
+            logs_contain("server_error"),
+            "normalized OAuth error code must still be logged"
+        );
     }
 
     #[tokio::test]
