@@ -14,6 +14,8 @@ use super::file_ops::CredentialFileLock;
 const BACKUP_SUFFIX: &str = ".backup";
 const JSON_EXT: &str = "json";
 const ROTATE_JOURNAL_SUFFIX: &str = ".rotate.journal";
+const MIN_CREDENTIAL_SECRET_CHARS: usize = 9;
+const REDACTED_SECRET_PLACEHOLDER: &str = "...????";
 
 pub(crate) fn list(root: &Path) -> Result<Vec<ManagedCredential>> {
     if !root.exists() {
@@ -50,6 +52,8 @@ pub(crate) fn add(
     key: &SecretString,
     role: ManagedCredentialRole,
 ) -> Result<ManagedCredential> {
+    validate_provider(provider)?;
+    validate_credential_secret(key)?;
     recover_provider_rotation(root, provider)?;
     let path = credential_path(root, provider, role)?;
 
@@ -507,6 +511,25 @@ fn validate_provider(provider: &str) -> Result<()> {
     }
 }
 
+fn validate_credential_secret(key: &SecretString) -> Result<()> {
+    let secret = key.expose_secret();
+    if secret.trim() != secret {
+        return Err(error::InvalidCredentialSecretSnafu {
+            reason: "credential secret must not have leading or trailing whitespace".to_owned(),
+        }
+        .build());
+    }
+    if secret.chars().count() < MIN_CREDENTIAL_SECRET_CHARS {
+        return Err(error::InvalidCredentialSecretSnafu {
+            reason: format!(
+                "credential secret must be at least {MIN_CREDENTIAL_SECRET_CHARS} characters"
+            ),
+        }
+        .build());
+    }
+    Ok(())
+}
+
 fn is_json_file(path: &Path) -> bool {
     path.is_file() && path.extension().and_then(|s| s.to_str()) == Some(JSON_EXT)
 }
@@ -516,12 +539,15 @@ fn credential_id(provider: &str, role: ManagedCredentialRole) -> String {
 }
 
 fn redact_secret(secret: &str) -> String {
+    if secret.chars().count() < MIN_CREDENTIAL_SECRET_CHARS {
+        return REDACTED_SECRET_PLACEHOLDER.to_owned();
+    }
     let tail_chars: Vec<char> = secret.chars().rev().take(4).collect();
     if tail_chars.len() == 4 {
         let tail: String = tail_chars.into_iter().rev().collect();
         format!("...{tail}")
     } else {
-        "...????".to_owned()
+        REDACTED_SECRET_PLACEHOLDER.to_owned()
     }
 }
 
@@ -544,6 +570,64 @@ fn io_error(path: &Path, source: std::io::Error) -> error::Error {
 #[expect(clippy::unwrap_used, clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redact_secret_hides_all_short_inputs() {
+        for len in 1..=8 {
+            let raw = "a".repeat(len);
+            let redacted = redact_secret(&raw);
+
+            assert_eq!(redacted, REDACTED_SECRET_PLACEHOLDER);
+            assert!(
+                !redacted.contains(&raw),
+                "redaction for {len}-character input must not contain the original"
+            );
+        }
+    }
+
+    #[test]
+    fn redact_secret_keeps_only_tail_for_normal_provider_keys() {
+        let raw = "sk-ant-api03-synthetic-secret-1234";
+
+        let redacted = redact_secret(raw);
+
+        assert_eq!(redacted, "...1234");
+        assert!(!redacted.contains("synthetic-secret"));
+        assert!(!redacted.contains("sk-ant"));
+    }
+
+    #[test]
+    fn add_rejects_short_secret_before_storage() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        let short = SecretString::from("abcd1234");
+
+        let result = add(&root, "anthropic", &short, ManagedCredentialRole::Primary);
+
+        assert!(
+            matches!(result, Err(error::Error::InvalidCredentialSecret { .. })),
+            "short provider credential must fail validation, got {result:?}"
+        );
+        assert!(
+            !root.join("anthropic.json").exists(),
+            "invalid credential must not create a stored credential"
+        );
+    }
+
+    #[test]
+    fn add_rejects_whitespace_wrapped_secret_before_storage() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        let wrapped = SecretString::from(" sk-test-secret-1234 ");
+
+        let result = add(&root, "anthropic", &wrapped, ManagedCredentialRole::Primary);
+
+        assert!(
+            matches!(result, Err(error::Error::InvalidCredentialSecret { .. })),
+            "whitespace-wrapped provider credential must fail validation, got {result:?}"
+        );
+        assert!(!root.join("anthropic.json").exists());
+    }
 
     #[test]
     fn add_list_validate_remove_roundtrip() {
@@ -782,7 +866,7 @@ mod tests {
         add(
             &root,
             "anthropic",
-            &SecretString::from("sk-first"),
+            &SecretString::from("sk-first-1111"),
             ManagedCredentialRole::Primary,
         )
         .unwrap();
@@ -801,7 +885,7 @@ mod tests {
         let primary = CredentialFile::load(&root.join("anthropic.json")).unwrap();
         assert_eq!(
             primary.token.expose_secret(),
-            "sk-first",
+            "sk-first-1111",
             "duplicate add must not overwrite the existing credential"
         );
     }
