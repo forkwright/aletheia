@@ -20,7 +20,7 @@ fn rejects_plain_http_to_non_loopback() {
 #[test]
 fn rejects_spoofed_loopback_http_without_leaking_credentials() {
     let config = OpenAiProviderConfig {
-        base_url: "http://operator:url-secret@localhost.evil.example/v1".to_owned(),
+        base_url: "http://operator:url-secret@localhost.evil.example/v1".to_owned(), // pii-allow: test fixture asserting credential non-leak
         api_key: Some(SecretString::from("sk-secret-5055")),
         ..Default::default()
     };

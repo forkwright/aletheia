@@ -219,6 +219,11 @@ fn plan_roadmap_properties() -> IndexMap<String, PropertyDef> {
                 description: "Plan IDs that must complete before this plan can run".to_owned(),
                 enum_values: None,
                 default: Some(serde_json::json!([])),
+                items: Some(Box::new(PropertyDef {
+                    property_type: PropertyType::String,
+                    description: "Dependency plan ID".to_owned(),
+                    ..Default::default()
+                })),
                 ..Default::default()
             },
         ),

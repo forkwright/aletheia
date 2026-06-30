@@ -237,7 +237,7 @@ const PROTECTED_PATH_EXAMPLES: &[&str] = &[
     "credentials/anthropic.json",
     "secrets/client.pem",
     "secrets/service.key",
-    ".ssh/id_ed25519",
+    ".ssh/id_ed25519", // pii-allow: protected-path test fixture (filename, not key material)
     ".ssh/known_hosts",
     ".git/config",
     ".claude/settings.json",

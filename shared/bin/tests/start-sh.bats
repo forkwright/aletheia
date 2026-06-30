@@ -20,6 +20,37 @@ teardown() {
     [[ "$output" == *"No credentials found"* ]]
 }
 
+@test "does not import Claude Code credentials from default home path" {
+    mkdir -p "$TEST_HOME/.claude"
+    cat > "$TEST_HOME/.claude/.credentials.json" <<'EOF'
+{"apiKey": "sk-ant-api03-from-claude"}
+EOF
+
+    run env HOME="$TEST_HOME" ALETHEIA_ROOT="$TEST_HOME/instance" bash "$SCRIPT"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"No credentials found"* ]]
+    [[ "$output" != *"API key synced from Claude Code credentials"* ]]
+    [ ! -f "$TEST_HOME/instance/config/credentials/anthropic.json" ]
+}
+
+@test "imports Claude Code credentials only from CLAUDE_CODE_CREDS" {
+    local cc_creds="$TEST_HOME/custom-claude.json"
+    cat > "$cc_creds" <<'EOF'
+{"apiKey": "sk-ant-api03-from-claude"}
+EOF
+    cat > "$TEST_HOME/aletheia" <<'EOF'
+#!/usr/bin/env bash
+printf 'started\n'
+EOF
+    chmod +x "$TEST_HOME/aletheia"
+
+    run env HOME="$TEST_HOME" ALETHEIA_ROOT="$TEST_HOME/instance" CLAUDE_CODE_CREDS="$cc_creds" ALETHEIA_BIN="$TEST_HOME/aletheia" bash "$SCRIPT"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"API key synced from Claude Code credentials"* ]]
+    [[ "$output" == *"started"* ]]
+    [[ "$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["apiKey"])' "$TEST_HOME/instance/config/credentials/anthropic.json")" == "sk-ant-api03-from-claude" ]]
+}
+
 @test "exits non-zero when aletheia binary does not exist" {
     mkdir -p "$TEST_HOME/instance/config/credentials"
     cat > "$TEST_HOME/instance/config/credentials/anthropic.json" <<'EOF'

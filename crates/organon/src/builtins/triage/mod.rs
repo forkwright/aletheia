@@ -625,9 +625,12 @@ fn issue_scan_def() -> ToolDef {
             required: vec!["repo".to_owned()],
         },
         category: ToolCategory::Planning,
-        reversibility: Reversibility::FullyReversible,
+        // WHY: issue_scan performs external GitHub API reads; it has no local
+        // mutation, but the outbound request/privacy side effect is not fully
+        // reversible.
+        reversibility: Reversibility::Reversible,
         auto_activate: false,
-        groups: vec![ToolGroupId::Read, ToolGroupId::Plan],
+        groups: vec![ToolGroupId::Read, ToolGroupId::Plan, ToolGroupId::Mcp],
         tags: vec![ToolTag::Recon],
     }
 }
@@ -699,7 +702,8 @@ fn issue_triage_def() -> ToolDef {
         category: ToolCategory::Planning,
         reversibility: Reversibility::PartiallyReversible,
         auto_activate: false,
-        groups: vec![ToolGroupId::Edit],
+        // WHY: issue_triage fetches GitHub issues before writing staging prompts.
+        groups: vec![ToolGroupId::Edit, ToolGroupId::Mcp],
         tags: vec![ToolTag::Plan],
     }
 }

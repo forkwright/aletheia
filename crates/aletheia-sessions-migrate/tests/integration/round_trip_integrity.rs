@@ -7,13 +7,13 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
 use std::collections::BTreeMap;
 
-use aletheia_sessions_migrate::{run_migration, run_verification};
 use graphe::store::SessionStore;
 use rusqlite::Connection;
+
+use crate::verify::run_verification;
+use crate::{common, run_migration};
 
 const N_SESSIONS: usize = 7;
 const M_MESSAGES: usize = 23;
