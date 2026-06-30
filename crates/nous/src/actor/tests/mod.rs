@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — actor integration tests share spawn helpers and approval-gate assertions; splitting would duplicate setup across modules
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use tokio_util::sync::CancellationToken;

@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long — streaming execute tests share provider mocks and approval-gate coverage; splitting would duplicate setup
 //! Streaming execute tests.
 use std::sync::Arc;
 use std::sync::Mutex;

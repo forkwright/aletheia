@@ -23,13 +23,25 @@ use crate::extract::{Claims, require_nous_access, require_role};
 use crate::handlers::sessions::find_session;
 use crate::state::SessionsState;
 
+koina::newtype_id!(
+    /// Turn identifier carried by an approval request.
+    pub struct ApprovalTurnId(String)
+);
+
+koina::newtype_id!(
+    /// Tool-call identifier carried by an approval request.
+    pub struct ApprovalToolId(String)
+);
+
 /// Operator decision payload for a pending tool approval.
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct ApprovalRequest {
     /// The `turn_id` from the matching `message_start` or `tool_approval_required` event.
-    pub turn_id: String,
+    #[schema(value_type = String)]
+    pub turn_id: ApprovalTurnId,
     /// The `tool_use_id` from the matching `tool_approval_required` event.
-    pub tool_id: String,
+    #[schema(value_type = String)]
+    pub tool_id: ApprovalToolId,
     /// `"approved"` or `"denied"`.
     pub decision: String,
 }
@@ -93,13 +105,15 @@ pub async fn resolve(
     let session = find_session(&state, &session_id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 
+    let turn_id = body.turn_id.as_str();
+    let tool_id = body.tool_id.as_str();
     let routed = state
         .approval_registry
         .try_send(
             Some(&session_id),
-            &body.turn_id,
-            &body.tool_id,
-            ApprovalDecision::new(body.tool_id.clone(), choice),
+            turn_id,
+            tool_id,
+            ApprovalDecision::new(tool_id, choice),
         )
         .await;
 
@@ -109,8 +123,8 @@ pub async fn resolve(
 
     info!(
         session_id = session_id.as_str(),
-        turn_id = body.turn_id.as_str(),
-        tool_id = body.tool_id.as_str(),
+        turn_id,
+        tool_id,
         decision = body.decision.as_str(),
         "approval decision routed"
     );

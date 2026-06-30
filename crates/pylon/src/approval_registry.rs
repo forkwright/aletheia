@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use nous::approval::ApprovalDecision;
 use tokio::sync::{Mutex, mpsc};
+use tracing::Instrument as _;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ApprovalKey {
@@ -115,9 +116,17 @@ impl Drop for Guard {
     fn drop(&mut self) {
         if let (Some(sid), Some(turn_id)) = (self.session_id.take(), self.turn_id.take()) {
             let registry = Arc::clone(&self.registry);
-            tokio::spawn(async move {
-                registry.remove_turn(&sid, &turn_id).await;
-            });
+            let span = tracing::debug_span!(
+                "approval_registry.remove_turn",
+                session_id = sid.as_str(),
+                turn_id = turn_id.as_str()
+            );
+            tokio::spawn(
+                async move {
+                    registry.remove_turn(&sid, &turn_id).await;
+                }
+                .instrument(span),
+            );
         }
     }
 }
