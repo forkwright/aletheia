@@ -9,11 +9,10 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
-use aletheia_sessions_migrate::run_migration;
 use graphe::store::SessionStore;
 use rusqlite::Connection;
+
+use crate::{common, run_migration};
 
 #[test]
 fn tiny_synthetic_round_trip() {

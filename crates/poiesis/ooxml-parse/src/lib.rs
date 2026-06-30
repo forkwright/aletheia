@@ -8,6 +8,15 @@
 
 use std::collections::HashMap;
 
+use quick_xml::escape::unescape;
+
+fn push_xml_text(output: &mut String, raw: &str) {
+    match unescape(raw) {
+        Ok(decoded) => output.push_str(&decoded),
+        Err(_) => output.push_str(raw),
+    }
+}
+
 /// Extract shared strings from `xl/sharedStrings.xml`.
 ///
 /// Splits the XML on `<si>` elements and concatenates all `<t>...</t>` text
@@ -26,7 +35,7 @@ pub fn extract_shared_strings(xml_data: &str) -> Vec<String> {
                     && let Some(lt) = after_gt.find("</t>")
                     && let Some(slice) = after_gt.get(..lt)
                 {
-                    text.push_str(slice);
+                    push_xml_text(&mut text, slice);
                 }
             }
             strings.push(text);
@@ -47,7 +56,7 @@ pub fn extract_text_from_slide(xml_data: &str) -> String {
             && let Some(text) = chunk.get(..end)
             && !text.is_empty()
         {
-            text_content.push_str(text);
+            push_xml_text(&mut text_content, text);
             text_content.push(' ');
         }
     }
@@ -181,10 +190,25 @@ mod tests {
     }
 
     #[test]
+    fn extract_shared_strings_unescapes_xml_character_entities() {
+        let xml = r"<sst><si><t>A &amp; B &lt; C &gt; D &apos;Q&apos; &quot;R&quot; &#x2019;</t></si></sst>";
+        let result = extract_shared_strings(xml);
+        assert_eq!(result, vec!["A & B < C > D 'Q' \"R\" \u{2019}"]);
+    }
+
+    #[test]
     fn extract_text_from_slide_joins_a_t_elements() {
         let xml = r"<p:sp><a:t>Hello</a:t><a:t>world</a:t></p:sp>";
         let result = extract_text_from_slide(xml);
         assert_eq!(result, "Hello world");
+    }
+
+    #[test]
+    fn extract_text_from_slide_unescapes_xml_character_entities() {
+        let xml =
+            r"<p:sp><a:t>A &amp; B &lt; C &gt; D &apos;Q&apos; &quot;R&quot; &#x2019;</a:t></p:sp>";
+        let result = extract_text_from_slide(xml);
+        assert_eq!(result, "A & B < C > D 'Q' \"R\" \u{2019}");
     }
 
     #[test]
