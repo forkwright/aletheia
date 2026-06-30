@@ -5,14 +5,14 @@
     reason = "integration tests use direct assertions over fixture setup"
 )]
 
-mod common;
-
 use std::path::Path;
 
-use aletheia_sessions_migrate::{run_migration, run_verification};
 use fjall::{KeyspaceCreateOptions, PersistMode};
 use koina::fjall::FjallDb;
 use rusqlite::Connection;
+
+use crate::verify::run_verification;
+use crate::{common, run_migration};
 
 #[test]
 fn verification_fails_on_auxiliary_partition_hash_mismatch() {

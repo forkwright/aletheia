@@ -861,7 +861,7 @@ fn check_credential_validity(
         HealthCheck {
             name: "credential_validity".to_owned(),
             status: "warn".to_owned(),
-            message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no Claude Code credentials)".to_owned()),
+            message: Some("no credentials found (ANTHROPIC_API_KEY not set, no credential file, no explicit Claude Code credentials)".to_owned()),
             details: None,
         }
     }

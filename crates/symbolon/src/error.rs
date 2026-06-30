@@ -76,6 +76,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Managed provider credential secret is malformed.
+    #[snafu(display("invalid credential secret: {reason}"))]
+    InvalidCredentialSecret {
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Entity not found.
     #[snafu(display("{entity} not found: {id}"))]
     NotFound {
