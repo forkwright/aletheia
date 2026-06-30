@@ -74,6 +74,11 @@ pub(super) fn prographe_def() -> ToolDef {
                             .to_owned(),
                         enum_values: None,
                         default: None,
+                        items: Some(Box::new(PropertyDef {
+                            property_type: PropertyType::String,
+                            description: "Acceptance criterion".to_owned(),
+                            ..Default::default()
+                        })),
                         ..Default::default()
                     },
                 ),

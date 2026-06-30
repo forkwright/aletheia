@@ -336,6 +336,7 @@ fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<
 fn map_symbolon_error(err: symbolon::error::Error) -> ApiError {
     match err {
         symbolon::error::Error::InvalidApiKey { .. } => bad_request("invalid credential id"),
+        symbolon::error::Error::InvalidCredentialSecret { reason, .. } => bad_request(&reason),
         symbolon::error::Error::NotFound { entity, id, .. } => ApiError::NotFound {
             path: format!("{entity}/{id}"),
             location: snafu::location!(),

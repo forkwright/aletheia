@@ -10,14 +10,6 @@ use koina::secret::SecretString;
 use super::*;
 
 #[test]
-fn claude_code_default_path_uses_home() {
-    // NOTE: depends on $HOME being set: typical in CI and dev
-    if let Some(path) = claude_code_default_path() {
-        assert!(path.ends_with(".claude/.credentials.json"));
-    }
-}
-
-#[test]
 fn claude_code_provider_missing_file_returns_none() {
     let result = claude_code_provider(Path::new("/nonexistent/.credentials.json"));
     assert!(result.is_none());

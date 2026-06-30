@@ -1,5 +1,10 @@
 //! Credential management state for the ops view.
 
+const MASKED_KEY_PREFIX: &str = "...";
+const MASKED_KEY_PLACEHOLDER: &str = "...????";
+const MIN_SECRET_PREVIEW_CHARS: usize = 9;
+const SAFE_PREVIEW_CHARS: usize = 4;
+
 /// Role of a credential relative to its provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -51,15 +56,16 @@ impl ValidationStatus {
 
 /// A single credential entry.
 ///
-/// NOTE: `masked_key` contains only the last 4 characters of the key prefixed
-/// with "..." (e.g., `"...ab12"`). Full key values must never be stored here.
+/// NOTE: `masked_key` contains either a placeholder or only the last 4
+/// characters of a validated long key prefixed with "...". Full key values must
+/// never be stored here.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CredentialEntry {
     // kanon:ignore RUST/primitive-for-domain-id — CredentialEntry id mirrors the external provider string identifier
     pub(crate) id: String,
     pub(crate) provider: String,
     pub(crate) role: CredentialRole,
-    /// Display form of the key: last 4 chars prefixed with "...".
+    /// Display form of the key: placeholder or last 4 chars prefixed with "...".
     pub(crate) masked_key: String, // kanon:ignore RUST/plain-string-secret -- masked display suffix only, never the raw credential (#3988)
     pub(crate) status: ValidationStatus,
     pub(crate) last_validated: Option<String>,
@@ -120,18 +126,47 @@ impl CredentialStore {
     }
 }
 
-/// Masks a credential key to show only the last 4 characters.
+/// Masks a credential key to show only a safe preview.
 ///
-/// Returns `"...XXXX"` where XXXX is the last 4 chars of `key`.
-/// Returns `"...????"` if `key` is shorter than 4 characters.
+/// Returns `"...XXXX"` where XXXX is the last 4 chars of a long `key`.
+/// Returns `"...????"` if `key` is too short to preview without potentially
+/// revealing the whole credential.
 pub(crate) fn mask_key(key: &str) -> String {
-    let tail_chars: Vec<char> = key.chars().rev().take(4).collect();
-    if tail_chars.len() == 4 {
-        let tail: String = tail_chars.into_iter().rev().collect();
-        format!("...{tail}")
-    } else {
-        "...????".to_string()
+    if key.chars().count() < MIN_SECRET_PREVIEW_CHARS {
+        return MASKED_KEY_PLACEHOLDER.to_string();
     }
+    let tail: String = key
+        .chars()
+        .rev()
+        .take(SAFE_PREVIEW_CHARS)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{MASKED_KEY_PREFIX}{tail}")
+}
+
+/// Canonicalize a masked key received from the API before it enters UI state.
+///
+/// WHY(#4876): a server bug could return `...raw-secret-material`; prefix
+/// checks would treat that as safe and preserve almost the whole secret.
+/// Preserve only already-canonical previews, mask unprefixed raw values, and
+/// collapse malformed prefixed values to a non-secret placeholder.
+pub(crate) fn canonicalize_masked_key(api_value: &str) -> String {
+    if is_canonical_masked_key(api_value) {
+        return api_value.to_owned();
+    }
+    if api_value.starts_with(MASKED_KEY_PREFIX) {
+        return MASKED_KEY_PLACEHOLDER.to_string();
+    }
+    mask_key(api_value)
+}
+
+fn is_canonical_masked_key(value: &str) -> bool {
+    value.starts_with(MASKED_KEY_PREFIX)
+        && value
+            .strip_prefix(MASKED_KEY_PREFIX)
+            .is_some_and(|suffix| suffix.chars().count() == SAFE_PREVIEW_CHARS)
 }
 
 #[cfg(test)]
@@ -221,7 +256,7 @@ mod tests {
 
     #[test]
     fn mask_key_exactly_four_chars() {
-        assert_eq!(mask_key("ab12"), "...ab12");
+        assert_eq!(mask_key("ab12"), "...????");
     }
 
     #[test]
@@ -236,6 +271,36 @@ mod tests {
 
     #[test]
     fn mask_key_handles_unicode_char_boundaries() {
-        assert_eq!(mask_key("sk-αβγδ"), "...αβγδ");
+        assert_eq!(mask_key("sk-long-αβγδ"), "...αβγδ");
+    }
+
+    #[test]
+    fn mask_key_hides_all_short_inputs() {
+        for len in 1..=8 {
+            let raw = "a".repeat(len);
+
+            let masked = mask_key(&raw);
+
+            assert_eq!(masked, MASKED_KEY_PLACEHOLDER);
+            assert!(!masked.contains(&raw));
+        }
+    }
+
+    #[test]
+    fn canonicalize_masked_key_preserves_canonical_preview() {
+        assert_eq!(canonicalize_masked_key("...ab12"), "...ab12");
+    }
+
+    #[test]
+    fn canonicalize_masked_key_masks_unprefixed_raw_key() {
+        assert_eq!(canonicalize_masked_key("sk-test-secret-1234"), "...1234");
+    }
+
+    #[test]
+    fn canonicalize_masked_key_collapses_malformed_prefixed_payload() {
+        assert_eq!(
+            canonicalize_masked_key("...raw-secret-material"),
+            MASKED_KEY_PLACEHOLDER
+        );
     }
 }
