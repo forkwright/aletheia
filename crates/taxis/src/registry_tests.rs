@@ -155,6 +155,7 @@ fn registry_exposes_validated_behavior_fields() {
         "providerBehavior.concurrencyEwmaAlpha",
         "providerBehavior.concurrencyLatencyThresholdSecs",
         "daemonBehavior.prosocheAnomalySampleSize",
+        "daemonBehavior.runnerOutputMode",
         "daemonBehavior.runnerOutputBriefHeadLines",
         "daemonBehavior.runnerOutputBriefTailLines",
         "agents.defaults.behavior.compactionStrategy",

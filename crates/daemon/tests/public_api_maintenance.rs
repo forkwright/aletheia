@@ -21,9 +21,10 @@ use oikonomos::cron::{
 };
 use oikonomos::error::Error as DaemonError;
 use oikonomos::maintenance::{
-    AutoDreamConfig, DbMonitor, DbMonitoringConfig, DbStatus, DriftDetectionConfig, DriftDetector,
-    KnowledgeMaintenanceConfig, MaintenanceConfig, MaintenanceReport, ProposeRulesConfig,
-    RetentionConfig, RetentionExecutor, RetentionSummary, TraceRotationConfig, TraceRotator,
+    AutoDreamConfig, DbHealth, DbMonitor, DbMonitoringConfig, DbShape, DbStatus,
+    DriftDetectionConfig, DriftDetector, KnowledgeMaintenanceConfig, MaintenanceConfig,
+    MaintenanceReport, ProposeRulesConfig, RetentionConfig, RetentionExecutor, RetentionSummary,
+    TraceRotationConfig, TraceRotator,
 };
 use oikonomos::probe::{
     Probe, ProbeAuditConfig, ProbeAuditSummary, ProbeCategory, ProbeResult, ProbeSet,
@@ -224,12 +225,16 @@ fn db_monitor_classifies_sizes_above_thresholds() {
         .find(|d| d.name == "sessions.db")
         .expect("sessions.db present");
     assert_eq!(sessions.status, DbStatus::Warning);
+    assert_eq!(sessions.shape, DbShape::File);
+    assert_eq!(sessions.health, DbHealth::LegacyFile);
     let planning = report
         .databases
         .iter()
         .find(|d| d.name == "planning.db")
         .expect("planning.db present");
     assert_eq!(planning.status, DbStatus::Alert);
+    assert_eq!(planning.shape, DbShape::File);
+    assert_eq!(planning.health, DbHealth::NotChecked);
     assert_eq!(
         report.total_size_bytes,
         sessions.size_bytes + planning.size_bytes,

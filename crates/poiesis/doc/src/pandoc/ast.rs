@@ -7,11 +7,17 @@
 use poiesis_core::{Block, Document, Image as DocImage, NoteKind, RichText, Span};
 use serde_json::{Value, json};
 
+use super::error::PandocError;
+
 /// Serialize a `Document` to Pandoc JSON AST bytes.
 ///
 /// The emitted JSON matches Pandoc's `--from json` input format.
 /// `pandoc-api-version` is pinned to `[1, 23, 1, 1]` for Pandoc 3.7.x.
-pub fn document_to_pandoc_json(doc: &Document) -> Vec<u8> {
+///
+/// NOTE: the current AST is assembled entirely from `serde_json::Value`, whose
+/// serialization is structurally valid by construction. The `Result` return
+/// still preserves a traceable error path if that invariant changes.
+pub(crate) fn document_to_pandoc_json(doc: &Document) -> Result<Vec<u8>, PandocError> {
     let mut figure_index = 0usize;
     let blocks: Vec<Value> = doc
         .content
@@ -25,7 +31,7 @@ pub fn document_to_pandoc_json(doc: &Document) -> Vec<u8> {
         "blocks": blocks
     });
 
-    serde_json::to_vec(&ast).unwrap_or_else(|_| b"{}".to_vec())
+    serde_json::to_vec(&ast).map_err(|source| PandocError::AstSerialize { source })
 }
 
 fn build_meta(doc: &Document) -> Value {
@@ -252,8 +258,9 @@ fn note_kind_to_attr(kind: NoteKind) -> &'static str {
     reason = "test assertions on known-good JSON"
 )]
 mod tests {
-    use super::*;
     use poiesis_core::{Block, Document, Metadata, RichText};
+
+    use super::*;
 
     fn minimal_doc() -> Document {
         Document {
@@ -275,7 +282,7 @@ mod tests {
     #[test]
     fn emits_valid_json() {
         let doc = minimal_doc();
-        let bytes = document_to_pandoc_json(&doc);
+        let bytes = document_to_pandoc_json(&doc).expect("serialize AST");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("must be valid JSON");
         assert_eq!(v["pandoc-api-version"], json!([1, 23, 1, 1]));
         assert_eq!(v["blocks"][0]["t"], "Header");
@@ -285,7 +292,7 @@ mod tests {
     #[test]
     fn title_in_meta() {
         let doc = minimal_doc();
-        let bytes = document_to_pandoc_json(&doc);
+        let bytes = document_to_pandoc_json(&doc).expect("serialize AST");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(v["meta"]["title"]["t"], "MetaInlines");
     }
@@ -308,7 +315,7 @@ mod tests {
             })],
         };
 
-        let bytes = document_to_pandoc_json(&doc);
+        let bytes = document_to_pandoc_json(&doc).expect("serialize AST");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(v["blocks"][0]["t"], "Div");
         assert_eq!(
@@ -333,7 +340,7 @@ mod tests {
             })],
         };
 
-        let bytes = document_to_pandoc_json(&doc);
+        let bytes = document_to_pandoc_json(&doc).expect("serialize AST");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(v["blocks"][0]["t"], "Para");
         assert_eq!(v["blocks"][0]["c"][0]["t"], "Span");
@@ -357,7 +364,7 @@ mod tests {
             content: vec![Block::DisplayMath("x^2 + y^2 = z^2".to_owned())],
         };
 
-        let bytes = document_to_pandoc_json(&doc);
+        let bytes = document_to_pandoc_json(&doc).expect("serialize AST");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(v["blocks"][0]["t"], "Para");
         assert_eq!(v["blocks"][0]["c"][0]["t"], "Math");
@@ -381,7 +388,7 @@ mod tests {
             }],
         };
 
-        let bytes = document_to_pandoc_json(&doc);
+        let bytes = document_to_pandoc_json(&doc).expect("serialize AST");
         let v: serde_json::Value = serde_json::from_slice(&bytes).expect("valid JSON");
         assert_eq!(v["blocks"][0]["t"], "RawBlock");
         assert_eq!(v["blocks"][0]["c"], json!(["latex", "\\alpha"]));

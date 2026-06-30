@@ -55,6 +55,9 @@ pub(crate) enum SseEvent {
     MessageComplete {
         stop_reason: String,
         usage: UsageData,
+        /// Provider instance that served the turn, when known.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
         /// Per-request correlation ID for distributed tracing across the pipeline.
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
@@ -139,6 +142,27 @@ pub(crate) enum TurnStreamEvent {
     /// Incremental text output.
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
+    /// Provider-reported message lifecycle start for one LLM call.
+    #[serde(rename = "provider_message_start")]
+    ProviderMessageStart { usage: UsageData },
+    /// Provider-reported content block start.
+    #[serde(rename = "provider_content_block_start")]
+    ProviderContentBlockStart { index: u32, block_type: String },
+    /// Provider-reported partial JSON for a tool-use content block.
+    #[serde(rename = "provider_input_json_delta")]
+    ProviderInputJsonDelta { partial_json: String },
+    /// Provider-reported content block stop.
+    #[serde(rename = "provider_content_block_stop")]
+    ProviderContentBlockStop { index: u32 },
+    /// Provider-reported message lifecycle stop for one LLM call.
+    #[serde(rename = "provider_message_stop")]
+    ProviderMessageStop {
+        stop_reason: String,
+        usage: UsageData,
+    },
+    /// Provider event the adapter could observe but does not yet model.
+    #[serde(rename = "provider_unsupported_event")]
+    ProviderUnsupportedEvent { event_type: String },
     /// Tool invocation started.
     #[serde(rename = "tool_use")]
     ToolUse {
@@ -214,6 +238,8 @@ pub(crate) struct TurnOutcome {
     pub nous_id: String,
     pub session_id: String,
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     pub tool_calls: usize,
     pub input_tokens: u64,
     pub output_tokens: u64,

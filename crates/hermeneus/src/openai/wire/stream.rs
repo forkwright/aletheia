@@ -238,7 +238,7 @@ impl OpenAiStreamAccumulator {
     pub(crate) fn finish<F: FnMut(StreamEvent) + ?Sized>(
         self,
         on_event: &mut F,
-    ) -> CompletionResponse {
+    ) -> Result<CompletionResponse> {
         let Self {
             id,
             model,
@@ -266,16 +266,17 @@ impl OpenAiStreamAccumulator {
                     index: tc.block_index,
                 });
             }
+            let input = parse_arguments(&tc.arguments, "OpenAI Chat Completions stream", &tc.name)?;
             content.push(ContentBlock::ToolUse {
                 id: tc.id,
                 name: tc.name,
-                input: parse_arguments(&tc.arguments),
+                input,
             });
         }
 
         on_event(StreamEvent::MessageStop { stop_reason, usage });
 
-        CompletionResponse {
+        Ok(CompletionResponse {
             id,
             model,
             stop_reason,
@@ -283,7 +284,7 @@ impl OpenAiStreamAccumulator {
             usage,
             cost_usd: None,
             duration_ms: None,
-        }
+        })
     }
 }
 
@@ -404,7 +405,7 @@ impl ChatSseParser {
             }
             .build());
         }
-        Ok(self.accumulator.finish(on_event))
+        self.accumulator.finish(on_event)
     }
 }
 
@@ -559,11 +560,7 @@ impl ResponsesStreamAccumulator {
             "response.completed" => {
                 if let Some(response) = event.response {
                     self.capture_response_metadata(&response, on_event);
-                    self.completed = Some(
-                        response
-                            .into_response()
-                            .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())?,
-                    );
+                    self.completed = Some(response.into_response()?);
                 }
             }
             "response.failed" => {
@@ -716,7 +713,10 @@ impl ResponsesStreamAccumulator {
         }
     }
 
-    fn finish<F: FnMut(StreamEvent) + ?Sized>(self, on_event: &mut F) -> CompletionResponse {
+    fn finish<F: FnMut(StreamEvent) + ?Sized>(
+        self,
+        on_event: &mut F,
+    ) -> Result<CompletionResponse> {
         let Self {
             id,
             model,
@@ -747,7 +747,9 @@ impl ResponsesStreamAccumulator {
             }
         }
 
-        let resp = completed.unwrap_or_else(|| {
+        let resp = if let Some(completed) = completed {
+            completed
+        } else {
             let mut content = Vec::new();
             if !text_buf.is_empty() {
                 content.push(ContentBlock::Text {
@@ -759,10 +761,12 @@ impl ResponsesStreamAccumulator {
             // indices so that emitted indices match the final `content` array.
             for key in &call_order {
                 if let Some(call) = tool_calls.get(key) {
+                    let input =
+                        parse_arguments(&call.arguments, "OpenAI Responses stream", &call.name)?;
                     content.push(ContentBlock::ToolUse {
                         id: call.id.clone(),
                         name: call.name.clone(),
-                        input: parse_arguments(&call.arguments),
+                        input,
                     });
                 }
             }
@@ -783,13 +787,13 @@ impl ResponsesStreamAccumulator {
                 cost_usd: None,
                 duration_ms: None,
             }
-        });
+        };
 
         on_event(StreamEvent::MessageStop {
             stop_reason: resp.stop_reason,
             usage: resp.usage,
         });
-        resp
+        Ok(resp)
     }
 }
 
@@ -878,7 +882,7 @@ impl ResponsesSseParser {
             }
             .build());
         }
-        Ok(self.accumulator.finish(on_event))
+        self.accumulator.finish(on_event)
     }
 }
 
@@ -908,6 +912,7 @@ pub(crate) async fn parse_responses_sse_response(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
@@ -915,7 +920,7 @@ pub(crate) async fn parse_responses_sse_response(
 mod tests {
     use super::*;
 
-    fn process_chunks(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+    fn process_chunks_result(chunks: &[&str]) -> (Vec<StreamEvent>, Result<CompletionResponse>) {
         let mut acc = OpenAiStreamAccumulator::new();
         let mut events = Vec::new();
         for chunk_json in chunks {
@@ -926,15 +931,29 @@ mod tests {
         (events, resp)
     }
 
-    fn process_responses_events(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+    fn process_chunks(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+        let (events, resp) = process_chunks_result(chunks);
+        (events, resp.unwrap())
+    }
+
+    fn process_responses_events_result(
+        chunks: &[&str],
+    ) -> (Vec<StreamEvent>, Result<CompletionResponse>) {
         let mut acc = ResponsesStreamAccumulator::new();
         let mut events = Vec::new();
         for event_json in chunks {
             let event: ResponsesStreamEvent = serde_json::from_str(event_json).unwrap();
-            acc.process_event(event, &mut |e| events.push(e)).unwrap();
+            if let Err(err) = acc.process_event(event, &mut |e| events.push(e)) {
+                return (events, Err(err));
+            }
         }
         let resp = acc.finish(&mut |e| events.push(e));
         (events, resp)
+    }
+
+    fn process_responses_events(chunks: &[&str]) -> (Vec<StreamEvent>, CompletionResponse) {
+        let (events, resp) = process_responses_events_result(chunks);
+        (events, resp.unwrap())
     }
 
     #[test]
@@ -979,37 +998,41 @@ mod tests {
     }
 
     #[test]
-    fn malformed_tool_call_deltas_become_parse_error_object() {
-        let (_, resp) = process_chunks(&[
+    fn malformed_tool_call_deltas_return_provider_contract_error() {
+        let (_, resp) = process_chunks_result(&[
             r#"{"id":"x","model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{not"}}]}}]}"#,
             r#"{"id":"x","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" json"}}]}}]}"#,
             r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
         ]);
-        assert_eq!(resp.stop_reason, StopReason::ToolUse);
-        match &resp.content[0] {
-            ContentBlock::ToolUse { id, name, input } => {
-                assert_eq!(id, "c1");
-                assert_eq!(name, "f");
-                assert!(
-                    input.is_object(),
-                    "malformed streaming arguments must be an object, not a string: {input:?}"
-                );
-                let Some(obj) = input.as_object() else {
-                    panic!("malformed streaming arguments should produce an object: {input:?}");
-                };
-                assert!(
-                    obj.get("_parse_error")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| s.starts_with("malformed tool input:")),
-                    "expected _parse_error field: {input:?}"
-                );
-                assert!(
-                    obj.contains_key("_raw_input"),
-                    "expected _raw_input field: {input:?}"
-                );
-            }
-            _ => panic!("expected ToolUse"),
-        }
+        let err = resp.expect_err("malformed streaming Chat arguments should fail");
+        assert!(
+            matches!(
+                err,
+                Error::ProviderContract { ref message, .. }
+                    if message.contains("OpenAI Chat Completions stream")
+                        && message.contains("'f'")
+                        && message.contains("not valid JSON")
+            ),
+            "expected ProviderContract for malformed Chat stream arguments, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn responses_stream_malformed_function_arguments_return_provider_contract_error() {
+        let (_, resp) = process_responses_events_result(&[
+            r#"{"type":"response.completed","response":{"id":"r1","model":"gpt-5","status":"completed","output":[{"type":"function_call","call_id":"call-1","name":"f","arguments":"{not json"}]}}"#,
+        ]);
+        let err = resp.expect_err("malformed Responses stream arguments should fail");
+        assert!(
+            matches!(
+                err,
+                Error::ProviderContract { ref message, .. }
+                    if message.contains("OpenAI Responses")
+                        && message.contains("'f'")
+                        && message.contains("not valid JSON")
+            ),
+            "expected ProviderContract for malformed Responses stream arguments, got {err:?}"
+        );
     }
 
     #[test]

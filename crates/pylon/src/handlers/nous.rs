@@ -15,7 +15,7 @@ use taxis::config::{AletheiaConfig, NousDefinition};
 
 use crate::error::{ApiError, ErrorResponse, FieldError, NousNotFoundSnafu, ValidationFailedSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
-use crate::handlers::providers::resolve_model_readiness;
+use crate::handlers::providers::resolve_model_route_readiness;
 use crate::state::NousState;
 
 #[path = "nous_dto.rs"]
@@ -27,6 +27,32 @@ pub use nous_dto::{
 
 fn agent_definition<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a NousDefinition> {
     config.agents.list.iter().find(|agent| agent.id == id)
+}
+
+fn model_routes_for_config(config: &NousConfig) -> Vec<(String, Option<String>)> {
+    let mut routes = Vec::with_capacity(config.generation.fallback_models.len() + 1);
+    routes.push((
+        config.generation.model.clone(),
+        config.generation.provider.clone(),
+    ));
+    routes.extend(
+        config
+            .generation
+            .fallback_models
+            .iter()
+            .enumerate()
+            .map(|(index, model)| {
+                (
+                    model.clone(),
+                    config
+                        .generation
+                        .fallback_providers
+                        .get(index)
+                        .and_then(Clone::clone),
+                )
+            }),
+    );
+    routes
 }
 
 fn ensure_agent_definition<'a>(
@@ -149,6 +175,7 @@ fn denial_reason_label(reason: DenialReason) -> &'static str {
     match reason {
         DenialReason::GroupPolicy => "group_policy",
         DenialReason::Allowlist => "allowlist",
+        DenialReason::NameCollision => "name_collision",
     }
 }
 
@@ -207,15 +234,19 @@ pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousLi
             let agent_id = c.id.as_ref();
             let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
             let tools = tool_summaries_for_agent(&state, c, allowlist_for_agent(&config, agent_id));
-            let mut models = vec![c.generation.model.clone()];
-            models.extend(c.generation.fallback_models.clone());
+            let routes = model_routes_for_config(c);
             NousSummary {
                 id: c.id.to_string(),
                 name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
                 enabled,
                 model: c.generation.model.clone(),
+                provider: c.generation.provider.clone(),
                 fallback_models: c.generation.fallback_models.clone(),
-                provider_readiness: resolve_model_readiness(&state.provider_registry, &models),
+                fallback_providers: c.generation.fallback_providers.clone(),
+                provider_readiness: resolve_model_route_readiness(
+                    &state.provider_registry,
+                    &routes,
+                ),
                 status: "active".to_owned(),
                 tools,
                 config_applied: None,
@@ -278,8 +309,7 @@ pub async fn get_status(
         None => ("unknown".to_owned(), 0, 0, None, None, false),
     };
 
-    let mut status_models = vec![config.generation.model.clone()];
-    status_models.extend(config.generation.fallback_models.clone());
+    let status_routes = model_routes_for_config(config);
     let address_mask = if let Some(router) = state.nous_manager.router() {
         router.address_mask(&id).await
     } else {
@@ -289,13 +319,15 @@ pub async fn get_status(
     Ok(Json(NousStatus {
         id: config.id.to_string(),
         model: config.generation.model.clone(),
+        provider: config.generation.provider.clone(),
         fallback_models: config.generation.fallback_models.clone(),
+        fallback_providers: config.generation.fallback_providers.clone(),
         retries_before_fallback: config.generation.retries_before_fallback,
         complexity_routing_enabled: config.generation.complexity.enabled,
         complexity_no_llm_threshold: config.generation.complexity.no_llm_threshold,
         complexity_low_threshold: config.generation.complexity.low_threshold,
         complexity_high_threshold: config.generation.complexity.high_threshold,
-        provider_readiness: resolve_model_readiness(&state.provider_registry, &status_models),
+        provider_readiness: resolve_model_route_readiness(&state.provider_registry, &status_routes),
         context_window: config.generation.context_window,
         max_output_tokens: config.generation.max_output_tokens,
         thinking_enabled: config.generation.thinking_enabled,
@@ -449,8 +481,7 @@ pub async fn update_enabled(
     let restart_required =
         !live_applied && (live_command_failed || matches!(status.as_str(), "unknown" | "degraded"));
 
-    let mut summary_models = vec![runtime.generation.model.clone()];
-    summary_models.extend(runtime.generation.fallback_models.clone());
+    let summary_routes = model_routes_for_config(&runtime);
 
     Ok(Json(NousSummary {
         id: runtime.id.to_string(),
@@ -460,8 +491,13 @@ pub async fn update_enabled(
             .unwrap_or_else(|| runtime.id.to_string()),
         enabled,
         model: runtime.generation.model.clone(),
+        provider: runtime.generation.provider.clone(),
         fallback_models: runtime.generation.fallback_models.clone(),
-        provider_readiness: resolve_model_readiness(&state.provider_registry, &summary_models),
+        fallback_providers: runtime.generation.fallback_providers.clone(),
+        provider_readiness: resolve_model_route_readiness(
+            &state.provider_registry,
+            &summary_routes,
+        ),
         status,
         tools,
         config_applied: Some(true),

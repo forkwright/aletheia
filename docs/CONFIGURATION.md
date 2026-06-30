@@ -62,8 +62,8 @@ Contains `defaults` (inherited by all agents) and `list` (per-agent definitions)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model.primary` | string | `"claude-sonnet-4-6"` | Primary model ID |
-| `model.fallbacks` | string[] | `[]` | Fallback model IDs, tried in order |
+| `model.primary` | string or object | `"claude-sonnet-4-6"` | Primary model route. String form is a model ID; object form is `{ model, provider }` to pin a named provider. |
+| `model.fallbacks` | array of strings or objects | `[]` | Fallback model routes, tried in order. String entries use model-only routing; object entries can pin a named provider. |
 | `contextTokens` | u32 | `200000` | Context window budget (tokens) |
 | `maxOutputTokens` | u32 | `16384` | Max tokens per response |
 | `bootstrapMaxTokens` | u32 | `40000` | Max tokens for bootstrap context injection |
@@ -123,6 +123,18 @@ domains = ["research", "analysis"]
 [agents.list.model]
 primary = "claude-opus-4-6"
 fallbacks = ["claude-sonnet-4-6"]
+```
+
+Model routes also accept an object form when a specific provider instance should
+serve the request:
+
+```toml
+[agents.list.model]
+primary = { model = "claude-sonnet-4-6", provider = "local-proxy" }
+fallbacks = [
+  { model = "claude-sonnet-4-6", provider = "anthropic-cloud" },
+  "claude-haiku-4-6",
+]
 ```
 
 `toolGroups` is fail-closed. If the field is absent, set to `"deny"`, or set
@@ -414,20 +426,20 @@ Controls how the server discovers LLM API credentials. The `source` field select
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, then env vars, then Claude Code credentials), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer Claude Code credentials) |
-| `claude_code_credentials` | string | `null` | Override path to the Claude Code credentials file. Resolves to `~/.claude/.credentials.json` when unset. |
+| `source` | string | `"auto"` | Credential strategy: `"auto"` (instance file, keyring when enabled, then env vars), `"api-key"` (instance file and env vars only), `"claude-code"` (prefer explicitly configured Claude Code credentials) |
+| `claudeCodeCredentials` | string | `null` | Explicit path to the Claude Code credentials file. `CLAUDE_CODE_CREDS` takes precedence. When unset, Claude Code credentials are not probed. |
 
 ```toml
 [credential]
 source = "auto"
-claude_code_credentials = "~/.claude/.credentials.json"
+claudeCodeCredentials = "~/.claude/.credentials.json"
 ```
 
 ---
 
 ## providers
 
-`[[providers]]` entries declare available LLM providers declaratively. When the list is non-empty, it is the complete provider-ordering contract: the runtime registers entries in list order, and model routing picks the first provider that advertises the requested model at the highest match specificity. When the list is empty, startup preserves the legacy single-Anthropic fallback from the top-level credential chain. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and planned in `crates/aletheia/src/runtime/setup.rs`.
+`[[providers]]` entries declare available LLM providers declaratively. When the list is non-empty, it is the complete provider-ordering contract: the runtime registers entries in list order, and model-only routing picks the first provider that advertises the requested model at the highest match specificity. A model route with `provider = "<name>"` targets that exact provider instance and fails if the provider is missing or does not advertise the requested model. When no provider is pinned, equal-specificity duplicate model claims fall back to the list order. When the list is empty, startup preserves the legacy single-Anthropic fallback from the top-level credential chain. Provider kinds are defined in `crates/taxis/src/config/behavior/provider.rs` and planned in `crates/aletheia/src/runtime/setup.rs`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -440,7 +452,7 @@ claude_code_credentials = "~/.claude/.credentials.json"
 | `workdir` | string | no | Subprocess working directory. Relative paths resolve against the instance root. Only valid for `claude-code` and `codex-oauth`. |
 | `timeoutSecs` | integer | no | Subprocess wall-clock timeout, 5-3600 seconds. Only valid for `claude-code` and `codex-oauth`; defaults to 300 seconds. |
 | `deploymentTarget` | string | no | `cloud` (default), `local-hosted`, or `embedded`. Drives the fact-sensitivity filter and air-gapped mode. |
-| `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity matches use list order. |
+| `models` | string[] | no | Model identifiers this provider advertises. Exact matches beat broad provider catch-alls; equal-specificity model-only matches use list order. Provider-pinned routes require the named provider to advertise the model. |
 
 ```toml
 [[providers]]
@@ -607,6 +619,7 @@ Daemon watchdog, prosoche anomaly detection, and runner output summarization.
 | `watchdog_backoff_base_secs` | u64 | `2` | Base watchdog restart backoff |
 | `watchdog_backoff_cap_secs` | u64 | `300` | Maximum watchdog restart backoff |
 | `prosoche_anomaly_sample_size` | usize | `15` | Samples used for prosoche anomaly detection |
+| `runner_output_mode` | enum | `"summary"` | Task output policy: `"summary"` emits metadata only, `"brief"` adds a redacted excerpt, `"full"` emits full redacted output and should only be used for private diagnostics |
 | `runner_output_brief_head_lines` | usize | `5` | Head lines kept in task output summaries |
 | `runner_output_brief_tail_lines` | usize | `3` | Tail lines kept in task output summaries |
 
@@ -945,6 +958,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_ENV_FILE` | `shared/bin/start.sh` | Env file sourced at startup. Defaults to `$ALETHEIA_ROOT/config/env`, the canonical env-file owner. |
 | `ALETHEIA_NOUS` | shared tools (`shared/bin/scholar`) | Nous workspace directory. Defaults to `$ALETHEIA_ROOT/nous`. |
 | `ALETHEIA_CREDS` | `shared/bin/start.sh`, `credential-refresh`, `scripts/health-monitor.sh` | Anthropic credential JSON path. Defaults to `$ALETHEIA_ROOT/config/credentials/anthropic.json`. |
+| `CLAUDE_CODE_CREDS` | credential provider chain, `shared/bin/start.sh`, `credential-refresh` | Opt-in path to a Claude Code credentials JSON file. Takes precedence over `credential.claudeCodeCredentials`; unset means the runtime does not probe Claude Code's private default store. |
 | `ALETHEIA_MEMORY_USER` | `shared/bin/start.sh` | Identity attributed to stored memory. Defaults to the current `whoami`. |
 | `ALETHEIA_SHARED` | instance nous templates | Shared-resources root referenced by agent templates (`$ALETHEIA_SHARED/config/...`). |
 | `ALETHEIA_THEKE` | instance nous templates | Vault (theke) root referenced by agent templates (`$ALETHEIA_THEKE/<domain>`). |
@@ -994,6 +1008,7 @@ These are read only by maintainer and CI tooling, not by the public runtime path
 | Variable | Owner | Meaning |
 |----------|-------|---------|
 | `ALETHEIA_AUTH_TOKEN` | `scripts/smoke-proskenion.sh` | Bearer token written to the temporary desktop config during the smoke check. |
+| `ALETHEIA_EVAL_COVERAGE_POLICY` | `aletheia eval` | Eval coverage gate. Defaults to `ci`; use `smoke-dev` only for local exploratory runs that may intentionally tolerate skips. |
 | `ALETHEIA_EVAL_TOKEN` | `scripts/benchmark.sh` | Auth token used when the benchmarked instance requires authentication. |
 | `ALETHEIA_SMOKE_PORT` | `scripts/smoke-proskenion.sh` | Port for the smoke check's local server. Defaults to a random port in `39000-40999`. |
 | `ALETHEIA_SMOKE_KEEP_LOGS` | `scripts/smoke-proskenion.sh` | Set to `1` to retain temporary smoke logs on success. |

@@ -400,12 +400,11 @@ pub(super) async fn run_history_stage(
             reason = "usize→i64: message length fits in i64"
         )]
         let token_estimate = (input.content.len() as i64 + 3) / 4; // kanon:ignore RUST/as-cast
-        ctx.messages.push(PipelineMessage {
-            role: "user".to_owned(),
-            content: input.content.clone(),
+        ctx.messages.push(PipelineMessage::text(
+            "user",
+            input.content.clone(),
             token_estimate,
-            cache_breakpoint: false,
-        });
+        ));
     }
     let duration_secs = start.elapsed().as_secs_f64();
     record_stage_duration(&span, &start);
@@ -1264,17 +1263,17 @@ fn apply_recall_result(
         Ok(recall_result) => {
             if let Some(ref section) = recall_result.recall_section {
                 if late_inject_anchor {
-                    ctx.messages.push(PipelineMessage {
-                        role: "system".to_owned(),
-                        content: section.clone(),
-                        #[expect(
-                            clippy::cast_possible_wrap,
-                            clippy::as_conversions,
-                            reason = "u64→i64: recall tokens fit in i64"
-                        )]
-                        token_estimate: recall_result.tokens_consumed as i64, // kanon:ignore RUST/as-cast
-                        cache_breakpoint: false,
-                    });
+                    #[expect(
+                        clippy::cast_possible_wrap,
+                        clippy::as_conversions,
+                        reason = "u64→i64: recall tokens fit in i64"
+                    )]
+                    let token_estimate = recall_result.tokens_consumed as i64; // kanon:ignore RUST/as-cast
+                    ctx.messages.push(PipelineMessage::text(
+                        "system",
+                        section.clone(),
+                        token_estimate,
+                    ));
                 } else if let Some(ref mut prompt) = ctx.system_prompt {
                     prompt.push_str("\n\n");
                     prompt.push_str(section);

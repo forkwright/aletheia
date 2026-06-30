@@ -122,12 +122,7 @@ impl ToolExecutor for CountingExecutor {
 }
 
 fn make_msg(role: &str, content: &str) -> PipelineMessage {
-    PipelineMessage {
-        role: role.to_owned(),
-        content: content.to_owned(),
-        token_estimate: 0,
-        cache_breakpoint: false,
-    }
+    PipelineMessage::text(role, content, 0)
 }
 
 fn config_with_preserve(preserve: usize) -> CompactConfig {
@@ -259,18 +254,8 @@ async fn full_compaction_uses_llm_summary() {
     ));
     let mut ctx = PipelineContext {
         messages: vec![
-            PipelineMessage {
-                role: "user".to_owned(),
-                content: "old context".to_owned(),
-                token_estimate: 90,
-                cache_breakpoint: false,
-            },
-            PipelineMessage {
-                role: "assistant".to_owned(),
-                content: "recent".to_owned(),
-                token_estimate: 1,
-                cache_breakpoint: false,
-            },
+            PipelineMessage::text("user", "old context", 90),
+            PipelineMessage::text("assistant", "recent", 1),
         ],
         ..PipelineContext::default()
     };
@@ -317,12 +302,7 @@ async fn full_compaction_falls_back_when_llm_unavailable() {
     config.generation.context_window = 100;
     let providers = ProviderRegistry::new();
     let mut ctx = PipelineContext {
-        messages: vec![PipelineMessage {
-            role: "user".to_owned(),
-            content: "old context".to_owned(),
-            token_estimate: 90,
-            cache_breakpoint: false,
-        }],
+        messages: vec![PipelineMessage::text("user", "old context", 90)],
         ..PipelineContext::default()
     };
     let (emitter, captured) = capturing_emitter();
@@ -1453,6 +1433,74 @@ async fn execute_stage_writes_one_audit_record_per_outbound_request() {
         second.request_id.is_some(),
         "second record has generated request id"
     );
+}
+
+#[tokio::test]
+async fn execute_stage_audit_records_explicit_provider_for_shared_model() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let audit_log = crate::audit::PromptAuditLog::new(dir.path().join("prompt-audit"), true);
+
+    let mut config = execute_stage_config();
+    config.generation.model = "shared-model".to_owned();
+    config.generation.provider = Some("local-proxy".to_owned());
+
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response("cloud answer")])
+            .models(&["shared-model"])
+            .named("anthropic-cloud"),
+    ));
+    providers.register(Box::new(
+        MockProvider::with_responses(vec![make_text_response("local answer")])
+            .models(&["shared-model"])
+            .named("local-proxy"),
+    ));
+
+    let tools = ToolRegistry::new();
+    let session = SessionState::new(
+        "explicit-provider-session".to_owned(),
+        "main".to_owned(),
+        &config,
+    );
+    let pipeline_config = PipelineConfig::default();
+    let input = execute_stage_pipeline_input(session, &pipeline_config);
+    let ctx = PipelineContext {
+        system_prompt: Some("You are a test agent.".to_owned()),
+        messages: vec![make_msg("user", "hello")],
+        ..PipelineContext::default()
+    };
+    let tool_ctx = execute_stage_tool_ctx();
+    let mut time_budget = execute_stage_time_budget(&pipeline_config);
+    let (emitter, _captured) = capturing_emitter();
+
+    let result = run_execute_stage(
+        &config,
+        &pipeline_config,
+        &ctx,
+        &input,
+        &providers,
+        &tools,
+        &tool_ctx,
+        None,
+        None,
+        &mut time_budget,
+        &emitter,
+        None,
+        None,
+        Some(&audit_log),
+    )
+    .await
+    .expect("execute stage should use explicit provider");
+
+    assert_eq!(result.content, "local answer");
+    assert_eq!(result.model_used, "shared-model");
+    assert_eq!(result.provider_used.as_deref(), Some("local-proxy"));
+
+    let records = read_prompt_audit_records(&dir.path().join("prompt-audit"));
+    assert_eq!(records.len(), 1, "one audit record for the request");
+    let record = &records[0];
+    assert_eq!(record.model, "shared-model");
+    assert_eq!(record.provider, "local-proxy");
 }
 
 #[tokio::test]

@@ -11,7 +11,9 @@ use std::pin::Pin;
 
 use koina::secret::SecretString;
 
+use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
+use crate::concurrency::ConcurrencyConfig;
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealth, ProviderHealthTracker};
 use crate::types::{CompletionRequest, CompletionResponse};
@@ -52,7 +54,7 @@ pub enum ProviderRoute<'a> {
     /// Select any provider that claims the model, preferring the healthiest,
     /// most-specific match.
     ModelOnly,
-    /// Use the provider with this exact instance name, regardless of specificity.
+    /// Use the provider with this exact instance name if it claims the model.
     Explicit(&'a str),
 }
 
@@ -60,9 +62,23 @@ pub enum ProviderRoute<'a> {
 #[derive(Debug, Clone)]
 pub enum ProviderResolutionError {
     /// No registered provider supports the requested model (model-only routing),
-    /// or the explicitly named provider does not exist.
+    /// or no provider is registered at all.
     NoProvider {
         /// The model ID for which no provider was found.
+        model: String,
+    },
+    /// The explicitly named provider does not exist.
+    ProviderNotFound {
+        /// Requested provider instance name.
+        name: String,
+        /// Requested model ID.
+        model: String,
+    },
+    /// The explicitly named provider exists but does not claim the requested model.
+    ProviderDoesNotSupportModel {
+        /// Requested provider instance name.
+        name: String,
+        /// Requested model ID.
         model: String,
     },
     /// The explicitly named provider exists but is not available.
@@ -78,6 +94,12 @@ impl std::fmt::Display for ProviderResolutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoProvider { model } => write!(f, "no provider for model: {model}"),
+            Self::ProviderNotFound { name, model } => {
+                write!(f, "provider '{name}' is not registered for model: {model}")
+            }
+            Self::ProviderDoesNotSupportModel { name, model } => {
+                write!(f, "provider '{name}' does not support model: {model}")
+            }
             Self::ProviderUnavailable { name, health } => {
                 write!(f, "provider '{name}' is currently unavailable: {health:?}")
             }
@@ -295,8 +317,12 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     /// Default model to use.
     pub default_model: Option<String>,
-    /// Maximum retries on transient failures.
-    pub max_retries: Option<u32>,
+    /// Retry attempts and exponential backoff policy for transient failures.
+    #[serde(default)]
+    pub retry_policy: RetryPolicy,
+    /// Adaptive concurrency limiter settings for this provider instance.
+    #[serde(default)]
+    pub concurrency: ConcurrencyConfig,
     /// Per-model pricing for cost metrics. Keyed by model name.
     #[serde(default)]
     pub pricing: HashMap<String, ModelPricing>,
@@ -339,7 +365,8 @@ impl std::fmt::Debug for ProviderConfig {
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .field("base_url", &self.base_url)
             .field("default_model", &self.default_model)
-            .field("max_retries", &self.max_retries)
+            .field("retry_policy", &self.retry_policy)
+            .field("concurrency", &self.concurrency)
             .field("cc_mimicry", &self.cc_mimicry)
             .field("prompt_cache_mode", &self.prompt_cache_mode)
             .field("deployment_target", &self.deployment_target)
@@ -367,7 +394,8 @@ impl Default for ProviderConfig {
             api_key: None,
             base_url: None,
             default_model: Some(crate::models::names::opus().to_owned()),
-            max_retries: Some(3),
+            retry_policy: RetryPolicy::default(),
+            concurrency: ConcurrencyConfig::default(),
             pricing,
             cc_mimicry: None,
             prompt_cache_mode: PromptCacheMode::Disabled,
@@ -581,9 +609,22 @@ impl ProviderRegistry {
             .providers
             .iter()
             .find(|e| e.provider.name() == name)
-            .ok_or_else(|| ProviderResolutionError::NoProvider {
+            .ok_or_else(|| ProviderResolutionError::ProviderNotFound {
+                name: name.to_owned(),
                 model: model.to_owned(),
             })?;
+
+        if entry.provider.match_specificity(model).is_none() {
+            tracing::info!(
+                provider = name,
+                model,
+                "explicit provider does not claim model"
+            );
+            return Err(ProviderResolutionError::ProviderDoesNotSupportModel {
+                name: name.to_owned(),
+                model: model.to_owned(),
+            });
+        }
 
         let health = entry.health.health();
         if !Self::is_available(&health) {

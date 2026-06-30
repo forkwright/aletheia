@@ -84,6 +84,7 @@ fn turn_result_with_tool_calls() {
         stop_reason: "end_turn".to_owned(),
         degraded: None,
         model_used: "test-model".to_owned(),
+        provider_used: None,
         tool_surface_hashes: Vec::new(),
     };
 
@@ -112,12 +113,7 @@ fn session_state_flows_through_pipeline() {
 
 #[test]
 fn pipeline_message_serde() {
-    let msg = PipelineMessage {
-        role: "user".to_owned(),
-        content: "hello".to_owned(),
-        token_estimate: 5,
-        cache_breakpoint: false,
-    };
+    let msg = PipelineMessage::text("user", "hello", 5);
     let json = serde_json::to_string(&msg).expect("PipelineMessage serializes to JSON");
     let back: PipelineMessage =
         serde_json::from_str(&json).expect("PipelineMessage deserializes from JSON");

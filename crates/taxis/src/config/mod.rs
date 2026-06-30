@@ -10,14 +10,16 @@ mod tools;
 
 pub use agents::{
     AgentBehaviorDefaults, AgentDefaults, AgentModelDefaults, AgentToolGroupPolicy, AgentsConfig,
-    CachingConfig, ModelSpec, NousDefinition, RecallProfile, RecallSettings, RecallWeights,
+    CachingConfig, ModelRoute, ModelSpec, NousDefinition, RecallProfile, RecallSettings,
+    RecallWeights,
 };
 pub use behavior::{
     AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig,
-    CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DeploymentTarget, DispatchConfig,
-    DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
-    MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig,
-    ProviderKind, RetrySettings, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DaemonRunnerOutputMode,
+    DeploymentTarget, DispatchConfig, DispatchSpecConfig, ExtractionConfig, JwtSettings,
+    KnowledgeConfig, LlmProviderConfig, MessagingConfig, NousBehaviorConfig, OpenAiApiFamily,
+    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
+    ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
@@ -28,10 +30,10 @@ pub use maintenance::{
     BackupSettings, CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,
     DbMonitoringSettings, DiskSpaceSettings, DriftDetectionSettings, KnowledgeGraphMcpConfig,
     LoggingSettings, MaintenanceSettings, McpConfig, McpRateLimitConfig, PromptAuditSettings,
-    ProsocheActiveWindowSettings, ProsocheExternalTimerSettings, ProsocheMaintenanceSettings,
-    ProsocheScheduleMode, ProsocheTaskScheduleSettings, RedactionSettings, RepomixMcpConfig,
-    RetentionSettings, SandboxSettings, SerendipityMaintenanceSettings, TraceRotationSettings,
-    WatchdogSettings,
+    ProsocheActiveWindowSettings, ProsocheExternalTimerSettings, ProsocheExternalTimerTaskId,
+    ProsocheMaintenanceSettings, ProsocheScheduleMode, ProsocheTaskScheduleSettings,
+    RedactionSettings, RepomixMcpConfig, RetentionSettings, SandboxSettings,
+    SerendipityMaintenanceSettings, TraceRotationSettings, WatchdogSettings,
 };
 pub use resolved::{
     AgentCapabilities, ResolvedModelConfig, ResolvedNousConfig, TokenLimits, resolve_nous,
@@ -333,7 +335,7 @@ fn default_session_pattern() -> String {
 }
 
 /// Embedding provider configuration for recall pipeline.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
@@ -351,6 +353,21 @@ pub struct EmbeddingSettings {
     /// Environment variable that stores the embedding provider API key.
     #[serde(alias = "apikeyenv")]
     pub api_key_env: Option<String>,
+}
+
+impl std::fmt::Debug for EmbeddingSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmbeddingSettings")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("dimension", &self.dimension)
+            .field("base_url", &self.base_url.as_ref().map(|_| "<redacted>"))
+            .field(
+                "api_key_env",
+                &self.api_key_env.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 impl Default for EmbeddingSettings {

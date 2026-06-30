@@ -112,6 +112,12 @@ Verify a set before relying on it for recovery:
 aletheia backup verify instance/data/backups/instance/<timestamp>
 ```
 
+Restore a verified set with manifest-driven staging and rollback:
+
+```bash
+aletheia backup restore instance/data/backups/instance/<timestamp>
+```
+
 ### List backups
 
 ```bash

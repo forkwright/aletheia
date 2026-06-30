@@ -491,6 +491,7 @@ aletheia backup                     # create backup
 aletheia backup --list              # list available backups
 aletheia backup --prune --keep 5    # remove old backups
 aletheia backup verify <path>       # verify a backup snapshot
+aletheia backup restore <path>      # restore a verified backup set
 ```
 
 Backups are stored in `instance/data/backups/`. Always back up before upgrading.

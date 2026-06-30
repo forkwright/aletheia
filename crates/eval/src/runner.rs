@@ -8,6 +8,10 @@ use tracing::{info, warn};
 use koina::secret::SecretString;
 
 use crate::client::EvalClient;
+use crate::coverage::{
+    SKIP_REASON_FAIL_FAST, SKIP_REASON_INSTANCE_UNREACHABLE, SKIP_REASON_NO_AUTH_TOKEN,
+    SKIP_REASON_NO_NOUS_AGENTS,
+};
 use crate::persistence::now_iso8601;
 use crate::provenance::EvalProvenance;
 use crate::provider::{BuiltinProvider, EvalProvider};
@@ -162,7 +166,7 @@ impl ScenarioRunner {
                 results.push(ScenarioResult {
                     meta: meta.clone(),
                     outcome: ScenarioOutcome::Skipped {
-                        reason: "instance unreachable".to_owned(),
+                        reason: SKIP_REASON_INSTANCE_UNREACHABLE.to_owned(),
                     },
                     sub_results: Vec::new(),
                 });
@@ -174,7 +178,7 @@ impl ScenarioRunner {
                 results.push(ScenarioResult {
                     meta: meta.clone(),
                     outcome: ScenarioOutcome::Skipped {
-                        reason: "no auth token provided".to_owned(),
+                        reason: SKIP_REASON_NO_AUTH_TOKEN.to_owned(),
                     },
                     sub_results: Vec::new(),
                 });
@@ -186,7 +190,7 @@ impl ScenarioRunner {
                 results.push(ScenarioResult {
                     meta: meta.clone(),
                     outcome: ScenarioOutcome::Skipped {
-                        reason: "no nous agents configured".to_owned(),
+                        reason: SKIP_REASON_NO_NOUS_AGENTS.to_owned(),
                     },
                     sub_results: Vec::new(),
                 });
@@ -263,7 +267,7 @@ impl ScenarioRunner {
                 results.push(ScenarioResult {
                     meta: scenario.meta(),
                     outcome: ScenarioOutcome::Skipped {
-                        reason: "fail_fast: earlier scenario failed".to_owned(),
+                        reason: SKIP_REASON_FAIL_FAST.to_owned(),
                     },
                     sub_results: Vec::new(),
                 });

@@ -9,7 +9,7 @@ Standalone stdio MCP server exposing Aletheia's nous local knowledge store to ex
 - `nous_search` - BM25 text search across active facts in the Aletheia nous local knowledge store
 - `nous_neighbors` - one-hop graph traversal from a fact's entities; neighbor rows include `src_id`, `dst_id`, `name`, `entity_type`, `relation`, and `weight`
 - `nous_list_topics` - enumerate fact-type buckets with counts
-- `nous_stats` - knowledge graph health metrics (fact count, schema version, last updated)
+- `nous_stats` - knowledge graph health metrics (fact count, schema version, opaque store id, backend, readiness, last updated)
 
 ### Write tools (capability-token gated)
 
@@ -22,19 +22,21 @@ Standalone stdio MCP server exposing Aletheia's nous local knowledge store to ex
 ### Environment variables
 
 - `ALETHEIA_ROOT` - instance root directory (default: `./instance`). The knowledge store is opened at `<root>/data/knowledge.fjall/shared` (the shared episteme cohort).
-- `ALETHEIA_MEMORY_MCP_STORE` - override the store path directly; use this to target a different cohort, e.g. `<root>/data/knowledge.fjall/<cohort>`. The resolved path is surfaced by `nous_stats`.
+- `ALETHEIA_MEMORY_MCP_STORE` - override the store path directly; use this to target a different cohort, e.g. `<root>/data/knowledge.fjall/<cohort>`. `nous_stats` returns an opaque fingerprint for this path by default.
+- `ALETHEIA_MEMORY_MCP_NOUS_ID` - bind read tools to a single caller identity. Read tools fail closed when this is unset.
 - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` - capability token for write tools. If unset, write tools are not registered.
+- `ALETHEIA_MEMORY_MCP_ADMIN_DIAGNOSTICS` - set to `1`, `true`, `yes`, or `admin` to permit full store-path diagnostics. This only takes effect when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is also configured, and `nous_stats` still requires `include_store_path: true`.
 - `RUST_LOG` - tracing filter (default: `info`). Logs go to stderr; stdout is JSON-RPC only.
 
 ## Write tool authentication
 
-Write tools are protected by a **per-process capability token** passed via environment variable at server startup.
+Write tools are exposed only when a **per-process capability token** is passed via environment variable at server startup.
 
 ### How it works
 
 1. **Server Startup**: The spawning process (aletheia daemon or operator) generates a random token and sets it in the child's environment as `ALETHEIA_MEMORY_MCP_WRITE_TOKEN`. If this variable is unset, write tools are not registered or listed by MCP discovery.
-2. **Token Validation**: Each write tool call includes a `write_token` field in its input. The server compares it against the configured token using constant-time comparison (via `subtle::ConstantTimeEq`).
-3. **Authorization**: If tokens match, the write proceeds. If they don't match, the call returns an "unauthorized" error.
+2. **Route Registration**: Write tools are registered only when the token passes startup validation. The token is not part of any model-visible tool schema.
+3. **Authorization**: If the token is missing or invalid at startup, write tools stay unavailable and direct calls fail closed.
 4. **Audit Logging**: Successful writes are logged at INFO level to stderr with the tool name and affected fact IDs.
 
 ### Token generation
@@ -62,17 +64,16 @@ aletheia-memory-mcp  # server inherits the token
   "arguments": {
     "fact_id": "f-abc-123",
     "content": "Verified against external source X",
-    "session_id": "agent-uuid",
-    "write_token": "..."  // must match ALETHEIA_MEMORY_MCP_WRITE_TOKEN
+    "session_id": "agent-uuid"
   }
 }
 ```
 
 ## Security notes
 
-- **Capability Token**: This is a shared secret, not user authentication. Any process with access to the server's environment can invoke writes if it knows the token.
-- **No Encryption**: The token is passed in-process via environment variable and in-protocol via MCP calls. It's not encrypted on the wire; use this server only over local IPC or secure channels (SSH, TLS).
-- **Constant-Time Comparison**: Token comparison uses `subtle::ConstantTimeEq` to prevent timing-based token leakage.
+- **Capability Token**: This is startup capability configuration, not per-client authentication. Any MCP client connected to a server process with write tools registered can invoke writes.
+- **No Encryption**: The server communicates over the configured MCP transport without adding encryption; use this server only over local IPC or secure channels (SSH, TLS).
+- **Path Redaction**: `nous_stats` returns an opaque store id by default. Full local paths require admin diagnostics at startup plus an explicit `include_store_path` request.
 
 ## Admission control
 

@@ -37,6 +37,45 @@ mod arc_str {
     }
 }
 
+/// Runtime model route with an optional pinned provider instance.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelProviderRoute {
+    /// Model identifier sent in the provider request.
+    pub model: String,
+    /// Optional provider instance name selected by the operator.
+    pub provider: Option<String>,
+}
+
+impl ModelProviderRoute {
+    /// Construct a model-only route.
+    #[must_use]
+    pub fn model_only(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            provider: None,
+        }
+    }
+
+    /// Construct a route pinned to `provider`.
+    #[must_use]
+    pub fn explicit(model: impl Into<String>, provider: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            provider: Some(provider.into()),
+        }
+    }
+
+    /// Borrow the provider route used by [`hermeneus::provider::ProviderRegistry`].
+    #[must_use]
+    pub fn provider_route(&self) -> hermeneus::provider::ProviderRoute<'_> {
+        self.provider
+            .as_deref()
+            .map_or(hermeneus::provider::ProviderRoute::ModelOnly, |provider| {
+                hermeneus::provider::ProviderRoute::Explicit(provider)
+            })
+    }
+}
+
 /// LLM generation settings for a nous agent.
 // kanon:ignore RUST/no-debug-derive-on-public-types — NousGenerationConfig contains no secrets (model names, token limits, flags)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,8 +83,14 @@ mod arc_str {
 pub struct NousGenerationConfig {
     /// Default model for this agent.
     pub model: String,
+    /// Optional provider instance name for the default model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// Ordered fallback models to try after the primary model fails transiently.
     pub fallback_models: Vec<String>,
+    /// Optional provider instance names for fallback models, by index.
+    #[serde(default)]
+    pub fallback_providers: Vec<Option<String>>,
     /// Number of primary-model attempts before moving to the fallback chain.
     pub retries_before_fallback: u32,
     /// Maximum context window tokens.
@@ -90,7 +135,9 @@ impl Default for NousGenerationConfig {
         use koina::defaults as d;
         Self {
             model: koina::models::tier_default(koina::models::ModelTier::Opus).to_owned(),
+            provider: None,
             fallback_models: Vec::new(),
+            fallback_providers: Vec::new(),
             retries_before_fallback: 2,
             context_window: d::CONTEXT_TOKENS,
             max_output_tokens: d::MAX_OUTPUT_TOKENS,
@@ -723,7 +770,9 @@ mod tests {
             name: Some("Analyst".to_owned()),
             generation: NousGenerationConfig {
                 model: koina::models::tier_default(koina::models::ModelTier::Haiku).to_owned(),
+                provider: None,
                 fallback_models: Vec::new(),
+                fallback_providers: Vec::new(),
                 retries_before_fallback: 2,
                 context_window: 100_000,
                 max_output_tokens: 8_192,

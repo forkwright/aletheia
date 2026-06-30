@@ -21,9 +21,9 @@ use crate::prosoche::ProsocheCheck;
 use crate::prosoche_audit::{
     BehaviorPatternSnapshot, ProsocheAuditRunner, ProsocheState, SessionSnapshot,
 };
-use crate::runner::ExecutionResult;
 #[cfg(test)]
 use crate::runner::TaskOutcome;
+use crate::runner::{ExecutionResult, command_context, process_output_report};
 use crate::schedule::{BuiltinTask, TaskAction};
 
 pub(crate) struct ExecutionContext<'a> {
@@ -107,6 +107,7 @@ async fn execute_command(
     cancel: CancellationToken,
     timeout: Duration,
 ) -> Result<ExecutionResult> {
+    let command = command_context(cmd);
     // WHY: race the child process against both the configured per-task timeout
     // and a graceful cancellation request. Dropping the `output()` future drops
     // the `tokio::process::Command`, which kills the child process automatically.
@@ -115,14 +116,14 @@ async fn execute_command(
         output = tokio::process::Command::new("sh").args(["-c", cmd]).output() => output,
         () = cancel.cancelled() => {
             return error::CommandCancelledSnafu {
-                command: cmd.to_owned(),
+                command: command.clone(),
             }
             .fail();
         }
         // kanon:ignore TESTING/sleep-in-test — production timeout arm in tokio::select!, not a test sleep
         () = tokio::time::sleep(timeout) => {
             return error::CommandTimedOutSnafu {
-                command: cmd.to_owned(),
+                command: command.clone(),
                 timeout_secs: timeout.as_secs(),
             }
             .fail();
@@ -130,24 +131,25 @@ async fn execute_command(
     };
 
     let output = output.context(error::CommandFailedSnafu {
-        command: cmd.to_owned(),
+        command: command.clone(),
     })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
 
     if output.status.success() {
-        tracing::debug!(cmd = %cmd, stdout = %stdout, "command succeeded");
+        tracing::debug!(
+            command = %command,
+            status = %output.status,
+            stdout_bytes = output.stdout.len(),
+            stderr_bytes = output.stderr.len(),
+            "command succeeded"
+        );
         Ok(ExecutionResult::success(Some(stdout.into_owned())))
     } else {
-        let reason = if stderr.is_empty() {
-            format!("exit code: {}", output.status)
-        } else {
-            stderr.into_owned()
-        };
+        let reason = process_output_report(output.status, &output.stdout, &output.stderr);
 
         error::TaskFailedSnafu {
-            task_id: cmd.to_owned(),
+            task_id: command,
             reason,
         }
         .fail()
@@ -410,9 +412,13 @@ pub(crate) async fn execute_builtin_with_behavior(
             let config = maintenance
                 .map(|m| m.db_monitoring.clone())
                 .unwrap_or_default();
+            let session_store_health_probe =
+                maintenance.and_then(|m| m.session_store_health_probe.clone());
             let report = tokio::task::spawn_blocking(move || {
                 let _span = tracing::info_span!("db_size_monitor").entered();
-                DbMonitor::new(config).check()
+                DbMonitor::new(config)
+                    .with_session_store_health_probe(session_store_health_probe)
+                    .check()
             })
             .await
             .context(error::BlockingJoinSnafu {
@@ -424,10 +430,12 @@ pub(crate) async fn execute_builtin_with_behavior(
                 .iter()
                 .map(|db| {
                     format!(
-                        "{} {}MB ({})",
+                        "{} {}MB ({}, {}, {})",
                         db.name,
                         db.size_bytes / (1024 * 1024),
-                        db.status
+                        db.status,
+                        db.shape,
+                        db.health
                     )
                 })
                 .collect();

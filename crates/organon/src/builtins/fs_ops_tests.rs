@@ -4,7 +4,8 @@ use std::sync::{Arc, RwLock};
 
 use koina::id::{NousId, SessionId, ToolName};
 
-use crate::registry::ToolExecutor as _;
+use crate::registry::{ToolExecutor as _, ToolRegistry};
+use crate::sandbox::SandboxConfig;
 use crate::types::{ToolContext, ToolInput};
 
 use super::*;
@@ -36,6 +37,347 @@ fn write_file(path: &std::path::Path, content: &str) {
         reason = "test fixture setup; exercising tool executor contract"
     )]
     std::fs::write(path, content).expect("write fixture");
+}
+
+fn registered_mutation_tools() -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    crate::builtins::workspace::register(&mut registry, SandboxConfig::default())
+        .expect("register workspace tools");
+    register(&mut registry).expect("register fs mutation tools");
+    registry
+}
+
+#[derive(Clone, Copy)]
+enum MutationPathCase {
+    Write,
+    Append,
+    Edit,
+    Mkdir,
+    Rm,
+    MvSource,
+    MvDestination,
+    CpSource,
+    CpDestination,
+}
+
+impl MutationPathCase {
+    const ALL: [Self; 9] = [
+        Self::Write,
+        Self::Append,
+        Self::Edit,
+        Self::Mkdir,
+        Self::Rm,
+        Self::MvSource,
+        Self::MvDestination,
+        Self::CpSource,
+        Self::CpDestination,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Write => "write",
+            Self::Append => "write append",
+            Self::Edit => "edit",
+            Self::Mkdir => "mkdir",
+            Self::Rm => "rm",
+            Self::MvSource => "mv source",
+            Self::MvDestination => "mv destination",
+            Self::CpSource => "cp source",
+            Self::CpDestination => "cp destination",
+        }
+    }
+
+    fn protected_input(self, protected_path: &str) -> ToolInput {
+        match self {
+            Self::Write => tool_input(
+                "write",
+                serde_json::json!({ "path": protected_path, "content": "blocked" }),
+            ),
+            Self::Append => tool_input(
+                "write",
+                serde_json::json!({ "path": protected_path, "content": "blocked", "append": true }),
+            ),
+            Self::Edit => tool_input(
+                "edit",
+                serde_json::json!({ "path": protected_path, "old_text": "old", "new_text": "new" }),
+            ),
+            Self::Mkdir => tool_input("mkdir", serde_json::json!({ "path": protected_path })),
+            Self::Rm => tool_input("rm", serde_json::json!({ "path": protected_path })),
+            Self::MvSource => tool_input(
+                "mv",
+                serde_json::json!({ "from": protected_path, "to": "safe-move-destination.txt" }),
+            ),
+            Self::MvDestination => tool_input(
+                "mv",
+                serde_json::json!({ "from": "safe-source.txt", "to": protected_path }),
+            ),
+            Self::CpSource => tool_input(
+                "cp",
+                serde_json::json!({ "from": protected_path, "to": "safe-copy-destination.txt" }),
+            ),
+            Self::CpDestination => tool_input(
+                "cp",
+                serde_json::json!({ "from": "safe-source.txt", "to": protected_path }),
+            ),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AllowedMutationCase {
+    Write,
+    Append,
+    Edit,
+    Mkdir,
+    Rm,
+    Mv,
+    Cp,
+}
+
+impl AllowedMutationCase {
+    const ALL: [Self; 7] = [
+        Self::Write,
+        Self::Append,
+        Self::Edit,
+        Self::Mkdir,
+        Self::Rm,
+        Self::Mv,
+        Self::Cp,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Write => "write",
+            Self::Append => "write append",
+            Self::Edit => "edit",
+            Self::Mkdir => "mkdir",
+            Self::Rm => "rm",
+            Self::Mv => "mv",
+            Self::Cp => "cp",
+        }
+    }
+
+    fn seed(self, root: &std::path::Path) {
+        match self {
+            Self::Append => write_file(&root.join("journal.txt"), "old"),
+            Self::Edit => write_file(&root.join("draft.txt"), "old"),
+            Self::Rm => write_file(&root.join("trash.txt"), "trash"),
+            Self::Mv => write_file(&root.join("move-source.txt"), "move"),
+            Self::Cp => write_file(&root.join("copy-source.txt"), "copy"),
+            Self::Write | Self::Mkdir => {}
+        }
+    }
+
+    fn input(self) -> ToolInput {
+        match self {
+            Self::Write => tool_input(
+                "write",
+                serde_json::json!({ "path": "notes.txt", "content": "safe" }),
+            ),
+            Self::Append => tool_input(
+                "write",
+                serde_json::json!({ "path": "journal.txt", "content": " text", "append": true }),
+            ),
+            Self::Edit => tool_input(
+                "edit",
+                serde_json::json!({ "path": "draft.txt", "old_text": "old", "new_text": "new" }),
+            ),
+            Self::Mkdir => tool_input("mkdir", serde_json::json!({ "path": "reports/2026" })),
+            Self::Rm => tool_input("rm", serde_json::json!({ "path": "trash.txt" })),
+            Self::Mv => tool_input(
+                "mv",
+                serde_json::json!({ "from": "move-source.txt", "to": "move-dest.txt" }),
+            ),
+            Self::Cp => tool_input(
+                "cp",
+                serde_json::json!({ "from": "copy-source.txt", "to": "copy-dest.txt" }),
+            ),
+        }
+    }
+
+    fn verify(self, root: &std::path::Path) {
+        match self {
+            Self::Write => {
+                let content = std::fs::read_to_string(root.join("notes.txt")).expect("read notes");
+                assert_eq!(content, "safe");
+            }
+            Self::Append => {
+                let content =
+                    std::fs::read_to_string(root.join("journal.txt")).expect("read journal");
+                assert_eq!(content, "old text");
+            }
+            Self::Edit => {
+                let content = std::fs::read_to_string(root.join("draft.txt")).expect("read draft");
+                assert_eq!(content, "new");
+            }
+            Self::Mkdir => assert!(root.join("reports/2026").is_dir()),
+            Self::Rm => assert!(!root.join("trash.txt").exists()),
+            Self::Mv => {
+                assert!(!root.join("move-source.txt").exists());
+                let content =
+                    std::fs::read_to_string(root.join("move-dest.txt")).expect("read moved");
+                assert_eq!(content, "move");
+            }
+            Self::Cp => {
+                let source =
+                    std::fs::read_to_string(root.join("copy-source.txt")).expect("read source");
+                let destination =
+                    std::fs::read_to_string(root.join("copy-dest.txt")).expect("read copy");
+                assert_eq!(source, "copy");
+                assert_eq!(destination, "copy");
+            }
+        }
+    }
+}
+
+const PROTECTED_PATH_EXAMPLES: &[&str] = &[
+    ".env",
+    ".env.production",
+    ".credentials.json",
+    "credentials/anthropic.json",
+    "secrets/client.pem",
+    "secrets/service.key",
+    ".ssh/id_ed25519", // pii-allow: protected-path test fixture (filename, not key material)
+    ".ssh/known_hosts",
+    ".git/config",
+    ".claude/settings.json",
+    ".codex/auth.json",
+    "config/env",
+    "config/aletheia.toml",
+];
+
+#[tokio::test]
+async fn mutating_tools_reject_shared_protected_paths() {
+    let registry = registered_mutation_tools();
+
+    for protected_path in PROTECTED_PATH_EXAMPLES {
+        for case in MutationPathCase::ALL {
+            let dir = tempfile::tempdir().expect("tmpdir");
+            write_file(&dir.path().join("safe-source.txt"), "safe");
+            let ctx = test_ctx(dir.path());
+            let input = case.protected_input(protected_path);
+
+            let result = registry
+                .execute(&input, &ctx)
+                .await
+                .unwrap_or_else(|err| panic!("{} {protected_path} failed: {err}", case.label()));
+
+            let message = result.content.text_summary();
+            assert!(
+                result.is_error,
+                "{} should reject protected path {protected_path}; got {message}",
+                case.label()
+            );
+            assert!(
+                message.contains("protected"),
+                "{} error should identify a protected-path policy violation: {message}",
+                case.label()
+            );
+            assert!(
+                !message.contains(&dir.path().display().to_string()),
+                "{} error must not leak the workspace root: {message}",
+                case.label()
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn mutating_tools_allow_non_sensitive_paths() {
+    let registry = registered_mutation_tools();
+
+    for case in AllowedMutationCase::ALL {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        case.seed(dir.path());
+        let ctx = test_ctx(dir.path());
+        let input = case.input();
+
+        let result = registry
+            .execute(&input, &ctx)
+            .await
+            .unwrap_or_else(|err| panic!("{} should execute: {err}", case.label()));
+
+        assert!(
+            !result.is_error,
+            "{} should allow non-sensitive paths: {}",
+            case.label(),
+            result.content.text_summary()
+        );
+        case.verify(dir.path());
+    }
+}
+
+#[derive(Clone, Copy)]
+enum RecursiveMutationCase {
+    Rm,
+    Mv,
+    Cp,
+}
+
+impl RecursiveMutationCase {
+    const ALL: [Self; 3] = [Self::Rm, Self::Mv, Self::Cp];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Rm => "rm",
+            Self::Mv => "mv",
+            Self::Cp => "cp",
+        }
+    }
+
+    fn input(self) -> ToolInput {
+        match self {
+            Self::Rm => tool_input(
+                "rm",
+                serde_json::json!({ "path": "safe-parent", "recursive": true }),
+            ),
+            Self::Mv => tool_input(
+                "mv",
+                serde_json::json!({ "from": "safe-parent", "to": "moved-parent" }),
+            ),
+            Self::Cp => tool_input(
+                "cp",
+                serde_json::json!({ "from": "safe-parent", "to": "copied-parent", "recursive": true }),
+            ),
+        }
+    }
+}
+
+#[tokio::test]
+async fn recursive_mutations_reject_protected_descendants() {
+    let registry = registered_mutation_tools();
+
+    for case in RecursiveMutationCase::ALL {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let protected_parent = dir.path().join("safe-parent/nested");
+        std::fs::create_dir_all(&protected_parent).expect("mkdir protected fixture");
+        write_file(&protected_parent.join(".env"), "secret=synthetic");
+
+        let ctx = test_ctx(dir.path());
+        let input = case.input();
+
+        let result = registry
+            .execute(&input, &ctx)
+            .await
+            .unwrap_or_else(|err| panic!("{} should execute: {err}", case.label()));
+
+        let message = result.content.text_summary();
+        assert!(
+            result.is_error,
+            "{} should reject protected descendants: {message}",
+            case.label()
+        );
+        assert!(
+            message.contains("protected"),
+            "{} error should identify protected descendant policy: {message}",
+            case.label()
+        );
+        assert!(
+            dir.path().join("safe-parent/nested/.env").exists(),
+            "{} must leave the protected descendant untouched",
+            case.label()
+        );
+    }
 }
 
 #[tokio::test]

@@ -9,6 +9,8 @@
 //       "duration_ms": n_or_null, "error": "msg_or_null", "skip_reason": "msg_or_null" }
 //   ]
 // }
+// Also accepts full memory BenchmarkReport JSON with benchmark, scored,
+// statistics, publishability, and comparisons fields.
 
 #let data = json("data.json")
 
@@ -22,6 +24,66 @@
 ]
 
 #v(16pt)
+
+// Memory benchmark report
+#if "benchmark" in data [
+  #text(12pt, weight: "bold")[Memory Benchmark]
+  #v(4pt)
+  #text(10pt)[
+    Benchmark: #data.benchmark \
+    Total: #data.total | Scored: #data.scored | Errors: #data.errors | Timeouts: #data.timeouts | No answer: #data.no_answers
+  ]
+  #v(8pt)
+
+  #if "statistics" in data [
+    #let st = data.statistics
+    #text(11pt, weight: "bold")[Statistical Summary]
+    #v(3pt)
+    #text(10pt)[
+      EM 95% CI: #str(st.em_ci_low) – #str(st.em_ci_high) \
+      F1 95% CI: #str(st.f1_ci_low) – #str(st.f1_ci_high) \
+      Resamples: #st.n_resamples \
+      Method: #st.method
+    ]
+    #v(8pt)
+  ] else [
+    #text(10pt, fill: rgb("#aa5500"))[Statistical Summary: unavailable]
+    #v(8pt)
+  ]
+
+  #if "publishability" in data [
+    #let p = data.publishability
+    #let label = if p.publishable { "publishable" } else { "not publishable" }
+    #text(11pt, weight: "bold")[Publishability]
+    #v(3pt)
+    #text(10pt)[Status: #label]
+    #if p.publishable == false [
+      #v(3pt)
+      #for reason in p.reasons [
+        - #reason
+      ]
+    ]
+    #v(8pt)
+  ]
+
+  #if "comparisons" in data and data.comparisons.len() > 0 [
+    #text(11pt, weight: "bold")[Baseline/Candidate Comparisons]
+    #v(3pt)
+    #for c in data.comparisons [
+      #if "statistics" in c [
+        #let s = c.statistics
+        #text(10pt)[
+          #c.metric: baseline #str(s.mean_a), candidate #str(s.mean_b), d #str(s.effect.d),
+          p(raw) #str(s.p_raw), p(FDR) #str(s.p_adjusted)
+        ]
+      ] else [
+        #text(10pt)[#c.metric: #c.status (#c.reason)]
+      ]
+      #v(3pt)
+    ]
+    #v(8pt)
+  ]
+]
 
 // Summary section
 #if "summary" in data [

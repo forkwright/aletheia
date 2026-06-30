@@ -24,6 +24,8 @@ pub mod enable_tool;
 pub mod energeia;
 /// Filesystem navigation tools (grep, find, ls).
 pub mod filesystem;
+/// Shared protected-path policy for filesystem mutation tools.
+pub(crate) mod filesystem_policy;
 /// Filesystem mutation tools (mkdir, mv, cp, rm).
 pub mod fs_ops;
 /// Git read-only and non-destructive operations (status, log, diff, branch, checkout).

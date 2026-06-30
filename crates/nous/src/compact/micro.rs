@@ -157,16 +157,14 @@ pub(crate) fn run_microcompaction(
 
 /// Extract tool result metadata FROM a pipeline message.
 ///
-/// Uses a convention: tool result messages have role "user" and content
-/// that starts with a tool result marker or contains tool metadata encoded
-/// in the message. Since `PipelineMessage` uses simplified string content,
-/// we look for patterns indicating tool output.
+/// Uses a convention: tool result messages have role "`tool_result`" (or older
+/// role "`user`" rows) and content that starts with a tool result marker.
 ///
 /// Returns `(tool_type, created_at)` if the message looks like a tool result.
 fn parse_tool_result_metadata(msg: &PipelineMessage) -> Option<(ToolResultType, jiff::Timestamp)> {
     // WHY: tool result messages carry metadata in a structured prefix
     // Format: "[tool:<name>@<timestamp>] <content>"
-    if msg.role != "user" {
+    if !msg.is_tool_result() {
         return None;
     }
     let content = &msg.content;
@@ -221,21 +219,15 @@ mod tests {
         content: &str,
         token_estimate: i64,
     ) -> PipelineMessage {
-        PipelineMessage {
-            role: "user".to_owned(),
-            content: format_tool_result(tool_name, created_at, content),
+        PipelineMessage::text(
+            "user",
+            format_tool_result(tool_name, created_at, content),
             token_estimate,
-            cache_breakpoint: false,
-        }
+        )
     }
 
     fn make_text_msg(role: &str, content: &str, tokens: i64) -> PipelineMessage {
-        PipelineMessage {
-            role: role.to_owned(),
-            content: content.to_owned(),
-            token_estimate: tokens,
-            cache_breakpoint: false,
-        }
+        PipelineMessage::text(role, content, tokens)
     }
 
     #[test]
@@ -452,20 +444,14 @@ mod tests {
 
     #[test]
     fn is_cleared_detects_cleared_messages() {
-        let cleared = PipelineMessage {
-            role: "user".to_owned(),
-            content: format!("{CLEARED_MARKER_PREFIX}FileOperation, age 300s]"),
-            token_estimate: 10,
-            cache_breakpoint: false,
-        };
+        let cleared = PipelineMessage::text(
+            "user",
+            format!("{CLEARED_MARKER_PREFIX}FileOperation, age 300s]"),
+            10,
+        );
         assert!(is_cleared(&cleared), "should detect cleared message");
 
-        let normal = PipelineMessage {
-            role: "user".to_owned(),
-            content: "normal content".to_owned(),
-            token_estimate: 10,
-            cache_breakpoint: false,
-        };
+        let normal = PipelineMessage::text("user", "normal content", 10);
         assert!(!is_cleared(&normal), "should not detect normal message");
     }
 
@@ -473,12 +459,7 @@ mod tests {
     fn format_tool_result_roundtrips_through_parse() {
         let ts = jiff::Timestamp::UNIX_EPOCH;
         let formatted = format_tool_result("file_read", ts, "hello world");
-        let msg = PipelineMessage {
-            role: "user".to_owned(),
-            content: formatted,
-            token_estimate: 100,
-            cache_breakpoint: false,
-        };
+        let msg = PipelineMessage::text("user", formatted, 100);
         let parsed = parse_tool_result_metadata(&msg);
         assert!(
             parsed.is_some(),

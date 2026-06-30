@@ -141,11 +141,22 @@ impl EvalClient {
     /// nous agent.
     #[instrument(skip(self, content))]
     pub async fn ingest_transcript(&self, nous_id: &str, content: &str) -> Result<IngestResponse> {
+        self.ingest_knowledge(nous_id, content, "markdown").await
+    }
+
+    /// Ingest content into the knowledge store with an explicit format.
+    #[instrument(skip(self, content))]
+    pub async fn ingest_knowledge(
+        &self,
+        nous_id: &str,
+        content: &str,
+        format: &str,
+    ) -> Result<IngestResponse> {
         let url = format!("{}/api/v1/knowledge/ingest", self.base_url);
         let body = serde_json::json!({
             "nous_id": nous_id,
             "content": content,
-            "format": "markdown",
+            "format": format,
         });
         let resp = self.authed_post(&url, &body).await?;
         let status = resp.status().as_u16();
@@ -164,11 +175,63 @@ impl EvalClient {
         limit: u32,
     ) -> Result<KnowledgeSearchResponse> {
         let base = format!("{}/api/v1/knowledge/search", self.base_url);
-        let mut req = self.http.get(&base).query(&[
-            ("q", query),
-            ("nous_id", nous_id),
-            ("limit", &limit.to_string()),
-        ]);
+        let limit = limit.to_string();
+        let mut req =
+            self.http
+                .get(&base)
+                .query(&[("q", query), ("nous_id", nous_id), ("limit", &limit)]);
+        if let Some(ref token) = self.token {
+            req = req.header("authorization", format!("Bearer {}", token.expose_secret()));
+        }
+        let resp = req.send().await.context(error::HttpSnafu)?;
+        self.expect_ok(&base, resp).await
+    }
+
+    /// Explain knowledge-store retrieval for a query.
+    #[instrument(skip(self))]
+    pub async fn explain_knowledge(
+        &self,
+        query: &str,
+        nous_id: &str,
+        limit: u32,
+    ) -> Result<KnowledgeExplainResponse> {
+        let base = format!("{}/api/v1/knowledge/search/explain", self.base_url);
+        let limit = limit.to_string();
+        let mut req =
+            self.http
+                .get(&base)
+                .query(&[("q", query), ("nous_id", nous_id), ("limit", &limit)]);
+        if let Some(ref token) = self.token {
+            req = req.header("authorization", format!("Bearer {}", token.expose_secret()));
+        }
+        let resp = req.send().await.context(error::HttpSnafu)?;
+        self.expect_ok(&base, resp).await
+    }
+
+    /// List durable knowledge facts for a nous agent.
+    #[instrument(skip(self))]
+    pub async fn list_knowledge_facts(
+        &self,
+        nous_id: &str,
+        filter: Option<&str>,
+        limit: u32,
+        sort: &str,
+        order: &str,
+        include_forgotten: bool,
+    ) -> Result<KnowledgeFactsResponse> {
+        let base = format!("{}/api/v1/knowledge/facts", self.base_url);
+        let mut params = vec![
+            ("nous_id", nous_id.to_owned()),
+            ("limit", limit.to_string()),
+            ("sort", sort.to_owned()),
+            ("order", order.to_owned()),
+            ("include_forgotten", include_forgotten.to_string()),
+        ];
+        if let Some(filter) = filter {
+            params.push(("filter", filter.to_owned()));
+        }
+
+        let mut req = self.http.get(&base).query(&params);
         if let Some(ref token) = self.token {
             req = req.header("authorization", format!("Bearer {}", token.expose_secret()));
         }
@@ -461,9 +524,100 @@ pub struct KnowledgeFact {
     /// Confidence score (0.0 to 1.0).
     #[serde(default)]
     pub confidence: f64,
+    /// Epistemic tier returned by the search API.
+    #[serde(default)]
+    pub tier: String,
+    /// Fact type returned by the search API.
+    #[serde(default)]
+    pub fact_type: String,
     /// Search relevance score.
     #[serde(default)]
     pub score: f64,
+}
+
+/// Response from the knowledge facts endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeFactsResponse {
+    /// Durable fact rows.
+    #[serde(default)]
+    pub facts: Vec<KnowledgeFactDetail>,
+    /// Total matching facts before pagination.
+    #[serde(default)]
+    pub total: usize,
+}
+
+/// Durable fact row returned by `/api/v1/knowledge/facts`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeFactDetail {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
+    /// Unique fact identifier.
+    pub id: String,
+    /// Fact content text.
+    #[serde(default)]
+    pub content: String,
+    /// Fact type/category.
+    #[serde(default)]
+    pub fact_type: String,
+    /// Confidence score (0.0 to 1.0).
+    #[serde(default)]
+    pub confidence: f64,
+    /// Epistemic tier.
+    #[serde(default)]
+    pub tier: String,
+    /// Source session or evidence ID.
+    #[serde(default)]
+    pub source_session_id: Option<String>,
+    /// Replacement fact ID when this row was superseded.
+    #[serde(default)]
+    pub superseded_by: Option<String>,
+    /// Whether this fact has been intentionally forgotten.
+    #[serde(default)]
+    pub is_forgotten: bool,
+}
+
+/// Explainable knowledge search response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeExplainResponse {
+    /// Query text used by the backend.
+    pub query: String,
+    /// Number of candidates considered.
+    #[serde(default)]
+    pub total_candidates: usize,
+    /// Selected candidate facts.
+    #[serde(default)]
+    pub selected: Vec<KnowledgeExplainCandidate>,
+    /// Dropped candidate facts.
+    #[serde(default)]
+    pub dropped: Vec<KnowledgeExplainCandidate>,
+}
+
+/// Candidate returned by the knowledge explain endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KnowledgeExplainCandidate {
+    // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
+    /// Fact identifier.
+    pub id: String,
+    /// Fact content text.
+    #[serde(default)]
+    pub content: String,
+    /// Confidence score (0.0 to 1.0).
+    #[serde(default)]
+    pub confidence: f64,
+    /// Epistemic tier.
+    #[serde(default)]
+    pub tier: String,
+    /// Fact type/category.
+    #[serde(default)]
+    pub fact_type: String,
+    /// Recall score assigned to this candidate.
+    #[serde(default)]
+    pub score: f64,
+    /// Candidate decision (`selected`, `dropped`, or `filtered`).
+    #[serde(default)]
+    pub decision: String,
+    /// Backend explanation reasons.
+    #[serde(default)]
+    pub reasons: Vec<String>,
 }
 
 #[cfg(test)]
