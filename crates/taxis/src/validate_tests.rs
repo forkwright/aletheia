@@ -597,6 +597,7 @@ fn accepts_openai_compat_with_base_url() {
 #[test]
 fn accepts_valid_external_http_tool() {
     let section = json!({
+        "requiredFailureMode": "fail_startup",
         "required": {
             "search": {
                 "type": "http",
@@ -618,6 +619,44 @@ fn accepts_valid_external_http_tool() {
     assert!(
         validate_section("tools", &section).is_ok(),
         "valid external tools should be accepted"
+    );
+}
+
+#[test]
+fn accepts_explicit_degraded_required_tool_failure_mode() {
+    let section = json!({
+        "requiredFailureMode": "degraded",
+        "required": {
+            "search": {
+                "type": "http",
+                "endpoint": "http://localhost:3100",
+                "method": "post",
+                "groups": ["mcp"],
+                "reversibility": "irreversible"
+            }
+        }
+    });
+    assert!(
+        validate_section("tools", &section).is_ok(),
+        "operators should be able to opt into degraded startup for required tool failures"
+    );
+}
+
+#[test]
+fn rejects_invalid_required_tool_failure_mode() {
+    let section = json!({
+        "requiredFailureMode": "warn",
+        "required": {}
+    });
+    let result = validate_section("tools", &section);
+    assert!(
+        result.is_err(),
+        "unknown required tool failure mode should be rejected"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("requiredFailureMode") && err.contains("fail_startup"),
+        "error should identify valid failure modes: {err}"
     );
 }
 
