@@ -9,8 +9,9 @@
 //! - `ALETHEIA_MEMORY_MCP_STORE` — override the store path directly, e.g. to
 //!   target a different cohort at `<root>/data/knowledge.fjall/<cohort>`.
 //! - `ALETHEIA_MEMORY_MCP_NOUS_ID` — bind the server to a single caller
-//!   identity (nous). Read tools fail closed when this is unset.
-//! - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` — enable write tools. The capability is
+//!   identity (nous). Read and write tools fail closed when this is unset.
+//! - `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` — enable write tool registration. Write
+//!   calls are still scoped to `ALETHEIA_MEMORY_MCP_NOUS_ID`. The capability is
 //!   configured out-of-band and is never accepted as a tool argument.
 //! - `ALETHEIA_MEMORY_MCP_ADMIN_DIAGNOSTICS` — allow full store-path
 //!   diagnostics when the write token is also configured.

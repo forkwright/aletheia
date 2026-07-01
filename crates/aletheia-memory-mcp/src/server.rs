@@ -4,7 +4,8 @@
 //! path (fjall) or in-memory for tests. Each tool call dispatches through
 //! the `#[tool_router]` macro; long-running store queries run on a blocking
 //! task pool via `spawn_blocking` to avoid stalling the stdio reactor. Write
-//! tools are registered only when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is present.
+//! tools are registered only when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is present
+//! and calls are scoped to `ALETHEIA_MEMORY_MCP_NOUS_ID`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -32,8 +33,9 @@ pub struct MemoryServer {
     /// Bound caller identity (nous) for read-tool recall scope.
     /// If `None`, read tools reject every request.
     pub(crate) nous_id: Option<String>,
-    /// Capability token for write tools, if configured.
-    /// If `None`, write tools are not registered.
+    /// Capability token for write tool registration, if configured.
+    /// If `None`, write tools are not registered; if present, write calls still
+    /// require a bound caller identity.
     pub(crate) write_token: Option<String>,
     tool_router: ToolRouter<Self>,
 }
@@ -50,6 +52,20 @@ impl MemoryServer {
     /// capability is configured, then callers still have to ask for the path
     /// in `nous_stats`.
     const ADMIN_DIAGNOSTICS_ENV: &str = "ALETHEIA_MEMORY_MCP_ADMIN_DIAGNOSTICS";
+
+    fn optional_env(name: &str) -> Option<String> {
+        match std::env::var(name) {
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                tracing::warn!(
+                    env = name,
+                    "environment variable is not valid Unicode; treating as unset"
+                );
+                None
+            }
+        }
+    }
 
     /// Sanitize a raw caller identity read from env or provided by the caller.
     ///
@@ -140,14 +156,15 @@ impl MemoryServer {
     /// Pass `None` for in-memory stores.
     ///
     /// The caller identity is read from `ALETHEIA_MEMORY_MCP_NOUS_ID`.
-    /// Write tools are registered if `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set.
+    /// Write tools are registered if `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set,
+    /// then scoped to the same caller identity.
     #[must_use]
     pub fn new(store: Arc<KnowledgeStore>, store_path: Option<PathBuf>) -> Self {
-        let nous_id = Self::sanitize_nous_id(std::env::var("ALETHEIA_MEMORY_MCP_NOUS_ID").ok());
+        let nous_id = Self::sanitize_nous_id(Self::optional_env("ALETHEIA_MEMORY_MCP_NOUS_ID"));
         let write_token =
-            Self::sanitize_write_token(std::env::var("ALETHEIA_MEMORY_MCP_WRITE_TOKEN").ok());
+            Self::sanitize_write_token(Self::optional_env("ALETHEIA_MEMORY_MCP_WRITE_TOKEN"));
         let admin_diagnostics = Self::sanitize_admin_diagnostics(
-            std::env::var(Self::ADMIN_DIAGNOSTICS_ENV).ok(),
+            Self::optional_env(Self::ADMIN_DIAGNOSTICS_ENV),
             write_token.as_ref(),
         );
         let tool_router = Self::router_for(write_token.as_ref());
@@ -171,7 +188,7 @@ impl MemoryServer {
         store_path: Option<PathBuf>,
         write_token: Option<String>,
     ) -> Self {
-        let nous_id = Self::sanitize_nous_id(std::env::var("ALETHEIA_MEMORY_MCP_NOUS_ID").ok());
+        let nous_id = Self::sanitize_nous_id(Self::optional_env("ALETHEIA_MEMORY_MCP_NOUS_ID"));
         let write_token = Self::sanitize_write_token(write_token);
         let tool_router = Self::router_for(write_token.as_ref());
         Self {
@@ -318,7 +335,8 @@ impl rmcp::handler::server::ServerHandler for MemoryServer {
                  Use nous_search for recall, nous_neighbors for graph \
                  traversal, nous_list_topics for fact-type enumeration, \
                  and nous_stats for health and counts. Write tools are exposed \
-                 only when ALETHEIA_MEMORY_MCP_WRITE_TOKEN is configured.",
+                 only when ALETHEIA_MEMORY_MCP_WRITE_TOKEN is configured and \
+                 are scoped to ALETHEIA_MEMORY_MCP_NOUS_ID.",
             )
     }
 }

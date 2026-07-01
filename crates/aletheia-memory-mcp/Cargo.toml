@@ -1,7 +1,8 @@
+# kanon:ignore NAMING/no-owner-prefix -- WHY: crate/binary name is the existing MCP package surface; renaming is a cross-repo migration outside this security fix.
 [package]
 name = "aletheia-memory-mcp"
 version.workspace = true
-description = "Standalone stdio MCP server exposing Aletheia's memory and token-gated write tools to external agents"
+description = "Standalone stdio MCP server exposing identity-scoped Aletheia memory tools to external agents"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
