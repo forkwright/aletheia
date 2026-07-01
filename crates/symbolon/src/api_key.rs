@@ -108,6 +108,7 @@ pub(crate) fn validate(store: &AuthStore, raw_key: &str, issuer: &str) -> Result
         nous_id: record.nous_id,
         iss: issuer.to_owned(),
         iat: 0,
+        nbf: None,
         exp: 0,
         jti: record.id,
         kind: TokenKind::Access,

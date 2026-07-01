@@ -81,6 +81,9 @@ pub struct Claims {
     pub iss: String,
     /// Issued-at (unix seconds).
     pub iat: i64,
+    /// Not-before (unix seconds).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nbf: Option<i64>,
     /// Expiration (unix seconds).
     pub exp: i64,
     /// Unique token ID (for revocation).
