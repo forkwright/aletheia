@@ -22,12 +22,21 @@ id = "RUSTSEC-2025-0052"
 reason = "async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7"
 
 [[advisories.ignore]]
+id = "RUSTSEC-2026-0192"
+reason = "ttf-parser unmaintained — transitive via fontdb→usvg→typst-pdf and rustybuzz→typst; maintainer archived the repo with no upstream fix. Alternatives (skrifa) require upstream migration."
+
+
+[[advisories.ignore]]
 id = "RUSTSEC-2025-0134"
-reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. Tracked for removal when qdrant-client/tonic migrate to the rustls-pki-types PemObject API"
+reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. cargo-deny advisory-DB version does not trigger but crate present (2.2.0); keeps sync with .cargo/audit.toml"
 
 [[advisories.ignore]]
 id = "RUSTSEC-2026-0097"
-reason = "rand 0.8 unsound — transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Re-syncs deny.toml with .cargo/audit.toml + osv-scanner.toml"
+reason = "rand 0.8 unsound (custom logger rand::rng() path not exercised) — transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. cargo-deny does not trigger; keeps sync with .cargo/audit.toml"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0186"
+reason = "memmap2 unsound (unchecked pointer offset) — transitive via candle-core (safetensors mmap) + grep-searcher, pinned ^0.9; unsound offset path not exercised. cargo-deny does not trigger; keeps sync with .cargo/audit.toml. review-by: 2026-12-01"
 
 [licenses]
 # WHY: `version = 2` enables modern SPDX 3.x parsing so "AGPL-3.0-or-later" /
@@ -184,6 +193,3 @@ unknown-git = "deny"
 # git sources are expected until crates.io publication is decided.
 allow-org.github = ["forkwright"]
 
-[[advisories.ignore]]
-id = "RUSTSEC-2026-0186"
-reason = "memmap2 unsound (unchecked pointer offset); reached transitively via candle-core (safetensors mmap weight load) + grep-searcher, both pin memmap2 ^0.9 with no compatible upgrade; the unsound offset path is not exercised by these consumers. review-by: 2026-12-01"
