@@ -182,7 +182,7 @@ fn export_matrix() -> ExportMatrixResult<()> {
     Ok(())
 }
 
-fn canonical_document() -> Document {
+fn chart_image(first: f64, second: f64) -> Image {
     let chart = Chart {
         kind: ChartKind::Line,
         title: None,
@@ -194,7 +194,7 @@ fn canonical_document() -> Document {
                     x: None,
                     y: FactCite {
                         id: FactId("rev-1".to_owned()),
-                        value: 10.0,
+                        value: first,
                         unit: Unit::Number,
                     },
                 },
@@ -203,7 +203,7 @@ fn canonical_document() -> Document {
                     x: None,
                     y: FactCite {
                         id: FactId("rev-2".to_owned()),
-                        value: 12.0,
+                        value: second,
                         unit: Unit::Number,
                     },
                 },
@@ -220,6 +220,14 @@ fn canonical_document() -> Document {
 
     let chart_bytes = serde_json::to_vec(&chart).unwrap_or_else(|e| panic!("chart json: {e}"));
 
+    Image {
+        data: chart_bytes,
+        mime: "application/vnd.poiesis.chart+json".to_owned(),
+        alt: "Revenue trend".to_owned(),
+    }
+}
+
+fn canonical_document() -> Document {
     Document {
         metadata: Metadata {
             title: "Export Matrix".to_owned(),
@@ -242,19 +250,14 @@ fn canonical_document() -> Document {
                 headers: vec!["Quarter".to_owned(), "Value".to_owned()],
                 rows: vec![vec![RichText::from("North"), RichText::from("10")]],
             }),
-            Block::Image(Image {
-                data: chart_bytes,
-                mime: "application/vnd.poiesis.chart+json".to_owned(),
-                alt: "Revenue trend".to_owned(),
-            }),
+            Block::Image(chart_image(10.0, 12.0)),
         ],
     }
 }
 
 fn math_document() -> Document {
-    // Math-only (no chart figure): this exercises the DisplayMath -> LaTeX-engine
-    // routing. A chart SVG on the LaTeX-PDF path would need rsvg-convert + svg.sty
-    // (external TeX tooling); figure embedding is covered by the docx/html exports.
+    // NOTE: This exercises DisplayMath -> LaTeX-engine routing with a chart
+    // figure on the same LaTeX-PDF path.
     Document {
         metadata: Metadata {
             title: "Math".to_owned(),
@@ -268,6 +271,7 @@ fn math_document() -> Document {
             },
             Block::Paragraph(RichText::from("The Pythagorean identity:")),
             Block::DisplayMath("x^2 + y^2 = z^2".to_owned()),
+            Block::Image(chart_image(1.0, 2.0)),
         ],
     }
 }

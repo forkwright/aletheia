@@ -442,6 +442,28 @@ fn chart_figure_renders_png_in_docx() {
 }
 
 #[test]
+fn chart_figure_renders_png_in_latex() {
+    if !pandoc_available() {
+        return;
+    }
+
+    let latex = String::from_utf8(render_latex_from_doc(&chart_doc()).expect("latex must render"))
+        .expect("latex must be utf-8");
+    assert!(
+        latex.contains(".png"),
+        "latex output must reference the rasterized PNG asset, got: {latex}"
+    );
+    assert!(
+        !latex.contains(".svg"),
+        "latex output must not reference SVG assets, got: {latex}"
+    );
+    assert!(
+        !latex.contains("includesvg"),
+        "latex output must not require svg.sty, got: {latex}"
+    );
+}
+
+#[test]
 fn chart_figure_renders_svg_in_html() {
     if !pandoc_available() {
         return;
