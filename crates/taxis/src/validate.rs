@@ -287,7 +287,9 @@ fn validate_model_route(value: &Value, path: &str, errors: &mut Vec<String>) {
                 errors.push(format!("{path}.provider must not be empty"));
             }
         }
-        _ => {}
+        _ => {
+            // NOTE: non-object route values have no model-route fields to validate.
+        }
     }
 }
 
@@ -953,10 +955,31 @@ const VALID_REVERSIBILITIES: &[&str] = &[
     "partially_reversible",
     "irreversible",
 ];
+const VALID_REQUIRED_TOOL_FAILURE_MODES: &[&str] = &["fail_startup", "degraded"];
 
 fn validate_tools(value: &Value, errors: &mut Vec<String>) {
+    validate_required_tool_failure_mode(value, errors);
     validate_tool_group(value, "required", errors);
     validate_tool_group(value, "optional", errors);
+}
+
+fn validate_required_tool_failure_mode(value: &Value, errors: &mut Vec<String>) {
+    let Some(mode) = value.get("requiredFailureMode") else {
+        return;
+    };
+    let Some(mode) = mode.as_str() else {
+        errors.push(format!(
+            "tools.requiredFailureMode must be one of: {}",
+            VALID_REQUIRED_TOOL_FAILURE_MODES.join(", ")
+        ));
+        return;
+    };
+    if !VALID_REQUIRED_TOOL_FAILURE_MODES.contains(&mode) {
+        errors.push(format!(
+            "tools.requiredFailureMode '{mode}' is invalid; must be one of: {}",
+            VALID_REQUIRED_TOOL_FAILURE_MODES.join(", ")
+        ));
+    }
 }
 
 fn validate_tool_group(value: &Value, group: &str, errors: &mut Vec<String>) {

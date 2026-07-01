@@ -40,7 +40,7 @@ pub use resolved::{
 };
 pub use tools::{
     ExternalToolAuth, ExternalToolEntry, ExternalToolGroupId, ExternalToolKind, ExternalToolMethod,
-    ExternalToolReversibility, ExternalToolsConfig,
+    ExternalToolRequiredFailureMode, ExternalToolReversibility, ExternalToolsConfig,
 };
 
 use std::collections::HashMap;
@@ -527,6 +527,7 @@ impl Default for MatrixAccountConfig {
         Self {
             enabled: true,
             homeserver: String::new(),
+            // kanon:ignore RUST/plain-string-secret -- WHY: stores an environment variable name, not the Matrix access token.
             access_token_env: String::new(),
             user_id: None,
             auto_start: true,

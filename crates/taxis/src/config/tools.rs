@@ -1,3 +1,4 @@
+// kanon:ignore API/mixed-casing -- WHY: config fields use camelCase while protocol enum wire values use lowercase or snake_case.
 //! Typed configuration for runtime-bridged external tools.
 //!
 //! The `[tools]` section is owned by `taxis` so it participates in the config
@@ -23,6 +24,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[serde(deny_unknown_fields)]
+#[non_exhaustive]
 pub enum ExternalToolAuth {
     /// Static bearer token sent as `Authorization: Bearer <token>`.
     Bearer {
@@ -95,10 +97,24 @@ impl ExternalToolAuth {
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct ExternalToolsConfig {
-    /// Tools that every deployment must have. Startup warns if unavailable.
+    /// Startup policy when a required external tool cannot be registered.
+    pub required_failure_mode: ExternalToolRequiredFailureMode,
+    /// Tools that every deployment must have. Unavailability follows `required_failure_mode`.
     pub required: HashMap<String, ExternalToolEntry>,
     /// Tools that are deployment-specific. Registered if available.
     pub optional: HashMap<String, ExternalToolEntry>,
+}
+
+/// Startup policy for unavailable `[tools.required]` declarations.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ExternalToolRequiredFailureMode {
+    /// Abort startup when a required tool cannot be registered.
+    #[default]
+    FailStartup,
+    /// Continue startup in an explicit degraded state.
+    Degraded,
 }
 
 /// A single external tool declaration.
@@ -228,6 +244,25 @@ mod tests {
     #![expect(clippy::expect_used, reason = "test assertions")]
 
     use super::*;
+
+    #[test]
+    fn required_tools_fail_startup_by_default() {
+        assert_eq!(
+            ExternalToolsConfig::default().required_failure_mode,
+            ExternalToolRequiredFailureMode::FailStartup
+        );
+    }
+
+    #[test]
+    fn required_tool_failure_mode_deserializes_degraded() {
+        let json = r#"{"requiredFailureMode":"degraded"}"#;
+        let config: ExternalToolsConfig =
+            serde_json::from_str(json).expect("requiredFailureMode must deserialize");
+        assert_eq!(
+            config.required_failure_mode,
+            ExternalToolRequiredFailureMode::Degraded
+        );
+    }
 
     #[test]
     fn bearer_auth_debug_redacts_token() {
