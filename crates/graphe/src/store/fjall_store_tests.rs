@@ -11,7 +11,8 @@ use super::{
 };
 use crate::error::Error;
 use crate::test_fixtures::test_store;
-use crate::types::{BlackboardRow, Role, SessionStatus, UsageRecord};
+use crate::types::{BlackboardRow, Role, SessionStatus, SessionType, UsageRecord};
+use tempfile::TempDir;
 
 fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value: &[u8]) {
     let partition = store.partition(partition_name).expect("partition opens");
@@ -60,6 +61,55 @@ fn create_and_find_session() {
     let found = store.find_session("syn", "main").expect("find session");
     assert!(found.is_some(), "session should exist after creation");
     assert_eq!(found.unwrap().id, "ses-1");
+}
+
+#[test]
+fn open_backfills_legacy_session_type_from_missing_field() {
+    let dir = TempDir::new().expect("temp dir creates");
+    let path = dir.path().join("sessions");
+
+    {
+        let store = super::SessionStore::open(&path).expect("open store");
+        for (id, key) in [
+            ("ses-legacy-background", "daemon:prosoche"),
+            ("ses-legacy-ephemeral", "ask:demiurge"),
+            ("ses-legacy-primary", "main"),
+        ] {
+            let data = serde_json::to_vec(&serde_json::json!({
+                "id": id,
+                "nous_id": "syn",
+                "session_key": key,
+                "status": "active",
+                "model": null,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "token_count_estimate": 0,
+                "message_count": 0,
+                "last_input_tokens": 0,
+                "distillation_count": 0,
+                "computed_context_tokens": 0
+            }))
+            .expect("legacy session json serializes");
+            write_raw(&store, "sessions", id, &data);
+        }
+        store.ensure_durable().expect("legacy rows are durable");
+    }
+
+    let reopened = super::SessionStore::open(&path).expect("reopen store");
+    for (id, expected) in [
+        ("ses-legacy-background", SessionType::Background),
+        ("ses-legacy-ephemeral", SessionType::Ephemeral),
+        ("ses-legacy-primary", SessionType::Primary),
+    ] {
+        let session = reopened
+            .find_session_by_id(id)
+            .expect("query succeeds")
+            .expect("session exists");
+        assert_eq!(
+            session.session_type, expected,
+            "legacy row {id} should backfill as {expected:?}"
+        );
+    }
 }
 
 #[test]

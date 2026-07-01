@@ -104,6 +104,23 @@ fn now_iso() -> String {
     koina::fjall::now_iso()
 }
 
+/// WHY: legacy rows without `session_type` were created under the old
+/// key-derived lifecycle rules; this classifier is restricted to one-time
+/// backfill and is not used for new session creation.
+fn legacy_session_type_for_backfill(key: &str) -> SessionType {
+    if key.starts_with("daemon:") || key.contains("prosoche") {
+        SessionType::Background
+    } else if key.starts_with("ask:")
+        || key.starts_with("spawn:")
+        || key.starts_with("dispatch:")
+        || key.starts_with("ephemeral:")
+    {
+        SessionType::Ephemeral
+    } else {
+        SessionType::Primary
+    }
+}
+
 // ── Distillation record (fjall-internal, not a public type) ────────────────
 
 #[derive(Serialize, Deserialize)]
@@ -329,6 +346,16 @@ struct PutNoteSpec<'a> {
     opts: PutNoteOpts<'a>,
 }
 
+#[derive(Clone, Copy)]
+struct FindOrCreateSessionSpec<'a> {
+    id: &'a str,
+    nous_id: &'a str,
+    session_key: &'a str,
+    session_type: SessionType,
+    model: Option<&'a str>,
+    parent_session_id: Option<&'a str>,
+}
+
 impl SessionStore {
     /// Open (or create) a persistent session store at the given path.
     ///
@@ -385,6 +412,7 @@ impl SessionStore {
                 }
                 .build()
             })?;
+        Self::backfill_legacy_session_types(&fdb.db, &sessions_part)?;
         let snap = fdb.db.read_tx();
         let mut count = 0usize;
         for guard in snap.range::<&str, _>(&sessions_part, ..) {
@@ -477,6 +505,82 @@ impl SessionStore {
                 Ok(Some(v))
             }
         }
+    }
+
+    fn backfill_legacy_session_types(
+        db: &SingleWriterTxDatabase,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+    ) -> Result<()> {
+        use fjall::Readable;
+
+        let snap = db.read_tx();
+        let mut updates: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+
+        for guard in snap.range::<&str, _>(sessions_part, ..) {
+            let (key, value_bytes) = guard.into_inner().map_err(|e| {
+                error::StorageSnafu {
+                    message: format!("fjall legacy session_type scan: {e}"),
+                }
+                .build()
+            })?;
+            if key.starts_with(b"idx:") {
+                continue;
+            }
+
+            let mut value: serde_json::Value =
+                serde_json::from_slice(&value_bytes).context(error::StoredJsonSnafu)?;
+            let Some(object) = value.as_object_mut() else {
+                return Err(storage_error(format!(
+                    "legacy session row {} is not a JSON object",
+                    String::from_utf8_lossy(&key)
+                )));
+            };
+            if object.contains_key("session_type") {
+                continue;
+            }
+
+            let session_key = object
+                .get("session_key")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    storage_error(format!(
+                        "legacy session row {} missing session_key",
+                        String::from_utf8_lossy(&key)
+                    ))
+                })?;
+            let session_type = legacy_session_type_for_backfill(session_key);
+            object.insert(
+                "session_type".to_owned(),
+                serde_json::Value::String(session_type.as_str().to_owned()),
+            );
+            let encoded_session = serde_json::to_vec(&value).context(error::StoredJsonSnafu)?;
+            updates.push((key.to_vec(), encoded_session));
+        }
+        drop(snap);
+
+        if updates.is_empty() {
+            return Ok(());
+        }
+
+        let count = updates.len();
+        let mut tx = db.write_tx();
+        for (key, value) in updates {
+            tx.insert(sessions_part, key.as_slice(), value.as_slice());
+        }
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall legacy session_type backfill commit: {e}"),
+            }
+            .build()
+        })?;
+        db.persist(PersistMode::SyncAll).map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall legacy session_type backfill persist: {e}"),
+            }
+            .build()
+        })?;
+        info!(count, "backfilled legacy session_type fields");
+        Ok(())
     }
 
     // ── Session helpers ───────────────────────────────────────────────────
@@ -704,13 +808,17 @@ impl SessionStore {
     fn find_or_create_session_in_tx(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         sessions_part: &fjall::SingleWriterTxKeyspace,
-        id: &str,
-        nous_id: &str,
-        session_key: &str,
-        model: Option<&str>,
-        parent_session_id: Option<&str>,
+        spec: FindOrCreateSessionSpec<'_>,
     ) -> Result<(Session, bool, bool)> {
         use fjall::Readable;
+        let FindOrCreateSessionSpec {
+            id,
+            nous_id,
+            session_key,
+            session_type,
+            model,
+            parent_session_id,
+        } = spec;
 
         if let Some(existing_bytes) = tx
             .get(sessions_part, id)
@@ -753,7 +861,6 @@ impl SessionStore {
             return Self::active_or_reactivated_session(tx, sessions_part, existing);
         }
 
-        let session_type = SessionType::from_key(session_key);
         let now = now_iso();
         let session = Session {
             id: id.to_owned(),
@@ -906,13 +1013,34 @@ impl SessionStore {
         self.read_session_by_raw_id(id)
     }
 
-    /// Create a new session.
+    /// Create a new primary session.
     #[instrument(skip(self))]
     pub fn create_session(
         &self,
         id: &str,
         nous_id: &str,
         session_key: &str,
+        parent_session_id: Option<&str>,
+        model: Option<&str>,
+    ) -> Result<Session> {
+        self.create_session_with_type(
+            id,
+            nous_id,
+            session_key,
+            SessionType::Primary,
+            parent_session_id,
+            model,
+        )
+    }
+
+    /// Create a new session with an explicit lifecycle type.
+    #[instrument(skip(self))]
+    pub fn create_session_with_type(
+        &self,
+        id: &str,
+        nous_id: &str,
+        session_key: &str,
+        session_type: SessionType,
         parent_session_id: Option<&str>,
         model: Option<&str>,
     ) -> Result<Session> {
@@ -928,7 +1056,6 @@ impl SessionStore {
             .build());
         }
 
-        let session_type = SessionType::from_key(session_key);
         let now = now_iso();
 
         let session = Session {
@@ -976,13 +1103,34 @@ impl SessionStore {
         Ok(session)
     }
 
-    /// Find or create an active session. Reactivates archived sessions if found.
+    /// Find or create an active primary session. Reactivates archived sessions if found.
     #[instrument(skip(self))]
     pub fn find_or_create_session(
         &self,
         id: &str,
         nous_id: &str,
         session_key: &str,
+        model: Option<&str>,
+        parent_session_id: Option<&str>,
+    ) -> Result<Session> {
+        self.find_or_create_session_with_type(
+            id,
+            nous_id,
+            session_key,
+            SessionType::Primary,
+            model,
+            parent_session_id,
+        )
+    }
+
+    /// Find or create an active session with an explicit lifecycle type.
+    #[instrument(skip(self))]
+    pub fn find_or_create_session_with_type(
+        &self,
+        id: &str,
+        nous_id: &str,
+        session_key: &str,
+        session_type: SessionType,
         model: Option<&str>,
         parent_session_id: Option<&str>,
     ) -> Result<Session> {
@@ -995,11 +1143,14 @@ impl SessionStore {
         let (session, mutated, created) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
-            id,
-            nous_id,
-            session_key,
-            model,
-            parent_session_id,
+            FindOrCreateSessionSpec {
+                id,
+                nous_id,
+                session_key,
+                session_type,
+                model,
+                parent_session_id,
+            },
         )?;
         if mutated {
             tx.commit().map_err(|e| {
@@ -2099,6 +2250,20 @@ impl SessionStore {
     /// durability flush fails.
     #[instrument(skip(self, request), fields(session_id = %request.session_id))]
     pub fn finalize_turn(&self, request: &FinalizeTurnRequest<'_>) -> Result<FinalizeTurnResult> {
+        self.finalize_turn_with_type(request, SessionType::Primary)
+    }
+
+    /// Persist a complete conversational turn with an explicit session type.
+    ///
+    /// # Errors
+    /// Returns an error if any partition operation, transaction commit, or
+    /// durability flush fails.
+    #[instrument(skip(self, request), fields(session_id = %request.session_id, %session_type))]
+    pub fn finalize_turn_with_type(
+        &self,
+        request: &FinalizeTurnRequest<'_>,
+        session_type: SessionType,
+    ) -> Result<FinalizeTurnResult> {
         let _guard = self
             .write_lock
             .lock()
@@ -2116,11 +2281,14 @@ impl SessionStore {
         let (mut session, _mutated, _) = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
-            request.session_id,
-            request.nous_id,
-            request.session_key,
-            request.model,
-            request.parent_session_id,
+            FindOrCreateSessionSpec {
+                id: request.session_id,
+                nous_id: request.nous_id,
+                session_key: request.session_key,
+                session_type,
+                model: request.model,
+                parent_session_id: request.parent_session_id,
+            },
         )?;
 
         let mut messages_persisted = 0usize;
