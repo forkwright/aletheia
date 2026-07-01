@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use mneme::id::{EntityId, FactId};
@@ -9,6 +10,42 @@ use mneme::knowledge_store::KnowledgeStore;
 
 fn test_store() -> Arc<KnowledgeStore> {
     KnowledgeStore::open_mem().expect("failed to open in-memory store")
+}
+
+fn write_fjall_marker(path: &Path) {
+    use std::io::Write as _;
+
+    std::fs::create_dir_all(path).expect("create fjall marker dir");
+    let mut marker = std::fs::File::create(path.join("version")).expect("create fjall marker");
+    marker.write_all(b"3").expect("write fjall version marker");
+}
+
+#[test]
+fn recovery_store_paths_skips_internal_keyspaces_even_if_polluted() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("data").join("knowledge.fjall");
+    let shared = root.join("shared");
+    let keyspaces = root.join("keyspaces");
+    write_fjall_marker(&shared);
+    write_fjall_marker(&keyspaces);
+
+    let oikos = taxis::oikos::Oikos::from_root(tmp.path());
+    let stores = super::recovery_store_paths(&oikos).expect("recovery stores");
+
+    assert_eq!(stores, vec![shared]);
+}
+
+#[test]
+fn recovery_store_paths_maps_legacy_root_to_shared_migration_target() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("data").join("knowledge.fjall");
+    write_fjall_marker(&root);
+    std::fs::create_dir_all(root.join("keyspaces")).expect("create legacy keyspaces dir");
+
+    let oikos = taxis::oikos::Oikos::from_root(tmp.path());
+    let stores = super::recovery_store_paths(&oikos).expect("recovery stores");
+
+    assert_eq!(stores, vec![root.join("shared")]);
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
