@@ -409,7 +409,8 @@ async fn write_tool_accepts_correct_token() {
     let store = seed_store_two_facts();
     let inspect_store = Arc::clone(&store);
     // Create server with an explicit write token (avoids env var manipulation)
-    let server = MemoryServer::with_write_token(store, None, Some(VALID_WRITE_TOKEN.to_owned()));
+    let server = MemoryServer::with_write_token(store, None, Some(VALID_WRITE_TOKEN.to_owned()))
+        .with_nous_id(Some("alice".to_owned()));
 
     let (server_tx, client_rx) = tokio::io::duplex(4096);
     let (client_tx, server_rx) = tokio::io::duplex(4096);

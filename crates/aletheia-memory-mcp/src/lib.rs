@@ -4,7 +4,7 @@
 //! External agents (Claude Code, Cursor, `OpenHands`, etc.) spawn this binary to
 //! query the nous local knowledge graph directly over stdio JSON-RPC. It exposes
 //! Aletheia's session-scoped knowledge-store surface: search, graph traversal,
-//! topic enumeration, health stats, and token-gated writes.
+//! topic enumeration, health stats, and identity-bound token-gated writes.
 //!
 //! # Why a separate crate from diaporeia
 //!
@@ -34,7 +34,9 @@
 //! `nous_id` to access sibling memory.
 //!
 //! Write tools are registered only when `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` is set
-//! at server startup; the capability token is never accepted as a tool argument.
+//! at server startup, and calls must match the launch-bound
+//! `ALETHEIA_MEMORY_MCP_NOUS_ID`; the capability token is never accepted as a
+//! tool argument.
 //! Full local store paths are redacted from `nous_stats` unless
 //! `ALETHEIA_MEMORY_MCP_ADMIN_DIAGNOSTICS` and the write token are both
 //! configured, and the caller explicitly requests the path.

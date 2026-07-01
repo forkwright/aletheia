@@ -2,12 +2,13 @@
 //! MCP tool implementations for the memory server.
 //!
 //! Read tools (`nous_search`, `nous_neighbors`, `nous_list_topics`, `nous_stats`)
-//! are always available.
+//! require the server to be launched with a bound caller identity.
 //!
 //! Write tools (`nous_annotate`, `nous_supersede`, `nous_forget`) are only
 //! registered if the `ALETHEIA_MEMORY_MCP_WRITE_TOKEN` environment variable is
-//! set at server startup. The capability token is configured out-of-band and is
-//! never accepted as a model-visible tool argument.
+//! set at server startup, and each write must match the bound caller identity.
+//! The capability token is configured out-of-band and is never accepted as a
+//! model-visible tool argument.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -117,8 +118,8 @@ pub struct NousNeighborsParams {
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[non_exhaustive]
 pub struct NousAnnotateParams {
-    /// Owning agent (nous) that is authoring the annotation. Must be explicit;
-    /// the `mcp-client` fallback is no longer used for user memory.
+    /// Caller identity assertion. Must match the server-bound
+    /// `ALETHEIA_MEMORY_MCP_NOUS_ID`; it is not used as authority.
     #[schemars(with = "String")]
     pub nous_id: NousId,
     /// Fact ID to annotate.
@@ -142,7 +143,8 @@ pub struct NousSupersedeParams {
     /// ID of the new fact that supersedes it.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub new_fact_id: String,
-    /// Owning agent (nous) recording the supersession. Must be explicit.
+    /// Caller identity assertion. Must match the server-bound
+    /// `ALETHEIA_MEMORY_MCP_NOUS_ID`; it is not used as authority.
     #[schemars(with = "String")]
     pub nous_id: NousId,
     /// Optional source session that caused this supersession write.
@@ -160,7 +162,8 @@ pub struct NousForgetParams {
     /// ID of the fact to forget.
     // kanon:ignore RUST/primitive-for-domain-id — WHY: MCP JSON protocol boundary; String required for serde/schemars JsonSchema derivation
     pub fact_id: String,
-    /// Owning agent (nous) requesting the forget. Must match the fact owner.
+    /// Caller identity assertion. Must match the server-bound
+    /// `ALETHEIA_MEMORY_MCP_NOUS_ID`; it is not used as authority.
     #[schemars(with = "String")]
     pub nous_id: NousId,
     /// Typed reason for forgetting; one of `user_requested`, `outdated`,
@@ -687,6 +690,21 @@ fn validate_fact_content_length(content: &str) -> crate::error::Result<()> {
     Ok(())
 }
 
+fn require_scoped_write_owner(
+    server: &MemoryServer,
+    supplied: &NousId,
+) -> crate::error::Result<String> {
+    server.require_write_token()?;
+    let requester = server.requester_nous_id()?;
+    if supplied.as_str() != requester {
+        return Err(InvalidInputSnafu {
+            message: "supplied nous_id does not match the server-bound caller identity".to_owned(),
+        }
+        .build());
+    }
+    Ok(requester.to_owned())
+}
+
 fn insert_annotation_graph_atomically(
     store: &KnowledgeStore,
     annotation_fact: &Fact,
@@ -1013,7 +1031,7 @@ impl MemoryServer {
                     );
                 if !is_visible {
                     return Err(InvalidInputSnafu {
-                        message: "fact is not visible to the supplied nous_id".to_owned(),
+                        message: "fact is not visible to the server-bound caller".to_owned(),
                     }
                     .build());
                 }
@@ -1380,9 +1398,11 @@ impl MemoryServer {
         &self,
         Parameters(params): Parameters<NousAnnotateParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // WHY: write authorization is server-side; there is no credential in the
-        // model-visible tool arguments.
-        self.require_write_token().map_err(rmcp::ErrorData::from)?;
+        // WHY: writes require both server-side capability and the launch-bound
+        // caller identity; a model-supplied `nous_id` is only a compatibility
+        // assertion and cannot select another owner.
+        let owner_nous_id =
+            require_scoped_write_owner(self, &params.nous_id).map_err(rmcp::ErrorData::from)?;
 
         if params.fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1401,17 +1421,8 @@ impl MemoryServer {
         }
         validate_fact_content_length(&params.content).map_err(rmcp::ErrorData::from)?;
 
-        if params.nous_id.as_str().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id (owner) must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
-
         let fact_id = params.fact_id.clone();
         let content = params.content.clone();
-        let owner_nous_id = params.nous_id.as_str().to_owned();
         let source_session_id =
             parse_optional_source_session_id(params.source_session_id.as_deref())?;
 
@@ -1435,7 +1446,7 @@ impl MemoryServer {
                 if target.nous_id.as_str() != owner_nous_id.as_str() {
                     return Err(InvalidInputSnafu {
                         message:
-                            "annotation request must target a fact owned by the supplied owner nous"
+                            "annotation request must target a fact owned by the server-bound caller"
                                 .to_owned(),
                     }
                     .build());
@@ -1548,9 +1559,11 @@ impl MemoryServer {
         &self,
         Parameters(params): Parameters<NousSupersedeParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // WHY: write authorization is server-side; there is no credential in the
-        // model-visible tool arguments.
-        self.require_write_token().map_err(rmcp::ErrorData::from)?;
+        // WHY: writes require both server-side capability and the launch-bound
+        // caller identity; a model-supplied `nous_id` is only a compatibility
+        // assertion and cannot select another owner.
+        let owner_nous_id =
+            require_scoped_write_owner(self, &params.nous_id).map_err(rmcp::ErrorData::from)?;
 
         if params.old_fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1576,18 +1589,9 @@ impl MemoryServer {
             .into());
         }
 
-        if params.nous_id.as_str().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id (owner) must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
-
         let old_id = params.old_fact_id.clone();
         let new_id = params.new_fact_id.clone();
         let reason = params.reason.clone();
-        let owner_nous_id = params.nous_id.as_str().to_owned();
         let source_session_id =
             parse_optional_source_session_id(params.source_session_id.as_deref())?;
 
@@ -1621,7 +1625,7 @@ impl MemoryServer {
                 {
                     return Err(InvalidInputSnafu {
                         message:
-                            "supersede request must target facts owned by the supplied nous_id"
+                            "supersede request must target facts owned by the server-bound caller"
                                 .to_owned(),
                     }
                     .build());
@@ -1639,7 +1643,7 @@ impl MemoryServer {
                 old_fact.lifecycle.superseded_by = Some(new_fact_id);
 
                 // Create a record fact documenting the supersession, attributing
-                // it to the explicitly supplied owner and inheriting the old
+                // it to the server-bound caller and inheriting the old
                 // fact's scope/visibility/sensitivity.
                 let record_id_str = format!("f-mcp-{}", koina::uuid::uuid_v4());
                 let record_id = mneme::id::FactId::new(record_id_str).map_err(|e| {
@@ -1741,9 +1745,11 @@ impl MemoryServer {
         &self,
         Parameters(params): Parameters<NousForgetParams>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        // WHY: write authorization is server-side; there is no credential in the
-        // model-visible tool arguments.
-        self.require_write_token().map_err(rmcp::ErrorData::from)?;
+        // WHY: writes require both server-side capability and the launch-bound
+        // caller identity; a model-supplied `nous_id` is only a compatibility
+        // assertion and cannot select another owner.
+        let owner_nous_id =
+            require_scoped_write_owner(self, &params.nous_id).map_err(rmcp::ErrorData::from)?;
 
         if params.fact_id.trim().is_empty() {
             return Err(InvalidInputSnafu {
@@ -1761,16 +1767,7 @@ impl MemoryServer {
             .into());
         }
 
-        if params.nous_id.as_str().is_empty() {
-            return Err(InvalidInputSnafu {
-                message: "nous_id (owner) must not be empty".to_owned(),
-            }
-            .build()
-            .into());
-        }
-
         let fact_id_str = params.fact_id.clone();
-        let owner_nous_id = params.nous_id.as_str().to_owned();
         let forget_reason = parse_forget_reason(&params.reason)?;
 
         let forgotten_at = self
@@ -1797,8 +1794,9 @@ impl MemoryServer {
                 })?;
                 if target.nous_id != owner_nous_id {
                     return Err(InvalidInputSnafu {
-                        message: "forget request must target a fact owned by the supplied nous_id"
-                            .to_owned(),
+                        message:
+                            "forget request must target a fact owned by the server-bound caller"
+                                .to_owned(),
                     }
                     .build());
                 }
@@ -2106,8 +2104,9 @@ mod tests {
     }
 
     #[test]
-    fn nous_annotate_params_requires_owner() {
-        // Missing nous_id (owner)
+    fn nous_annotate_params_requires_nous_id_assertion() {
+        // NOTE: the request field is a compatibility assertion; authority comes
+        // from the server-bound caller identity.
         let json = r#"{"fact_id":"f-abc-123","content":"note"}"#;
         assert!(serde_json::from_str::<NousAnnotateParams>(json).is_err());
     }
@@ -2174,7 +2173,7 @@ mod tests {
         );
         assert!(
             annotate_props.contains_key("nous_id"),
-            "nous_annotate schema must expose owner as nous_id"
+            "nous_annotate schema must expose the nous_id assertion"
         );
         assert!(
             !annotate_props.contains_key("session_id"),
@@ -2674,6 +2673,112 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_tools_reject_token_without_bound_identity() {
+        let store = open_store();
+        store
+            .insert_fact(&sample_fact(
+                "f-alice-1",
+                "alice",
+                "alice private note",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
+        let params = NousAnnotateParams {
+            nous_id: valid_nous_id("alice"),
+            fact_id: "f-alice-1".to_owned(),
+            content: "token alone should not authorize".to_owned(),
+            source_session_id: None,
+        };
+        assert_invalid_input_contains(
+            server.nous_annotate(Parameters(params)).await,
+            "caller identity not configured",
+        );
+
+        let rows = store
+            .run_query("?[id] := *facts{id}", BTreeMap::new())
+            .unwrap()
+            .rows_to_json();
+        assert_eq!(rows.len(), 1, "token-only write must not mutate facts");
+    }
+
+    #[tokio::test]
+    async fn cross_agent_read_and_write_denied_by_bound_identity() {
+        let store = open_store();
+        store
+            .insert_fact(&sample_fact(
+                "f-alice-1",
+                "alice",
+                "alice private dispatch note",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+        store
+            .insert_fact(&sample_fact(
+                "f-bob-1",
+                "bob",
+                "bob private dispatch note",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
+        let stats = server
+            .nous_stats(Parameters(NousStatsParams {
+                project_id: None,
+                scope: None,
+                min_visibility: None,
+                max_sensitivity: None,
+                include_store_path: None,
+            }))
+            .await
+            .unwrap();
+        let stats_text = stats
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        let parsed: serde_json::Value = serde_json::from_str(&stats_text).unwrap();
+        assert_eq!(
+            parsed["fact_count"], 1,
+            "alice must not count bob's private fact"
+        );
+
+        let params = NousAnnotateParams {
+            nous_id: valid_nous_id("bob"),
+            fact_id: "f-bob-1".to_owned(),
+            content: "attempted cross-agent annotation".to_owned(),
+            source_session_id: Some("session-cross-agent-denied".to_owned()),
+        };
+        assert_invalid_input_contains(
+            server.nous_annotate(Parameters(params)).await,
+            "supplied nous_id does not match the server-bound caller identity",
+        );
+
+        // WHY: the mismatched principal must be rejected before any annotation
+        // fact is written.
+        let rows = store
+            .run_query("?[id] := *facts{id}", BTreeMap::new())
+            .unwrap()
+            .rows_to_json();
+        assert_eq!(rows.len(), 2, "cross-agent write must not mutate facts");
+    }
+
+    #[tokio::test]
     async fn annotate_preserves_target_scope_and_visibility() {
         let store = open_store();
         let target = sample_fact(
@@ -2688,7 +2793,8 @@ mod tests {
         // project_id is not set in sample_fact; leave it None for this test
         store.insert_fact(&target).unwrap();
 
-        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousAnnotateParams {
             nous_id: valid_nous_id("alice"),
             fact_id: "f-target-1".to_owned(),
@@ -2741,7 +2847,8 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousAnnotateParams {
             nous_id: valid_nous_id("alice"),
             fact_id: "f-bob-1".to_owned(),
@@ -2769,7 +2876,8 @@ mod tests {
         target.lifecycle.forget_reason = Some(mneme::knowledge::ForgetReason::Stale);
         store.insert_fact(&target).unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousAnnotateParams {
             nous_id: valid_nous_id("alice"),
             fact_id: "f-target-forgotten".to_owned(),
@@ -2798,7 +2906,8 @@ mod tests {
             Some(mneme::id::FactId::new("f-target-replacement").unwrap());
         store.insert_fact(&target).unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousAnnotateParams {
             nous_id: valid_nous_id("alice"),
             fact_id: "f-target-superseded".to_owned(),
@@ -2812,7 +2921,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn supersede_uses_explicit_owner_not_mcp_server() {
+    async fn supersede_uses_bound_owner_not_mcp_server() {
         let store = open_store();
         let old_fact = sample_fact(
             "f-old-1",
@@ -2835,7 +2944,8 @@ mod tests {
         store.insert_fact(&old_fact).unwrap();
         store.insert_fact(&new_fact).unwrap();
 
-        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousSupersedeParams {
             old_fact_id: "f-old-1".to_owned(),
             new_fact_id: "f-new-1".to_owned(),
@@ -2897,7 +3007,8 @@ mod tests {
         store.insert_fact(&old_fact).unwrap();
         store.insert_fact(&new_fact).unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousSupersedeParams {
             old_fact_id: "f-old-bob".to_owned(),
             new_fact_id: "f-new-alice".to_owned(),
@@ -2939,7 +3050,8 @@ mod tests {
         store.insert_fact(&old_fact).unwrap();
         store.insert_fact(&new_fact).unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousSupersedeParams {
             old_fact_id: "f-old-forgotten".to_owned(),
             new_fact_id: "f-new-for-forgotten".to_owned(),
@@ -2979,7 +3091,8 @@ mod tests {
         store.insert_fact(&old_fact).unwrap();
         store.insert_fact(&new_fact).unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousSupersedeParams {
             old_fact_id: "f-old-superseded".to_owned(),
             new_fact_id: "f-new-for-superseded".to_owned(),
@@ -3008,7 +3121,8 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store, None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousForgetParams {
             fact_id: "f-bob-1".to_owned(),
             nous_id: valid_nous_id("alice"),
@@ -3033,7 +3147,8 @@ mod tests {
             ))
             .unwrap();
 
-        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)));
+        let server = MemoryServer::with_write_token(store.clone(), None, Some("a".repeat(32)))
+            .with_nous_id(Some("alice".to_owned()));
         let params = NousForgetParams {
             fact_id: "f-forget-reason".to_owned(),
             nous_id: valid_nous_id("alice"),
