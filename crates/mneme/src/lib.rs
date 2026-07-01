@@ -154,6 +154,9 @@ pub mod finalize;
 /// through the memory boundary (#4688).
 pub mod checkpoint;
 
+/// Run-context provenance, inspection, and redaction records for memory recall.
+pub mod run_context;
+
 // ── Training data types (eidos) ───────────────────────────────────────
 //
 // NOTE: training capture *logic* (the JSONL writer, quality gate, and

@@ -1,3 +1,9 @@
+---
+scope: "crates/mneme/"
+defers_to: ["../../CLAUDE.md"]
+tightens: ["memory facade and run-context provenance guidance"]
+---
+
 # mneme
 
 ## At a glance
