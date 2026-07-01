@@ -31,7 +31,11 @@ local function load_figures()
 end
 
 local function is_raster_format()
-  return FORMAT == "docx" or FORMAT == "odt" or FORMAT:match("epub") ~= nil
+  if FORMAT == "docx" or FORMAT == "odt" or FORMAT == "latex" or FORMAT == "pdf" then
+    return true
+  end
+
+  return FORMAT:match("epub") ~= nil
 end
 
 local function figure_id(img)
