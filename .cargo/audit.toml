@@ -14,12 +14,14 @@ ignore = [
     "RUSTSEC-2025-0141",
     # paste unmaintained — transitive via tokenizers; no safe upgrade
     "RUSTSEC-2024-0436",
+    # async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7
+    "RUSTSEC-2025-0052",
+    # ttf-parser unmaintained — transitive via fontdb/usvg/rustybuzz/typst-pdf; no upstream fix
+    "RUSTSEC-2026-0192",
     # rustls-pemfile 2.x unmaintained — transitive via qdrant-client → tonic 0.12. Blocked on qdrant-client → tonic 0.13+
     "RUSTSEC-2025-0134",
     # rand 0.8 unsound only with custom logger using rand::rng() — not our usage. Transitive via qdrant-client → tonic 0.12 + spreadsheet-ods + phf
     "RUSTSEC-2026-0097",
-    # async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7
-    "RUSTSEC-2025-0052",
     # memmap2 unsound (unchecked pointer offset) — transitive via candle-core/grep-searcher, pinned ^0.9, no upgrade; offset path not exercised. review-by: 2026-12-01
     "RUSTSEC-2026-0186",
 ]
