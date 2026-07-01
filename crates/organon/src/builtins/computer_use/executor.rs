@@ -93,7 +93,7 @@ impl ToolExecutor for ComputerUseExecutor {
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
             let Some(action) = parse_action(input)? else {
@@ -110,21 +110,23 @@ impl ToolExecutor for ComputerUseExecutor {
             // stalling the Tokio runtime.
             let config = self.session_config.clone();
             let action_clone = action.clone();
+            let ctx_clone = ctx.clone();
             let result = tokio::task::spawn_blocking(move || {
-                execute_sandboxed_action(&action_clone, &config)
+                execute_sandboxed_action(&action_clone, &config, &ctx_clone)
             })
             .await;
 
             match result {
-                Ok(Ok(action_result)) => {
-                    let json = serde_json::to_string_pretty(&action_result).map_err(|e| {
-                        error::ExecutionFailedSnafu {
-                            name: input.name.clone(),
-                            message: format!("failed to serialize result: {e}"),
-                        }
-                        .build()
-                    })?;
-                    Ok(ToolResult::text(json))
+                Ok(Ok(sandboxed_result)) => {
+                    let json = serde_json::to_string_pretty(&sandboxed_result.action_result)
+                        .map_err(|e| {
+                            error::ExecutionFailedSnafu {
+                                name: input.name.clone(),
+                                message: format!("failed to serialize result: {e}"),
+                            }
+                            .build()
+                        })?;
+                    Ok(ToolResult::text(json).with_diagnostics(sandboxed_result.diagnostics))
                 }
                 Ok(Err(io_err)) => Ok(ToolResult::error(format!(
                     "computer_use action failed: {io_err}"
@@ -141,108 +143,116 @@ fn computer_use_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("computer_use"), // kanon:ignore RUST/expect
         description: "Interact with the computer screen: capture screenshots, click, type text, \
-                      press keys, and scroll. Actions run in a Landlock-sandboxed environment."
+                      press keys, and scroll. Helper subprocesses run through the shared sandbox \
+                      policy with explicit display-socket and display-auth exceptions."
             .to_owned(),
         extended_description: Some(
-            "Perform computer use actions in a sandboxed Linux environment. Supported actions:\n\
+            "Perform computer use actions in a Linux desktop environment. Supported actions:\n\
              - click: Click at (x, y) coordinates with optional button (1=left, 2=middle, 3=right)\n\
              - type_text: Type text via simulated keystrokes\n\
              - key: Press a key combination (e.g. 'ctrl+c', 'Return', 'alt+Tab')\n\
              - scroll: Scroll at (x, y) coordinates with delta (positive=down, negative=up)\n\n\
              Each action captures a before/after screenshot and returns a diff description.\n\
-             The execution environment is sandboxed with Landlock LSM to restrict filesystem access."
+             Capture and action helpers run through Organon's shared SubprocessRunner: the child \
+             environment is cleared except for baseline process variables plus DISPLAY, \
+             WAYLAND_DISPLAY, XAUTHORITY, ICEAUTHORITY, and XDG_RUNTIME_DIR. Landlock, resource \
+             limits, process-group cleanup, timeouts, output caps, and diagnostics are applied \
+             where the platform supports them. Access to the operator's display socket and display \
+             auth files is an explicit host-desktop exception."
                 .to_owned(),
         ),
-        input_schema: InputSchema {
-            properties: IndexMap::from([
-                (
-                    "action".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Action to perform: click, type_text, key, or scroll"
-                            .to_owned(),
-                        enum_values: Some(vec![
-                            "click".to_owned(),
-                            "type_text".to_owned(),
-                            "key".to_owned(),
-                            "scroll".to_owned(),
-                        ]),
-                        default: None,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "x".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::Integer,
-                        description: "X coordinate in pixels (for click and scroll)".to_owned(),
-                        enum_values: None,
-                        default: None,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "y".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::Integer,
-                        description: "Y coordinate in pixels (for click and scroll)".to_owned(),
-                        enum_values: None,
-                        default: None,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "button".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::Integer,
-                        description: "Mouse button: 1=left, 2=middle, 3=right (for click, default: 1)"
-                            .to_owned(),
-                        enum_values: None,
-                        default: Some(serde_json::json!(1)),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "text".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Text to type (for type_text action)".to_owned(),
-                        enum_values: None,
-                        default: None,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "combo".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::String,
-                        description: "Key combination string, e.g. 'ctrl+c' (for key action)"
-                            .to_owned(),
-                        enum_values: None,
-                        default: None,
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "delta".to_owned(),
-                    PropertyDef {
-                        property_type: PropertyType::Integer,
-                        description:
-                            "Scroll delta: positive=down, negative=up (for scroll action)"
-                                .to_owned(),
-                        enum_values: None,
-                        default: None,
-                        ..Default::default()
-                    },
-                ),
-            ]),
-            required: vec!["action".to_owned()],
-        },
+        input_schema: computer_use_schema(),
         category: ToolCategory::System,
         reversibility: Reversibility::Irreversible,
         auto_activate: false,
         groups: vec![ToolGroupId::Command, ToolGroupId::Edit],
         tags: vec![ToolTag::Execute],
+    }
+}
+
+fn computer_use_schema() -> InputSchema {
+    InputSchema {
+        properties: IndexMap::from([
+            (
+                "action".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::String,
+                    description: "Action to perform: click, type_text, key, or scroll".to_owned(),
+                    enum_values: Some(vec![
+                        "click".to_owned(),
+                        "type_text".to_owned(),
+                        "key".to_owned(),
+                        "scroll".to_owned(),
+                    ]),
+                    default: None,
+                    ..Default::default()
+                },
+            ),
+            (
+                "x".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::Integer,
+                    description: "X coordinate in pixels (for click and scroll)".to_owned(),
+                    enum_values: None,
+                    default: None,
+                    ..Default::default()
+                },
+            ),
+            (
+                "y".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::Integer,
+                    description: "Y coordinate in pixels (for click and scroll)".to_owned(),
+                    enum_values: None,
+                    default: None,
+                    ..Default::default()
+                },
+            ),
+            (
+                "button".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::Integer,
+                    description: "Mouse button: 1=left, 2=middle, 3=right (for click, default: 1)"
+                        .to_owned(),
+                    enum_values: None,
+                    default: Some(serde_json::json!(1)),
+                    ..Default::default()
+                },
+            ),
+            (
+                "text".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::String,
+                    description: "Text to type (for type_text action)".to_owned(),
+                    enum_values: None,
+                    default: None,
+                    ..Default::default()
+                },
+            ),
+            (
+                "combo".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::String,
+                    description: "Key combination string, e.g. 'ctrl+c' (for key action)"
+                        .to_owned(),
+                    enum_values: None,
+                    default: None,
+                    ..Default::default()
+                },
+            ),
+            (
+                "delta".to_owned(),
+                PropertyDef {
+                    property_type: PropertyType::Integer,
+                    description: "Scroll delta: positive=down, negative=up (for scroll action)"
+                        .to_owned(),
+                    enum_values: None,
+                    default: None,
+                    ..Default::default()
+                },
+            ),
+        ]),
+        required: vec!["action".to_owned()],
     }
 }
 

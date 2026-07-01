@@ -4,22 +4,26 @@ use std::path::Path;
 
 use koina::system::{Environment, RealSystem};
 
+use super::process::{display_request, run_display_command};
 use super::types::{ComputerAction, DiffRegion};
+use crate::sandbox::SandboxPolicy;
+use crate::subprocess::{SubprocessOutput, SubprocessRequest, SubprocessRunner};
+use crate::types::ToolContext;
 
-/// Detect display server and return the appropriate capture command.
-pub(super) fn capture_command(output_path: &Path) -> std::process::Command {
+/// Detect display server and return the appropriate capture subprocess request.
+pub(super) fn capture_request(
+    output_path: &Path,
+    current_dir: &Path,
+    policy: &SandboxPolicy,
+) -> SubprocessRequest {
     let output = output_path.to_string_lossy();
 
     // WHY: Check WAYLAND_DISPLAY first; if set, the session is Wayland and
     // scrot (X11-only) will not work. grim is the standard Wayland capture tool.
     if RealSystem.var("WAYLAND_DISPLAY").is_some() {
-        let mut cmd = std::process::Command::new("grim");
-        cmd.arg(output.as_ref());
-        cmd
+        display_request("grim", current_dir, policy).arg(output.as_ref())
     } else {
-        let mut cmd = std::process::Command::new("scrot");
-        cmd.args(["--overwrite", output.as_ref()]);
-        cmd
+        display_request("scrot", current_dir, policy).args(["--overwrite", output.as_ref()])
     }
 }
 
@@ -28,16 +32,15 @@ pub(super) fn capture_command(output_path: &Path) -> std::process::Command {
 /// # Errors
 ///
 /// Returns `Err` if the capture tool is not installed or fails.
-pub(super) fn capture_screen(output_path: &Path) -> std::io::Result<()> {
-    let mut cmd = capture_command(output_path);
-    let output = cmd.output()?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(std::io::Error::other(format!(
-            "screen capture failed: {stderr}"
-        )));
-    }
-    Ok(())
+pub(super) fn capture_screen(
+    output_path: &Path,
+    runner: &SubprocessRunner,
+    ctx: &ToolContext,
+    current_dir: &Path,
+    policy: &SandboxPolicy,
+) -> std::io::Result<SubprocessOutput> {
+    let request = capture_request(output_path, current_dir, policy);
+    run_display_command(runner, ctx, request, "screen capture")
 }
 
 /// Read a PNG file and return its raw bytes.
@@ -153,6 +156,63 @@ pub(super) fn describe_change(action: &ComputerAction, diff: Option<&DiffRegion>
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use crate::sandbox::{EgressPolicy, SandboxEnforcement};
+
+    fn test_policy() -> SandboxPolicy {
+        SandboxPolicy {
+            enabled: true,
+            read_paths: vec![std::path::PathBuf::from("/usr")],
+            write_paths: vec![std::path::PathBuf::from("/tmp")],
+            exec_paths: vec![std::path::PathBuf::from("/usr/bin")],
+            enforcement: SandboxEnforcement::Permissive,
+            egress: EgressPolicy::Deny,
+            egress_allowlist: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn capture_request_uses_wayland_tool_with_display_policy() {
+        let _guard = crate::subprocess::SUBPROCESS_ENV_LOCK
+            .lock()
+            .expect("env lock");
+        #[expect(
+            unsafe_code,
+            reason = "set_var requires unsafe in Rust 2024; test controls env"
+        )]
+        unsafe {
+            std::env::set_var("WAYLAND_DISPLAY", "wayland-test");
+        }
+
+        let policy = test_policy();
+        let request = capture_request(Path::new("/tmp/frame.png"), Path::new("/tmp"), &policy);
+
+        #[expect(
+            unsafe_code,
+            reason = "remove_var requires unsafe in Rust 2024; test cleanup"
+        )]
+        unsafe {
+            std::env::remove_var("WAYLAND_DISPLAY");
+        }
+
+        assert_eq!(
+            request.program_for_test(),
+            &std::ffi::OsString::from("grim")
+        );
+        assert_eq!(
+            request.args_for_test(),
+            &[std::ffi::OsString::from("/tmp/frame.png")]
+        );
+        assert!(
+            request
+                .allowed_env_vars_for_test()
+                .contains(&"WAYLAND_DISPLAY"),
+            "capture request should preserve Wayland display env"
+        );
+        assert!(
+            request.explicit_sandbox_policy_for_test().is_some(),
+            "capture request should use explicit computer-use sandbox policy"
+        );
+    }
 
     #[test]
     fn png_dimension_parsing() {

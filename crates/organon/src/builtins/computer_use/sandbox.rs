@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use koina::system::{Environment, RealSystem};
 
 use super::actions::dispatch_action;
-use super::capture::{
-    capture_command, capture_screen, compute_diff_region, describe_change, read_frame,
-};
+use super::capture::{capture_screen, compute_diff_region, describe_change, read_frame};
+use super::process::CommandDiagnostics;
 use super::types::{ActionResult, ComputerAction};
-use crate::process_guard::ProcessGuard;
-use crate::sandbox::{SandboxEnforcement, SandboxPolicy};
+use crate::sandbox::{EgressPolicy, SandboxConfig, SandboxEnforcement, SandboxPolicy};
+use crate::subprocess::SubprocessRunner;
+use crate::types::{ToolContext, ToolDiagnostics};
 
 /// Configuration for a computer use session's Landlock sandbox.
 ///
@@ -79,6 +79,31 @@ impl ComputerUseSessionConfig {
             egress_allowlist: Vec::new(),
         }
     }
+
+    /// Build the shared runner sandbox config used for resource limits.
+    #[must_use]
+    pub(crate) fn to_runner_sandbox_config(&self) -> SandboxConfig {
+        SandboxConfig {
+            enabled: true,
+            enforcement: self.enforcement,
+            egress: EgressPolicy::Deny,
+            ..SandboxConfig::default()
+        }
+    }
+
+    /// Build the per-request display-aware sandbox policy.
+    #[must_use]
+    pub(crate) fn to_display_sandbox_policy(&self) -> SandboxPolicy {
+        let mut policy = self.to_sandbox_policy();
+        add_display_paths(&mut policy);
+        policy
+    }
+}
+
+/// Result from a sandboxed computer-use action plus subprocess diagnostics.
+pub(super) struct SandboxedActionResult {
+    pub(super) action_result: ActionResult,
+    pub(super) diagnostics: ToolDiagnostics,
 }
 
 /// Execute an action inside a sandboxed subprocess.
@@ -98,36 +123,29 @@ impl ComputerUseSessionConfig {
 pub(super) fn execute_sandboxed_action(
     action: &ComputerAction,
     session_config: &ComputerUseSessionConfig,
-) -> std::io::Result<ActionResult> {
+    ctx: &ToolContext,
+) -> std::io::Result<SandboxedActionResult> {
     let temp_dir = RealSystem.temp_dir();
     let before_path = temp_dir.join("aletheia_cu_before.png");
     let after_path = temp_dir.join("aletheia_cu_after.png");
+    let runner = SubprocessRunner::new(session_config.to_runner_sandbox_config());
+    let policy = session_config.to_display_sandbox_policy();
+    let mut diagnostics = CommandDiagnostics::default();
 
-    capture_screen(&before_path)?;
+    let before_capture = capture_screen(&before_path, &runner, ctx, &temp_dir, &policy)?;
+    diagnostics.record(&before_capture);
     let before_bytes = read_frame(&before_path)?;
 
-    // NOTE: Actions run in the current process since xdotool needs X11
-    // access. The Landlock sandbox is applied to the capture subprocess
-    // to restrict filesystem access during frame capture.
-    dispatch_action(action)?;
+    let action_result = dispatch_action(action, &runner, ctx, &temp_dir, &policy)?;
+    for output in &action_result.outputs {
+        diagnostics.record(output);
+    }
 
     // WHY: give the screen time to update after the action.
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    let policy = session_config.to_sandbox_policy();
-    let mut cmd = capture_command(&after_path);
-    crate::sandbox::apply_sandbox(&mut cmd, policy)?;
-
-    let child = cmd.spawn()?;
-    let mut guard = ProcessGuard::new(child);
-    let status = guard.get_mut().wait()?;
-    // WHY: Drop the guard after wait(). The child has already exited;
-    // Drop's kill() returns ESRCH (safe), wait() returns ECHILD (safe).
-    drop(guard);
-    if !status.success() {
-        return Err(std::io::Error::other("sandboxed screen capture failed"));
-    }
-
+    let after_capture = capture_screen(&after_path, &runner, ctx, &temp_dir, &policy)?;
+    diagnostics.record(&after_capture);
     let after_bytes = read_frame(&after_path)?;
 
     let diff_region = compute_diff_region(&before_bytes, &after_bytes);
@@ -135,16 +153,57 @@ pub(super) fn execute_sandboxed_action(
 
     let frame_base64 = Some(koina::base64::encode(&after_bytes));
 
-    let _ = std::fs::remove_file(&before_path);
-    let _ = std::fs::remove_file(&after_path);
+    if let Err(err) = std::fs::remove_file(&before_path) {
+        tracing::debug!(path = %before_path.display(), error = %err, "computer_use cleanup failed");
+    }
+    if let Err(err) = std::fs::remove_file(&after_path) {
+        tracing::debug!(path = %after_path.display(), error = %err, "computer_use cleanup failed");
+    }
 
-    Ok(ActionResult {
+    let action_result = ActionResult {
         success: true,
         action: action.to_string(),
         diff_region,
         change_description,
         frame_base64,
+    };
+
+    Ok(SandboxedActionResult {
+        action_result,
+        diagnostics: diagnostics.into_tool_diagnostics(),
     })
+}
+
+fn add_display_paths(policy: &mut SandboxPolicy) {
+    add_env_path(&mut policy.read_paths, "XAUTHORITY");
+    add_env_path(&mut policy.read_paths, "ICEAUTHORITY");
+    add_default_home_auth_path(&mut policy.read_paths, ".Xauthority");
+    add_default_home_auth_path(&mut policy.read_paths, ".ICEauthority");
+
+    if let Some(runtime_dir) = RealSystem.var("XDG_RUNTIME_DIR") {
+        let path = PathBuf::from(runtime_dir);
+        push_unique(&mut policy.read_paths, path.clone());
+        push_unique(&mut policy.write_paths, path);
+    }
+}
+
+fn add_env_path(paths: &mut Vec<PathBuf>, var: &str) {
+    if let Some(value) = RealSystem.var(var) {
+        push_unique(paths, PathBuf::from(value));
+    }
+}
+
+fn add_default_home_auth_path(paths: &mut Vec<PathBuf>, file_name: &str) {
+    if let Some(home) = RealSystem.var("HOME") {
+        push_unique(paths, PathBuf::from(home).join(file_name));
+    }
+}
+
+fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if path.as_os_str().is_empty() || paths.contains(&path) {
+        return;
+    }
+    paths.push(path);
 }
 
 #[cfg(test)]
@@ -185,5 +244,59 @@ mod tests {
                 "write path {wp:?} should also be readable"
             );
         }
+    }
+
+    #[test]
+    fn display_sandbox_policy_includes_display_auth_paths() {
+        let Ok(_guard) = crate::subprocess::SUBPROCESS_ENV_LOCK.lock() else {
+            panic!("env lock poisoned");
+        };
+        #[expect(
+            unsafe_code,
+            reason = "set_var requires unsafe in Rust 2024; test controls env"
+        )]
+        unsafe {
+            std::env::set_var("XAUTHORITY", "/tmp/aletheia-test-xauthority");
+            std::env::set_var("ICEAUTHORITY", "/tmp/aletheia-test-iceauthority");
+            std::env::set_var("XDG_RUNTIME_DIR", "/tmp/aletheia-test-runtime");
+        }
+
+        let config = ComputerUseSessionConfig::default();
+        let policy = config.to_display_sandbox_policy();
+
+        #[expect(
+            unsafe_code,
+            reason = "remove_var requires unsafe in Rust 2024; test cleanup"
+        )]
+        unsafe {
+            std::env::remove_var("XAUTHORITY");
+            std::env::remove_var("ICEAUTHORITY");
+            std::env::remove_var("XDG_RUNTIME_DIR");
+        }
+
+        assert!(
+            policy
+                .read_paths
+                .contains(&PathBuf::from("/tmp/aletheia-test-xauthority")),
+            "XAUTHORITY should be granted read access"
+        );
+        assert!(
+            policy
+                .read_paths
+                .contains(&PathBuf::from("/tmp/aletheia-test-iceauthority")),
+            "ICEAUTHORITY should be granted read access"
+        );
+        assert!(
+            policy
+                .read_paths
+                .contains(&PathBuf::from("/tmp/aletheia-test-runtime")),
+            "XDG_RUNTIME_DIR should be granted read access for display sockets"
+        );
+        assert!(
+            policy
+                .write_paths
+                .contains(&PathBuf::from("/tmp/aletheia-test-runtime")),
+            "XDG_RUNTIME_DIR should be granted write access for display sockets"
+        );
     }
 }

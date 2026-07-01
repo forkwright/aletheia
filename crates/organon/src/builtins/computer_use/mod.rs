@@ -20,6 +20,8 @@ mod actions;
 mod capture;
 /// Tool executor, definition, and registration.
 mod executor;
+/// Shared subprocess helpers for capture and action commands.
+mod process;
 /// Landlock sandbox session configuration.
 mod sandbox;
 /// Core types (actions, results, diff regions).
