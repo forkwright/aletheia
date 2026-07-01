@@ -529,15 +529,8 @@ pub(crate) fn rebuild(store: &Store, workspace_root: &Path) -> Result<()> {
         .exec()
         .context(CargoMetadataSnafu)?;
 
-    // WHY: crate_edges needs dependency info, so run a second metadata pass
-    // with deps included.
-    let metadata_full = MetadataCommand::new()
-        .current_dir(workspace_root)
-        .exec()
-        .context(CargoMetadataSnafu)?;
-
     // ── 2. Populate crate_edges ───────────────────────────────────────────────
-    populate_crate_edges(store, &metadata_full)?;
+    populate_crate_edges(store, &metadata)?;
 
     // ── 3. Walk workspace source files ───────────────────────────────────────
     let mut total_files = 0usize;
