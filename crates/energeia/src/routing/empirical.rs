@@ -96,7 +96,19 @@ impl EmpiricalRouter {
         let static_choice = self.fallback.pick(*task_category);
 
         if candidates.is_empty() {
-            return Ok(static_choice.clone());
+            if static_allowed {
+                return Ok(static_choice.clone());
+            }
+
+            tracing::warn!(
+                static_choice = %static_choice,
+                category = %task_category,
+                "no routing candidates remain inside the requested deployment boundary"
+            );
+            // SAFETY(#3969): returning an empty provider fails closed at the
+            // resolver instead of silently routing a local-only request to a
+            // cloud static fallback.
+            return Ok(ProviderId::new(""));
         }
 
         let mut best_provider: Option<&ProviderId> = None;
@@ -555,5 +567,28 @@ mod tests {
         let decision = router.route(&features).await;
 
         assert_eq!(&*decision.provider, "local");
+    }
+
+    #[tokio::test]
+    async fn route_fails_closed_when_boundary_excludes_all_candidates_and_static() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lines = vec![];
+        for _ in 0..10 {
+            lines.push(session_line("cloud-only", "success", "feature"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let router = make_router(tmp.path(), "cloud-only", 5, 0.1).await;
+        let features = RequestFeatures::new(
+            vec![ProviderId::new("cloud-only")],
+            Some(TaskCategory::Feature),
+            None,
+        )
+        .with_deployment_target(RoutingBoundary::LocalHosted)
+        .with_candidate_deployment_target("cloud-only", RoutingBoundary::Cloud);
+
+        let decision = router.route(&features).await;
+
+        assert_eq!(&*decision.provider, "");
     }
 }

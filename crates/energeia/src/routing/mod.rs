@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_routing::types::RequestFeatures;
+use aletheia_routing::types::{RequestFeatures, RoutingDecision};
 
 /// After-action record read-side aggregation and rolling statistics.
 ///
@@ -189,7 +189,31 @@ impl DispatchRoutingConfig {
         );
 
         let decision = affinity.route_with_affinity(&features, None).await;
-        ProviderId::new(decision.base.provider)
+        self.confidence_gated_provider(&decision.base)
+    }
+
+    fn confidence_gated_provider(&self, decision: &RoutingDecision) -> ProviderId {
+        if decision.provider.is_empty() {
+            return ProviderId::new(decision.provider.clone());
+        }
+
+        if decision.provider.as_ref() == self.default_provider.as_str() {
+            return ProviderId::new(self.default_provider.as_str());
+        }
+
+        let confidence = decision.confidence.unwrap_or(0.0);
+        if confidence >= self.confidence_threshold {
+            return ProviderId::new(decision.provider.clone());
+        }
+
+        tracing::debug!(
+            provider = %decision.provider,
+            confidence,
+            threshold = self.confidence_threshold,
+            fallback_provider = %self.default_provider,
+            "routing decision confidence below threshold, using static fallback"
+        );
+        ProviderId::new(self.default_provider.as_str())
     }
 
     fn candidates(&self) -> Vec<ProviderId> {
@@ -208,8 +232,34 @@ impl DispatchRoutingConfig {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test setup and assertions")]
 mod tests {
+    use std::io::Write as _;
+
     use super::*;
+
+    fn session_line(model: &str, status: &str, category: &str) -> serde_json::Value {
+        serde_json::json!({
+            "dispatch_id": "test",
+            "ts_start": "2026-04-17T00:00:00Z",
+            "ts_end": "2026-04-17T00:01:00Z",
+            "duration_ms": 60000,
+            "session_outcomes": [{"model": model, "status": status, "category": category}],
+            "cost_total_cents": 5,
+            "turns_total": 10,
+            "stage_latencies_ms": {},
+            "qa_verdict": "pass",
+            "prompt_hash": "sha256:abc"
+        })
+    }
+
+    fn write_jsonl(dir: &std::path::Path, filename: &str, lines: &[serde_json::Value]) {
+        let path = dir.join(filename);
+        let mut file = std::fs::File::create(path).unwrap();
+        for line in lines {
+            writeln!(file, "{line}").unwrap();
+        }
+    }
 
     #[test]
     fn from_prompt_identifies_refactor() {
@@ -292,6 +342,39 @@ mod tests {
         assert!((cfg.affinity_threshold - 0.15).abs() < f64::EPSILON);
         assert_eq!(cfg.default_provider, DEFAULT_PROVIDER_ID);
         assert!(cfg.candidate_providers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn empirical_model_for_prompt_falls_back_when_confidence_is_low() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut lines = vec![];
+        for _ in 0..9 {
+            lines.push(session_line("specialist", "success", "refactor"));
+        }
+        lines.push(session_line("specialist", "failed", "refactor"));
+        for _ in 0..8 {
+            lines.push(session_line("generalist", "success", "feature"));
+        }
+        for _ in 0..2 {
+            lines.push(session_line("generalist", "failed", "feature"));
+        }
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &lines);
+
+        let cfg = DispatchRoutingConfig {
+            mode: RoutingMode::Empirical,
+            min_samples: 5,
+            window_days: 7,
+            confidence_threshold: 0.95,
+            affinity_threshold: 0.15,
+            default_provider: "generalist".to_owned(),
+            candidate_providers: vec!["specialist".to_owned()],
+        };
+
+        let model = cfg
+            .model_for_prompt("refactor the routing module", Some(tmp.path()))
+            .await;
+
+        assert_eq!(model.as_deref(), Some("generalist"));
     }
 
     #[test]

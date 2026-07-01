@@ -255,7 +255,11 @@ impl AffinityRouter {
                 "affinity router overriding empirical selection"
             );
 
-            let new_base = RoutingDecision::new(affinity_winner.0.clone(), None);
+            // WHY(#3969): affinity overrides are learned-policy decisions. Carry
+            // the composite affinity score as confidence so live dispatch can
+            // fall through to static routing when the signal is too weak.
+            let new_base =
+                RoutingDecision::new(affinity_winner.0.clone(), Some(best_affinity_score));
             let rationale = format!(
                 "affinity-override: provider={affinity_winner} gap={gap:.3} category={category}",
             );
