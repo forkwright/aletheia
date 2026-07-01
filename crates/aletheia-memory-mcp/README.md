@@ -64,7 +64,8 @@ aletheia-memory-mcp  # server inherits the token
   "arguments": {
     "fact_id": "f-abc-123",
     "content": "Verified against external source X",
-    "session_id": "agent-uuid"
+    "nous_id": "agent-uuid",
+    "source_session_id": "session-uuid"
   }
 }
 ```
@@ -75,9 +76,9 @@ aletheia-memory-mcp  # server inherits the token
 - **No Encryption**: The server communicates over the configured MCP transport without adding encryption; use this server only over local IPC or secure channels (SSH, TLS).
 - **Path Redaction**: `nous_stats` returns an opaque store id by default. Full local paths require admin diagnostics at startup plus an explicit `include_store_path` request.
 
-## Admission control
+## Write validation
 
-Write tools respect the knowledge store's `DefaultAdmissionPolicy` before persisting facts. If a policy rejects a write, the call fails with an admission error.
+Write tools validate required fields, ownership, lifecycle state, typed forget reasons, and fact content length before persisting. Annotation and supersession writes use atomic store mutations so partial graph updates are not committed.
 
 ## Exit codes
 
