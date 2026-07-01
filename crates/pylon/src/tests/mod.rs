@@ -12,6 +12,7 @@
     reason = "TODO(#1915): replace with bounds-checked access"
 )]
 
+mod approval_turns;
 mod auth;
 mod config;
 mod credentials;

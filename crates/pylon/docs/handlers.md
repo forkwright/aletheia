@@ -315,6 +315,11 @@ Rename a session.
 ### `POST /api/v1/sessions/{id}/messages`
 
 Send a user message and stream the agent's response as Server-Sent Events.
+Compatibility-only legacy turn endpoint for clients that already have a session
+ID. It is still supported for message streaming and idempotent reconnects, but
+it does not expose an interactive approval channel. Approval-required and
+mandatory tools are policy-denied by shared dispatch on this path; use
+`POST /api/v1/sessions/stream` when an operator can approve or deny tool calls.
 
 **Request headers:**
 
@@ -457,6 +462,9 @@ records.
 
 Turn stream protocol. Creates or retrieves a session by `(nous_id, session_key)` and
 streams the turn as `TurnStreamEvent` SSE events (used by TUI and desktop clients).
+This is the supported operator turn endpoint for approval-aware execution:
+approval-required and mandatory tool calls emit `tool_approval_required`, wait for
+`POST /api/v1/sessions/{id}/approvals`, and then emit `tool_approval_resolved`.
 
 **Request body:**
 
@@ -522,7 +530,11 @@ to grant or deny a queued tool call.
 
 **Request body** - `ApprovalResolution`:
 ```json
-{ "approval_id": "01JXKQ2T...", "decision": "approve" }
+{
+  "turn_id": "01JXKQ2T...",
+  "tool_id": "toolu_123",
+  "decision": "approved"
+}
 ```
 
 **Response `200 OK`** - Acknowledgement with updated approval state.
@@ -863,8 +875,8 @@ Fact activity timeline ordered by recency.
 
 ### `GET /api/v1/knowledge/check`
 
-Shallow health check for the knowledge graph store (connectivity, index integrity). Returns
-a machine-readable status object rather than a plain `200`.
+Health check for the knowledge graph store (connectivity, index integrity). Returns
+a machine-readable status object in the response body.
 
 **Response `200 OK`** - `{ "status": "ok", "fact_count": 142, "entity_count": 37 }`
 

@@ -414,6 +414,13 @@ struct EntityStats {
     relationship_count: u32,
 }
 
+#[cfg_attr(
+    not(feature = "knowledge-store"),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "WHY: knowledge-store builds can fail while default builds keep the same API shape"
+    )
+)]
 fn load_entity_stats(
     state: &KnowledgeState,
     policy: &KnowledgeReadPolicy<'_>,
