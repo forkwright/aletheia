@@ -1,3 +1,4 @@
+// kanon:ignore RUST/file-too-long WHY: command parsing, execution, and focused command tests are tightly coupled around the command enum
 //! Signal `!`-command parser and dispatcher.
 //!
 //! An inbound message whose text starts with `!` is parsed as a structured command
@@ -50,6 +51,8 @@ pub enum Command {
     Unknown {
         /// The unrecognised command name (without `!`).
         name: String,
+        /// Raw argument tail after the command name.
+        args: Option<String>,
     },
 }
 
@@ -73,8 +76,27 @@ impl Command {
             Self::Blackboard => "blackboard",
             Self::Think => "think",
             Self::Info { .. } => "info",
-            Self::Unknown { name } => name.as_str(),
+            Self::Unknown { name, .. } => name.as_str(),
         }
+    }
+
+    /// Return command arguments suitable for durable audit records.
+    ///
+    /// Sensitive-looking tokens are redacted before returning.
+    #[must_use]
+    pub fn redacted_args(&self) -> Option<String> {
+        let args = match self {
+            Self::New { label: Some(label) } => label.as_str(),
+            Self::Info {
+                agent_id: Some(agent_id),
+            } => agent_id.as_str(),
+            Self::Unknown {
+                args: Some(args), ..
+            } => args.as_str(),
+            _ => return None,
+        };
+        let redacted = redact_args(args);
+        (!redacted.is_empty()).then_some(redacted)
     }
 }
 
@@ -114,12 +136,7 @@ pub fn parse(text: &str) -> Option<Command> {
         return None;
     }
 
-    // WHY: starts_with('!') guarantees at least one byte; '!' is ASCII (1 byte), safe to skip.
-    #[expect(
-        clippy::string_slice,
-        reason = "safe: '!' is single-byte ASCII, starts_with check above guarantees index valid"
-    )]
-    let without_bang = text[1..].trim();
+    let without_bang = text.strip_prefix('!')?.trim();
     let (name, rest) = without_bang
         .split_once(char::is_whitespace)
         .map_or((without_bang, ""), |(n, r)| (n, r.trim()));
@@ -154,16 +171,75 @@ pub fn parse(text: &str) -> Option<Command> {
         },
         unknown => Command::Unknown {
             name: unknown.to_owned(),
+            args: if rest.is_empty() {
+                None
+            } else {
+                Some(rest.to_owned())
+            },
         },
     };
     Some(cmd)
 }
 
+fn redact_args(args: &str) -> String {
+    let mut out = Vec::new();
+    let mut redact_next = false;
+
+    for token in args.split_whitespace() {
+        if redact_next {
+            out.push("[REDACTED]".to_owned());
+            redact_next = false;
+            continue;
+        }
+
+        if let Some((key, _value)) = token.split_once('=')
+            && is_sensitive_arg_name(key.trim_start_matches('-'))
+        {
+            out.push(format!("{key}=[REDACTED]"));
+            continue;
+        }
+
+        if is_sensitive_arg_name(token.trim_start_matches('-')) {
+            out.push(token.to_owned());
+            redact_next = true;
+            continue;
+        }
+
+        if looks_like_secret(token) {
+            out.push("[REDACTED]".to_owned());
+        } else {
+            out.push(token.to_owned());
+        }
+    }
+
+    out.join(" ")
+}
+
+fn is_sensitive_arg_name(name: &str) -> bool {
+    let normalized = name.to_ascii_lowercase().replace(['-', '_'], "");
+    matches!(
+        normalized.as_str(),
+        "apikey" | "bearer" | "passphrase" | "password" | "secret" | "token"
+    )
+}
+
+fn looks_like_secret(token: &str) -> bool {
+    let lower = token.to_ascii_lowercase();
+    lower.starts_with("sk-")
+        || lower.starts_with("xox")
+        || lower.starts_with("ghp_")
+        || (token.len() >= 48
+            && token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+}
+
 /// Agent-level status snapshot passed by the binary into the command context.
 #[derive(Debug, Clone)]
+// kanon:ignore TOPOLOGY/shallow-struct WHY: response DTO populated by aletheia and formatted in this module
 pub struct AgentSnapshot {
     /// Agent identifier.
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: public command DTO mirrors current String-based nous identifiers
     /// Lifecycle state as a display string (e.g., "idle", "active").
     pub lifecycle: String,
     /// Number of in-memory sessions tracked.
@@ -184,9 +260,10 @@ pub struct AgentSnapshot {
 
 /// Channel health summary passed by the binary into the command context.
 #[derive(Debug, Clone)]
+// kanon:ignore TOPOLOGY/shallow-struct WHY: response DTO populated by channel probes and formatted in this module
 pub struct ChannelSnapshot {
     /// Channel identifier (e.g., "signal").
-    pub id: String,
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: channel provider identifiers are current String-based registry keys
     /// Whether the last probe succeeded.
     pub healthy: bool,
     /// Round-trip latency in milliseconds from the last probe, if measured.
@@ -197,12 +274,13 @@ pub struct ChannelSnapshot {
 ///
 /// The binary fills this from `NousManager` + `ChannelRegistry` data before
 /// invoking [`execute`]. All fields are cheap clones of snapshot data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone)] // kanon:ignore RUST/no-debug-derive-on-public-types WHY: command context contains routing labels and snapshots only, no credentials or message bodies
+// kanon:ignore TOPOLOGY/shallow-struct WHY: dependency snapshot bag for command formatting; callers construct it from live runtime state
 pub struct CommandContext {
     /// The nous agent that would normally handle this conversation.
-    pub current_nous_id: String,
+    pub current_nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: public command DTO mirrors current String-based nous identifiers
     /// Session key identifying this conversation thread.
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret WHY: session_key is a routing key (channel:sender template expansion), not a credential
     /// Status snapshot for the current agent (if available).
     pub current_agent: Option<AgentSnapshot>,
     /// All running agent snapshots.
@@ -237,13 +315,14 @@ pub fn execute(cmd: &Command, ctx: &CommandContext) -> String {
         Command::Blackboard => cmd_blackboard(ctx),
         Command::Think => cmd_think(ctx),
         Command::Info { agent_id } => cmd_info(ctx, agent_id.as_deref()),
-        Command::Unknown { name } => cmd_unknown(name),
+        Command::Unknown { name, .. } => cmd_unknown(name),
     }
 }
 
 fn cmd_help() -> String {
     let mut out = "Available commands:\n".to_owned();
     for (cmd, desc) in KNOWN_COMMANDS {
+        // kanon:ignore RUST/no-silent-result-swallow WHY: writing to a String is infallible; fmt::Write returns Result for trait uniformity
         let _ = writeln!(out, "  {cmd} — {desc}");
     }
     out.trim_end().to_owned()
@@ -285,6 +364,7 @@ fn cmd_agents(ctx: &CommandContext) -> String {
         } else {
             ""
         };
+        // kanon:ignore RUST/no-silent-result-swallow WHY: writing to a String is infallible; fmt::Write returns Result for trait uniformity
         let _ = writeln!(out, "  {}{} ({})", a.id, marker, a.lifecycle);
     }
     out.push_str("(* = current)");
@@ -350,6 +430,7 @@ fn cmd_channels(ctx: &CommandContext) -> String {
         let latency = ch
             .latency_ms
             .map_or_else(String::new, |ms| format!(", {ms}ms"));
+        // kanon:ignore RUST/no-silent-result-swallow WHY: writing to a String is infallible; fmt::Write returns Result for trait uniformity
         let _ = writeln!(out, "  {} — {}{}", ch.id, status, latency);
     }
     out.trim_end().to_owned()
@@ -380,6 +461,7 @@ fn cmd_skills(ctx: &CommandContext) -> String {
     }
     let mut out = format!("{} skill(s):\n", ctx.skills.len());
     for skill in &ctx.skills {
+        // kanon:ignore RUST/no-silent-result-swallow WHY: writing to a String is infallible; fmt::Write returns Result for trait uniformity
         let _ = writeln!(out, "  {skill}");
     }
     out.trim_end().to_owned()
@@ -391,6 +473,7 @@ fn cmd_blackboard(ctx: &CommandContext) -> String {
     }
     let mut out = format!("{} blackboard entries:\n", ctx.blackboard_entries.len());
     for entry in &ctx.blackboard_entries {
+        // kanon:ignore RUST/no-silent-result-swallow WHY: writing to a String is infallible; fmt::Write returns Result for trait uniformity
         let _ = writeln!(out, "  {entry}");
     }
     out.trim_end().to_owned()
@@ -582,7 +665,19 @@ mod tests {
         assert_eq!(
             parse("!frobnicate"),
             Some(Command::Unknown {
-                name: "frobnicate".to_owned()
+                name: "frobnicate".to_owned(),
+                args: None,
+            })
+        );
+    }
+
+    #[test]
+    fn parse_unknown_command_keeps_args_for_audit() {
+        assert_eq!(
+            parse("!frobnicate --token secret-value target"),
+            Some(Command::Unknown {
+                name: "frobnicate".to_owned(),
+                args: Some("--token secret-value target".to_owned()),
             })
         );
     }
@@ -779,6 +874,7 @@ mod tests {
         let reply = execute(
             &Command::Unknown {
                 name: "frobnik".to_owned(),
+                args: None,
             },
             &ctx,
         );
@@ -840,10 +936,36 @@ mod tests {
         assert_eq!(Command::Info { agent_id: None }.name(), "info");
         assert_eq!(
             Command::Unknown {
-                name: "xyz".to_owned()
+                name: "xyz".to_owned(),
+                args: None,
             }
             .name(),
             "xyz"
+        );
+    }
+
+    #[test]
+    fn redacted_args_preserves_non_sensitive_command_args() {
+        assert_eq!(
+            Command::New {
+                label: Some("release planning".to_owned()),
+            }
+            .redacted_args()
+            .as_deref(),
+            Some("release planning")
+        );
+    }
+
+    #[test]
+    fn redacted_args_masks_sensitive_unknown_args() {
+        assert_eq!(
+            Command::Unknown {
+                name: "frobnicate".to_owned(),
+                args: Some("--token secret-value api_key=another target".to_owned()),
+            }
+            .redacted_args()
+            .as_deref(),
+            Some("--token [REDACTED] api_key=[REDACTED] target")
         );
     }
 }
