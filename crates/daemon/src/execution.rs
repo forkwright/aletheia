@@ -190,6 +190,7 @@ fn build_prosoche_audit_state(nous_id: &str) -> ProsocheState {
         turn_count,
         error_count,
         completed: errors == 0,
+        session_age_days: None,
         turn_text: format!(
             "daemon runtime task executions total={total} successes={successes} errors={errors}"
         ),

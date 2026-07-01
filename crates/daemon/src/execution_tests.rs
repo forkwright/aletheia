@@ -172,7 +172,7 @@ async fn execute_command_failure_summarizes_stderr_in_reason() {
     // WHY(#4948): command stderr may contain secrets or private paths. Failures
     // report metadata and digests instead of carrying raw stderr forward.
     let err = execute_command(
-        "echo 'something failed sk-proj-abcdefghijklmnopqrstuvwxyz123456 /tmp/acme.corp/private' >&2; exit 1", // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction regression test
+        "echo 'something failed synthetic-sensitive-token-4721 /tmp/acme.corp/private' >&2; exit 1",
         CancellationToken::new(),
         Duration::from_mins(1),
     )
@@ -188,7 +188,7 @@ async fn execute_command_failure_summarizes_stderr_in_reason() {
         "stderr text leaked: {msg}"
     );
     assert!(
-        !msg.contains("sk-proj-abcdefghijklmnopqrstuvwxyz123456"),
+        !msg.contains("synthetic-sensitive-token-4721"),
         "secret leaked: {msg}"
     );
     assert!(

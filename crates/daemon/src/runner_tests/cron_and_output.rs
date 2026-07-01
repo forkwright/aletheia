@@ -1,4 +1,4 @@
-//! Cron scheduling + metrics + output + persistence tests (split from `runner_tests.rs`).
+//! Cron scheduling, metrics, output, and persistence tests.
 
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
@@ -482,7 +482,7 @@ fn truncate_output_long_shows_head_and_tail() {
 
 #[test]
 fn summary_output_mode_omits_excerpt() {
-    let raw = "api_key=sk-proj-abcdefghijklmnopqrstuvwxyz123456\npath=/tmp/acme.corp/private"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction regression test
+    let raw = "api_key=synthetic-sensitive-token-4721\npath=/tmp/acme.corp/private";
     let safe = safe_output_for_mode(
         raw,
         DaemonOutputMode::Summary,
@@ -492,7 +492,7 @@ fn summary_output_mode_omits_excerpt() {
     assert!(safe.contains("output summary"));
     assert!(safe.contains("sha256="));
     assert!(
-        !safe.contains("sk-proj-abcdefghijklmnopqrstuvwxyz123456"),
+        !safe.contains("synthetic-sensitive-token-4721"),
         "summary output must not contain secrets: {safe}"
     );
     assert!(
@@ -517,7 +517,7 @@ async fn task_output_boundary_sanitizes_subscribers_and_persisted_state() {
         .with_state_store(store);
     runner.register(make_echo_task("sensitive-output"));
 
-    let secret = "sk-proj-abcdefghijklmnopqrstuvwxyz123456"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction regression test
+    let secret = "synthetic-sensitive-token-4721";
     let private_path = "/tmp/acme.corp/private/session.txt";
     let output = format!("probe failed\napi_key={secret}\nprivate_path={private_path}\n");
     let handle = tokio::spawn(async move {
