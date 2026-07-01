@@ -42,6 +42,8 @@
 //! Every [`query::QueryRow`] carries a `source` field (`"gnosis@<schema_version>"`)
 //! so callers can detect staleness or schema mismatches.
 
+#![deny(missing_docs)]
+
 pub mod error;
 pub mod query;
 pub mod schema;
