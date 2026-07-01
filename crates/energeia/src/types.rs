@@ -124,6 +124,12 @@ pub struct SessionOutcome {
     pub pr_url: Option<String>,
     /// Error message if the session failed.
     pub error: Option<String>,
+    /// Typed reason bucket for failed sessions.
+    ///
+    /// `None` means the session was successful or the terminal status already
+    /// carries the non-provider reason, such as an operator abort.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_class: Option<FailureClass>,
     /// LLM model used for this session (e.g., "claude-3-5-sonnet").
     ///
     /// This is `None` if the model could not be determined from the session.
@@ -146,6 +152,49 @@ pub struct SessionOutcome {
     /// an output format and the final result was valid JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structured_output: Option<serde_json::Value>,
+}
+
+/// Failure bucket preserved for routing and health telemetry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum FailureClass {
+    /// The provider/model returned a normal completion that did not satisfy the task.
+    Provider,
+    /// Authentication or authorization failed.
+    Auth,
+    /// Network, DNS, connection, or transport failure.
+    Network,
+    /// Session or backend timed out.
+    Timeout,
+    /// Provider-side rate limit or quota exhaustion.
+    RateLimit,
+    /// Worker process, task join, or runtime/protocol failure.
+    WorkerRuntime,
+}
+
+impl FailureClass {
+    /// Whether this failure should be excluded from model/provider quality scores.
+    #[must_use]
+    pub fn is_infrastructure(self) -> bool {
+        matches!(
+            self,
+            Self::Auth | Self::Network | Self::Timeout | Self::RateLimit | Self::WorkerRuntime
+        )
+    }
+}
+
+impl std::fmt::Display for FailureClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Provider => write!(f, "provider"),
+            Self::Auth => write!(f, "auth"),
+            Self::Network => write!(f, "network"),
+            Self::Timeout => write!(f, "timeout"),
+            Self::RateLimit => write!(f, "rate_limit"),
+            Self::WorkerRuntime => write!(f, "worker_runtime"),
+        }
+    }
 }
 
 /// Terminal status of a dispatched session.
@@ -379,6 +428,18 @@ mod tests {
     }
 
     #[test]
+    fn failure_class_display_and_infra_flag() {
+        assert_eq!(FailureClass::Provider.to_string(), "provider");
+        assert_eq!(FailureClass::Auth.to_string(), "auth");
+        assert_eq!(FailureClass::Network.to_string(), "network");
+        assert_eq!(FailureClass::Timeout.to_string(), "timeout");
+        assert_eq!(FailureClass::RateLimit.to_string(), "rate_limit");
+        assert_eq!(FailureClass::WorkerRuntime.to_string(), "worker_runtime");
+        assert!(!FailureClass::Provider.is_infrastructure());
+        assert!(FailureClass::Auth.is_infrastructure());
+    }
+
+    #[test]
     fn qa_verdict_display() {
         assert_eq!(QaVerdict::Pass.to_string(), "pass");
         assert_eq!(QaVerdict::Partial.to_string(), "partial");
@@ -424,6 +485,7 @@ mod tests {
             resume_count: 0,
             pr_url: Some("https://github.com/acme/repo/pull/42".to_owned()),
             error: None,
+            failure_class: None,
             model: Some("claude-3-5-sonnet".to_owned()),
             blast_radius: vec!["crates/foo/".to_owned()],
             corrective_attempts: 0,
@@ -466,7 +528,9 @@ mod tests {
 
     #[test]
     fn session_status_equality() {
-        assert_eq!(SessionStatus::Success, SessionStatus::Success);
-        assert_ne!(SessionStatus::Success, SessionStatus::Failed);
+        let parsed: SessionStatus = serde_json::from_str("\"Success\"").unwrap();
+
+        assert_eq!(parsed, SessionStatus::Success);
+        assert_ne!(parsed, SessionStatus::Failed);
     }
 }

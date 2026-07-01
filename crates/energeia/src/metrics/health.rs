@@ -648,7 +648,10 @@ mod health_tests;
 
 #[cfg(test)]
 #[cfg(feature = "storage-fjall")]
-#[expect(clippy::expect_used, reason = "test setup")]
+#[expect(
+    clippy::expect_used,
+    reason = "INVARIANT: test fixtures must fail fast when temp storage cannot open"
+)]
 mod window_tests {
     use super::*;
     use crate::store::EnergeiaStore;

@@ -40,6 +40,7 @@ struct AfterActionSessionOutcome {
     cost_cents: u64,
     pr_url: Option<String>,
     model: Option<String>,
+    failure_class: Option<String>,
     category: Option<String>,
 }
 
@@ -231,7 +232,15 @@ fn build_after_action_record(ctx: &PipelineContext) -> Result<AfterActionRecord,
             turns: o.num_turns,
             cost_cents: usd_to_cents(o.cost_usd),
             pr_url: o.pr_url.clone(),
-            model: o.model.clone(),
+            model: if o
+                .failure_class
+                .is_some_and(crate::types::FailureClass::is_infrastructure)
+            {
+                None
+            } else {
+                o.model.clone()
+            },
+            failure_class: o.failure_class.map(|class| class.to_string()),
             category: ctx
                 .prompt_map
                 .get(&o.prompt_number)

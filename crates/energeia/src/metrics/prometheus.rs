@@ -39,6 +39,14 @@ struct ProjectVerdictLabels {
     verdict: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ProjectStatusModelFailureLabels {
+    project: String,
+    status: String,
+    model: String,
+    failure_class: String,
+}
+
 // ── Metric families ──
 
 static DISPATCHES_TOTAL: LazyLock<Family<ProjectStatusLabels, Counter>> =
@@ -69,6 +77,9 @@ static SESSION_DURATION_SECONDS: LazyLock<ProjectHistogramFamily> =
     LazyLock::new(|| Family::new_with_constructor(session_duration_histogram));
 
 static QA_VERDICTS_TOTAL: LazyLock<Family<ProjectVerdictLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static SESSION_FAILURES_TOTAL: LazyLock<Family<ProjectStatusModelFailureLabels, Counter>> =
     LazyLock::new(Family::default);
 
 /// Register this crate's metrics with the shared registry.
@@ -102,6 +113,11 @@ pub fn register(registry: &mut Registry) {
         "energeia_qa_verdicts",
         "Total QA evaluation verdicts by project and verdict",
         QA_VERDICTS_TOTAL.clone(),
+    );
+    registry.register(
+        "energeia_session_failures",
+        "Total failed agent sessions by project, status, model, and failure class",
+        SESSION_FAILURES_TOTAL.clone(),
     );
 }
 
@@ -174,6 +190,18 @@ pub fn record_turns(project: &str, turns: u32, model: &str, blast_radius: &str) 
             blast_radius: blast_radius.to_owned(),
         })
         .inc_by(u64::from(turns));
+}
+
+/// Record a classified failed session for health dashboards.
+pub fn record_session_failure(project: &str, status: &str, model: &str, failure_class: &str) {
+    SESSION_FAILURES_TOTAL
+        .get_or_create(&ProjectStatusModelFailureLabels {
+            project: project.to_owned(),
+            status: status.to_owned(),
+            model: model.to_owned(),
+            failure_class: failure_class.to_owned(),
+        })
+        .inc();
 }
 
 /// Record a QA evaluation verdict.
@@ -272,6 +300,24 @@ mod tests {
         assert!(
             out.contains(
                 "energeia_turns_total{project=\"_test_turns\",model=\"claude-3-5-sonnet\",blast_radius=\"crates/foo/\"} 15"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_session_failure_class() {
+        let r = fresh_registry();
+        record_session_failure(
+            "_test_failure_class",
+            "infra_failure",
+            "claude-3-5-sonnet",
+            "auth",
+        );
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "energeia_session_failures_total{project=\"_test_failure_class\",status=\"infra_failure\",model=\"claude-3-5-sonnet\",failure_class=\"auth\"} 1"
             ),
             "got: {out}"
         );

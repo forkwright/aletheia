@@ -26,28 +26,7 @@ impl PipelineStage for PostProcessingStage {
     async fn run(&self, ctx: &mut PipelineContext) -> Result<(), PipelineError> {
         let t0 = Instant::now();
 
-        for outcome in &ctx.outcomes {
-            let model = outcome.model.as_deref().unwrap_or("unknown");
-            let blast_radius = outcome
-                .blast_radius
-                .first()
-                .map_or("unknown", String::as_str);
-
-            crate::metrics::prometheus::record_session(
-                &ctx.spec.project,
-                &outcome.status.to_string(),
-                outcome.cost_usd,
-                outcome.duration_ms,
-                model,
-                blast_radius,
-            );
-            crate::metrics::prometheus::record_turns(
-                &ctx.spec.project,
-                outcome.num_turns,
-                model,
-                blast_radius,
-            );
-        }
+        record_outcome_metrics(ctx);
 
         let total_cost = ctx.outcomes.iter().map(|o| o.cost_usd).sum();
         let duration_ms = u64::try_from(ctx.start.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -136,6 +115,39 @@ impl PipelineStage for PostProcessingStage {
         append_after_action_record(ctx).await?;
 
         Ok(())
+    }
+}
+
+fn record_outcome_metrics(ctx: &PipelineContext) {
+    for outcome in &ctx.outcomes {
+        let model = outcome.model.as_deref().unwrap_or("unknown");
+        let blast_radius = outcome
+            .blast_radius
+            .first()
+            .map_or("unknown", String::as_str);
+
+        crate::metrics::prometheus::record_session(
+            &ctx.spec.project,
+            &outcome.status.to_string(),
+            outcome.cost_usd,
+            outcome.duration_ms,
+            model,
+            blast_radius,
+        );
+        crate::metrics::prometheus::record_turns(
+            &ctx.spec.project,
+            outcome.num_turns,
+            model,
+            blast_radius,
+        );
+        if let Some(failure_class) = outcome.failure_class {
+            crate::metrics::prometheus::record_session_failure(
+                &ctx.spec.project,
+                &outcome.status.to_string(),
+                model,
+                &failure_class.to_string(),
+            );
+        }
     }
 }
 
@@ -384,6 +396,60 @@ mod tests {
         assert_eq!(outcomes[0]["turns"], 10);
         assert_eq!(outcomes[0]["model"], "claude-3-5-sonnet");
         assert_eq!(outcomes[0]["category"], "feature");
+        assert!(outcomes[0]["failure_class"].is_null());
+    }
+
+    #[tokio::test]
+    async fn infra_failure_writes_failure_class_without_routing_model_bucket() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "test".to_owned(),
+            depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do the thing".to_owned(),
+
+            prompt_components: None,
+        }];
+        let mut ctx = make_context_with_prompts(
+            vec![MockOutcome::SpawnFailure {
+                detail: "auth token expired".to_owned(),
+            }],
+            prompts,
+        );
+        ctx.after_action_log_dir = Some(tmp.path().to_path_buf());
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        ExecutionStage
+            .run(&mut ctx)
+            .await
+            .expect("execution must succeed");
+        PostProcessingStage
+            .run(&mut ctx)
+            .await
+            .expect("post_processing must succeed");
+
+        let entries = read_dir_sorted(tmp.path()).await;
+        let content = tokio::fs::read_to_string(entries[0].path())
+            .await
+            .expect("read file");
+        let record: serde_json::Value =
+            serde_json::from_str(content.lines().next().expect("one jsonl line"))
+                .expect("valid JSON");
+        let outcomes = record["session_outcomes"]
+            .as_array()
+            .expect("session_outcomes is array");
+
+        assert_eq!(outcomes[0]["status"], "infra_failure");
+        assert_eq!(outcomes[0]["failure_class"], "auth");
+        assert!(outcomes[0]["model"].is_null());
     }
 
     #[tokio::test]

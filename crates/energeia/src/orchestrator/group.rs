@@ -14,7 +14,7 @@ use crate::prompt::PromptSpec;
 use crate::resume::ResumePolicy;
 use crate::session::manager::SessionManager;
 use crate::session::options::EngineConfig;
-use crate::types::{Budget, SessionOutcome, SessionStatus};
+use crate::types::{Budget, FailureClass, SessionOutcome, SessionStatus};
 
 /// Execute a group of independent prompts concurrently with bounded parallelism.
 ///
@@ -92,6 +92,7 @@ pub(crate) async fn execute_group(
                     resume_count: 0,
                     pr_url: None,
                     error: Some(e.to_string()),
+                    failure_class: Some(FailureClass::WorkerRuntime),
                     model: None,
                     blast_radius: prompt.blast_radius.clone(),
                     corrective_attempts: 0,
@@ -151,6 +152,7 @@ pub(crate) async fn execute_group(
                     error: Some(format!(
                         "task join error (prompt identity lost): {join_err}"
                     )),
+                    failure_class: Some(FailureClass::WorkerRuntime),
                     model: None,
                     blast_radius: vec![],
                     corrective_attempts: 0,
@@ -194,6 +196,7 @@ fn skipped_outcome(prompt: &PromptSpec, reason: &str) -> SessionOutcome {
         resume_count: 0,
         pr_url: None,
         error: Some(reason.to_owned()),
+        failure_class: None,
         model: None,
         blast_radius: prompt.blast_radius.clone(),
         corrective_attempts: 0,
@@ -224,7 +227,7 @@ mod tests {
     use crate::prompt::PromptSpec;
     use crate::resume::ResumePolicy;
     use crate::session::options::EngineConfig;
-    use crate::types::SessionStatus;
+    use crate::types::{FailureClass, SessionStatus};
 
     use super::execute_group;
 
@@ -422,7 +425,8 @@ mod tests {
 
         assert_eq!(outcomes.len(), 3);
         assert_eq!(outcomes[0].status, SessionStatus::Success);
-        assert_eq!(outcomes[1].status, SessionStatus::Failed);
+        assert_eq!(outcomes[1].status, SessionStatus::InfraFailure);
+        assert_eq!(outcomes[1].failure_class, Some(FailureClass::Auth));
         assert_eq!(outcomes[2].status, SessionStatus::Success);
     }
 
