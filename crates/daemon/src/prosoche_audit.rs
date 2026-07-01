@@ -156,8 +156,12 @@ impl ProsocheState {
             .iter()
             .map(|s| {
                 format!(
-                    "session:{}:turns={}:errors={}:completed={}",
-                    s.session_id, s.turn_count, s.error_count, s.completed
+                    "session:{}:turns={}:errors={}:completed={}:age_days={}",
+                    s.session_id,
+                    s.turn_count,
+                    s.error_count,
+                    s.completed,
+                    format_optional_days(s.session_age_days)
                 )
             })
             .collect();
@@ -218,11 +222,12 @@ impl ProsocheState {
             .iter()
             .map(|s| {
                 format!(
-                    "session:{}:turns={}:errors={}:completed={}:turn_hash={}",
+                    "session:{}:turns={}:errors={}:completed={}:age_days={}:turn_hash={}",
                     s.session_id,
                     s.turn_count,
                     s.error_count,
                     s.completed,
+                    format_optional_days(s.session_age_days),
                     stable_hash(&s.turn_text)
                 )
             })
@@ -255,6 +260,7 @@ impl ProsocheState {
 
 /// A minimal fact snapshot for audit checks.
 #[derive(Debug, Clone)]
+// kanon:ignore TOPOLOGY/shallow-struct WHY: ephemeral audit input assembled by state collectors; checks intentionally read fields directly
 pub struct FactSnapshot {
     /// Stable fact identifier.
     // kanon:ignore RUST/primitive-for-domain-id — FactSnapshot is an ephemeral audit input; fact_id comes from external knowledge graph facts as raw strings
@@ -269,6 +275,7 @@ pub struct FactSnapshot {
 
 /// A minimal session snapshot for audit checks.
 #[derive(Debug, Clone)]
+// kanon:ignore TOPOLOGY/shallow-struct WHY(#4721): session staleness input must expose age and counts without binding checks to a store type
 pub struct SessionSnapshot {
     /// Session identifier.
     // kanon:ignore RUST/primitive-for-domain-id — SessionSnapshot is an ephemeral audit input; session_id comes from external session metadata as raw strings
@@ -279,6 +286,10 @@ pub struct SessionSnapshot {
     pub error_count: u32,
     /// Whether the session reached a natural completion (vs. abandoned).
     pub completed: bool,
+    /// How many days old the session is at audit time.
+    ///
+    /// A value of `None` means session age is unknown.
+    pub session_age_days: Option<f64>,
     /// Combined text of all user turns in this session.
     ///
     /// Used for goal-alignment keyword matching. Only hashes of this value are
@@ -286,8 +297,13 @@ pub struct SessionSnapshot {
     pub turn_text: String,
 }
 
+fn format_optional_days(days: Option<f64>) -> String {
+    days.map_or_else(|| "unknown".to_owned(), |d| format!("{d:.6}"))
+}
+
 /// Behavioral counters for one recent session.
 #[derive(Debug, Clone, Default)]
+// kanon:ignore TOPOLOGY/shallow-struct WHY: behavior counters are ephemeral audit inputs shared across instinct-pattern checks
 pub struct BehaviorPatternSnapshot {
     /// Session identifier that owns the behavior sample.
     // kanon:ignore RUST/primitive-for-domain-id — BehaviorPatternSnapshot is an ephemeral audit input keyed by external session ids
@@ -403,6 +419,7 @@ impl ConsistencyCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: prosoche checks are the daemon-local implementations registered by this module
 impl ProsocheCheck for ConsistencyCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -594,16 +611,22 @@ fn extract_key_terms(content: &str) -> Vec<String> {
 ///
 /// v1 thresholds:
 /// - Facts untouched > 90 days: `Exploratory` finding.
-/// - Incomplete sessions with > 10 turns: `Interpretive` finding.
+/// - Incomplete sessions older than 14 days with > 10 turns: `Interpretive` finding.
 pub struct StalenessCheck {
     /// Number of days after which an unaccessed fact is considered stale.
     pub fact_stale_days: f64,
+    /// Number of days after which an incomplete session is considered stale.
+    pub session_stale_days: f64,
+    /// Minimum unfinished turns before session staleness is evaluated.
+    pub incomplete_session_turn_threshold: u32,
 }
 
 impl Default for StalenessCheck {
     fn default() -> Self {
         Self {
             fact_stale_days: 90.0,
+            session_stale_days: 14.0,
+            incomplete_session_turn_threshold: 10,
         }
     }
 }
@@ -629,8 +652,11 @@ impl StalenessCheck {
             .iter()
             .map(|s| {
                 format!(
-                    "session:{}:turns={}:completed={}",
-                    s.session_id, s.turn_count, s.completed
+                    "session:{}:turns={}:completed={}:age_days={}",
+                    s.session_id,
+                    s.turn_count,
+                    s.completed,
+                    format_optional_days(s.session_age_days)
                 )
             })
             .collect();
@@ -641,6 +667,7 @@ impl StalenessCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: prosoche checks are the daemon-local implementations registered by this module
 impl ProsocheCheck for StalenessCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -702,9 +729,12 @@ impl ProsocheCheck for StalenessCheck {
                 }
             }
 
-            // Future: carry session_age_days in SessionSnapshot and use it here.
             for session in &state.sessions {
-                if !session.completed && session.turn_count > 10 {
+                if let Some(session_age_days) = session.session_age_days
+                    && !session.completed
+                    && session.turn_count > self.incomplete_session_turn_threshold
+                    && session_age_days > self.session_stale_days
+                {
                     let rate = if sessions_scanned == 0 {
                         None
                     } else {
@@ -713,18 +743,22 @@ impl ProsocheCheck for StalenessCheck {
                     findings.push(Finding {
                         finding_id: format!("PROSOCHE-STALENESS-SESSION-{}", findings.len() + 1),
                         claim: format!(
-                            "Session '{}' has {} turns but was never completed.",
-                            session.session_id, session.turn_count
+                            "Session '{}' is {session_age_days:.0} days old, has {} turns, \
+                             and was never completed (thresholds: >{:.0} days, >{} turns).",
+                            session.session_id,
+                            session.turn_count,
+                            self.session_stale_days,
+                            self.incomplete_session_turn_threshold
                         ),
                         evidence_level: EvidenceLevel::Interpretive,
                         counter_argument:
-                            "Long incomplete sessions may reflect legitimate open-ended work. \
-                             Requires operator review."
+                            "Old incomplete sessions may reflect legitimate open-ended work. \
+                             Requires operator review before archival or follow-up."
                                 .to_owned(),
                         source: "prosoche::StalenessCheck".to_owned(),
                         stats: FindingStats {
                             p_adjusted: None,
-                            effect_metric: Some("incomplete_session_rate".to_owned()),
+                            effect_metric: Some("stale_incomplete_session_rate".to_owned()),
                             effect_value: None,
                             ci: None,
                             sample_sizes: Some([1, sessions_scanned]),
@@ -766,7 +800,11 @@ impl ProsocheCheck for StalenessCheck {
             kind: self.kind(),
             version: "1.0.0".to_owned(),
             maturity: CheckMaturity::Heuristic,
-            thresholds: serde_json::json!({ "fact_stale_days": self.fact_stale_days }),
+            thresholds: serde_json::json!({
+                "fact_stale_days": self.fact_stale_days,
+                "session_stale_days": self.session_stale_days,
+                "incomplete_session_turn_threshold": self.incomplete_session_turn_threshold,
+            }),
             sampling_window: None,
             source_query_hash: Self::query_hash(state),
         }
@@ -811,6 +849,7 @@ impl GoalAlignmentCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: prosoche checks are the daemon-local implementations registered by this module
 impl ProsocheCheck for GoalAlignmentCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -962,6 +1001,7 @@ impl SessionQualityCheck {
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: prosoche checks are the daemon-local implementations registered by this module
 impl ProsocheCheck for SessionQualityCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(
@@ -1268,6 +1308,7 @@ fn session_support(sample: &BehaviorSample, query_hash: &str) -> FindingSupport 
     }
 }
 
+// kanon:ignore ARCHITECTURE/trait-impl-colocation WHY: prosoche checks are the daemon-local implementations registered by this module
 impl ProsocheCheck for InstinctPatternsCheck {
     #[tracing::instrument(skip(self, state))]
     fn check<'a>(

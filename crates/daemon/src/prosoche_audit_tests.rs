@@ -23,11 +23,22 @@ fn fact(id: &str, content: &str, days: f64) -> FactSnapshot {
 }
 
 fn session(id: &str, turns: u32, errors: u32, completed: bool) -> SessionSnapshot {
+    session_with_age(id, turns, errors, completed, Some(0.0))
+}
+
+fn session_with_age(
+    id: &str,
+    turns: u32,
+    errors: u32,
+    completed: bool,
+    session_age_days: Option<f64>,
+) -> SessionSnapshot {
     SessionSnapshot {
         session_id: id.to_owned(),
         turn_count: turns,
         error_count: errors,
         completed,
+        session_age_days,
         turn_text: format!("turn text for session {id}"),
     }
 }
@@ -129,10 +140,16 @@ async fn staleness_check_ignores_recent_fact() {
 }
 
 #[tokio::test]
-async fn staleness_check_flags_large_incomplete_session() {
+async fn staleness_check_flags_old_large_incomplete_session() {
     let check = StalenessCheck::default();
     let mut state = make_state("test-nous");
-    state.sessions = vec![session("s-001", 15, 0, false)]; // 15 turns, not completed
+    state.sessions = vec![session_with_age(
+        "s-001",
+        15,
+        0,
+        false,
+        Some(check.session_stale_days + 1.0),
+    )];
     let findings = check.check(&state).await;
     assert_eq!(
         findings.len(),
@@ -152,6 +169,36 @@ async fn staleness_check_flags_large_incomplete_session() {
             .expect("at least one finding")
             .evidence_level,
         EvidenceLevel::Interpretive
+    );
+}
+
+#[tokio::test]
+async fn staleness_check_ignores_recent_large_incomplete_session() {
+    let check = StalenessCheck::default();
+    let mut state = make_state("test-nous");
+    state.sessions = vec![session_with_age(
+        "s-001",
+        15,
+        0,
+        false,
+        Some(check.session_stale_days - 1.0),
+    )];
+    let findings = check.check(&state).await;
+    assert!(
+        findings.is_empty(),
+        "recent incomplete session should not be stale: {findings:?}"
+    );
+}
+
+#[tokio::test]
+async fn staleness_check_ignores_large_incomplete_session_without_age() {
+    let check = StalenessCheck::default();
+    let mut state = make_state("test-nous");
+    state.sessions = vec![session_with_age("s-001", 15, 0, false, None)];
+    let findings = check.check(&state).await;
+    assert!(
+        findings.is_empty(),
+        "age-unknown incomplete session should not be stale: {findings:?}"
     );
 }
 
@@ -176,6 +223,7 @@ async fn goal_alignment_check_matching_session_no_finding() {
         turn_count: 5,
         error_count: 0,
         completed: true,
+        session_age_days: Some(0.0),
         turn_text: "implementing authentication and login functionality".to_owned(),
     }];
     let findings = check.check(&state).await;
@@ -195,6 +243,7 @@ async fn goal_alignment_check_unrelated_session_flagged() {
         turn_count: 5,
         error_count: 0,
         completed: true,
+        session_age_days: Some(0.0),
         turn_text: "discussing unrelated topics about coffee and weather".to_owned(),
     }];
     let findings = check.check(&state).await;
@@ -301,6 +350,7 @@ async fn instinct_patterns_check_detects_behavioral_patterns() {
         turn_count: 8,
         error_count: 4,
         completed: false,
+        session_age_days: Some(0.0),
         turn_text: "synthetic session transcript".to_owned(),
     }];
     state.behavior_patterns = vec![BehaviorPatternSnapshot {
@@ -354,6 +404,7 @@ async fn instinct_patterns_text_fallback_is_speculative() {
         turn_count: 6,
         error_count: 1,
         completed: false,
+        session_age_days: Some(0.0),
         turn_text: "still failing same error retry again definitely will work".to_owned(),
     }];
 
@@ -541,6 +592,7 @@ async fn persisted_report_does_not_copy_fact_or_session_content() {
         turn_count: 12,
         error_count: 0,
         completed: false,
+        session_age_days: Some(30.0),
         turn_text: "VERY-SENSITIVE-SESSION-TURN".to_owned(),
     }];
 
