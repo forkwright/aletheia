@@ -29,6 +29,7 @@ use hermeneus::provider::{
 use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
 use mneme::embedding::{DegradedEmbeddingProvider, EmbeddingProvider, create_provider};
+use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
@@ -36,6 +37,7 @@ use symbolon::credential::{
 };
 use taxis::config::{AletheiaConfig, EmbeddingSettings};
 use taxis::oikos::Oikos;
+use tokio::sync::Mutex;
 
 use crate::error::Result;
 
@@ -1175,6 +1177,7 @@ pub(super) fn build_matrix_provider(
 pub(super) fn start_inbound_dispatch(
     config: &AletheiaConfig,
     nous_manager: &Arc<NousManager>,
+    session_store: Arc<Mutex<SessionStore>>,
     ready_rx: tokio::sync::watch::Receiver<bool>,
     signal_provider: Option<&Arc<SignalProvider>>,
     matrix_provider: Option<&Arc<MatrixProvider>>,
@@ -1236,6 +1239,7 @@ pub(super) fn start_inbound_dispatch(
             router,
             Arc::clone(nous_manager),
             Arc::clone(&channel_registry),
+            session_store,
             ready_rx,
         ))
     };
