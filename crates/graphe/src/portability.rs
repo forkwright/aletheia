@@ -149,7 +149,7 @@ pub struct BinaryFileData {
 )]
 pub struct ExportedSession {
     pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret - NOTE: lookup slug, not a secret credential
     pub status: String,
     pub session_type: String,
     pub message_count: i64,

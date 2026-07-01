@@ -306,39 +306,62 @@ fn open_in_memory_creates_isolated_stores() {
 }
 
 #[test]
-fn create_session_classifies_session_type() {
-    // WHY: the store must derive the correct lifecycle class from the
-    // session key so user chat, daemon work, and one-shot tasks are
-    // separated without every caller threading explicit metadata.
+fn create_session_key_does_not_control_session_type() {
+    // WHY: session keys are identifiers; lifecycle retention is caller-owned
+    // metadata and must not change because a user-visible key matches an
+    // internal-looking prefix.
     let (store, _dir) = fresh_store();
 
-    let cases: &[(&str, SessionType)] = &[
-        ("main", SessionType::Primary),
-        ("signal-group", SessionType::Primary),
-        ("imported:2026-01-01", SessionType::Primary),
-        ("restored:backup", SessionType::Primary),
-        ("prosoche-wake", SessionType::Background),
-        ("daemon:prosoche", SessionType::Background),
-        ("daemon:self-prompt", SessionType::Background),
-        ("daemon:evolution", SessionType::Background),
-        ("daemon:reflection", SessionType::Background),
-        ("daemon:probe-audit", SessionType::Background),
-        ("ask:demiurge", SessionType::Ephemeral),
-        ("spawn:coder", SessionType::Ephemeral),
-        ("dispatch:task", SessionType::Ephemeral),
-        ("ephemeral:one-off", SessionType::Ephemeral),
-    ];
-
-    for (idx, (key, expected)) in cases.iter().enumerate() {
+    for (idx, key) in [
+        "prosoche-wake",
+        "daemon:prosoche",
+        "ask:demiurge",
+        "spawn:coder",
+        "dispatch:task",
+        "ephemeral:one-off",
+    ]
+    .iter()
+    .enumerate()
+    {
         let id = format!("ses-{idx}");
         let session = store
             .create_session(&id, "nous-int-test", key, None, None)
             .expect("create_session succeeds");
         assert_eq!(
-            session.session_type, *expected,
-            "key '{key}' should classify as {expected:?}"
+            session.session_type,
+            SessionType::Primary,
+            "key '{key}' must not change the default primary lifecycle"
         );
     }
+}
+
+#[test]
+fn create_session_with_type_uses_explicit_session_type() {
+    let (store, _dir) = fresh_store();
+
+    let background = store
+        .create_session_with_type(
+            "ses-background",
+            "nous-int-test",
+            "main",
+            SessionType::Background,
+            None,
+            None,
+        )
+        .expect("create background session succeeds");
+    assert_eq!(background.session_type, SessionType::Background);
+
+    let ephemeral = store
+        .find_or_create_session_with_type(
+            "ses-ephemeral",
+            "nous-int-test",
+            "regular-session",
+            SessionType::Ephemeral,
+            None,
+            None,
+        )
+        .expect("find_or_create ephemeral session succeeds");
+    assert_eq!(ephemeral.session_type, SessionType::Ephemeral);
 }
 
 #[cfg(feature = "portability")]

@@ -54,27 +54,6 @@ impl SessionType {
             Self::Ephemeral => "ephemeral",
         }
     }
-
-    /// Classify session type from key pattern.
-    ///
-    /// WHY: Session keys encode origin conventions. Internal daemon work is
-    /// always background; one-shot tool prefixes are ephemeral; everything
-    /// else defaults to primary so user chat and imported/restored sessions
-    /// remain first-class.
-    #[must_use]
-    pub(crate) fn from_key(key: &str) -> Self {
-        if key.starts_with("daemon:") || key.contains("prosoche") {
-            Self::Background
-        } else if key.starts_with("ask:")
-            || key.starts_with("spawn:")
-            || key.starts_with("dispatch:")
-            || key.starts_with("ephemeral:")
-        {
-            Self::Ephemeral
-        } else {
-            Self::Primary
-        }
-    }
 }
 
 /// Role of a message author within a conversation turn.
@@ -229,7 +208,7 @@ pub struct Session {
     /// Owning agent identifier.
     pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
     /// Logical key used to look up or resume this session.
-    pub session_key: String,
+    pub session_key: String, // kanon:ignore RUST/plain-string-secret - NOTE: lookup slug, not a secret credential
     /// Current lifecycle status.
     pub status: SessionStatus,
     /// LLM model used for this session's turns.
@@ -418,63 +397,6 @@ mod tests {
             let back: Role = serde_json::from_str(&json).expect("round-trip JSON is valid");
             assert_eq!(role, back);
         }
-    }
-
-    #[test]
-    fn session_type_from_key() {
-        // WHY: user chat and imported/restored sessions must stay primary.
-        assert_eq!(SessionType::from_key("main"), SessionType::Primary);
-        assert_eq!(SessionType::from_key("signal-group"), SessionType::Primary);
-        assert_eq!(
-            SessionType::from_key("imported:2026-01-01"),
-            SessionType::Primary
-        );
-        assert_eq!(
-            SessionType::from_key("restored:backup"),
-            SessionType::Primary
-        );
-
-        // WHY: daemon autonomous work and prosoche attention loops are
-        // background, not operator-primary sessions.
-        assert_eq!(
-            SessionType::from_key("prosoche-wake"),
-            SessionType::Background
-        );
-        assert_eq!(
-            SessionType::from_key("daemon:prosoche"),
-            SessionType::Background
-        );
-        assert_eq!(
-            SessionType::from_key("daemon:self-prompt"),
-            SessionType::Background
-        );
-        assert_eq!(
-            SessionType::from_key("daemon:evolution"),
-            SessionType::Background
-        );
-        assert_eq!(
-            SessionType::from_key("daemon:reflection"),
-            SessionType::Background
-        );
-        assert_eq!(
-            SessionType::from_key("daemon:probe-audit"),
-            SessionType::Background
-        );
-
-        // WHY: one-shot tool/dispatch sessions are ephemeral.
-        assert_eq!(
-            SessionType::from_key("ask:demiurge"),
-            SessionType::Ephemeral
-        );
-        assert_eq!(SessionType::from_key("spawn:coder"), SessionType::Ephemeral);
-        assert_eq!(
-            SessionType::from_key("dispatch:task"),
-            SessionType::Ephemeral
-        );
-        assert_eq!(
-            SessionType::from_key("ephemeral:one-off"),
-            SessionType::Ephemeral
-        );
     }
 
     #[test]
@@ -678,46 +600,5 @@ mod tests {
         assert!(is_reserved_session_prefix("cross:foo"));
         assert!(!is_reserved_session_prefix("foo:cross:"));
         assert!(!is_reserved_session_prefix("Cross:foo"));
-    }
-
-    #[test]
-    fn session_type_from_key_round_trip() {
-        assert_eq!(
-            SessionType::from_key("prosoche-loop"),
-            SessionType::Background
-        );
-        assert_eq!(
-            SessionType::from_key("daemon:prosoche"),
-            SessionType::Background
-        );
-        assert_eq!(
-            SessionType::from_key(SessionType::Background.as_str()),
-            SessionType::Primary,
-            "plain 'background' string has no prefix match, defaults to Primary"
-        );
-        for prefix in &["ask:", "spawn:", "dispatch:", "ephemeral:"] {
-            let key = format!("{prefix}test");
-            assert_eq!(
-                SessionType::from_key(&key),
-                SessionType::Ephemeral,
-                "key '{key}' should resolve to Ephemeral"
-            );
-        }
-        for daemon_key in &[
-            "daemon:self-prompt",
-            "daemon:evolution",
-            "daemon:reflection",
-            "daemon:probe-audit",
-        ] {
-            assert_eq!(
-                SessionType::from_key(daemon_key),
-                SessionType::Background,
-                "key '{daemon_key}' should resolve to Background"
-            );
-        }
-        assert_eq!(
-            SessionType::from_key("regular-session"),
-            SessionType::Primary
-        );
     }
 }

@@ -99,6 +99,10 @@ RUST/pub-visibility:src/lib.rs
 # and snake_case (Rust convention). The mixed casing is intentional.
 API/mixed-casing:src/portability.rs
 
+# WHY: portability structs are public JSON wire DTOs; constructors/newtypes
+# would change serialization compatibility and the published import/export API.
+TOPOLOGY/shallow-struct:src/portability.rs
+
 # WHY: ExportedSession has 13 fields because it's a wire-format struct matching
 # the TypeScript AgentFile schema. Splitting would break serialization compat.
 RUST/struct-too-many-fields:src/portability.rs
@@ -130,6 +134,19 @@ RUST/as-cast:src/export.rs
 RUST/string-slice:src/export.rs
 RUST/as-cast:src/store/message.rs
 
+# WHY: finalize-turn structs are public request/result DTOs for batched
+# persistence; field bags are the intentional API shape.
+TOPOLOGY/shallow-struct:src/store/fjall_store.rs
+
+# WHY: test_persist_counter is a cfg(test) helper module; importing the full
+# store surface would be unused noise.
+RUST/test-missing-use-super:src/store/fjall_store.rs
+
+# WHY: this is a legacy #[cfg(test)] module included from fjall_store.rs; the
+# file is long because it covers the fjall store public behavior matrix.
+RUST/file-too-long:src/store/fjall_store_tests.rs
+RUST/import-order:src/store/fjall_store_tests.rs
+
 # WHY: the linter flags row.get(N) inside rusqlite row mapper closures and
 # [param] array literals passed to rusqlite as direct indexing. Both are safe:
 # row.get() returns Result<T> (not panicking) and [param] is a literal array.
@@ -158,3 +175,7 @@ RUST/missing-must-use:src/retention.rs
 RUST/missing-must-use:src/store/message.rs
 RUST/missing-must-use:src/store/peripherals.rs
 RUST/missing-must-use:src/store/session.rs
+
+# WHY: Session Debug is test/diagnostic surface; fields are identifiers and
+# lifecycle metadata, not credential material.
+RUST/no-debug-derive-on-public-types:src/types.rs
