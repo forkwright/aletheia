@@ -201,6 +201,13 @@ impl<'a> KnowledgeReadPolicy<'a> {
 }
 
 /// Return visible entity ids, or `None` when the caller may see every entity.
+#[cfg_attr(
+    not(feature = "knowledge-store"),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "WHY: knowledge-store builds can fail while default builds keep the same API shape"
+    )
+)]
 pub(super) fn visible_entity_ids(
     state: &KnowledgeState,
     policy: &KnowledgeReadPolicy<'_>,

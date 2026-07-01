@@ -153,14 +153,47 @@ async fn test_state_with_mock_provider(
     .await
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "WHY(#4872): test harness AppState construction with per-provider fixture setup is inherently long; inner expect(disallowed_methods) annotations inflate line count"
-)]
 pub(super) async fn test_state_with_llm_provider(
     provider: Option<Box<dyn LlmProvider>>,
     include_private_nous: bool,
     auth_mode: &str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_llm_provider_and_tool_registry(
+        provider,
+        include_private_nous,
+        auth_mode,
+        ToolRegistry::new(),
+        None,
+    )
+    .await
+}
+
+pub(super) async fn test_state_with_approval_test_tool(
+    provider: Option<Box<dyn LlmProvider>>,
+    tool_registry: ToolRegistry,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_llm_provider_and_tool_registry(
+        provider,
+        false,
+        "token",
+        tool_registry,
+        Some(organon::types::ToolGroupPolicy::AllowAll {
+            reason: "approval endpoint regression fixture".to_owned(),
+        }),
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "WHY(#4872): test harness AppState construction with per-provider fixture setup is inherently long; inner expect(disallowed_methods) annotations inflate line count"
+)]
+async fn test_state_with_llm_provider_and_tool_registry(
+    provider: Option<Box<dyn LlmProvider>>,
+    include_private_nous: bool,
+    auth_mode: &str,
+    tool_registry: ToolRegistry,
+    tool_groups: Option<organon::types::ToolGroupPolicy>,
 ) -> (Arc<AppState>, tempfile::TempDir) {
     let dir = tempfile::TempDir::new().expect("tmpdir");
     let root = dir.path();
@@ -244,7 +277,7 @@ bind = "localhost"
         provider_registry.register(provider);
     }
     let provider_registry = Arc::new(provider_registry);
-    let tool_registry = Arc::new(ToolRegistry::new());
+    let tool_registry = Arc::new(tool_registry);
 
     let mut nous_manager = NousManager::new(
         Arc::clone(&provider_registry),
@@ -268,6 +301,7 @@ bind = "localhost"
             model: "mock-model".to_owned(),
             ..Default::default()
         },
+        tool_groups: tool_groups.clone().unwrap_or_default(),
         ..NousConfig::default()
     };
     nous_manager
@@ -282,6 +316,7 @@ bind = "localhost"
                 model: "mock-model".to_owned(),
                 ..Default::default()
             },
+            tool_groups: tool_groups.clone().unwrap_or_default(),
             ..NousConfig::default()
         };
         nous_manager
