@@ -11,6 +11,8 @@ use koina::system::{Environment, RealSystem};
 use symbolon::types::Role;
 
 use hermeneus::health::{DownReason, ProviderHealth};
+use hermeneus::provider::ProviderRegistry;
+use organon::registry::ToolRegistry;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
@@ -111,6 +113,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
 
         // WHY: these checks are synchronous and cheap — no timeout needed.
         let provider_check = check_provider_availability(state);
+        let runtime_assembly_check = check_runtime_assembly(state);
         let credential_check =
             check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
         let credential_runtime_check = check_credential_runtime(state).await;
@@ -129,6 +132,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
         vec![
             store_check,
             provider_check,
+            runtime_assembly_check,
             actor_check,
             check_provider_reachability(state),
             config_check,
@@ -321,6 +325,43 @@ fn check_provider_availability(state: &HealthState) -> HealthCheck {
             Some("no LLM providers registered".to_owned())
         },
         details: None,
+    }
+}
+
+/// Check whether this process was assembled with any agent-loop capabilities.
+fn check_runtime_assembly(state: &HealthState) -> HealthCheck {
+    runtime_assembly_check(&state.provider_registry, &state.tool_registry)
+}
+
+fn runtime_assembly_check(
+    provider_registry: &ProviderRegistry,
+    tool_registry: &ToolRegistry,
+) -> HealthCheck {
+    let provider_count = provider_registry.providers().len();
+    let tool_count = tool_registry.definitions().len();
+    let details = Some(serde_json::json!({
+        "provider_count": provider_count,
+        "tool_count": tool_count,
+        "canonical_startup": "aletheia serve",
+    }));
+
+    if provider_count == 0 && tool_count == 0 {
+        return HealthCheck {
+            name: "runtime_assembly".to_owned(),
+            status: "fail".to_owned(),
+            message: Some(
+                "gateway-only harness has no providers or tools registered; use `aletheia serve` for production startup"
+                    .to_owned(),
+            ),
+            details,
+        };
+    }
+
+    HealthCheck {
+        name: "runtime_assembly".to_owned(),
+        status: "pass".to_owned(),
+        message: None,
+        details,
     }
 }
 
@@ -1122,11 +1163,13 @@ mod tests {
             use hermeneus::provider::ProviderRegistry;
             use mneme::store::SessionStore;
             use nous::manager::NousManager;
+            use organon::registry::ToolRegistry;
             use taxis::config::AletheiaConfig;
             use taxis::oikos::Oikos;
 
             let _: &Arc<tokio::sync::Mutex<SessionStore>> = &state.session_store;
             let _: &Arc<ProviderRegistry> = &state.provider_registry;
+            let _: &Arc<ToolRegistry> = &state.tool_registry;
             let _: &Arc<NousManager> = &state.nous_manager;
             let _: std::time::Instant = state.start_time;
             let _: &Arc<Oikos> = &state.oikos;
@@ -1252,6 +1295,36 @@ mod tests {
         let json = serde_json::to_value(&check).unwrap();
         assert_eq!(json["status"], "fail");
         assert_eq!(json["message"], "no LLM providers registered");
+    }
+
+    #[test]
+    fn runtime_assembly_fails_empty_provider_and_tool_registries() {
+        let providers = ProviderRegistry::new();
+        let tools = ToolRegistry::new();
+
+        let check = runtime_assembly_check(&providers, &tools);
+
+        assert_eq!(check.name, "runtime_assembly");
+        assert_eq!(check.status, "fail");
+        let message = check.message.as_deref().unwrap_or_default();
+        assert!(message.contains("gateway-only harness"));
+        assert!(message.contains("aletheia serve"));
+        let details = check.details.unwrap_or_default();
+        assert_eq!(details["provider_count"], 0);
+        assert_eq!(details["tool_count"], 0);
+        assert_eq!(details["canonical_startup"], "aletheia serve");
+    }
+
+    #[test]
+    fn runtime_assembly_passes_when_provider_registry_is_populated() {
+        let providers = make_registry_with_named_providers(&["alpha"]);
+        let tools = ToolRegistry::new();
+
+        let check = runtime_assembly_check(&providers, &tools);
+
+        assert_eq!(check.name, "runtime_assembly");
+        assert_eq!(check.status, "pass");
+        assert!(check.message.is_none());
     }
 
     #[test]

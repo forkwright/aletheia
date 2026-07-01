@@ -1,5 +1,11 @@
-//! Server entry point with graceful shutdown.
+//! Server lifecycle helpers with graceful shutdown.
+//!
+//! Production startup is assembled by the `aletheia` binary command path, which
+//! builds the provider registry, tool registry, actors, and pylon router from
+//! one runtime builder. The standalone runner here is retained only as a
+//! deprecated gateway-only harness for crate-local tests.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -90,7 +96,12 @@ pub enum ServerError {
     Auth { message: String },
 }
 
-/// Start the HTTP gateway and block until shutdown.
+/// Start the deprecated gateway-only harness and block until shutdown.
+///
+/// Deprecated: use `aletheia serve` or the binary server command path for
+/// production startup. This harness does not build the production runtime; it
+/// creates empty provider and tool registries and therefore cannot exercise the
+/// real agent-loop capability surface.
 ///
 /// # Errors
 ///
@@ -110,6 +121,9 @@ pub enum ServerError {
 /// until the OS delivers a shutdown signal; dropping it at that point skips the
 /// SIGHUP-handler drain and `shutdown_readonly` call, which may leave actor tasks
 /// running until the runtime exits.
+#[deprecated(
+    note = "pylon::server::run is a gateway-only test harness; use `aletheia serve` for production startup"
+)]
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
@@ -122,6 +136,12 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let session_store = SessionStore::open(&oikos.sessions_db()).context(SessionStoreSnafu)?;
     let session_store = Arc::new(Mutex::new(session_store));
 
+    // WARNING(#4556): this deprecated pylon-only harness intentionally does
+    // not assemble the production runtime. Use `aletheia serve` so providers
+    // and built-in tools come from the canonical runtime builder.
+    warn!(
+        "pylon::server::run is a gateway-only test harness with empty provider and tool registries; use `aletheia serve` for production startup"
+    );
     let provider_registry = Arc::new(ProviderRegistry::new());
     let tool_registry = Arc::new(ToolRegistry::new());
 
@@ -308,7 +328,7 @@ async fn serve_plain(app: axum::Router, bind_addr: &str) -> Result<(), ServerErr
     // rather than spoofable `X-Forwarded-For` headers.
     axum::serve(
         listener,
-        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .with_graceful_shutdown(shutdown_signal())
     .await
@@ -340,7 +360,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
         .await
         .context(TlsConfigSnafu)?;
 
-    let addr: std::net::SocketAddr = config
+    let addr: SocketAddr = config
         .bind_addr
         .parse()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))
@@ -362,7 +382,7 @@ async fn serve_tls(app: axum::Router, config: &ServerConfig) -> Result<(), Serve
 
     axum_server::bind_rustls(addr, tls_config)
         .handle(handle)
-        .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .context(ServeSnafu)
 }
@@ -601,6 +621,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(
+        deprecated,
+        reason = "test covers config failure before deprecated harness runtime assembly"
+    )]
     async fn run_fails_on_malformed_config() {
         let instance = tempfile::tempdir().unwrap_or_else(|e| panic!("create tempdir: {e}"));
         for dir in ["config", "data", "nous"] {

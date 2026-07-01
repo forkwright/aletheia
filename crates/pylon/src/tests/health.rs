@@ -67,15 +67,28 @@ async fn public_health_does_not_expose_diagnostics() {
 }
 
 #[tokio::test]
-async fn detailed_health_degraded_without_providers() {
+async fn detailed_health_flags_empty_runtime_harness() {
     let (app, _dir) = app_no_providers().await;
     let resp = app
         .oneshot(authed_get("/api/v1/system/health"))
         .await
         .unwrap();
 
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = body_json(resp).await;
-    assert_eq!(body["status"], "degraded");
+    assert_eq!(body["status"], "unhealthy");
+    let checks = body["checks"].as_array().expect("checks is array");
+    let runtime = checks
+        .iter()
+        .find(|check| check["name"] == "runtime_assembly")
+        .expect("runtime assembly check present");
+    assert_eq!(runtime["status"], "fail");
+    assert!(
+        runtime["message"]
+            .as_str()
+            .expect("runtime message")
+            .contains("aletheia serve")
+    );
 }
 
 #[tokio::test]
@@ -132,6 +145,10 @@ async fn detailed_health_checks_have_expected_shape() {
         "missing session_store check"
     );
     assert!(names.contains(&"providers"), "missing providers check");
+    assert!(
+        names.contains(&"runtime_assembly"),
+        "missing runtime_assembly check"
+    );
     assert!(body["data_dir"].is_string(), "operator health has data_dir");
 }
 
