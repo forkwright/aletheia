@@ -243,7 +243,11 @@ pub(crate) fn Memory() -> Element {
         drop(store);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let Ok(client) = authenticated_client(&cfg)
+                .inspect_err(crate::api::client::log_authenticated_client_error)
+            else {
+                return;
+            };
             let base = cfg.server_url.trim_end_matches('/');
 
             let store = fact_store.read();
@@ -314,7 +318,11 @@ pub(crate) fn Memory() -> Element {
         drop(store);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let Ok(client) = authenticated_client(&cfg)
+                .inspect_err(crate::api::client::log_authenticated_client_error)
+            else {
+                return;
+            };
             let base = cfg.server_url.trim_end_matches('/');
 
             let mut url = format!(
@@ -422,7 +430,13 @@ pub(crate) fn Memory() -> Element {
         detail_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    detail_state.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let base = cfg.server_url.trim_end_matches('/');
             let encoded: String = keryx::url::encode_path_segment(&id);
 

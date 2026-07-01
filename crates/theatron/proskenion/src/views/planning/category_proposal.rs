@@ -159,7 +159,14 @@ fn send_proposal_action(
     submitting.set(true);
 
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                tracing::warn!("proposal action client error: {err}");
+                submitting.set(false);
+                return;
+            }
+        };
         let url = project_proposal_url(&cfg.server_url, &pid, &prop_id);
 
         let body = ProposalActionRequest { action };

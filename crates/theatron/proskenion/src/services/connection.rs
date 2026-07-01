@@ -30,11 +30,11 @@
 
 use std::time::{Duration, Instant};
 
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use snafu::{ResultExt, Snafu};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::api::client::{AuthenticatedClientError, build_authenticated_client};
 use crate::api::health::{HealthFetchError, parse_health_body};
 use crate::state::connection::{
     ConnectionConfig, ConnectionState, HEALTH_CHECK_INTERVAL, backoff_duration,
@@ -78,8 +78,10 @@ pub enum ConnectionError {
         timeout_secs: u64,
     },
 
-    /// Auth token contains non-ASCII characters.
-    #[snafu(display("invalid auth token: contains non-ASCII characters"))]
+    /// Auth token cannot be encoded as an HTTP header value.
+    #[snafu(display(
+        "invalid auth token: contains characters that cannot be sent in an HTTP Authorization header. Update or clear the token in Connect or Settings > Servers."
+    ))]
     InvalidToken,
 
     /// Failed to construct the reqwest client.
@@ -88,6 +90,15 @@ pub enum ConnectionError {
         /// Underlying HTTP error.
         source: reqwest::Error,
     },
+}
+
+impl From<AuthenticatedClientError> for ConnectionError {
+    fn from(value: AuthenticatedClientError) -> Self {
+        match value {
+            AuthenticatedClientError::InvalidToken => Self::InvalidToken,
+            AuthenticatedClientError::ClientBuild { source } => Self::ClientBuild { source },
+        }
+    }
 }
 
 /// Readiness reported by a pylon health check.
@@ -125,31 +136,10 @@ impl PylonClient {
     ///
     /// # Errors
     ///
-    /// Returns `InvalidToken` if the auth token contains non-ASCII characters.
+    /// Returns `InvalidToken` if the auth token cannot be encoded as an HTTP header value.
     /// Returns `ClientBuild` if the reqwest client cannot be constructed.
     pub(crate) fn new(config: &ConnectionConfig) -> Result<Self, ConnectionError> {
-        let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-        // CSRF mitigation: documented default bootstrap header for pylon.
-        headers.insert("x-requested-with", HeaderValue::from_static("aletheia"));
-
-        if let Some(ref token) = config.auth_token {
-            let value = format!("Bearer {token}");
-            // SAFETY: log only the error kind, not the token value.
-            let header_value = HeaderValue::from_str(&value).map_err(|e| {
-                tracing::debug!(kind = %e, "auth token contains invalid header characters"); // kanon:ignore SECURITY/credential-logging -- logs only the error kind, not the token
-                ConnectionError::InvalidToken
-            })?;
-            headers.insert(AUTHORIZATION, header_value);
-        }
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(30))
-            .cookie_store(true)
-            .build()
-            .context(ClientBuildSnafu)?;
+        let client = build_authenticated_client(config, Some(Duration::from_secs(30)))?;
 
         Ok(Self {
             client,
@@ -531,7 +521,7 @@ mod tests {
         let err = ConnectionError::InvalidToken;
         assert_eq!(
             err.to_string(),
-            "invalid auth token: contains non-ASCII characters"
+            "invalid auth token: contains characters that cannot be sent in an HTTP Authorization header. Update or clear the token in Connect or Settings > Servers."
         );
 
         let err = ConnectionError::Unhealthy { status: 503 };

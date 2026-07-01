@@ -272,7 +272,19 @@ pub(crate) fn MergeDialog(
                                 let primary = primary_id.clone();
 
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
+                                    let client = match authenticated_client(&cfg) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            if let Some(mut ts) =
+                                                try_consume_context::<Signal<ToastStore>>()
+                                            {
+                                                ts.write()
+                                                    .push(ToastSeverity::Error, err.to_string());
+                                            }
+                                            is_submitting.set(false);
+                                            return;
+                                        }
+                                    };
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let url = format!("{base}/api/v1/knowledge/entities/merge");
 
@@ -414,7 +426,19 @@ pub(crate) fn FlagDialog(
                                 let id = eid.clone();
 
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
+                                    let client = match authenticated_client(&cfg) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            if let Some(mut ts) =
+                                                try_consume_context::<Signal<ToastStore>>()
+                                            {
+                                                ts.write()
+                                                    .push(ToastSeverity::Error, err.to_string());
+                                            }
+                                            is_submitting.set(false);
+                                            return;
+                                        }
+                                    };
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
                                         keryx::url::encode_path_segment(&id);
@@ -526,7 +550,19 @@ pub(crate) fn DeleteDialog(
                                 let id = eid.clone();
 
                                 spawn(async move {
-                                    let client = authenticated_client(&cfg);
+                                    let client = match authenticated_client(&cfg) {
+                                        Ok(client) => client,
+                                        Err(err) => {
+                                            if let Some(mut ts) =
+                                                try_consume_context::<Signal<ToastStore>>()
+                                            {
+                                                ts.write()
+                                                    .push(ToastSeverity::Error, err.to_string());
+                                            }
+                                            is_submitting.set(false);
+                                            return;
+                                        }
+                                    };
                                     let base = cfg.server_url.trim_end_matches('/');
                                     let encoded: String =
                                         keryx::url::encode_path_segment(&id);

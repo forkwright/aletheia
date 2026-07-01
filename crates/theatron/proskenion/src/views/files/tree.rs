@@ -70,7 +70,13 @@ pub(crate) fn FileTree(
         root_state.set(FetchState::Loading);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    root_state.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let base = cfg.server_url.trim_end_matches('/');
             let url = format!("{base}/api/v1/workspace/files");
 
@@ -96,7 +102,11 @@ pub(crate) fn FileTree(
     let fetch_git_status = move || {
         let cfg = config.read().clone();
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let Ok(client) = authenticated_client(&cfg)
+                .inspect_err(crate::api::client::log_authenticated_client_error)
+            else {
+                return;
+            };
             let base = cfg.server_url.trim_end_matches('/');
             let url = format!("{base}/api/v1/workspace/git-status");
 
@@ -292,7 +302,11 @@ fn toggle_directory(
     let mut children_cache = children_cache;
 
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let Ok(client) = authenticated_client(&cfg)
+            .inspect_err(crate::api::client::log_authenticated_client_error)
+        else {
+            return;
+        };
         let base = cfg.server_url.trim_end_matches('/');
         let encoded: String = keryx::url::encode_path_segment(&path_owned);
         let url = format!("{base}/api/v1/workspace/files?path={encoded}");

@@ -9,7 +9,10 @@ use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
-use crate::services::{connection::PylonClient, settings_config};
+use crate::services::{
+    connection::{ConnectionError, PylonClient},
+    settings_config,
+};
 use crate::state::connection::{ConnectionConfig, ConnectionState};
 use crate::state::settings::{ServerConfigStore, ServerHealth};
 
@@ -42,6 +45,7 @@ async fn probe_health(url: &str, token: Option<&str>) -> ServerHealth {
             Ok(_) => ServerHealth::Healthy,
             Err(_) => ServerHealth::Unreachable,
         },
+        Err(ConnectionError::InvalidToken) => ServerHealth::InvalidToken,
         Err(_) => ServerHealth::Unreachable,
     }
 }

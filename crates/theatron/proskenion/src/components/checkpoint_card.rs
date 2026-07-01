@@ -216,7 +216,14 @@ pub(crate) fn CheckpointCard(
         submitting.set(true);
         error_msg.set(None);
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    error_msg.set(Some(err.to_string()));
+                    submitting.set(false);
+                    return;
+                }
+            };
             let url = project_checkpoint_action_url(&cfg.server_url, &pid, &cid);
             let req = CheckpointActionRequest {
                 action: CheckpointAction::Approve,
@@ -253,7 +260,14 @@ pub(crate) fn CheckpointCard(
         submitting.set(true);
         error_msg.set(None);
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    error_msg.set(Some(err.to_string()));
+                    submitting.set(false);
+                    return;
+                }
+            };
             let url = project_checkpoint_action_url(&cfg.server_url, &pid, &cid);
             let req = CheckpointActionRequest {
                 action,

@@ -71,7 +71,11 @@ pub(crate) fn FileSearch(
                 return;
             }
 
-            let client = authenticated_client(&cfg);
+            let Ok(client) = authenticated_client(&cfg)
+                .inspect_err(crate::api::client::log_authenticated_client_error)
+            else {
+                return;
+            };
             let base = cfg.server_url.trim_end_matches('/');
             let encoded: String = keryx::url::encode_path_segment(&q);
             let url = format!("{base}/api/v1/workspace/search?q={encoded}&limit=50");

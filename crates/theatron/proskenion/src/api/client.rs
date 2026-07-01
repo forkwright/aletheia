@@ -3,13 +3,16 @@
 use std::time::Duration;
 
 use reqwest::Client;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use snafu::{ResultExt, Snafu};
 
 use crate::state::commands::ServerCommandDescriptor;
 use crate::state::connection::ConnectionConfig;
 
 use skene::api::types::{Agent, AgentsResponse};
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const REST_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Outcome of a workspace file save against `PUT /api/v1/workspace/files/content`.
 ///
@@ -29,9 +32,57 @@ pub(crate) enum SaveOutcome {
     Failed(String),
 }
 
+/// Errors from constructing shared authenticated HTTP clients.
+#[derive(Debug, Snafu)]
+pub(crate) enum AuthenticatedClientError {
+    /// Auth token cannot be encoded as an HTTP header value.
+    #[snafu(display(
+        "invalid auth token: contains characters that cannot be sent in an HTTP Authorization header. Update or clear the token in Connect or Settings > Servers."
+    ))]
+    InvalidToken,
+
+    /// Failed to construct the reqwest client.
+    #[snafu(display("failed to build HTTP client: {source}"))]
+    ClientBuild {
+        /// Underlying HTTP error.
+        source: reqwest::Error,
+    },
+}
+
+impl AuthenticatedClientError {
+    /// Whether this failure came from malformed auth configuration.
+    #[must_use]
+    pub(crate) fn is_invalid_token(&self) -> bool {
+        matches!(self, Self::InvalidToken)
+    }
+
+    /// User-facing connection remediation for malformed local configuration.
+    #[must_use]
+    pub(crate) fn connection_failure_reason(&self) -> &'static str {
+        match self {
+            Self::InvalidToken => {
+                "Invalid auth token. Update or clear the token in Connect or Settings > Servers."
+            }
+            Self::ClientBuild { .. } => "Failed to build the authenticated HTTP client.",
+        }
+    }
+}
+
+/// Log a shared-client construction failure without exposing credential text.
+pub(crate) fn log_authenticated_client_error(err: &AuthenticatedClientError) {
+    tracing::warn!(error = %err, "failed to build authenticated HTTP client");
+}
+
 /// Errors from the startup agent-roster fetch.
 #[derive(Debug, Snafu)]
 pub(crate) enum AgentRosterFetchError {
+    /// The local HTTP client could not be built from the configured connection.
+    #[snafu(display("failed to build authenticated client: {source}"))]
+    Client {
+        /// Underlying client construction error.
+        source: AuthenticatedClientError,
+    },
+
     /// The server rejected the configured credentials.
     #[snafu(display("authentication failed while loading the agent roster"))]
     Auth,
@@ -65,18 +116,24 @@ impl AgentRosterFetchError {
     /// instead of an empty roster.
     #[must_use]
     pub(crate) fn is_auth_failure(&self) -> bool {
-        matches!(self, Self::Auth)
+        match self {
+            Self::Auth => true,
+            Self::Client { source } => source.is_invalid_token(),
+            Self::Request { .. } | Self::Server { .. } | Self::Decode { .. } => false,
+        }
     }
 
     /// User-facing reason to place in connection state for auth failures.
     #[must_use]
-    pub(crate) fn connection_failure_reason(&self) -> &'static str {
+    pub(crate) fn connection_failure_reason(&self) -> String {
         match self {
             Self::Auth => {
                 "Authentication failed while loading the agent roster. Check the server auth token."
+                    .to_string()
             }
+            Self::Client { source } => source.connection_failure_reason().to_string(),
             Self::Request { .. } | Self::Server { .. } | Self::Decode { .. } => {
-                "Failed to load the agent roster."
+                "Failed to load the agent roster.".to_string()
             }
         }
     }
@@ -92,7 +149,7 @@ impl AgentRosterFetchError {
 pub(crate) async fn fetch_agent_roster(
     config: &ConnectionConfig,
 ) -> Result<Vec<Agent>, AgentRosterFetchError> {
-    let client = authenticated_client(config);
+    let client = authenticated_client(config).context(ClientSnafu)?;
     let base = config.server_url.trim_end_matches('/');
     let url = format!("{base}/api/v1/nous");
 
@@ -141,7 +198,7 @@ pub(crate) async fn fetch_agent_roster(
 pub(crate) async fn fetch_server_command_descriptors(
     config: &ConnectionConfig,
 ) -> Result<Vec<ServerCommandDescriptor>, AgentRosterFetchError> {
-    let client = authenticated_client(config);
+    let client = authenticated_client(config).context(ClientSnafu)?;
     let base = config.server_url.trim_end_matches('/');
     let url = format!("{base}/api/v1/nous");
 
@@ -250,7 +307,10 @@ pub(crate) async fn save_workspace_file(
     path: &str,
     content: &str,
 ) -> SaveOutcome {
-    let client = authenticated_client(config);
+    let client = match authenticated_client(config) {
+        Ok(client) => client,
+        Err(err) => return SaveOutcome::Failed(err.to_string()),
+    };
     let base = config.server_url.trim_end_matches('/');
     let url = format!("{base}/api/v1/workspace/files/content");
     let body = serde_json::json!({ "path": path, "content": content });
@@ -283,7 +343,7 @@ pub(crate) async fn open_workspace_file(
     config: &ConnectionConfig,
     path: &str,
 ) -> Result<(), String> {
-    let client = authenticated_client(config);
+    let client = authenticated_client(config).map_err(|err| err.to_string())?;
     let base = config.server_url.trim_end_matches('/');
     let url = format!("{base}/api/v1/workspace/open");
     let body = serde_json::json!({ "path": path });
@@ -306,35 +366,52 @@ pub(crate) async fn open_workspace_file(
 /// Build a `reqwest::Client` with the Bearer token from `config` attached
 /// as a default header. Views should call this instead of `Client::new()`
 /// so that all API requests carry the auth token.
-pub(crate) fn authenticated_client(config: &ConnectionConfig) -> Client {
-    build_authenticated_client(config, Some(Duration::from_secs(30)))
+pub(crate) fn authenticated_client(
+    config: &ConnectionConfig,
+) -> Result<Client, AuthenticatedClientError> {
+    build_authenticated_client(config, Some(REST_REQUEST_TIMEOUT))
 }
 
-pub(crate) fn authenticated_streaming_client(config: &ConnectionConfig) -> Client {
+pub(crate) fn authenticated_streaming_client(
+    config: &ConnectionConfig,
+) -> Result<Client, AuthenticatedClientError> {
     build_authenticated_client(config, None)
 }
 
-fn build_authenticated_client(config: &ConnectionConfig, timeout: Option<Duration>) -> Client {
-    let mut headers = HeaderMap::new();
+pub(crate) fn build_authenticated_client(
+    config: &ConnectionConfig,
+    timeout: Option<Duration>,
+) -> Result<Client, AuthenticatedClientError> {
+    let headers = default_headers(config.auth_token.as_deref())?;
 
-    if let Some(ref token) = config.auth_token
-        && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}"))
-    {
-        headers.insert(AUTHORIZATION, val);
-    }
-
-    // WHY: fall back to default client if builder fails (e.g. no TLS provider
-    // installed yet); views already handle HTTP errors gracefully.
     let mut builder = Client::builder()
-        .default_headers(headers)
-        .connect_timeout(Duration::from_secs(30));
+        .cookie_store(true)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .default_headers(headers);
     if let Some(timeout) = timeout {
         builder = builder.timeout(timeout);
     }
-    builder.build().unwrap_or_else(|err| {
-        tracing::warn!(error = %err, "failed to build authenticated HTTP client");
-        Client::new()
-    })
+    builder.build().context(ClientBuildSnafu)
+}
+
+fn default_headers(token: Option<&str>) -> Result<HeaderMap, AuthenticatedClientError> {
+    let mut headers = HeaderMap::new();
+
+    if let Some(token) = token {
+        let value = format!("Bearer {token}");
+        let header_value = HeaderValue::from_str(&value).map_err(|err| {
+            tracing::debug!(kind = %err, "auth token contains invalid header characters"); // kanon:ignore SECURITY/credential-logging -- logs only the error kind, not the token
+            AuthenticatedClientError::InvalidToken
+        })?;
+        headers.insert(AUTHORIZATION, header_value);
+    }
+
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+    // CSRF mitigation: documented default bootstrap header for pylon.
+    headers.insert("x-requested-with", HeaderValue::from_static("aletheia"));
+
+    Ok(headers)
 }
 
 #[cfg(test)]
@@ -354,7 +431,10 @@ mod tests {
     fn builds_client_without_token() {
         install_crypto();
         let config = ConnectionConfig::default();
-        let client = authenticated_client(&config);
+        let client = match authenticated_client(&config) {
+            Ok(client) => client,
+            Err(err) => panic!("client without token should build: {err}"),
+        };
         // WHY: ensure the client builds and is usable. The default config
         // has no token, so no Authorization header is added.
         let debug = format!("{client:?}");
@@ -368,7 +448,10 @@ mod tests {
             auth_token: Some("test-token-123".to_string()),
             ..ConnectionConfig::default()
         };
-        let client = authenticated_client(&config);
+        let client = match authenticated_client(&config) {
+            Ok(client) => client,
+            Err(err) => panic!("client with valid token should build: {err}"),
+        };
         let debug = format!("{client:?}");
         // WHY: client builds; we cannot easily inspect default headers
         // through the public API, but a successful build covers the path.
@@ -376,17 +459,17 @@ mod tests {
     }
 
     #[test]
-    fn invalid_token_falls_through_to_default() {
+    fn invalid_token_fails_closed_for_rest_client() {
         install_crypto();
-        // NOTE: A token with non-ASCII bytes triggers HeaderValue::from_str
-        // failure and the function silently skips adding the header.
         let config = ConnectionConfig {
             auth_token: Some("bad\x00token".to_string()),
             ..ConnectionConfig::default()
         };
-        let client = authenticated_client(&config);
-        let debug = format!("{client:?}");
-        assert!(!debug.is_empty());
+        let result = authenticated_client(&config);
+        assert!(matches!(
+            result,
+            Err(AuthenticatedClientError::InvalidToken)
+        ));
     }
 
     #[test]
@@ -396,7 +479,10 @@ mod tests {
             auth_token: Some(String::new()),
             ..ConnectionConfig::default()
         };
-        let client = authenticated_client(&config);
+        let client = match authenticated_client(&config) {
+            Ok(client) => client,
+            Err(err) => panic!("empty token should build: {err}"),
+        };
         let debug = format!("{client:?}");
         assert!(!debug.is_empty());
     }
@@ -408,21 +494,26 @@ mod tests {
             auth_token: Some("stream-token-456".to_string()),
             ..ConnectionConfig::default()
         };
-        let client = authenticated_streaming_client(&config);
+        let client = match authenticated_streaming_client(&config) {
+            Ok(client) => client,
+            Err(err) => panic!("streaming client with valid token should build: {err}"),
+        };
         let debug = format!("{client:?}");
         assert!(!debug.is_empty());
     }
 
     #[test]
-    fn streaming_client_ignores_invalid_token() {
+    fn invalid_token_fails_closed_for_streaming_client() {
         install_crypto();
         let config = ConnectionConfig {
             auth_token: Some("bad\x00token".to_string()),
             ..ConnectionConfig::default()
         };
-        let client = authenticated_streaming_client(&config);
-        let debug = format!("{client:?}");
-        assert!(!debug.is_empty());
+        let result = authenticated_streaming_client(&config);
+        assert!(matches!(
+            result,
+            Err(AuthenticatedClientError::InvalidToken)
+        ));
     }
 
     async fn spawn_auth_required_roster(
@@ -491,6 +582,54 @@ mod tests {
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0].id.to_string(), "alice");
         server.await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn streaming_client_sends_bearer_token() -> Result<(), Box<dyn Error>> {
+        install_crypto();
+        let (server_url, server) = spawn_auth_required_roster("stream-secret").await?;
+        let config = ConnectionConfig {
+            server_url: server_url.clone(),
+            auth_token: Some("stream-secret".to_string()),
+            ..ConnectionConfig::default()
+        };
+
+        let client = match authenticated_streaming_client(&config) {
+            Ok(client) => client,
+            Err(err) => panic!("streaming client should build: {err}"),
+        };
+        let resp = client
+            .get(format!("{server_url}/api/v1/events"))
+            .send()
+            .await?;
+
+        assert!(resp.status().is_success());
+        server.await??;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn invalid_token_prevents_roster_request_construction() -> Result<(), Box<dyn Error>> {
+        install_crypto();
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let server_url = format!("http://{}", listener.local_addr()?);
+        let config = ConnectionConfig {
+            server_url,
+            auth_token: Some("bad\x00token".to_string()),
+            ..ConnectionConfig::default()
+        };
+
+        let result = fetch_agent_roster(&config).await;
+
+        assert!(matches!(
+            result,
+            Err(AgentRosterFetchError::Client {
+                source: AuthenticatedClientError::InvalidToken
+            })
+        ));
+        let accepted = tokio::time::timeout(Duration::from_millis(100), listener.accept()).await;
+        assert!(accepted.is_err(), "invalid token must not reach the server");
         Ok(())
     }
 

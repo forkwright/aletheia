@@ -192,7 +192,7 @@ fn ConnectedApp() -> Element {
                     Err(err) if err.is_auth_failure() => {
                         tracing::warn!(error = %err, "startup agent roster authentication failed");
                         connection_state.set(ConnectionState::Failed {
-                            reason: err.connection_failure_reason().to_string(),
+                            reason: err.connection_failure_reason(),
                         });
                     }
                     Err(err) => {

@@ -113,7 +113,13 @@ pub(crate) fn ToolDetailView(
         detail_page.set(0);
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    detail_fetch.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
             let base = cfg.server_url.trim_end_matches('/');
             let days = date_range.days();
             let encoded = keryx::url::encode_path_segment(&name);

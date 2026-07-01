@@ -38,7 +38,13 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
         store.write().data = FetchState::Loading;
 
         spawn(async move {
-            let client = authenticated_client(&cfg);
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    store.write().data = FetchState::Error(err.to_string());
+                    return;
+                }
+            };
             let base = cfg.server_url.trim_end_matches('/');
             let days = range.days();
             let url = format!("{base}/api/tool-stats?days={days}");

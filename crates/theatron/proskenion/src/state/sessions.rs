@@ -97,12 +97,7 @@ pub(crate) enum StatusFilter {
 
 impl StatusFilter {
     /// All available filter options.
-    pub(crate) const ALL: &[Self] = &[
-        Self::All,
-        Self::Active,
-        Self::Archived,
-        Self::Distilled,
-    ];
+    pub(crate) const ALL: &[Self] = &[Self::All, Self::Active, Self::Archived, Self::Distilled];
 
     /// Human-readable label.
     #[must_use]
@@ -413,7 +408,6 @@ impl SessionSelectionStore {
     pub(crate) fn count(&self) -> usize {
         self.selected.len()
     }
-
 }
 
 /// Format a relative time string from an ISO timestamp.

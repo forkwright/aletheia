@@ -536,7 +536,14 @@ fn send_edit(
     };
 
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                tracing::warn!("requirement update client error: {err}");
+                editing.set(None);
+                return;
+            }
+        };
         let url = project_requirement_url(&cfg.server_url, &pid, &rid);
 
         match client.put(&url).json(&update).send().await {
@@ -576,7 +583,11 @@ fn send_category_change(
     };
 
     spawn(async move {
-        let client = authenticated_client(&cfg);
+        let Ok(client) = authenticated_client(&cfg)
+            .inspect_err(crate::api::client::log_authenticated_client_error)
+        else {
+            return;
+        };
         let url = project_requirement_url(&cfg.server_url, &pid, &rid);
 
         if let Ok(resp) = client.put(&url).json(&update).send().await

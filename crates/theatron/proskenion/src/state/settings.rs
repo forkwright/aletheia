@@ -111,6 +111,7 @@ pub(crate) enum ServerHealth {
     #[default]
     Unchecked,
     Healthy,
+    InvalidToken,
     Unreachable,
 }
 
@@ -119,6 +120,7 @@ impl ServerHealth {
         match self {
             Self::Unchecked => "—",
             Self::Healthy => "Healthy",
+            Self::InvalidToken => "Invalid auth token — update or clear the token",
             Self::Unreachable => "Unreachable",
         }
     }
@@ -127,6 +129,7 @@ impl ServerHealth {
         match self {
             Self::Unchecked => "var(--text-muted)",
             Self::Healthy => "var(--status-success)",
+            Self::InvalidToken => "var(--status-error)",
             Self::Unreachable => "var(--status-error)",
         }
     }
