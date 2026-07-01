@@ -10,10 +10,6 @@ id = "RUSTSEC-2024-0436"
 # WHY: paste proc-macro informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
 
 [[IgnoredVulns]]
-id = "RUSTSEC-2025-0134"
-# WHY: rustls-pemfile 2.2.0 informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
-
-[[IgnoredVulns]]
 id = "RUSTSEC-2024-0320"
 # WHY: yaml-rust 0.4.5 unmaintained advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
 
@@ -22,9 +18,17 @@ id = "RUSTSEC-2025-0052"
 # WHY: async-std unmaintained; transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7. Mirrors deny.toml + .cargo/audit.toml.
 
 [[IgnoredVulns]]
+id = "RUSTSEC-2026-0192"
+# WHY: ttf-parser unmaintained; transitive via fontdb/usvg/rustybuzz/typst-pdf; maintainer archived, no upstream fix. Mirrors deny.toml + .cargo/audit.toml.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0134"
+# WHY: rustls-pemfile 2.2.0 unmaintained; transitive via qdrant-client→tonic; no safe upgrade. Mirrors deny.toml + .cargo/audit.toml.
+
+[[IgnoredVulns]]
 id = "RUSTSEC-2026-0097"
-# WHY: rand 0.8 unsound; transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. Mirrors .cargo/audit.toml + deny.toml.
+# WHY: rand 0.8 unsound (rand::rng() via custom logger, not our usage); transitive via qdrant-client/tonic + spreadsheet-ods + phf. Mirrors deny.toml + .cargo/audit.toml.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0186"
-# WHY: memmap2 unsound; transitive via candle-core (safetensors mmap) + grep-searcher; no upgrade (pinned ^0.9). Mirrors deny.toml + .cargo/audit.toml. review-by: 2026-12-01.
+# WHY: memmap2 unsound (unchecked pointer offset); transitive via candle-core/grep-searcher; no upgrade (pinned ^0.9); offset path not exercised. review-by: 2026-12-01. Mirrors deny.toml + .cargo/audit.toml.
