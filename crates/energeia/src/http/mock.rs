@@ -36,6 +36,15 @@ pub enum MockOutcome {
         /// Error detail message.
         detail: String,
     },
+    /// Session spawns and streams events, then fails from `wait()`.
+    WaitFailure {
+        /// Session ID exposed by the handle before wait fails.
+        session_id: String,
+        /// Events yielded by `next_event()` before the stream ends.
+        events: Vec<SessionEvent>,
+        /// Error detail message returned by `wait()`.
+        detail: String,
+    },
 }
 
 impl MockEngine {
@@ -72,6 +81,15 @@ impl DispatchEngine for MockEngine {
                     let boxed: Box<dyn SessionHandle> = Box::new(handle);
                     Ok(boxed)
                 }
+                MockOutcome::WaitFailure {
+                    session_id,
+                    events,
+                    detail,
+                } => {
+                    let handle = MockSessionHandle::new_wait_failure(session_id, events, detail);
+                    let boxed: Box<dyn SessionHandle> = Box::new(handle);
+                    Ok(boxed)
+                }
                 MockOutcome::SpawnFailure { detail } => Err(error::EngineSnafu { detail }.build()),
             }
         })
@@ -93,6 +111,15 @@ impl DispatchEngine for MockEngine {
                     let boxed: Box<dyn SessionHandle> = Box::new(handle);
                     Ok(boxed)
                 }
+                MockOutcome::WaitFailure {
+                    session_id,
+                    events,
+                    detail,
+                } => {
+                    let handle = MockSessionHandle::new_wait_failure(session_id, events, detail);
+                    let boxed: Box<dyn SessionHandle> = Box::new(handle);
+                    Ok(boxed)
+                }
                 MockOutcome::SpawnFailure { detail } => Err(error::EngineSnafu { detail }.build()),
             }
         })
@@ -107,6 +134,7 @@ struct MockSessionHandle {
     session_id: String,
     events: VecDeque<SessionEvent>,
     result: Option<SessionResult>,
+    wait_failure: Option<String>,
 }
 
 impl MockSessionHandle {
@@ -115,6 +143,16 @@ impl MockSessionHandle {
             session_id,
             events: VecDeque::from(events),
             result: Some(result),
+            wait_failure: None,
+        }
+    }
+
+    fn new_wait_failure(session_id: String, events: Vec<SessionEvent>, detail: String) -> Self {
+        Self {
+            session_id,
+            events: VecDeque::from(events),
+            result: None,
+            wait_failure: Some(detail),
         }
     }
 }
@@ -132,6 +170,9 @@ impl SessionHandle for MockSessionHandle {
 
     fn wait(mut self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<SessionResult>> + Send>> {
         Box::pin(async move {
+            if let Some(detail) = self.wait_failure.take() {
+                return Err(error::EngineSnafu { detail }.build());
+            }
             self.result.take().ok_or_else(|| {
                 error::EngineSnafu {
                     detail: "MockSessionHandle: wait() called more than once",
@@ -306,9 +347,11 @@ mod tests {
 
     #[test]
     fn mock_engine_is_send_sync() {
-        const _: fn() = || {
-            fn assert<T: Send + Sync>() {}
-            assert::<MockEngine>();
-        };
+        fn checked_size<T: Send + Sync>(value: &T) -> usize {
+            std::mem::size_of_val(value)
+        }
+
+        let engine = MockEngine::new(Vec::new());
+        assert!(checked_size(&engine) > 0);
     }
 }

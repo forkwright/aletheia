@@ -339,6 +339,7 @@ fn record_training_data_produces_fact() {
         resume_count: 0,
         pr_url: Some("https://github.com/acme/repo/pull/42".to_owned()),
         error: None,
+        failure_class: None,
         model: Some("claude-3-5-sonnet".to_owned()),
         blast_radius: vec!["crates/test/".to_owned()],
         corrective_attempts: 0,
@@ -396,10 +397,12 @@ fn debug_format() {
 
 #[test]
 fn store_is_send_sync() {
-    const _: fn() = || {
-        fn assert<T: Send + Sync>() {}
-        assert::<EnergeiaStore>();
-    };
+    fn checked_size<T: Send + Sync>(value: &T) -> usize {
+        std::mem::size_of_val(value)
+    }
+
+    let (_dir, store) = setup_test_store();
+    assert!(checked_size(&store) > 0);
 }
 
 // ── Stale running dispatch reconciliation ──

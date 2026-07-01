@@ -82,6 +82,7 @@ impl PipelineStage for ExecutionStage {
                         resume_count: 0,
                         pr_url: None,
                         error: Some("dependency failed".to_owned()),
+                        failure_class: None,
                         model: None,
                         blast_radius: prompt.blast_radius.clone(),
                         corrective_attempts: 0,
@@ -216,6 +217,7 @@ impl PipelineStage for ExecutionStage {
                 resume_count: 0,
                 pr_url: None,
                 error: Some("corrective prompt had no remaining group to execute in".to_owned()),
+                failure_class: None,
                 model: None,
                 blast_radius: c.blast_radius.clone(),
                 corrective_attempts: 0,
@@ -340,6 +342,7 @@ fn collect_skipped(numbers: &[u32], dag: &mut PromptDag, reason: &str) -> Vec<Se
                 resume_count: 0,
                 pr_url: None,
                 error: Some(reason.to_owned()),
+                failure_class: None,
                 model: None,
                 blast_radius: vec![],
                 corrective_attempts: 0,
@@ -666,7 +669,8 @@ mod tests {
                         let boxed: Box<dyn SessionHandle> = Box::new(handle);
                         Ok(boxed)
                     }
-                    MockOutcome::SpawnFailure { detail } => {
+                    MockOutcome::SpawnFailure { detail }
+                    | MockOutcome::WaitFailure { detail, .. } => {
                         Err(error::EngineSnafu { detail }.build())
                     }
                 }
@@ -697,7 +701,8 @@ mod tests {
                         let boxed: Box<dyn SessionHandle> = Box::new(handle);
                         Ok(boxed)
                     }
-                    MockOutcome::SpawnFailure { detail } => {
+                    MockOutcome::SpawnFailure { detail }
+                    | MockOutcome::WaitFailure { detail, .. } => {
                         Err(error::EngineSnafu { detail }.build())
                     }
                 }

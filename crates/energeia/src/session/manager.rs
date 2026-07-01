@@ -8,10 +8,10 @@ use std::time::Instant;
 
 use crate::budget::BudgetStatus;
 use crate::engine::{DispatchEngine, SessionSpec};
-use crate::error::{self, Result};
+use crate::error::Result;
 use crate::prompt::PromptSpec;
 use crate::resume::ResumePolicy;
-use crate::types::{Budget, SessionOutcome, SessionStatus};
+use crate::types::{Budget, FailureClass, SessionOutcome, SessionStatus};
 
 use super::events::{self, StreamOutcome, extract_pr_url};
 use super::options::{ChildSessionProgress, ChildSessionProgressStatus, EngineConfig};
@@ -103,17 +103,38 @@ impl SessionManager {
 
         let model = initial_opts.model.clone();
 
-        let mut handle = self
-            .engine
-            .spawn_session(&spec, &initial_opts)
-            .await
-            .map_err(|e| {
-                error::SpawnFailedSnafu {
-                    prompt_number: prompt.number,
-                    detail: e.to_string(),
-                }
-                .build()
-            })?;
+        let mut handle = match self.engine.spawn_session(&spec, &initial_opts).await {
+            Ok(handle) => handle,
+            Err(e) => {
+                let detail = e.to_string();
+                let failure_class = classify_failure(&detail, FailureClass::WorkerRuntime);
+                tracing::warn!(
+                    prompt_number = prompt.number,
+                    failure_class = %failure_class,
+                    error = %detail,
+                    "session spawn failed"
+                );
+                let outcome = build_outcome(
+                    prompt.number,
+                    status_for_failure_class(failure_class),
+                    None,
+                    0.0,
+                    0,
+                    start,
+                    resume_count,
+                    None,
+                    Some(detail),
+                    Some(failure_class),
+                    model.clone(),
+                    prompt.blast_radius.clone(),
+                    0,
+                    0,
+                    None,
+                );
+                emit_child_terminal(options, &outcome, None);
+                return Ok(outcome);
+            }
+        };
 
         let mut session_id = Some(handle.session_id().to_owned());
         emit_child_progress(
@@ -151,29 +172,30 @@ impl SessionManager {
         }
 
         let session_result = handle.wait().await;
+        let run_metrics = extract_run_metrics(session_result, &stream_result);
+        let stream_failure_class = failure_class_from_stream(&stream_result);
+        let stream_error = stream_error_message(&stream_result);
 
-        let (run_cost, run_turns, run_success, result_text, run_model, cache_hits, cache_misses) =
-            extract_run_metrics(session_result, &stream_result);
+        let effective_model = run_metrics.model.clone().or_else(|| model.clone());
 
-        let effective_model = run_model.or_else(|| model.clone());
+        total_cost += run_metrics.cost_usd;
+        total_turns += run_metrics.num_turns;
+        self.budget
+            .record(run_metrics.cost_usd, run_metrics.num_turns);
 
-        total_cost += run_cost;
-        total_turns += run_turns;
-        self.budget.record(run_cost, run_turns);
-
-        let all_text = collect_text(&stream_result, result_text.as_deref());
+        let all_text = collect_text(&stream_result, run_metrics.result_text.as_deref());
         last_output_excerpt = output_excerpt(&all_text);
         let structured_output = parse_structured_output(
             prompt.number,
             prompt.output_format.as_ref(),
-            result_text.as_deref(),
+            run_metrics.result_text.as_deref(),
         );
         if let Some(url) = extract_pr_url(&all_text) {
             pr_url = Some(url.to_owned());
         }
 
         if let StreamOutcome::Error { message, .. } = &stream_result
-            && !run_success
+            && !run_metrics.success
         {
             tracing::warn!(
                 prompt_number = prompt.number,
@@ -182,7 +204,7 @@ impl SessionManager {
             );
         }
 
-        if run_success {
+        if run_metrics.success {
             let outcome = build_outcome(
                 prompt.number,
                 SessionStatus::Success,
@@ -193,15 +215,47 @@ impl SessionManager {
                 resume_count,
                 pr_url,
                 None,
+                None,
                 effective_model.clone(),
                 prompt.blast_radius.clone(),
-                cache_hits,
-                cache_misses,
+                run_metrics.cache_hit_tokens,
+                run_metrics.cache_miss_tokens,
                 structured_output,
             );
             emit_child_terminal(options, &outcome, last_output_excerpt);
             return Ok(outcome);
         }
+
+        let failure_class = run_metrics
+            .failure_class
+            .or(stream_failure_class)
+            .unwrap_or(FailureClass::Provider);
+        let failure_detail = run_metrics.error.or(stream_error);
+        if failure_class.is_infrastructure() {
+            let outcome = build_outcome(
+                prompt.number,
+                SessionStatus::InfraFailure,
+                session_id,
+                total_cost,
+                total_turns,
+                start,
+                resume_count,
+                None,
+                failure_detail,
+                Some(failure_class),
+                effective_model.clone(),
+                prompt.blast_radius.clone(),
+                run_metrics.cache_hit_tokens,
+                run_metrics.cache_miss_tokens,
+                None,
+            );
+            emit_child_terminal(options, &outcome, last_output_excerpt);
+            return Ok(outcome);
+        }
+        let mut last_failure_class = Some(failure_class);
+        let mut last_failure_detail = failure_detail;
+        let mut last_cache_hit_tokens = run_metrics.cache_hit_tokens;
+        let mut last_cache_miss_tokens = run_metrics.cache_miss_tokens;
 
         if let BudgetStatus::Exceeded(reason) = self.budget.check() {
             tracing::warn!(
@@ -219,10 +273,11 @@ impl SessionManager {
                 resume_count,
                 None,
                 Some(reason),
+                None,
                 effective_model.clone(),
                 prompt.blast_radius.clone(),
-                cache_hits,
-                cache_misses,
+                run_metrics.cache_hit_tokens,
+                run_metrics.cache_miss_tokens,
                 None,
             );
             emit_child_terminal(options, &outcome, last_output_excerpt);
@@ -254,11 +309,16 @@ impl SessionManager {
                     start,
                     resume_count,
                     None,
-                    Some("resume policy exhausted".to_owned()),
+                    Some(
+                        last_failure_detail
+                            .clone()
+                            .unwrap_or_else(|| "resume policy exhausted".to_owned()),
+                    ),
+                    last_failure_class.or(Some(FailureClass::Provider)),
                     effective_model.clone(),
                     prompt.blast_radius.clone(),
-                    cache_hits,
-                    cache_misses,
+                    last_cache_hit_tokens,
+                    last_cache_miss_tokens,
                     None,
                 );
                 emit_child_terminal(options, &outcome, last_output_excerpt);
@@ -285,25 +345,29 @@ impl SessionManager {
             {
                 Ok(h) => h,
                 Err(e) => {
+                    let detail = format!("resume failed: {e}");
+                    let failure_class = classify_failure(&detail, FailureClass::WorkerRuntime);
                     tracing::warn!(
                         prompt_number = prompt.number,
+                        failure_class = %failure_class,
                         error = %e,
                         "resume failed"
                     );
                     let outcome = build_outcome(
                         prompt.number,
-                        SessionStatus::Failed,
+                        status_for_failure_class(failure_class),
                         session_id,
                         total_cost,
                         total_turns,
                         start,
                         resume_count,
                         None,
-                        Some(format!("resume failed: {e}")),
+                        Some(detail),
+                        Some(failure_class),
                         effective_model.clone(),
                         prompt.blast_radius.clone(),
-                        cache_hits,
-                        cache_misses,
+                        last_cache_hit_tokens,
+                        last_cache_miss_tokens,
                         None,
                     );
                     emit_child_terminal(options, &outcome, last_output_excerpt);
@@ -347,35 +411,34 @@ impl SessionManager {
             }
 
             let session_result = handle.wait().await;
+            let run_metrics = extract_run_metrics(session_result, &stream_result);
+            let stream_failure_class = failure_class_from_stream(&stream_result);
+            let stream_error = stream_error_message(&stream_result);
 
-            let (
-                run_cost,
-                run_turns,
-                run_success,
-                result_text,
-                run_model,
-                cache_hits,
-                cache_misses,
-            ) = extract_run_metrics(session_result, &stream_result);
+            let effective_model = run_metrics
+                .model
+                .clone()
+                .or_else(|| effective_model.clone());
 
-            let effective_model = run_model.or_else(|| effective_model.clone());
+            total_cost += run_metrics.cost_usd;
+            total_turns += run_metrics.num_turns;
+            self.budget
+                .record(run_metrics.cost_usd, run_metrics.num_turns);
+            last_cache_hit_tokens = run_metrics.cache_hit_tokens;
+            last_cache_miss_tokens = run_metrics.cache_miss_tokens;
 
-            total_cost += run_cost;
-            total_turns += run_turns;
-            self.budget.record(run_cost, run_turns);
-
-            let all_text = collect_text(&stream_result, result_text.as_deref());
+            let all_text = collect_text(&stream_result, run_metrics.result_text.as_deref());
             last_output_excerpt = output_excerpt(&all_text);
             let structured_output = parse_structured_output(
                 prompt.number,
                 prompt.output_format.as_ref(),
-                result_text.as_deref(),
+                run_metrics.result_text.as_deref(),
             );
             if let Some(url) = extract_pr_url(&all_text) {
                 pr_url = Some(url.to_owned());
             }
 
-            if run_success {
+            if run_metrics.success {
                 let outcome = build_outcome(
                     prompt.number,
                     SessionStatus::Success,
@@ -386,15 +449,45 @@ impl SessionManager {
                     resume_count,
                     pr_url,
                     None,
+                    None,
                     effective_model.clone(),
                     prompt.blast_radius.clone(),
-                    cache_hits,
-                    cache_misses,
+                    run_metrics.cache_hit_tokens,
+                    run_metrics.cache_miss_tokens,
                     structured_output,
                 );
                 emit_child_terminal(options, &outcome, last_output_excerpt);
                 return Ok(outcome);
             }
+
+            let failure_class = run_metrics
+                .failure_class
+                .or(stream_failure_class)
+                .unwrap_or(FailureClass::Provider);
+            let failure_detail = run_metrics.error.or(stream_error);
+            if failure_class.is_infrastructure() {
+                let outcome = build_outcome(
+                    prompt.number,
+                    SessionStatus::InfraFailure,
+                    session_id,
+                    total_cost,
+                    total_turns,
+                    start,
+                    resume_count,
+                    None,
+                    failure_detail,
+                    Some(failure_class),
+                    effective_model.clone(),
+                    prompt.blast_radius.clone(),
+                    run_metrics.cache_hit_tokens,
+                    run_metrics.cache_miss_tokens,
+                    None,
+                );
+                emit_child_terminal(options, &outcome, last_output_excerpt);
+                return Ok(outcome);
+            }
+            last_failure_class = Some(failure_class);
+            last_failure_detail = failure_detail;
 
             match self.budget.check() {
                 BudgetStatus::Exceeded(reason) => {
@@ -413,10 +506,11 @@ impl SessionManager {
                         resume_count,
                         None,
                         Some(reason),
+                        None,
                         effective_model.clone(),
                         prompt.blast_radius.clone(),
-                        cache_hits,
-                        cache_misses,
+                        run_metrics.cache_hit_tokens,
+                        run_metrics.cache_miss_tokens,
                         None,
                     );
                     emit_child_terminal(options, &outcome, last_output_excerpt);
@@ -440,24 +534,166 @@ impl SessionManager {
 
 /// Extract run metrics from a session result, falling back to the stream
 /// accumulator if the result is unavailable.
+#[derive(Debug)]
+struct RunMetrics {
+    cost_usd: f64,
+    num_turns: u32,
+    success: bool,
+    result_text: Option<String>,
+    model: Option<String>,
+    cache_hit_tokens: u64,
+    cache_miss_tokens: u64,
+    error: Option<String>,
+    failure_class: Option<FailureClass>,
+}
+
 fn extract_run_metrics(
     session_result: Result<crate::engine::SessionResult>,
     stream_result: &StreamOutcome,
-) -> (f64, u32, bool, Option<String>, Option<String>, u64, u64) {
-    if let Ok(result) = session_result {
-        (
-            result.cost_usd,
-            result.num_turns,
-            result.success,
-            result.result_text,
-            result.model,
-            result.cache_hit_tokens,
-            result.cache_miss_tokens,
-        )
-    } else {
-        let acc = accumulator_from(stream_result);
-        (acc.cost_usd, acc.num_turns, false, None, None, 0, 0)
+) -> RunMetrics {
+    match session_result {
+        Ok(result) => RunMetrics {
+            cost_usd: result.cost_usd,
+            num_turns: result.num_turns,
+            success: result.success,
+            result_text: result.result_text,
+            model: result.model,
+            cache_hit_tokens: result.cache_hit_tokens,
+            cache_miss_tokens: result.cache_miss_tokens,
+            error: None,
+            failure_class: None,
+        },
+        Err(error) => {
+            let acc = accumulator_from(stream_result);
+            let detail = error.to_string();
+            let failure_class = classify_failure(&detail, FailureClass::WorkerRuntime);
+            RunMetrics {
+                cost_usd: acc.cost_usd,
+                num_turns: acc.num_turns,
+                success: false,
+                result_text: None,
+                model: None,
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
+                error: Some(detail),
+                failure_class: Some(failure_class),
+            }
+        }
     }
+}
+
+fn failure_class_from_stream(outcome: &StreamOutcome) -> Option<FailureClass> {
+    match outcome {
+        StreamOutcome::Error { message, .. } => {
+            Some(classify_failure(message, FailureClass::Provider))
+        }
+        StreamOutcome::Complete(_)
+        | StreamOutcome::Timeout { .. }
+        | StreamOutcome::Cancelled { .. } => None,
+    }
+}
+
+fn stream_error_message(outcome: &StreamOutcome) -> Option<String> {
+    match outcome {
+        StreamOutcome::Error { message, .. } => Some(message.clone()),
+        StreamOutcome::Complete(_)
+        | StreamOutcome::Timeout { .. }
+        | StreamOutcome::Cancelled { .. } => None,
+    }
+}
+
+fn status_for_failure_class(failure_class: FailureClass) -> SessionStatus {
+    if failure_class.is_infrastructure() {
+        SessionStatus::InfraFailure
+    } else {
+        SessionStatus::Failed
+    }
+}
+
+fn classify_failure(detail: &str, fallback: FailureClass) -> FailureClass {
+    let lower = detail.to_ascii_lowercase();
+    if contains_any(
+        &lower,
+        &[
+            "auth",
+            "unauthorized",
+            "unauthorised",
+            "forbidden",
+            "401",
+            "403",
+            "api key",
+            "apikey",
+            "oauth",
+            "token",
+            "credential",
+        ],
+    ) {
+        return FailureClass::Auth;
+    }
+    if contains_any(
+        &lower,
+        &[
+            "rate limit",
+            "rate_limit",
+            "too many requests",
+            "throttle",
+            "throttled",
+            "quota",
+            "429",
+        ],
+    ) {
+        return FailureClass::RateLimit;
+    }
+    if contains_any(&lower, &["timeout", "timed out", "deadline", "elapsed"]) {
+        return FailureClass::Timeout;
+    }
+    if contains_any(
+        &lower,
+        &[
+            "network",
+            "dns",
+            "connection",
+            "connect",
+            "refused",
+            "reset",
+            "broken pipe",
+            "econn",
+            "tls",
+            "ssl",
+            "http2",
+            "transport",
+            "socket",
+        ],
+    ) {
+        return FailureClass::Network;
+    }
+    if contains_any(
+        &lower,
+        &[
+            "task join",
+            "panic",
+            "panicked",
+            "subprocess",
+            "process",
+            "spawn",
+            "wait",
+            "exited without",
+            "no result",
+            "stdout",
+            "stderr",
+            "protocol",
+            "runtime",
+            "worker",
+            "killed",
+        ],
+    ) {
+        return FailureClass::WorkerRuntime;
+    }
+    fallback
+}
+
+fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| haystack.contains(needle))
 }
 
 /// Extract the accumulator from any `StreamOutcome` variant.
@@ -496,7 +732,7 @@ async fn abort_terminal_stream(
             handle.abort().await?;
             Ok(Some(build_outcome(
                 prompt_number,
-                SessionStatus::Stuck,
+                SessionStatus::InfraFailure,
                 session_id,
                 total_cost,
                 total_turns,
@@ -504,6 +740,7 @@ async fn abort_terminal_stream(
                 resume_count,
                 None,
                 Some(format!("timeout: no events for {}s", elapsed.as_secs())),
+                Some(FailureClass::Timeout),
                 model,
                 blast_radius,
                 0,
@@ -524,6 +761,7 @@ async fn abort_terminal_stream(
                 resume_count,
                 None,
                 Some("dispatch cancelled".to_owned()),
+                None,
                 model,
                 blast_radius,
                 0,
@@ -631,6 +869,7 @@ fn build_outcome(
     resume_count: u32,
     pr_url: Option<String>,
     error: Option<String>,
+    failure_class: Option<FailureClass>,
     model: Option<String>,
     blast_radius: Vec<String>,
     cache_hit_tokens: u64,
@@ -647,6 +886,7 @@ fn build_outcome(
         resume_count,
         pr_url,
         error,
+        failure_class,
         model,
         blast_radius,
         corrective_attempts: 0,
@@ -917,6 +1157,7 @@ mod tests {
 
         assert_eq!(outcome.status, SessionStatus::Stuck);
         assert!(outcome.error.as_deref().unwrap().contains("exhausted"));
+        assert_eq!(outcome.failure_class, Some(FailureClass::Provider));
     }
 
     #[tokio::test]
@@ -964,10 +1205,115 @@ mod tests {
 
         let mgr = SessionManager::new(engine, budget, ResumePolicy::default());
 
-        let result = mgr.execute(&sample_prompt_spec(1), &default_config()).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("auth expired"));
+        let outcome = mgr
+            .execute(&sample_prompt_spec(1), &default_config())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, SessionStatus::InfraFailure);
+        assert_eq!(outcome.failure_class, Some(FailureClass::Auth));
+        assert!(outcome.error.as_deref().unwrap().contains("auth expired"));
+    }
+
+    #[tokio::test]
+    async fn execute_spawn_network_failure() {
+        let engine = Arc::new(MockEngine::new(vec![MockOutcome::SpawnFailure {
+            detail: "connection refused while opening provider stream".to_owned(),
+        }]));
+        let budget = Arc::new(Budget::new(None, None, None));
+
+        let mgr = SessionManager::new(engine, budget, ResumePolicy::default());
+
+        let outcome = mgr
+            .execute(&sample_prompt_spec(1), &default_config())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, SessionStatus::InfraFailure);
+        assert_eq!(outcome.failure_class, Some(FailureClass::Network));
+    }
+
+    #[tokio::test]
+    async fn execute_resume_auth_failure() {
+        let engine = Arc::new(MockEngine::new(vec![
+            failure_outcome("sess-1", 0.20, 5),
+            MockOutcome::SpawnFailure {
+                detail: "401 unauthorized during resume".to_owned(),
+            },
+        ]));
+        let budget = Arc::new(Budget::new(None, None, None));
+
+        let mgr = SessionManager::new(engine, budget, two_stage_policy());
+
+        let outcome = mgr
+            .execute(&sample_prompt_spec(1), &default_config())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, SessionStatus::InfraFailure);
+        assert_eq!(outcome.failure_class, Some(FailureClass::Auth));
+        assert_eq!(outcome.resume_count, 1);
+    }
+
+    #[tokio::test]
+    async fn execute_wait_timeout_failure() {
+        let engine = Arc::new(MockEngine::new(vec![MockOutcome::WaitFailure {
+            session_id: "sess-timeout".to_owned(),
+            events: vec![SessionEvent::TurnComplete { turn: 1 }],
+            detail: "provider request timed out after 30s".to_owned(),
+        }]));
+        let budget = Arc::new(Budget::new(None, None, None));
+
+        let mgr = SessionManager::new(engine, budget, two_stage_policy());
+
+        let outcome = mgr
+            .execute(&sample_prompt_spec(1), &default_config())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, SessionStatus::InfraFailure);
+        assert_eq!(outcome.failure_class, Some(FailureClass::Timeout));
+        assert_eq!(outcome.num_turns, 1);
+    }
+
+    #[tokio::test]
+    async fn execute_wait_rate_limit_failure() {
+        let engine = Arc::new(MockEngine::new(vec![MockOutcome::WaitFailure {
+            session_id: "sess-rate-limit".to_owned(),
+            events: vec![],
+            detail: "rate limit utilization exceeded 98%".to_owned(),
+        }]));
+        let budget = Arc::new(Budget::new(None, None, None));
+
+        let mgr = SessionManager::new(engine, budget, two_stage_policy());
+
+        let outcome = mgr
+            .execute(&sample_prompt_spec(1), &default_config())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, SessionStatus::InfraFailure);
+        assert_eq!(outcome.failure_class, Some(FailureClass::RateLimit));
+    }
+
+    #[tokio::test]
+    async fn execute_wait_worker_runtime_failure() {
+        let engine = Arc::new(MockEngine::new(vec![MockOutcome::WaitFailure {
+            session_id: "sess-runtime".to_owned(),
+            events: vec![],
+            detail: "subprocess exited without emitting a result message".to_owned(),
+        }]));
+        let budget = Arc::new(Budget::new(None, None, None));
+
+        let mgr = SessionManager::new(engine, budget, two_stage_policy());
+
+        let outcome = mgr
+            .execute(&sample_prompt_spec(1), &default_config())
+            .await
+            .unwrap();
+
+        assert_eq!(outcome.status, SessionStatus::InfraFailure);
+        assert_eq!(outcome.failure_class, Some(FailureClass::WorkerRuntime));
     }
 
     #[tokio::test]
