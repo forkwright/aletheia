@@ -618,18 +618,39 @@ fn recovery_store_paths(oikos: &taxis::oikos::Oikos) -> Result<Vec<PathBuf>> {
         return Ok(Vec::new());
     }
 
+    let shared = root.join("shared");
+    if is_fjall_store_dir(&root) && !shared.exists() {
+        return Ok(vec![shared]);
+    }
+
     let mut stores = Vec::new();
     for entry in
         std::fs::read_dir(&root).whatever_context("failed to enumerate knowledge store cohorts")?
     {
         let entry = entry.whatever_context("failed to inspect knowledge store cohort")?;
         let path = entry.path();
-        if path.is_dir() {
+        if is_recovery_cohort_dir(&path) {
             stores.push(path);
         }
     }
     stores.sort();
     Ok(stores)
+}
+
+#[cfg(feature = "recall")]
+fn is_recovery_cohort_dir(path: &Path) -> bool {
+    path.is_dir() && !is_fjall_internal_dir(path) && is_fjall_store_dir(path)
+}
+
+#[cfg(feature = "recall")]
+fn is_fjall_store_dir(path: &Path) -> bool {
+    path.join("version").is_file()
+}
+
+#[cfg(feature = "recall")]
+fn is_fjall_internal_dir(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name == std::ffi::OsStr::new("keyspaces"))
 }
 
 #[cfg(feature = "recall")]
@@ -1153,8 +1174,9 @@ fn run_dedup_reject(
     entity_a: &str,
     entity_b: &str,
 ) -> Result<()> {
-    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
 
     let mut params = BTreeMap::new();
     params.insert("entity_a".to_owned(), DataValue::Str(entity_a.into()));
@@ -1275,8 +1297,10 @@ fn find_entity_cooccurrence(
     nous_id: Option<&str>,
     limit: i64,
 ) -> Result<Vec<(String, String, i64)>> {
-    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
+
     let mut params = BTreeMap::new();
     let nous_join = match nous_id {
         Some(nid) => {
@@ -1321,8 +1345,10 @@ fn find_relationship_chains(
     nous_id: Option<&str>,
     limit: i64,
 ) -> Result<Vec<(String, i64)>> {
-    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
+
     let mut params = BTreeMap::new();
     let body = match nous_id {
         Some(nid) => {
@@ -1363,8 +1389,10 @@ fn find_hub_entities(
     nous_id: Option<&str>,
     limit: i64,
 ) -> Result<Vec<(String, i64)>> {
-    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
+
     let mut params = BTreeMap::new();
     let degree_rules = match nous_id {
         Some(nid) => {
@@ -1635,8 +1663,9 @@ fn query_entities_filtered(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
 ) -> Result<Vec<mneme::knowledge::Entity>> {
-    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
 
     validate_nous_id(nous_id)?;
 
@@ -1675,8 +1704,9 @@ fn query_relationships_filtered(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
 ) -> Result<Vec<mneme::knowledge::Relationship>> {
-    use mneme::engine::DataValue;
     use std::collections::BTreeMap;
+
+    use mneme::engine::DataValue;
 
     validate_nous_id(nous_id)?;
 
