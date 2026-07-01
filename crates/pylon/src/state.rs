@@ -71,8 +71,8 @@ pub struct AppState {
     /// Active embedding provider. Used by health checks to report degraded
     /// mode when the real provider failed to load at startup (#3380).
     ///
-    /// `None` only when the pylon-only standalone server builds state without
-    /// a configured embedding pipeline.
+    /// `None` only when the deprecated pylon-only gateway harness builds state
+    /// without a configured embedding pipeline.
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     /// Per-turn event buffer registry for SSE client recovery (#3276).
     ///
@@ -182,6 +182,8 @@ pub struct HealthState {
     pub session_store: Arc<Mutex<SessionStore>>,
     /// Registry of available LLM providers.
     pub provider_registry: Arc<ProviderRegistry>,
+    /// Registry of tools available to nous agents.
+    pub tool_registry: Arc<ToolRegistry>,
     /// Manages nous actor lifecycles and provides handles.
     pub nous_manager: Arc<NousManager>,
     /// Server start instant for uptime calculation.
@@ -201,6 +203,7 @@ impl FromRef<Arc<AppState>> for HealthState {
         Self {
             session_store: Arc::clone(&state.session_store),
             provider_registry: Arc::clone(&state.provider_registry),
+            tool_registry: Arc::clone(&state.tool_registry),
             nous_manager: Arc::clone(&state.nous_manager),
             start_time: state.start_time,
             oikos: Arc::clone(&state.oikos),

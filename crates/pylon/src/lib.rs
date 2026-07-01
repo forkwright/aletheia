@@ -1,6 +1,11 @@
 #![deny(clippy::unwrap_used)]
 #![deny(missing_docs)]
 //! Pylon (πυλών): "gateway." Routes HTTP and SSE requests to the agent pipeline.
+//!
+//! Production server startup is owned by the `aletheia` binary command path
+//! (`aletheia serve`), which builds the full runtime before handing shared
+//! state to pylon's router. Pylon's server module contains gateway lifecycle
+//! helpers and a deprecated standalone harness for crate-local testing only.
 
 /// Per-turn approval-decision sender registry (#3958, ADR-005).
 pub mod approval_registry;
@@ -34,7 +39,7 @@ pub mod pagination;
 pub mod router;
 /// Security configuration derived from the gateway config section.
 pub mod security;
-/// Server entry point with TLS support and graceful shutdown.
+/// Server lifecycle helpers; production startup uses `aletheia serve`.
 pub mod server;
 /// Shared application state accessible across all handlers.
 pub mod state;
