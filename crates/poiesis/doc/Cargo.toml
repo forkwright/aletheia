@@ -16,7 +16,7 @@ docx-rs = "0.4"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # XML parsing for inspect
-quick-xml = "0.39"
+quick-xml = "0.41"
 
 # Document model + Typst fast-lane (B-012/B-013)
 poiesis-charts = { path = "../charts" }

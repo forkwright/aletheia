@@ -18,6 +18,10 @@ ignore = [
     "RUSTSEC-2025-0052",
     # ttf-parser unmaintained — transitive via fontdb/usvg/rustybuzz/typst-pdf; no upstream fix
     "RUSTSEC-2026-0192",
+    # quick-xml duplicate-attribute CPU DoS — direct users upgraded to 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39
+    "RUSTSEC-2026-0194",
+    # quick-xml NsReader namespace allocation DoS — direct users upgraded to 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39
+    "RUSTSEC-2026-0195",
     # rustls-pemfile 2.x unmaintained — transitive via qdrant-client → tonic 0.12. Blocked on qdrant-client → tonic 0.13+
     "RUSTSEC-2025-0134",
     # rand 0.8 unsound only with custom logger using rand::rng() — not our usage. Transitive via qdrant-client → tonic 0.12 + spreadsheet-ods + phf

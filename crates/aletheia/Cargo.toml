@@ -113,7 +113,7 @@ anyhow = "1"
 snafu = { workspace = true }
 pem = { workspace = true }
 owo-colors = "4"
-quick-xml = "0.39"
+quick-xml = "0.41"
 supports-color = "3"
 toml = { workspace = true }
 toml_edit = "0.25"
