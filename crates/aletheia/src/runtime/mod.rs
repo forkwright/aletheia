@@ -787,7 +787,8 @@ impl RuntimeBuilder {
                             Arc::clone(cron_lock_store),
                             &task_tracker,
                             &shutdown_token,
-                        );
+                        )
+                        .whatever_context("failed to start cron executor")?;
                     } else {
                         warn!(
                             cron_tasks = self.config.dispatch.cron_tasks.len(),
