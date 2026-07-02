@@ -1,11 +1,15 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use tokio_util::sync::CancellationToken;
+
 use super::*;
 
 #[tokio::test]
 async fn prosoche_returns_items_for_default() {
     let check = ProsocheCheck::new("test-nous");
-    let result = check.run().await.expect("should succeed");
+    let result = check.run(&CancellationToken::new())
+        .await
+        .expect("should succeed");
     assert!(!result.checked_at.is_empty());
 }
 
@@ -166,7 +170,9 @@ fn check_db_sizes_small_file() {
 async fn prosoche_with_data_dir_runs_disk_check() {
     let dir = tempfile::tempdir().expect("create tempdir");
     let check = ProsocheCheck::new("test-nous").with_data_dir(dir.path());
-    let result = check.run().await.expect("should succeed");
+    let result = check.run(&CancellationToken::new())
+        .await
+        .expect("should succeed");
     assert!(!result.checked_at.is_empty());
 }
 
@@ -180,7 +186,9 @@ async fn prosoche_with_db_paths_runs_size_check() {
     )]
     std::fs::write(&db_path, b"data").expect("write");
     let check = ProsocheCheck::new("test-nous").with_db_paths(vec![db_path]);
-    let result = check.run().await.expect("should succeed");
+    let result = check.run(&CancellationToken::new())
+        .await
+        .expect("should succeed");
     assert!(!result.checked_at.is_empty());
 }
 
@@ -195,6 +203,68 @@ fn parse_df_percent_valid() {
 fn parse_df_percent_no_data() {
     let output = "Use%\n";
     assert!(parse_df_percent(output).is_err());
+}
+
+// WHY: a hung `df` on a stale NFS/automount mount must not block the prosoche
+// heartbeat slot. The production timeout is 10 s; here we advance Tokio's
+// paused clock past that bound so the test verifies the guard without waiting
+// in real time.
+#[cfg(unix)]
+#[tokio::test]
+async fn disk_usage_percent_times_out_on_hanging_df() {
+    use std::ffi::OsString;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Duration;
+
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let fake_df = dir.path().join("df");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes a temporary executable script"
+    )]
+    std::fs::write(&fake_df, "#!/bin/sh\nexec sleep 120\n").expect("write fake df");
+    let mut perms = std::fs::metadata(&fake_df).expect("metadata").permissions();
+    perms.set_mode(0o755);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture sets executable permissions"
+    )]
+    std::fs::set_permissions(&fake_df, perms).expect("set permissions");
+
+    let original_path = std::env::var_os("PATH").unwrap_or_default();
+    let mut new_path = OsString::from(dir.path().as_os_str());
+    new_path.push(":");
+    new_path.push(&original_path);
+    // SAFETY: `set_var` is unsafe in Rust 2024 because concurrent mutation of
+    // the process environment is technically a data race. This test runs in its
+    // own nextest process and restores the original PATH before returning, so
+    // no other test in the same process observes the temporary value.
+    unsafe {
+        std::env::set_var("PATH", new_path);
+    }
+
+    tokio::time::pause();
+
+    let path = dir.path().to_path_buf();
+    let cancel = CancellationToken::new();
+    let start = tokio::time::Instant::now();
+    let handle = tokio::spawn(async move { disk_usage_percent(&path, &cancel).await });
+
+    // WHY: advance past the 10 s df timeout so the test does not wait in real time.
+    tokio::time::advance(Duration::from_secs(11)).await;
+    let result = handle.await.expect("join task");
+    let elapsed = start.elapsed();
+
+    assert!(result.is_err(), "hanging df should time out: {result:?}");
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "timeout should fire quickly under paused time, took {elapsed:?}"
+    );
+
+    // SAFETY: paired with the earlier `set_var`; restores the original PATH.
+    unsafe {
+        std::env::set_var("PATH", original_path);
+    }
 }
 
 #[test]
@@ -420,7 +490,9 @@ mod knowledge_store_tests {
         store.insert_fact(&fact).expect("insert fact");
 
         let check = ProsocheCheck::new("test-nous").with_knowledge_store(store);
-        let result = check.run().await.expect("should succeed");
+        let result = check.run(&CancellationToken::new())
+            .await
+            .expect("should succeed");
 
         let anomalies: Vec<_> = result
             .items

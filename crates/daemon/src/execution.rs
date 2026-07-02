@@ -293,7 +293,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                 if let Some(store) = knowledge_store {
                     check = check.with_knowledge_store(store);
                 }
-                let result = check.run().await?;
+                let result = check.run(&cancel).await?;
                 Ok(ExecutionResult::success(Some(
                     serde_json::to_string(&result)
                         .unwrap_or_else(|_| "prosoche check complete".to_owned()),
