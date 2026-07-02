@@ -15,8 +15,9 @@ use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
 use crate::state::chat::ChatSelection;
 use crate::state::commands::CommandStore;
-use crate::state::connection::ConnectionState;
+use crate::state::connection::{ConnectionConfig, ConnectionState, HEALTH_CHECK_INTERVAL};
 use crate::state::notifications::{DndState, NotificationHistory};
+use crate::state::ops::ServiceHealthStore;
 use crate::state::planning::PlanningCapabilities;
 use crate::state::platform::{QuickInputState, WindowState};
 use crate::state::tool_metrics::DateRange;
@@ -152,7 +153,7 @@ pub(crate) fn App() -> Element {
 /// toast and quick input overlays.
 #[component]
 fn ConnectedApp() -> Element {
-    let config = use_context::<Signal<crate::state::connection::ConnectionConfig>>();
+    let config = use_context::<Signal<ConnectionConfig>>();
 
     // NOTE: Notification preferences load from disk; DND and history are
     // ephemeral and reset on each app launch.
@@ -171,6 +172,20 @@ fn ConnectedApp() -> Element {
     // WHY: Planning surfaces are capability-driven so the public desktop build
     // does not advertise planning modules that Pylon cannot back.
     use_context_provider(|| Signal::new(PlanningCapabilities::default_public()));
+    let mut health_store = use_context_provider(|| Signal::new(ServiceHealthStore::new()));
+
+    {
+        let cfg = config.read().clone();
+        use_future(move || {
+            let cfg = cfg.clone();
+            async move {
+                loop {
+                    health_store.set(fetch_service_health(&cfg).await);
+                    tokio::time::sleep(HEALTH_CHECK_INTERVAL).await;
+                }
+            }
+        });
+    }
 
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.
@@ -219,6 +234,22 @@ fn ConnectedApp() -> Element {
         crate::components::toast_container::ToastContainer {}
         crate::components::quick_input::QuickInputOverlay {}
         Router::<Route> {}
+    }
+}
+
+async fn fetch_service_health(config: &ConnectionConfig) -> ServiceHealthStore {
+    let client = match crate::api::client::authenticated_client(config) {
+        Ok(client) => client,
+        Err(err) => return ServiceHealthStore::unreachable(err.to_string()),
+    };
+    let base = config.server_url.trim_end_matches('/');
+    match crate::api::health::fetch_health_response(
+        client.get(format!("{base}/api/health")).send().await,
+    )
+    .await
+    {
+        Ok(response) => ServiceHealthStore::from_response(response),
+        Err(err) => ServiceHealthStore::unreachable(err.to_string()),
     }
 }
 

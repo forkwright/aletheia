@@ -281,7 +281,7 @@ pub(crate) fn Ops() -> Element {
 
     // ── Dashboard-specific state ──
     let mut agent_store = use_signal(AgentStatusStore::new);
-    let mut health_store = use_signal(ServiceHealthStore::new);
+    let mut health_store = use_context::<Signal<ServiceHealthStore>>();
     let mut toggle_store = use_signal(ToggleStore::new);
     let mut dash_fetch = use_signal(|| FetchState::<()>::Loading);
 

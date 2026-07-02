@@ -2,6 +2,10 @@
 
 use std::collections::HashMap;
 
+use skene::api::types::HealthResponse;
+
+use crate::api::health::failing_check_names;
+
 /// A single saved server connection entry.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ServerEntry {
@@ -106,32 +110,63 @@ pub(crate) fn server_token_ref(server_id: &str) -> String {
 }
 
 /// Transient health status for the server management panel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) enum ServerHealth {
     #[default]
     Unchecked,
     Healthy,
+    Degraded {
+        failing_checks: Vec<String>,
+    },
+    Unhealthy {
+        failing_checks: Vec<String>,
+    },
+    AuthFailed,
     InvalidToken,
     Unreachable,
 }
 
 impl ServerHealth {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::Unchecked => "—",
-            Self::Healthy => "Healthy",
-            Self::InvalidToken => "Invalid auth token — update or clear the token",
-            Self::Unreachable => "Unreachable",
+    pub(crate) fn from_response(response: &HealthResponse) -> Self {
+        let failing_checks = failing_check_names(response);
+        match response.status.as_str() {
+            "healthy" => Self::Healthy,
+            "degraded" => Self::Degraded { failing_checks },
+            "unhealthy" => Self::Unhealthy { failing_checks },
+            _ => Self::Unhealthy { failing_checks },
         }
     }
 
-    pub(crate) fn color(self) -> &'static str {
+    pub(crate) fn label(&self) -> String {
+        match self {
+            Self::Unchecked => "—".to_string(),
+            Self::Healthy => "Healthy".to_string(),
+            Self::Degraded { failing_checks } => with_check_names("Degraded", failing_checks),
+            Self::Unhealthy { failing_checks } => with_check_names("Unhealthy", failing_checks),
+            Self::AuthFailed => "Auth failed".to_string(),
+            Self::InvalidToken => "Auth failed — invalid saved token".to_string(),
+            Self::Unreachable => "Unreachable".to_string(),
+        }
+    }
+
+    pub(crate) fn color(&self) -> &'static str {
         match self {
             Self::Unchecked => "var(--text-muted)",
             Self::Healthy => "var(--status-success)",
+            Self::Degraded { .. } => "var(--status-warning)",
+            Self::Unhealthy { .. } => "var(--status-error)",
+            Self::AuthFailed => "var(--status-error)",
             Self::InvalidToken => "var(--status-error)",
             Self::Unreachable => "var(--status-error)",
         }
+    }
+}
+
+fn with_check_names(label: &str, checks: &[String]) -> String {
+    if checks.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label} — {}", checks.join(", "))
     }
 }
 
@@ -499,6 +534,21 @@ pub(crate) fn default_actions() -> Vec<KeyAction> {
 mod tests {
     use super::*;
 
+    fn health_response(status: &str, check_status: &str) -> HealthResponse {
+        HealthResponse {
+            status: status.to_string(),
+            version: "0.13.1".to_string(),
+            git_sha: "abc123".into(),
+            uptime_seconds: 300,
+            checks: vec![skene::api::types::HealthCheck {
+                name: "providers".to_string(),
+                status: check_status.to_string(),
+                message: None,
+            }],
+            data_dir: "/tmp/data".to_string(),
+        }
+    }
+
     #[test]
     fn server_store_add_increases_count() {
         let mut store = ServerConfigStore::default();
@@ -576,6 +626,39 @@ mod tests {
         assert_eq!(entry.url, "http://new");
         assert_eq!(entry.auth_token.as_deref(), Some("tok"));
         assert_eq!(entry.auth_token_ref, original_ref);
+    }
+
+    #[test]
+    fn server_health_from_response_keeps_degraded_check_names() {
+        let health = ServerHealth::from_response(&health_response("degraded", "warn"));
+        assert_eq!(
+            health,
+            ServerHealth::Degraded {
+                failing_checks: vec!["providers".to_string()]
+            }
+        );
+        assert_eq!(health.label(), "Degraded — providers");
+        assert_eq!(health.color(), "var(--status-warning)");
+    }
+
+    #[test]
+    fn server_health_from_response_keeps_unhealthy_check_names() {
+        let health = ServerHealth::from_response(&health_response("unhealthy", "fail"));
+        assert_eq!(
+            health,
+            ServerHealth::Unhealthy {
+                failing_checks: vec!["providers".to_string()]
+            }
+        );
+        assert_eq!(health.label(), "Unhealthy — providers");
+        assert_eq!(health.color(), "var(--status-error)");
+    }
+
+    #[test]
+    fn server_health_auth_failed_is_distinct() {
+        let health = ServerHealth::AuthFailed;
+        assert_eq!(health.label(), "Auth failed");
+        assert_eq!(health.color(), "var(--status-error)");
     }
 
     #[test]

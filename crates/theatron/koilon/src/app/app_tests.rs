@@ -1,12 +1,86 @@
 #[cfg(test)]
 #[expect(
+    clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::unwrap_used,
     reason = "test assertions use direct indexing for clarity"
 )]
 mod tests {
     use super::super::test_helpers::*;
-    use super::super::{DEFAULT_TERMINAL_HEIGHT, DEFAULT_TERMINAL_WIDTH};
+    use super::super::{App, DEFAULT_TERMINAL_HEIGHT, DEFAULT_TERMINAL_WIDTH};
+    use crate::config::{Config, CredentialLabel};
     use crate::state::{ChatMessage, OpsState};
+    use std::collections::HashMap;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    fn health_body(status: &str, check_status: &str) -> String {
+        serde_json::json!({
+            "status": status,
+            "version": "0.13.1",
+            "git_sha": "abc123",
+            "uptime_seconds": 300,
+            "checks": [
+                {"name": "providers", "status": check_status, "message": "provider offline"}
+            ],
+            "data_dir": "/tmp/data"
+        })
+        .to_string()
+    }
+
+    async fn spawn_startup_server(health_status: u16, health_body: String) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind local startup test server");
+        let addr = listener
+            .local_addr()
+            .expect("read startup test server address");
+
+        tokio::spawn(async move {
+            for _ in 0..2 {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut buf = [0_u8; 4096];
+                let read = socket.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..read]);
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                let (status, reason, body) = if path == "/api/health" {
+                    (health_status, "Service Unavailable", health_body.as_str())
+                } else if path == "/api/v1/nous" {
+                    (200, "OK", r#"{"nous":[]}"#)
+                } else {
+                    (404, "Not Found", r#"{"error":"not found"}"#)
+                };
+                let response = format!(
+                    "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        format!("http://{addr}")
+    }
+
+    fn config_for_url(url: String) -> Config {
+        Config {
+            url,
+            token: None,
+            default_agent: None,
+            default_session: None,
+            workspace_root: None,
+            bell: false,
+            keybindings: HashMap::new(),
+            theme: None,
+            credential_label: CredentialLabel::None,
+        }
+    }
 
     #[test]
     fn app_constructs_with_defaults() {
@@ -23,6 +97,25 @@ mod tests {
         assert_eq!(app.viewport.terminal_height, DEFAULT_TERMINAL_HEIGHT);
         assert!(!app.connection.sse_connected);
         assert!(app.connection.sse_disconnected_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn init_accepts_503_health_body_and_keeps_check_list() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let url = spawn_startup_server(503, health_body("unhealthy", "fail")).await;
+        let app = App::init(config_for_url(url))
+            .await
+            .expect("503 with health body must not abort startup");
+
+        let health = app
+            .layout
+            .metrics
+            .health
+            .expect("startup should retain parsed health response");
+        assert_eq!(health.status, "unhealthy");
+        assert_eq!(health.checks[0].name, "providers");
+        assert_eq!(health.checks[0].status, "fail");
+        assert_eq!(app.layout.metrics.api_healthy, Some(false));
     }
 
     #[test]

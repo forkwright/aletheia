@@ -9,10 +9,9 @@ use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
-use crate::services::{
-    connection::{ConnectionError, PylonClient},
-    settings_config,
-};
+use crate::api::client::{AuthenticatedClientError, authenticated_client};
+use crate::api::health::{HealthFetchError, fetch_health_response, is_auth_status};
+use crate::services::settings_config;
 use crate::state::connection::{ConnectionConfig, ConnectionState};
 use crate::state::settings::{ServerConfigStore, ServerHealth};
 
@@ -36,16 +35,23 @@ async fn probe_health(url: &str, token: Option<&str>) -> ServerHealth {
         auto_reconnect: false,
         ..ConnectionConfig::default()
     };
-    match PylonClient::new(&config) {
-        Ok(client) => match client.health().await {
-            // NOTE: Any successful health response means the server is reachable.
-            // A degraded/unhealthy readiness payload still indicates the server
-            // can be contacted; only transport/auth/malformed errors count as
-            // unreachable from the settings probe's point of view.
-            Ok(_) => ServerHealth::Healthy,
-            Err(_) => ServerHealth::Unreachable,
-        },
-        Err(ConnectionError::InvalidToken) => ServerHealth::InvalidToken,
+    let base = config.server_url.trim_end_matches('/').to_string();
+    match authenticated_client(&config) {
+        Ok(client) => {
+            match fetch_health_response(client.get(format!("{base}/api/health")).send().await).await
+            {
+                Ok(response) => ServerHealth::from_response(&response),
+                Err(HealthFetchError::Status(status)) if is_auth_status(status) => {
+                    ServerHealth::AuthFailed
+                }
+                Err(
+                    HealthFetchError::Connection(_)
+                    | HealthFetchError::Status(_)
+                    | HealthFetchError::Malformed(_),
+                ) => ServerHealth::Unreachable,
+            }
+        }
+        Err(AuthenticatedClientError::InvalidToken) => ServerHealth::InvalidToken,
         Err(_) => ServerHealth::Unreachable,
     }
 }
@@ -137,7 +143,7 @@ pub(crate) fn ServersPanel() -> Element {
                     let (health, tested_url) = health_map
                         .read()
                         .get(&snap.id)
-                        .map(|(h, u)| (*h, Some(u.clone())))
+                        .map(|(h, u)| (h.clone(), Some(u.clone())))
                         .unwrap_or((ServerHealth::Unchecked, None));
                     let is_testing = testing_ids.read().contains(&snap.id);
                     // Offer the live URL only on the active entry; other saved
@@ -255,15 +261,15 @@ fn ServerCard(
     let health_color = health.color();
     let status_text = if is_testing {
         "Testing…".to_string()
-    } else if health == ServerHealth::Unreachable {
+    } else if matches!(&health, ServerHealth::Unreachable) {
         // WHY: Name the URL the probe actually hit so a stale saved URL is
         // self-diagnosing instead of an anonymous "Unreachable".
         match tested_url.as_deref() {
             Some(tried) => format!("Unreachable — {tried}"),
-            None => health.label().to_string(),
+            None => health.label(),
         }
     } else {
-        health.label().to_string()
+        health.label()
     };
     let card_border = if is_active {
         "1px solid var(--accent)"
