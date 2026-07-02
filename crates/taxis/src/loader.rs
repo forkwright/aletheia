@@ -7,6 +7,10 @@
 //!    then `enc:` values decrypted.
 //! 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`),
 //!    with `__` splitting nested keys and lowercasing.
+//!
+//! Encrypted values (`enc:` prefix) are decrypted after interpolation. If the
+//! primary key is missing but `enc:` values are present, startup fails with an
+//! actionable error listing the affected fields.
 
 use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -19,7 +23,7 @@ use koina::disk_space::{DiskSpaceMonitor, DiskStatus};
 use koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
-use crate::encrypt;
+use crate::config_decrypt;
 use crate::error::{ConfigLoadSnafu, LoadSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
 use crate::interpolate;
 use crate::oikos::Oikos;
@@ -33,8 +37,9 @@ use crate::oikos::Oikos;
 /// 3. Environment variables: `ALETHEIA_*` (e.g. `ALETHEIA_GATEWAY__PORT=9000`)
 ///
 /// Encrypted values (`enc:` prefix) are transparently decrypted using the
-/// primary key from `~/.config/aletheia/primary.key`. If the key is missing,
-/// encrypted values pass through unchanged with a warning.
+/// primary key from `~/.config/aletheia/primary.key`. If the key is missing
+/// but `enc:` values are present, startup fails with an actionable error
+/// listing the affected fields.
 ///
 /// Call [`load_config_with`] to supply a custom [`FileSystem`] implementation
 /// (e.g. `koina::system::TestSystem` in tests).
@@ -90,7 +95,7 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
             })?;
         let toml_content = String::from_utf8_lossy(&bytes);
         let interpolated = interpolate::interpolate_env_vars(toml_content.as_ref())?;
-        let decrypted_content = decrypt_toml_content(&interpolated)?;
+        let decrypted_content = config_decrypt::decrypt_toml_content(&interpolated)?;
 
         let toml_json: JsonValue =
             toml::from_str(&decrypted_content).context(crate::error::ParseTomlSnafu {
@@ -315,72 +320,6 @@ fn set_path(root: &mut JsonValue, path: &[String], value: JsonValue) {
     }
 }
 
-/// Decrypt `enc:` values in a parsed TOML value tree in-place.
-///
-/// Returns an error if encrypted values are found but the decryption key is
-/// missing. This prevents the server from silently starting with undecrypted
-/// `enc:` values in place of real secrets.
-fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
-    let primary_key = match encrypt::primary_key_path() {
-        Some(path) => match encrypt::load_primary_key(&path) {
-            Ok(key) => key,
-            Err(e) => {
-                warn!(error = %e, "failed to load primary key");
-                None
-            }
-        },
-        None => None,
-    };
-
-    // WHY: collect all encrypted field paths up front so we can return a single
-    // actionable error listing every affected field instead of warning per-value
-    if primary_key.is_none() {
-        let mut enc_paths = Vec::new();
-        collect_encrypted_paths(value, String::new(), &mut enc_paths);
-        if !enc_paths.is_empty() {
-            return Err(crate::error::ConfigDecryptSnafu {
-                fields: enc_paths.join(", "),
-            }
-            .build());
-        }
-    }
-
-    encrypt::decrypt_toml_values(value, primary_key.as_ref());
-    Ok(())
-}
-
-/// Parse TOML content, decrypt any `enc:` values, and serialize back.
-///
-/// Returns an error if encrypted values are found but the decryption key is
-/// missing. This prevents the server from silently starting with undecrypted
-/// `enc:` values in place of real secrets.
-fn decrypt_toml_content(content: &str) -> Result<String> {
-    let mut value: toml::Value = match toml::from_str(content) {
-        Ok(v) => v,
-        Err(_) => return Ok(content.to_owned()),
-    };
-
-    decrypt_toml_value(&mut value)?;
-
-    serialize_decrypted_toml(&value)
-}
-
-/// Serialize a decrypted TOML value tree back to a string.
-///
-/// # Errors
-///
-/// Returns an error if the value tree cannot be re-serialized to TOML,
-/// ensuring callers never receive raw ciphertext in place of decrypted
-/// plaintext.
-fn serialize_decrypted_toml(value: &toml::Value) -> Result<String> {
-    toml::to_string(value).map_err(|e| {
-        SerializeTomlSnafu {
-            reason: e.to_string(),
-        }
-        .build()
-    })
-}
-
 /// Read a standalone TOML file, apply env-var interpolation and decrypt
 /// `enc:` values, and return the parsed value tree.
 ///
@@ -429,38 +368,8 @@ pub fn parse_toml_file_with(path: &std::path::Path, fs: &impl FileSystem) -> Res
         toml::from_str(&interpolated).context(crate::error::ParseTomlSnafu {
             path: path.to_path_buf(),
         })?;
-    decrypt_toml_value(&mut value)?;
+    config_decrypt::decrypt_toml_value(&mut value)?;
     Ok(value)
-}
-
-/// Walk a TOML value tree and collect dotted paths of all `enc:`-prefixed strings.
-fn collect_encrypted_paths(value: &toml::Value, prefix: String, out: &mut Vec<String>) {
-    match value {
-        toml::Value::String(s) if encrypt::is_encrypted(s) => {
-            out.push(if prefix.is_empty() {
-                "<root>".to_owned()
-            } else {
-                prefix
-            });
-        }
-        toml::Value::Table(table) => {
-            for (key, val) in table {
-                let path = if prefix.is_empty() {
-                    key.clone()
-                } else {
-                    format!("{prefix}.{key}")
-                };
-                collect_encrypted_paths(val, path, out);
-            }
-        }
-        toml::Value::Array(arr) => {
-            for (i, item) in arr.iter().enumerate() {
-                let path = format!("{prefix}[{i}]");
-                collect_encrypted_paths(item, path, out);
-            }
-        }
-        _ => {} // NOTE: scalar TOML values contain no nested encrypted paths
-    }
 }
 
 /// Write configuration to the instance TOML file.
@@ -832,44 +741,6 @@ archiveBeforeDelete = true
         assert_eq!(
             config.gateway.port, 18789,
             "reserved env vars must not break default config load"
-        );
-    }
-
-    // ── decrypt_toml_content / serialize_decrypted_toml ───────────────────
-
-    #[test]
-    fn decrypt_toml_content_roundtrips_plain_toml() {
-        let content = "[gateway]\nport = 4242\n";
-        let result = decrypt_toml_content(content).unwrap_or_else(|e| panic!("decrypt: {e}"));
-
-        assert_eq!(
-            result, content,
-            "plain TOML without enc: values should round-trip unchanged"
-        );
-    }
-
-    #[test]
-    fn decrypt_toml_content_propagates_serialize_error() {
-        // WHY: construct an invalid datetime value that the TOML serializer
-        // cannot emit, then assert the error path returns Err instead of
-        // silently falling back to the original ciphertext.
-        let invalid_dt = toml::Value::Datetime(toml::value::Datetime {
-            date: Some(toml::value::Date {
-                year: 2021,
-                month: 13,
-                day: 1,
-            }),
-            time: None,
-            offset: None,
-        });
-        let mut table = toml::map::Map::new();
-        table.insert("bad".to_owned(), invalid_dt);
-        let value = toml::Value::Table(table);
-
-        let result = serialize_decrypted_toml(&value);
-        assert!(
-            matches!(result, Err(crate::error::Error::SerializeToml { .. })),
-            "non-serializable toml::Value must produce Err(SerializeToml), not Ok or other error"
         );
     }
 }
