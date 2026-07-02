@@ -8,9 +8,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use nous::approval::ApprovalDecision;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ApprovalKey {
@@ -46,6 +47,10 @@ impl ApprovalRegistry {
     }
 
     /// Register one pending tool approval for an active turn.
+    #[expect(
+        clippy::unused_async,
+        reason = "synchronous std::sync::Mutex critical section; kept async to preserve the registry API"
+    )]
     pub async fn register_tool(
         &self,
         session_id: &str,
@@ -53,7 +58,10 @@ impl ApprovalRegistry {
         tool_id: String,
         sender: mpsc::Sender<ApprovalDecision>,
     ) {
-        let mut map = self.inner.lock().await;
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.insert(
             ApprovalKey {
                 turn_id: turn_id.to_owned(),
@@ -71,6 +79,10 @@ impl ApprovalRegistry {
     /// When `session_id` is `Some`, it must match the pending entry's session
     /// context. Returns `false` if no exact pending entry exists, the session
     /// context does not match, or the receiver has dropped.
+    #[expect(
+        clippy::unused_async,
+        reason = "synchronous std::sync::Mutex critical section; kept async to preserve the registry API"
+    )]
     pub async fn try_send(
         &self,
         session_id: Option<&str>,
@@ -82,7 +94,10 @@ impl ApprovalRegistry {
             turn_id: turn_id.to_owned(),
             tool_id: tool_id.to_owned(),
         };
-        let mut map = self.inner.lock().await;
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(entry) = map.get(&key) else {
             return false;
         };
@@ -98,8 +113,11 @@ impl ApprovalRegistry {
         sender.try_send(decision).is_ok()
     }
 
-    async fn remove_turn(&self, session_id: &str, turn_id: &str) {
-        let mut map = self.inner.lock().await;
+    fn remove_turn(&self, session_id: &str, turn_id: &str) {
+        let mut map = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         map.retain(|key, entry| key.turn_id != turn_id || entry.session_id != session_id);
     }
 }
@@ -113,11 +131,12 @@ pub struct Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
+        // WHY(#5737): Perform removal synchronously from Drop so cleanup is
+        // deterministic and cannot be lost to a fire-and-forget spawn during
+        // runtime shutdown. The inner lock is a std::sync::Mutex, so Drop can
+        // hold it without spawning.
         if let (Some(sid), Some(turn_id)) = (self.session_id.take(), self.turn_id.take()) {
-            let registry = Arc::clone(&self.registry);
-            tokio::spawn(async move {
-                registry.remove_turn(&sid, &turn_id).await;
-            });
+            self.registry.remove_turn(&sid, &turn_id);
         }
     }
 }
@@ -178,15 +197,14 @@ mod tests {
             let _guard = reg.register_turn("sess-2".to_owned(), "turn-2".to_owned());
             reg.register_tool("sess-2", "turn-2", "t-2".to_owned(), tx)
                 .await;
-            assert!(reg.inner.lock().await.contains_key(&ApprovalKey {
+            assert!(reg.inner.lock().expect("lock").contains_key(&ApprovalKey {
                 turn_id: "turn-2".to_owned(),
                 tool_id: "t-2".to_owned(),
             }));
         }
-        // Allow the spawned removal task to run.
-        tokio::task::yield_now().await;
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        assert!(reg.inner.lock().await.is_empty());
+        // WHY(#5737): Removal now runs synchronously inside Drop, so the entry
+        // is gone immediately; no yield/sleep is needed.
+        assert!(reg.inner.lock().expect("lock").is_empty());
     }
 
     #[tokio::test]
@@ -249,7 +267,7 @@ mod tests {
         tokio::task::yield_now().await;
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        let map = reg.inner.lock().await;
+        let map = reg.inner.lock().expect("lock");
         assert!(!map.contains_key(&ApprovalKey {
             turn_id: "turn-a".to_owned(),
             tool_id: "tool-a".to_owned(),
