@@ -476,7 +476,9 @@ async fn detailed_health_includes_data_dir_for_operator() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    let data_dir = body["data_dir"].as_str().expect("operator health has data_dir");
+    let data_dir = body["data_dir"]
+        .as_str()
+        .expect("operator health has data_dir");
     let expected = dir.path().to_string_lossy();
     assert!(
         data_dir.contains(expected.as_ref()),

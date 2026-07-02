@@ -58,17 +58,18 @@ impl Default for GatewayConfig {
 ///
 /// SECURITY(#5322): the default is [`MetricsMode::LocalOnly`]. A non-loopback
 /// gateway must not expose full metrics without an explicit operator decision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MetricsMode {
     /// Expose metrics to any client. Use only when the operator has confirmed
     /// the scrape path is intentionally public or fronted by another authorizer.
     Public,
-    /// Restrict the `/metrics` endpoint to loopback (127.0.0.1/::1) peers.
+    /// Restrict the `/metrics` endpoint to loopback (`127.0.0.1/::1`) peers.
     ///
     /// This is the default. For `gateway.bind = "localhost"` it is equivalent
     /// to `Public` from a network posture standpoint; for any non-loopback bind
     /// it denies remote scrapes.
+    #[default]
     LocalOnly,
     /// Require a valid bearer token (same JWT/token auth as the versioned API).
     Bearer,
@@ -76,19 +77,13 @@ pub enum MetricsMode {
     Disabled,
 }
 
-impl Default for MetricsMode {
-    fn default() -> Self {
-        Self::LocalOnly
-    }
-}
-
 /// Prometheus `/metrics` exposition policy.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct MetricsExpositionConfig {
-    /// Exposure mode: public, local_only, bearer, or disabled.
+    /// Exposure mode: `public`, `local_only`, `bearer`, or `disabled`.
     pub mode: MetricsMode,
     /// When `false` (default), redact high-cardinality/sensitive labels such as
     /// `nous_id`, tool names, and HTTP paths from the scraped output.
@@ -97,15 +92,6 @@ pub struct MetricsExpositionConfig {
     /// and local path layout. Detailed mode is intended for local operator
     /// diagnostics only.
     pub detailed: bool,
-}
-
-impl Default for MetricsExpositionConfig {
-    fn default() -> Self {
-        Self {
-            mode: MetricsMode::default(),
-            detailed: false,
-        }
-    }
 }
 
 /// Gateway authentication configuration.

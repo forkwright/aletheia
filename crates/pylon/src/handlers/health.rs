@@ -80,87 +80,16 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     // single hanging check (e.g., provider connection) cannot block the entire
     // endpoint. The overall timeout guarantees a response even if multiple
     // checks hang simultaneously (#3277).
-    let checks = tokio::time::timeout(OVERALL_TIMEOUT, async {
-        // WHY: read config once before spawning concurrent checks so each check
-        // does not contend on the config lock.
-        let (
-            clock_skew_leeway,
-            expiry_warning_threshold,
-            prosoche,
-            gateway_security_check,
-            rate_limiting_check,
-        ) = {
-            let config = state.config.read().await;
-            (
-                config.api_limits.clock_skew_leeway_secs,
-                config.api_limits.expiry_warning_threshold_secs,
-                config.maintenance.prosoche.clone(),
-                gateway_security_check(&config.gateway.auth.mode, &config.gateway.bind),
-                rate_limiting_check(
-                    config.gateway.rate_limit.enabled,
-                    config.gateway.rate_limit.trust_proxy,
-                    config.gateway.rate_limit.per_user.enabled,
-                ),
-            )
-        };
-
-        let (store_check, actor_check, config_check, storage_check) = tokio::join!(
-            timed_check("session_store", check_session_store(state)),
-            timed_check("nous_actors", check_nous_actors(state)),
-            timed_check("config_readable", check_config_readable(state)),
-            timed_check("storage_writable", check_storage_writable(state)),
-        );
-
-        // WHY: these checks are synchronous and cheap — no timeout needed.
-        let provider_check = check_provider_availability(state);
-        let runtime_assembly_check = check_runtime_assembly(state);
-        let credential_check =
-            check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
-        let credential_runtime_check = check_credential_runtime(state).await;
-        let embedding_check = check_embedding_provider(state);
-        let prosoche_check = check_prosoche_heartbeat_path(&prosoche);
-        let metrics_exposure_check = metrics_exposure_check(
-            state.metrics_mode,
-            state.metrics_detailed,
-            &state.oikos.data().to_string_lossy(),
-        );
-
-        // WHY: synchronous and cheap — the snapshot is a few atomic reads plus a
-        // short mutex hold on the last recorded poller error.
-        let poller_snapshot = state.nous_manager.poller_snapshot();
-        let nous_poller_check = check_nous_health_poller(
-            poller_snapshot.running,
-            poller_snapshot.restart_count,
-            poller_snapshot.last_error.as_deref(),
-        );
-
-        vec![
-            store_check,
-            provider_check,
-            runtime_assembly_check,
-            actor_check,
-            check_provider_reachability(state),
-            config_check,
-            gateway_security_check,
-            rate_limiting_check,
-            credential_check,
-            credential_runtime_check,
-            storage_check,
-            embedding_check,
-            nous_poller_check,
-            prosoche_check,
-            metrics_exposure_check,
-        ]
-    })
-    .await
-    .unwrap_or_else(|_| {
-        vec![HealthCheck {
-            name: "overall".to_owned(),
-            status: "fail".to_owned(),
-            message: Some("health check timed out".to_owned()),
-            details: None,
-        }]
-    });
+    let checks = tokio::time::timeout(OVERALL_TIMEOUT, collect_detailed_health_checks(state))
+        .await
+        .unwrap_or_else(|_| {
+            vec![HealthCheck {
+                name: "overall".to_owned(),
+                status: "fail".to_owned(),
+                message: Some("health check timed out".to_owned()),
+                details: None,
+            }]
+        });
 
     // WHY: "timeout" is treated as "fail" for aggregate status because
     // a timed-out check means we cannot confirm the subsystem is healthy.
@@ -194,6 +123,79 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
     )
 }
 
+async fn collect_detailed_health_checks(state: &HealthState) -> Vec<HealthCheck> {
+    // WHY: read config once before spawning concurrent checks so each check
+    // does not contend on the config lock.
+    let (
+        clock_skew_leeway,
+        expiry_warning_threshold,
+        prosoche,
+        gateway_security_check,
+        rate_limiting_check,
+    ) = {
+        let config = state.config.read().await;
+        (
+            config.api_limits.clock_skew_leeway_secs,
+            config.api_limits.expiry_warning_threshold_secs,
+            config.maintenance.prosoche.clone(),
+            gateway_security_check(&config.gateway.auth.mode, &config.gateway.bind),
+            rate_limiting_check(
+                config.gateway.rate_limit.enabled,
+                config.gateway.rate_limit.trust_proxy,
+                config.gateway.rate_limit.per_user.enabled,
+            ),
+        )
+    };
+
+    let (store_check, actor_check, config_check, storage_check) = tokio::join!(
+        timed_check("session_store", check_session_store(state)),
+        timed_check("nous_actors", check_nous_actors(state)),
+        timed_check("config_readable", check_config_readable(state)),
+        timed_check("storage_writable", check_storage_writable(state)),
+    );
+
+    // WHY: these checks are synchronous and cheap — no timeout needed.
+    let provider_check = check_provider_availability(state);
+    let runtime_assembly_check = check_runtime_assembly(state);
+    let credential_check =
+        check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
+    let credential_runtime_check = check_credential_runtime(state).await;
+    let embedding_check = check_embedding_provider(state);
+    let prosoche_check = check_prosoche_heartbeat_path(&prosoche);
+    let metrics_exposure_check = metrics_exposure_check(
+        state.metrics_mode,
+        state.metrics_detailed,
+        &state.oikos.data().to_string_lossy(),
+    );
+
+    // WHY: synchronous and cheap — the snapshot is a few atomic reads plus a
+    // short mutex hold on the last recorded poller error.
+    let poller_snapshot = state.nous_manager.poller_snapshot();
+    let nous_poller_check = check_nous_health_poller(
+        poller_snapshot.running,
+        poller_snapshot.restart_count,
+        poller_snapshot.last_error.as_deref(),
+    );
+
+    vec![
+        store_check,
+        provider_check,
+        runtime_assembly_check,
+        actor_check,
+        check_provider_reachability(state),
+        config_check,
+        gateway_security_check,
+        rate_limiting_check,
+        credential_check,
+        credential_runtime_check,
+        storage_check,
+        embedding_check,
+        nous_poller_check,
+        prosoche_check,
+        metrics_exposure_check,
+    ]
+}
+
 fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
     if auth_mode == "none" && !taxis::validate::is_loopback_bind(bind) {
         return HealthCheck {
@@ -224,12 +226,6 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
     }
 }
 
-/// Build the rate-limiting diagnostics check.
-///
-/// Reports the active keying strategy so the control plane can show whether
-/// rate limits are keyed by peer socket, forwarded client IP, or authenticated
-/// user. Per-user rate limiting takes precedence when enabled; otherwise the
-/// per-IP limiter follows the `trust_proxy` flag.
 /// Build the `/metrics` exposure security check.
 ///
 /// WHY(#5322): operator diagnostics should surface whether the Prometheus
@@ -264,9 +260,7 @@ fn metrics_exposure_check(
             let mut message =
                 "metrics endpoint is publicly accessible; ensure this is intentional".to_owned();
             if detailed {
-                message.push_str(
-                    " (detailed label values expose nous_id, tool names, and paths)",
-                );
+                message.push_str(" (detailed label values expose nous_id, tool names, and paths)");
             }
             HealthCheck {
                 name: "metrics_exposure".to_owned(),
@@ -282,6 +276,12 @@ fn metrics_exposure_check(
     }
 }
 
+/// Build the rate-limiting diagnostics check.
+///
+/// Reports the active keying strategy so the control plane can show whether
+/// rate limits are keyed by peer socket, forwarded client address, or
+/// authenticated user. Per-user rate limiting takes precedence when enabled;
+/// otherwise the address limiter follows the `trust_proxy` flag.
 fn rate_limiting_check(enabled: bool, trust_proxy: bool, per_user_enabled: bool) -> HealthCheck {
     let keying = if per_user_enabled {
         "authenticated_user"

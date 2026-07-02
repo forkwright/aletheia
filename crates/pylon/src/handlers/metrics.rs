@@ -37,7 +37,7 @@ const REDACTED_LABELS: &[&str] = &[
     "task_type",
 ];
 
-/// GET /metrics: Prometheus/OpenMetrics text-format metrics exposition.
+/// GET /metrics: Prometheus and `OpenMetrics` text-format metrics exposition.
 ///
 /// # Cancel safety
 ///
@@ -52,10 +52,6 @@ const REDACTED_LABELS: &[&str] = &[
         (status = 403, description = "Forbidden for non-loopback clients in local_only mode"),
         (status = 404, description = "Metrics endpoint disabled"),
     ),
-)]
-#[expect(
-    clippy::expect_used,
-    reason = "writing into a String never fails; the fmt::Error branch is unreachable"
 )]
 pub async fn expose(
     State(state): State<MetricsState>,
@@ -105,10 +101,9 @@ pub async fn expose(
     crate::metrics::update_system_gauges(uptime, session_count);
 
     let mut buffer = String::new();
-    state
-        .metrics_registry
-        .encode(&mut buffer)
-        .expect("encoding into a String is infallible");
+    let Ok(()) = state.metrics_registry.encode(&mut buffer) else {
+        unreachable!("encoding metrics into a String cannot fail");
+    };
 
     if !state.metrics_detailed {
         buffer = redact_labels(&buffer);
@@ -117,7 +112,7 @@ pub async fn expose(
     ([(CONTENT_TYPE, METRICS_CONTENT_TYPE)], buffer).into_response()
 }
 
-/// Redact sensitive/high-cardinality label values from OpenMetrics text output.
+/// Redact sensitive/high-cardinality label values from `OpenMetrics` text output.
 ///
 /// WHY(#5322): the shared registry contains labels that leak operational
 /// detail. Post-processing the text is coarser than pluggable encoding, but
@@ -126,7 +121,9 @@ pub async fn expose(
 #[must_use]
 fn redact_labels(text: &str) -> String {
     let pattern = label_redaction_pattern();
-    pattern.replace_all(text, "${name}=\"redacted\"").into_owned()
+    pattern
+        .replace_all(text, "${name}=\"redacted\"")
+        .into_owned()
 }
 
 /// Build the redaction regex once.
@@ -139,7 +136,12 @@ fn label_redaction_pattern() -> &'static regex::Regex {
         let names = REDACTED_LABELS.join("|");
         // Match `name="value"` where value may contain escaped quotes.
         let expr = format!(r#"(?P<name>\b(?:{names})\b)\s*=\s*(?P<value>"([^"\\]|\\.)*")"#);
-        regex::Regex::new(&expr).expect("redaction regex is statically valid")
+        match regex::Regex::new(&expr) {
+            Ok(pattern) => pattern,
+            Err(error) => {
+                unreachable!("redaction regex generated from static labels must compile: {error}");
+            }
+        }
     })
 }
 
@@ -162,7 +164,9 @@ mod tests {
 
     fn test_metrics_state(mode: MetricsMode, detailed: bool) -> MetricsState {
         MetricsState {
-            session_store: Arc::new(tokio::sync::Mutex::new(SessionStore::open_in_memory().unwrap())),
+            session_store: Arc::new(tokio::sync::Mutex::new(
+                SessionStore::open_in_memory().unwrap(),
+            )),
             start_time: Instant::now(),
             metrics_registry: MetricsRegistry::new(),
             metrics_mode: mode,
@@ -172,13 +176,15 @@ mod tests {
 
     fn loopback_request() -> Request<Body> {
         let mut req = Request::get("/metrics").body(Body::empty()).unwrap();
-        req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
         req
     }
 
     fn remote_request() -> Request<Body> {
         let mut req = Request::get("/metrics").body(Body::empty()).unwrap();
-        req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([192, 168, 1, 1], 1234))));
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([192, 168, 1, 1], 1234))));
         req
     }
 
@@ -255,13 +261,31 @@ aletheia_uptime_seconds{} 42
 "#;
         let redacted = redact_labels(input);
         assert!(redacted.contains(r#"path="redacted""#), "got: {redacted}");
-        assert!(redacted.contains(r#"nous_id="redacted""#), "got: {redacted}");
-        assert!(redacted.contains(r#"tool_name="redacted""#), "got: {redacted}");
-        assert!(redacted.contains(r#"provider="redacted""#), "got: {redacted}");
+        assert!(
+            redacted.contains(r#"nous_id="redacted""#),
+            "got: {redacted}"
+        );
+        assert!(
+            redacted.contains(r#"tool_name="redacted""#),
+            "got: {redacted}"
+        );
+        assert!(
+            redacted.contains(r#"provider="redacted""#),
+            "got: {redacted}"
+        );
         assert!(redacted.contains(r#"model="redacted""#), "got: {redacted}");
-        assert!(redacted.contains(r#"method="GET""#), "low-sensitivity labels preserved; got: {redacted}");
-        assert!(redacted.contains(r#"status="200""#), "low-sensitivity labels preserved; got: {redacted}");
-        assert!(redacted.contains("aletheia_uptime_seconds{} 42"), "got: {redacted}");
+        assert!(
+            redacted.contains(r#"method="GET""#),
+            "low-sensitivity labels preserved; got: {redacted}"
+        );
+        assert!(
+            redacted.contains(r#"status="200""#),
+            "low-sensitivity labels preserved; got: {redacted}"
+        );
+        assert!(
+            redacted.contains("aletheia_uptime_seconds{} 42"),
+            "got: {redacted}"
+        );
     }
 
     #[test]
@@ -272,6 +296,9 @@ aletheia_uptime_seconds{} 42
             redacted.contains(r#"nous_id="redacted""#),
             "escaped-quote value was not redacted: {redacted}"
         );
-        assert!(redacted.contains(r#"tool_name="redacted""#), "got: {redacted}");
+        assert!(
+            redacted.contains(r#"tool_name="redacted""#),
+            "got: {redacted}"
+        );
     }
 }
