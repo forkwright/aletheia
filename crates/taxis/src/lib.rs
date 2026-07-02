@@ -11,6 +11,8 @@
 pub mod cascade;
 /// Configuration types for an Aletheia instance (agents, gateway, channels, embedding).
 pub mod config;
+/// TOML decryption pipeline for `enc:`-prefixed config values.
+mod config_decrypt;
 /// Encryption at rest for sensitive configuration values.
 pub mod encrypt;
 /// Taxis-specific error types for configuration loading and path resolution.
