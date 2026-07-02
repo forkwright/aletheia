@@ -1,5 +1,8 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+#[cfg(unix)]
+use std::time::{Duration, Instant};
+
 use tokio_util::sync::CancellationToken;
 
 use super::*;
@@ -7,7 +10,8 @@ use super::*;
 #[tokio::test]
 async fn prosoche_returns_items_for_default() {
     let check = ProsocheCheck::new("test-nous");
-    let result = check.run(&CancellationToken::new())
+    let result = check
+        .run(&CancellationToken::new())
         .await
         .expect("should succeed");
     assert!(!result.checked_at.is_empty());
@@ -170,7 +174,8 @@ fn check_db_sizes_small_file() {
 async fn prosoche_with_data_dir_runs_disk_check() {
     let dir = tempfile::tempdir().expect("create tempdir");
     let check = ProsocheCheck::new("test-nous").with_data_dir(dir.path());
-    let result = check.run(&CancellationToken::new())
+    let result = check
+        .run(&CancellationToken::new())
         .await
         .expect("should succeed");
     assert!(!result.checked_at.is_empty());
@@ -186,7 +191,8 @@ async fn prosoche_with_db_paths_runs_size_check() {
     )]
     std::fs::write(&db_path, b"data").expect("write");
     let check = ProsocheCheck::new("test-nous").with_db_paths(vec![db_path]);
-    let result = check.run(&CancellationToken::new())
+    let result = check
+        .run(&CancellationToken::new())
         .await
         .expect("should succeed");
     assert!(!result.checked_at.is_empty());
@@ -212,59 +218,92 @@ fn parse_df_percent_no_data() {
 #[cfg(unix)]
 #[tokio::test]
 async fn disk_usage_percent_times_out_on_hanging_df() {
-    use std::ffi::OsString;
     use std::os::unix::fs::PermissionsExt;
-    use std::time::Duration;
 
     let dir = tempfile::tempdir().expect("create tempdir");
     let fake_df = dir.path().join("df");
+    let pid_file = dir.path().join("df.pid");
+    let quoted_pid_file = format!(
+        "'{}'",
+        pid_file.display().to_string().replace('\'', "'\\''")
+    );
     #[expect(
         clippy::disallowed_methods,
         reason = "test fixture writes a temporary executable script"
     )]
-    std::fs::write(&fake_df, "#!/bin/sh\nexec sleep 120\n").expect("write fake df");
+    std::fs::write(
+        &fake_df,
+        format!("#!/bin/sh\nprintf '%s\\n' \"$$\" > {quoted_pid_file}\nexec sleep 120\n"),
+    )
+    .expect("write fake df");
     let mut perms = std::fs::metadata(&fake_df).expect("metadata").permissions();
     perms.set_mode(0o755);
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "test fixture sets executable permissions"
-    )]
     std::fs::set_permissions(&fake_df, perms).expect("set permissions");
-
-    let original_path = std::env::var_os("PATH").unwrap_or_default();
-    let mut new_path = OsString::from(dir.path().as_os_str());
-    new_path.push(":");
-    new_path.push(&original_path);
-    // SAFETY: `set_var` is unsafe in Rust 2024 because concurrent mutation of
-    // the process environment is technically a data race. This test runs in its
-    // own nextest process and restores the original PATH before returning, so
-    // no other test in the same process observes the temporary value.
-    unsafe {
-        std::env::set_var("PATH", new_path);
-    }
 
     tokio::time::pause();
 
     let path = dir.path().to_path_buf();
+    let df = fake_df.clone();
     let cancel = CancellationToken::new();
-    let start = tokio::time::Instant::now();
-    let handle = tokio::spawn(async move { disk_usage_percent(&path, &cancel).await });
+    let handle = tokio::spawn(async move {
+        disk_usage_percent_with_command(&path, &cancel, df.as_os_str()).await
+    });
+    #[cfg(target_os = "linux")]
+    let pid = wait_for_pid_file(&pid_file).await;
 
     // WHY: advance past the 10 s df timeout so the test does not wait in real time.
+    let start = Instant::now();
     tokio::time::advance(Duration::from_secs(11)).await;
     let result = handle.await.expect("join task");
     let elapsed = start.elapsed();
+    let err = result.expect_err("hanging df should time out");
 
-    assert!(result.is_err(), "hanging df should time out: {result:?}");
+    assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
     assert!(
         elapsed < Duration::from_secs(1),
         "timeout should fire quickly under paused time, took {elapsed:?}"
     );
 
-    // SAFETY: paired with the earlier `set_var`; restores the original PATH.
-    unsafe {
-        std::env::set_var("PATH", original_path);
+    #[cfg(target_os = "linux")]
+    assert!(
+        wait_for_linux_process_to_stop(pid).is_none(),
+        "timed-out df process should have been killed"
+    );
+}
+
+#[cfg(target_os = "linux")]
+async fn wait_for_pid_file(path: &std::path::Path) -> u32 {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            return contents.trim().parse().expect("pid file contains pid");
+        }
+        assert!(Instant::now() < deadline, "fake df did not write pid file");
+        tokio::task::yield_now().await;
+        std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_linux_process_to_stop(pid: u32) -> Option<char> {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        let state = linux_process_state(pid);
+        if state.is_none() || state == Some('Z') {
+            return None;
+        }
+        if Instant::now() >= deadline {
+            return state;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_process_state(pid: u32) -> Option<char> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_prefix, rest) = stat.rsplit_once(") ")?;
+    rest.chars().next()
 }
 
 #[test]
@@ -490,7 +529,8 @@ mod knowledge_store_tests {
         store.insert_fact(&fact).expect("insert fact");
 
         let check = ProsocheCheck::new("test-nous").with_knowledge_store(store);
-        let result = check.run(&CancellationToken::new())
+        let result = check
+            .run(&CancellationToken::new())
             .await
             .expect("should succeed");
 

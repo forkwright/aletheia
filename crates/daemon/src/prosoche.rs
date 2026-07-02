@@ -1,6 +1,7 @@
 //! Prosoche (προσοχή): "directed attention." Periodic check-in that monitors
 //! calendar, tasks, and system health for a nous.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 #[cfg(feature = "knowledge-store")]
 use std::sync::Arc;
@@ -304,13 +305,24 @@ async fn check_disk_space(path: &Path, cancel: &CancellationToken) -> Vec<Attent
 /// Uses `df` command output. WARN at 80% usage, CRITICAL at 95%. Bounded by a
 /// 10 s timeout so a hung `df` (e.g. on an unresponsive NFS or automount path)
 /// cannot block the prosoche heartbeat slot indefinitely.
-async fn disk_usage_percent(
+async fn disk_usage_percent(path: &Path, cancel: &CancellationToken) -> std::io::Result<f64> {
+    disk_usage_percent_with_command(path, cancel, OsStr::new("df")).await
+}
+
+async fn disk_usage_percent_with_command(
     path: &Path,
     cancel: &CancellationToken,
+    command: &OsStr,
 ) -> std::io::Result<f64> {
-    // NOTE: tokio::process::Child kills the child on Drop, providing the same
-    // orphan-prevention guarantee as ProcessGuard. If this future is cancelled,
-    // tokio kills the child automatically.
+    let mut command = tokio::process::Command::new(command);
+    command
+        .kill_on_drop(true)
+        .args(["--output=pcent", "--"])
+        .arg(path);
+
+    // NOTE: `kill_on_drop(true)` is required here. Tokio's process futures leave
+    // children running on drop by default, and timeout/cancellation drops this
+    // output future before `df` exits.
     let output = tokio::select! {
         biased;
         () = cancel.cancelled() => {
@@ -321,10 +333,7 @@ async fn disk_usage_percent(
         }
         result = tokio::time::timeout(
             Duration::from_secs(10),
-            tokio::process::Command::new("df")
-                .args(["--output=pcent", "--"])
-                .arg(path)
-                .output(),
+            command.output(),
         ) => {
             match result {
                 Ok(output) => output,
