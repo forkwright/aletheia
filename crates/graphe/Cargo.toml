@@ -20,6 +20,7 @@ mneme-engine = ["dep:tokio"]
 # (issue #4163) — recall/serve must NOT enable this, or they will silently
 # leak distilled messages or wedge updated_at indexes with past timestamps.
 portability = []
+test-support = []
 test-core = []
 test-full = []
 
