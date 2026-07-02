@@ -15,12 +15,12 @@ use rmcp::{tool, tool_router};
 use snafu::{IntoError as _, OptionExt as _, ResultExt as _};
 use tracing::Instrument as _;
 
-use koina::http::BEARER_PREFIX;
 use koina::id::SessionId;
 use mneme::types::parse_session_or_agent_id;
 use organon::surface::{SurfaceAvailability, SurfaceInputs};
 use symbolon::types::Role;
 
+use crate::auth::{McpCaller, resolve_caller};
 use crate::error::{
     BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, DuplicateSessionSnafu,
     FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
@@ -52,90 +52,6 @@ const DEFAULT_SESSION_LIST_LIMIT: usize = 50;
 /// Mirrors pylon's `pagination::MAX_LIMIT`.
 const MAX_SESSION_LIST_LIMIT: usize = 1_000;
 
-/// Verified caller identity extracted from the request context.
-///
-/// Mirrors pylon's `Claims` shape so MCP tools can apply the same
-/// first-party scoping, visibility, and caller-identity policy as the
-/// HTTP API (#4841).
-#[derive(Debug, Clone)]
-struct Caller {
-    /// Subject identifier (user or service principal).
-    sub: String,
-    /// Authorization role governing MCP access.
-    role: Role,
-    /// Optional nous scope: when set, restricts access to a single agent.
-    nous_id: Option<String>,
-}
-
-/// Extract the full verified caller identity from the request context.
-///
-/// In single-operator mode (`auth.mode = "none"`), returns a synthetic caller
-/// with the configured `none_role` and no scope. Otherwise validates the
-/// Bearer token and returns the full claims, including the optional `nous_id`
-/// scope.
-///
-/// Returns `None` only when auth info is unavailable or the token is invalid.
-fn extract_caller(
-    server: &DiaporeiaServer,
-    context: &RequestContext<rmcp::RoleServer>,
-) -> Option<Caller> {
-    // NOTE: Single-operator mode has no auth; use the configured default role.
-    if server.state.auth_mode == "none" {
-        let role = server
-            .state
-            .none_role
-            .parse::<Role>()
-            .ok()
-            .unwrap_or(Role::Readonly);
-        return Some(Caller {
-            sub: "anonymous".to_owned(),
-            role,
-            nous_id: None,
-        });
-    }
-
-    let parts = context.extensions.get::<http::request::Parts>()?;
-
-    let header = parts
-        .headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())?;
-
-    let token = header.strip_prefix(BEARER_PREFIX)?;
-
-    // WHY(#4750): validate through AuthFacade so MCP honors the same
-    // revocation store and access-token checks as Pylon HTTP routes.
-    if let Some(ref auth_facade) = server.state.auth_facade {
-        return auth_facade.validate_token(token).ok().map(|claims| Caller {
-            sub: claims.sub,
-            role: claims.role,
-            nous_id: claims.nous_id,
-        });
-    }
-
-    // INVARIANT: auth_facade must be Some when auth_mode != "none".
-    // Fail closed: reject rather than granting access via unsigned decode.
-    tracing::error!(
-        "INVARIANT violation: auth_facade is None but auth_mode != \"none\"; denying MCP tool access"
-    );
-    None
-}
-
-/// Extract role from request context by validating the Bearer token.
-///
-/// When a `JwtManager` is available, validates the signature before
-/// extracting claims (closes the payload-only decode bypass from #3337).
-/// In single-operator mode (`auth.mode = "none"`), returns the configured
-/// `none_role`, falling back to `Readonly` when the config is malformed.
-///
-/// Returns `None` only when auth info is unavailable or the token is invalid.
-fn extract_role(
-    server: &DiaporeiaServer,
-    context: &RequestContext<rmcp::RoleServer>,
-) -> Option<Role> {
-    extract_caller(server, context).map(|caller| caller.role)
-}
-
 /// Check if the caller has operator-level access or above.
 ///
 /// Returns `true` if:
@@ -145,10 +61,7 @@ fn is_operator_or_above(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
 ) -> bool {
-    match extract_role(server, context) {
-        Some(role) => role >= Role::Operator,
-        None => false,
-    }
+    resolve_caller(&server.state, context).is_some_and(|caller| caller.role >= Role::Operator)
 }
 
 /// Require at least the given role, returning an MCP error if insufficient.
@@ -160,8 +73,8 @@ fn require_role(
     context: &RequestContext<rmcp::RoleServer>,
     minimum: Role,
     operation: &str,
-) -> Result<Caller, rmcp::ErrorData> {
-    let caller = extract_caller(server, context);
+) -> Result<McpCaller, rmcp::ErrorData> {
+    let caller = resolve_caller(&server.state, context);
     match caller {
         Some(caller) if caller.role >= minimum => Ok(caller),
         Some(caller) => {
@@ -190,7 +103,7 @@ fn require_role(
 
 /// Require at least the given role for a verified caller.
 fn require_caller_role(
-    caller: &Caller,
+    caller: &McpCaller,
     minimum: Role,
     operation: &str,
 ) -> Result<(), rmcp::ErrorData> {
@@ -219,7 +132,7 @@ fn require_caller_role(
 ///   (if any) is honored.
 /// - Agent callers without a scope are rejected (fail closed).
 fn resolve_nous_scope(
-    caller: &Caller,
+    caller: &McpCaller,
     requested: Option<&str>,
     operation: &str,
 ) -> Result<Option<String>, rmcp::ErrorData> {
@@ -256,7 +169,7 @@ fn resolve_nous_scope(
 /// Reject the request if the caller's scoped `nous_id` does not match the
 /// target agent.
 fn require_nous_access_for_caller(
-    caller: &Caller,
+    caller: &McpCaller,
     target_nous_id: &str,
     operation: &str,
 ) -> Result<(), rmcp::ErrorData> {
@@ -289,7 +202,7 @@ fn require_nous_access_for_caller(
 ///
 /// Mirrors pylon's `nous_visible_to_claims`: a scoped caller only sees its own
 /// agent; private agents are only visible to Operator/Admin.
-fn nous_visible_to_caller(caller: &Caller, config: &nous::config::NousConfig) -> bool {
+fn nous_visible_to_caller(caller: &McpCaller, config: &nous::config::NousConfig) -> bool {
     let in_scope = caller
         .nous_id
         .as_deref()
@@ -304,7 +217,7 @@ fn nous_visible_to_caller(caller: &Caller, config: &nous::config::NousConfig) ->
 /// private and restricted facts are visible only to the owning agent unless
 /// the caller is an unscoped Operator/Admin.
 fn recall_visible_to_caller(
-    caller: &Caller,
+    caller: &McpCaller,
     fact_nous_id: &str,
     visibility: mneme::knowledge::Visibility,
 ) -> bool {
@@ -328,7 +241,7 @@ fn recall_visible_to_caller(
 ///
 /// Agent callers must be scoped. Unscoped Operator/Admin callers fall back to
 /// their subject so the store always receives a verified author.
-fn effective_nous_id(caller: &Caller, operation: &str) -> Result<String, rmcp::ErrorData> {
+fn effective_nous_id(caller: &McpCaller, operation: &str) -> Result<String, rmcp::ErrorData> {
     if caller.role == Role::Agent {
         caller.nous_id.clone().ok_or_else(|| {
             UnauthorizedSnafu {
@@ -346,7 +259,7 @@ fn effective_nous_id(caller: &Caller, operation: &str) -> Result<String, rmcp::E
 #[cfg(feature = "knowledge-store")]
 fn read_fact_for_caller(
     store: &mneme::knowledge_store::KnowledgeStore,
-    caller: &Caller,
+    caller: &McpCaller,
     fact_id: &str,
     operation: &str,
 ) -> Result<mneme::knowledge::Fact, rmcp::ErrorData> {
@@ -650,7 +563,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "session_list requires authentication".to_owned(),
             }
@@ -784,7 +697,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "session_history requires authentication".to_owned(),
             }
@@ -846,7 +759,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "nous_list requires authentication".to_owned(),
             }
@@ -907,7 +820,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "nous_status requires authentication".to_owned(),
             }
@@ -986,7 +899,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "nous_tools requires authentication".to_owned(),
             }
@@ -1064,7 +977,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_search requires authentication".to_owned(),
             }
@@ -1118,7 +1031,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_recall requires authentication".to_owned(),
             }
@@ -1192,7 +1105,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_get requires authentication".to_owned(),
             }
@@ -1455,7 +1368,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "knowledge_graph_neighbors requires authentication".to_owned(),
             }
@@ -1814,7 +1727,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "memory_note requires authentication".to_owned(),
             }
@@ -1956,7 +1869,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Cheap)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "memory_blackboard requires authentication".to_owned(),
             }
@@ -2129,7 +2042,7 @@ impl DiaporeiaServer {
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.rate_limiter.check(Tier::Expensive)?;
-        let caller = extract_caller(self, &context).ok_or_else(|| {
+        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
             UnauthorizedSnafu {
                 message: "memory_search requires authentication".to_owned(),
             }
