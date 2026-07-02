@@ -1,6 +1,3 @@
-# WHY: Core gate — enforces fmt, clippy, and test coverage on every PR.
-# Replaces the self-hosted `kanon gate` invocation (kanon is a private binary
-# unavailable on GitHub-hosted runners) with equivalent explicit cargo steps.
 name: Gate Attestation
 
 on:
@@ -12,114 +9,8 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  gate-attestation:
-    name: gate-attestation
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      # WHY: full debuginfo is the bulk of the dev-profile target dir; with a
-      # cold cargo cache the workspace test build exceeded the hosted runner's
-      # free disk (ENOSPC killed the gate mid-nextest, 2026-06-11). Line tables
-      # keep usable backtraces for test failures at a fraction of the size.
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      # WHY: hosted runners ship ~25 GB of toolchains this job never uses
-      # (dotnet, Android, GHC, CodeQL bundles). The workspace test build needs
-      # that headroom when the cargo cache is cold — ENOSPC killed the gate
-      # mid-nextest on 2026-06-11. Plain rm keeps this dependency-free.
-      - name: Reclaim runner disk
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
-          echo "free disk after reclaim:"
-          df -h / | tail -1
-
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          key: gate-attestation
-
-      - name: Configure git credentials for private fleet deps
-        env:
-          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
-        run: |
-          if [ -z "${FLEET_REPO_TOKEN}" ]; then
-            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
-            exit 1
-          fi
-          git config --global credential.helper store
-          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
-          chmod 0600 ~/.git-credentials
-
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
-
-      - name: Check test tier features
-        run: scripts/check-test-tier-features.py
-
-      - name: Check release feature policy
-        run: |
-          cargo metadata --format-version 1 --no-deps > metadata.json
-          scripts/release-feature-policy.py --metadata metadata.json validate
-
-      - name: cargo fmt --check
-        run: cargo fmt --all -- --check
-
-      - name: Cargo publish policy
-        run: scripts/check-cargo-publish-policy.py
-
-      - name: Release versioning
-        run: |
-          scripts/check-release-versioning.py
-          scripts/test-release-versioning.py
-
-      - name: Proskenion flake wiring
-        run: scripts/check-proskenion-flake.py
-
-      - name: Poiesis feature gates
-        run: |
-          cargo check -p poiesis-slides
-          cargo check -p poiesis-slides --no-default-features
-          cargo check -p poiesis-sheet
-          cargo check -p poiesis-sheet --no-default-features --features workbook
-
-      - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: cargo check fuzz targets
-        env:
-          CARGO_TARGET_DIR: target
-        run: cargo check --manifest-path fuzz/Cargo.toml --bins
-
-      - name: cargo nextest run
-        run: cargo nextest run --profile ci --workspace --features test-core
-
-      - name: Upload nextest failure artifacts
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: nextest-gate-attestation
-          path: |
-            target/nextest/ci/junit.xml
-            target/nextest/**/*.log
-          if-no-files-found: warn
-
-      - name: Gate summary
-        run: echo "gate passed — fmt clean, clippy clean, tests passed"
+  gate:
+    uses: forkwright/.github/.github/workflows/gate-attestation.yml@961f4e0d8ef84ac93303e9fb1ea4123c98b5dab1
