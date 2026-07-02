@@ -107,10 +107,6 @@ fn collect_encrypted_paths(value: &toml::Value, prefix: String, out: &mut Vec<St
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    reason = "test harness: seeding fixtures must panic loudly on setup failure"
-)]
 mod tests {
     use super::*;
     use crate::test_support::EnvJail;
