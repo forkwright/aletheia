@@ -3,8 +3,8 @@
 //! Sensitive values in `aletheia.toml` (API keys, signing keys, secrets) can be
 //! encrypted with a primary key. Encrypted values are stored with an `enc:` prefix
 //! followed by base64-encoded ciphertext. On config load, `enc:` values are
-//! transparently decrypted. If the primary key is missing, encrypted values pass
-//! through as-is with a warning.
+//! transparently decrypted. If the primary key is missing but `enc:` values are
+//! present, startup fails with an actionable error listing the affected fields.
 
 use std::path::{Path, PathBuf};
 
