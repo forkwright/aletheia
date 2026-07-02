@@ -1453,6 +1453,19 @@ impl MemoryServer {
                 }
                 ensure_fact_is_active(&target, &fact_id)?;
 
+                // WHY: annotations linked to forgotten or superseded facts are
+                // invisible to recall and would silently orphan state in the
+                // knowledge graph. Reject them with the same error as
+                // `nous_neighbors` for a consistent lifecycle contract. (#5613)
+                if target.lifecycle.is_forgotten
+                    || target.lifecycle.superseded_by.as_ref().is_some()
+                {
+                    return Err(crate::error::FactNotFoundSnafu {
+                        id: fact_id.clone(),
+                    }
+                    .build());
+                }
+
                 // Create annotation fact with a generated ID
                 // Use "f-mcp-" prefix to mark MCP-inserted facts for audit purposes.
                 let annotation_id_str = format!("f-mcp-{}", koina::uuid::uuid_v4());
@@ -1631,6 +1644,16 @@ impl MemoryServer {
                     .build());
                 }
                 ensure_fact_is_active(&old_fact, &old_id)?;
+
+                // WHY: double-superseding a fact writes orphaned state because
+                // the already-superseded target is excluded from recall and
+                // traversal. Reject the request with the same FactNotFound
+                // error that `nous_neighbors` uses. (#5613)
+                if old_fact.lifecycle.is_forgotten
+                    || old_fact.lifecycle.superseded_by.as_ref().is_some()
+                {
+                    return Err(crate::error::FactNotFoundSnafu { id: old_id.clone() }.build());
+                }
 
                 // Mark the old fact as superseded
                 let new_fact_id = mneme::id::FactId::new(new_id.clone()).map_err(|e| {

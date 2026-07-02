@@ -441,7 +441,10 @@ impl NousActor {
         ));
 
         let lock_dir = std::env::temp_dir().join("aletheia-auto-dream");
-        if let Err(e) = std::fs::create_dir_all(&lock_dir) {
+        // WHY: create_dir_all hits the filesystem synchronously on the async
+        // worker thread. Use tokio::fs so the await yields the worker while the
+        // blocking syscall runs on Tokio's blocking pool. (#5703)
+        if let Err(e) = tokio::fs::create_dir_all(&lock_dir).await {
             warn!(nous_id = %self.id, error = %e, "auto-dream lock directory unavailable");
             return;
         }
