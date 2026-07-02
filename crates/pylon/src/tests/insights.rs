@@ -29,8 +29,8 @@ fn broken_session_store() -> (mneme::store::SessionStore, tempfile::TempDir) {
             .expect("insert corrupt session row");
     }
 
-    let store = mneme::store::SessionStore::open(&store_path)
-        .expect("reopen store with corrupt row");
+    let store =
+        mneme::store::SessionStore::open(&store_path).expect("reopen store with corrupt row");
     (store, tmp)
 }
 
@@ -172,8 +172,7 @@ async fn get_quality_metrics_returns_500_on_storage_failure() {
     let broken_store = Arc::new(Mutex::new(broken_store));
 
     let (state, _dir) = test_state().await;
-    let mut state = Arc::into_inner(state)
-        .expect("test state should have a single Arc reference");
+    let mut state = Arc::into_inner(state).expect("test state should have a single Arc reference");
     state.session_store = broken_store;
     let state = Arc::new(state);
 
