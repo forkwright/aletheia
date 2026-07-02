@@ -90,6 +90,9 @@ skene = { path = "../theatron/skene" }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true }
+# WHY: tests need direct access to the underlying fjall keyspace to inject
+# corrupt rows and exercise storage-failure paths in insights handlers.
+fjall = "3"
 
 [lints]
 workspace = true

@@ -226,8 +226,7 @@ pub async fn get_quality_metrics(
             message: format!("task join failed: {e}"),
         }
         .build())
-    })
-    .unwrap_or_else(|_| (Vec::new(), Vec::new()));
+    })?;
 
     let series = compute_quality_series(&sessions, &messages);
     Ok(Json(QualityMetricsResponse {

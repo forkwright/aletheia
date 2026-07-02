@@ -7647,6 +7647,7 @@ dependencies = [
  "axum 0.8.9",
  "axum-server",
  "dianoia",
+ "fjall",
  "futures",
  "hermeneus",
  "http-body-util",
