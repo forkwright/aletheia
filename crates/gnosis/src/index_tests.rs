@@ -199,6 +199,41 @@ fn pub_use_reexport_populates_to_crate() {
 }
 
 #[test]
+fn pub_use_reexport_preserves_high_u64_symbol_id() {
+    let (store, _dir) = open_test_store();
+    let high_id = u64::try_from(i64::MAX).expect("i64::MAX fits in u64") + 1;
+    store
+        .set_next_symbol_id_for_test(high_id)
+        .expect("seed next symbol id above i64::MAX");
+
+    let src = r"pub use hermeneus::types::Message;";
+    let tmp = tempfile::NamedTempFile::new().expect("tempfile");
+    std::fs::write(tmp.path(), src).expect("write");
+    let path_str = tmp.path().to_string_lossy().into_owned();
+    let content = std::fs::read_to_string(tmp.path()).expect("read");
+
+    index_file(&store, "re_crate", &path_str, "", &content).expect("index");
+
+    let reexport_id = store
+        .symbols()
+        .expect("symbols")
+        .into_iter()
+        .find(|symbol| symbol.symbol_kind == "reexport")
+        .expect("reexport symbol")
+        .id;
+    assert_eq!(reexport_id, high_id, "test fixture must use a high u64 id");
+
+    let reference = store
+        .refs()
+        .expect("refs")
+        .into_iter()
+        .find(|reference| reference.from_symbol == high_id)
+        .expect("reexport ref for high u64 symbol id");
+    assert_eq!(reference.to_crate, "hermeneus");
+    assert_eq!(reference.to_symbol, "Message");
+}
+
+#[test]
 fn pub_use_rename_populates_to_crate() {
     let (store, _dir) = open_test_store();
     let src = r"pub use hermeneus::types::Message as Msg;";
