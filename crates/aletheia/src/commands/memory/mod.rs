@@ -1521,9 +1521,7 @@ fn run_export_graph(
     let all_relationships = query_relationships(store)?;
     let relationships: Vec<_> = all_relationships
         .into_iter()
-        .filter(|r| {
-            visible_ids.contains(r.src.as_str()) && visible_ids.contains(r.dst.as_str())
-        })
+        .filter(|r| visible_ids.contains(r.src.as_str()) && visible_ids.contains(r.dst.as_str()))
         .collect();
 
     let entity_count = entities.len();
@@ -1531,7 +1529,12 @@ fn run_export_graph(
 
     match format {
         ExportFormat::Dot => {
-            export_dot(&mut writer, &entities, &relationships, &entity_sensitivities)?;
+            export_dot(
+                &mut writer,
+                &entities,
+                &relationships,
+                &entity_sensitivities,
+            )?;
         }
         ExportFormat::Graphml => {
             export_graphml(&mut writer, &entities, &relationships)?;
@@ -1714,7 +1717,10 @@ fn decode_required_f64(
 #[cfg(feature = "recall")]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "strict row-decoder tests exercise parse_entity_rows directly")
+    expect(
+        dead_code,
+        reason = "strict row-decoder tests exercise parse_entity_rows directly"
+    )
 )]
 fn parse_entity_rows(
     result: &mneme::knowledge_store::QueryResult,

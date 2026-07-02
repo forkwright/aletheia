@@ -736,8 +736,8 @@ fn load_filtered_facts_defaults_to_public_sensitivity() {
         sensitivities.get("ent-public"),
         Some(&FactSensitivity::Public)
     );
-    assert!(sensitivities.get("ent-internal").is_none());
-    assert!(sensitivities.get("ent-confidential").is_none());
+    assert!(!sensitivities.contains_key("ent-internal"));
+    assert!(!sensitivities.contains_key("ent-confidential"));
 }
 
 #[test]
@@ -801,9 +801,13 @@ fn parse_entity_rows_rejects_missing_column() {
             std::collections::BTreeMap::new(),
         )
         .expect("run synthetic entity query");
-    let err = super::parse_entity_rows(&result).unwrap_err();
+    let err = match super::parse_entity_rows(&result) {
+        Ok(rows) => panic!("expected missing column error, got {rows:?}"),
+        Err(err) => err,
+    };
     assert!(
-        err.to_string().contains("missing or non-string column 'updated_at'"),
+        err.to_string()
+            .contains("missing or non-string column 'updated_at'"),
         "error names missing column: {err}"
     );
 }
@@ -817,9 +821,13 @@ fn parse_entity_rows_rejects_invalid_timestamp() {
             std::collections::BTreeMap::new(),
         )
         .expect("run synthetic entity query");
-    let err = super::parse_entity_rows(&result).unwrap_err();
+    let err = match super::parse_entity_rows(&result) {
+        Ok(rows) => panic!("expected invalid timestamp error, got {rows:?}"),
+        Err(err) => err,
+    };
     assert!(
-        err.to_string().contains("invalid timestamp 'not-a-timestamp'"),
+        err.to_string()
+            .contains("invalid timestamp 'not-a-timestamp'"),
         "error names invalid timestamp: {err}"
     );
 }
@@ -833,9 +841,13 @@ fn parse_relationship_rows_rejects_missing_weight() {
             std::collections::BTreeMap::new(),
         )
         .expect("run synthetic relationship query");
-    let err = super::parse_relationship_rows(&result).unwrap_err();
+    let err = match super::parse_relationship_rows(&result) {
+        Ok(rows) => panic!("expected missing weight error, got {rows:?}"),
+        Err(err) => err,
+    };
     assert!(
-        err.to_string().contains("missing or non-numeric column 'weight'"),
+        err.to_string()
+            .contains("missing or non-numeric column 'weight'"),
         "error names missing weight: {err}"
     );
 }
@@ -849,7 +861,10 @@ fn parse_relationship_rows_rejects_invalid_timestamp() {
             std::collections::BTreeMap::new(),
         )
         .expect("run synthetic relationship query");
-    let err = super::parse_relationship_rows(&result).unwrap_err();
+    let err = match super::parse_relationship_rows(&result) {
+        Ok(rows) => panic!("expected invalid timestamp error, got {rows:?}"),
+        Err(err) => err,
+    };
     assert!(
         err.to_string().contains("invalid timestamp 'not-a-date'"),
         "error names invalid timestamp: {err}"
