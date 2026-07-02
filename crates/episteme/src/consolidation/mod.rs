@@ -279,6 +279,9 @@ pub struct ConsolidationAuditRecord {
     /// Unique audit ID.
     // kanon:ignore RUST/primitive-for-domain-id — serialization type for Datalog/JSON audit records uses string IDs for compatibility
     pub id: String,
+    /// Nous that owns this consolidation cycle.
+    #[serde(default)]
+    pub nous_id: String,
     /// What triggered this consolidation.
     pub trigger_type: String,
     /// Entity or cluster ID that triggered it.
@@ -496,6 +499,32 @@ pub const CLUSTER_FACTS_FOR_CONSOLIDATION: &str = r"
 /// Datalog DDL for the `consolidation_audit` relation.
 pub const CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
     id: String =>
+    nous_id: String default '',
+    trigger_type: String,
+    trigger_id: String,
+    original_count: Int,
+    consolidated_count: Int,
+    original_fact_ids: String,
+    consolidated_fact_ids: String,
+    consolidated_at: String
+}";
+
+/// Datalog migration for legacy `consolidation_audit` rows without owners.
+///
+/// NOTE: legacy audit rows do not reliably prove a single owner, so the
+/// conservative backfill preserves them with an empty owner rather than
+/// assigning them to an arbitrary nous.
+pub const CONSOLIDATION_AUDIT_OWNER_BACKFILL_DDL: &str = r"
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
+   original_fact_ids, consolidated_fact_ids, consolidated_at] :=
+    *consolidation_audit{id, trigger_type, trigger_id, original_count,
+                         consolidated_count, original_fact_ids,
+                         consolidated_fact_ids, consolidated_at},
+    nous_id = ''
+
+:replace consolidation_audit {
+    id: String =>
+    nous_id: String default '',
     trigger_type: String,
     trigger_id: String,
     original_count: Int,
@@ -555,3 +584,73 @@ pub(crate) fn batch_facts(facts: &[SourceFact], batch_limit: usize) -> Vec<Vec<S
 #[cfg(test)]
 #[path = "consolidation_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "mneme-engine"))]
+mod owner_scope_tests {
+    #![expect(clippy::expect_used, reason = "test assertions")]
+
+    use std::collections::BTreeMap;
+
+    use super::*;
+    use crate::engine::DataValue;
+    use crate::knowledge_store::KnowledgeStore;
+
+    struct UnusedProvider;
+
+    impl ConsolidationProvider for UnusedProvider {
+        fn consolidate(
+            &self,
+            _system: &str,
+            _user_message: &str,
+        ) -> Result<String, ConsolidationError> {
+            Ok("[]".to_owned())
+        }
+    }
+
+    fn insert_audit_row(store: &KnowledgeStore, id: &str, nous_id: &str, consolidated_at: &str) {
+        let script = r"
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
+   original_fact_ids, consolidated_fact_ids, consolidated_at] <-
+    [[$id, $nous_id, 'entity_overflow', 'entity-a', 0, 0, '[]', '[]', $consolidated_at]]
+
+:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
+                          consolidated_count, original_fact_ids,
+                          consolidated_fact_ids, consolidated_at}
+";
+        let mut params = BTreeMap::new();
+        params.insert("id".to_owned(), DataValue::Str(id.into()));
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert(
+            "consolidated_at".to_owned(),
+            DataValue::Str(consolidated_at.into()),
+        );
+        store
+            .run_mut_query(script, params)
+            .expect("insert audit row");
+    }
+
+    #[test]
+    fn consolidation_rate_limit_is_scoped_by_nous() {
+        let store = KnowledgeStore::open_mem().expect("open_mem");
+        let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
+        insert_audit_row(&store, "audit-nous-a", "nous-a", &now);
+
+        let provider = UnusedProvider;
+        let config = ConsolidationConfig {
+            rate_limit_hours: 1.0,
+            ..ConsolidationConfig::default()
+        };
+
+        let other_nous = store.consolidate_knowledge(&provider, "nous-b", &config, false);
+        assert!(
+            other_nous.is_ok(),
+            "recent audit for nous-a must not throttle nous-b: {other_nous:?}"
+        );
+
+        let same_nous = store.consolidate_knowledge(&provider, "nous-a", &config, false);
+        assert!(
+            matches!(same_nous, Err(ConsolidationError::RateLimited { .. })),
+            "recent audit for nous-a should still throttle nous-a"
+        );
+    }
+}

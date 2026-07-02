@@ -10,7 +10,7 @@ fn full_knowledge_lifecycle() {
     let original = make_fact(
         "f-1",
         nous,
-        "Cody's favorite language is Rust",
+        "Project Atlas uses Rust for indexing",
         0.9,
         EpistemicTier::Inferred,
     );
@@ -20,13 +20,13 @@ fn full_knowledge_lifecycle() {
         .query_facts(nous, query_time, 10)
         .expect("query after insert");
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].content, "Cody's favorite language is Rust");
+    assert_eq!(results[0].content, "Project Atlas uses Rust for indexing");
 
     correct_fact(
         &store,
         "f-1",
         "f-2",
-        "Cody's favorite languages are Rust and TypeScript",
+        "Project Atlas uses Rust and TypeScript for indexing tools",
         nous,
         "2026-06-01T00:00:00Z",
     );
@@ -38,7 +38,7 @@ fn full_knowledge_lifecycle() {
     assert_eq!(results[0].id.as_str(), "f-2");
     assert_eq!(
         results[0].content,
-        "Cody's favorite languages are Rust and TypeScript"
+        "Project Atlas uses Rust and TypeScript for indexing tools"
     );
 
     let audit = audit_all_facts(&store, nous);

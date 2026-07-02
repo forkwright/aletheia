@@ -395,6 +395,7 @@ fn failing_provider_returns_error() {
 fn audit_record_serde_roundtrip() {
     let record = ConsolidationAuditRecord {
         id: "audit-1".to_owned(),
+        nous_id: "test-nous".to_owned(),
         trigger_type: "entity_overflow".to_owned(),
         trigger_id: "e-1".to_owned(),
         original_count: 15,
@@ -411,6 +412,10 @@ fn audit_record_serde_roundtrip() {
     );
     assert_eq!(
         record.original_count, back.original_count,
+        "audit record serde roundtrip: values should be equal"
+    );
+    assert_eq!(
+        record.nous_id, back.nous_id,
         "audit record serde roundtrip: values should be equal"
     );
 }

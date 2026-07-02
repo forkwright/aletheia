@@ -463,13 +463,16 @@ mod knowledge_store_tests {
         // Insert a fact WITH entity links — no anomaly should be flagged.
         let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
 
-        let fact = make_fact("fact-linked-001", "Cody prefers Rust over Go");
+        let fact = make_fact(
+            "fact-linked-001",
+            "Project Atlas uses Rust for its indexing service",
+        );
         store.insert_fact(&fact).expect("insert fact");
 
         let entity = episteme::knowledge::Entity {
-            id: episteme::id::EntityId::new("entity-cody-001").expect("valid"),
-            name: "Cody".to_owned(),
-            entity_type: "person".to_owned(),
+            id: episteme::id::EntityId::new("entity-project-atlas-001").expect("valid"),
+            name: "Project Atlas".to_owned(),
+            entity_type: "project".to_owned(),
             aliases: Vec::new(),
             created_at: jiff::Timestamp::now(),
             updated_at: jiff::Timestamp::now(),
