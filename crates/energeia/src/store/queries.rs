@@ -43,10 +43,10 @@ fn prefix_scan<T: serde::de::DeserializeOwned>(
     filter: impl Fn(&T) -> bool,
 ) -> Result<Vec<T>> {
     let mut results = Vec::new();
+    if limit == 0 {
+        return Ok(results);
+    }
     for guard in keyspace.prefix(prefix) {
-        if results.len() >= limit {
-            break;
-        }
         let (_key, value) = guard.into_inner().map_err(|e| {
             error::StoreSnafu {
                 message: format!("{context}: {e}"),
@@ -56,6 +56,36 @@ fn prefix_scan<T: serde::de::DeserializeOwned>(
         let record = deserialize_value::<T>(&value)?;
         if filter(&record) {
             results.push(record);
+            if results.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(results)
+}
+
+/// Scan a fjall keyspace by prefix from newest to oldest key order.
+#[cfg(feature = "storage-fjall")]
+fn reverse_prefix_scan<T: serde::de::DeserializeOwned>(
+    keyspace: &fjall::Keyspace,
+    prefix: &[u8],
+    context: &str,
+    limit: usize,
+) -> Result<Vec<T>> {
+    let mut results = Vec::new();
+    if limit == 0 {
+        return Ok(results);
+    }
+    for guard in keyspace.prefix(prefix).rev() {
+        let (_key, value) = guard.into_inner().map_err(|e| {
+            error::StoreSnafu {
+                message: format!("{context}: {e}"),
+            }
+            .build()
+        })?;
+        results.push(deserialize_value::<T>(&value)?);
+        if results.len() >= limit {
+            break;
         }
     }
     Ok(results)
@@ -172,6 +202,23 @@ pub(crate) fn list_dispatches(
         "dispatch prefix scan",
         limit,
         |_: &DispatchRecord| true,
+    )
+}
+
+/// Collect the latest dispatch records via reverse prefix scan.
+///
+/// Results are ordered newest-first by ULID key order.
+#[cfg(feature = "storage-fjall")]
+pub(crate) fn list_latest_dispatches(
+    keyspace: &fjall::Keyspace,
+    limit: usize,
+) -> Result<Vec<crate::store::records::DispatchRecord>> {
+    let prefix_bytes = schema::dispatch_prefix().as_bytes();
+    reverse_prefix_scan(
+        keyspace,
+        prefix_bytes,
+        "dispatch reverse prefix scan",
+        limit,
     )
 }
 

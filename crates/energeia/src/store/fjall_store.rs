@@ -62,6 +62,8 @@ pub fn stale_running_dispatch_threshold() -> jiff::SignedDuration {
 pub struct EnergeiaStore {
     keyspace: Arc<fjall::Keyspace>,
     db: fjall::Database,
+    #[cfg(test)]
+    fail_next_create_dispatch: std::sync::atomic::AtomicBool,
 }
 
 // NOTE: Storage methods stay `pub` for external tooling: steward workflows,
@@ -79,6 +81,8 @@ impl EnergeiaStore {
         Ok(Self {
             keyspace: Arc::new(keyspace),
             db: db.clone(),
+            #[cfg(test)]
+            fail_next_create_dispatch: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -108,6 +112,17 @@ impl EnergeiaStore {
     /// Returns `Error::Store` on write failure, `Error::Serialization` on
     /// encoding failure.
     pub(crate) fn create_dispatch(&self, project: &str, spec: &DispatchSpec) -> Result<DispatchId> {
+        #[cfg(test)]
+        if self
+            .fail_next_create_dispatch
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(store_err(
+                "write dispatch",
+                "injected create dispatch failure",
+            ));
+        }
+
         let id = DispatchId::new(koina::ulid::Ulid::new().to_string());
         let spec_json =
             serde_json::to_string(spec).map_err(|e| ser_err("serialize dispatch spec", e))?;
@@ -598,6 +613,15 @@ impl EnergeiaStore {
         queries::list_dispatches(&self.keyspace, limit)
     }
 
+    /// List latest dispatch records ordered newest-first, up to `limit`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub(crate) fn list_latest_dispatches(&self, limit: usize) -> Result<Vec<DispatchRecord>> {
+        queries::list_latest_dispatches(&self.keyspace, limit)
+    }
+
     /// List all session records across all dispatches, up to `limit`.
     ///
     /// Ordered approximately by time (dispatch ULID, then prompt number).
@@ -705,6 +729,22 @@ impl EnergeiaStore {
             .insert(key.as_bytes(), value)
             .map_err(|e| store_err("write backdated dispatch", e))?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_dispatch_record_for_test(&self, record: &DispatchRecord) -> Result<()> {
+        let key = schema::dispatch_key(&record.id);
+        let value = serialize_msgpack(record, "test dispatch")?;
+        self.keyspace
+            .insert(key.as_bytes(), value)
+            .map_err(|e| store_err("write test dispatch", e))?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_next_create_dispatch_for_test(&self) {
+        self.fail_next_create_dispatch
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
