@@ -13,7 +13,7 @@ workspace = true
 
 [dependencies]
 poiesis-core = { path = "../core" }
-quick-xml = "0.39"
+quick-xml = "0.41"
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }

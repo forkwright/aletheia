@@ -22,6 +22,14 @@ id = "RUSTSEC-2026-0192"
 # WHY: ttf-parser unmaintained; transitive via fontdb/usvg/rustybuzz/typst-pdf; maintainer archived, no upstream fix. Mirrors deny.toml + .cargo/audit.toml.
 
 [[IgnoredVulns]]
+id = "RUSTSEC-2026-0194"
+# WHY: quick-xml duplicate-attribute CPU DoS; direct aletheia/poiesis users upgraded to 0.41, remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39. Mirrors deny.toml + .cargo/audit.toml.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0195"
+# WHY: quick-xml NsReader namespace allocation DoS; direct aletheia/poiesis users upgraded to 0.41, remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39. Mirrors deny.toml + .cargo/audit.toml.
+
+[[IgnoredVulns]]
 id = "RUSTSEC-2025-0134"
 # WHY: rustls-pemfile 2.2.0 unmaintained; transitive via qdrant-client→tonic; no safe upgrade. Mirrors deny.toml + .cargo/audit.toml.
 

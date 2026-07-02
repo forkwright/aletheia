@@ -25,6 +25,14 @@ reason = "async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgr
 id = "RUSTSEC-2026-0192"
 reason = "ttf-parser unmaintained — transitive via fontdb→usvg→typst-pdf and rustybuzz→typst; maintainer archived the repo with no upstream fix. Alternatives (skrifa) require upstream migration."
 
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0194"
+reason = "quick-xml duplicate-attribute CPU DoS — direct aletheia/poiesis users upgraded to quick-xml 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39"
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0195"
+reason = "quick-xml NsReader namespace allocation DoS — direct aletheia/poiesis users upgraded to quick-xml 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39"
+
 
 [[advisories.ignore]]
 id = "RUSTSEC-2025-0134"
@@ -192,4 +200,3 @@ unknown-git = "deny"
 # tagged releases). These are first-party crates in the fleet mono-repo constellation;
 # git sources are expected until crates.io publication is decided.
 allow-org.github = ["forkwright"]
-

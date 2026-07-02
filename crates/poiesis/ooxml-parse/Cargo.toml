@@ -9,7 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-quick-xml = "0.39"
+quick-xml = "0.41"
 
 [lints]
 workspace = true
