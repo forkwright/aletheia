@@ -1,5 +1,6 @@
 #![expect(clippy::unwrap_used, reason = "test assertions")]
 
+use std::borrow::Cow;
 use std::time::Duration;
 
 use koina::secret::SecretString;
@@ -223,10 +224,8 @@ fn backoff_delay_exponential_growth() {
 
 #[test]
 fn config_models_exposed_without_leaking() {
-    // WHY (#5259): dynamic OpenAI-compatible model lists are config-owned.
-    // `supported_models()` must not leak them as `&[&str]`; the diagnostic
-    // `supported_model_list()` returns owned `Cow` values that are freed
-    // when the provider drops.
+    // WHY (#5259): dynamic OpenAI-compatible model lists are config-owned,
+    // and `supported_models()` must expose them without leaking static refs.
     let config = OpenAiProviderConfig {
         name: "cloud".to_owned(),
         base_url: "https://api.openai.com/v1".to_owned(),
@@ -234,12 +233,15 @@ fn config_models_exposed_without_leaking() {
         ..Default::default()
     };
     let provider = OpenAiProvider::new(config).unwrap();
-    assert!(provider.supported_models().is_empty());
-    let list = provider.supported_model_list();
+    let list = provider.supported_models();
     assert_eq!(list.len(), 1);
     assert_eq!(
         list.first().map(std::convert::AsRef::as_ref),
         Some("gpt-4o")
+    );
+    assert!(
+        matches!(list.first(), Some(Cow::Borrowed(_))),
+        "config model must be borrowed from provider storage"
     );
     assert!(provider.supports_model("gpt-4o"));
     assert_eq!(provider.match_specificity("gpt-4o"), Some(MatchKind::Exact));
@@ -251,14 +253,25 @@ fn repeated_construction_does_not_leak_model_storage() {
     // times (config reloads, tests, multi-instance startup). Each
     // construction must be able to free its model list.
     for i in 0..100 {
+        let model = format!("gpt-model-{i}");
         let config = OpenAiProviderConfig {
             name: format!("cloud-{i}"),
             base_url: "https://api.openai.com/v1".to_owned(),
-            models: vec![format!("gpt-model-{i}")],
+            models: vec![model.clone()],
             ..Default::default()
         };
         let provider = OpenAiProvider::new(config).unwrap();
-        assert!(provider.supports_model(&format!("gpt-model-{i}")));
+        let list = provider.supported_models();
+        let borrowed = match list.first().unwrap() {
+            Cow::Borrowed(model) => *model,
+            Cow::Owned(_) => panic!("config model should be borrowed from provider storage"),
+        };
+        assert_eq!(borrowed, model.as_str());
+        assert_eq!(
+            borrowed.as_ptr(),
+            provider.config.models.first().unwrap().as_ptr()
+        );
+        assert!(provider.supports_model(&model));
         // provider drops here, freeing the owned model list.
     }
 }

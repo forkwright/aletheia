@@ -547,8 +547,8 @@ impl LlmProvider for HangingProvider {
         Box::pin(std::future::pending())
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     fn name(&self) -> &'static str {

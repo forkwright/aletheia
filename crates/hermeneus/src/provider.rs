@@ -27,7 +27,7 @@ use crate::types::{CompletionRequest, CompletionResponse};
 ///
 /// | Variant  | Example                                      |
 /// |----------|----------------------------------------------|
-/// | `Exact`  | Provider's `supported_models()` contains the exact model ID |
+/// | `Exact`  | Provider's supported model list contains the exact model ID |
 /// | `Prefix` | Provider matches by a namespaced prefix (e.g. `cc/`, `codex/`) |
 /// | `CatchAll` | Provider matches by a broad family pattern (e.g. any `claude-*`) |
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -131,41 +131,27 @@ pub trait LlmProvider: Send + Sync {
 
     /// List models supported by this provider.
     ///
-    /// WHY (#5259): this method returns `&[&str]` and can only expose
-    /// static/built-in model IDs without leaking owned config data. Providers
-    /// with dynamic model lists should return an empty slice here and override
-    /// [`Self::supports_model`] and [`Self::match_specificity`] to use their
-    /// owned data. Use [`Self::supported_model_list`] for a leak-free
-    /// diagnostic enumeration of all claimed models.
-    fn supported_models(&self) -> &[&str];
-
-    /// Diagnostic enumeration of every model ID this provider claims.
-    ///
-    /// WHY (#5259): returns owned/borrowed `Cow<'_, str>` items so config-owned
-    /// model IDs can be enumerated without leaking them for the lifetime of the
-    /// process. The default implementation converts [`Self::supported_models`].
-    fn supported_model_list(&self) -> Vec<Cow<'_, str>> {
-        self.supported_models()
-            .iter()
-            .map(|&model| Cow::Borrowed(model))
-            .collect()
-    }
+    /// WHY (#5259): provider model lists may be config-owned. Returning
+    /// `Cow<'_, str>` lets implementations enumerate both static and owned
+    /// model IDs without leaking strings or slices for the lifetime of the
+    /// process.
+    fn supported_models(&self) -> Vec<Cow<'_, str>>;
 
     /// Check if a specific model is supported.
     fn supports_model(&self, model: &str) -> bool {
-        self.supported_models().contains(&model)
+        self.supported_models().iter().any(|m| m.as_ref() == model)
     }
 
     /// Return this provider's match specificity for `model`, or `None` if not supported.
     ///
     /// The default implementation returns `Some(MatchKind::Exact)` when `model`
-    /// appears in `supported_models()`, and `None` otherwise. Providers with
+    /// appears in [`Self::supported_models`], and `None` otherwise. Providers with
     /// broader matching logic (prefix patterns, family catch-alls) should
     /// override this to return the appropriate [`MatchKind`] so that
     /// [`ProviderRegistry::find_provider`] can prefer an explicitly-configured
     /// exact-model provider over a generic catch-all for the same model ID.
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        if self.supported_models().contains(&model) {
+        if self.supported_models().iter().any(|m| m.as_ref() == model) {
             Some(MatchKind::Exact)
         } else {
             None
@@ -413,9 +399,9 @@ impl Default for ProviderConfig {
 
 /// Borrow an owned model list as a `Cow<'_, str>` vector.
 ///
-/// WHY (#5259): helper for [`LlmProvider::supported_model_list`] so
-/// config-owned model IDs are enumerated without leaking them for the
-/// lifetime of the process.
+/// WHY (#5259): helper for [`LlmProvider::supported_models`] so config-owned
+/// model IDs are enumerated without leaking them for the lifetime of the
+/// process.
 pub(crate) fn owned_model_list(models: &[String]) -> Vec<Cow<'_, str>> {
     models.iter().map(|s| Cow::Borrowed(s.as_str())).collect()
 }

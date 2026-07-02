@@ -70,8 +70,6 @@ struct InstanceMeta {
     /// WHY (#5259): stored as owned `String`s so config-owned IDs are never
     /// intentionally leaked for the lifetime of the process.
     models: Vec<String>,
-    /// Whether `models` came from operator configuration.
-    has_operator_model_refs: bool,
     /// Where this instance's traffic terminates, for the recall
     /// sensitivity filter (#3404, #3413).
     deployment_target: DeploymentTarget,
@@ -251,7 +249,6 @@ impl AnthropicProvider {
             meta: InstanceMeta {
                 name,
                 models: models_from_config(config),
-                has_operator_model_refs: !config.models.is_empty(),
                 deployment_target: config.deployment_target,
             },
         };
@@ -320,7 +317,6 @@ impl AnthropicProvider {
             meta: InstanceMeta {
                 name,
                 models: models_from_config(config),
-                has_operator_model_refs: !config.models.is_empty(),
                 deployment_target: config.deployment_target,
             },
         };
@@ -411,8 +407,9 @@ impl AnthropicProvider {
     ) -> Result<CompletionResponse> {
         if let Err(health) = self.health.check_available() {
             tracing::warn!(?health, "circuit-breaker open; streaming request rejected");
-            return Err(error::ApiRequestSnafu {
-                message: format!("provider circuit-breaker open: {health:?}"),
+            return Err(error::CircuitOpenSnafu {
+                provider: self.meta.name.clone(),
+                reason: format!("{health:?}"),
             }
             .build());
         }
@@ -910,8 +907,9 @@ impl AnthropicProvider {
                 ?health,
                 "circuit-breaker open; non-streaming request rejected"
             );
-            return Err(error::ApiRequestSnafu {
-                message: format!("provider circuit-breaker open: {health:?}"),
+            return Err(error::CircuitOpenSnafu {
+                provider: self.meta.name.clone(),
+                reason: format!("{health:?}"),
             }
             .build());
         }
@@ -1109,19 +1107,7 @@ impl LlmProvider for AnthropicProvider {
         Box::pin(self.execute_with_retry(request))
     }
 
-    fn supported_models(&self) -> &[&str] {
-        // WHY (#5259): only the first-party static catalog can be returned as
-        // `&[&str]` without leaking. Custom config-owned models are exposed
-        // through [`Self::supported_model_list`] and used by
-        // [`Self::match_specificity`] for routing.
-        if self.meta.has_operator_model_refs {
-            &[]
-        } else {
-            koina::models::provider_models(koina::models::ModelProvider::Anthropic)
-        }
-    }
-
-    fn supported_model_list(&self) -> Vec<std::borrow::Cow<'_, str>> {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.meta
             .models
             .iter()

@@ -31,7 +31,7 @@ impl LlmProvider for StreamingMockProvider {
         self.inner.complete(request)
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.inner.supported_models()
     }
 
@@ -163,8 +163,8 @@ impl LlmProvider for DeltaEmitter {
         Box::pin(async move { Ok(response) })
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     fn name(&self) -> &'static str {
@@ -197,8 +197,12 @@ impl LlmProvider for StreamingSequenceProvider {
         Box::pin(async move { outcome.into_result() })
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.supported_models
+            .iter()
+            .copied()
+            .map(std::borrow::Cow::Borrowed)
+            .collect()
     }
 
     fn name(&self) -> &str {
@@ -228,7 +232,7 @@ impl LlmProvider for StreamingArcProvider {
         self.0.complete_streaming(request, on_event)
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.0.supported_models()
     }
 
@@ -808,8 +812,8 @@ impl LlmProvider for SlowDeltaEmitter {
         })
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     fn name(&self) -> &'static str {

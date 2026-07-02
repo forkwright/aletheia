@@ -92,8 +92,8 @@ impl LlmProvider for PendingProvider {
         Box::pin(std::future::pending())
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]
@@ -195,8 +195,8 @@ impl LlmProvider for ArcRecordingSequenceProvider {
         Box::pin(async move { Ok(response) })
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     #[expect(
@@ -667,8 +667,8 @@ impl LlmProvider for PanickingProvider {
         Box::pin(async { panic!("deliberate test panic in pipeline") })
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]

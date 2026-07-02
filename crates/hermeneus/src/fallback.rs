@@ -227,8 +227,11 @@ mod tests {
             Box::pin(async move { result })
         }
 
-        fn supported_models(&self) -> &[&str] {
-            &["primary-model", "fallback-1", "fallback-2"]
+        fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+            ["primary-model", "fallback-1", "fallback-2"]
+                .into_iter()
+                .map(std::borrow::Cow::Borrowed)
+                .collect()
         }
 
         #[expect(

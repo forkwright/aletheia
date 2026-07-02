@@ -323,17 +323,9 @@ impl LlmProvider for CcProvider {
         Box::pin(self.execute(request))
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         if self.models.is_empty() {
             koina::models::provider_models(koina::models::ModelProvider::Anthropic)
-        } else {
-            &[]
-        }
-    }
-
-    fn supported_model_list(&self) -> Vec<std::borrow::Cow<'_, str>> {
-        if self.models.is_empty() {
-            self.supported_models()
                 .iter()
                 .map(|&model| std::borrow::Cow::Borrowed(model))
                 .collect()

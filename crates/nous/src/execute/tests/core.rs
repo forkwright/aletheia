@@ -67,8 +67,12 @@ impl LlmProvider for FallbackSequenceProvider {
         Box::pin(async move { result })
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.supported_models
+            .iter()
+            .copied()
+            .map(std::borrow::Cow::Borrowed)
+            .collect()
     }
 
     fn name(&self) -> &str {
@@ -85,7 +89,7 @@ impl LlmProvider for DeploymentTargetProvider {
         self.inner.complete(request)
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.inner.supported_models()
     }
 
@@ -107,7 +111,7 @@ impl LlmProvider for ArcProvider {
         self.0.complete(request)
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.0.supported_models()
     }
 
@@ -125,7 +129,7 @@ impl LlmProvider for ArcMockProvider {
         self.0.complete(request)
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.0.supported_models()
     }
 

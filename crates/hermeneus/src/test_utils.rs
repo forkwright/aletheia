@@ -198,8 +198,11 @@ impl LlmProvider for MockProvider {
         })
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.models
+            .iter()
+            .map(|&model| std::borrow::Cow::Borrowed(model))
+            .collect()
     }
 
     fn match_specificity(&self, model: &str) -> Option<crate::provider::MatchKind> {

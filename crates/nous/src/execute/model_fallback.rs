@@ -67,7 +67,7 @@ pub(super) async fn complete_with_registry_fallback(
                     error = %e,
                     "primary model route failed with retryable error"
                 );
-                attempt_errors.push(format!("{primary_label}: {e}"));
+                record_route_error(&mut attempt_errors, &primary_label, &e);
                 last_error = Some(e);
             }
         }
@@ -82,7 +82,9 @@ pub(super) async fn complete_with_registry_fallback(
                 tracing::warn!(
                     primary = %primary_label,
                     fallback = %fallback_label,
-                    reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous model route"),
+                    reason = %last_error
+                        .as_ref()
+                        .map_or_else(|| "unknown".to_owned(), std::string::ToString::to_string),
                     "falling back to alternative model route"
                 );
             } else {
@@ -113,7 +115,7 @@ pub(super) async fn complete_with_registry_fallback(
                         error = %e,
                         "fallback model route failed with retryable error"
                     );
-                    attempt_errors.push(format!("{fallback_label}: {e}"));
+                    record_route_error(&mut attempt_errors, &fallback_label, &e);
                     last_error = Some(e);
                 }
             }
@@ -174,7 +176,7 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                     error = %e,
                     "primary streaming model route failed with retryable error before stream output"
                 );
-                attempt_errors.push(format!("{primary_label}: {e}"));
+                record_route_error(&mut attempt_errors, &primary_label, &e);
                 last_error = Some(e);
             }
         }
@@ -189,7 +191,9 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                 tracing::warn!(
                     primary = %primary_label,
                     fallback = %fallback_label,
-                    reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous streaming model route"),
+                    reason = %last_error
+                        .as_ref()
+                        .map_or_else(|| "unknown".to_owned(), std::string::ToString::to_string),
                     "falling back to alternative streaming model route"
                 );
             } else {
@@ -222,7 +226,7 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                         error = %e,
                         "fallback streaming model route failed with retryable error before stream output"
                     );
-                    attempt_errors.push(format!("{fallback_label}: {e}"));
+                    record_route_error(&mut attempt_errors, &fallback_label, &e);
                     last_error = Some(e);
                 }
             }
@@ -314,8 +318,9 @@ fn resolve_provider_for_route<'a>(
             .build());
         }
         Err(ProviderResolutionError::ProviderUnavailable { name, health }) => {
-            return Err(llm_error::ApiRequestSnafu {
-                message: format!("provider '{name}' is currently unavailable: {health:?}"),
+            return Err(llm_error::ProviderUnavailableSnafu {
+                provider: name,
+                reason: format!("{health:?}"),
             }
             .build());
         }
@@ -324,8 +329,9 @@ fn resolve_provider_for_route<'a>(
     if let Some(health) = providers.provider_health(provider.name())
         && matches!(health, ProviderHealth::Down { .. })
     {
-        return Err(llm_error::ApiRequestSnafu {
-            message: format!("provider '{}' is currently unavailable", provider.name()),
+        return Err(llm_error::CircuitOpenSnafu {
+            provider: provider.name().to_owned(),
+            reason: format!("{health:?}"),
         }
         .build());
     }
@@ -343,6 +349,26 @@ fn route_label(route: &ModelProviderRoute) -> String {
     route.provider.as_ref().map_or_else(
         || route.model.clone(),
         |provider| format!("{} via {}", route.model, provider),
+    )
+}
+
+fn record_route_error(
+    attempt_errors: &mut Vec<String>,
+    route_label: &str,
+    error: &llm_error::Error,
+) {
+    let outcome = if route_was_skipped(error) {
+        "skipped"
+    } else {
+        "failed"
+    };
+    attempt_errors.push(format!("{route_label}: {outcome}: {error}"));
+}
+
+fn route_was_skipped(error: &llm_error::Error) -> bool {
+    matches!(
+        error,
+        llm_error::Error::ProviderUnavailable { .. } | llm_error::Error::CircuitOpen { .. }
     )
 }
 
@@ -367,4 +393,87 @@ fn fallback_chain_error(
         }
         .build()
     }))
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use hermeneus::error::{self as llm_error, ApiErrorContext};
+    use hermeneus::health::HealthConfig;
+    use hermeneus::test_utils::MockProvider;
+
+    use super::*;
+
+    fn transient_error() -> llm_error::Error {
+        llm_error::ApiSnafu {
+            status: 503_u16,
+            message: "service unavailable".to_owned(),
+            context: ApiErrorContext::empty(),
+        }
+        .build()
+    }
+
+    fn request(model: &str) -> CompletionRequest {
+        CompletionRequest {
+            model: model.to_owned(),
+            ..CompletionRequest::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn unavailable_primary_route_falls_back() {
+        let mut providers = ProviderRegistry::new();
+        providers.register_with_config(
+            Box::new(
+                MockProvider::error("primary should be skipped")
+                    .models(&["primary-model"])
+                    .named("primary"),
+            ),
+            HealthConfig {
+                consecutive_failure_threshold: 1,
+                ..HealthConfig::default()
+            },
+        );
+        providers.register(Box::new(
+            MockProvider::new("fallback response")
+                .models(&["fallback-model"])
+                .named("fallback"),
+        ));
+        providers.record_error("primary", &transient_error());
+
+        let completion = complete_with_registry_fallback(
+            &providers,
+            &request("primary-model"),
+            &ModelProviderRoute::explicit("primary-model", "primary"),
+            &RegistryFallbackConfig {
+                fallback_routes: vec![ModelProviderRoute::explicit("fallback-model", "fallback")],
+                retries_before_fallback: 1,
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(completion.model, "fallback-model");
+        assert_eq!(completion.provider, "fallback");
+    }
+
+    #[test]
+    fn skipped_route_error_records_reason() {
+        let err = llm_error::ProviderUnavailableSnafu {
+            provider: "primary".to_owned(),
+            reason: "Down".to_owned(),
+        }
+        .build();
+        let mut attempt_errors = Vec::new();
+
+        record_route_error(&mut attempt_errors, "primary-model via primary", &err);
+
+        assert_eq!(
+            attempt_errors,
+            vec![
+                "primary-model via primary: skipped: provider unavailable: primary: Down"
+                    .to_owned()
+            ]
+        );
+    }
 }

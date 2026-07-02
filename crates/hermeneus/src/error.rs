@@ -56,6 +56,24 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Provider is unavailable before dispatch.
+    #[snafu(display("provider unavailable: {provider}: {reason}"))]
+    ProviderUnavailable {
+        provider: String,
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Provider circuit breaker is open before dispatch.
+    #[snafu(display("provider circuit open: {provider}: {reason}"))]
+    CircuitOpen {
+        provider: String,
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// API error response body could not be read.
     #[snafu(display("failed to read API error response body for status {status}: {source}"))]
     ApiErrorBodyRead { status: u16, source: reqwest::Error },
@@ -141,6 +159,8 @@ impl Error {
             // so the execute stage should activate degraded-mode fallback instead
             // of surfacing a hard error.
             Error::ProviderInit { .. }
+            | Error::ProviderUnavailable { .. }
+            | Error::CircuitOpen { .. }
             | Error::RateLimited { .. }
             | Error::ApiErrorBodyRead { .. }
             | Error::StreamIncomplete { .. }
@@ -156,8 +176,6 @@ impl Error {
                     || msg.contains("broken pipe")
                     || msg.contains("cc process exited")
                     || msg.contains("cc subprocess")
-                    || msg.contains("is currently unavailable")
-                    || msg.contains("circuit-breaker open")
             }
             _ => false,
         }
@@ -175,6 +193,8 @@ impl koina::error_class::Classifiable for Error {
             // and provider init failures (CC binary crashed/disappeared).
             Error::RateLimited { .. }
             | Error::ProviderInit { .. }
+            | Error::ProviderUnavailable { .. }
+            | Error::CircuitOpen { .. }
             | Error::ApiErrorBodyRead { .. }
             | Error::StreamIncomplete { .. }
             | Error::ApiError {
@@ -189,8 +209,6 @@ impl koina::error_class::Classifiable for Error {
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
-                    || msg.contains("is currently unavailable")
-                    || msg.contains("circuit-breaker open")
                     || msg.contains("cc process exited")
                     || msg.contains("cc subprocess")
                 {
@@ -224,7 +242,10 @@ impl koina::error_class::Classifiable for Error {
                 max_attempts: 3,
                 backoff_base_ms: 1_000,
             },
-            Error::ApiErrorBodyRead { .. } | Error::StreamIncomplete { .. } => ErrorAction::Retry {
+            Error::ApiErrorBodyRead { .. }
+            | Error::StreamIncomplete { .. }
+            | Error::ProviderUnavailable { .. }
+            | Error::CircuitOpen { .. } => ErrorAction::Retry {
                 max_attempts: 3,
                 backoff_base_ms: 500,
             },
@@ -235,8 +256,6 @@ impl koina::error_class::Classifiable for Error {
                     || msg.contains("connection")
                     || msg.contains("reset")
                     || msg.contains("broken pipe")
-                    || msg.contains("is currently unavailable")
-                    || msg.contains("circuit-breaker open")
                     || msg.contains("cc process exited")
                     || msg.contains("cc subprocess")
                 {
@@ -442,11 +461,12 @@ mod tests {
     }
 
     #[test]
-    fn api_request_provider_unavailable_is_transient_retry() {
+    fn provider_unavailable_is_transient_retry() {
         // WHY(#5260): provider registry marks a provider Down before the turn;
-        // the resulting ApiRequest must be retryable so fallback activates.
-        let err = ApiRequestSnafu {
-            message: "provider 'primary' is currently unavailable".to_owned(),
+        // the resulting typed error must be retryable so fallback activates.
+        let err = ProviderUnavailableSnafu {
+            provider: "primary".to_owned(),
+            reason: "Down".to_owned(),
         }
         .build();
         assert!(
@@ -465,11 +485,12 @@ mod tests {
     }
 
     #[test]
-    fn api_request_circuit_breaker_open_is_transient_retry() {
-        // WHY(#5260): Anthropic/OpenAI clients emit circuit-breaker messages
-        // as generic ApiRequest errors; they must be fallback-eligible.
-        let err = ApiRequestSnafu {
-            message: "provider circuit-breaker open: too many failures".to_owned(),
+    fn circuit_open_is_transient_retry() {
+        // WHY(#5260): Anthropic/OpenAI clients emit circuit-breaker state as
+        // a typed error; it must be fallback-eligible.
+        let err = CircuitOpenSnafu {
+            provider: "primary".to_owned(),
+            reason: "too many failures".to_owned(),
         }
         .build();
         assert!(

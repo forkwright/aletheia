@@ -885,8 +885,12 @@ mod tests {
             })
         }
 
-        fn supported_models(&self) -> &[&str] {
-            &SUPPORTED_MOCK_MODELS
+        fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+            SUPPORTED_MOCK_MODELS
+                .iter()
+                .copied()
+                .map(std::borrow::Cow::Borrowed)
+                .collect()
         }
 
         #[expect(clippy::unnecessary_literal_bound, reason = "trait requires &str")]

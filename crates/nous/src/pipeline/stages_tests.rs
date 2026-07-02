@@ -748,8 +748,8 @@ impl LlmProvider for SleepingProvider {
         })
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     fn name(&self) -> &str {
@@ -779,8 +779,8 @@ impl LlmProvider for RateLimitedProvider {
         })
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     fn name(&self) -> &str {
@@ -1188,8 +1188,8 @@ impl LlmProvider for ToolThenSleepProvider {
         })
     }
 
-    fn supported_models(&self) -> &[&str] {
-        &["test-model"]
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        vec![std::borrow::Cow::Borrowed("test-model")]
     }
 
     fn name(&self) -> &str {

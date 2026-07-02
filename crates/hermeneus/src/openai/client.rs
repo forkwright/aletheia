@@ -303,8 +303,9 @@ impl OpenAiProvider {
 
     async fn execute_inner(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         if let Err(health) = self.health.check_available() {
-            return Err(error::ApiRequestSnafu {
-                message: format!("provider circuit-breaker open: {health:?}"),
+            return Err(error::CircuitOpenSnafu {
+                provider: self.config.name.clone(),
+                reason: format!("{health:?}"),
             }
             .build());
         }
@@ -443,8 +444,9 @@ impl OpenAiProvider {
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
         if let Err(health) = self.health.check_available() {
-            return Err(error::ApiRequestSnafu {
-                message: format!("provider circuit-breaker open: {health:?}"),
+            return Err(error::CircuitOpenSnafu {
+                provider: self.config.name.clone(),
+                reason: format!("{health:?}"),
             }
             .build());
         }
@@ -761,15 +763,7 @@ impl LlmProvider for OpenAiProvider {
         Box::pin(self.execute(request))
     }
 
-    fn supported_models(&self) -> &[&str] {
-        // WHY (#5259): dynamic OpenAI-compatible model lists are config-owned;
-        // returning them as `&[&str]` would require leaking. Expose them through
-        // [`Self::supported_model_list`] and use [`Self::match_specificity`] for
-        // routing instead.
-        &[]
-    }
-
-    fn supported_model_list(&self) -> Vec<std::borrow::Cow<'_, str>> {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         crate::provider::owned_model_list(&self.config.models)
     }
 

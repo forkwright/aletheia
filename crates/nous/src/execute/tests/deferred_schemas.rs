@@ -25,7 +25,7 @@ impl LlmProvider for ArcMock {
         self.0.complete(request)
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         self.0.supported_models()
     }
 

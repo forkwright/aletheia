@@ -315,8 +315,11 @@ impl LlmProvider for KimiProvider {
         Box::pin(self.execute(request))
     }
 
-    fn supported_models(&self) -> &[&str] {
+    fn supported_models(&self) -> Vec<std::borrow::Cow<'_, str>> {
         koina::models::provider_models(koina::models::ModelProvider::Kimi)
+            .iter()
+            .map(|&model| std::borrow::Cow::Borrowed(model))
+            .collect()
     }
 
     fn supports_model(&self, model: &str) -> bool {
@@ -324,7 +327,7 @@ impl LlmProvider for KimiProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
-        if self.supported_models().contains(&model) {
+        if self.supported_models().iter().any(|m| m.as_ref() == model) {
             Some(MatchKind::Exact)
         } else if model.starts_with(KIMI_MODEL_PREFIX) {
             Some(MatchKind::Prefix)

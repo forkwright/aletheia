@@ -218,6 +218,8 @@ impl ProviderHealthTracker {
             // transitions to Degraded/Down and subsequent requests get a clear
             // 503 instead of repeated spawn failures.
             Error::ProviderInit { .. }
+            | Error::ProviderUnavailable { .. }
+            | Error::CircuitOpen { .. }
             | Error::ApiRequest { .. }
             | Error::ApiError {
                 status: 500..=599, ..
