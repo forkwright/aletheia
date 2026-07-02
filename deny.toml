@@ -39,10 +39,6 @@ id = "RUSTSEC-2025-0134"
 reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. cargo-deny advisory-DB version does not trigger but crate present (2.2.0); keeps sync with .cargo/audit.toml"
 
 [[advisories.ignore]]
-id = "RUSTSEC-2026-0097"
-reason = "rand 0.8 unsound (custom logger rand::rng() path not exercised) — transitive via qdrant-client/tonic, spreadsheet-ods, phf; no safe upgrade. cargo-deny does not trigger; keeps sync with .cargo/audit.toml"
-
-[[advisories.ignore]]
 id = "RUSTSEC-2026-0186"
 reason = "memmap2 unsound (unchecked pointer offset) — transitive via candle-core (safetensors mmap) + grep-searcher, pinned ^0.9; unsound offset path not exercised. cargo-deny does not trigger; keeps sync with .cargo/audit.toml. review-by: 2026-12-01"
 
