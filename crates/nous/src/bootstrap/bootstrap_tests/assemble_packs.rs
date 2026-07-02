@@ -284,6 +284,37 @@ fn extract_output_style_case_insensitive() {
 }
 
 #[test]
+fn extract_output_style_with_expanding_unicode_before_heading() {
+    let expanding_prefix = "\u{0130}".repeat(18);
+    let user_md = format!(
+        "\
+# User {expanding_prefix}
+
+## Communication
+\u{00e9}quipe style should remain visible
+
+## Domains
+- code
+"
+    );
+
+    let style = extract_output_style(&user_md);
+    assert!(
+        style.is_some(),
+        "should extract Communication section after expanding Unicode prefix"
+    );
+    let style = style.expect("just asserted Some");
+    assert!(
+        style.contains("\u{00e9}quipe style should remain visible"),
+        "extracted style should contain Communication content: {style}"
+    );
+    assert!(
+        !style.contains("## Domains"),
+        "extracted style should not bleed into next section: {style}"
+    );
+}
+
+#[test]
 fn extract_output_style_empty_section_returns_none() {
     let user_md = "\
 # User

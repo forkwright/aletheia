@@ -1832,44 +1832,51 @@ impl<'a> BootstrapAssembler<'a> {
 /// everything up to the next `## ` heading (or end of content). Returns
 /// `None` if no such section exists.
 fn extract_output_style(user_content: &str) -> Option<String> {
-    // WHY: headings are case-insensitive to match operator variation
-    let lower = user_content.to_lowercase();
-
-    let start = lower
-        .find("\n## communication")
-        .or_else(|| lower.find("\n## output"));
-
-    let start = match start {
-        Some(pos) => pos + 1, // skip the leading newline
-        None => {
-            // NOTE: check if the content starts with the heading (no leading newline)
-            if lower.starts_with("## communication") || lower.starts_with("## output") {
-                0
-            } else {
-                return None;
-            }
+    let mut offset = 0;
+    for line in user_content.split_inclusive('\n') {
+        offset += line.len();
+        if !is_output_style_heading(line_without_ending(line)) {
+            continue;
         }
+
+        let section_body_start = offset;
+        let end = next_h2_heading_start(user_content, section_body_start);
+
+        let body = user_content.get(section_body_start..end)?.trim();
+        return if body.is_empty() {
+            None
+        } else {
+            Some(body.to_owned())
+        };
+    }
+
+    None
+}
+
+fn is_output_style_heading(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.starts_with("## communication") || lower.starts_with("## output")
+}
+
+fn line_without_ending(line: &str) -> &str {
+    let line = line.strip_suffix('\n').unwrap_or(line);
+    line.strip_suffix('\r').unwrap_or(line)
+}
+
+fn next_h2_heading_start(user_content: &str, start: usize) -> usize {
+    let mut offset = start;
+    let Some(after_start) = user_content.get(start..) else {
+        return user_content.len();
     };
 
-    // NOTE: find the end of this section (next ## heading or end of content).
-    // WHY: `start` came from `.find()` on the same string, so it is on a UTF-8
-    // boundary; `.get(start..)` is safe and None would indicate a logic bug.
-    let after_start = user_content.get(start..)?;
-    let section_body_start = after_start
-        .find('\n')
-        .map_or(user_content.len(), |nl| start + nl + 1);
-
-    let after_body_start = user_content.get(section_body_start..)?;
-    let end = after_body_start
-        .find("\n## ")
-        .map_or(user_content.len(), |pos| section_body_start + pos);
-
-    let body = user_content.get(section_body_start..end)?.trim();
-    if body.is_empty() {
-        None
-    } else {
-        Some(body.to_owned())
+    for line in after_start.split_inclusive('\n') {
+        if line_without_ending(line).starts_with("## ") {
+            return offset;
+        }
+        offset += line.len();
     }
+
+    user_content.len()
 }
 
 /// Whether a conditional workspace file should be loaded for the given task hint.
