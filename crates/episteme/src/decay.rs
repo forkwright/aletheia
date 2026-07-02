@@ -229,9 +229,15 @@ fn score_frequency(access_count: u32) -> f64 {
 #[must_use]
 fn score_confidence(tier: EpistemicTier) -> f64 {
     match tier {
-        EpistemicTier::Verified => 1.0,
+        // WHY: Verified (ground truth) and Training (permanent session outcomes)
+        // both receive the maximum confidence score and must not decay via the
+        // confidence factor (#5866).
+        EpistemicTier::Verified | EpistemicTier::Training => 1.0,
+        // WHY: Reflected sits between Verified and Inferred per its tier score
+        // (0.83) and stability multiplier (2.5) (#5866).
+        EpistemicTier::Reflected => 0.9,
         EpistemicTier::Inferred => 0.6,
-        // WHY: Assumed and any future unknown tiers get the lowest score.
+        // WHY: Assumed and any genuinely unknown future tiers get the lowest score.
         _ => 0.3,
     }
 }

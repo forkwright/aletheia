@@ -410,6 +410,58 @@ fn training_tier_ignores_volatility_multiplier() {
     );
 }
 
+/// WHY (#5866): every epistemic tier must have an explicit confidence score
+/// so that Reflected and Training facts are not silently lumped with Assumed.
+#[test]
+fn score_confidence_respects_all_tiers() {
+    assert!(
+        (score_confidence(EpistemicTier::Verified) - 1.0).abs() < f64::EPSILON,
+        "Verified should score 1.0"
+    );
+    assert!(
+        (score_confidence(EpistemicTier::Reflected) - 0.9).abs() < f64::EPSILON,
+        "Reflected should score 0.9"
+    );
+    assert!(
+        (score_confidence(EpistemicTier::Inferred) - 0.6).abs() < f64::EPSILON,
+        "Inferred should score 0.6"
+    );
+    assert!(
+        (score_confidence(EpistemicTier::Assumed) - 0.3).abs() < f64::EPSILON,
+        "Assumed should score 0.3"
+    );
+    assert!(
+        (score_confidence(EpistemicTier::Training) - 1.0).abs() < f64::EPSILON,
+        "Training should score 1.0"
+    );
+}
+
+/// WHY (#5866): Training facts are permanent records of session outcomes and
+/// must not drift into Fading/Archived just because of moderate age.
+#[test]
+fn training_fact_remains_active_at_moderate_age() {
+    let factors = DecayFactors {
+        age_hours: 500.0,
+        fact_type: FactType::Observation,
+        tier: EpistemicTier::Training,
+        access_count: 50,
+        reinforcement_count: 1,
+        distinct_agent_count: 1,
+        volatility: 0.5,
+    };
+    let result = compute_decay(&DecayConfig::default(), &factors);
+    assert!(
+        result.score > 0.7,
+        "Training fact should retain an Active score, got {}",
+        result.score
+    );
+    assert_eq!(
+        result.stage,
+        KnowledgeStage::Active,
+        "Training fact with moderate age should remain Active"
+    );
+}
+
 #[test]
 fn knowledge_stage_serde_roundtrip() {
     for stage in [
