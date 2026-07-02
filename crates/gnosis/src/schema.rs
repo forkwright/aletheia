@@ -168,6 +168,12 @@ impl Store {
         Ok(id)
     }
 
+    #[cfg(test)]
+    /// NOTE: Set the next generated symbol ID for regression fixtures.
+    pub(crate) fn set_next_symbol_id_for_test(&self, id: u64) -> Result<()> {
+        self.put_meta_u64(META_NEXT_SYMBOL_ID, id)
+    }
+
     /// Insert a symbol reference.
     pub(crate) fn insert_ref(
         &self,

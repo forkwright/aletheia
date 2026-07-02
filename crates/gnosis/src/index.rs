@@ -98,8 +98,8 @@ impl<'a> IndexVisitor<'a> {
         }
     }
 
-    fn last_symbol_id(&self) -> Option<i64> {
-        self.last_symbol_id.and_then(|id| i64::try_from(id).ok())
+    fn last_symbol_id(&self) -> Option<u64> {
+        self.last_symbol_id
     }
 
     fn record_symbol(&mut self, name: &str, kind: &str, line: u32) {
@@ -125,11 +125,7 @@ impl<'a> IndexVisitor<'a> {
         }
     }
 
-    fn insert_ref(&self, from_id: i64, to_crate: &str, to_module: &str, to_sym: &str, kind: &str) {
-        let Ok(from_id) = u64::try_from(from_id) else {
-            tracing::warn!(from_id, "gnosis: invalid negative symbol id");
-            return;
-        };
+    fn insert_ref(&self, from_id: u64, to_crate: &str, to_module: &str, to_sym: &str, kind: &str) {
         if let Err(e) = self
             .store
             .insert_ref(from_id, to_crate, to_module, to_sym, kind)
