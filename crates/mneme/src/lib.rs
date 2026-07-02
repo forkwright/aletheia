@@ -337,8 +337,10 @@ pub mod skill {
 /// Skill auto-capture: heuristic filter, signature hashing, and candidate tracking.
 pub mod skills {
     pub use episteme::skills::{
-        CandidateTracker, PendingSkill, SkillExtractor, SkillReviewAudit, SkillReviewDecision,
-        SkillReviewInput, ToolCallRecord, TrackResult,
+        CandidateTracker, ContentEvidenceRef, ExtractedSkill, PendingSkill, SkillCandidate,
+        SkillExtractionAudit, SkillExtractor, SkillObservationEvidence, SkillReviewAudit,
+        SkillReviewDecision, SkillReviewInput, SkillSourceEvidence, ToolCallRecord, TrackResult,
+        tool_sequence_hash,
     };
 
     /// Skill extraction provider types.
@@ -381,6 +383,21 @@ mod facade_surface_tests {
         RecallResult, Relationship, VerificationProposal, VerificationVerdict, VerificationVote,
         Visibility, default_stability_hours, far_future, format_timestamp, parse_timestamp,
     };
+    use crate::portability::{
+        AGENT_FILE_VERSION, AgentFile, BinaryFileData, ExportMetadata, ExportedMessage,
+        ExportedNote, ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge,
+        GraphData, KnowledgeExport, MemoryData, NousInfo, OmittedSection, TruncationRecord,
+        WorkspaceData,
+    };
+    use crate::skills::{
+        CandidateTracker, ContentEvidenceRef, ExtractedSkill, PendingSkill, SkillCandidate,
+        SkillExtractionAudit, SkillExtractor, SkillObservationEvidence, SkillReviewAudit,
+        SkillReviewDecision, SkillReviewInput, SkillSourceEvidence, ToolCallRecord, TrackResult,
+    };
+
+    fn assert_type<T>() {
+        let _ = PhantomData::<T>;
+    }
 
     // kanon:ignore TESTING/tautological-test WHY: this is a compile-time surface existence check; the test "passes" when the import block above compiles successfully
     #[test]
@@ -412,6 +429,50 @@ mod facade_surface_tests {
         let _ = default_stability_hours;
         let _ = parse_timestamp;
         let _ = format_timestamp;
+    }
+
+    // kanon:ignore TESTING/tautological-test WHY: this is a compile-time facade surface check; the test passes when downstream-facing portability exports remain available through mneme
+    #[test]
+    fn portability_export_surface_is_exported() {
+        assert_eq!(AGENT_FILE_VERSION, graphe::portability::AGENT_FILE_VERSION);
+        assert_type::<AgentFile>();
+        assert_type::<BinaryFileData>();
+        assert_type::<ExportMetadata>();
+        assert_type::<ExportedMessage>();
+        assert_type::<ExportedNote>();
+        assert_type::<ExportedSession>();
+        assert_type::<ExportedUsageRecord>();
+        assert_type::<ExportedVector>();
+        assert_type::<FactEntityEdge>();
+        assert_type::<GraphData>();
+        assert_type::<KnowledgeExport>();
+        assert_type::<MemoryData>();
+        assert_type::<NousInfo>();
+        assert_type::<OmittedSection>();
+        assert_type::<TruncationRecord>();
+        assert_type::<WorkspaceData>();
+    }
+
+    // kanon:ignore TESTING/tautological-test WHY: this pins the learned-skill provenance facade so app crates can import review evidence through mneme instead of episteme internals
+    #[test]
+    fn skill_review_provenance_surface_is_exported() {
+        assert_type::<CandidateTracker>();
+        assert_type::<ContentEvidenceRef>();
+        assert_type::<ExtractedSkill>();
+        assert_type::<PendingSkill>();
+        assert_type::<SkillCandidate>();
+        assert_type::<SkillExtractionAudit>();
+        assert_type::<SkillExtractor<()>>();
+        assert_type::<SkillObservationEvidence>();
+        assert_type::<SkillReviewAudit>();
+        assert_type::<SkillReviewDecision>();
+        assert_type::<SkillReviewInput>();
+        assert_type::<SkillSourceEvidence>();
+        assert_type::<ToolCallRecord>();
+        assert_type::<TrackResult>();
+
+        let hash_fn: fn(&[ToolCallRecord]) -> String = crate::skills::tool_sequence_hash;
+        assert_eq!(hash_fn(&[]), episteme::skills::tool_sequence_hash(&[]));
     }
 }
 

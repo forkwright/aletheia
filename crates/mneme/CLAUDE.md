@@ -6,7 +6,7 @@ Curated facade re-exporting memory and session types from sub-crates. Depends on
 
 ## Depth
 
-Curated facade re-exporting from four decomposed sub-crates. ~270 lines of glue code.
+Curated facade re-exporting from four decomposed sub-crates. ~390 lines of glue code.
 
 ## Facade justification (#3243)
 
@@ -30,9 +30,9 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 |--------------|---------------------|-----------|--------------|
 | `eidos` | `id`, `knowledge` | (full modules) | always |
 | `graphe` | `error` | `Error` | always |
-| `graphe` | `portability` | `AgentFile` | always |
-| `graphe` | `store` | `SessionStore` | always |
-| `graphe` | `types` | `Message`, `Role`, `Session`, `SessionMetrics`, `SessionOrigin`, `SessionStatus`, `SessionType`, `UsageRecord` | always |
+| `graphe` | `portability` | `AgentFile`, export metadata, omitted/truncated section records, workspace binary payloads, session/message/knowledge export DTOs | always |
+| `graphe` | `store` | `SessionStore`, finalize-turn request/result DTOs | always |
+| `graphe` | `types` | `Message`, `Role`, `Session`, `SessionMetrics`, `SessionOrigin`, `SessionStatus`, `SessionType`, `ToolAuditRecord`, `UsageRecord`, validated session/agent ID helpers | always |
 | `episteme` | `consolidation` | `ConsolidationConfig` | always |
 | `episteme` | `embedding` | `EmbeddingProvider`, `DegradedEmbeddingProvider`, `EmbeddingConfig`, `EmbeddingError`, `create_provider`, `is_degraded_provider`, `MockEmbeddingProvider` (test-support) | always |
 | `episteme` | `embedding_eval` | `EvalDataset`, `EvalRunResult`, `compare_models` | always |
@@ -41,9 +41,11 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 | `episteme` | `knowledge_store` | `HybridQuery`, `KnowledgeConfig`, `KnowledgeStore`, `QueryResult` | `mneme-engine` |
 | `episteme` | `recall` | `FactorScores`, `RecallEngine`, `RecallWeights`, `ScoredResult` | always |
 | `episteme` | `skill` | `SkillContent`, `export_skills_to_cc`, `parse_skill_md`, `scan_skill_dir` | always |
-| `episteme` | `skills` | `CandidateTracker`, `PendingSkill`, `SkillExtractor`, `ToolCallRecord`, `TrackResult` + `extract` submodule | always |
+| `episteme` | `skills` | `CandidateTracker`, `ContentEvidenceRef`, `ExtractedSkill`, `PendingSkill`, `SkillCandidate`, `SkillExtractionAudit`, `SkillExtractor`, `SkillObservationEvidence`, `SkillReviewAudit`, `SkillReviewDecision`, `SkillReviewInput`, `SkillSourceEvidence`, `ToolCallRecord`, `TrackResult`, `tool_sequence_hash` + `extract` submodule | always |
 | `episteme` | `manifest`, `query_rewrite`, `side_query`, `trace_ingest`, `verification` | public support modules used by recall, tracing, and verification consumers | always |
-| `episteme`/`graphe` | `metrics` | `register_knowledge`, `register_sessions` | always |
+| `episteme`/`graphe` | `metrics` | extraction/embedding/conflict/correction quality metrics, `record_backup_duration`, `register_knowledge`, `register_sessions` | always |
+| local | `checkpoint`, `finalize` | working-checkpoint store contract and idempotent turn-finalization primitives | always |
+| local | `benchmark` | benchmark isolation and evidence primitives | `mneme-engine` |
 | `eidos` | `bookkeeping` | provider contracts and extraction DTOs | always |
 | `eidos` | `training` | `TrainingConfig`, `TrainingRecord`, `TRAINING_RECORD_SCHEMA_VERSION` | always |
 | `krites` | `engine` | (full crate alias) | `mneme-engine` |
