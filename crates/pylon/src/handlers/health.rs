@@ -119,6 +119,11 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
         let credential_runtime_check = check_credential_runtime(state).await;
         let embedding_check = check_embedding_provider(state);
         let prosoche_check = check_prosoche_heartbeat_path(&prosoche);
+        let metrics_exposure_check = metrics_exposure_check(
+            state.metrics_mode,
+            state.metrics_detailed,
+            &state.oikos.data().to_string_lossy(),
+        );
 
         // WHY: synchronous and cheap — the snapshot is a few atomic reads plus a
         // short mutex hold on the last recorded poller error.
@@ -144,6 +149,7 @@ async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
             embedding_check,
             nous_poller_check,
             prosoche_check,
+            metrics_exposure_check,
         ]
     })
     .await
@@ -224,6 +230,58 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
 /// rate limits are keyed by peer socket, forwarded client IP, or authenticated
 /// user. Per-user rate limiting takes precedence when enabled; otherwise the
 /// per-IP limiter follows the `trust_proxy` flag.
+/// Build the `/metrics` exposure security check.
+///
+/// WHY(#5322): operator diagnostics should surface whether the Prometheus
+/// scrape endpoint is in a safe posture for the configured bind address.
+fn metrics_exposure_check(
+    mode: taxis::config::MetricsMode,
+    detailed: bool,
+    data_dir: &str,
+) -> HealthCheck {
+    use taxis::config::MetricsMode;
+
+    match mode {
+        MetricsMode::Disabled => HealthCheck {
+            name: "metrics_exposure".to_owned(),
+            status: "pass".to_owned(),
+            message: Some("metrics endpoint is disabled".to_owned()),
+            details: None,
+        },
+        MetricsMode::Bearer => HealthCheck {
+            name: "metrics_exposure".to_owned(),
+            status: "pass".to_owned(),
+            message: Some("metrics endpoint requires bearer authentication".to_owned()),
+            details: None,
+        },
+        MetricsMode::LocalOnly => HealthCheck {
+            name: "metrics_exposure".to_owned(),
+            status: "pass".to_owned(),
+            message: Some("metrics endpoint restricted to loopback connections".to_owned()),
+            details: None,
+        },
+        MetricsMode::Public => {
+            let mut message =
+                "metrics endpoint is publicly accessible; ensure this is intentional".to_owned();
+            if detailed {
+                message.push_str(
+                    " (detailed label values expose nous_id, tool names, and paths)",
+                );
+            }
+            HealthCheck {
+                name: "metrics_exposure".to_owned(),
+                status: "warn".to_owned(),
+                message: Some(message),
+                details: Some(serde_json::json!({
+                    "mode": "public",
+                    "detailed": detailed,
+                    "data_dir": data_dir,
+                })),
+            }
+        }
+    }
+}
+
 fn rate_limiting_check(enabled: bool, trust_proxy: bool, per_user_enabled: bool) -> HealthCheck {
     let keying = if per_user_enabled {
         "authenticated_user"

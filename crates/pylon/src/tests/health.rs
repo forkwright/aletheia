@@ -425,3 +425,61 @@ async fn openapi_spec_has_schemas() {
     assert!(schemas.contains_key("CreateAgentResponse"));
     assert!(schemas.contains_key("RecoverResponse"));
 }
+
+#[tokio::test]
+async fn public_health_contains_no_absolute_paths() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        !body.contains("data_dir"),
+        "public health leaked data_dir field: {body}"
+    );
+    assert!(
+        !body.contains('/'),
+        "public health must not contain absolute path characters: {body}"
+    );
+}
+
+#[tokio::test]
+async fn deprecated_health_contains_no_absolute_paths() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        !body.contains("data_dir"),
+        "deprecated health leaked data_dir field: {body}"
+    );
+    assert!(
+        !body.contains('/'),
+        "deprecated health must not contain absolute path characters: {body}"
+    );
+}
+
+#[tokio::test]
+async fn detailed_health_includes_data_dir_for_operator() {
+    let (app, dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/health"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let data_dir = body["data_dir"].as_str().expect("operator health has data_dir");
+    let expected = dir.path().to_string_lossy();
+    assert!(
+        data_dir.contains(expected.as_ref()),
+        "operator data_dir should contain instance root {expected}; got {data_dir}"
+    );
+}

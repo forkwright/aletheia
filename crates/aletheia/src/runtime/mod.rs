@@ -1008,7 +1008,11 @@ impl RuntimeBuilder {
             metrics_registry,
             event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
             approval_registry: Arc::new(pylon::approval_registry::ApprovalRegistry::new()),
-            loopback_only_metrics: self.config.gateway.bind == "localhost",
+            // WHY(#5322): use the explicit metrics exposition config; default is
+            // local-only so non-loopback binds do not expose operational metrics
+            // without an operator opt-in.
+            metrics_mode: self.config.gateway.metrics.mode,
+            metrics_detailed: self.config.gateway.metrics.detailed,
         });
 
         Ok(Runtime {
