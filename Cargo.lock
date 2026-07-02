@@ -9496,6 +9496,7 @@ dependencies = [
  "argon2",
  "blake3",
  "criterion",
+ "dirs",
  "fjall",
  "hmac 0.13.0",
  "jiff",

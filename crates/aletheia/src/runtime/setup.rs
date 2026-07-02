@@ -33,7 +33,7 @@ use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use symbolon::credential::{
     CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider, claude_code_credential_path, claude_code_provider,
+    RefreshingCredentialProvider, claude_code_credential_path_resolution, claude_code_provider,
 };
 use taxis::config::{AletheiaConfig, EmbeddingSettings};
 use taxis::oikos::Oikos;
@@ -175,14 +175,18 @@ fn build_anthropic_credential_chain(
     let cred_file = oikos.credentials().join("anthropic.json");
     let mut chain: Vec<Box<dyn CredentialProvider>> = Vec::new();
 
-    let claude_code_path =
-        claude_code_credential_path(config.credential.claude_code_credentials.as_deref());
+    let claude_code_resolution = claude_code_credential_path_resolution(
+        config.credential.claude_code_credentials.as_deref(),
+    );
 
-    if cred_source == "claude-code"
-        && let Some(ref cc_path) = claude_code_path
-        && let Some(provider) = claude_code_provider(cc_path)
-    {
-        chain.push(provider);
+    if cred_source == "claude-code" {
+        if let Some(ref resolution) = claude_code_resolution {
+            if let Some(provider) = claude_code_provider(&resolution.path) {
+                chain.push(provider);
+            }
+            // SAFETY: logs the resolved file path and source rule, never the credential value.
+            info!(path = %resolution.path.display(), source = %resolution.source, "Claude Code credential path resolved");
+        }
     }
 
     if cred_file.exists()
@@ -217,11 +221,14 @@ fn build_anthropic_credential_chain(
     )));
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
-    if cred_source == "auto"
-        && let Some(ref cc_path) = claude_code_path
-        && let Some(provider) = claude_code_provider(cc_path)
-    {
-        chain.push(provider);
+    if cred_source == "auto" {
+        if let Some(ref resolution) = claude_code_resolution {
+            if let Some(provider) = claude_code_provider(&resolution.path) {
+                chain.push(provider);
+            }
+            // SAFETY: logs the resolved file path and source rule, never the credential value.
+            info!(path = %resolution.path.display(), source = %resolution.source, "Claude Code credential path resolved");
+        }
     }
 
     Arc::new(CredentialChain::new(chain))
@@ -1802,7 +1809,16 @@ mod tests {
             .path()
             .to_str()
             .expect("temp home path should be utf-8");
-        let _env = EnvVarGuard::set_and_remove("HOME", fake_home, "ANTHROPIC_API_KEY");
+        let empty_config = tempfile::tempdir().expect("create empty config dir");
+        let empty_config = empty_config
+            .path()
+            .to_str()
+            .expect("empty config path should be utf-8");
+        let _env = EnvVarGuard::set_and_remove_many(
+            "XDG_CONFIG_HOME",
+            empty_config,
+            &["ANTHROPIC_API_KEY", "CLAUDE_CODE_CREDS"],
+        );
         let model = "local-test-model";
         let config = AletheiaConfig {
             providers: vec![local_openai_provider("local-only", model)],
@@ -1819,41 +1835,84 @@ mod tests {
 
     #[expect(
         clippy::disallowed_methods,
-        reason = "test fixture writes a fake Claude Code credential file under a temp HOME"
+        reason = "test fixture writes a fake Claude Code credential file under a temp config dir"
     )]
     #[test]
-    fn auto_source_ignores_home_claude_code_credentials_without_opt_in() {
-        let fake_home = tempfile::tempdir().expect("create fake home");
-        let claude_dir = fake_home.path().join(".claude");
+    fn auto_source_resolves_platform_config_dir_default() {
+        let config_dir = tempfile::tempdir().expect("create fake config dir");
+        let claude_dir = config_dir.path().join(".claude");
         std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
         std::fs::write(
             claude_dir.join(".credentials.json"),
-            r#"{"accessToken":"sk-ant-oat-local"}"#,
+            r#"{"token":"sk-ant-api-from-cc"}"#,
         )
         .expect("write fake Claude Code credentials");
-        let fake_home = fake_home
+        let config_dir = config_dir
             .path()
             .to_str()
-            .expect("temp home path should be utf-8");
+            .expect("temp config path should be utf-8");
         let _env = EnvVarGuard::set_and_remove_many(
-            "HOME",
-            fake_home,
+            "XDG_CONFIG_HOME",
+            config_dir,
             &[
                 "ANTHROPIC_API_KEY",
                 "ANTHROPIC_AUTH_TOKEN",
                 "CLAUDE_CODE_CREDS",
+                "HOME",
             ],
         );
         let config = AletheiaConfig::default();
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let oikos = Oikos::from_root(oikos_dir.path());
 
-        let registry = build_test_provider_registry(&config);
+        let chain = build_anthropic_credential_chain(&config, &oikos, "auto");
+        let credential = chain
+            .get_credential()
+            .expect("platform config dir default should resolve");
 
-        assert!(
-            registry
-                .find_provider(koina::models::names::sonnet())
-                .is_none(),
-            "credential.source = auto must not discover $HOME/.claude credentials unless configured"
+        assert_eq!(credential.secret.expose_secret(), "sk-ant-api-from-cc");
+        assert_eq!(credential.source, CredentialSource::File);
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test fixture writes a fake Claude Code credential file under a temp config dir"
+    )]
+    #[test]
+    fn auto_source_resolves_when_home_is_missing() {
+        let config_dir = tempfile::tempdir().expect("create fake config dir");
+        let claude_dir = config_dir.path().join(".claude");
+        std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
+        std::fs::write(
+            claude_dir.join(".credentials.json"),
+            r#"{"token":"sk-ant-api-no-home"}"#,
+        )
+        .expect("write fake Claude Code credentials");
+        let config_dir = config_dir
+            .path()
+            .to_str()
+            .expect("temp config path should be utf-8");
+        let _env = EnvVarGuard::set_and_remove_many(
+            "XDG_CONFIG_HOME",
+            config_dir,
+            &[
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_CREDS",
+                "HOME",
+            ],
         );
+        let config = AletheiaConfig::default();
+        let oikos_dir = tempfile::tempdir().expect("create temp oikos");
+        let oikos = Oikos::from_root(oikos_dir.path());
+
+        let chain = build_anthropic_credential_chain(&config, &oikos, "auto");
+        let credential = chain
+            .get_credential()
+            .expect("credential discovery must work when HOME is missing");
+
+        assert_eq!(credential.secret.expose_secret(), "sk-ant-api-no-home");
+        assert_eq!(credential.source, CredentialSource::File);
     }
 
     #[expect(
