@@ -1,11 +1,14 @@
 //! Prosoche (προσοχή): "directed attention." Periodic check-in that monitors
 //! calendar, tasks, and system health for a nous.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 #[cfg(feature = "knowledge-store")]
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 
 /// Prosoche attention check runner.
 pub struct ProsocheCheck {
@@ -185,11 +188,11 @@ impl ProsocheCheck {
     /// Cancel-safe. Each health check is independent and partial results
     /// are discarded on cancellation. No state is mutated.
     #[tracing::instrument(skip_all)]
-    pub async fn run(&self) -> crate::error::Result<ProsocheResult> {
+    pub async fn run(&self, cancel: &CancellationToken) -> crate::error::Result<ProsocheResult> {
         let mut items = Vec::new();
 
         if let Some(ref data_dir) = self.data_dir {
-            items.extend(check_disk_space(data_dir).await);
+            items.extend(check_disk_space(data_dir, cancel).await);
         }
 
         // WHY: database metadata is a blocking syscall; offload it from the
@@ -272,8 +275,8 @@ fn check_threshold(
 /// Check disk space usage on the filesystem containing `path`.
 ///
 /// Uses `df` command output. WARN at 80% usage, CRITICAL at 95%.
-async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
-    match disk_usage_percent(path).await {
+async fn check_disk_space(path: &Path, cancel: &CancellationToken) -> Vec<AttentionItem> {
+    match disk_usage_percent(path, cancel).await {
         Ok(percent) => {
             let label = if percent >= 95.0 {
                 "critical"
@@ -298,15 +301,53 @@ async fn check_disk_space(path: &Path) -> Vec<AttentionItem> {
 }
 
 /// Get disk usage percentage for the filesystem containing `path` via `df`.
-async fn disk_usage_percent(path: &Path) -> std::io::Result<f64> {
-    // NOTE: tokio::process::Child kills the child on Drop, providing the same
-    // orphan-prevention guarantee as ProcessGuard. If this future is cancelled,
-    // tokio kills the child automatically.
-    let output = tokio::process::Command::new("df")
+///
+/// Uses `df` command output. WARN at 80% usage, CRITICAL at 95%. Bounded by a
+/// 10 s timeout so a hung `df` (e.g. on an unresponsive NFS or automount path)
+/// cannot block the prosoche heartbeat slot indefinitely.
+async fn disk_usage_percent(path: &Path, cancel: &CancellationToken) -> std::io::Result<f64> {
+    disk_usage_percent_with_command(path, cancel, OsStr::new("df")).await
+}
+
+async fn disk_usage_percent_with_command(
+    path: &Path,
+    cancel: &CancellationToken,
+    command: &OsStr,
+) -> std::io::Result<f64> {
+    let mut command = tokio::process::Command::new(command);
+    command
+        .kill_on_drop(true)
         .args(["--output=pcent", "--"])
-        .arg(path)
-        .output()
-        .await?;
+        .arg(path);
+
+    // NOTE: `kill_on_drop(true)` is required here. Tokio's process futures leave
+    // children running on drop by default, and timeout/cancellation drops this
+    // output future before `df` exits.
+    let output = tokio::select! {
+        biased;
+        () = cancel.cancelled() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "prosoche check cancelled",
+            ));
+        }
+        result = tokio::time::timeout(
+            Duration::from_secs(10),
+            command.output(),
+        ) => {
+            match result {
+                Ok(output) => output,
+                Err(_elapsed) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "df command timed out",
+                    ));
+                }
+            }
+        }
+    };
+
+    let output = output?;
 
     if !output.status.success() {
         return Err(std::io::Error::other(
