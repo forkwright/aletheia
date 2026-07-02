@@ -218,7 +218,7 @@ pub struct RetentionSettings {
         alias = "orphan_message_max_age_days"
     )]
     pub orphan_message_max_age_days: Option<u32>,
-    /// Maximum sessions to retain per agent. `0` means unlimited.
+    /// Maximum closed sessions to retain per agent. `0` means unlimited.
     #[serde(alias = "maxSessionsPerNous", alias = "max_sessions_per_nous")]
     pub max_sessions_per_nous: u32,
     /// When `true` (the default), closed sessions are exported to a JSON
