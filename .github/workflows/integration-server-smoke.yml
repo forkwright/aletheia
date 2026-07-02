@@ -1,0 +1,65 @@
+# WHY(#5793): The full-stack server smoke test is marked #[ignore] because it
+# needs the aletheia binary and a real TCP port. This job builds the binary
+# and runs the ignored test so the live bind + HTTP path is exercised in CI.
+name: Integration Server Smoke Test
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # WHY: full debuginfo bloats the dev-profile target dir; line tables keep
+  # backtraces usable while staying within hosted-runner disk limits.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  integration-server-smoke:
+    name: full-stack server smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          echo "free disk after reclaim:"
+          df -h / | tail -1
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: integration-server-smoke
+
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
+            exit 1
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+
+      - name: Build aletheia binary
+        run: cargo build -p aletheia
+
+      - name: Run ignored full-stack smoke test
+        run: cargo test -p aletheia --test integration_server -- --include-ignored
