@@ -93,6 +93,12 @@ pub(crate) enum Action {
         /// Filter to a specific memory scope
         #[arg(long)]
         scope: Option<mneme::knowledge::MemoryScope>,
+        /// Highest sensitivity tier to export (defaults to public).
+        #[arg(long, value_enum, value_name = "TIER")]
+        max_sensitivity: Option<MaxSensitivity>,
+        /// Include sensitive facts (equivalent to `--max-sensitivity confidential`).
+        #[arg(long, conflicts_with = "max_sensitivity")]
+        include_sensitive: bool,
         /// Output file path
         output_path: PathBuf,
     },
@@ -110,6 +116,27 @@ pub(crate) enum ExportFormat {
     Graphml,
     /// JSON format
     Json,
+}
+
+/// Sensitivity ceiling for `memory export-graph`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum MaxSensitivity {
+    /// Safe for any provider, including cloud LLM providers.
+    Public,
+    /// Safe for local or self-hosted providers.
+    Internal,
+    /// Never send to any external provider.
+    Confidential,
+}
+
+impl MaxSensitivity {
+    fn to_fact_sensitivity(self) -> mneme::knowledge::FactSensitivity {
+        match self {
+            Self::Public => mneme::knowledge::FactSensitivity::Public,
+            Self::Internal => mneme::knowledge::FactSensitivity::Internal,
+            Self::Confidential => mneme::knowledge::FactSensitivity::Confidential,
+        }
+    }
 }
 
 pub(crate) async fn run(
@@ -377,6 +404,8 @@ mod validation_tests {
             format: ExportFormat::Dot,
             nous_id: Some(String::new()),
             scope: None,
+            max_sensitivity: None,
+            include_sensitive: false,
             output_path: PathBuf::from("/tmp/out.dot"),
         })
         .unwrap_err();
@@ -392,6 +421,8 @@ mod validation_tests {
             format: ExportFormat::Json,
             nous_id: None,
             scope: None,
+            max_sensitivity: None,
+            include_sensitive: false,
             output_path: PathBuf::from("/tmp/out.json"),
         })
         .unwrap();
@@ -399,6 +430,8 @@ mod validation_tests {
             format: ExportFormat::Graphml,
             nous_id: Some("alice".to_owned()),
             scope: None,
+            max_sensitivity: None,
+            include_sensitive: false,
             output_path: PathBuf::from("/tmp/out.graphml"),
         })
         .unwrap();
@@ -541,8 +574,26 @@ fn run_store_action(
             format,
             nous_id,
             scope,
+            max_sensitivity,
+            include_sensitive,
             output_path,
-        } => run_export_graph(store, format, nous_id.as_deref(), scope, &output_path),
+        } => {
+            let max_sensitivity = if include_sensitive {
+                mneme::knowledge::FactSensitivity::Confidential
+            } else {
+                max_sensitivity.map_or(mneme::knowledge::FactSensitivity::Public, |m| {
+                    m.to_fact_sensitivity()
+                })
+            };
+            run_export_graph(
+                store,
+                format,
+                nous_id.as_deref(),
+                scope,
+                max_sensitivity,
+                &output_path,
+            )
+        }
         Action::DedupPending { nous_id } => run_dedup_pending(store, &nous_id),
         Action::DedupApprove {
             nous_id,
@@ -1450,53 +1501,40 @@ fn run_export_graph(
     format: ExportFormat,
     nous_id: Option<&str>,
     scope: Option<mneme::knowledge::MemoryScope>,
+    max_sensitivity: mneme::knowledge::FactSensitivity,
     output_path: &std::path::Path,
 ) -> Result<()> {
-    let is_operator = is_operator();
-
     let file =
         std::fs::File::create(output_path).whatever_context("failed to create output file")?;
     let mut writer = std::io::BufWriter::new(file);
 
-    // Determine if we need to load facts for sensitivity coloring or filtering.
     // WHY: scope and sensitivity are not yet columns in the Datalog facts schema
     // (#3413). When that migration lands, these filters can push down to the
     // Datalog query layer.
-    let need_fact_load = !is_operator || scope.is_some() || matches!(format, ExportFormat::Dot);
-
-    let (entities, relationships, entity_sensitivities) = if need_fact_load {
-        let (visible_ids, sensitivities) = load_filtered_facts(store, nous_id, scope, is_operator)?;
-        let all_entities = query_entities(store)?;
-        let entities: Vec<_> = all_entities
-            .into_iter()
-            .filter(|e| visible_ids.contains(e.id.as_str()))
-            .collect();
-        let all_relationships = query_relationships(store)?;
-        let relationships: Vec<_> = all_relationships
-            .into_iter()
-            .filter(|r| {
-                visible_ids.contains(r.src.as_str()) && visible_ids.contains(r.dst.as_str())
-            })
-            .collect();
-        (entities, relationships, Some(sensitivities))
-    } else if let Some(nid) = nous_id {
-        let entities = query_entities_filtered(store, nid)?;
-        let relationships = query_relationships_filtered(store, nid)?;
-        (entities, relationships, None)
-    } else {
-        let entities = query_entities(store)?;
-        let relationships = query_relationships(store)?;
-        (entities, relationships, None)
-    };
+    let (visible_ids, entity_sensitivities) =
+        load_filtered_facts(store, nous_id, scope, max_sensitivity)?;
+    let all_entities = query_entities(store)?;
+    let entities: Vec<_> = all_entities
+        .into_iter()
+        .filter(|e| visible_ids.contains(e.id.as_str()))
+        .collect();
+    let all_relationships = query_relationships(store)?;
+    let relationships: Vec<_> = all_relationships
+        .into_iter()
+        .filter(|r| visible_ids.contains(r.src.as_str()) && visible_ids.contains(r.dst.as_str()))
+        .collect();
 
     let entity_count = entities.len();
     let edge_count = relationships.len();
 
     match format {
         ExportFormat::Dot => {
-            let empty = std::collections::HashMap::new();
-            let sens_map = entity_sensitivities.as_ref().unwrap_or(&empty);
-            export_dot(&mut writer, &entities, &relationships, sens_map)?;
+            export_dot(
+                &mut writer,
+                &entities,
+                &relationships,
+                &entity_sensitivities,
+            )?;
         }
         ExportFormat::Graphml => {
             export_graphml(&mut writer, &entities, &relationships)?;
@@ -1508,19 +1546,16 @@ fn run_export_graph(
 
     // Print summary
     let mut dist = std::collections::BTreeMap::new();
-    if let Some(ref sens) = entity_sensitivities {
-        for sensitivity in sens.values() {
-            *dist.entry(*sensitivity).or_insert(0usize) += 1;
-        }
-    } else {
-        dist.insert(mneme::knowledge::FactSensitivity::Public, entity_count);
+    for sensitivity in entity_sensitivities.values() {
+        *dist.entry(*sensitivity).or_insert(0usize) += 1;
     }
 
     println!("=== Memory Graph Export ===");
-    println!("Format:        {format:?}");
-    println!("Entities:      {entity_count}");
-    println!("Relationships: {edge_count}");
-    println!("Output:        {}", output_path.display());
+    println!("Format:          {format:?}");
+    println!("Max sensitivity: {}", max_sensitivity.as_str());
+    println!("Entities:        {entity_count}");
+    println!("Relationships:   {edge_count}");
+    println!("Output:          {}", output_path.display());
     println!();
     println!("Sensitivity distribution:");
     for (sens, label) in [
@@ -1538,16 +1573,6 @@ fn run_export_graph(
     Ok(())
 }
 
-/// Determine whether the current process is running as an operator.
-///
-/// Interactive terminal sessions are treated as operators. Non-interactive
-/// scripts can set `ALETHEIA_OPERATOR=1` to export all sensitivities.
-#[cfg(feature = "recall")]
-fn is_operator() -> bool {
-    std::io::IsTerminal::is_terminal(&std::io::stdin())
-        || std::env::var("ALETHEIA_OPERATOR").is_ok_and(|v| v == "1" || v == "true")
-}
-
 /// Load facts, apply scope / sensitivity filters, and return:
 /// 1. The set of entity IDs linked to visible facts.
 /// 2. A map of entity ID -> max sensitivity among its linked facts.
@@ -1556,7 +1581,7 @@ fn load_filtered_facts(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: Option<&str>,
     scope: Option<mneme::knowledge::MemoryScope>,
-    is_operator: bool,
+    max_sensitivity: mneme::knowledge::FactSensitivity,
 ) -> Result<(
     std::collections::HashSet<String>,
     std::collections::HashMap<String, mneme::knowledge::FactSensitivity>,
@@ -1589,8 +1614,8 @@ fn load_filtered_facts(
             continue;
         }
 
-        // Sensitivity filter for non-operators
-        if !is_operator && fact.sensitivity != FactSensitivity::Public {
+        // Sensitivity filter: never export tiers above the operator's explicit ceiling.
+        if fact.sensitivity > max_sensitivity {
             continue;
         }
 
@@ -1598,11 +1623,10 @@ fn load_filtered_facts(
             for eid in entities {
                 visible.insert(eid.clone());
                 let current = sensitivities
-                    .get(eid)
-                    .copied()
-                    .unwrap_or(FactSensitivity::Public);
-                if fact.sensitivity > current {
-                    sensitivities.insert(eid.clone(), fact.sensitivity);
+                    .entry(eid.clone())
+                    .or_insert(FactSensitivity::Public);
+                if fact.sensitivity > *current {
+                    *current = fact.sensitivity;
                 }
             }
         }
@@ -1638,51 +1662,17 @@ fn load_fact_entities(
 fn query_entities(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<Vec<mneme::knowledge::Entity>> {
-    let result = store
-        .list_entities()
-        .whatever_context("entity query failed")?;
-    Ok(result)
-}
-
-#[cfg(feature = "recall")]
-fn validate_nous_id(nous_id: &str) -> Result<()> {
-    if nous_id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        Ok(())
-    } else {
-        whatever!(
-            "invalid nous_id '{nous_id}': only alphanumeric characters, hyphens, and underscores are allowed"
-        );
-    }
-}
-
-#[cfg(feature = "recall")]
-fn query_entities_filtered(
-    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
-    nous_id: &str,
-) -> Result<Vec<mneme::knowledge::Entity>> {
     use std::collections::BTreeMap;
 
-    use mneme::engine::DataValue;
-
-    validate_nous_id(nous_id)?;
-
-    // WHY: bind nous_id as a CozoDB parameter so special characters cannot
-    // escape the query string and alter the Datalog semantics.
-    let mut params = BTreeMap::new();
-    params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-    let script = r"
-        ?[id, name, entity_type, aliases, created_at, updated_at] :=
-            *entities{id, name, entity_type, aliases, created_at, updated_at},
-            *fact_entities{fact_id, entity_id: id},
-            *facts{fact_id, nous_id: $nous_id}
-        :order name
-    ";
+    // WHY(#5291): raw query + strict decode — the store's list_entities()
+    // fabricates Timestamp::now() on invalid rows and silently skips short
+    // rows; export/check must surface malformed data, never normalize it.
+    let script = r"?[id, name, entity_type, aliases, created_at, updated_at] :=
+        *entities{id, name, entity_type, aliases, created_at, updated_at}
+        :order name";
     let result = store
-        .run_query(script, params)
-        .whatever_context("filtered entity query failed")?;
+        .run_query(script, BTreeMap::new())
+        .whatever_context("entity query failed")?;
     parse_entity_rows(&result)
 }
 
@@ -1700,36 +1690,36 @@ fn query_relationships(
 }
 
 #[cfg(feature = "recall")]
-fn query_relationships_filtered(
-    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
-    nous_id: &str,
-) -> Result<Vec<mneme::knowledge::Relationship>> {
-    use std::collections::BTreeMap;
-
-    use mneme::engine::DataValue;
-
-    validate_nous_id(nous_id)?;
-
-    let mut params = BTreeMap::new();
-    params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
-    let script = r"
-        ?[src, dst, relation, weight, created_at] :=
-            *relationships{src, dst, relation, weight, created_at},
-            *fact_entities{fact_id: fid1, entity_id: src},
-            *facts{fid1, nous_id: $nous_id},
-            *fact_entities{fact_id: fid2, entity_id: dst},
-            *facts{fid2, nous_id: $nous_id}
-    ";
-    let result = store
-        .run_query(script, params)
-        .whatever_context("filtered relationship query failed")?;
-    parse_relationship_rows(&result)
+fn decode_required_string(
+    result: &mneme::knowledge_store::QueryResult,
+    row: usize,
+    col: &str,
+) -> Result<String> {
+    result
+        .get_string(row, col)
+        .with_whatever_context(|| format!("missing or non-string column '{col}' in row {row}"))
 }
 
 #[cfg(feature = "recall")]
-fn query_get_string(result: &mneme::knowledge_store::QueryResult, row: usize, col: &str) -> String {
-    // kanon:ignore RUST/no-result-unwrap-or-default — query result parser helper; missing column yields empty default handled downstream
-    result.get_string(row, col).unwrap_or_default()
+fn decode_required_timestamp(
+    result: &mneme::knowledge_store::QueryResult,
+    row: usize,
+    col: &str,
+) -> Result<jiff::Timestamp> {
+    let s = decode_required_string(result, row, col)?;
+    mneme::knowledge::parse_timestamp(&s)
+        .with_whatever_context(|| format!("invalid timestamp '{s}' in column '{col}' row {row}"))
+}
+
+#[cfg(feature = "recall")]
+fn decode_required_f64(
+    result: &mneme::knowledge_store::QueryResult,
+    row: usize,
+    col: &str,
+) -> Result<f64> {
+    result
+        .get_f64(row, col)
+        .with_whatever_context(|| format!("missing or non-numeric column '{col}' in row {row}"))
 }
 
 #[cfg(feature = "recall")]
@@ -1738,10 +1728,10 @@ fn parse_entity_rows(
 ) -> Result<Vec<mneme::knowledge::Entity>> {
     let mut entities = Vec::with_capacity(result.row_count());
     for i in 0..result.row_count() {
-        let id_str = query_get_string(result, i, "id");
-        let name = query_get_string(result, i, "name");
-        let entity_type = query_get_string(result, i, "entity_type");
-        let aliases_str = query_get_string(result, i, "aliases");
+        let id_str = decode_required_string(result, i, "id")?;
+        let name = decode_required_string(result, i, "name")?;
+        let entity_type = decode_required_string(result, i, "entity_type")?;
+        let aliases_str = result.get_string(i, "aliases").unwrap_or_default();
         let aliases = if aliases_str.is_empty() {
             Vec::new()
         } else {
@@ -1750,12 +1740,8 @@ fn parse_entity_rows(
                 .map(|s| s.trim().to_owned())
                 .collect()
         };
-        let created_at =
-            mneme::knowledge::parse_timestamp(&query_get_string(result, i, "created_at"))
-                .unwrap_or_else(jiff::Timestamp::now);
-        let updated_at =
-            mneme::knowledge::parse_timestamp(&query_get_string(result, i, "updated_at"))
-                .unwrap_or_else(jiff::Timestamp::now);
+        let created_at = decode_required_timestamp(result, i, "created_at")?;
+        let updated_at = decode_required_timestamp(result, i, "updated_at")?;
 
         let id =
             mneme::id::EntityId::new(&id_str).whatever_context("invalid entity id in store")?;
@@ -1775,17 +1761,13 @@ fn parse_entity_rows(
 fn parse_relationship_rows(
     result: &mneme::knowledge_store::QueryResult,
 ) -> Result<Vec<mneme::knowledge::Relationship>> {
-    use snafu::ResultExt;
-
     let mut relationships = Vec::with_capacity(result.row_count());
     for i in 0..result.row_count() {
-        let src_str = query_get_string(result, i, "src");
-        let dst_str = query_get_string(result, i, "dst");
-        let relation = query_get_string(result, i, "relation");
-        let weight = result.get_f64(i, "weight").unwrap_or(1.0);
-        let created_at =
-            mneme::knowledge::parse_timestamp(&query_get_string(result, i, "created_at"))
-                .unwrap_or_else(jiff::Timestamp::now);
+        let src_str = decode_required_string(result, i, "src")?;
+        let dst_str = decode_required_string(result, i, "dst")?;
+        let relation = decode_required_string(result, i, "relation")?;
+        let weight = decode_required_f64(result, i, "weight")?;
+        let created_at = decode_required_timestamp(result, i, "created_at")?;
 
         let src = mneme::id::EntityId::new(&src_str)
             .whatever_context("invalid relationship src id in store")?;

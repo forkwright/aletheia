@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use mneme::id::{EntityId, FactId};
 use mneme::knowledge::{
-    Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    Visibility, far_future,
+    Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+    FactTemporal, Visibility, far_future,
 };
 use mneme::knowledge_store::KnowledgeStore;
 
@@ -49,6 +49,15 @@ fn recovery_store_paths_maps_legacy_root_to_shared_migration_target() {
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
+    make_fact_with_sensitivity(id, nous_id, content, FactSensitivity::Public)
+}
+
+fn make_fact_with_sensitivity(
+    id: &str,
+    nous_id: &str,
+    content: &str,
+    sensitivity: FactSensitivity,
+) -> Fact {
     let now = jiff::Timestamp::now();
     Fact {
         id: FactId::new(id).expect("valid id"),
@@ -76,7 +85,7 @@ fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
             access_count: 0,
             last_accessed_at: None,
         },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
+        sensitivity,
         visibility: Visibility::Private,
         scope: None,
         project_id: None,
@@ -428,8 +437,9 @@ fn load_filtered_facts_respects_nous_filter() {
         )
         .expect("link fact to entity");
 
-    let (visible, _sensitivities) = super::load_filtered_facts(&store, Some("nous-1"), None, true)
-        .expect("load filtered facts should succeed");
+    let (visible, _sensitivities) =
+        super::load_filtered_facts(&store, Some("nous-1"), None, FactSensitivity::Confidential)
+            .expect("load filtered facts should succeed");
     assert!(
         visible.contains("ent-a"),
         "entity linked to nous-1 fact is visible"
@@ -672,5 +682,225 @@ fn sensitivity_dot_color_maps_correctly() {
         super::sensitivity_dot_color(mneme::knowledge::FactSensitivity::Confidential),
         "#FF6B6B",
         "confidential is red"
+    );
+}
+
+// --- sensitivity filtering (refs #5289) ---
+
+#[test]
+fn load_filtered_facts_defaults_to_public_sensitivity() {
+    let store = test_store();
+    let e_public = make_entity("ent-public", "Alice", "person");
+    let e_internal = make_entity("ent-internal", "Bob", "person");
+    let e_confidential = make_entity("ent-confidential", "Carol", "person");
+    for e in [&e_public, &e_internal, &e_confidential] {
+        store.insert_entity(e).expect("insert entity");
+    }
+
+    let f_public = make_fact("f-public", "nous-1", "Alice likes Rust");
+    let f_internal = make_fact_with_sensitivity(
+        "f-internal",
+        "nous-1",
+        "Bob internal",
+        FactSensitivity::Internal,
+    );
+    let f_confidential = make_fact_with_sensitivity(
+        "f-confidential",
+        "nous-1",
+        "Carol confidential",
+        FactSensitivity::Confidential,
+    );
+    for f in [&f_public, &f_internal, &f_confidential] {
+        store.insert_fact(f).expect("insert fact");
+    }
+    link_fact_to_entity(&store, &f_public.id, &e_public.id);
+    link_fact_to_entity(&store, &f_internal.id, &e_internal.id);
+    link_fact_to_entity(&store, &f_confidential.id, &e_confidential.id);
+
+    let (visible, sensitivities) =
+        super::load_filtered_facts(&store, None, None, FactSensitivity::Public)
+            .expect("load public sensitivity");
+    assert!(
+        visible.contains("ent-public"),
+        "public fact entity is visible"
+    );
+    assert!(
+        !visible.contains("ent-internal"),
+        "internal fact entity is hidden by default"
+    );
+    assert!(
+        !visible.contains("ent-confidential"),
+        "confidential fact entity is hidden by default"
+    );
+    assert_eq!(
+        sensitivities.get("ent-public"),
+        Some(&FactSensitivity::Public)
+    );
+    assert!(!sensitivities.contains_key("ent-internal"));
+    assert!(!sensitivities.contains_key("ent-confidential"));
+}
+
+#[test]
+fn load_filtered_facts_includes_all_sensitivities_when_max_is_confidential() {
+    let store = test_store();
+    let e_public = make_entity("ent-public", "Alice", "person");
+    let e_internal = make_entity("ent-internal", "Bob", "person");
+    let e_confidential = make_entity("ent-confidential", "Carol", "person");
+    for e in [&e_public, &e_internal, &e_confidential] {
+        store.insert_entity(e).expect("insert entity");
+    }
+
+    let f_public = make_fact("f-public", "nous-1", "Alice likes Rust");
+    let f_internal = make_fact_with_sensitivity(
+        "f-internal",
+        "nous-1",
+        "Bob internal",
+        FactSensitivity::Internal,
+    );
+    let f_confidential = make_fact_with_sensitivity(
+        "f-confidential",
+        "nous-1",
+        "Carol confidential",
+        FactSensitivity::Confidential,
+    );
+    for f in [&f_public, &f_internal, &f_confidential] {
+        store.insert_fact(f).expect("insert fact");
+    }
+    link_fact_to_entity(&store, &f_public.id, &e_public.id);
+    link_fact_to_entity(&store, &f_internal.id, &e_internal.id);
+    link_fact_to_entity(&store, &f_confidential.id, &e_confidential.id);
+
+    let (visible, sensitivities) =
+        super::load_filtered_facts(&store, None, None, FactSensitivity::Confidential)
+            .expect("load confidential sensitivity");
+    for eid in ["ent-public", "ent-internal", "ent-confidential"] {
+        assert!(visible.contains(eid), "{eid} visible with confidential max");
+    }
+    assert_eq!(
+        sensitivities.get("ent-public"),
+        Some(&FactSensitivity::Public)
+    );
+    assert_eq!(
+        sensitivities.get("ent-internal"),
+        Some(&FactSensitivity::Internal)
+    );
+    assert_eq!(
+        sensitivities.get("ent-confidential"),
+        Some(&FactSensitivity::Confidential)
+    );
+}
+
+// --- strict row decoders (refs #5291) ---
+
+#[test]
+fn parse_entity_rows_rejects_missing_column() {
+    let store = test_store();
+    let result = store
+        .run_query(
+            "?[id, name, entity_type, aliases, created_at] <- [['e1', 'Alice', 'person', '', '2026-01-01T00:00:00Z']]",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("run synthetic entity query");
+    let err = match super::parse_entity_rows(&result) {
+        Ok(rows) => panic!("expected missing column error, got {rows:?}"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string()
+            .contains("missing or non-string column 'updated_at'"),
+        "error names missing column: {err}"
+    );
+}
+
+#[test]
+fn parse_entity_rows_rejects_invalid_timestamp() {
+    let store = test_store();
+    let result = store
+        .run_query(
+            "?[id, name, entity_type, aliases, created_at, updated_at] <- [['e1', 'Alice', 'person', '', 'not-a-timestamp', '2026-01-01T00:00:00Z']]",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("run synthetic entity query");
+    let err = match super::parse_entity_rows(&result) {
+        Ok(rows) => panic!("expected invalid timestamp error, got {rows:?}"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string()
+            .contains("invalid timestamp 'not-a-timestamp'"),
+        "error names invalid timestamp: {err}"
+    );
+}
+
+#[test]
+fn run_export_graph_errors_on_malformed_entity_row() {
+    let store = test_store();
+    // WHY(#5291): a stored entity row with an unparseable timestamp must fail
+    // the REAL export path with a row-context error — never a fabricated
+    // Timestamp::now() standing in for the corrupt value.
+    store
+        .run_mut_query(
+            r#"?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <-
+             [["ent-bad", "Broken", "person", "", "not-a-timestamp", "2026-01-01T00:00:00Z", null]]
+             :put entities {id, name, entity_type, aliases, created_at, updated_at, name_embedding}"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed malformed entity row");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out = tmp.path().join("graph.json");
+    let err = match super::run_export_graph(
+        &store,
+        super::ExportFormat::Json,
+        None,
+        None,
+        FactSensitivity::Public,
+        &out,
+    ) {
+        Ok(()) => panic!("expected malformed entity row to fail export"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("invalid timestamp"),
+        "error names the malformed timestamp: {err}"
+    );
+}
+
+#[test]
+fn parse_relationship_rows_rejects_missing_weight() {
+    let store = test_store();
+    let result = store
+        .run_query(
+            "?[src, dst, relation, created_at] <- [['e1', 'e2', 'knows', '2026-01-01T00:00:00Z']]",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("run synthetic relationship query");
+    let err = match super::parse_relationship_rows(&result) {
+        Ok(rows) => panic!("expected missing weight error, got {rows:?}"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string()
+            .contains("missing or non-numeric column 'weight'"),
+        "error names missing weight: {err}"
+    );
+}
+
+#[test]
+fn parse_relationship_rows_rejects_invalid_timestamp() {
+    let store = test_store();
+    let result = store
+        .run_query(
+            "?[src, dst, relation, weight, created_at] <- [['e1', 'e2', 'knows', 1.0, 'not-a-date']]",
+            std::collections::BTreeMap::new(),
+        )
+        .expect("run synthetic relationship query");
+    let err = match super::parse_relationship_rows(&result) {
+        Ok(rows) => panic!("expected invalid timestamp error, got {rows:?}"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("invalid timestamp 'not-a-date'"),
+        "error names invalid timestamp: {err}"
     );
 }
