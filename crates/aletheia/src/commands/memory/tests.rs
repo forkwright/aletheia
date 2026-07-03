@@ -833,6 +833,40 @@ fn parse_entity_rows_rejects_invalid_timestamp() {
 }
 
 #[test]
+fn run_export_graph_errors_on_malformed_entity_row() {
+    let store = test_store();
+    // WHY(#5291): a stored entity row with an unparseable timestamp must fail
+    // the REAL export path with a row-context error — never a fabricated
+    // Timestamp::now() standing in for the corrupt value.
+    store
+        .run_mut_query(
+            r#"?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <-
+             [["ent-bad", "Broken", "person", "", "not-a-timestamp", "2026-01-01T00:00:00Z", null]]
+             :put entities {id, name, entity_type, aliases, created_at, updated_at, name_embedding}"#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed malformed entity row");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out = tmp.path().join("graph.json");
+    let err = match super::run_export_graph(
+        &store,
+        super::ExportFormat::Json,
+        None,
+        None,
+        FactSensitivity::Public,
+        &out,
+    ) {
+        Ok(()) => panic!("expected malformed entity row to fail export"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("invalid timestamp"),
+        "error names the malformed timestamp: {err}"
+    );
+}
+
+#[test]
 fn parse_relationship_rows_rejects_missing_weight() {
     let store = test_store();
     let result = store

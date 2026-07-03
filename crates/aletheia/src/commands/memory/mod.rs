@@ -1662,10 +1662,18 @@ fn load_fact_entities(
 fn query_entities(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<Vec<mneme::knowledge::Entity>> {
+    use std::collections::BTreeMap;
+
+    // WHY(#5291): raw query + strict decode — the store's list_entities()
+    // fabricates Timestamp::now() on invalid rows and silently skips short
+    // rows; export/check must surface malformed data, never normalize it.
+    let script = r"?[id, name, entity_type, aliases, created_at, updated_at] :=
+        *entities{id, name, entity_type, aliases, created_at, updated_at}
+        :order name";
     let result = store
-        .list_entities()
+        .run_query(script, BTreeMap::new())
         .whatever_context("entity query failed")?;
-    Ok(result)
+    parse_entity_rows(&result)
 }
 
 #[cfg(feature = "recall")]
@@ -1715,13 +1723,6 @@ fn decode_required_f64(
 }
 
 #[cfg(feature = "recall")]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "strict row-decoder tests exercise parse_entity_rows directly"
-    )
-)]
 fn parse_entity_rows(
     result: &mneme::knowledge_store::QueryResult,
 ) -> Result<Vec<mneme::knowledge::Entity>> {
