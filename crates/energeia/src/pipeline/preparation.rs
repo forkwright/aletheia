@@ -146,15 +146,14 @@ impl PipelineStage for PreparationStage {
 
         #[cfg(feature = "storage-fjall")]
         {
-            ctx.store_dispatch_id = ctx.store.as_ref().and_then(|store| {
-                match store.create_dispatch(&ctx.spec.project, &ctx.spec) {
-                    Ok(id) => Some(id),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed to create dispatch record");
-                        None
-                    }
-                }
-            });
+            ctx.store_dispatch_id = match ctx.store.as_ref() {
+                Some(store) => Some(
+                    store
+                        .create_dispatch(&ctx.spec.project, &ctx.spec)
+                        .context(StageSnafu { stage: self.name() })?,
+                ),
+                None => None,
+            };
         }
         #[cfg(not(feature = "storage-fjall"))]
         let () = ();
@@ -179,6 +178,8 @@ mod tests {
     use crate::pipeline::context::PipelineContext;
     use crate::prompt::PromptSpec;
     use crate::qa::QaGate;
+    #[cfg(feature = "storage-fjall")]
+    use crate::store::EnergeiaStore;
     use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict};
 
     use super::PreparationStage;
@@ -397,6 +398,61 @@ mod tests {
         assert!(
             err.to_string().contains("no prompts"),
             "no reason in: {err}"
+        );
+    }
+
+    #[cfg(feature = "storage-fjall")]
+    #[tokio::test]
+    async fn preparation_fails_closed_when_store_create_dispatch_fails() {
+        let prompts = vec![PromptSpec {
+            number: 1,
+            description: "first".to_owned(),
+            depends_on: vec![],
+            context_policy: crate::dag::ContextPolicy::Fresh,
+            output_format: None,
+            worktree: crate::prompt::WorktreePolicy::default(),
+            acceptance_criteria: vec![],
+            blast_radius: vec![],
+            body: "do first".to_owned(),
+            prompt_components: None,
+        }];
+        let engine = Arc::new(MockEngine::new(vec![]));
+        let qa = Arc::new(AlwaysPassQa);
+        let spec = DispatchSpec::new("acme".to_owned(), vec![1]);
+        let dir = tempfile::TempDir::new().expect("create temp dir");
+        let db = fjall::Database::builder(dir.path())
+            .open()
+            .expect("open test database");
+        let store = Arc::new(EnergeiaStore::new(&db).expect("open energeia store"));
+        store.fail_next_create_dispatch_for_test();
+        let mut ctx = PipelineContext::new(
+            spec,
+            prompts,
+            engine,
+            qa,
+            OrchestratorConfig::default(),
+            Some(Arc::clone(&store)),
+        );
+
+        let err = PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect_err("store failure should fail preparation");
+
+        assert!(
+            err.to_string().contains("preparation"),
+            "no stage in: {err}"
+        );
+        assert!(
+            err.to_string().contains("store error"),
+            "no store failure in: {err}"
+        );
+        assert!(ctx.store_dispatch_id.is_none());
+        assert!(
+            store
+                .list_dispatches(crate::store::SCAN_LIMIT_DISPATCHES)
+                .expect("list dispatches")
+                .is_empty()
         );
     }
 

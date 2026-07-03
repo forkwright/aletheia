@@ -27,6 +27,23 @@ fn sample_dispatch_spec() -> DispatchSpec {
     }
 }
 
+fn insert_observation_for_test(store: &EnergeiaStore, idx: u32, project: &str) {
+    let id = format!("obs-{idx:03}");
+    let timestamp_ms = i64::from(idx);
+    let record = ObservationRecord {
+        id: id.clone(),
+        project: project.to_owned(),
+        source: "qa".to_owned(),
+        content: format!("Observation {idx}"),
+        observation_type: "idea".to_owned(),
+        session_id: None,
+        created_at: jiff::Timestamp::from_millisecond(timestamp_ms).unwrap(),
+    };
+    let key = schema::observation_key(timestamp_ms, &id);
+    let value = serialize_msgpack(&record, "test observation").unwrap();
+    store.keyspace.insert(key.as_bytes(), value).unwrap();
+}
+
 // ── Dispatch tests ──
 
 #[test]
@@ -237,6 +254,46 @@ fn query_lessons_respects_limit() {
     assert_eq!(results.len(), 3);
 }
 
+#[test]
+fn query_lessons_collects_matching_records_before_limit() {
+    let (_dir, store) = setup_test_store();
+    for i in 0..5 {
+        store
+            .add_lesson(&NewLesson {
+                source: "aaa".to_owned(),
+                category: "other".to_owned(),
+                lesson: format!("Nonmatch {i}"),
+                evidence: None,
+                project: Some("other".to_owned()),
+                prompt_number: None,
+            })
+            .unwrap();
+    }
+    for i in 0..3 {
+        store
+            .add_lesson(&NewLesson {
+                source: "zzz".to_owned(),
+                category: "match".to_owned(),
+                lesson: format!("Match {i}"),
+                evidence: None,
+                project: Some("acme".to_owned()),
+                prompt_number: None,
+            })
+            .unwrap();
+    }
+
+    let results = store
+        .query_lessons(None, Some("match"), Some("acme"), 3)
+        .unwrap();
+    assert_eq!(results.len(), 3);
+    assert!(results.iter().all(|record| record.category == "match"));
+    assert!(
+        results
+            .iter()
+            .all(|record| record.project.as_deref() == Some("acme"))
+    );
+}
+
 // ── Observation tests ──
 
 #[test]
@@ -287,6 +344,21 @@ fn query_observations_respects_limit() {
     }
     let results = store.query_observations(None, None, 3).unwrap();
     assert_eq!(results.len(), 3);
+}
+
+#[test]
+fn query_observations_collects_matching_records_before_limit() {
+    let (_dir, store) = setup_test_store();
+    for i in 0..5 {
+        insert_observation_for_test(&store, i, "other");
+    }
+    for i in 5..8 {
+        insert_observation_for_test(&store, i, "acme");
+    }
+
+    let results = store.query_observations(Some("acme"), None, 3).unwrap();
+    assert_eq!(results.len(), 3);
+    assert!(results.iter().all(|record| record.project == "acme"));
 }
 
 // ── CI Validation tests ──

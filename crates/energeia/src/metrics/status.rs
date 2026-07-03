@@ -142,6 +142,7 @@ fn compute_status_dashboard_inner(
     let now = jiff::Timestamp::now();
 
     let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
+    let latest_dispatches = store.list_latest_dispatches(RECENT_LIMIT)?;
     let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
     let stale_running_dispatches =
         u64::from(store.stale_running_dispatch_count(stale_running_dispatch_threshold())?);
@@ -166,12 +167,8 @@ fn compute_status_dashboard_inner(
     let active_dispatches = active_dispatch_records.len() as u64;
     let queue_depth = active_dispatches;
 
-    // Dispatches from the scan come out oldest-first (ULID order). Reverse to
-    // get newest first, then take up to RECENT_LIMIT.
-    let recent_outcomes: Vec<RecentOutcome> = all_dispatches
+    let recent_outcomes: Vec<RecentOutcome> = latest_dispatches
         .iter()
-        .rev()
-        .take(RECENT_LIMIT)
         .map(|d| RecentOutcome {
             dispatch_id: d.id.as_str().to_owned(),
             project: d.project.clone(),
@@ -325,6 +322,27 @@ mod tests {
         }
     }
 
+    fn ordered_dispatch_id(idx: usize) -> crate::store::records::DispatchId {
+        let idx_u64 = u64::try_from(idx).unwrap();
+        let value = (u128::from(idx_u64 + 1) << 80) | u128::from(idx_u64);
+        crate::store::records::DispatchId::new(koina::ulid::Ulid::from_u128(value).to_string())
+    }
+
+    fn dispatch_record(idx: usize, project: &str) -> DispatchRecord {
+        let timestamp_ms = i64::try_from(idx).unwrap();
+        let timestamp = jiff::Timestamp::from_millisecond(timestamp_ms).unwrap();
+        DispatchRecord {
+            id: ordered_dispatch_id(idx),
+            project: project.to_owned(),
+            spec: "{}".to_owned(),
+            status: DispatchStatus::Completed,
+            created_at: timestamp,
+            finished_at: Some(timestamp),
+            total_cost_usd: 0.0,
+            total_sessions: 0,
+        }
+    }
+
     #[test]
     fn empty_store_zero_active() {
         let (_dir, store) = setup();
@@ -373,6 +391,40 @@ mod tests {
             .collect();
         assert!(ids.contains(&d1.as_str()));
         assert!(ids.contains(&d2.as_str()));
+    }
+
+    #[test]
+    fn recent_outcomes_use_latest_dispatches_beyond_scan_cap() {
+        let (_dir, store) = setup();
+        let total = SCAN_LIMIT_DISPATCHES + 5;
+        for idx in 0..total {
+            let record = dispatch_record(idx, "acme");
+            store.insert_dispatch_record_for_test(&record).unwrap();
+        }
+
+        let dashboard = compute_status_dashboard(&store).unwrap();
+        let newest_id = ordered_dispatch_id(total - 1).to_string();
+        let oldest_recent_id = ordered_dispatch_id(total - RECENT_LIMIT).to_string();
+        let old_capped_only_id = ordered_dispatch_id(total - RECENT_LIMIT - 1).to_string();
+
+        assert_eq!(dashboard.recent_outcomes.len(), RECENT_LIMIT);
+        assert_eq!(
+            dashboard
+                .recent_outcomes
+                .first()
+                .map(|o| o.dispatch_id.as_str()),
+            Some(newest_id.as_str())
+        );
+        assert_eq!(
+            dashboard.recent_outcomes.last().unwrap().dispatch_id,
+            oldest_recent_id
+        );
+        assert!(
+            !dashboard
+                .recent_outcomes
+                .iter()
+                .any(|outcome| outcome.dispatch_id == old_capped_only_id)
+        );
     }
 
     #[test]
