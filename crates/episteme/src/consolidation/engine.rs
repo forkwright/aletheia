@@ -7,12 +7,12 @@ use tracing::instrument;
 
 use super::{
     CLUSTER_FACTS_FOR_CONSOLIDATION, COMMUNITY_OVERFLOW_CANDIDATES, CONSOLIDATION_AUDIT_DDL,
-    ConsolidatedFact, ConsolidationAuditRecord, ConsolidationCandidate, ConsolidationConfig,
-    ConsolidationError, ConsolidationProvider, ConsolidationResult, ConsolidationTrigger,
-    ENTITY_FACTS_FOR_CONSOLIDATION, ENTITY_OVERFLOW_CANDIDATES, FACT_MULTIPLICITY_DDL,
-    FactMultiplicity, IncompatibleSourcesSnafu, RateLimitedSnafu, SourceFact, StoreSnafu,
-    age_cutoff, batch_facts, consolidation_system_prompt, consolidation_user_message,
-    parse_consolidation_response,
+    CONSOLIDATION_AUDIT_OWNER_BACKFILL_DDL, ConsolidatedFact, ConsolidationAuditRecord,
+    ConsolidationCandidate, ConsolidationConfig, ConsolidationError, ConsolidationProvider,
+    ConsolidationResult, ConsolidationTrigger, ENTITY_FACTS_FOR_CONSOLIDATION,
+    ENTITY_OVERFLOW_CANDIDATES, FACT_MULTIPLICITY_DDL, FactMultiplicity, IncompatibleSourcesSnafu,
+    RateLimitedSnafu, SourceFact, StoreSnafu, age_cutoff, batch_facts, consolidation_system_prompt,
+    consolidation_user_message, parse_consolidation_response,
 };
 use crate::engine::DataValue;
 use crate::id::{EntityId, FactId};
@@ -275,7 +275,7 @@ impl KnowledgeStore {
 
         let new_fact_ids = self.persist_consolidated_facts(&result, nous_id)?;
         self.supersede_originals(&result, &new_fact_ids)?;
-        self.write_audit_record(candidate, &result, &new_fact_ids)?;
+        self.write_audit_record(candidate, &result, &new_fact_ids, nous_id)?;
 
         Ok(result)
     }
@@ -616,6 +616,7 @@ impl KnowledgeStore {
         candidate: &ConsolidationCandidate,
         result: &ConsolidationResult,
         new_fact_ids: &[FactId],
+        nous_id: &str,
     ) -> Result<(), ConsolidationError> {
         let now_str = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
         let audit_id = koina::ulid::Ulid::new().to_string();
@@ -633,6 +634,7 @@ impl KnowledgeStore {
 
         self.record_consolidation_audit(&ConsolidationAuditRecord {
             id: audit_id,
+            nous_id: nous_id.to_owned(),
             trigger_type: candidate.trigger.trigger_type().to_owned(),
             trigger_id: candidate.trigger.trigger_id(),
             original_count: result.original_count,
@@ -640,12 +642,6 @@ impl KnowledgeStore {
             original_fact_ids: original_ids_json,
             consolidated_fact_ids: consolidated_ids_json,
             consolidated_at: now_str,
-        })
-        .map_err(|e| {
-            StoreSnafu {
-                message: e.to_string(),
-            }
-            .build()
         })
     }
 
@@ -689,19 +685,24 @@ impl KnowledgeStore {
     fn record_consolidation_audit(
         &self,
         record: &ConsolidationAuditRecord,
-    ) -> crate::error::Result<()> {
+    ) -> Result<(), ConsolidationError> {
+        self.ensure_consolidation_audit_owner_scope()?;
         let script = r"
-?[id, trigger_type, trigger_id, original_count, consolidated_count,
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
    original_fact_ids, consolidated_fact_ids, consolidated_at] <-
-    [[$id, $trigger_type, $trigger_id, $original_count, $consolidated_count,
+    [[$id, $nous_id, $trigger_type, $trigger_id, $original_count, $consolidated_count,
       $original_fact_ids, $consolidated_fact_ids, $consolidated_at]]
 
-:put consolidation_audit {id => trigger_type, trigger_id, original_count,
+:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
                           consolidated_count, original_fact_ids,
                           consolidated_fact_ids, consolidated_at}
 ";
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(record.id.clone().into()));
+        params.insert(
+            "nous_id".to_owned(),
+            DataValue::Str(record.nous_id.clone().into()),
+        );
         params.insert(
             "trigger_type".to_owned(),
             DataValue::Str(record.trigger_type.clone().into()),
@@ -730,21 +731,62 @@ impl KnowledgeStore {
             "consolidated_at".to_owned(),
             DataValue::Str(record.consolidated_at.clone().into()),
         );
-        self.run_mut_query(script, params)?;
+        self.run_mut_query(script, params).map_err(|e| {
+            StoreSnafu {
+                message: e.to_string(),
+            }
+            .build()
+        })?;
         Ok(())
+    }
+
+    fn ensure_consolidation_audit_owner_scope(&self) -> Result<(), ConsolidationError> {
+        if self.consolidation_audit_has_nous_id()? {
+            return Ok(());
+        }
+
+        self.run_mut_query(CONSOLIDATION_AUDIT_OWNER_BACKFILL_DDL, BTreeMap::new())
+            .map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+        Ok(())
+    }
+
+    fn consolidation_audit_has_nous_id(&self) -> Result<bool, ConsolidationError> {
+        let result = self
+            .run_query("::columns consolidation_audit", BTreeMap::new())
+            .map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+
+        for row in 0..result.row_count() {
+            if result.get_string(row, "column").as_deref() == Some("nous_id") {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// Query the last consolidation timestamp from the audit trail.
     pub(crate) fn last_consolidation_time(
         &self,
-        _nous_id: &str,
+        nous_id: &str,
     ) -> Result<Option<String>, ConsolidationError> {
+        self.ensure_consolidation_audit_owner_scope()?;
         let script = r"
-?[consolidated_at] := *consolidation_audit{consolidated_at}
+?[consolidated_at] := *consolidation_audit{nous_id: $nous_id, consolidated_at}
 :sort -consolidated_at
 :limit 1
 ";
-        let result = self.run_query(script, BTreeMap::new()).map_err(|e| {
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        let result = self.run_query(script, params).map_err(|e| {
             StoreSnafu {
                 message: e.to_string(),
             }

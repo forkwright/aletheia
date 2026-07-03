@@ -2,7 +2,7 @@
 //!
 //! Rewrites natural language queries into multiple search variants before
 //! hybrid search, improving recall for queries that use different terminology
-//! than the stored knowledge (e.g., "Cody's truck" vs "Cummins diesel").
+//! than the stored knowledge (e.g., "Project Atlas deploys" vs "release runbook").
 use std::time::Instant;
 
 use tracing::instrument;
@@ -348,6 +348,7 @@ pub(crate) trait HasRrfScore {
 mod tests {
     use super::*;
 
+    // NOTE: Knowledge fixtures stay synthetic: no maintainer names, real-ish personal facts, or private fleet terms.
     struct MockProvider {
         response: String,
     }
@@ -378,20 +379,20 @@ mod tests {
     fn rewrite_produces_variants() {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response(
-            r#"["Cody truck vehicle", "Cummins diesel specifications", "vehicle equipment modifications"]"#,
+            r#"["Project Atlas deployment process", "release runbook checklist", "service rollout steps"]"#,
         );
 
         let result = rewriter
-            .rewrite("What's Cody's truck?", None, &provider)
+            .rewrite("How does Project Atlas deploy?", None, &provider)
             .expect("rewrite should produce variants");
 
-        assert_eq!(result.original, "What's Cody's truck?");
+        assert_eq!(result.original, "How does Project Atlas deploy?");
         assert_eq!(result.variants.len(), 4);
-        assert_eq!(result.variants[0], "What's Cody's truck?");
+        assert_eq!(result.variants[0], "How does Project Atlas deploy?");
         assert!(
             result
                 .variants
-                .contains(&"Cummins diesel specifications".to_owned())
+                .contains(&"release runbook checklist".to_owned())
         );
     }
 
@@ -399,11 +400,11 @@ mod tests {
     fn rewrite_deduplicates_variants() {
         let rewriter = QueryRewriter::with_defaults();
         let provider = MockProvider::with_response(
-            r#"["What's Cody's truck?", "Cody truck vehicle", "Cody truck vehicle"]"#,
+            r#"["How does Project Atlas deploy?", "Project Atlas deployment process", "Project Atlas deployment process"]"#,
         );
 
         let result = rewriter
-            .rewrite("What's Cody's truck?", None, &provider)
+            .rewrite("How does Project Atlas deploy?", None, &provider)
             .expect("rewrite should deduplicate variants");
 
         assert_eq!(result.variants.len(), 2);
@@ -449,12 +450,13 @@ mod tests {
     #[test]
     fn rewrite_with_context() {
         let rewriter = QueryRewriter::with_defaults();
-        let provider = MockProvider::with_response(r#"["Cody truck", "vehicle maintenance"]"#);
+        let provider =
+            MockProvider::with_response(r#"["Project Atlas release", "deployment checklist"]"#);
 
         let result = rewriter
             .rewrite(
-                "What's the truck?",
-                Some("We were discussing Cody's vehicles"),
+                "What's the release process?",
+                Some("We were discussing Project Atlas deployment operations"),
                 &provider,
             )
             .expect("rewrite with context should succeed");
