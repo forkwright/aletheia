@@ -179,14 +179,14 @@ fn build_anthropic_credential_chain(
         config.credential.claude_code_credentials.as_deref(),
     );
 
-    if cred_source == "claude-code" {
-        if let Some(ref resolution) = claude_code_resolution {
-            if let Some(provider) = claude_code_provider(&resolution.path) {
-                chain.push(provider);
-            }
-            // SAFETY: logs the resolved file path and source rule, never the credential value.
-            info!(path = %resolution.path.display(), source = %resolution.source, "Claude Code credential path resolved");
+    if cred_source == "claude-code"
+        && let Some(ref resolution) = claude_code_resolution
+    {
+        if let Some(provider) = claude_code_provider(&resolution.path) {
+            chain.push(provider);
         }
+        // SAFETY: logs the resolved file path and source rule, never the credential value.
+        info!(path = %resolution.path.display(), source = %resolution.source, "Claude Code credential path resolved");
     }
 
     if cred_file.exists()
@@ -221,14 +221,14 @@ fn build_anthropic_credential_chain(
     )));
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
-    if cred_source == "auto" {
-        if let Some(ref resolution) = claude_code_resolution {
-            if let Some(provider) = claude_code_provider(&resolution.path) {
-                chain.push(provider);
-            }
-            // SAFETY: logs the resolved file path and source rule, never the credential value.
-            info!(path = %resolution.path.display(), source = %resolution.source, "Claude Code credential path resolved");
+    if cred_source == "auto"
+        && let Some(ref resolution) = claude_code_resolution
+    {
+        if let Some(provider) = claude_code_provider(&resolution.path) {
+            chain.push(provider);
         }
+        // SAFETY: logs the resolved file path and source rule, never the credential value.
+        info!(path = %resolution.path.display(), source = %resolution.source, "Claude Code credential path resolved");
     }
 
     Arc::new(CredentialChain::new(chain))
@@ -1332,25 +1332,6 @@ mod tests {
             unsafe_code,
             reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; tests serialize env access with ENV_LOCK"
         )]
-        fn set_and_remove(set_key: &'static str, value: &str, remove_key: &'static str) -> Self {
-            let lock = ENV_LOCK.lock().expect("lock env var mutex");
-            let set_original = std::env::var_os(set_key);
-            let remove_original = std::env::var_os(remove_key);
-            // SAFETY: ENV_LOCK serializes all test env mutations in this module.
-            unsafe {
-                std::env::set_var(set_key, value);
-                std::env::remove_var(remove_key);
-            }
-            Self {
-                originals: vec![(set_key, set_original), (remove_key, remove_original)],
-                _lock: lock,
-            }
-        }
-
-        #[expect(
-            unsafe_code,
-            reason = "std::env::{set_var,remove_var} are unsafe in edition 2024; tests serialize env access with ENV_LOCK"
-        )]
         fn set_and_remove_many(
             set_key: &'static str,
             value: &str,
@@ -1797,26 +1778,21 @@ mod tests {
     )]
     #[test]
     fn declared_local_provider_does_not_touch_claude_code_refresh_credentials() {
-        let fake_home = tempfile::tempdir().expect("create fake home");
-        let claude_dir = fake_home.path().join(".claude");
+        let fake_config = tempfile::tempdir().expect("create fake config dir");
+        let claude_dir = fake_config.path().join(".claude");
         std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
         std::fs::write(
             claude_dir.join(".credentials.json"),
             r#"{"accessToken":"sk-ant-oat-local","refreshToken":"rt-local"}"#,
         )
         .expect("write fake Claude Code credentials");
-        let fake_home = fake_home
+        let fake_config = fake_config
             .path()
             .to_str()
-            .expect("temp home path should be utf-8");
-        let empty_config = tempfile::tempdir().expect("create empty config dir");
-        let empty_config = empty_config
-            .path()
-            .to_str()
-            .expect("empty config path should be utf-8");
+            .expect("temp config path should be utf-8");
         let _env = EnvVarGuard::set_and_remove_many(
             "XDG_CONFIG_HOME",
-            empty_config,
+            fake_config,
             &["ANTHROPIC_API_KEY", "CLAUDE_CODE_CREDS"],
         );
         let model = "local-test-model";

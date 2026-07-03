@@ -2,8 +2,9 @@
 //!
 //! WHY: `$HOME` is unreliable in containers, systemd services, and sanitized
 //! environments. This module resolves explicit overrides first, then falls back
-//! to the platform config directory discovered through `dirs`.
+//! to the platform config directory.
 
+use std::ffi::OsString;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -49,8 +50,36 @@ pub(super) trait ConfigDirProvider {
 
 impl ConfigDirProvider for RealSystem {
     fn config_dir(&self) -> Option<PathBuf> {
-        dirs::config_dir()
+        platform_config_dir(self)
     }
+}
+
+fn non_empty_var(env: &impl Environment, name: &str) -> Option<OsString> {
+    env.var_os(name)
+        .filter(|value| !value.as_os_str().is_empty())
+}
+
+fn platform_config_dir(env: &impl Environment) -> Option<PathBuf> {
+    if cfg!(target_os = "windows") {
+        return non_empty_var(env, "APPDATA")
+            .map(PathBuf::from)
+            .or_else(|| {
+                non_empty_var(env, "USERPROFILE")
+                    .map(|home| PathBuf::from(home).join("AppData").join("Roaming"))
+            });
+    }
+
+    if cfg!(target_os = "macos") {
+        return non_empty_var(env, "HOME").map(|home| {
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+        });
+    }
+
+    non_empty_var(env, "XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| non_empty_var(env, "HOME").map(|home| PathBuf::from(home).join(".config")))
 }
 
 fn expand_tilde_path(path: &str, env: &impl Environment) -> PathBuf {
@@ -108,7 +137,7 @@ pub(super) fn claude_code_credential_path_with_env(
 ///
 /// 1. `CLAUDE_CODE_CREDS`
 /// 2. `credential.claudeCodeCredentials`
-/// 3. Platform-specific config directory (`dirs::config_dir`)
+/// 3. Platform-specific config directory
 #[must_use]
 // kanon:ignore RUST/pub-visibility -- WHY: aletheia runtime setup consumes this re-export to resolve the configured Claude Code credential path.
 pub fn claude_code_credential_path(configured_path: Option<&str>) -> Option<PathBuf> {

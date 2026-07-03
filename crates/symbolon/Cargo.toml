@@ -30,8 +30,6 @@ rand = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 aes-gcm = { workspace = true }
-# WHY: cross-platform config directory discovery for credentials without relying on $HOME.
-dirs = "6"
 reqwest = { workspace = true }
 rustix = { workspace = true }
 serde = { workspace = true }
