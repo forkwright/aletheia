@@ -409,7 +409,10 @@ mod tests {
 
         assert_eq!(dashboard.recent_outcomes.len(), RECENT_LIMIT);
         assert_eq!(
-            dashboard.recent_outcomes.first().map(|o| o.dispatch_id.as_str()),
+            dashboard
+                .recent_outcomes
+                .first()
+                .map(|o| o.dispatch_id.as_str()),
             Some(newest_id.as_str())
         );
         assert_eq!(
