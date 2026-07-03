@@ -408,7 +408,10 @@ mod tests {
         let old_capped_only_id = ordered_dispatch_id(total - RECENT_LIMIT - 1).to_string();
 
         assert_eq!(dashboard.recent_outcomes.len(), RECENT_LIMIT);
-        assert_eq!(dashboard.recent_outcomes[0].dispatch_id, newest_id);
+        assert_eq!(
+            dashboard.recent_outcomes.first().map(|o| o.dispatch_id.as_str()),
+            Some(newest_id.as_str())
+        );
         assert_eq!(
             dashboard.recent_outcomes.last().unwrap().dispatch_id,
             oldest_recent_id
