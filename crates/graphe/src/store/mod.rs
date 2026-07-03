@@ -6,6 +6,9 @@
 //! reach into backend-specific sub-modules.
 
 mod fjall_store;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 pub use fjall_store::{
     FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
     FinalizeTurnResult, SessionStore,

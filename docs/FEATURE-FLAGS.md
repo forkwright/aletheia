@@ -72,6 +72,7 @@ Cargo metadata cannot infer.
 | **graphe** | `default` | **yes** | *(empty)* | - |
 | **graphe** | `mneme-engine` | no | Gates `tokio::task::JoinError` variants | `dep:tokio` |
 | **graphe** | `portability` | no | Raw export/import entry points that bypass distilled-message filtering | - |
+| **graphe** | `test-support` | no | `store::test_support` raw-row injection for corrupt-data tests | - |
 | **graphe** | `test-core` | no | - | - |
 | **graphe** | `test-full` | no | - | - |
 | **hermeneus** | `cc-provider` | no | Claude Code subprocess provider | - |
@@ -106,7 +107,7 @@ Cargo metadata cannot infer.
 | **mneme** | `reranker` | no | HTTP cross-encoder reranker passthrough | `episteme/reranker` |
 | **mneme** | `gliner` | no | GLiNER bookkeeping provider passthrough | `episteme/gliner` |
 | **mneme** | `nuextract` | no | NuExtract bookkeeping provider passthrough | `episteme/nuextract` |
-| **mneme** | `test-support` | no | `MockEmbeddingProvider` and test helpers | `episteme/test-support` |
+| **mneme** | `test-support` | no | `MockEmbeddingProvider` and test helpers | `episteme/test-support`, `graphe/test-support` |
 | **mneme** | `embed-candle` | no | Candle embedding provider | `episteme/embed-candle` |
 | **mneme** | `openai-embed` | no | OpenAI-compatible and Voyage embedding provider passthrough | `episteme/openai-embed` |
 | **mneme** | `online-tests` | no | Network-dependent candle tests passthrough | `episteme/online-tests` |

@@ -122,10 +122,14 @@ pub mod portability {
 
 /// Session store — fjall LSM-tree backend.
 pub mod store {
-    pub use graphe::store::{
-        FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
-        FinalizeTurnResult, SessionStore,
-    };
+    pub use graphe::store::{FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord};
+    pub use graphe::store::{FinalizeTurnRequest, FinalizeTurnResult, SessionStore};
+
+    /// Test helpers for backend-agnostic session-store fixtures.
+    #[cfg(any(test, feature = "test-support"))]
+    pub mod test_support {
+        pub use graphe::store::test_support::inject_raw_session_row;
+    }
 }
 
 /// Core types for sessions, messages, usage records, and agent notes.

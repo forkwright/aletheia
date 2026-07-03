@@ -1,6 +1,7 @@
 //! Integration tests for meta-insights endpoints.
 
 use axum::http::StatusCode;
+use mneme::store::{SessionStore, test_support::inject_raw_session_row};
 use tower::ServiceExt;
 
 use super::helpers::*;
@@ -135,6 +136,33 @@ async fn get_quality_metrics_returns_ok() {
             .any(|u| u["metric"] == "thinking_time_ratio"),
         "thinking_time_ratio should be marked unavailable"
     );
+}
+
+#[tokio::test]
+async fn get_quality_metrics_returns_500_when_session_scan_fails() {
+    let session_dir = tempfile::TempDir::new().expect("session store tempdir");
+    let store_path = session_dir.path().join("sessions");
+    inject_raw_session_row(
+        &store_path,
+        "ses-corrupt-quality",
+        br#"{"session_type":"primary"}"#,
+    )
+    .expect("raw corrupt session row injected");
+    let corrupt_store = SessionStore::open(&store_path).expect("corrupt session store opens");
+
+    let (state, _dir) = test_state().await;
+    {
+        let mut store = state.session_store.lock().await;
+        *store = corrupt_store;
+    }
+    let app = build_router(state, &test_security_config());
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/metrics/quality"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
 #[tokio::test]
