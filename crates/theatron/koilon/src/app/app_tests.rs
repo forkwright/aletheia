@@ -2,8 +2,7 @@
 #[expect(
     clippy::expect_used,
     clippy::indexing_slicing,
-    clippy::unwrap_used,
-    reason = "test assertions use direct indexing for clarity"
+    reason = "test assertions use direct indexing and contextual panics"
 )]
 mod tests {
     use super::super::test_helpers::*;
