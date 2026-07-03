@@ -11,7 +11,11 @@ pub struct LivenessResponse {
     pub status: String,
 }
 
-/// Operator-only health response combining all subsystem checks.
+/// Operator-only diagnostics response combining all subsystem checks.
+///
+/// WHY(#5312): full local paths are intentionally gated behind the bearer-auth
+/// `/api/v1/system/health` route. The unauthenticated `/api/health` and
+/// `/health` endpoints return [`LivenessResponse`] only.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
     /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.
@@ -26,6 +30,8 @@ pub struct HealthResponse {
     /// Individual subsystem check results.
     pub checks: Vec<HealthCheck>,
     /// Absolute path to the instance data directory.
+    ///
+    /// Operator-only: this field is not present on public liveness responses.
     pub data_dir: String,
 }
 

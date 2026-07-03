@@ -15,6 +15,7 @@ use tower_http::trace::TraceLayer;
 use tracing::info_span;
 
 use koina::http::{API_HEALTH, API_V1};
+use taxis::config::MetricsMode;
 
 use crate::error::{ApiError, ErrorBody, ErrorResponse};
 use crate::handlers::{
@@ -210,12 +211,25 @@ pub fn build_router_with(
         .route("/providers", get(providers::list))
         .route("/providers/route", get(providers::route));
 
+    // WHY(#5322): `/metrics` is mounted as a standalone router so we can apply
+    // bearer-auth only when `gateway.metrics.mode = "bearer"`. Other modes rely
+    // on the handler's own enforcement (local_only loopback check, public allow,
+    // disabled 404).
+    let mut metrics_router = Router::new().route("/metrics", get(metrics::expose));
+    if state.metrics_mode == MetricsMode::Bearer {
+        metrics_router = metrics_router.route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state),
+            require_bearer_auth,
+        ));
+    }
+    let metrics_router = metrics_router.with_state(Arc::clone(&state));
+
     let mut router = Router::new()
         .nest(API_V1, v1)
         .route(API_HEALTH, get(health::check))
         .route("/health", get(health::deprecated_health_check))
         .route("/api/docs/openapi.json", get(openapi::openapi_json))
-        .route("/metrics", get(metrics::expose));
+        .merge(metrics_router);
 
     router = router.fallback(fallback_handler);
 

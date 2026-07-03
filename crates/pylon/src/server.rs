@@ -203,9 +203,11 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         start_time: Instant::now(),
         auth_mode: aletheia_config.gateway.auth.mode.clone(),
         none_role: aletheia_config.gateway.auth.none_role.clone(),
-        // WHY(#4995): Read the bind policy before moving aletheia_config
-        // into the Arc<RwLock<...>>.
-        loopback_only_metrics: aletheia_config.gateway.bind == "localhost",
+        // WHY(#5322): Read the metrics policy before moving aletheia_config
+        // into the Arc<RwLock<...>>. Default is local-only; operators must
+        // explicitly opt in to public or bearer exposure on non-loopback binds.
+        metrics_mode: aletheia_config.gateway.metrics.mode,
+        metrics_detailed: aletheia_config.gateway.metrics.detailed,
         config: Arc::new(tokio::sync::RwLock::new(aletheia_config)),
         config_tx,
         idempotency_cache: Arc::new(crate::idempotency::IdempotencyCache::new()),

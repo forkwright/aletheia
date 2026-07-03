@@ -72,8 +72,10 @@ pub(crate) async fn run(
         Some(root) => taxis::oikos::Oikos::from_root(root),
         None => taxis::oikos::Oikos::discover(),
     };
-    let server_data_dir = health.as_ref().ok().and_then(|h| h.data_dir.as_deref());
-    print_storage(&oikos, server_data_dir, use_color);
+    // WHY(#5312): `aletheia status` is a local CLI; storage layout must come
+    // from local `Oikos` discovery, not from the public health payload that no
+    // longer exposes absolute paths.
+    print_storage(&oikos, use_color);
 
     Ok(())
 }
@@ -81,12 +83,15 @@ pub(crate) async fn run(
 #[derive(serde::Deserialize)]
 struct HealthResponse {
     status: String,
-    version: String,
-    uptime_seconds: u64,
-    checks: Vec<HealthCheck>,
-    /// Server's absolute data directory path (used when local discovery fails).
+    /// Crate version when the server exposes it on the queried endpoint.
     #[serde(default)]
-    data_dir: Option<String>,
+    version: String,
+    /// Seconds since server start when the server exposes it.
+    #[serde(default)]
+    uptime_seconds: u64,
+    /// Subsystem checks when available from an operator diagnostics endpoint.
+    #[serde(default)]
+    checks: Vec<HealthCheck>,
 }
 
 #[derive(serde::Deserialize)]
@@ -120,7 +125,13 @@ async fn fetch_nous(url: &str) -> Result<Vec<NousInfo>, StatusError> {
 }
 
 fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {
+    let has_uptime = health.uptime_seconds > 0;
     let uptime = format_uptime(health.uptime_seconds);
+    let version_label = if health.version.is_empty() {
+        String::new()
+    } else {
+        format!(", v{}", health.version)
+    };
     if color {
         let status_colored = match health.status.as_str() {
             "healthy" => "UP".green().to_string(),
@@ -129,12 +140,15 @@ fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {
         };
         // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
-            "  {:<12}{} — {} (uptime: {}, v{})",
+            "  {:<12}{} — {}{}",
             "Gateway:".bold(),
             url,
             status_colored,
-            uptime,
-            health.version
+            if has_uptime {
+                format!(" (uptime: {uptime}{version_label})")
+            } else {
+                String::new()
+            }
         );
     } else {
         let status_label = match health.status.as_str() {
@@ -144,8 +158,15 @@ fn print_gateway_up(url: &str, health: &HealthResponse, color: bool) {
         };
         // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!(
-            "  {:<12}{} — {} (uptime: {}, v{})",
-            "Gateway:", url, status_label, uptime, health.version
+            "  {:<12}{} — {}{}",
+            "Gateway:",
+            url,
+            status_label,
+            if has_uptime {
+                format!(" (uptime: {uptime}{version_label})")
+            } else {
+                String::new()
+            }
         );
     }
 }
@@ -251,7 +272,7 @@ fn print_nous(list: &[NousInfo], color: bool) {
     println!();
 }
 
-fn print_storage(oikos: &taxis::oikos::Oikos, server_data_dir: Option<&str>, color: bool) {
+fn print_storage(oikos: &taxis::oikos::Oikos, color: bool) {
     if color {
         // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("  {}:", "Storage".bold());
@@ -264,17 +285,6 @@ fn print_storage(oikos: &taxis::oikos::Oikos, server_data_dir: Option<&str>, col
     if data_dir.exists() {
         print_path_size("sessions.db", &oikos.sessions_db());
         print_path_size("planning.db", &data_dir.join("planning.db"));
-    } else if let Some(dir_str) = server_data_dir {
-        // WHY: server reports its own data dir path; use it when local oikos
-        // discovery failed (e.g. aletheia status run from a different directory).
-        let server_data = std::path::Path::new(dir_str);
-        if server_data.exists() {
-            print_path_size("sessions.db", &server_data.join("sessions.db"));
-            print_path_size("planning.db", &server_data.join("planning.db"));
-        } else {
-            // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
-            println!("    (data directory: {dir_str})");
-        }
     } else {
         // kanon:ignore RUST/println-in-lib — CLI user-facing output, not log
         println!("    (data directory not found — use -r /path/to/instance)");

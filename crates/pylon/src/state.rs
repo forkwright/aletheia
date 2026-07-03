@@ -28,6 +28,7 @@ use crate::idempotency::IdempotencyCache;
 use crate::turn_buffer::TurnBufferRegistry;
 
 /// Shared state for all Axum handlers, held behind `Arc` in the router.
+#[derive(Clone)]
 pub struct AppState {
     /// Persistent session and message storage.
     pub session_store: Arc<Mutex<SessionStore>>,
@@ -92,9 +93,14 @@ pub struct AppState {
     /// drained by approval handlers keyed by turn and tool id, and removed when
     /// the turn ends.
     pub approval_registry: Arc<ApprovalRegistry>,
-    /// When `true`, the `/metrics` endpoint is restricted to loopback
-    /// connections only (#4995). Derived from `gateway.bind` at startup.
-    pub loopback_only_metrics: bool,
+    /// `/metrics` exposition mode (#5322).
+    ///
+    /// Defaults to [`taxis::config::MetricsMode::LocalOnly`] so a non-loopback
+    /// gateway cannot expose operational metrics without an explicit opt-in.
+    pub metrics_mode: taxis::config::MetricsMode,
+    /// When `false` (default), redact high-cardinality/sensitive labels from
+    /// the `/metrics` scrape output (#5322).
+    pub metrics_detailed: bool,
 }
 
 impl AppState {
@@ -196,6 +202,10 @@ pub struct HealthState {
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
     /// Runtime credential manager for health/capability output (#4872).
     pub credential_runtime: Arc<CredentialRuntimeManager>,
+    /// `/metrics` exposition mode for security posture reporting (#5322).
+    pub metrics_mode: taxis::config::MetricsMode,
+    /// Whether `/metrics` exposes detailed label values (#5322).
+    pub metrics_detailed: bool,
 }
 
 impl FromRef<Arc<AppState>> for HealthState {
@@ -210,6 +220,8 @@ impl FromRef<Arc<AppState>> for HealthState {
             config: Arc::clone(&state.config),
             embedding_provider: state.embedding_provider.clone(),
             credential_runtime: Arc::clone(&state.credential_runtime),
+            metrics_mode: state.metrics_mode,
+            metrics_detailed: state.metrics_detailed,
         }
     }
 }
@@ -223,8 +235,10 @@ pub struct MetricsState {
     pub start_time: std::time::Instant,
     /// Shared Prometheus metrics registry for encoding scrapes.
     pub metrics_registry: MetricsRegistry,
-    /// When true, `/metrics` is restricted to loopback connections only (#4995).
-    pub loopback_only_metrics: bool,
+    /// `/metrics` exposition mode (#5322).
+    pub metrics_mode: taxis::config::MetricsMode,
+    /// When `false`, redact sensitive labels from the scrape output (#5322).
+    pub metrics_detailed: bool,
 }
 
 impl FromRef<Arc<AppState>> for MetricsState {
@@ -233,7 +247,8 @@ impl FromRef<Arc<AppState>> for MetricsState {
             session_store: Arc::clone(&state.session_store),
             start_time: state.start_time,
             metrics_registry: state.metrics_registry.clone(),
-            loopback_only_metrics: state.loopback_only_metrics,
+            metrics_mode: state.metrics_mode,
+            metrics_detailed: state.metrics_detailed,
         }
     }
 }

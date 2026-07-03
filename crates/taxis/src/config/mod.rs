@@ -24,7 +24,7 @@ pub use behavior::{
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
     BodyLimitConfig, CorsConfig, CsrfConfig, GatewayAuthConfig, GatewayConfig,
-    PerUserRateLimitConfig, RateLimitConfig, TlsConfig,
+    MetricsExpositionConfig, MetricsMode, PerUserRateLimitConfig, RateLimitConfig, TlsConfig,
 };
 pub use maintenance::{
     BackupSettings, CircuitBreakerSettings, CredentialConfig, CronTaskEntry, CronTaskSettings,

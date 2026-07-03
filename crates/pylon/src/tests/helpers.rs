@@ -366,7 +366,12 @@ bind = "localhost"
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
         approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
-        loopback_only_metrics: false,
+        // WHY(#5322): Test harnesses invoke handlers without `ConnectInfo`, so
+        // `LocalOnly` would always deny. Use `Public` + `detailed = true` so
+        // existing metrics tests can inspect labels without extra boilerplate;
+        // explicit mode tests override these fields.
+        metrics_mode: taxis::config::MetricsMode::Public,
+        metrics_detailed: true,
     });
 
     (state, dir)
