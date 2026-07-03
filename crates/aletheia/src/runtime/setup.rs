@@ -32,8 +32,9 @@ use mneme::embedding::{DegradedEmbeddingProvider, EmbeddingProvider, create_prov
 use mneme::store::SessionStore;
 use nous::manager::NousManager;
 use symbolon::credential::{
-    CredentialChain, CredentialFile, EnvCredentialProvider, FileCredentialProvider,
-    RefreshingCredentialProvider, claude_code_credential_path_resolution, claude_code_provider,
+    ClaudeCodeCredentialSource, CredentialChain, CredentialFile, EnvCredentialProvider,
+    FileCredentialProvider, RefreshingCredentialProvider, claude_code_credential_path_resolution,
+    claude_code_provider,
 };
 use taxis::config::{AletheiaConfig, EmbeddingSettings};
 use taxis::oikos::Oikos;
@@ -167,6 +168,35 @@ fn provider_plan_needs_credential_chain(config: &AletheiaConfig) -> bool {
             .any(|entry| entry.kind == ProviderKind::Anthropic && entry.api_key_env.is_none())
 }
 
+/// Whether the `auto` credential source may consume a Claude Code path resolution.
+///
+/// INVARIANT(#5252): `PlatformConfigDir` means nothing was configured — implicit
+/// discovery of a co-installed agent's private credential store is opt-in only
+/// (env var, configured path, or `cred_source = "claude-code"`).
+fn auto_may_use_claude_code(source: ClaudeCodeCredentialSource) -> bool {
+    source != ClaudeCodeCredentialSource::PlatformConfigDir
+}
+
+#[cfg(test)]
+mod claude_code_opt_in_tests {
+    use symbolon::credential::ClaudeCodeCredentialSource;
+
+    use super::auto_may_use_claude_code;
+
+    #[test]
+    fn auto_never_uses_platform_config_dir_discovery() {
+        assert!(!auto_may_use_claude_code(
+            ClaudeCodeCredentialSource::PlatformConfigDir
+        ));
+    }
+
+    #[test]
+    fn auto_uses_explicit_env_and_config_sources() {
+        assert!(auto_may_use_claude_code(ClaudeCodeCredentialSource::Env));
+        assert!(auto_may_use_claude_code(ClaudeCodeCredentialSource::Config));
+    }
+}
+
 fn build_anthropic_credential_chain(
     config: &AletheiaConfig,
     oikos: &Oikos,
@@ -221,8 +251,13 @@ fn build_anthropic_credential_chain(
     )));
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
 
+    // WHY(#5252): platform-dir discovery of Claude Code's private credential store is
+    // OPT-IN ONLY (cred_source = "claude-code", env var, or an explicit configured path).
+    // Under "auto", a PlatformConfigDir resolution means nothing was configured — an
+    // unconfigured install must never implicitly read a co-installed agent's secrets.
     if cred_source == "auto"
         && let Some(ref resolution) = claude_code_resolution
+        && auto_may_use_claude_code(resolution.source)
     {
         if let Some(provider) = claude_code_provider(&resolution.path) {
             chain.push(provider);

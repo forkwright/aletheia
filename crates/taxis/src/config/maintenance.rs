@@ -336,6 +336,11 @@ pub(crate) const DEFAULT_REFRESH_THRESHOLD_SECS: u64 = 3_600;
 /// - `"auto"` (default): instance credential file → keyring → env vars
 /// - `"api-key"`: only instance credential file and env vars
 /// - `"claude-code"`: prefer an explicit Claude Code credentials path
+///
+/// Claude Code's credential store (including its platform config-dir default
+/// location) is opt-in only: select `"claude-code"`, set `CLAUDE_CODE_CREDS`,
+/// or configure `claudeCodeCredentials` explicitly. `"auto"` never reads it
+/// implicitly.
 // kanon:ignore RUST/no-debug-derive-on-public-types — CredentialConfig holds only env-var names and strategy strings, not actual secrets; derived Debug leaks no credentials
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
