@@ -19,7 +19,7 @@ use energeia::types::DispatchSpec;
 use taxis::config::{CronTaskConfig, DispatchSpecConfig};
 use taxis::oikos::Oikos;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 const LOCK_DB_DIR: &str = "cron-locks.fjall";
 const LOCK_PARTITION: &str = "cron_locks";
@@ -46,6 +46,10 @@ pub(super) fn open_lock_store(oikos: &Oikos) -> Result<Arc<CronLockStore>> {
 ///
 /// Returns `Ok(())` and logs at info level when no enabled tasks are present
 /// — the daemon should remain healthy without any cron configuration.
+///
+/// Returns `Err` on the first enabled task that fails to parse so that
+/// invalid cron config fails startup rather than silently disabling scheduled
+/// work.
 pub(super) fn start(
     tasks: &[CronTaskConfig],
     orchestrator: Arc<Orchestrator>,
@@ -53,34 +57,34 @@ pub(super) fn start(
     lock_store: Arc<CronLockStore>,
     task_tracker: &TaskTracker,
     shutdown_token: &CancellationToken,
-) {
+) -> Result<()> {
     let enabled: Vec<&CronTaskConfig> = tasks.iter().filter(|t| t.enabled).collect();
     if enabled.is_empty() {
         info!(
             configured = tasks.len(),
             "dispatch cron executor: no enabled tasks; skipping scheduler startup"
         );
-        return;
+        return Ok(());
     }
 
     let mut cron_tasks: Vec<CronTask> = Vec::with_capacity(enabled.len());
+    let mut errors: Vec<String> = Vec::new();
     for cfg in &enabled {
         match build_cron_task(cfg) {
             Ok(task) => cron_tasks.push(task),
-            Err(e) => warn!(
-                task = %cfg.name,
-                schedule = %cfg.schedule,
-                error = %e,
-                "dispatch cron executor: invalid task — skipping"
-            ),
+            Err(e) => errors.push(format!(
+                "task '{}' schedule '{}': {e}",
+                cfg.name, cfg.schedule
+            )),
         }
     }
-    if cron_tasks.is_empty() {
-        warn!(
-            configured = tasks.len(),
-            "dispatch cron executor: all enabled tasks failed to parse — scheduler not started"
-        );
-        return;
+
+    if !errors.is_empty() {
+        return Err(Error::msg(format!(
+            "dispatch cron executor: {} enabled task(s) failed to parse: {}",
+            errors.len(),
+            errors.join("; ")
+        )));
     }
 
     let theke = oikos.theke();
@@ -111,6 +115,8 @@ pub(super) fn start(
         }
         .instrument(tracing::info_span!("cron_executor")),
     );
+
+    Ok(())
 }
 
 fn build_cron_task(cfg: &CronTaskConfig) -> energeia::error::Result<CronTask> {
@@ -337,5 +343,142 @@ mod tests {
         // WHY: no panic or error propagation when the queue dir is absent;
         // the executor must stay resilient to partially-configured projects.
         fire_task(task, orchestrator, theke.path().to_path_buf()).await;
+    }
+
+    fn test_oikos() -> (TempDir, Oikos) {
+        let dir = TempDir::new().expect("tempdir");
+        let oikos = Oikos::from_root(dir.path());
+        (dir, oikos)
+    }
+
+    fn test_orchestrator() -> Arc<Orchestrator> {
+        let engine = Arc::new(MockEngine::new(vec![]));
+        let qa: Arc<dyn QaGate> = Arc::new(StubQaGate);
+        Arc::new(Orchestrator::new(engine, qa, OrchestratorConfig::new()))
+    }
+
+    fn task_config(name: &str, schedule: &str, enabled: bool) -> CronTaskConfig {
+        CronTaskConfig {
+            name: name.to_owned(),
+            schedule: schedule.to_owned(),
+            jitter_secs: 0,
+            enabled,
+            dispatch_spec: DispatchSpecConfig {
+                project: "test-project".to_owned(),
+                prompt_numbers: vec![],
+                dag_ref: None,
+                max_parallel: None,
+                max_turns: None,
+                budget_usd: None,
+            },
+        }
+    }
+
+    /// No enabled tasks means the daemon stays healthy without cron config.
+    #[test]
+    fn start_returns_ok_when_no_enabled_tasks() {
+        let (_dir, oikos) = test_oikos();
+        let result = start(
+            &[],
+            test_orchestrator(),
+            &oikos,
+            open_lock_store(&oikos).expect("lock store"),
+            &TaskTracker::new(),
+            &CancellationToken::new(),
+        );
+        assert!(result.is_ok(), "no enabled tasks should not fail startup");
+    }
+
+    /// Disabled tasks are intentionally ignored, even if malformed.
+    #[test]
+    fn start_returns_ok_for_disabled_invalid_task() {
+        let (_dir, oikos) = test_oikos();
+        let tasks = vec![task_config("bad", "not-a-cron", false)];
+        let result = start(
+            &tasks,
+            test_orchestrator(),
+            &oikos,
+            open_lock_store(&oikos).expect("lock store"),
+            &TaskTracker::new(),
+            &CancellationToken::new(),
+        );
+        assert!(result.is_ok(), "disabled invalid task should be ignored");
+    }
+
+    /// An enabled task with an invalid schedule must fail startup with the task
+    /// name and schedule in the error so the operator can locate the typo.
+    #[test]
+    fn start_fails_for_invalid_enabled_task() {
+        let (_dir, oikos) = test_oikos();
+        let tasks = vec![task_config("bad", "not-a-cron", true)];
+        let result = start(
+            &tasks,
+            test_orchestrator(),
+            &oikos,
+            open_lock_store(&oikos).expect("lock store"),
+            &TaskTracker::new(),
+            &CancellationToken::new(),
+        );
+        let err = result.expect_err("invalid enabled task should fail startup");
+        let msg = err.to_string();
+        assert!(msg.contains("bad"), "error should name the invalid task");
+        assert!(
+            msg.contains("not-a-cron"),
+            "error should quote the invalid schedule"
+        );
+    }
+
+    /// When every enabled task is invalid the error must list each one so the
+    /// operator sees the full scope of the config problem.
+    #[test]
+    fn start_fails_when_all_enabled_tasks_invalid() {
+        let (_dir, oikos) = test_oikos();
+        let tasks = vec![
+            task_config("bad-one", "not-a-cron", true),
+            task_config("bad-two", "also-not", true),
+        ];
+        let result = start(
+            &tasks,
+            test_orchestrator(),
+            &oikos,
+            open_lock_store(&oikos).expect("lock store"),
+            &TaskTracker::new(),
+            &CancellationToken::new(),
+        );
+        let err = result.expect_err("all invalid enabled tasks should fail startup");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("bad-one"),
+            "error should name first invalid task"
+        );
+        assert!(
+            msg.contains("bad-two"),
+            "error should name second invalid task"
+        );
+    }
+
+    /// A valid enabled task passes validation and spawns the scheduler loop.
+    /// We do not wait for the far-future schedule to fire.
+    #[tokio::test]
+    async fn start_starts_scheduler_for_valid_enabled_task() {
+        let (_dir, oikos) = test_oikos();
+        let tasks = vec![task_config("good", "0 0 0 1 1 *", true)];
+        let tracker = TaskTracker::new();
+        let shutdown = CancellationToken::new();
+        let result = start(
+            &tasks,
+            test_orchestrator(),
+            &oikos,
+            open_lock_store(&oikos).expect("lock store"),
+            &tracker,
+            &shutdown,
+        );
+        assert!(result.is_ok(), "valid enabled task should start scheduler");
+        assert_eq!(
+            tracker.len(),
+            1,
+            "scheduler task should be tracked after startup"
+        );
+        shutdown.cancel();
     }
 }
