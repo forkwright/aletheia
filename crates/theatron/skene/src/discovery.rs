@@ -35,6 +35,8 @@ use std::time::Duration;
 use serde::Deserialize;
 use tracing::instrument;
 
+use crate::api::health::fetch_health_response;
+
 /// Environment variable for one or more comma-separated base URL candidates.
 const ENV_SERVER_URL: &str = "ALETHEIA_SERVER_URL";
 
@@ -407,8 +409,8 @@ fn normalize_base_url(url: &str) -> String {
 
 /// Probe a single candidate URL by hitting its health endpoint.
 ///
-/// Returns `Some(base_url)` if the server responds with a 2xx status within
-/// [`PROBE_TIMEOUT`], `None` otherwise.
+/// Returns `Some(base_url)` if the server returns a parseable health body within
+/// [`PROBE_TIMEOUT`], including `503` unhealthy reports.
 async fn probe(client: &reqwest::Client, candidate: &Candidate) -> Option<String> {
     let health_url = format!("{}/api/health", candidate.base_url);
     tracing::debug!(
@@ -417,27 +419,20 @@ async fn probe(client: &reqwest::Client, candidate: &Candidate) -> Option<String
         "probing candidate"
     );
 
-    match client.get(&health_url).send().await {
-        Ok(resp) if resp.status().is_success() => {
+    match fetch_health_response(client.get(&health_url).send().await).await {
+        Ok(health) => {
             tracing::info!(
                 url = %candidate.base_url,
                 source = %candidate.source,
+                status = %health.status,
                 "discovered server"
             );
             Some(candidate.base_url.clone())
         }
-        Ok(resp) => {
+        Err(err) => {
             tracing::debug!(
                 url = %health_url,
-                status = %resp.status(),
-                "probe returned non-success"
-            );
-            None
-        }
-        Err(e) => {
-            tracing::debug!(
-                url = %health_url,
-                error = %e,
+                error = %err,
                 "probe failed"
             );
             None
@@ -508,10 +503,49 @@ mod tests {
     use std::io::Write as _;
 
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     fn write_text(path: &Path, contents: &str) {
         let mut file = std::fs::File::create(path).unwrap();
         file.write_all(contents.as_bytes()).unwrap();
+    }
+
+    fn health_json_body(status: &str) -> String {
+        serde_json::json!({
+            "status": status,
+            "version": "0.13.1",
+            "git_sha": "abc123",
+            "uptime_seconds": 300,
+            "checks": [
+                {"name": "providers", "status": "fail", "message": "provider offline"}
+            ],
+            "data_dir": "/tmp/data"
+        })
+        .to_string()
+    }
+
+    async fn spawn_probe_server(status: u16, body: String) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0_u8; 1024];
+            let _ = socket.read(&mut buf).await;
+            let reason = if status == 503 {
+                "Service Unavailable"
+            } else {
+                "OK"
+            };
+            let response = format!(
+                "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        });
+        format!("http://{addr}")
     }
 
     #[test]
@@ -600,6 +634,14 @@ mod tests {
                 candidate.base_url
             );
         }
+    }
+
+    #[tokio::test]
+    async fn discovery_accepts_503_health_body() {
+        let url = spawn_probe_server(503, health_json_body("unhealthy")).await;
+        let config = DiscoveryConfig::default().with_base_urls([url.clone()]);
+        let discovered = discover_server_with_config(&config).await;
+        assert_eq!(discovered.as_deref(), Some(url.as_str()));
     }
 
     #[test]

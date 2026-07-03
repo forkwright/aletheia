@@ -11,6 +11,7 @@ use super::error::{
     ApiError, HttpSnafu, RateLimitedSnafu, Result, ServerSnafu, format_http_error_body,
     parse_pylon_error_body, parse_retry_after_secs,
 };
+use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
     Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
     NousTool, NousToolsResponse, PaginatedSessionsResponse, Session, SessionsResponse,
@@ -180,19 +181,42 @@ impl ApiClient {
                 operation: "health details",
             })?;
 
-        // WHY: the health endpoint returns a JSON body for both OK and 503
-        // responses. Accept both so callers can distinguish server reachability
-        // from an unhealthy backend.
-        if resp.status().is_success() || resp.status() == StatusCode::SERVICE_UNAVAILABLE {
-            resp.json().await.context(HttpSnafu {
+        let status = resp.status();
+        if status.is_success() || status == StatusCode::SERVICE_UNAVAILABLE {
+            let body = resp.text().await.context(HttpSnafu {
                 operation: "health details response",
-            })
-        } else {
-            let resp = Self::check_status(resp, "health details request").await?;
-            resp.json().await.context(HttpSnafu {
-                operation: "health details response",
-            })
+            })?;
+            return parse_health_body(status, &body).map_err(|err| match err {
+                HealthFetchError::Malformed(message) => {
+                    match serde_json::from_str::<HealthResponse>(&body) {
+                        Err(source) => ApiError::BadResponse {
+                            operation: "health details response",
+                            source,
+                        },
+                        Ok(_unexpected) => ApiError::Server {
+                            operation: "health details response",
+                            status: status.as_u16(),
+                            message,
+                        },
+                    }
+                }
+                HealthFetchError::Connection(message) => ApiError::Server {
+                    operation: "health details response",
+                    status: status.as_u16(),
+                    message,
+                },
+                HealthFetchError::Status(status) => ApiError::Server {
+                    operation: "health details request",
+                    status: status.as_u16(),
+                    message: status.to_string(),
+                },
+            });
         }
+
+        let resp = Self::check_status(resp, "health details request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "health details response",
+        })
     }
 
     /// Fetch all registered agents.
