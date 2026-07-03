@@ -44,6 +44,7 @@ pub struct StateBuilder {
     instance_root: tempfile::TempDir,
     repomix_enabled: bool,
     knowledge_graph_enabled: bool,
+    missing_auth_facade: bool,
     knowledge_store: Option<std::sync::Arc<mneme::knowledge_store::KnowledgeStore>>,
     note_store: Option<std::sync::Arc<dyn organon::types::NoteStore>>,
     blackboard_store: Option<std::sync::Arc<dyn organon::types::BlackboardStore>>,
@@ -59,6 +60,7 @@ impl StateBuilder {
             instance_root,
             repomix_enabled: false,
             knowledge_graph_enabled: false,
+            missing_auth_facade: false,
             knowledge_store: None,
             note_store: None,
             blackboard_store: None,
@@ -82,6 +84,11 @@ impl StateBuilder {
 
     pub fn knowledge_graph_enabled(mut self) -> Self {
         self.knowledge_graph_enabled = true;
+        self
+    }
+
+    pub fn missing_auth_facade(mut self) -> Self {
+        self.missing_auth_facade = true;
         self
     }
 
@@ -142,7 +149,7 @@ impl StateBuilder {
             AuthFacade::in_memory(AuthConfig { jwt: jwt_config }).expect("in-memory auth facade"),
         );
 
-        let auth_for_state = if self.auth_mode == "none" {
+        let auth_for_state = if self.auth_mode == "none" || self.missing_auth_facade {
             None
         } else {
             Some(auth_facade)

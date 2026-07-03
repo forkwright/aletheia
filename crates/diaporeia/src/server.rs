@@ -16,19 +16,11 @@ use rmcp::tool_handler;
 use symbolon::types::Role;
 use taxis::config::McpRateLimitConfig;
 
+use crate::auth::{McpCaller, resolve_caller};
 use crate::error::UnauthorizedSnafu;
 use crate::rate_limit::{RateLimiter, Tier};
 use crate::resources;
 use crate::state::DiaporeiaState;
-
-/// Verified caller identity used for MCP resource authorization.
-#[derive(Debug, Clone)]
-struct ResourceCaller {
-    /// Authorization role governing MCP resource access.
-    role: Role,
-    /// Optional nous scope: when set, restricts access to a single agent.
-    nous_id: Option<String>,
-}
 
 /// The MCP server for Aletheia.
 ///
@@ -64,15 +56,15 @@ impl DiaporeiaServer {
 
     /// Check that the caller has at least `minimum` role for a resource operation.
     ///
-    /// Extracts the role from auth state: uses the configured `none_role` in
-    /// auth-disabled mode, otherwise validates through the shared auth facade.
+    /// Resolves the caller from auth state: uses the configured `none_role` in
+    /// auth-disabled mode, otherwise validates through the shared MCP resolver.
     fn require_resource_role(
         &self,
         context: &rmcp::service::RequestContext<rmcp::RoleServer>,
         minimum: Role,
         operation: &str,
-    ) -> Result<ResourceCaller, rmcp::ErrorData> {
-        let caller = self.resolve_resource_caller(context);
+    ) -> Result<McpCaller, rmcp::ErrorData> {
+        let caller = resolve_caller(&self.state, context);
         match caller {
             Some(caller) if caller.role >= minimum => Ok(caller),
             Some(caller) => {
@@ -99,52 +91,9 @@ impl DiaporeiaServer {
         }
     }
 
-    /// Resolve the caller's verified claims from the request context.
-    ///
-    /// Logic mirrors tool caller extraction but lives on the server struct
-    /// so resource handlers can enforce role and nous-scope policy without
-    /// depending on the tools module.
-    /// Malformed anonymous-role config falls back to `Readonly`.
-    fn resolve_resource_caller(
-        &self,
-        context: &rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Option<ResourceCaller> {
-        if self.state.auth_mode == "none" {
-            let role = self
-                .state
-                .none_role
-                .parse::<Role>()
-                .ok()
-                .unwrap_or(Role::Readonly);
-            return Some(ResourceCaller {
-                role,
-                nous_id: None,
-            });
-        }
-
-        let parts = context.extensions.get::<http::request::Parts>()?;
-        let header = parts
-            .headers
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())?;
-        let token = header.strip_prefix(koina::http::BEARER_PREFIX)?;
-
-        if let Some(ref auth_facade) = self.state.auth_facade {
-            return auth_facade
-                .validate_token(token)
-                .ok()
-                .map(|claims| ResourceCaller {
-                    role: claims.role,
-                    nous_id: claims.nous_id,
-                });
-        }
-
-        None
-    }
-
     /// Reject scoped resource access to a different target agent.
     fn require_resource_nous_access(
-        caller: &ResourceCaller,
+        caller: &McpCaller,
         target_nous_id: &str,
         operation: &str,
     ) -> Result<(), rmcp::ErrorData> {
