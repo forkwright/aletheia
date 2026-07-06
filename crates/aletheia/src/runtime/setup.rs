@@ -1849,7 +1849,7 @@ mod tests {
         reason = "test fixture writes a fake Claude Code credential file under a temp config dir"
     )]
     #[test]
-    fn auto_source_resolves_platform_config_dir_default() {
+    fn auto_source_ignores_platform_config_dir_credentials() {
         let config_dir = tempfile::tempdir().expect("create fake config dir");
         let claude_dir = config_dir.path().join(".claude");
         std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
@@ -1876,11 +1876,22 @@ mod tests {
         let oikos_dir = tempfile::tempdir().expect("create temp oikos");
         let oikos = Oikos::from_root(oikos_dir.path());
 
+        // WHY(#5252): under "auto" with nothing configured, a co-installed
+        // Claude Code agent's private store must NOT be discovered. The chain
+        // may still resolve other sources; it must never yield this token.
         let chain = build_anthropic_credential_chain(&config, &oikos, "auto");
-        let credential = chain
-            .get_credential()
-            .expect("platform config dir default should resolve");
+        if let Some(credential) = chain.get_credential() {
+            assert_ne!(
+                credential.secret.expose_secret(),
+                "sk-ant-api-from-cc",
+                "auto must not read the platform config-dir Claude Code store"
+            );
+        }
 
+        let explicit = build_anthropic_credential_chain(&config, &oikos, "claude-code");
+        let credential = explicit
+            .get_credential()
+            .expect("explicit claude-code source resolves the platform default");
         assert_eq!(credential.secret.expose_secret(), "sk-ant-api-from-cc");
         assert_eq!(credential.source, CredentialSource::File);
     }
@@ -1890,7 +1901,7 @@ mod tests {
         reason = "test fixture writes a fake Claude Code credential file under a temp config dir"
     )]
     #[test]
-    fn auto_source_resolves_when_home_is_missing() {
+    fn claude_code_source_resolves_when_home_is_missing() {
         let config_dir = tempfile::tempdir().expect("create fake config dir");
         let claude_dir = config_dir.path().join(".claude");
         std::fs::create_dir_all(&claude_dir).expect("create fake claude dir");
@@ -1917,7 +1928,18 @@ mod tests {
         let oikos_dir = tempfile::tempdir().expect("create temp oikos");
         let oikos = Oikos::from_root(oikos_dir.path());
 
-        let chain = build_anthropic_credential_chain(&config, &oikos, "auto");
+        // WHY(#5252): missing-HOME portability is exercised through the
+        // explicit opt-in source; "auto" must not discover this store at all.
+        let auto_chain = build_anthropic_credential_chain(&config, &oikos, "auto");
+        if let Some(credential) = auto_chain.get_credential() {
+            assert_ne!(
+                credential.secret.expose_secret(),
+                "sk-ant-api-no-home",
+                "auto must not read the platform config-dir Claude Code store"
+            );
+        }
+
+        let chain = build_anthropic_credential_chain(&config, &oikos, "claude-code");
         let credential = chain
             .get_credential()
             .expect("credential discovery must work when HOME is missing");
