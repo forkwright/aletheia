@@ -67,10 +67,10 @@ default-features = false
 features = ["arc_lock"]
 
 # Storage backends
-# WHY: krites has a manual Sync boundary around fjall 3.1.4 transaction wrappers.
+# WHY: krites has a manual Sync boundary around fjall 3.1.6 transaction wrappers.
 # Re-check storage/fjall_backend.rs before changing this version.
 [dependencies.fjall]
-version = "=3.1.4"
+version = "=3.1.6"
 default-features = false
 features = ["lz4"]
 optional = true
