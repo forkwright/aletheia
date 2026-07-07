@@ -1,12 +1,21 @@
 //! Channel registry: the single source of truth for available channels.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
+use futures::stream::StreamExt;
 use indexmap::IndexMap;
 use snafu::ensure;
 
 use crate::error::{self, Result};
 use crate::types::{ChannelProvider, ProbeResult, SendParams, SendResult};
+
+/// Default wall-clock timeout applied to each provider probe.
+const DEFAULT_PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Default maximum number of provider probes that may run concurrently.
+const DEFAULT_MAX_CONCURRENT_PROBES: usize = 8;
 
 /// Registry of available channel providers.
 ///
@@ -14,6 +23,10 @@ use crate::types::{ChannelProvider, ProbeResult, SendParams, SendResult};
 /// Uses `IndexMap` to preserve insertion order.
 pub struct ChannelRegistry {
     providers: IndexMap<String, Arc<dyn ChannelProvider>>,
+    /// Wall-clock timeout applied to each individual provider probe.
+    probe_timeout: Duration,
+    /// Maximum number of provider probes that may run concurrently.
+    max_concurrent_probes: usize,
 }
 
 impl Default for ChannelRegistry {
@@ -28,6 +41,8 @@ impl ChannelRegistry {
     pub fn new() -> Self {
         Self {
             providers: IndexMap::new(),
+            probe_timeout: DEFAULT_PROBE_TIMEOUT,
+            max_concurrent_probes: DEFAULT_MAX_CONCURRENT_PROBES,
         }
     }
 
@@ -65,18 +80,80 @@ impl ChannelRegistry {
         Ok(result)
     }
 
+    /// Set the wall-clock timeout applied to each provider probe.
+    ///
+    /// Values below one millisecond are clamped to one millisecond so that
+    /// probes still have a chance to complete on fast providers.
+    #[must_use]
+    pub fn with_probe_timeout(mut self, timeout: Duration) -> Self {
+        self.probe_timeout = timeout.max(Duration::from_millis(1));
+        self
+    }
+
+    /// Set the maximum number of provider probes that may run concurrently.
+    ///
+    /// Values below one are clamped to one so that progress is always made.
+    #[must_use]
+    pub fn with_max_concurrent_probes(mut self, max: usize) -> Self {
+        self.max_concurrent_probes = max.max(1);
+        self
+    }
+
     /// Probe all registered channels for health status.
     ///
     /// # Complexity
     ///
     /// O(c) where c is the number of registered channels. Each probe is
-    /// executed concurrently, so wall-clock time is O(1) (bounded by the
-    /// slowest probe), but total work scales linearly with channels.
+    /// executed concurrently (bounded by [`Self::with_max_concurrent_probes`]),
+    /// so wall-clock time is O(1) (bounded by the configured per-provider
+    /// timeout), but total work scales linearly with channels.
     pub async fn probe_all(&self) -> IndexMap<String, ProbeResult> {
         let mut results = IndexMap::with_capacity(self.providers.len());
-        for (id, provider) in &self.providers {
-            let result = provider.probe().await;
-            results.insert(id.clone(), result);
+        if self.providers.is_empty() {
+            return results;
+        }
+
+        let timeout = self.probe_timeout;
+        // WHY: collect OWNED (id, Arc) before the async map so each probe future captures owned values,
+        // not a borrow of `self.providers`. A borrowing map closure returning a future fails the HRTB
+        // "for any two lifetimes" bound when monomorphized in a downstream bin (agora->aletheia, #5203).
+        let owned: Vec<(String, Arc<dyn ChannelProvider>)> = self
+            .providers
+            .iter()
+            .map(|(id, provider)| (id.clone(), Arc::clone(provider)))
+            .collect();
+        // WHY: build futures with a plain loop, not `.map(|..| async {..})`. A map closure that returns a
+        // future must satisfy an HRTB `FnOnce for any two lifetimes` bound that the borrowing `probe()`
+        // future cannot meet when the aletheia bin monomorphizes it; a loop pushes concrete future values
+        // with no such closure requirement (#5203).
+        let mut probe_futures = Vec::with_capacity(owned.len());
+        for (id, provider) in owned {
+            probe_futures.push(async move {
+                let result = match tokio::time::timeout(timeout, provider.probe()).await {
+                    Ok(result) => result,
+                    Err(_) => ProbeResult {
+                        ok: false,
+                        latency_ms: None,
+                        error: Some("probe timed out".to_owned()),
+                        details: None,
+                    },
+                };
+                (id, result)
+            });
+        }
+
+        // WHY: bounded concurrency prevents a large fleet from spawning an
+        // unbounded number of concurrent probe tasks.
+        let mut by_id: HashMap<String, ProbeResult> = futures::stream::iter(probe_futures)
+            .buffer_unordered(self.max_concurrent_probes)
+            .collect()
+            .await;
+
+        // WHY: restore provider insertion order after concurrent collection.
+        for id in self.providers.keys() {
+            if let Some(result) = by_id.remove(id) {
+                results.insert(id.clone(), result);
+            }
         }
         results
     }
@@ -111,6 +188,7 @@ mod tests {
         channel_name: String,
         send_result: SendResult,
         probe_result: ProbeResult,
+        probe_delay: Option<Duration>,
     }
 
     impl MockProvider {
@@ -125,6 +203,7 @@ mod tests {
                     error: None,
                     details: None,
                 },
+                probe_delay: None,
             }
         }
 
@@ -135,6 +214,11 @@ mod tests {
 
         fn with_probe_result(mut self, result: ProbeResult) -> Self {
             self.probe_result = result;
+            self
+        }
+
+        fn with_probe_delay(mut self, delay: Duration) -> Self {
+            self.probe_delay = Some(delay);
             self
         }
     }
@@ -160,7 +244,14 @@ mod tests {
         }
 
         fn probe<'a>(&'a self) -> Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>> {
-            Box::pin(async { self.probe_result.clone() })
+            let result = self.probe_result.clone();
+            let delay = self.probe_delay;
+            Box::pin(async move {
+                if let Some(delay) = delay {
+                    tokio::time::sleep(delay).await;
+                }
+                result
+            })
         }
 
         fn listen(
@@ -262,5 +353,78 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert!(results["signal"].ok);
         assert!(!results["slack"].ok);
+    }
+
+    #[tokio::test]
+    async fn probe_all_preserves_insertion_order() {
+        let mut reg = ChannelRegistry::new();
+        reg.register(Arc::new(MockProvider::new("gamma")))
+            .expect("register gamma");
+        reg.register(Arc::new(MockProvider::new("alpha")))
+            .expect("register alpha");
+        reg.register(Arc::new(MockProvider::new("beta")))
+            .expect("register beta");
+
+        let results = reg.probe_all().await;
+        let ids: Vec<&str> = results.keys().map(String::as_str).collect();
+        assert_eq!(ids, vec!["gamma", "alpha", "beta"]);
+    }
+
+    #[tokio::test]
+    async fn probe_all_slow_provider_does_not_block_fast_provider() {
+        // WHY: a slow provider must not delay health results for fast providers.
+        let mut reg = ChannelRegistry::new()
+            .with_probe_timeout(Duration::from_millis(200))
+            .with_max_concurrent_probes(2);
+
+        reg.register(Arc::new(
+            MockProvider::new("slow").with_probe_delay(Duration::from_secs(10)),
+        ))
+        .expect("register slow");
+        reg.register(Arc::new(MockProvider::new("fast")))
+            .expect("register fast");
+
+        let start = std::time::Instant::now();
+        let results = reg.probe_all().await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(results.len(), 2);
+        assert!(!results["slow"].ok);
+        assert_eq!(results["slow"].error.as_deref(), Some("probe timed out"));
+        assert!(results["fast"].ok);
+
+        // WHY: sequential execution would have taken at least 10s; concurrent
+        // execution with the 200ms timeout should finish well under a second.
+        assert!(
+            elapsed < Duration::from_millis(800),
+            "fast provider blocked by slow provider: {elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_all_bounds_concurrency() {
+        // WHY: with concurrency of 1, two slow providers run back-to-back,
+        // so total elapsed time is roughly the sum of both timeouts.
+        let mut reg = ChannelRegistry::new()
+            .with_probe_timeout(Duration::from_millis(100))
+            .with_max_concurrent_probes(1);
+
+        reg.register(Arc::new(
+            MockProvider::new("first").with_probe_delay(Duration::from_secs(10)),
+        ))
+        .expect("register first");
+        reg.register(Arc::new(
+            MockProvider::new("second").with_probe_delay(Duration::from_secs(10)),
+        ))
+        .expect("register second");
+
+        let start = std::time::Instant::now();
+        let results = reg.probe_all().await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(results.len(), 2);
+        assert!(!results["first"].ok);
+        assert!(!results["second"].ok);
+        assert!(elapsed >= Duration::from_millis(150));
     }
 }
