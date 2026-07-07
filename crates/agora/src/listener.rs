@@ -338,6 +338,7 @@ mod tests {
                 channel,
                 messages: vec![InboundMessage {
                     channel: channel.to_owned(),
+                    provider_message_id: None,
                     sender: format!("{channel}-sender"),
                     sender_name: None,
                     group_id: None,
@@ -424,6 +425,7 @@ mod tests {
 
         let msg = InboundMessage {
             channel: "signal".to_owned(),
+            provider_message_id: None,
             sender: "+1234567890".to_owned(),
             sender_name: None,
             group_id: None,
@@ -478,6 +480,7 @@ mod tests {
         for i in 0_u64..3 {
             tx.send(InboundMessage {
                 channel: "signal".to_owned(),
+                provider_message_id: None,
                 sender: format!("+{i}"),
                 sender_name: None,
                 group_id: None,
@@ -712,6 +715,7 @@ mod tests {
 
         tx.send(InboundMessage {
             channel: "signal".to_owned(),
+            provider_message_id: None,
             sender: "+1".to_owned(),
             sender_name: None,
             group_id: None,

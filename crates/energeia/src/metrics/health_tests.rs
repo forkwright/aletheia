@@ -11,9 +11,12 @@ fn health_status_display() {
 #[cfg(feature = "storage-fjall")]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
 mod storage_tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::store::records::{
-        DispatchId, DispatchRecord, DispatchStatus, QaVerdictRecord, SessionId, SessionRecord,
+        CiValidationRecord, CiValidationStatus, DispatchId, DispatchRecord, DispatchStatus,
+        QaVerdictRecord, SessionId, SessionRecord,
     };
     use crate::types::{QaVerdict, SessionStatus};
 
@@ -53,6 +56,20 @@ mod storage_tests {
             project: "acme".to_owned(),
             verdict,
             recorded_at: jiff::Timestamp::now(),
+        }
+    }
+
+    fn make_ci_validation(
+        session_id: &SessionId,
+        status: CiValidationStatus,
+    ) -> CiValidationRecord {
+        CiValidationRecord {
+            session_id: session_id.clone(),
+            check_name: "build".to_owned(),
+            pr_number: 1,
+            status,
+            details: None,
+            validated_at: jiff::Timestamp::now(),
         }
     }
 
@@ -211,6 +228,48 @@ mod storage_tests {
     fn stuck_rate_no_sessions_unavailable() {
         let metric = stuck_rate(&[]);
         assert_eq!(metric.status, HealthStatus::Unavailable);
+    }
+
+    // ── QA false positive rate ──
+
+    #[test]
+    fn qa_false_positive_rate_counts_failed_ci_for_pr_sessions() {
+        let mut s1 = make_session("D1", SessionStatus::Success);
+        s1.pr_url = Some("https://acme.corp/pulls/1".to_owned());
+        let mut s2 = make_session("D1", SessionStatus::Success);
+        s2.pr_url = Some("https://acme.corp/pulls/2".to_owned());
+        let failed = make_ci_validation(&s1.id, CiValidationStatus::Fail);
+        let passed = make_ci_validation(&s2.id, CiValidationStatus::Pass);
+
+        let mut ci_by_session = HashMap::new();
+        ci_by_session.insert(s1.id.as_str().to_owned(), vec![&failed]);
+        ci_by_session.insert(s2.id.as_str().to_owned(), vec![&passed]);
+
+        let metric = qa_false_positive_rate(&[&s1, &s2], &ci_by_session);
+        assert_eq!(metric.status, HealthStatus::Crit);
+        assert_eq!(metric.value, 0.5);
+        assert_eq!(metric.sample_size, 2);
+        assert!(metric.is_proxied);
+    }
+
+    // ── Fix agent success rate ──
+
+    #[test]
+    fn fix_agent_success_rate_counts_successful_ci_validated_sessions() {
+        let s1 = make_session("D1", SessionStatus::Success);
+        let s2 = make_session("D1", SessionStatus::Failed);
+        let ci1 = make_ci_validation(&s1.id, CiValidationStatus::Pass);
+        let ci2 = make_ci_validation(&s2.id, CiValidationStatus::Fail);
+
+        let mut ci_by_session = HashMap::new();
+        ci_by_session.insert(s1.id.as_str().to_owned(), vec![&ci1]);
+        ci_by_session.insert(s2.id.as_str().to_owned(), vec![&ci2]);
+
+        let metric = fix_agent_success_rate(&[&s1, &s2], &ci_by_session);
+        assert_eq!(metric.status, HealthStatus::Crit);
+        assert_eq!(metric.value, 0.5);
+        assert_eq!(metric.sample_size, 2);
+        assert!(metric.is_proxied);
     }
 
     // ── cycle time ──

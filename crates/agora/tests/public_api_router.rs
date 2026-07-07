@@ -35,6 +35,7 @@ fn make_binding(channel: &str, source: &str, nous_id: &str) -> ChannelBinding {
 fn make_dm_message(sender: &str) -> InboundMessage {
     InboundMessage {
         channel: "signal".to_owned(),
+        provider_message_id: None,
         sender: sender.to_owned(),
         sender_name: None,
         group_id: None,
@@ -48,6 +49,7 @@ fn make_dm_message(sender: &str) -> InboundMessage {
 fn make_group_message(sender: &str, group_id: &str) -> InboundMessage {
     InboundMessage {
         channel: "signal".to_owned(),
+        provider_message_id: None,
         sender: sender.to_owned(),
         sender_name: None,
         group_id: Some(group_id.to_owned()),

@@ -181,7 +181,7 @@ impl ToolRegistry {
     {
         self.tools
             .values()
-            .filter(move |tool| policy.permits(&tool.def.groups))
+            .filter(move |tool| Self::policy_permits_tool_definition(policy, tool))
     }
 
     fn active_tools_for_policy<'s, 'p>(
@@ -216,6 +216,40 @@ impl ToolRegistry {
                 tool.def.reversibility,
             )),
         }
+    }
+
+    fn policy_permits_tool_definition(policy: &ToolGroupPolicy, tool: &RegisteredTool) -> bool {
+        if tool.call_capability.is_none() {
+            return policy.permits(&tool.def.groups);
+        }
+
+        match policy {
+            ToolGroupPolicy::AllowAll { .. } => true,
+            ToolGroupPolicy::Groups(allowed) => {
+                !tool.def.groups.is_empty()
+                    && tool.def.groups.iter().all(|group| allowed.contains(group))
+            }
+            ToolGroupPolicy::DenyAll => false,
+        }
+    }
+
+    fn definition_reversibility_for_tool(tool: &RegisteredTool) -> Reversibility {
+        if tool.call_capability.is_none() {
+            return tool.def.reversibility;
+        }
+
+        match tool.def.reversibility {
+            Reversibility::FullyReversible | Reversibility::Reversible => {
+                Reversibility::PartiallyReversible
+            }
+            Reversibility::PartiallyReversible | Reversibility::Irreversible => {
+                tool.def.reversibility
+            }
+        }
+    }
+
+    fn definition_approval_for_tool(tool: &RegisteredTool) -> ApprovalRequirement {
+        ApprovalRequirement::from(Self::definition_reversibility_for_tool(tool))
     }
 
     /// Look up a tool definition by name.
@@ -757,16 +791,16 @@ impl ToolRegistry {
     #[must_use]
     pub fn reversibility(&self, name: &ToolName) -> Option<Reversibility> {
         // kanon:ignore RUST/pub-visibility
-        self.tools.get(name).map(|t| t.def.reversibility)
+        self.tools
+            .get(name)
+            .map(Self::definition_reversibility_for_tool)
     }
 
     /// Determine what approval is required for a tool call.
     #[must_use]
     pub fn approval_requirement(&self, name: &ToolName) -> Option<ApprovalRequirement> {
         // kanon:ignore RUST/pub-visibility
-        self.tools
-            .get(name)
-            .map(|t| ApprovalRequirement::from(t.def.reversibility))
+        self.tools.get(name).map(Self::definition_approval_for_tool)
     }
 
     /// Classify one concrete tool call.
@@ -809,8 +843,8 @@ impl ToolRegistry {
     pub fn call_metadata(&self, name: &ToolName, dry_run: bool) -> Option<ToolCallMetadata> {
         // kanon:ignore RUST/pub-visibility
         self.tools.get(name).map(|t| ToolCallMetadata {
-            reversibility: t.def.reversibility,
-            approval: ApprovalRequirement::from(t.def.reversibility),
+            reversibility: Self::definition_reversibility_for_tool(t),
+            approval: Self::definition_approval_for_tool(t),
             dry_run,
             origin: self.origins.get(name).cloned(),
         })

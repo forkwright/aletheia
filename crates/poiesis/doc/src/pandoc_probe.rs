@@ -5,15 +5,12 @@
 //! can decide whether to render, degrade, or surface an actionable error.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Duration;
 
-use crate::process::{CommandOutputError, output_with_timeout};
+use crate::process::{ProbeCommandError, parse_pandoc_version, real_version_source};
 use snafu::Snafu;
 
 /// Minimum Pandoc version required by `poiesis-doc`.
 pub const REQUIRED_PANDOC_VERSION: PandocVersion = (3, 0, 0);
-const PANDOC_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Semantic version triple used by the probe.
 pub type PandocVersion = (u32, u32, u32);
@@ -185,12 +182,6 @@ pub enum PandocProbeError {
     },
 }
 
-#[derive(Debug)]
-pub(crate) enum ProbeCommandError {
-    Failed(String),
-    TimedOut { timeout_secs: u64 },
-}
-
 fn find_pandoc_binary() -> Result<PathBuf, Vec<PathBuf>> {
     let searched = searched_pandoc_candidates();
 
@@ -208,40 +199,6 @@ fn searched_pandoc_candidates() -> Vec<PathBuf> {
     std::env::split_paths(&path_var)
         .map(|dir| dir.join("pandoc"))
         .collect()
-}
-
-fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
-    let mut cmd = Command::new(path);
-    cmd.arg("--version");
-    let output = output_with_timeout(&mut cmd, PANDOC_PROBE_TIMEOUT).map_err(|err| match err {
-        CommandOutputError::Timeout { timeout, .. } => ProbeCommandError::TimedOut {
-            timeout_secs: timeout.as_secs(),
-        },
-        CommandOutputError::Spawn { source }
-        | CommandOutputError::TempFile { source }
-        | CommandOutputError::Wait { source } => ProbeCommandError::Failed(source.to_string()),
-    })?;
-
-    if !output.status.success() {
-        return Err(ProbeCommandError::Failed(format!(
-            "exit status {}",
-            output.status
-        )));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-fn parse_pandoc_version(output: &str) -> Option<PandocVersion> {
-    let first = output.lines().next()?;
-    let version = first.strip_prefix("pandoc ")?.trim();
-    let mut parts = version.split('.');
-
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
-    let patch = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
-
-    Some((major, minor, patch))
 }
 
 fn format_version(version: &PandocVersion) -> String {

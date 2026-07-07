@@ -437,12 +437,17 @@ fn command_result_record(
 
 fn command_origin_record(msg: &InboundMessage) -> serde_json::Value {
     let conversation_id = msg.group_id.as_deref().unwrap_or(msg.sender.as_str());
+    let thread_id = msg
+        .provider_message_id
+        .as_deref()
+        .or(msg.group_id.as_deref());
     serde_json::json!({
         "channel": msg.channel.as_str(),
         "sender": msg.sender.as_str(),
         "sender_name": msg.sender_name.as_deref(),
         "group_id": msg.group_id.as_deref(),
-        "thread_id": msg.group_id.as_deref(),
+        "provider_message_id": msg.provider_message_id.as_deref(),
+        "thread_id": thread_id,
         "conversation_id": conversation_id,
         "timestamp_ms": msg.timestamp,
     })
@@ -470,6 +475,11 @@ fn command_idempotency_key(msg: &InboundMessage, session_key: &str) -> String {
         &mut hasher,
         "group_id",
         msg.group_id.as_deref().unwrap_or(""),
+    );
+    hash_field(
+        &mut hasher,
+        "provider_message_id",
+        msg.provider_message_id.as_deref().unwrap_or(""),
     );
     hash_field(&mut hasher, "session_key", session_key);
     hash_field(&mut hasher, "timestamp_ms", &msg.timestamp.to_string());
@@ -668,7 +678,7 @@ async fn send_reply(
         to,
         text: text.to_owned(),
         account_id: None,
-        thread_id: None,
+        thread_id: msg.provider_message_id.clone(),
         attachments: None,
     };
 
@@ -918,6 +928,7 @@ mod tests {
     fn command_message(text: &str, timestamp: u64) -> InboundMessage {
         InboundMessage {
             channel: "signal".to_owned(),
+            provider_message_id: Some(format!("signal:+15550100:{timestamp}")),
             sender: "+15550100".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: None,
@@ -963,6 +974,10 @@ mod tests {
             let sent = harness.sent.lock().await;
             assert_eq!(sent.len(), 1);
             assert!(sent[0].text.contains("Pong"), "{:?}", sent[0].text);
+            assert_eq!(
+                sent[0].thread_id.as_deref(),
+                Some("signal:+15550100:1709312345678")
+            );
         }
 
         let history = command_history(&harness).await;
@@ -980,6 +995,14 @@ mod tests {
         assert_eq!(json_str(&invocation, "/command/name"), Some("ping"));
         assert_eq!(json_str(&invocation, "/origin/channel"), Some("signal"));
         assert_eq!(json_str(&invocation, "/origin/sender"), Some("+15550100"));
+        assert_eq!(
+            json_str(&invocation, "/origin/provider_message_id"),
+            Some("signal:+15550100:1709312345678")
+        );
+        assert_eq!(
+            json_str(&invocation, "/origin/thread_id"),
+            Some("signal:+15550100:1709312345678")
+        );
         assert_eq!(
             json_str(&invocation, "/session_key"),
             Some("signal:+15550100")

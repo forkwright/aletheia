@@ -2,10 +2,13 @@
 
 use std::ffi::OsStr;
 use std::io::{Read as _, Seek as _, SeekFrom};
+use std::path::Path;
 use std::process::{Command, Output, Stdio}; // kanon:ignore RUST/no-direct-process-command — this module is the subprocess substrate for poiesis-doc
 use std::time::Duration;
 
 use wait_timeout::ChildExt as _;
+
+pub(crate) const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub(crate) enum CommandOutputError {
@@ -25,9 +28,49 @@ pub(crate) enum CommandOutputError {
     },
 }
 
+#[derive(Debug)]
+pub(crate) enum ProbeCommandError {
+    Failed(String),
+    TimedOut { timeout_secs: u64 },
+}
+
 /// Construct a subprocess command inside the poiesis-doc process boundary.
 pub(crate) fn command(program: impl AsRef<OsStr>) -> Command {
     Command::new(program) // kanon:ignore RUST/no-direct-process-command — this module is the subprocess substrate for poiesis-doc
+}
+
+pub(crate) fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
+    let mut cmd = command(path);
+    cmd.arg("--version");
+    let output = output_with_timeout(&mut cmd, PROBE_TIMEOUT).map_err(|err| match err {
+        CommandOutputError::Timeout { timeout, .. } => ProbeCommandError::TimedOut {
+            timeout_secs: timeout.as_secs(),
+        },
+        CommandOutputError::Spawn { source }
+        | CommandOutputError::TempFile { source }
+        | CommandOutputError::Wait { source } => ProbeCommandError::Failed(source.to_string()),
+    })?;
+
+    if !output.status.success() {
+        return Err(ProbeCommandError::Failed(format!(
+            "exit status {}",
+            output.status
+        )));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+pub(crate) fn parse_pandoc_version(output: &str) -> Option<(u32, u32, u32)> {
+    let first = output.lines().next()?;
+    let version = first.strip_prefix("pandoc ")?.trim();
+    let mut parts = version.split('.');
+
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    let patch = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+
+    Some((major, minor, patch))
 }
 
 pub(crate) fn output_with_timeout(

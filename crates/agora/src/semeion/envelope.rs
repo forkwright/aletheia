@@ -99,14 +99,17 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
         .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option::unwrap_or_default on Option<Vec<_>> chain; no Result involved
 
     let raw_value = serde_json::to_value(envelope).ok(); // WHY: optional diagnostic data; serialization failure is non-fatal
+    let message_timestamp = envelope.timestamp.or(data.timestamp);
 
     Some(InboundMessage {
         channel: "signal".to_owned(),
+        provider_message_id: message_timestamp
+            .map(|timestamp| format!("signal:{sender}:{timestamp}")),
         sender: sender.to_owned(),
         sender_name: envelope.source_name.clone(),
         group_id,
         text: text.to_owned(),
-        timestamp: envelope.timestamp.or(data.timestamp).unwrap_or_else(|| {
+        timestamp: message_timestamp.unwrap_or_else(|| {
             tracing::warn!("signal envelope has no timestamp, defaulting to 0");
             0
         }),
@@ -159,6 +162,10 @@ mod tests {
         let msg = extract_message(&env).unwrap();
 
         assert_eq!(msg.channel, "signal");
+        assert_eq!(
+            msg.provider_message_id.as_deref(),
+            Some("signal:+1234567890:1709312345678")
+        );
         assert_eq!(msg.sender, "+1234567890");
         assert_eq!(msg.sender_name.as_deref(), Some("Alice"));
         assert_eq!(msg.text, "hello");
@@ -311,6 +318,7 @@ mod tests {
 
         let msg = extract_message(&env).unwrap();
         assert_eq!(msg.text, "hi");
+        assert!(msg.provider_message_id.is_none());
         assert_eq!(msg.timestamp, 0); // no timestamp available: warns at runtime
     }
 
@@ -325,6 +333,10 @@ mod tests {
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
         let msg = extract_message(&env).unwrap();
+        assert_eq!(
+            msg.provider_message_id.as_deref(),
+            Some("signal:+1234567890:1709000000000")
+        );
         assert_eq!(msg.timestamp, 1_709_000_000_000);
     }
 }

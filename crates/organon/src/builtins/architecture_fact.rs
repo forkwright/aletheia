@@ -287,7 +287,7 @@ fn architecture_fact_def() -> ToolDef {
             required: vec!["op".to_owned()],
         },
         category: ToolCategory::Research,
-        reversibility: Reversibility::Reversible,
+        reversibility: Reversibility::PartiallyReversible,
         auto_activate: true,
         groups: vec![ToolGroupId::Read, ToolGroupId::Edit, ToolGroupId::Plan],
         tags: vec![ToolTag::Recon, ToolTag::Edit],

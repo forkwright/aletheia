@@ -143,6 +143,7 @@ mod tests {
     fn dm_message(sender: &str) -> InboundMessage {
         InboundMessage {
             channel: "signal".to_owned(),
+            provider_message_id: None,
             sender: sender.to_owned(),
             sender_name: None,
             group_id: None,
@@ -156,6 +157,7 @@ mod tests {
     fn group_message(sender: &str, group_id: &str) -> InboundMessage {
         InboundMessage {
             channel: "signal".to_owned(),
+            provider_message_id: None,
             sender: sender.to_owned(),
             sender_name: None,
             group_id: Some(group_id.to_owned()),

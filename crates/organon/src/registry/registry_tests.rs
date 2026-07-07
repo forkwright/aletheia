@@ -755,6 +755,131 @@ fn definitions_for_groups_filters_by_intersection() {
 }
 
 #[test]
+fn mixed_tools_require_full_policy_match_for_name_only_surfaces() {
+    let mut reg = ToolRegistry::new();
+    let (plain_exec, _) = mock_executor("plain");
+    let (mixed_exec, _) = mock_executor("mixed");
+
+    let mut plain_def = make_def("plain_multi", ToolCategory::Workspace);
+    plain_def.groups = vec![ToolGroupId::Read, ToolGroupId::Command];
+    reg.register(plain_def, plain_exec).expect("register plain");
+
+    let mut mixed_def = make_def("mixed_note", ToolCategory::Memory);
+    mixed_def.groups = vec![ToolGroupId::Read, ToolGroupId::Edit];
+    mixed_def.reversibility = Reversibility::FullyReversible;
+    reg.register_with_call_capability(
+        mixed_def,
+        ToolCallCapabilityRule::argument_value(
+            "action",
+            [
+                (
+                    "list",
+                    capability(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+                ),
+                (
+                    "delete",
+                    capability(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+                ),
+            ],
+        ),
+        mixed_exec,
+    )
+    .expect("register mixed");
+
+    let read_policy = ToolGroupPolicy::groups(vec![ToolGroupId::Read]);
+    let read_defs = reg.definitions_for_policy(&read_policy);
+    let read_names: Vec<&str> = read_defs.iter().map(|def| def.name.as_str()).collect();
+    assert!(
+        read_names.contains(&"plain_multi"),
+        "plain multi-group tools keep intersection filtering"
+    );
+    assert!(
+        !read_names.contains(&"mixed_note"),
+        "mixed tools are not daemon-safe when only a read policy is known"
+    );
+
+    let read_wire_names: Vec<String> = reg
+        .to_hermeneus_tools_for_policy(&read_policy)
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+    assert!(
+        !read_wire_names.iter().any(|name| name == "mixed_note"),
+        "wire tool surface must match the conservative definition filter"
+    );
+
+    let read_edit_policy = ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Edit]);
+    let read_edit_names: Vec<&str> = reg
+        .definitions_for_policy(&read_edit_policy)
+        .iter()
+        .map(|def| def.name.as_str())
+        .collect();
+    assert!(
+        read_edit_names.contains(&"mixed_note"),
+        "mixed tool can be shown when all broad groups are allowed"
+    );
+}
+
+#[test]
+fn mixed_tool_name_level_metadata_is_conservative() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("ok");
+    let mut def = make_def("mixed_note", ToolCategory::Memory);
+    def.groups = vec![ToolGroupId::Read, ToolGroupId::Edit];
+    def.reversibility = Reversibility::FullyReversible;
+    reg.register_with_call_capability(
+        def,
+        ToolCallCapabilityRule::argument_value(
+            "action",
+            [
+                (
+                    "list",
+                    capability(vec![ToolGroupId::Read], Reversibility::FullyReversible),
+                ),
+                (
+                    "delete",
+                    capability(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
+                ),
+            ],
+        ),
+        exec,
+    )
+    .expect("register");
+
+    let name = ToolName::from_static("mixed_note");
+    assert_eq!(
+        reg.reversibility(&name),
+        Some(Reversibility::PartiallyReversible)
+    );
+    assert_eq!(
+        reg.approval_requirement(&name),
+        Some(ApprovalRequirement::Required)
+    );
+    let metadata = reg
+        .call_metadata(&name, false)
+        .expect("metadata for registered tool");
+    assert_eq!(metadata.reversibility, Reversibility::PartiallyReversible);
+    assert_eq!(metadata.approval, ApprovalRequirement::Required);
+
+    assert_eq!(
+        reg.approval_requirement_for_input(&tool_input(
+            "mixed_note",
+            serde_json::json!({"action": "list"})
+        ))
+        .expect("approval"),
+        ApprovalRequirement::None
+    );
+    assert_eq!(
+        reg.approval_requirement_for_input(&tool_input(
+            "mixed_note",
+            serde_json::json!({"action": "delete"})
+        ))
+        .expect("approval"),
+        ApprovalRequirement::Required
+    );
+}
+
+#[test]
 fn definitions_for_groups_empty_list_denies_all() {
     let mut reg = ToolRegistry::new();
     let (e1, _) = mock_executor("ok");

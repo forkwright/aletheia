@@ -223,6 +223,7 @@ fn probe_result_serde_roundtrip() {
 fn inbound_message_construction() {
     let msg = InboundMessage {
         channel: "signal".to_owned(),
+        provider_message_id: Some("signal:+1234567890:1709312345678".to_owned()),
         sender: "+1234567890".to_owned(),
         sender_name: Some("Alice".to_owned()),
         group_id: Some("group-abc".to_owned()),
@@ -233,6 +234,10 @@ fn inbound_message_construction() {
     };
 
     assert_eq!(msg.channel, "signal");
+    assert_eq!(
+        msg.provider_message_id.as_deref(),
+        Some("signal:+1234567890:1709312345678")
+    );
     assert_eq!(msg.sender, "+1234567890");
     assert_eq!(msg.sender_name.as_deref(), Some("Alice"));
     assert_eq!(msg.group_id.as_deref(), Some("group-abc"));
@@ -246,6 +251,7 @@ fn inbound_message_construction() {
 fn inbound_message_serde_roundtrip() {
     let original = InboundMessage {
         channel: "signal".to_owned(),
+        provider_message_id: Some("signal:+1234567890:1709312345678".to_owned()),
         sender: "+1234567890".to_owned(),
         sender_name: Some("Bob".to_owned()),
         group_id: None,
@@ -259,6 +265,7 @@ fn inbound_message_serde_roundtrip() {
     let restored: InboundMessage = serde_json::from_str(&json).expect("deserialize");
 
     assert_eq!(restored.channel, original.channel);
+    assert_eq!(restored.provider_message_id, original.provider_message_id);
     assert_eq!(restored.sender, original.sender);
     assert_eq!(restored.sender_name, original.sender_name);
     assert_eq!(restored.group_id, original.group_id);

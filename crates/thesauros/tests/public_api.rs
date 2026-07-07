@@ -290,16 +290,43 @@ truncatable = true
     }
 
     #[test]
-    fn missing_context_file_does_not_fail_the_pack() {
-        // WHY: a single missing context file must not torpedo the whole
-        // pack — it's loaded with the surviving sections and a warning.
-        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"here.md\"\n\n[[context]]\npath = \"gone.md\"\n";
+    fn missing_important_context_file_does_not_fail_the_pack() {
+        // WHY: non-required context still degrades gracefully; required
+        // context is covered separately because it protects mandatory safety
+        // and domain instructions.
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"here.md\"\n\n[[context]]\npath = \"gone.md\"\npriority = \"important\"\n";
         let dir = write_pack(&[("pack.toml", toml), ("here.md", "present")]);
         let packs = load_packs(&[dir.path().to_path_buf()]);
         let pack = packs.first().expect("pack loaded despite missing section");
         assert_eq!(pack.sections.len(), 1);
         let section = pack.sections.first().expect("surviving section");
         assert_eq!(section.name, "here.md");
+    }
+
+    #[test]
+    fn missing_optional_context_file_does_not_fail_the_pack() {
+        // WHY: optional context is explicitly allowed to disappear without
+        // blocking startup; only the present sections should be injected.
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"here.md\"\n\n[[context]]\npath = \"gone.md\"\npriority = \"optional\"\n";
+        let dir = write_pack(&[("pack.toml", toml), ("here.md", "present")]);
+        let packs = load_packs(&[dir.path().to_path_buf()]);
+        let pack = packs.first().expect("pack loaded despite missing section");
+        assert_eq!(pack.sections.len(), 1);
+        let section = pack.sections.first().expect("surviving section");
+        assert_eq!(section.name, "here.md");
+    }
+
+    #[test]
+    fn missing_required_context_file_fails_the_pack() {
+        // WHY: required context carries mandatory safety or domain
+        // instructions and must not silently disappear during pack load.
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"here.md\"\n\n[[context]]\npath = \"gone.md\"\npriority = \"required\"\n";
+        let dir = write_pack(&[("pack.toml", toml), ("here.md", "present")]);
+        let packs = load_packs(&[dir.path().to_path_buf()]);
+        assert!(
+            packs.is_empty(),
+            "pack with missing required context must be skipped"
+        );
     }
 }
 

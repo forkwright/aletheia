@@ -88,7 +88,9 @@ impl MatrixClient {
         body: &str,
         thread_id: Option<&str>,
     ) -> Result<serde_json::Value> {
-        let txn_id = koina::uuid::uuid_v4();
+        let txn_id = thread_id.map_or_else(koina::uuid::uuid_v4, |event_id| {
+            stable_reply_txn_id(event_id, body)
+        });
         let url = format!(
             "{}/_matrix/client/v3/rooms/{}/send/m.room.message/{}",
             self.homeserver,
@@ -191,6 +193,25 @@ fn normalize_homeserver(homeserver: &str) -> String {
     homeserver.trim_end_matches('/').to_owned()
 }
 
+fn stable_reply_txn_id(thread_id: &str, body: &str) -> String {
+    const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    let mut hash = FNV_OFFSET;
+    for byte in b"matrix.reply\0"
+        .iter()
+        .copied()
+        .chain(thread_id.bytes())
+        .chain([0])
+        .chain(body.bytes())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+
+    format!("aletheia-reply-{hash:016x}")
+}
+
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
@@ -229,6 +250,41 @@ mod tests {
             result.get("event_id").and_then(serde_json::Value::as_str),
             Some("$event")
         );
+    }
+
+    #[tokio::test]
+    async fn send_text_uses_stable_transaction_id_for_thread_replies() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        let txn_id = stable_reply_txn_id("$event", "hello");
+        Mock::given(method("PUT"))
+            .and(path(format!(
+                "/_matrix/client/v3/rooms/%21room%3Aexample.org/send/m.room.message/{txn_id}"
+            )))
+            .and(header("authorization", "Bearer token-123"))
+            .and(body_json(serde_json::json!({
+                "msgtype": "m.text",
+                "body": "hello",
+                "m.relates_to": {
+                    "rel_type": "m.thread",
+                    "event_id": "$event"
+                }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "event_id": "$reply"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = MatrixClient::new(&server.uri(), "token-123").expect("client");
+        client
+            .send_text("!room:example.org", "hello", Some("$event"))
+            .await
+            .expect("send");
+
+        assert_eq!(txn_id, stable_reply_txn_id("$event", "hello"));
+        assert_ne!(txn_id, stable_reply_txn_id("$event", "different"));
     }
 
     #[tokio::test]

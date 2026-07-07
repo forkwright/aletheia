@@ -149,7 +149,7 @@ pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
 /// Load a single domain pack from a directory.
 fn load_single_pack(pack_root: &Path) -> Result<LoadedPack> {
     let manifest = manifest::load_manifest(pack_root)?;
-    let sections = resolve_context_sections(pack_root, &manifest);
+    let sections = resolve_context_sections(pack_root, &manifest)?;
 
     Ok(LoadedPack {
         manifest,
@@ -159,24 +159,34 @@ fn load_single_pack(pack_root: &Path) -> Result<LoadedPack> {
 }
 
 /// Resolve all context entries into sections with file contents.
-fn resolve_context_sections(pack_root: &Path, manifest: &PackManifest) -> Vec<PackSection> {
+fn resolve_context_sections(pack_root: &Path, manifest: &PackManifest) -> Result<Vec<PackSection>> {
     let mut sections = Vec::with_capacity(manifest.context.len());
 
     for entry in &manifest.context {
         match resolve_single_section(pack_root, entry, &manifest.name) {
             Ok(section) => sections.push(section),
-            Err(e) => {
+            Err(error) if entry.priority == Priority::Required => {
+                return Err(error::Error::RequiredContextUnavailable {
+                    pack_name: manifest.name.clone(),
+                    context_path: entry.path.clone(),
+                    priority: entry.priority,
+                    reason: error.to_string(),
+                    location: snafu::Location::new(file!(), line!(), column!()),
+                });
+            }
+            Err(error) => {
                 warn!(
                     path = %entry.path,
                     pack = %manifest.name,
-                    error = %e,
+                    priority = ?entry.priority,
+                    error = %error,
                     "failed to resolve context file, skipping"
                 );
             }
         }
     }
 
-    sections
+    Ok(sections)
 }
 
 /// Resolve a single context entry into a section.
@@ -482,13 +492,45 @@ system_prompt_additions = ["Answer in bullet points."]
     }
 
     #[test]
-    fn missing_context_file_skipped_gracefully() {
-        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"exists.md\"\n\n[[context]]\npath = \"missing.md\"\n";
+    fn missing_important_context_file_skipped_gracefully() {
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"exists.md\"\n\n[[context]]\npath = \"missing.md\"\npriority = \"important\"\n";
         let dir = setup_pack(&[("pack.toml", toml), ("exists.md", "content")]);
 
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.sections.len(), 1);
         assert_eq!(pack.sections[0].name, "exists.md");
+    }
+
+    #[test]
+    fn missing_optional_context_file_skipped_gracefully() {
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"exists.md\"\n\n[[context]]\npath = \"missing.md\"\npriority = \"optional\"\n";
+        let dir = setup_pack(&[("pack.toml", toml), ("exists.md", "content")]);
+
+        let pack = load_single_pack(dir.path()).unwrap();
+        assert_eq!(pack.sections.len(), 1);
+        assert_eq!(pack.sections[0].name, "exists.md");
+    }
+
+    #[test]
+    fn missing_required_context_file_fails_pack_load() {
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"exists.md\"\n\n[[context]]\npath = \"missing.md\"\npriority = \"required\"\n";
+        let dir = setup_pack(&[("pack.toml", toml), ("exists.md", "content")]);
+
+        let err = load_single_pack(dir.path()).unwrap_err();
+        let error::Error::RequiredContextUnavailable {
+            pack_name,
+            context_path,
+            priority,
+            reason,
+            ..
+        } = err
+        else {
+            panic!("expected RequiredContextUnavailable, got: {err}")
+        };
+        assert_eq!(pack_name, "partial");
+        assert_eq!(context_path, "missing.md");
+        assert_eq!(priority, Priority::Required);
+        assert!(reason.contains("context file not found"));
     }
 
     #[test]

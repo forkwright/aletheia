@@ -332,6 +332,7 @@ pub fn auth_none_lan_opt_in_enabled() -> bool {
 
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     check_port(value, "port", "port", errors);
+    check_positive_u64(value, "sseHeartbeatIntervalSecs", errors);
 
     // WHY: structural validity only — accept any of the three known auth modes.
     // The `auth.mode = "none"` policy gate (env-var opt-in) lives in

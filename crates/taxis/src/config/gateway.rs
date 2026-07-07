@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use koina::secret::SecretString;
 
+/// Minimum accepted SSE heartbeat interval for gateway event streams.
+pub const MIN_SSE_HEARTBEAT_INTERVAL_SECS: u64 = 1;
+const DEFAULT_SSE_HEARTBEAT_INTERVAL_SECS: u64 = 30;
+
 /// HTTP gateway configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +38,8 @@ pub struct GatewayConfig {
     /// Rate limiting settings.
     pub rate_limit: RateLimitConfig,
     /// SSE heartbeat interval for event subscription streams, in seconds.
+    #[serde(default = "default_sse_heartbeat_interval_secs")]
+    #[serde(deserialize_with = "deserialize_sse_heartbeat_interval_secs")]
     pub sse_heartbeat_interval_secs: u64,
 }
 
@@ -49,8 +55,29 @@ impl Default for GatewayConfig {
             body_limit: BodyLimitConfig::default(),
             csrf: CsrfConfig::default(),
             rate_limit: RateLimitConfig::default(),
-            sse_heartbeat_interval_secs: 30,
+            sse_heartbeat_interval_secs: DEFAULT_SSE_HEARTBEAT_INTERVAL_SECS,
         }
+    }
+}
+
+fn default_sse_heartbeat_interval_secs() -> u64 {
+    DEFAULT_SSE_HEARTBEAT_INTERVAL_SECS
+}
+
+fn deserialize_sse_heartbeat_interval_secs<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = u64::deserialize(deserializer)?;
+    if value == 0 {
+        tracing::warn!(
+            configured = value,
+            min = MIN_SSE_HEARTBEAT_INTERVAL_SECS,
+            "gateway.sseHeartbeatIntervalSecs below minimum; flooring to 1 second"
+        );
+        Ok(MIN_SSE_HEARTBEAT_INTERVAL_SECS)
+    } else {
+        Ok(value)
     }
 }
 
@@ -281,5 +308,35 @@ impl Default for PerUserRateLimitConfig {
             tool_burst: 8,
             stale_after_secs: 600,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_gateway_config(toml_text: &str) -> GatewayConfig {
+        match toml::from_str(toml_text) {
+            Ok(config) => config,
+            Err(error) => panic!("gateway config should parse: {error}"),
+        }
+    }
+
+    #[test]
+    fn sse_heartbeat_zero_is_floored_to_minimum_on_load() {
+        let config = parse_gateway_config("sseHeartbeatIntervalSecs = 0\n");
+        assert_eq!(
+            config.sse_heartbeat_interval_secs,
+            MIN_SSE_HEARTBEAT_INTERVAL_SECS
+        );
+    }
+
+    #[test]
+    fn sse_heartbeat_minimum_is_accepted_on_load() {
+        let config = parse_gateway_config("sseHeartbeatIntervalSecs = 1\n");
+        assert_eq!(
+            config.sse_heartbeat_interval_secs,
+            MIN_SSE_HEARTBEAT_INTERVAL_SECS
+        );
     }
 }

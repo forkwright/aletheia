@@ -97,6 +97,29 @@ fn accepts_valid_gateway() {
 }
 
 #[test]
+fn accepts_minimum_sse_heartbeat_interval() {
+    let section = json!({ "sseHeartbeatIntervalSecs": 1 });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "minimum SSE heartbeat interval should be accepted"
+    );
+}
+
+#[test]
+fn rejects_zero_sse_heartbeat_interval() {
+    let section = json!({ "sseHeartbeatIntervalSecs": 0 });
+    let result = validate_section("gateway", &section);
+    assert!(result.is_err(), "zero SSE heartbeat must be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|entry| entry.contains("sseHeartbeatIntervalSecs")),
+        "error should mention sseHeartbeatIntervalSecs: {err:?}"
+    );
+}
+
+#[test]
 fn accepts_rate_limit_with_trust_proxy_when_enabled() {
     let section = json!({
         "rateLimit": {

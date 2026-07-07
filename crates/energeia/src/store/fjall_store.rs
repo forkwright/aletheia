@@ -635,27 +635,6 @@ impl EnergeiaStore {
         queries::list_all_sessions(&self.keyspace, limit)
     }
 
-    /// List all CI validation records across all sessions, up to `limit`.
-    ///
-    /// Intended for metrics computation. Use [`SCAN_LIMIT_CI_VALIDATIONS`] as a
-    /// sensible default.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Error::Store` on read failure.
-    pub(crate) fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
-        queries::list_all_ci_validations(&self.keyspace, limit)
-    }
-
-    /// List all QA verdict records, up to `limit`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Error::Store` on read failure.
-    pub(crate) fn list_all_qa_verdicts(&self, limit: usize) -> Result<Vec<QaVerdictRecord>> {
-        queries::list_all_qa_verdicts(&self.keyspace, limit)
-    }
-
     // ── Streaming windowed folds (metrics / reporting) ──
 
     /// Fold over dispatch records newest-first, stopping once records fall

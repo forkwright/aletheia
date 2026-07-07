@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use snafu::Snafu;
 
+use crate::manifest::Priority;
+
 /// Errors from domain pack loading.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -72,6 +74,19 @@ pub enum Error {
     ContextFileTooLarge {
         path: PathBuf,
         limit: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A required context entry could not be resolved or read.
+    #[snafu(display(
+        "required context '{context_path}' from pack '{pack_name}' with priority {priority:?} could not be loaded: {reason}"
+    ))]
+    RequiredContextUnavailable {
+        pack_name: String,
+        context_path: String,
+        priority: Priority,
+        reason: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },

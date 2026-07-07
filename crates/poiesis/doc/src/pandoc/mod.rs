@@ -30,12 +30,13 @@ use std::time::Duration;
 use poiesis_core::Document;
 use tracing::instrument;
 
-use crate::process::{CommandOutputError, command, output_with_timeout};
+use crate::process::{
+    CommandOutputError, PROBE_TIMEOUT, command, output_with_timeout, parse_pandoc_version,
+};
 use crate::raster;
 
 pub use error::PandocError;
 
-const PANDOC_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const PANDOC_RENDER_TIMEOUT: Duration = Duration::from_mins(2);
 const APX_CITE_LUA: &str = include_str!("../../../filters/apx-cite.lua");
 const APX_THEME_LUA: &str = include_str!("../../../filters/apx-theme.lua");
@@ -225,7 +226,7 @@ impl PandocRunner {
             }
             let mut cmd = command(candidate);
             cmd.arg("--version");
-            match output_with_timeout(&mut cmd, PANDOC_PROBE_TIMEOUT) {
+            match output_with_timeout(&mut cmd, PROBE_TIMEOUT) {
                 Ok(output) if output.status.success() => {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     if let Some(ver) = parse_pandoc_version(&stdout) {
@@ -334,16 +335,6 @@ impl PandocRunner {
             })
         }
     }
-}
-
-fn parse_pandoc_version(output: &str) -> Option<(u32, u32, u32)> {
-    let first = output.lines().next()?;
-    let ver = first.strip_prefix("pandoc ")?.trim();
-    let mut parts = ver.split('.');
-    let major: u32 = parts.next()?.parse().ok()?;
-    let minor: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let patch: u32 = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    Some((major, minor, patch))
 }
 
 /// Unified dispatch: render a [`Document`] to bytes using the appropriate backend.

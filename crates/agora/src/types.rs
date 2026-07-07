@@ -102,6 +102,9 @@ pub struct ProbeResult {
 pub struct InboundMessage {
     /// Channel this message came from (e.g., "signal").
     pub channel: String,
+    /// Stable provider-native message/event identifier, when the provider exposes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_message_id: Option<String>,
     /// Sender identifier (phone number, user ID, etc.).
     pub sender: String,
     /// Display name if known.
@@ -191,6 +194,7 @@ mod tests {
     fn inbound_message_serde_roundtrip() {
         let msg = InboundMessage {
             channel: "signal".to_owned(),
+            provider_message_id: Some("signal:1709312345678".to_owned()),
             sender: "+1234567890".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: Some("grp123".to_owned()),
@@ -204,6 +208,7 @@ mod tests {
         let back: InboundMessage = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(back.channel, msg.channel);
+        assert_eq!(back.provider_message_id, msg.provider_message_id);
         assert_eq!(back.sender, msg.sender);
         assert_eq!(back.sender_name, msg.sender_name);
         assert_eq!(back.group_id, msg.group_id);

@@ -481,6 +481,7 @@ fn extract_message(
 
     Some(InboundMessage {
         channel: "matrix".to_owned(),
+        provider_message_id: event.event_id.clone(),
         sender: sender.to_owned(),
         sender_name: None,
         group_id: Some(room_id.to_owned()),
@@ -577,6 +578,7 @@ mod tests {
         let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"))
             .expect("message");
         assert_eq!(msg.channel, "matrix");
+        assert_eq!(msg.provider_message_id.as_deref(), Some("$event"));
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
         assert_eq!(msg.text, "hello");
@@ -697,6 +699,7 @@ mod tests {
             .expect("message");
 
         assert_eq!(msg.channel, "matrix");
+        assert_eq!(msg.provider_message_id.as_deref(), Some("$event"));
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
         assert_eq!(msg.text, "hello from Matrix");

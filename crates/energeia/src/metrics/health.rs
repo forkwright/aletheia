@@ -170,12 +170,11 @@ impl HealthAccumulator {
     fn add_dispatch(&mut self, d: &DispatchRecord) {
         self.dispatch_total += 1;
         self.dispatch_ids.insert(d.id.as_str().to_owned());
-        if d.status == DispatchStatus::Completed {
-            if let Some(finished_at) = d.finished_at {
-                self.completed_count += 1;
-                self.completed_ms_sum +=
-                    finished_at.as_millisecond() - d.created_at.as_millisecond();
-            }
+        if d.status == DispatchStatus::Completed
+            && let Some(finished_at) = d.finished_at
+        {
+            self.completed_count += 1;
+            self.completed_ms_sum += finished_at.as_millisecond() - d.created_at.as_millisecond();
         }
     }
 
@@ -539,7 +538,7 @@ fn unavailable(
 /// **Proxy:** dispatches that contain at least one Failed or Stuck session, as
 /// a fraction of all dispatches. True corrective rate requires QA PARTIAL/FAIL
 /// verdict data which may not be present yet.
-#[cfg(feature = "storage-fjall")]
+#[cfg(all(test, feature = "storage-fjall"))]
 fn corrective_rate(
     dispatches: &[&DispatchRecord],
     sessions: &[&SessionRecord],
@@ -616,7 +615,7 @@ fn corrective_rate(
 /// 2. Stuck rate.
 ///
 /// **Threshold:** <5% OK, ≤15% WARN, >15% CRIT.
-#[cfg(feature = "storage-fjall")]
+#[cfg(all(test, feature = "storage-fjall"))]
 fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
     const NAME: &str = "stuck_rate";
     const DESC: &str = "% of sessions ending in Stuck status (health escalation exhausted)";
@@ -666,7 +665,7 @@ fn stuck_rate(sessions: &[&SessionRecord]) -> HealthMetric {
 ///
 /// **Proxy:** sessions with a PR URL (implying QA passed) where at least one
 /// CI validation has Fail status. True rate needs persisted QA verdict data.
-#[cfg(feature = "storage-fjall")]
+#[cfg(all(test, feature = "storage-fjall"))]
 fn qa_false_positive_rate(
     sessions: &[&SessionRecord],
     ci_by_session: &HashMap<String, Vec<&CiValidationRecord>>,
@@ -730,7 +729,7 @@ fn qa_false_positive_rate(
 /// **Proxy:** among sessions that have CI validation entries (proxy for fix
 /// agent sessions), the fraction that reached `Success` status. True rate
 /// requires a fix-agent marker in the session data.
-#[cfg(feature = "storage-fjall")]
+#[cfg(all(test, feature = "storage-fjall"))]
 fn fix_agent_success_rate(
     sessions: &[&SessionRecord],
     ci_by_session: &HashMap<String, Vec<&CiValidationRecord>>,
@@ -786,7 +785,7 @@ fn fix_agent_success_rate(
 /// 5. Cycle time — average hours from dispatch creation to completion.
 ///
 /// **Threshold:** ≤4h OK, ≤8h WARN, >8h CRIT.
-#[cfg(feature = "storage-fjall")]
+#[cfg(all(test, feature = "storage-fjall"))]
 fn cycle_time(dispatches: &[&DispatchRecord]) -> HealthMetric {
     const NAME: &str = "cycle_time_hours";
     const DESC: &str =
@@ -864,7 +863,7 @@ fn observation_to_issue_rate() -> HealthMetric {
 /// **Threshold:** >3 OK, ≥1.5 WARN, <1.5 CRIT.
 ///
 /// Uses total sessions per dispatch as a proxy for concurrent group size.
-#[cfg(feature = "storage-fjall")]
+#[cfg(all(test, feature = "storage-fjall"))]
 fn batch_parallelism(dispatches: &[&DispatchRecord], sessions: &[&SessionRecord]) -> HealthMetric {
     const NAME: &str = "batch_parallelism";
     const DESC: &str = "Average sessions per dispatch (proxy for concurrent group size)";

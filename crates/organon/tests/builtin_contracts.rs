@@ -123,24 +123,27 @@ fn builtin_metadata_is_complete_and_approval_consistent() {
         assert_no_duplicate_tags(def);
         assert_category_group_match(def);
 
+        let name_level_reversibility = registry
+            .reversibility(&def.name)
+            .expect("registered tool should have name-level reversibility");
         assert_eq!(
             registry.approval_requirement(&def.name),
-            Some(ApprovalRequirement::from(def.reversibility)),
-            "{} approval must derive from reversibility",
+            Some(ApprovalRequirement::from(name_level_reversibility)),
+            "{} approval must derive from name-level reversibility",
             def.name
         );
         let metadata = registry
             .call_metadata(&def.name, false)
             .expect("registered tool should have call metadata");
         assert_eq!(
-            metadata.reversibility, def.reversibility,
-            "{} metadata reversibility drifted from definition",
+            metadata.reversibility, name_level_reversibility,
+            "{} metadata reversibility drifted from name-level classification",
             def.name
         );
         assert_eq!(
             metadata.approval,
-            ApprovalRequirement::from(def.reversibility),
-            "{} metadata approval drifted from definition",
+            ApprovalRequirement::from(name_level_reversibility),
+            "{} metadata approval drifted from name-level classification",
             def.name
         );
 
