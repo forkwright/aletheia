@@ -1,12 +1,17 @@
 //! Scoring metrics for benchmark answer comparison.
 //!
-//! Implements the three standard metrics used in memory benchmarks:
+//! Implements the standard answer-level metrics used in memory benchmarks:
 //! - **Exact match** (EM): lowercase whitespace-normalized string equality
 //! - **Token F1**: word-level F1 score (precision + recall harmonic mean)
 //! - **Contains**: whether the expected answer appears as a substring
 //!
 //! The runner picks the best score across all expected answers (benchmarks
 //! often allow multiple valid forms of the same answer).
+//!
+//! Retrieval metrics are split into two intentionally separate families so
+//! that evidence-ID scoring is not confused with answer-content overlap:
+//! - **Evidence-ID retrieval**: [`retrieval_recall_at_k`] and [`retrieval_ndcg_at_k`]
+//! - **Answer-overlap retrieval**: [`answer_overlap_recall_at_k`] and [`answer_overlap_ndcg_at_k`]
 
 use serde::{Deserialize, Serialize};
 
@@ -133,7 +138,7 @@ fn token_f1(predicted: &[&str], expected: &[&str]) -> f64 {
     2.0 * precision * recall / (precision + recall)
 }
 
-/// Build a normalized-content reference for fallback retrieval scoring.
+/// Build a normalized-content reference for fallback answer-overlap scoring.
 #[must_use]
 pub fn normalized_content_ref(content: &str) -> String {
     format!(
@@ -142,11 +147,37 @@ pub fn normalized_content_ref(content: &str) -> String {
     )
 }
 
-/// Compute Recall@k: fraction of relevant refs found in the top-k retrieved.
+/// Compute Recall@k for evidence/reference-ID retrieval.
 ///
-/// `relevant` is the set of ground-truth refs. `retrieved` is the ordered list
-/// of returned refs. The caller owns whether those refs are evidence IDs or
-/// normalized-content fallback hashes.
+/// `relevant` is the set of expected evidence/fact refs. `retrieved` is the
+/// ordered list of returned refs. Relevance is decided by exact ID equality,
+/// not by textual overlap with the expected answer.
+///
+/// # Panics
+///
+/// Panics if `k == 0`.
+#[must_use]
+pub fn retrieval_recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+    recall_at_k(retrieved, relevant, k)
+}
+
+/// Compute Recall@k for normalized answer-content overlap.
+///
+/// This is the answer-overlap counterpart to [`retrieval_recall_at_k`]. It
+/// compares the normalized content of retrieved facts to normalized expected
+/// answer strings. It is named separately because a fact that contains the
+/// answer (e.g. "Alice's favorite color is blue") will not match the answer
+/// "blue", and a wrong fact whose content happens to match will appear relevant.
+///
+/// # Panics
+///
+/// Panics if `k == 0`.
+#[must_use]
+pub fn answer_overlap_recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+    recall_at_k(retrieved, relevant, k)
+}
+
+/// Shared Recall@k implementation.
 ///
 /// # Panics
 ///
@@ -160,7 +191,7 @@ pub fn normalized_content_ref(content: &str) -> String {
     clippy::as_conversions,
     reason = "usize to f64 — counts are bounded and small"
 )]
-pub fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
     assert!(k > 0, "k must be > 0");
     if relevant.is_empty() {
         return 1.0;
@@ -170,7 +201,34 @@ pub fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
     found as f64 / relevant.len() as f64 // SAFETY: counts <10_000 per function-level #[expect]; exact in f64 mantissa
 }
 
-/// Compute NDCG@k (Normalized Discounted Cumulative Gain).
+/// Compute NDCG@k for evidence/reference-ID retrieval.
+///
+/// Uses binary relevance by exact evidence/fact ID equality. This is the
+/// retrieval metric that should be used when the dataset supplies expected
+/// evidence IDs.
+///
+/// # Panics
+///
+/// Panics if `k == 0`.
+#[must_use]
+pub fn retrieval_ndcg_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+    ndcg_at_k(retrieved, relevant, k)
+}
+
+/// Compute NDCG@k for normalized answer-content overlap.
+///
+/// This is the answer-overlap counterpart to [`retrieval_ndcg_at_k`]. See
+/// [`answer_overlap_recall_at_k`] for why the two metrics are named separately.
+///
+/// # Panics
+///
+/// Panics if `k == 0`.
+#[must_use]
+pub fn answer_overlap_ndcg_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+    ndcg_at_k(retrieved, relevant, k)
+}
+
+/// Shared NDCG@k (Normalized Discounted Cumulative Gain) implementation.
 ///
 /// Assumes binary relevance: an item is relevant if it appears in `relevant`.
 /// `retrieved` is the ordered list of returned refs.
@@ -187,7 +245,7 @@ pub fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
     clippy::as_conversions,
     reason = "usize to f64 — counts are bounded and small"
 )]
-pub fn ndcg_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+fn ndcg_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
     assert!(k > 0, "k must be > 0");
     if relevant.is_empty() {
         return 1.0;
@@ -242,12 +300,8 @@ mod tests {
 
     #[test]
     fn partial_token_overlap_gives_partial_f1() {
-        // Predicted: "alice is a data scientist"
-        // Expected:  "alice is a software engineer"
-        // Common tokens: {alice, is, a} = 3
-        // Precision: 3/5 = 0.6
-        // Recall: 3/5 = 0.6
-        // F1: 0.6
+        // WHY: Predicted "alice is a data scientist" vs expected "alice is a
+        // software engineer" shares three tokens, giving F1 = 0.6.
         let score = score_answer(
             "Alice is a data scientist",
             &["alice is a software engineer".to_owned()],
@@ -267,7 +321,8 @@ mod tests {
             &["san francisco".to_owned()],
         );
         assert!(score.contains);
-        assert!(!score.exact_match); // not an exact match, but substring
+        // NOTE: Contains is a substring match, not an exact match.
+        assert!(!score.exact_match);
     }
 
     #[test]
@@ -302,21 +357,16 @@ mod tests {
 
     #[test]
     fn token_f1_handles_duplicates() {
-        // Predicted: "the the cat"   → 3 tokens
-        // Expected:  "the cat the"   → 3 tokens
-        // Common multiset: {the, the, cat} = 3
-        // Precision: 3/3, Recall: 3/3, F1: 1.0
+        // WHY: "the the cat" and "the cat the" are identical multisets, so
+        // precision, recall, and F1 are all 1.0.
         let score = score_answer("the the cat", &["the cat the".to_owned()]);
         assert!((score.f1 - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn token_f1_penalizes_extra_tokens() {
-        // Predicted: "alice" (1 token)
-        // Expected:  "alice is a data scientist" (5 tokens)
-        // Common: {alice} = 1
-        // Precision: 1/1 = 1.0, Recall: 1/5 = 0.2
-        // F1: 2 * 1.0 * 0.2 / 1.2 ≈ 0.333
+        // WHY: "alice" vs "alice is a data scientist" shares one token, so
+        // precision = 1.0, recall = 0.2, and F1 ≈ 0.333.
         let score = score_answer("alice", &["alice is a data scientist".to_owned()]);
         assert!(
             (score.f1 - 0.333).abs() < 0.01,
@@ -326,53 +376,74 @@ mod tests {
     }
 
     #[test]
-    fn recall_at_k_finds_all_relevant() {
+    fn retrieval_recall_at_k_finds_all_relevant() {
         let retrieved = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
         let relevant = vec!["a".to_owned(), "b".to_owned()];
-        assert!((recall_at_k(&retrieved, &relevant, 3) - 1.0).abs() < f64::EPSILON);
+        assert!((retrieval_recall_at_k(&retrieved, &relevant, 3) - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn recall_at_k_partial() {
+    fn retrieval_recall_at_k_partial() {
         let retrieved = vec!["a".to_owned(), "x".to_owned(), "c".to_owned()];
         let relevant = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
-        // k=2 finds only "a" ("c" is at rank 3, outside top-2)
-        assert!((recall_at_k(&retrieved, &relevant, 2) - 1.0 / 3.0).abs() < 0.001);
+        // WHY: k=2 finds only "a" because "c" is at rank 3, outside top-2.
+        assert!((retrieval_recall_at_k(&retrieved, &relevant, 2) - 1.0 / 3.0).abs() < 0.001);
     }
 
     #[test]
-    fn recall_at_k_empty_relevant_is_one() {
+    fn retrieval_recall_at_k_empty_relevant_is_one() {
         let retrieved = vec!["a".to_owned()];
         let relevant: Vec<String> = vec![];
-        assert!((recall_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
+        assert!((retrieval_recall_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn ndcg_at_k_perfect_ordering() {
+    fn retrieval_ndcg_at_k_perfect_ordering() {
         let retrieved = vec!["a".to_owned(), "b".to_owned(), "x".to_owned()];
         let relevant = vec!["a".to_owned(), "b".to_owned()];
-        assert!((ndcg_at_k(&retrieved, &relevant, 3) - 1.0).abs() < f64::EPSILON);
+        assert!((retrieval_ndcg_at_k(&retrieved, &relevant, 3) - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn ndcg_at_k_zero_when_none_relevant() {
+    fn retrieval_ndcg_at_k_zero_when_none_relevant() {
         let retrieved = vec!["x".to_owned(), "y".to_owned()];
         let relevant = vec!["a".to_owned(), "b".to_owned()];
-        assert!(ndcg_at_k(&retrieved, &relevant, 2).abs() < f64::EPSILON);
+        assert!(retrieval_ndcg_at_k(&retrieved, &relevant, 2).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn ndcg_at_k_empty_relevant_is_one() {
+    fn retrieval_ndcg_at_k_empty_relevant_is_one() {
         let retrieved = vec!["a".to_owned()];
         let relevant: Vec<String> = vec![];
-        assert!((ndcg_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
+        assert!((retrieval_ndcg_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn recall_scores_evidence_ids_without_text_matching() {
-        let retrieved = vec!["fact-a".to_owned(), "fact-b".to_owned()];
-        let relevant = vec!["fact-b".to_owned()];
-        assert!((recall_at_k(&retrieved, &relevant, 2) - 1.0).abs() < f64::EPSILON);
+    fn retrieval_recall_counts_evidence_ids_not_content() {
+        // WHY: Evidence-ID retrieval matches on fact IDs, not on textual
+        // overlap between fact content and expected answers.
+        let retrieved = vec!["fact-a".to_owned()];
+        let relevant = vec!["fact-a".to_owned()];
+        assert!((retrieval_recall_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn retrieval_recall_ignores_wrong_evidence_with_answer_string() {
+        // WHY: A wrong fact whose content coincidentally contains the answer
+        // string must not count as relevant when scoring retrieval by IDs.
+        let retrieved = vec!["fact-wrong".to_owned()];
+        let relevant = vec!["fact-blue".to_owned()];
+        assert!(retrieval_recall_at_k(&retrieved, &relevant, 1).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn answer_overlap_recall_misses_contained_answer() {
+        // WHY: Answer-overlap is a separate metric from evidence-ID retrieval;
+        // a fact that merely contains the answer does not normalize to the
+        // answer string itself.
+        let retrieved = vec![normalized_content_ref("Alice's favorite color is blue")];
+        let relevant = vec![normalized_content_ref("blue")];
+        assert!(answer_overlap_recall_at_k(&retrieved, &relevant, 1).abs() < f64::EPSILON);
     }
 
     #[test]

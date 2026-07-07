@@ -442,8 +442,34 @@ impl BenchmarkRunner {
                         retrieved_evidence_refs,
                         retrieved_content_refs,
                     );
-                    let r = metrics::recall_at_k(&retrieved_refs, &scoring.relevant_refs, k);
-                    let n = metrics::ndcg_at_k(&retrieved_refs, &scoring.relevant_refs, k);
+                    // WHY: Evidence IDs are scored as retrieval; the content
+                    // fallback is a separate answer-overlap metric.
+                    let (r, n) = match scoring.mode {
+                        RetrievalScoringMode::EvidenceId => (
+                            metrics::retrieval_recall_at_k(
+                                &retrieved_refs,
+                                &scoring.relevant_refs,
+                                k,
+                            ),
+                            metrics::retrieval_ndcg_at_k(
+                                &retrieved_refs,
+                                &scoring.relevant_refs,
+                                k,
+                            ),
+                        ),
+                        RetrievalScoringMode::NormalizedContent => (
+                            metrics::answer_overlap_recall_at_k(
+                                &retrieved_refs,
+                                &scoring.relevant_refs,
+                                k,
+                            ),
+                            metrics::answer_overlap_ndcg_at_k(
+                                &retrieved_refs,
+                                &scoring.relevant_refs,
+                                k,
+                            ),
+                        ),
+                    };
                     (Some(retrieved), Some(scoring), Some(r), Some(n))
                 }
                 Err(e) => {
@@ -790,5 +816,79 @@ mod tests {
         assert!(scoring.fallback_used);
         assert_eq!(scoring.relevant_refs, vec![content_ref.clone()]);
         assert_eq!(refs, vec![content_ref]);
+    }
+
+    #[test]
+    fn retrieval_scoring_counts_matched_fact_not_content() {
+        // WHY: Evidence-ID retrieval is scored by returned fact IDs, not by
+        // whether the fact content happens to contain the expected answer.
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: vec!["fact:fact-blue".to_owned()],
+            category: "single-session-user".to_owned(),
+        };
+
+        let (scoring, refs) = retrieval_scoring_refs(
+            &question,
+            vec!["fact-blue".to_owned()],
+            vec![metrics::normalized_content_ref("the sky is green")],
+        );
+
+        assert_eq!(scoring.mode, RetrievalScoringMode::EvidenceId);
+        let recall = metrics::retrieval_recall_at_k(&refs, &scoring.relevant_refs, 1);
+        assert!((recall - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn retrieval_scoring_ignores_wrong_fact_with_answer_string() {
+        // WHY: A wrong fact whose content contains the answer string must not
+        // count as relevant when the dataset provides expected evidence IDs.
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: vec!["fact:fact-blue".to_owned()],
+            category: "single-session-user".to_owned(),
+        };
+
+        let wrong_content = metrics::normalized_content_ref("blue");
+        let (scoring, refs) = retrieval_scoring_refs(
+            &question,
+            vec!["fact-red".to_owned()],
+            vec![wrong_content],
+        );
+
+        assert_eq!(scoring.mode, RetrievalScoringMode::EvidenceId);
+        let recall = metrics::retrieval_recall_at_k(&refs, &scoring.relevant_refs, 1);
+        assert!(recall.abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn answer_overlap_scoring_named_separately_from_retrieval() {
+        // WHY: When evidence IDs are unavailable, the fallback content-overlap
+        // metric is intentionally separate from evidence-ID retrieval.
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: Vec::new(),
+            category: "single-session-user".to_owned(),
+        };
+
+        let content_ref = metrics::normalized_content_ref("Alice's favorite color is blue");
+        let (scoring, refs) = retrieval_scoring_refs(
+            &question,
+            vec!["fact-blue".to_owned()],
+            vec![content_ref],
+        );
+
+        assert_eq!(scoring.mode, RetrievalScoringMode::NormalizedContent);
+        let recall = metrics::answer_overlap_recall_at_k(&refs, &scoring.relevant_refs, 1);
+        assert!(recall.abs() < f64::EPSILON);
     }
 }
