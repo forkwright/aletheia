@@ -856,11 +856,8 @@ mod tests {
         };
 
         let wrong_content = metrics::normalized_content_ref("blue");
-        let (scoring, refs) = retrieval_scoring_refs(
-            &question,
-            vec!["fact-red".to_owned()],
-            vec![wrong_content],
-        );
+        let (scoring, refs) =
+            retrieval_scoring_refs(&question, vec!["fact-red".to_owned()], vec![wrong_content]);
 
         assert_eq!(scoring.mode, RetrievalScoringMode::EvidenceId);
         let recall = metrics::retrieval_recall_at_k(&refs, &scoring.relevant_refs, 1);
@@ -881,11 +878,8 @@ mod tests {
         };
 
         let content_ref = metrics::normalized_content_ref("Alice's favorite color is blue");
-        let (scoring, refs) = retrieval_scoring_refs(
-            &question,
-            vec!["fact-blue".to_owned()],
-            vec![content_ref],
-        );
+        let (scoring, refs) =
+            retrieval_scoring_refs(&question, vec!["fact-blue".to_owned()], vec![content_ref]);
 
         assert_eq!(scoring.mode, RetrievalScoringMode::NormalizedContent);
         let recall = metrics::answer_overlap_recall_at_k(&refs, &scoring.relevant_refs, 1);
