@@ -2004,8 +2004,8 @@ mod tests {
         assert!(
             registry
                 .find_provider(koina::models::names::opus())
-                .is_some(),
-            "custom-model instance must catch claude-* at lower precedence"
+                .is_none(),
+            "#5874: an operator-declared endpoint (explicit models list) must NOT catch undeclared claude-* traffic (endpoint isolation)"
         );
     }
 
