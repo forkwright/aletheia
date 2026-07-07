@@ -1,7 +1,8 @@
 //! Pack tool registration and shell execution.
 
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::os::unix::fs::MetadataExt as _;
+use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::str::FromStr as _;
 use std::time::Duration;
@@ -21,12 +22,34 @@ use crate::error;
 use crate::loader::LoadedPack;
 use crate::manifest::{PackInputSchema, PackToolDef};
 
+/// Device/inode pair captured when a pack command is registered, so
+/// execution can detect whether the file at `command_path` was swapped for
+/// a different one after registration validated it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    dev: u64,
+    ino: u64,
+}
+
+impl FileIdentity {
+    fn of(path: &Path) -> std::io::Result<Self> {
+        let meta = std::fs::metadata(path)?;
+        Ok(Self {
+            dev: meta.dev(),
+            ino: meta.ino(),
+        })
+    }
+}
+
 /// Executes a pack-declared shell script with JSON input on stdin.
 struct ShellToolExecutor {
     command_path: PathBuf,
     pack_root: PathBuf,
     runner: SubprocessRunner,
     timeout_ms: u64,
+    /// Identity of `command_path` at registration time; re-checked before
+    /// every execution to detect a post-registration file swap.
+    file_identity: FileIdentity,
 }
 
 impl ToolExecutor for ShellToolExecutor {
@@ -36,6 +59,16 @@ impl ToolExecutor for ShellToolExecutor {
         ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
+            match FileIdentity::of(&self.command_path) {
+                Ok(current) if current == self.file_identity => {}
+                _ => {
+                    return Ok(ToolResult::error(format!(
+                        "pack tool command changed since registration, refusing to execute: {}",
+                        self.command_path.display()
+                    )));
+                }
+            }
+
             let json_input = serde_json::to_string(&input.arguments).unwrap_or_else(|e| {
                 tracing::debug!("failed to serialize tool arguments: {e}");
                 String::new()
@@ -229,11 +262,18 @@ fn prepare_tool(
         tags,
     };
 
+    let file_identity =
+        FileIdentity::of(&command_path).map_err(|_io_err| error::Error::ToolCommandNotFound {
+            path: command_path.clone(),
+            location: snafu::Location::new(file!(), line!(), column!()),
+        })?;
+
     let executor = Box::new(ShellToolExecutor {
         command_path,
         pack_root: pack_root.to_path_buf(),
         runner,
         timeout_ms: tool_def.timeout,
+        file_identity,
     });
 
     Ok((def, executor))
@@ -311,9 +351,27 @@ fn tool_registration_error(
     }
 }
 
-/// Validate that a command path exists and stays within the pack root.
+/// Validate that a command path is relative, stays within the pack root, and
+/// resolves to a regular, executable file.
 fn validate_command_path(pack_root: &Path, command: &str) -> Result<PathBuf, error::Error> {
-    let resolved = pack_root.join(command);
+    let candidate = Path::new(command);
+
+    // WHY: reject absolute paths and `..` traversal syntactically before
+    // canonicalization. Canonicalizing first would still resolve these to a
+    // real (but wrong) file when one exists at the target, so the manifest
+    // must not even be allowed to spell an escape attempt.
+    if candidate.is_absolute()
+        || candidate
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err(error::Error::ToolCommandEscape {
+            path: candidate.to_path_buf(),
+            location: snafu::Location::new(file!(), line!(), column!()),
+        });
+    }
+
+    let resolved = pack_root.join(candidate);
 
     let canonical =
         resolved
@@ -334,6 +392,24 @@ fn validate_command_path(pack_root: &Path, command: &str) -> Result<PathBuf, err
     if !canonical.starts_with(&canonical_root) {
         return Err(error::Error::ToolCommandEscape {
             path: resolved,
+            location: snafu::Location::new(file!(), line!(), column!()),
+        });
+    }
+
+    let metadata =
+        canonical
+            .metadata()
+            .map_err(|_io_err| error::Error::ToolCommandNotExecutable {
+                path: canonical.clone(),
+                location: snafu::Location::new(file!(), line!(), column!()),
+            })?;
+
+    // WHY: require a regular executable file so a directory, device, or a
+    // script missing the execute bit cannot be registered and only fail
+    // (or behave unexpectedly) on first invocation.
+    if !metadata.is_file() || metadata.mode() & 0o111 == 0 {
+        return Err(error::Error::ToolCommandNotExecutable {
+            path: canonical,
             location: snafu::Location::new(file!(), line!(), column!()),
         });
     }
