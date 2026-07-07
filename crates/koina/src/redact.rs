@@ -1,7 +1,8 @@
 //! Sensitive value redaction for log output.
 //!
 //! Strips API keys (Anthropic `sk-ant-*`, generic `sk-*`), bearer tokens,
-//! JWTs, and password-like key=value pairs from strings before they reach logs.
+//! JWTs, PEM-encoded private key blocks, and password-like key=value pairs
+//! from strings before they reach logs.
 
 use std::sync::LazyLock;
 
@@ -27,16 +28,28 @@ static_regex!(RE_SK_KEY, r"sk-[A-Za-z0-9_-]{20,}");
 static_regex!(RE_BEARER, r"Bearer [A-Za-z0-9._-]+");
 static_regex!(RE_JWT, r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+");
 static_regex!(
+    // WHY (#5354): PEM key material (RSA/EC/OPENSSH/PKCS8, encrypted or not)
+    // is base64 body text that none of the other patterns below match; strip
+    // the whole armored block rather than trying to pattern-match the body.
+    RE_PRIVATE_KEY,
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----"
+);
+static_regex!(
     RE_SECRETS,
     // WHY (#6003): redact double-quoted and single-quoted values even when
     // they contain spaces, as well as unquoted non-whitespace values.
     r#"(?i)(password|secret|api_key|apikey)\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#
 );
 
-/// Redact sensitive values (API keys, JWTs, bearer tokens, passwords) from a string.
+/// Redact sensitive values (API keys, JWTs, bearer tokens, private keys,
+/// passwords) from a string.
 #[must_use]
 pub fn redact_sensitive(value: &str) -> String {
-    let mut result = replace_sensitive(&RE_BEARER, value, "Bearer ***");
+    // WHY: strip PEM private key blocks first — their base64 body can
+    // otherwise trip the narrower `sk-*` or JWT patterns and leave part of
+    // the key material unredacted.
+    let mut result = replace_sensitive(&RE_PRIVATE_KEY, value, "[PRIVATE KEY REDACTED]");
+    result = replace_sensitive(&RE_BEARER, &result, "Bearer ***");
     // JWT segments are base64url and can contain key-like substrings such as
     // `sk-...`; redact the full JWT before narrower API-key patterns split it.
     result = replace_sensitive(&RE_JWT, &result, "[JWT REDACTED]");
@@ -81,6 +94,24 @@ mod tests {
         let output = redact_sensitive(input);
         assert!(output.contains("[JWT REDACTED]"));
         assert!(!output.contains("dozjgNryP4J3jVmNHl0w5N"));
+    }
+
+    #[test]
+    fn redacts_rsa_private_key_block() {
+        let input = "before\n-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAsyntheticBase64KeyMaterialXYZ\n-----END RSA PRIVATE KEY-----\nafter"; // pii-allow: synthetic PEM body for redaction self-test, not a real key
+        let output = redact_sensitive(input);
+        assert!(output.contains("[PRIVATE KEY REDACTED]"));
+        assert!(!output.contains("MIIEowIBAAKCAQEAsyntheticBase64KeyMaterialXYZ"));
+        assert!(output.contains("before"));
+        assert!(output.contains("after"));
+    }
+
+    #[test]
+    fn redacts_openssh_private_key_block() {
+        let input = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAAsyntheticBody\n-----END OPENSSH PRIVATE KEY-----"; // pii-allow: synthetic PEM body for redaction self-test, not a real key
+        let output = redact_sensitive(input);
+        assert!(output.contains("[PRIVATE KEY REDACTED]"));
+        assert!(!output.contains("b3BlbnNzaC1rZXktdjEAAAAAsyntheticBody"));
     }
 
     #[test]

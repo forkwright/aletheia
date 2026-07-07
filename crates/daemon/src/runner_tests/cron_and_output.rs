@@ -607,6 +607,103 @@ async fn task_output_boundary_sanitizes_subscribers_and_persisted_state() {
     }
 }
 
+#[tokio::test]
+async fn task_output_boundary_redacts_tokens_and_private_keys() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let db_path = tmp.path().join("state");
+
+    let token = CancellationToken::new();
+    let store = crate::state::TaskStateStore::open(&db_path).expect("open store");
+    let mut runner = TaskRunner::new("test-nous", token)
+        .with_output_mode(DaemonOutputMode::Brief)
+        .with_state_store(store);
+    runner.register(make_echo_task("secret-emitting-task"));
+
+    let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"; // pii-allow: synthetic JWT for redaction pipeline test, not a real token
+    let private_key_body = "MIIEowIBAAKCAQEAsyntheticBase64KeyMaterialXYZ"; // pii-allow: synthetic PEM body for redaction pipeline test, not a real key
+    let output = format!(
+        "task failed\ntoken={jwt}\n-----BEGIN RSA PRIVATE KEY-----\n{private_key_body}\n-----END RSA PRIVATE KEY-----\n" // pii-allow: synthetic PEM body for redaction pipeline test, not a real key
+    );
+    let handle = tokio::spawn(async move {
+        Ok(ExecutionResult {
+            outcome: TaskOutcome::Failed,
+            errors: 0,
+            output: Some(output),
+        })
+    });
+    runner.in_flight.insert(
+        "secret-emitting-task".to_owned(),
+        InFlightTask {
+            handle,
+            cancel: CancellationToken::new(),
+            started_at: Instant::now(),
+            timeout: Duration::from_mins(5),
+            warned: false,
+        },
+    );
+
+    let console_buffer = Arc::new(Mutex::new(Vec::new()));
+    let file_json_buffer = Arc::new(Mutex::new(Vec::new()));
+    let trace_capture = TraceCaptureLayer::default();
+    let subscriber = tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_ansi(false)
+                .with_target(false)
+                .with_writer(SharedWriter::new(Arc::clone(&console_buffer))),
+        )
+        .with(
+            fmt::layer()
+                .json()
+                .with_ansi(false)
+                .with_target(true)
+                .with_writer(SharedWriter::new(Arc::clone(&file_json_buffer))),
+        )
+        .with(trace_capture.clone());
+
+    let guard = tracing::subscriber::set_default(subscriber);
+    tokio::task::yield_now().await;
+    runner.check_in_flight().await;
+    drop(guard);
+
+    let console = buffer_text(&console_buffer);
+    let file_json = buffer_text(&file_json_buffer);
+    let trace_ingest = trace_capture.text();
+    let states = runner
+        .state_store
+        .as_ref()
+        .expect("runner should keep attached store")
+        .load_all()
+        .expect("load persisted state");
+    let persisted = states
+        .iter()
+        .find(|state| state.task_id == "secret-emitting-task")
+        .and_then(|state| state.last_error.as_deref())
+        .expect("failed task should persist safe last_error")
+        .to_owned();
+
+    for (surface, text) in [
+        ("console", console),
+        ("file_json", file_json),
+        ("trace_ingest", trace_ingest),
+        ("persisted", persisted),
+    ] {
+        assert!(!text.contains(jwt), "{surface} leaked JWT: {text}");
+        assert!(
+            !text.contains(private_key_body),
+            "{surface} leaked private key material: {text}"
+        );
+        assert!(
+            text.contains("[JWT REDACTED]"),
+            "{surface} should contain a JWT redaction marker: {text}"
+        );
+        assert!(
+            text.contains("[PRIVATE KEY REDACTED]"),
+            "{surface} should contain a private key redaction marker: {text}"
+        );
+    }
+}
+
 #[test]
 fn with_output_mode_sets_mode() {
     let token = CancellationToken::new();
