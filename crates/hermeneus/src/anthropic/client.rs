@@ -1137,10 +1137,15 @@ impl LlmProvider for AnthropicProvider {
         // WHY (#4881): first-party Anthropic catalog models must be Exact
         // matches so a broad catch-all provider registered earlier (e.g. the
         // Claude Code subprocess provider) cannot intercept ordinary claude-*
-        // traffic. Unknown future claude-* aliases still fall back to CatchAll.
+        // traffic.
         if self.meta.models.iter().any(|m| m == model) {
             Some(MatchKind::Exact)
-        } else if model.starts_with("claude-") {
+        // WHY (#5874): only the first-party catalog (no operator-declared models) acts as the
+        // claude-* catch-all so novel Anthropic aliases still route without a config change. An
+        // operator-declared endpoint is scoped to EXACTLY its declared models — it must not present
+        // as a CatchAll for undeclared claude-* traffic, or a third-party Anthropic-compatible endpoint
+        // configured for some other model would silently intercept every unmatched claude-* request.
+        } else if !self.meta.has_operator_model_refs && model.starts_with("claude-") {
             Some(MatchKind::CatchAll)
         } else {
             None
