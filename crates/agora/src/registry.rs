@@ -122,18 +122,25 @@ impl ChannelRegistry {
             .iter()
             .map(|(id, provider)| (id.clone(), Arc::clone(provider)))
             .collect();
-        let probe_futures = owned.into_iter().map(|(id, provider)| async move {
-            let result = match tokio::time::timeout(timeout, provider.probe()).await {
-                Ok(result) => result,
-                Err(_) => ProbeResult {
-                    ok: false,
-                    latency_ms: None,
-                    error: Some("probe timed out".to_owned()),
-                    details: None,
-                },
-            };
-            (id, result)
-        });
+        // WHY: build futures with a plain loop, not `.map(|..| async {..})`. A map closure that returns a
+        // future must satisfy an HRTB `FnOnce for any two lifetimes` bound that the borrowing `probe()`
+        // future cannot meet when the aletheia bin monomorphizes it; a loop pushes concrete future values
+        // with no such closure requirement (#5203).
+        let mut probe_futures = Vec::with_capacity(owned.len());
+        for (id, provider) in owned {
+            probe_futures.push(async move {
+                let result = match tokio::time::timeout(timeout, provider.probe()).await {
+                    Ok(result) => result,
+                    Err(_) => ProbeResult {
+                        ok: false,
+                        latency_ms: None,
+                        error: Some("probe timed out".to_owned()),
+                        details: None,
+                    },
+                };
+                (id, result)
+            });
+        }
 
         // WHY: bounded concurrency prevents a large fleet from spawning an
         // unbounded number of concurrent probe tasks.
