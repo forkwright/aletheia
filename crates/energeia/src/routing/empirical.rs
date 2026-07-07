@@ -11,10 +11,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_routing::store::AfterActionStoreError;
+use aletheia_routing::store::{AfterActionStoreError, RollingStats};
 use aletheia_routing::types::{RequestFeatures, TurnOutcome};
 use aletheia_routing::{BoxFuture, Router, RouterError, RoutingDecision};
-use tracing::Instrument;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
 
 use super::store::AfterActionStore;
 use super::{ProviderId, StaticRouter, TaskCategory};
@@ -42,6 +44,10 @@ pub(crate) struct EmpiricalRouter {
     window: Duration,
     /// Minimum success-rate gap required to switch away from the static provider.
     confidence_threshold: f64,
+    /// Sender to the background outcome-drain task.
+    outcome_tx: mpsc::UnboundedSender<TurnOutcome>,
+    /// Background task handle kept alive for the router lifetime.
+    _outcome_drain: JoinHandle<()>,
 }
 
 impl EmpiricalRouter {
@@ -62,12 +68,64 @@ impl EmpiricalRouter {
         window: Duration,
         confidence_threshold: f64,
     ) -> Self {
+        // WHY: a single background drain task serializes async store writes so
+        // the sync `after_action` trait method never blocks the hot response
+        // path. The task is the only owner of the write-side lock, eliminating
+        // lock contention between outcome recordings.
+        let (outcome_tx, mut outcome_rx) = mpsc::unbounded_channel::<TurnOutcome>();
+        let drain_store = Arc::clone(&store);
+        let outcome_drain = tokio::spawn(async move {
+            while let Some(outcome) = outcome_rx.recv().await {
+                if let Err(error) = drain_store.record_outcome(&outcome).await {
+                    tracing::error!(
+                        error = %error,
+                        provider = %outcome.provider,
+                        category = %outcome.task_category,
+                        success = outcome.success,
+                        "empirical router failed to record after-action outcome"
+                    );
+                }
+            }
+        });
+
         Self {
             store,
             fallback,
             min_samples,
             window,
             confidence_threshold,
+            outcome_tx,
+            _outcome_drain: outcome_drain,
+        }
+    }
+
+    /// Query the store with a bounded timeout.
+    ///
+    /// WHY: the differing-window fallback path in
+    /// `AfterActionStore::rolling_stats` can trigger a full JSONL directory
+    /// re-scan. A slow disk or large log directory must not stall the routing
+    /// decision unbounded; on timeout we treat the lookup as absent so the
+    /// caller falls back to the static router.
+    async fn rolling_stats_with_timeout(
+        &self,
+        provider: &ProviderId,
+        task_category: &TaskCategory,
+    ) -> Result<Option<RollingStats>, AfterActionStoreError> {
+        if let Ok(result) = timeout(
+            Duration::from_millis(500),
+            self.store
+                .rolling_stats(provider, task_category, self.window),
+        )
+        .await
+        {
+            result
+        } else {
+            tracing::warn!(
+                provider = %provider,
+                category = %task_category,
+                "empirical routing stats lookup timed out; falling back"
+            );
+            Ok(None)
         }
     }
 
@@ -104,8 +162,7 @@ impl EmpiricalRouter {
 
         for provider in candidates {
             let stats = self
-                .store
-                .rolling_stats(provider, task_category, self.window)
+                .rolling_stats_with_timeout(provider, task_category)
                 .await
                 .inspect_err(|error| {
                     tracing::error!(
@@ -157,8 +214,7 @@ impl EmpiricalRouter {
         // When the static choice is allowed, preserve the existing confidence
         // threshold before switching away from it.
         let static_rate = if static_allowed {
-            self.store
-                .rolling_stats(static_choice, task_category, self.window)
+            self.rolling_stats_with_timeout(static_choice, task_category)
                 .await
                 .inspect_err(|error| {
                     tracing::error!(
@@ -209,8 +265,7 @@ impl EmpiricalRouter {
         task_category: &TaskCategory,
     ) -> Result<Option<f64>, AfterActionStoreError> {
         let stats = self
-            .store
-            .rolling_stats(provider, task_category, self.window)
+            .rolling_stats_with_timeout(provider, task_category)
             .await?;
         Ok(stats.and_then(|s| s.success_rate()))
     }
@@ -248,11 +303,7 @@ impl Router for EmpiricalRouter {
                     self.fallback.pick(category).clone()
                 }
             };
-            let confidence = match self
-                .store
-                .rolling_stats(&chosen, &category, self.window)
-                .await
-            {
+            let confidence = match self.rolling_stats_with_timeout(&chosen, &category).await {
                 Ok(stats) => stats.and_then(|s| s.success_rate()),
                 Err(error) => {
                     tracing::error!(
@@ -279,24 +330,17 @@ impl Router for EmpiricalRouter {
     ) -> Result<(), RouterError> {
         // WHY: record_outcome is async (takes the write lock), but `after_action`
         // on the trait is sync to keep the trait object-safe without boxing
-        // every future. We spawn a fire-and-forget task for the store write
-        // so the hot response path is never blocked.
-        let store = Arc::clone(&self.store);
-        let outcome = outcome.clone();
-        tokio::spawn(
-            async move {
-                if let Err(error) = store.record_outcome(&outcome).await {
-                    tracing::error!(
-                        error = %error,
-                        provider = %outcome.provider,
-                        category = %outcome.task_category,
-                        success = outcome.success,
-                        "empirical router failed to record after-action outcome"
-                    );
-                }
-            }
-            .instrument(tracing::Span::current()),
-        );
+        // every future. A single background drain task serializes writes and
+        // eliminates lock contention; a closed channel surfaces drain-task
+        // panics or runtime shutdown to callers instead of silently dropping a
+        // fire-and-forget JoinHandle.
+        self.outcome_tx
+            .send(outcome.clone())
+            .map_err(|_closed| RouterError::AfterActionWrite {
+                message: "after-action outcome channel closed (drain task panicked \
+                    or runtime shutting down)"
+                    .to_string(),
+            })?;
         Ok(())
     }
 }

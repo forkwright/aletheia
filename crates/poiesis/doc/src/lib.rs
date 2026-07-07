@@ -20,8 +20,10 @@
 //! - [`inspect_docx`] — extract paragraph text from an existing `.docx` file.
 //! - [`render_odt_from_doc`] — build `.odt` bytes from the document model via
 //!   the clean-room ZIP/XML backend.
-//! - [`render_doc`] — Pandoc subprocess wrapper, AST serialization, and
-//!   unified dispatch for the remaining format matrix.
+//! - [`render_doc`] — unified dispatch: routes `Document` to Typst (PDF
+//!   fast-lane) or Pandoc (all other formats).
+//! - [`pandoc::ast::document_to_pandoc_json`] — serialize a `Document` to
+//!   Pandoc JSON AST bytes.
 //!
 //! ## Pandoc dispatch (B-012)
 //!

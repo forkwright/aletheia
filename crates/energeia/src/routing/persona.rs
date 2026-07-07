@@ -95,11 +95,8 @@ pub(crate) struct PersonaDecision {
     pub(crate) persona_role: PersonaRole,
     /// Human-readable rationale for the persona selection.
     ///
-    /// Never read within this crate — carried for binary wiring and logging.
-    /// WHY: The `tracing::debug!` in `route_with_persona` uses the local
-    /// variable `rationale` (before `PersonaDecision::new` consumes it), not
-    /// the struct field. The field exists solely for consumers outside this crate.
-    #[expect(dead_code, reason = "binary wiring reads PersonaDecision::rationale")]
+    /// WHY: emitted in the structured `persona routing decision` tracing event
+    /// so operators and auditors can inspect why a persona was selected.
     pub(crate) rationale: String,
 }
 
@@ -203,15 +200,17 @@ impl PersonaRouter {
             (ModelTier::Standard, PersonaRole::Engineer, rationale)
         };
 
+        let decision = PersonaDecision::new(base, model_tier, persona_role, rationale);
+
         tracing::debug!(
-            provider = %base.provider,
+            provider = %decision.base.provider,
             %model_tier,
             %persona_role,
-            %rationale,
+            rationale = %decision.rationale,
             "persona routing decision"
         );
 
-        PersonaDecision::new(base, model_tier, persona_role, rationale)
+        decision
     }
 }
 
