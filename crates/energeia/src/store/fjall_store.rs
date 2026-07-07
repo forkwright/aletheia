@@ -656,6 +656,151 @@ impl EnergeiaStore {
         queries::list_all_qa_verdicts(&self.keyspace, limit)
     }
 
+    // ── Streaming windowed folds (metrics / reporting) ──
+
+    /// Fold over dispatch records newest-first, stopping once records fall
+    /// outside `cutoff_ms` and after `limit` records.
+    ///
+    /// This lets health metrics avoid materializing a `Vec` of all dispatches
+    /// when only a time-windowed aggregate is needed.
+    pub(crate) fn fold_dispatches<T, F>(
+        &self,
+        cutoff_ms: Option<i64>,
+        limit: usize,
+        init: T,
+        mut fold: F,
+    ) -> Result<T>
+    where
+        F: FnMut(T, &DispatchRecord) -> T,
+    {
+        if limit == 0 {
+            return Ok(init);
+        }
+        let prefix = schema::dispatch_prefix().as_bytes();
+        let mut acc = init;
+        let mut seen = 0usize;
+        for guard in self.keyspace.prefix(prefix).rev() {
+            let (_key, value) = guard
+                .into_inner()
+                .map_err(|e| store_err("dispatch prefix scan", e))?;
+            let record: DispatchRecord = queries::deserialize_value(&value)?;
+            if cutoff_ms.is_some_and(|cutoff| record.created_at.as_millisecond() < cutoff) {
+                break;
+            }
+            acc = fold(acc, &record);
+            seen += 1;
+            if seen >= limit {
+                break;
+            }
+        }
+        Ok(acc)
+    }
+
+    /// Fold over session records newest-first by dispatch ULID, stopping once
+    /// records fall outside `cutoff_ms` and after `limit` records.
+    pub(crate) fn fold_sessions<T, F>(
+        &self,
+        cutoff_ms: Option<i64>,
+        limit: usize,
+        init: T,
+        mut fold: F,
+    ) -> Result<T>
+    where
+        F: FnMut(T, &SessionRecord) -> T,
+    {
+        if limit == 0 {
+            return Ok(init);
+        }
+        let prefix = schema::session_prefix().as_bytes();
+        let mut acc = init;
+        let mut seen = 0usize;
+        for guard in self.keyspace.prefix(prefix).rev() {
+            let (_key, value) = guard
+                .into_inner()
+                .map_err(|e| store_err("session prefix scan", e))?;
+            let record: SessionRecord = queries::deserialize_value(&value)?;
+            if cutoff_ms.is_some_and(|cutoff| record.created_at.as_millisecond() < cutoff) {
+                break;
+            }
+            acc = fold(acc, &record);
+            seen += 1;
+            if seen >= limit {
+                break;
+            }
+        }
+        Ok(acc)
+    }
+
+    /// Fold over CI validation records newest-first by session ULID, stopping
+    /// once records fall outside `cutoff_ms` and after `limit` records.
+    pub(crate) fn fold_ci_validations<T, F>(
+        &self,
+        cutoff_ms: Option<i64>,
+        limit: usize,
+        init: T,
+        mut fold: F,
+    ) -> Result<T>
+    where
+        F: FnMut(T, &CiValidationRecord) -> T,
+    {
+        if limit == 0 {
+            return Ok(init);
+        }
+        let prefix = schema::ci_validation_prefix().as_bytes();
+        let mut acc = init;
+        let mut seen = 0usize;
+        for guard in self.keyspace.prefix(prefix).rev() {
+            let (_key, value) = guard
+                .into_inner()
+                .map_err(|e| store_err("ci_validation prefix scan", e))?;
+            let record: CiValidationRecord = queries::deserialize_value(&value)?;
+            if cutoff_ms.is_some_and(|cutoff| record.validated_at.as_millisecond() < cutoff) {
+                break;
+            }
+            acc = fold(acc, &record);
+            seen += 1;
+            if seen >= limit {
+                break;
+            }
+        }
+        Ok(acc)
+    }
+
+    /// Fold over QA verdict records newest-first by verdict timestamp, stopping
+    /// once records fall outside `cutoff_ms` and after `limit` records.
+    pub(crate) fn fold_qa_verdicts<T, F>(
+        &self,
+        cutoff_ms: Option<i64>,
+        limit: usize,
+        init: T,
+        mut fold: F,
+    ) -> Result<T>
+    where
+        F: FnMut(T, &QaVerdictRecord) -> T,
+    {
+        if limit == 0 {
+            return Ok(init);
+        }
+        let prefix = schema::qa_verdict_prefix().as_bytes();
+        let mut acc = init;
+        let mut seen = 0usize;
+        for guard in self.keyspace.prefix(prefix).rev() {
+            let (_key, value) = guard
+                .into_inner()
+                .map_err(|e| store_err("qa_verdict prefix scan", e))?;
+            let record: QaVerdictRecord = queries::deserialize_value(&value)?;
+            if cutoff_ms.is_some_and(|cutoff| record.recorded_at.as_millisecond() < cutoff) {
+                break;
+            }
+            acc = fold(acc, &record);
+            seen += 1;
+            if seen >= limit {
+                break;
+            }
+        }
+        Ok(acc)
+    }
+
     /// List QA verdict records for a specific dispatch.
     ///
     /// # Errors

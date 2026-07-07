@@ -33,7 +33,7 @@ use crate::store::{
     SCAN_LIMIT_SESSIONS,
 };
 #[cfg(feature = "storage-fjall")]
-use crate::types::SessionStatus;
+use crate::types::{QaVerdict, SessionStatus};
 
 /// Status classification for a health metric.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +131,286 @@ impl HealthReport {
 }
 
 #[cfg(feature = "storage-fjall")]
+#[derive(Default)]
+struct HealthAccumulator {
+    /// Total dispatches inside the window.
+    dispatch_total: u32,
+    /// Dispatch IDs inside the window.
+    dispatch_ids: HashSet<String>,
+    /// Dispatch IDs with a corrective QA verdict (Partial/Fail).
+    corrective_dispatch_ids: HashSet<String>,
+    /// Dispatch IDs that contain at least one Failed or Stuck session.
+    failed_or_stuck_dispatch_ids: HashSet<String>,
+    /// `true` once any QA verdict inside the window has been seen.
+    has_qa_verdicts: bool,
+    /// Completed dispatches with a `finished_at` timestamp.
+    completed_count: u32,
+    /// Sum of cycle-time durations in milliseconds.
+    completed_ms_sum: i64,
+    /// Total sessions inside the window.
+    session_total: u32,
+    /// Sessions whose final status is `Stuck`.
+    stuck_count: u32,
+    /// Sessions that have a PR URL.
+    sessions_with_pr: u32,
+    /// Sessions with a PR URL and at least one CI validation failure.
+    pr_with_ci_fail: u32,
+    /// Sessions that have at least one CI validation record.
+    sessions_with_ci: u32,
+    /// CI-validated sessions whose final status is `Success`.
+    sessions_with_ci_success: u32,
+    /// Session count per dispatch for batch parallelism.
+    sessions_per_dispatch: HashMap<String, u32>,
+    /// Map from session ID to whether any CI validation failed.
+    ci_fail_by_session: HashMap<String, bool>,
+}
+
+#[cfg(feature = "storage-fjall")]
+impl HealthAccumulator {
+    fn add_dispatch(&mut self, d: &DispatchRecord) {
+        self.dispatch_total += 1;
+        self.dispatch_ids.insert(d.id.as_str().to_owned());
+        if d.status == DispatchStatus::Completed {
+            if let Some(finished_at) = d.finished_at {
+                self.completed_count += 1;
+                self.completed_ms_sum +=
+                    finished_at.as_millisecond() - d.created_at.as_millisecond();
+            }
+        }
+    }
+
+    fn add_session(&mut self, s: &SessionRecord) {
+        self.session_total += 1;
+        if s.status == SessionStatus::Stuck {
+            self.stuck_count += 1;
+        }
+        if s.pr_url.is_some() {
+            self.sessions_with_pr += 1;
+        }
+        if let Some(&has_fail) = self.ci_fail_by_session.get(s.id.as_str()) {
+            self.sessions_with_ci += 1;
+            if s.status == SessionStatus::Success {
+                self.sessions_with_ci_success += 1;
+            }
+            if s.pr_url.is_some() && has_fail {
+                self.pr_with_ci_fail += 1;
+            }
+        }
+        if matches!(s.status, SessionStatus::Failed | SessionStatus::Stuck) {
+            self.failed_or_stuck_dispatch_ids
+                .insert(s.dispatch_id.as_str().to_owned());
+        }
+        *self
+            .sessions_per_dispatch
+            .entry(s.dispatch_id.as_str().to_owned())
+            .or_insert(0) += 1;
+    }
+
+    fn add_ci_validation(&mut self, v: &CiValidationRecord) {
+        let is_fail = v.status == CiValidationStatus::Fail;
+        self.ci_fail_by_session
+            .entry(v.session_id.as_str().to_owned())
+            .and_modify(|e| *e |= is_fail)
+            .or_insert(is_fail);
+    }
+
+    fn add_qa_verdict(&mut self, v: &crate::store::records::QaVerdictRecord) {
+        self.has_qa_verdicts = true;
+        if matches!(v.verdict, QaVerdict::Partial | QaVerdict::Fail) {
+            self.corrective_dispatch_ids
+                .insert(v.dispatch_id.as_str().to_owned());
+        }
+    }
+
+    fn corrective_rate(&self) -> HealthMetric {
+        const NAME: &str = "corrective_rate";
+        const DESC: &str =
+            "% of dispatches needing corrective prompts (QA Partial/Fail verdicts when available)";
+
+        if self.dispatch_total == 0 {
+            return unavailable(NAME, DESC, 0.10, 0.20, false, false);
+        }
+
+        let (corrective, is_proxied): (u32, bool) = if self.has_qa_verdicts {
+            (
+                u32::try_from(self.corrective_dispatch_ids.len()).unwrap_or(u32::MAX),
+                false,
+            )
+        } else {
+            (
+                u32::try_from(self.failed_or_stuck_dispatch_ids.len()).unwrap_or(u32::MAX),
+                true,
+            )
+        };
+
+        let rate = f64::from(corrective) / f64::from(self.dispatch_total);
+
+        HealthMetric {
+            name: NAME,
+            description: DESC,
+            value: rate,
+            status: classify_lower_is_better(rate, 0.10, 0.20),
+            ok_threshold: 0.10,
+            warn_threshold: 0.20,
+            sample_size: u64::from(self.dispatch_total),
+            is_proxied,
+            higher_is_better: false,
+            engine_name: DEFAULT_ENGINE_LABEL,
+            provider: DEFAULT_UNKNOWN_LABEL,
+            agent_id: DEFAULT_UNKNOWN_LABEL,
+        }
+    }
+
+    fn stuck_rate(&self) -> HealthMetric {
+        const NAME: &str = "stuck_rate";
+        const DESC: &str = "% of sessions ending in Stuck status (health escalation exhausted)";
+
+        if self.session_total == 0 {
+            return unavailable(NAME, DESC, 0.05, 0.15, false, false);
+        }
+
+        let rate = f64::from(self.stuck_count) / f64::from(self.session_total);
+
+        HealthMetric {
+            name: NAME,
+            description: DESC,
+            value: rate,
+            status: classify_lower_is_better(rate, 0.05, 0.15),
+            ok_threshold: 0.05,
+            warn_threshold: 0.15,
+            sample_size: u64::from(self.session_total),
+            is_proxied: false,
+            higher_is_better: false,
+            engine_name: DEFAULT_ENGINE_LABEL,
+            provider: DEFAULT_UNKNOWN_LABEL,
+            agent_id: DEFAULT_UNKNOWN_LABEL,
+        }
+    }
+
+    fn qa_false_positive_rate(&self) -> HealthMetric {
+        const NAME: &str = "qa_false_positive_rate";
+        const DESC: &str = "% of sessions with a PR that later fail CI \
+            (proxy for QA passing work that CI rejects; true rate needs QA verdict data)";
+
+        if self.sessions_with_pr == 0 {
+            return unavailable(NAME, DESC, 0.05, 0.10, false, true);
+        }
+
+        let rate = f64::from(self.pr_with_ci_fail) / f64::from(self.sessions_with_pr);
+
+        HealthMetric {
+            name: NAME,
+            description: DESC,
+            value: rate,
+            status: classify_lower_is_better(rate, 0.05, 0.10),
+            ok_threshold: 0.05,
+            warn_threshold: 0.10,
+            sample_size: u64::from(self.sessions_with_pr),
+            is_proxied: true,
+            higher_is_better: false,
+            engine_name: DEFAULT_ENGINE_LABEL,
+            provider: DEFAULT_UNKNOWN_LABEL,
+            agent_id: DEFAULT_UNKNOWN_LABEL,
+        }
+    }
+
+    fn fix_agent_success_rate(&self) -> HealthMetric {
+        const NAME: &str = "fix_agent_success_rate";
+        const DESC: &str = "% of CI-validated sessions reaching Success \
+            (proxy for fix agent success; true rate needs fix-agent marker in session data)";
+
+        if self.sessions_with_ci == 0 {
+            return unavailable(NAME, DESC, 0.80, 0.60, true, true);
+        }
+
+        let rate = f64::from(self.sessions_with_ci_success) / f64::from(self.sessions_with_ci);
+
+        HealthMetric {
+            name: NAME,
+            description: DESC,
+            value: rate,
+            status: classify_higher_is_better(rate, 0.80, 0.60),
+            ok_threshold: 0.80,
+            warn_threshold: 0.60,
+            sample_size: u64::from(self.sessions_with_ci),
+            is_proxied: true,
+            higher_is_better: true,
+            engine_name: DEFAULT_ENGINE_LABEL,
+            provider: DEFAULT_UNKNOWN_LABEL,
+            agent_id: DEFAULT_UNKNOWN_LABEL,
+        }
+    }
+
+    fn cycle_time(&self) -> HealthMetric {
+        const NAME: &str = "cycle_time_hours";
+        const DESC: &str =
+            "Average hours from dispatch creation to completion (completed dispatches only)";
+
+        if self.completed_count == 0 {
+            return unavailable(NAME, DESC, 4.0, 8.0, false, false);
+        }
+
+        let avg_hours = jiff::SignedDuration::from_millis(self.completed_ms_sum).as_secs_f64()
+            / f64::from(self.completed_count)
+            / 3600.0;
+
+        HealthMetric {
+            name: NAME,
+            description: DESC,
+            value: avg_hours,
+            status: classify_lower_is_better(avg_hours, 4.0, 8.0),
+            ok_threshold: 4.0,
+            warn_threshold: 8.0,
+            sample_size: u64::from(self.completed_count),
+            is_proxied: false,
+            higher_is_better: false,
+            engine_name: DEFAULT_ENGINE_LABEL,
+            provider: DEFAULT_UNKNOWN_LABEL,
+            agent_id: DEFAULT_UNKNOWN_LABEL,
+        }
+    }
+
+    fn batch_parallelism(&self) -> HealthMetric {
+        const NAME: &str = "batch_parallelism";
+        const DESC: &str = "Average sessions per dispatch (proxy for concurrent group size)";
+
+        if self.dispatch_total == 0 {
+            return unavailable(NAME, DESC, 3.0, 1.5, true, true);
+        }
+
+        let mut total_sessions = 0u32;
+        let mut with_sessions = 0u32;
+        for (dispatch_id, count) in &self.sessions_per_dispatch {
+            if self.dispatch_ids.contains(dispatch_id) {
+                total_sessions += *count;
+                with_sessions += 1;
+            }
+        }
+
+        if with_sessions == 0 {
+            return unavailable(NAME, DESC, 3.0, 1.5, true, true);
+        }
+
+        let avg = f64::from(total_sessions) / f64::from(with_sessions);
+
+        HealthMetric {
+            name: NAME,
+            description: DESC,
+            value: avg,
+            status: classify_higher_is_better(avg, 3.0, 1.5),
+            ok_threshold: 3.0,
+            warn_threshold: 1.5,
+            sample_size: u64::from(with_sessions),
+            is_proxied: true,
+            higher_is_better: true,
+            engine_name: DEFAULT_ENGINE_LABEL,
+            provider: DEFAULT_UNKNOWN_LABEL,
+            agent_id: DEFAULT_UNKNOWN_LABEL,
+        }
+    }
+}
+
+#[cfg(feature = "storage-fjall")]
 /// Compute all 7 pipeline health metrics from stored dispatch and session data.
 ///
 /// `window_days` controls how far back to look; pass `0` to include all
@@ -158,41 +438,39 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
         None
     };
 
-    // Load raw data — time filtering happens in-process after the scans.
-    let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
-    let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
-    let all_ci_validations = store.list_all_ci_validations(SCAN_LIMIT_CI_VALIDATIONS)?;
-    let all_qa_verdicts = store.list_all_qa_verdicts(SCAN_LIMIT_QA_VERDICTS)?;
+    // Stream records newest-first, stopping once timestamps fall outside the
+    // requested window. Counters are updated directly, so no intermediate Vec
+    // of records is allocated.
+    let mut acc = HealthAccumulator::default();
 
-    let dispatches: Vec<&DispatchRecord> = all_dispatches
-        .iter()
-        .filter(|d| cutoff_ms.is_none_or(|cutoff| d.created_at.as_millisecond() >= cutoff))
-        .collect();
+    acc = store.fold_dispatches(cutoff_ms, SCAN_LIMIT_DISPATCHES, acc, |mut acc, d| {
+        acc.add_dispatch(d);
+        acc
+    })?;
 
-    let sessions: Vec<&SessionRecord> = all_sessions
-        .iter()
-        .filter(|s| cutoff_ms.is_none_or(|cutoff| s.created_at.as_millisecond() >= cutoff))
-        .collect();
+    acc = store.fold_ci_validations(cutoff_ms, SCAN_LIMIT_CI_VALIDATIONS, acc, |mut acc, v| {
+        acc.add_ci_validation(v);
+        acc
+    })?;
 
-    // Build session-id → CI validations map for O(1) per-session lookup.
-    let ci_by_session: HashMap<String, Vec<&CiValidationRecord>> = {
-        let mut map: HashMap<String, Vec<&CiValidationRecord>> = HashMap::new();
-        for v in &all_ci_validations {
-            map.entry(v.session_id.as_str().to_owned())
-                .or_default()
-                .push(v);
-        }
-        map
-    };
+    acc = store.fold_qa_verdicts(cutoff_ms, SCAN_LIMIT_QA_VERDICTS, acc, |mut acc, v| {
+        acc.add_qa_verdict(v);
+        acc
+    })?;
+
+    acc = store.fold_sessions(cutoff_ms, SCAN_LIMIT_SESSIONS, acc, |mut acc, s| {
+        acc.add_session(s);
+        acc
+    })?;
 
     let metrics = vec![
-        corrective_rate(&dispatches, &sessions, &all_qa_verdicts),
-        stuck_rate(&sessions),
-        qa_false_positive_rate(&sessions, &ci_by_session),
-        fix_agent_success_rate(&sessions, &ci_by_session),
-        cycle_time(&dispatches),
+        acc.corrective_rate(),
+        acc.stuck_rate(),
+        acc.qa_false_positive_rate(),
+        acc.fix_agent_success_rate(),
+        acc.cycle_time(),
         observation_to_issue_rate(),
-        batch_parallelism(&dispatches, &sessions),
+        acc.batch_parallelism(),
     ];
 
     Ok(HealthReport {
