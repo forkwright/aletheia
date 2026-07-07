@@ -1134,6 +1134,21 @@ impl LlmProvider for AnthropicProvider {
     }
 
     fn match_specificity(&self, model: &str) -> Option<MatchKind> {
+        // WHY (#5874): an operator-declared model list scopes this endpoint to
+        // exactly those model IDs. The claude-* CatchAll below is only valid
+        // for the catalog-backed default provider — falling through to it here
+        // would let a third-party Anthropic-protocol endpoint (e.g. `models =
+        // ["custom-claude-v1"]`) claim every claude-* request in the
+        // deployment despite never declaring support for them.
+        if self.meta.has_operator_model_refs {
+            return self
+                .meta
+                .models
+                .iter()
+                .any(|m| m == model)
+                .then_some(MatchKind::Exact);
+        }
+
         // WHY (#4881): first-party Anthropic catalog models must be Exact
         // matches so a broad catch-all provider registered earlier (e.g. the
         // Claude Code subprocess provider) cannot intercept ordinary claude-*

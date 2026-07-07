@@ -196,11 +196,15 @@ fn from_config_custom_models_claim_routing() {
         provider.match_specificity("kimi-for-coding"),
         Some(MatchKind::Exact)
     );
+    // WHY (#5874): a custom-model endpoint must not silently catch every
+    // claude-* request in the deployment — it was scoped to its declared
+    // model list and has no route for models it never claimed to serve.
     assert_eq!(
         provider.match_specificity(koina::models::names::opus()),
-        Some(MatchKind::CatchAll),
-        "custom-model instance catches claude-* at lower precedence"
+        None,
+        "custom-model instance must not catch-all undeclared claude-* models"
     );
+    assert!(!provider.supports_model(koina::models::names::opus()));
 }
 
 #[test]
