@@ -198,8 +198,48 @@ fn from_config_custom_models_claim_routing() {
     );
     assert_eq!(
         provider.match_specificity(koina::models::names::opus()),
+        None,
+        "#5874: an operator-scoped endpoint (declared models) must NOT catch undeclared claude-* traffic"
+    );
+}
+
+#[test]
+fn operator_scoped_endpoint_does_not_catch_all_claude() {
+    // WHY (#5874): endpoint isolation — an endpoint the operator declared with an explicit `models`
+    // list serves exactly those models and must never present as a claude-* CatchAll candidate.
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("sk-test-123")),
+        base_url: Some("https://compat.api.example.com".to_owned()),
+        models: vec!["custom-claude-v1".to_owned()],
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    assert_eq!(
+        provider.match_specificity("custom-claude-v1"),
+        Some(MatchKind::Exact),
+        "declared model still matches Exact"
+    );
+    assert_eq!(
+        provider.match_specificity("claude-3-opus-20240229"),
+        None,
+        "undeclared claude-* must not be intercepted by an operator-scoped endpoint"
+    );
+    assert_eq!(provider.match_specificity("claude-sonnet-4"), None);
+}
+
+#[test]
+fn first_party_catalog_still_catches_novel_claude_alias() {
+    // WHY (#4881 preserved): the first-party catalog (no operator models) still CatchAlls a novel
+    // claude-* alias so new Anthropic models route without a config change.
+    let config = ProviderConfig {
+        api_key: Some(SecretString::from("sk-test-123")),
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::from_config(&config).expect("valid config");
+    assert_eq!(
+        provider.match_specificity("claude-99-ultra-00000000"),
         Some(MatchKind::CatchAll),
-        "custom-model instance catches claude-* at lower precedence"
+        "first-party catalog catches novel claude-* aliases"
     );
 }
 
