@@ -333,6 +333,31 @@ fn resolve_store(
         .ok_or_else(|| KnowledgeStoreUnavailableSnafu {}.build())
 }
 
+/// Return whether a recall result is owned by the scoped nous agent.
+#[cfg(feature = "knowledge-store")]
+fn recall_owned_by_scope(
+    result: &mneme::knowledge::RecallResult,
+    effective_nous: Option<&str>,
+) -> bool {
+    effective_nous.is_some_and(|scoped| scoped == result.nous_id.as_str())
+}
+
+/// Return whether a recall result is visible to the scoped caller.
+///
+/// A result is visible when it is owned by the scoped nous agent or when it
+/// has been explicitly shared or published.
+#[cfg(feature = "knowledge-store")]
+fn recall_visible_to_scope(
+    result: &mneme::knowledge::RecallResult,
+    effective_nous: Option<&str>,
+) -> bool {
+    recall_owned_by_scope(result, effective_nous)
+        || matches!(
+            result.visibility,
+            mneme::knowledge::Visibility::Shared | mneme::knowledge::Visibility::Published
+        )
+}
+
 #[cfg(feature = "knowledge-store")]
 fn search_knowledge_store(
     store: &mneme::knowledge_store::KnowledgeStore,
@@ -354,7 +379,7 @@ fn search_knowledge_store(
     let results = if let Some(ref nous_id) = params.nous_id {
         results
             .into_iter()
-            .filter(|result| result.source_id.contains(nous_id.as_str()))
+            .filter(|result| recall_owned_by_scope(result, Some(nous_id.as_str())))
             .collect()
     } else {
         results
@@ -1066,17 +1091,7 @@ impl DiaporeiaServer {
             // than trusting caller-supplied `nous_id` or `source_id` substrings.
             let results: Vec<_> = results
                 .into_iter()
-                .filter(|r| {
-                    let owned_by_scope = effective_nous
-                        .as_deref()
-                        .is_some_and(|scoped| scoped == r.nous_id.as_str());
-                    let shared = matches!(
-                        r.visibility,
-                        mneme::knowledge::Visibility::Shared
-                            | mneme::knowledge::Visibility::Published
-                    );
-                    owned_by_scope || shared
-                })
+                .filter(|r| recall_visible_to_scope(r, effective_nous.as_deref()))
                 .collect();
 
             let json = serde_json::to_string_pretty(&results)
@@ -2076,17 +2091,7 @@ impl DiaporeiaServer {
             // WHY(#4841): enforce first-party ownership and visibility.
             let results: Vec<_> = results
                 .into_iter()
-                .filter(|r| {
-                    let owned_by_scope = effective_nous
-                        .as_deref()
-                        .is_some_and(|scoped| scoped == r.nous_id.as_str());
-                    let shared = matches!(
-                        r.visibility,
-                        mneme::knowledge::Visibility::Shared
-                            | mneme::knowledge::Visibility::Published
-                    );
-                    owned_by_scope || shared
-                })
+                .filter(|r| recall_visible_to_scope(r, effective_nous.as_deref()))
                 .collect();
 
             let json = serde_json::to_string_pretty(&results)
@@ -2716,5 +2721,78 @@ mod tests {
             }),
             "depth=3 should reach the third-hop entity"
         );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    fn make_recall_result(
+        source_id: &str,
+        nous_id: &str,
+        visibility: mneme::knowledge::Visibility,
+    ) -> mneme::knowledge::RecallResult {
+        mneme::knowledge::RecallResult {
+            content: "test content".to_owned(),
+            distance: 0.0,
+            source_type: "fact".to_owned(),
+            source_id: source_id.to_owned(),
+            nous_id: nous_id.to_owned(),
+            sensitivity: mneme::knowledge::FactSensitivity::Public,
+            graph_importance: 0.0,
+            scope: None,
+            project_id: None,
+            visibility,
+            source_count: 0,
+        }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn knowledge_search_filters_by_nous_id() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
+        store
+            .insert_fact(&make_fact("f-alice", "alice", "memory fact about rust"))
+            .expect("insert alice fact");
+        store
+            .insert_fact(&make_fact("f-bob", "bob", "memory fact about rust"))
+            .expect("insert bob fact");
+
+        let params = params::KnowledgeSearchParams {
+            query: "memory fact".to_owned(),
+            nous_id: Some("alice".to_owned()),
+            limit: Some(10),
+        };
+        let results = search_knowledge_store(&store, &params, 20).expect("search");
+        assert!(
+            results.iter().any(|r| r.source_id == "f-alice"),
+            "matching nous_id must be included"
+        );
+        assert!(
+            !results.iter().any(|r| r.source_id == "f-bob"),
+            "non-matching nous_id must be excluded"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn recall_owned_by_scope_filters_by_nous_id() {
+        let alice = make_recall_result("f-alice", "alice", mneme::knowledge::Visibility::Private);
+        let bob = make_recall_result("f-bob", "bob", mneme::knowledge::Visibility::Private);
+
+        assert!(recall_owned_by_scope(&alice, Some("alice")));
+        assert!(!recall_owned_by_scope(&bob, Some("alice")));
+        assert!(!recall_owned_by_scope(&alice, None));
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn recall_visible_to_scope_allows_owned_or_shared() {
+        let owned = make_recall_result("f-alice", "alice", mneme::knowledge::Visibility::Private);
+        let other_private =
+            make_recall_result("f-bob", "bob", mneme::knowledge::Visibility::Private);
+        let shared = make_recall_result("f-shared", "bob", mneme::knowledge::Visibility::Shared);
+
+        assert!(recall_visible_to_scope(&owned, Some("alice")));
+        assert!(!recall_visible_to_scope(&other_private, Some("alice")));
+        assert!(recall_visible_to_scope(&shared, Some("alice")));
+        assert!(recall_visible_to_scope(&shared, None));
     }
 }
