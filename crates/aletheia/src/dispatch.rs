@@ -54,15 +54,10 @@ pub(crate) fn spawn_dispatcher(
                     channel = %msg.channel,
                     sender = %msg.sender,
                 );
-                // WHY: wrap in a concrete `async move` block so the spawned future has a
-                // fully-inferred lifetime/Send bound — a bare `fn(..).instrument(..)` future
-                // tripped `FnOnce is not general enough` HRTB inference once agora::probe_all
-                // gained internal stream combinators (#5203).
-                in_flight.spawn(async move {
+                in_flight.spawn(
                     dispatch_one(msg, router, nous_mgr, channels, session_store)
-                        .instrument(msg_span)
-                        .await
-                });
+                        .instrument(msg_span),
+                );
 
                 // WHY: Reap completed tasks periodically to prevent unbounded growth.
                 while let Some(result) = in_flight.try_join_next() {

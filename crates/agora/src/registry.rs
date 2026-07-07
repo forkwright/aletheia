@@ -113,31 +113,34 @@ impl ChannelRegistry {
             return results;
         }
 
-        let probe_futures = self.providers.iter().map(|(id, provider)| {
-            let id = id.clone();
-            let provider = Arc::clone(provider);
-            let timeout = self.probe_timeout;
-            async move {
-                let result = match tokio::time::timeout(timeout, provider.probe()).await {
-                    Ok(result) => result,
-                    Err(_) => ProbeResult {
-                        ok: false,
-                        latency_ms: None,
-                        error: Some("probe timed out".to_owned()),
-                        details: None,
-                    },
-                };
-                (id, result)
-            }
+        let timeout = self.probe_timeout;
+        // WHY: collect OWNED (id, Arc) before the async map so each probe future captures owned values,
+        // not a borrow of `self.providers`. A borrowing map closure returning a future fails the HRTB
+        // "for any two lifetimes" bound when monomorphized in a downstream bin (agora->aletheia, #5203).
+        let owned: Vec<(String, Arc<dyn ChannelProvider>)> = self
+            .providers
+            .iter()
+            .map(|(id, provider)| (id.clone(), Arc::clone(provider)))
+            .collect();
+        let probe_futures = owned.into_iter().map(|(id, provider)| async move {
+            let result = match tokio::time::timeout(timeout, provider.probe()).await {
+                Ok(result) => result,
+                Err(_) => ProbeResult {
+                    ok: false,
+                    latency_ms: None,
+                    error: Some("probe timed out".to_owned()),
+                    details: None,
+                },
+            };
+            (id, result)
         });
 
         // WHY: bounded concurrency prevents a large fleet from spawning an
         // unbounded number of concurrent probe tasks.
-        let mut by_id: HashMap<String, ProbeResult> =
-            futures::stream::iter(probe_futures)
-                .buffer_unordered(self.max_concurrent_probes)
-                .collect()
-                .await;
+        let mut by_id: HashMap<String, ProbeResult> = futures::stream::iter(probe_futures)
+            .buffer_unordered(self.max_concurrent_probes)
+            .collect()
+            .await;
 
         // WHY: restore provider insertion order after concurrent collection.
         for id in self.providers.keys() {
