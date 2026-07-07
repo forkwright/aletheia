@@ -30,27 +30,22 @@ def main() -> int:
     errors: list[str] = []
 
     gate = load_workflow(".github/workflows/gate-attestation.yml")
-    gate_steps = gate["jobs"]["gate-attestation"].get("steps", [])
-    for step in gate_steps:
-        if step.get("name") == "Pass trusted automation PRs":
-            errors.append("gate-attestation must not have a bot-author pass step")
-
-        condition = str(step.get("if", ""))
-        if "dependabot[bot]" in condition or "release-please[bot]" in condition:
+    # #6363: gate-attestation is now a stamp-trust trailer-verify that delegates to the pinned fleet
+    # reusable workflow (forkwright/.github) rather than re-running the build locally. Per-PR verification
+    # is the local `kanon gate --stamp` Gate-Passed trailer; dependency security stays gated for bots by
+    # the cargo audit/deny jobs (which must not waive Dependabot — enforced below). Validate the
+    # delegation is present + pinned to a SHA, not the retired local cargo steps.
+    gate_jobs = gate.get("jobs", {})
+    gate_job = gate_jobs.get("gate") or gate_jobs.get("gate-attestation")
+    if gate_job is None:
+        errors.append("gate-attestation.yml must define a gate job")
+    else:
+        uses = str(gate_job.get("uses", ""))
+        if "forkwright/.github/.github/workflows/gate-attestation.yml@" not in uses:
             errors.append(
-                "gate-attestation step conditions must not skip Dependabot or "
-                "release-please authors"
+                "gate-attestation must delegate to the pinned forkwright/.github "
+                "trailer-verify reusable workflow"
             )
-
-    gate_step_names = {step.get("name") for step in gate_steps}
-    for required in (
-        "Configure git credentials for private fleet deps",
-        "cargo fmt --check",
-        "cargo clippy",
-        "cargo nextest run",
-    ):
-        if required not in gate_step_names:
-            errors.append(f"gate-attestation is missing required step: {required}")
 
     security = load_workflow(".github/workflows/security.yml")
     cargo_deny = security["jobs"]["cargo-deny"]
