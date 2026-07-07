@@ -176,7 +176,7 @@ pub async fn list_facts(
     validate_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
-    let mut facts = get_stored_facts(&state, &policy, &query);
+    let mut facts = get_stored_facts(&state, &policy, &query).await;
 
     if let Some(ref filter) = query.filter {
         let filter_lower = filter.to_lowercase();

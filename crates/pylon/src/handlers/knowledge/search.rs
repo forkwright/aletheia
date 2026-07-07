@@ -17,6 +17,23 @@ use super::{
 
 /// Score a fact stream using the same multi-factor recall engine as the turn
 /// recall pipeline and produce a full explanation.
+// WHY(#5680): bound the candidate set fetched for scoring/timeline to the requested result count,
+// not the whole store, so per-request cost does not scale with total facts ever stored. The
+// multiplier keeps enough candidates for meaningful re-ranking; the hard cap bounds worst-case
+// allocation. NOTE(#5680): this trades some recall completeness (facts beyond the cap in the store's
+// native sort are not scored) for bounded cost — the recall-complete fix is a store-layer similarity
+// prefilter (tracked separately), which `list_all_facts`/`audit_all_facts` do not yet support.
+const CANDIDATE_FETCH_MULTIPLIER: usize = 50;
+const MAX_CANDIDATE_FETCH: usize = 2_000;
+
+/// Candidate fetch size for a requested result `limit`: `limit * MULTIPLIER`, clamped to
+/// `[1, MAX_CANDIDATE_FETCH]`.
+fn candidate_fetch_limit(requested: usize) -> usize {
+    requested
+        .saturating_mul(CANDIDATE_FETCH_MULTIPLIER)
+        .clamp(1, MAX_CANDIDATE_FETCH)
+}
+
 async fn score_facts_for_query(
     state: &KnowledgeState,
     q: &str,
@@ -41,11 +58,11 @@ async fn score_facts_for_query(
         filter: None,
         fact_type: None,
         tier: None,
-        limit: 10_000,
+        limit: candidate_fetch_limit(limit),
         offset: 0,
         include_forgotten: true,
     };
-    let all_facts = get_stored_facts(state, policy, &facts_query);
+    let all_facts = get_stored_facts(state, policy, &facts_query).await;
     let engine = build_recall_engine(state).await;
 
     Ok(mneme::recall::explain::explain_recall(
@@ -269,11 +286,11 @@ pub async fn timeline(
         filter: None,
         fact_type: None,
         tier: None,
-        limit: 10_000,
+        limit: candidate_fetch_limit(query.limit),
         offset: 0,
         include_forgotten: false,
     };
-    let facts = get_stored_facts(&state, &policy, &timeline_query);
+    let facts = get_stored_facts(&state, &policy, &timeline_query).await;
     let mut events: Vec<TimelineEvent> = Vec::new();
 
     for fact in &facts {
@@ -321,25 +338,28 @@ pub async fn timeline(
     Ok(Json(TimelineResponse { events, total }))
 }
 
-pub(super) fn get_stored_facts(
+pub(super) async fn get_stored_facts(
     state: &KnowledgeState,
     policy: &super::KnowledgeReadPolicy<'_>,
     query: &FactsQuery,
 ) -> Vec<mneme::knowledge::Fact> {
     #[cfg(feature = "knowledge-store")]
-    if let Some(ref store) = state.knowledge_store {
-        let fetch_limit =
-            i64::try_from((query.offset + query.limit).min(10_000)).unwrap_or(i64::MAX);
-        let result = if let Some(nous_id) = query.nous_id.as_deref() {
-            store.audit_all_facts(nous_id, fetch_limit)
-        } else {
-            store.list_all_facts(fetch_limit)
-        };
+    if let Some(store) = state.knowledge_store.clone() {
+        let fetch_limit = i64::try_from((query.offset + query.limit).min(MAX_CANDIDATE_FETCH))
+            .unwrap_or(i64::MAX);
+        let nous_id = query.nous_id.clone();
+        // WHY(#5680): the store list/audit scans are synchronous and grow with the stored fact
+        // count; run them on the blocking pool so a large store cannot stall the async runtime
+        // under concurrent search load (KnowledgeStore is `Arc`-shared for exactly this).
+        let result = tokio::task::spawn_blocking(move || match nous_id.as_deref() {
+            Some(nid) => store.audit_all_facts(nid, fetch_limit),
+            None => store.list_all_facts(fetch_limit),
+        })
+        .await;
         match result {
-            Ok(facts) => return policy.filter_facts(facts),
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to query knowledge store");
-            }
+            Ok(Ok(facts)) => return policy.filter_facts(facts),
+            Ok(Err(e)) => tracing::warn!(error = %e, "failed to query knowledge store"),
+            Err(e) => tracing::warn!(error = %e, "knowledge store query task panicked"),
         }
     }
     #[cfg(not(feature = "knowledge-store"))]
@@ -494,5 +514,28 @@ pub(crate) fn truncate_content(s: &str, max: usize) -> String {
             end -= 1;
         }
         format!("{}...", s.get(..end).unwrap_or(s))
+    }
+}
+
+#[cfg(test)]
+mod candidate_fetch_tests {
+    use super::{CANDIDATE_FETCH_MULTIPLIER, MAX_CANDIDATE_FETCH, candidate_fetch_limit};
+
+    #[test]
+    fn fetch_is_proportional_and_bounded() {
+        // WHY(#5680): a small requested limit must not fetch the whole store.
+        assert_eq!(candidate_fetch_limit(20), 20 * CANDIDATE_FETCH_MULTIPLIER);
+        // large requests saturate at the hard cap, never the old unconditional 10k.
+        assert_eq!(candidate_fetch_limit(10_000), MAX_CANDIDATE_FETCH);
+        assert_eq!(candidate_fetch_limit(1_000), MAX_CANDIDATE_FETCH);
+        // never zero (a zero fetch would return no candidates to score).
+        assert_eq!(candidate_fetch_limit(0), 1);
+        // invariant: fetch is never more than k*N.
+        for n in [1usize, 5, 50, 500, 5000] {
+            assert!(
+                candidate_fetch_limit(n) <= n.saturating_mul(CANDIDATE_FETCH_MULTIPLIER).max(1)
+            );
+            assert!(candidate_fetch_limit(n) <= MAX_CANDIDATE_FETCH);
+        }
     }
 }
