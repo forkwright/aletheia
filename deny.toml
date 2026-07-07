@@ -42,6 +42,10 @@ reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; 
 id = "RUSTSEC-2026-0186"
 reason = "memmap2 unsound (unchecked pointer offset) — transitive via candle-core (safetensors mmap) + grep-searcher, pinned ^0.9; unsound offset path not exercised. cargo-deny does not trigger; keeps sync with .cargo/audit.toml. review-by: 2026-12-01"
 
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0204"
+reason = "crossbeam-epoch unmaintained — transitive dependency, no upgrade path"
+
 [licenses]
 # WHY: `version = 2` enables modern SPDX 3.x parsing so "AGPL-3.0-or-later" /
 # "LGPL-3.0-or-later" are accepted as bare license identifiers. Without this,

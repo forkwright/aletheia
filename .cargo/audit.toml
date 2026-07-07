@@ -26,4 +26,6 @@ ignore = [
     "RUSTSEC-2025-0134",
     # memmap2 unsound (unchecked pointer offset) — transitive via candle-core/grep-searcher, pinned ^0.9, no upgrade; offset path not exercised. review-by: 2026-12-01
     "RUSTSEC-2026-0186",
+    # crossbeam-epoch unmaintained — transitive dependency, no upgrade path
+    "RUSTSEC-2026-0204",
 ]

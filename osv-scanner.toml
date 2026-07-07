@@ -36,3 +36,7 @@ id = "RUSTSEC-2025-0134"
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0186"
 # WHY: memmap2 unsound (unchecked pointer offset); transitive via candle-core/grep-searcher; no upgrade (pinned ^0.9); offset path not exercised. review-by: 2026-12-01. Mirrors deny.toml + .cargo/audit.toml.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0204"
+# WHY: crossbeam-epoch unmaintained — transitive dependency, no upgrade path. Mirrors deny.toml + .cargo/audit.toml.
