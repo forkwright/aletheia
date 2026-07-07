@@ -50,7 +50,7 @@ pub(crate) fn svg_to_png(svg: &str, dpi: f32) -> Result<Vec<u8>, RasterError> {
     let tree = usvg::Tree::from_str(svg, &opt).context(ParseSvgSnafu)?;
     let size = tree.size().to_int_size();
     let mut pixmap =
-        tiny_skia::Pixmap::new(size.width(), size.height()).ok_or(RasterError::PixmapAlloc {
+        tiny_skia::Pixmap::new(size.width(), size.height()).ok_or_else(|| RasterError::PixmapAlloc {
             width: size.width(),
             height: size.height(),
         })?;
