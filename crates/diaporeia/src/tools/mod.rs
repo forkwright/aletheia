@@ -1490,15 +1490,16 @@ impl DiaporeiaServer {
         require_role(self, &context, Role::Operator, "repomix_pack")?;
         let config = require_repomix(self).await?;
 
-        let workspace_root = crate::repomix::detect_workspace_root().ok_or_else(|| {
-            rmcp::ErrorData::from(
-                RepomixPackSnafu {
-                    message: "could not detect workspace root (no Cargo.toml with [workspace])"
-                        .to_owned(),
-                }
-                .build(),
-            )
-        })?;
+        let workspace_root = crate::repomix::configured_workspace_root(self.state.oikos.root())
+            .ok_or_else(|| {
+                rmcp::ErrorData::from(
+                    RepomixPackSnafu {
+                        message: "could not detect workspace root (no Cargo.toml with [workspace])"
+                            .to_owned(),
+                    }
+                    .build(),
+                )
+            })?;
 
         let max_tokens = params
             .max_tokens

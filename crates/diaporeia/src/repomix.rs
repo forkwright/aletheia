@@ -238,9 +238,24 @@ pub(crate) fn pack(
     })
 }
 
-/// Detect the workspace root by walking up from the current directory.
-pub(crate) fn detect_workspace_root() -> Option<PathBuf> {
-    let mut current = std::env::current_dir().ok()?;
+/// Resolve the workspace root for `repomix_pack`.
+///
+/// First tries to detect a Cargo workspace by walking up from the configured
+/// instance root (`Oikos`). If that fails (e.g. in integration tests that use
+/// a temporary instance root), fall back to the workspace discovered at compile
+/// time via `CARGO_MANIFEST_DIR`.
+///
+/// WHY: the daemon may start from `/` or another system directory, so the
+/// workspace must not be discovered from the process working directory.
+pub(crate) fn configured_workspace_root(oikos_root: &Path) -> Option<PathBuf> {
+    resolve_workspace_root_from(oikos_root).or_else(|| {
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir.parent()?.parent().map(Path::to_path_buf)
+    })
+}
+
+fn resolve_workspace_root_from(start: &Path) -> Option<PathBuf> {
+    let mut current = start.to_path_buf();
     loop {
         let cargo_toml = current.join("Cargo.toml");
         if cargo_toml.exists()
