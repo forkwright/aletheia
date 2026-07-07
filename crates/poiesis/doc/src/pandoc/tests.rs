@@ -153,7 +153,7 @@ fn typst_escape_fixture_doc() -> Document {
             },
             Block::Table(Table {
                 headers: vec![TYPST_SPECIAL.to_owned()],
-                rows: vec![vec![rich_text.clone()]],
+                rows: vec![vec![rich_text]],
             }),
             Block::List {
                 ordered: false,

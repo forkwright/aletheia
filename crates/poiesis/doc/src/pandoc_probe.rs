@@ -63,6 +63,13 @@ impl PandocProbe {
     }
 
     /// Convert a probe result into an actionable error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PandocProbeError::NotInstalled`] if pandoc was not found on
+    /// PATH, [`PandocProbeError::VersionTooOld`] if the installed version is
+    /// older than required, or [`PandocProbeError::Timeout`] if the version
+    /// probe timed out.
     pub fn require(self) -> Result<(), PandocProbeError> {
         match self {
             Self::Present { .. } => Ok(()),

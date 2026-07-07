@@ -51,6 +51,12 @@ impl LatexProbe {
     }
 
     /// Convert a probe result into the selected engine or an actionable error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LatexProbeError::NotInstalled`] when the probe is
+    /// [`LatexProbe::Missing`], or [`LatexProbeError::Timeout`] when it is
+    /// [`LatexProbe::TimedOut`].
     pub fn engine(self) -> Result<PdfEngine, LatexProbeError> {
         match self {
             Self::Present { engine, .. } => Ok(engine),
