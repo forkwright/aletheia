@@ -181,10 +181,19 @@ pub struct PandocRunner {
     /// Resolved path to the `pandoc` binary.
     bin: PathBuf,
     /// Detected Pandoc version (major.minor.patch).
-    pub version: (u32, u32, u32),
+    version: (u32, u32, u32),
 }
 
 impl PandocRunner {
+    /// Detected Pandoc version as `(major, minor, patch)`.
+    ///
+    /// Exposes the version resolved by [`PandocRunner::probe`] for diagnostics
+    /// (e.g. logging which `pandoc` rendered a document).
+    #[must_use]
+    pub fn version(&self) -> (u32, u32, u32) {
+        self.version
+    }
+
     /// Probe for `pandoc` at `bin_override` or on PATH.
     ///
     /// Returns `Err(PandocError::NotInstalled)` if not found,
