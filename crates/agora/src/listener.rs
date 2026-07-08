@@ -33,46 +33,6 @@ pub struct ChannelListener {
     max_concurrent_handlers: usize,
 }
 
-/// Owned background polling handles returned by [`ChannelListener::into_receiver`].
-///
-/// WHY: The active-subscription gauge is set when the listener starts, but
-/// `into_receiver` transfers ownership of the background tasks to the caller.
-/// This wrapper carries metric cleanup with the handles and clears the gauge
-/// when the tasks are dropped or stopped.
-pub struct SubscriptionHandles {
-    inner: JoinSet<()>,
-}
-
-impl SubscriptionHandles {
-    /// Number of background polling tasks still in the set.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    /// Whether the set contains no background polling tasks.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// Abort all background polling tasks.
-    pub fn abort_all(&mut self) {
-        self.inner.abort_all();
-    }
-
-    /// Wait for the next background polling task to complete.
-    pub async fn join_next(&mut self) -> Option<Result<(), tokio::task::JoinError>> {
-        self.inner.join_next().await
-    }
-}
-
-impl Drop for SubscriptionHandles {
-    fn drop(&mut self) {
-        crate::metrics::set_active_subscriptions(0);
-    }
-}
-
 impl ChannelListener {
     /// Start listening on a channel provider.
     ///
@@ -276,12 +236,11 @@ impl ChannelListener {
 
     /// Unwrap into the raw receiver and background task handles for manual control.
     ///
-    /// The returned [`SubscriptionHandles`] owns the background polling tasks and
-    /// clears the active-subscription gauge when it is dropped. Callers can abort
-    /// the handles for immediate shutdown or await them for graceful drain. Tasks
+    /// The returned handles represent the background polling tasks.  Callers can
+    /// abort them for immediate shutdown or await them for graceful drain.  Tasks
     /// also stop naturally once the receiver is dropped (closed channel).
     #[must_use]
-    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, SubscriptionHandles) {
+    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
         #[expect(
             clippy::expect_used,
             reason = "rx is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"
@@ -298,7 +257,7 @@ impl ChannelListener {
             .handles
             .take()
             .expect("into_receiver called on consumed listener");
-        (rx, SubscriptionHandles { inner: handles })
+        (rx, handles)
     }
 
     fn merge_providers<'a, I>(
@@ -708,41 +667,6 @@ mod tests {
                 "got: {during}"
             );
         }
-
-        let after = encode_metrics(&r);
-        assert!(
-            after.contains("aletheia_active_subscriptions 0"),
-            "got: {after}"
-        );
-    }
-
-    #[tokio::test]
-    async fn into_receiver_clears_gauge_when_handles_dropped() {
-        let _guard = crate::metrics::GAUGE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
-        let handle = tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_mins(5)).await;
-        });
-        let mut handles = JoinSet::new();
-        handles.spawn(async move {
-            if let Err(e) = handle.await {
-                tracing::warn!(error = %e, "spawned task failed");
-            }
-        });
-
-        let r = fresh_registry();
-        let listener = ChannelListener::from_parts(rx, handles);
-        let during = encode_metrics(&r);
-        assert!(
-            during.contains("aletheia_active_subscriptions 1"),
-            "got: {during}"
-        );
-
-        let (_rx, handles) = listener.into_receiver();
-        assert_eq!(handles.len(), 1);
-        drop(handles);
 
         let after = encode_metrics(&r);
         assert!(

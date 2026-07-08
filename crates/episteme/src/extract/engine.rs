@@ -460,8 +460,6 @@ Rules:
             tracing::debug!("causal signal detected in session text during extraction refinement");
         }
 
-        Self::apply_memory_policy(&extraction);
-
         Ok(RefinedExtraction {
             extraction,
             turn_type,
@@ -810,20 +808,6 @@ Rules:
         }
 
         Ok(result)
-    }
-
-    /// Integration point for the Phase 06b memory policy.
-    ///
-    /// Logs the post-extraction state at the boundary before admission and
-    /// conflict resolution. The learned policy client will be wired here once
-    /// Phase 06b training completes.
-    fn apply_memory_policy(extraction: &Extraction) {
-        tracing::trace!(
-            entities = extraction.entities.len(),
-            relationships = extraction.relationships.len(),
-            facts = extraction.facts.len(),
-            "memory policy integration point"
-        );
     }
 
     async fn extract_with_selected_provider(
