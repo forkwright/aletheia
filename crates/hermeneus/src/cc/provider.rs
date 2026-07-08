@@ -12,7 +12,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use koina::system::{Environment, RealSystem};
 use tracing::{debug, info, warn};
@@ -193,37 +193,60 @@ impl CcProvider {
 
     /// Execute a non-streaming completion via CC subprocess.
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        let start = Instant::now();
         let model = self.resolve_model(&request.model);
         Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
 
-        let output = process::run_completion(
-            &self.cc_binary,
-            self.working_directory.as_deref(),
-            model,
-            system,
-            &prompt,
-            request.max_tokens,
-            self.timeout,
-        )
-        .await?;
+        let outcome: Result<CompletionResponse> = async {
+            let output = process::run_completion(
+                &self.cc_binary,
+                self.working_directory.as_deref(),
+                model,
+                system,
+                &prompt,
+                request.max_tokens,
+                self.timeout,
+            )
+            .await?;
 
-        let response = parse::result_to_response(
-            &output.result_text,
-            output.is_error,
-            output.usage.as_ref(),
-            model,
-            output.session_id.as_deref(),
-        )?;
-        // WHY(#4658): CC reports cache read/write tokens; record them so
-        // prompt-cache usage is visible in provider metrics.
-        crate::metrics::record_cache_tokens(
-            self.name(),
-            response.usage.cache_read_tokens,
-            response.usage.cache_write_tokens,
-        );
-        Ok(response)
+            let response = parse::result_to_response(
+                &output.result_text,
+                output.is_error,
+                output.usage.as_ref(),
+                model,
+                output.session_id.as_deref(),
+            )?;
+            // WHY(#4658): CC reports cache read/write tokens; record them so
+            // prompt-cache usage is visible in provider metrics.
+            crate::metrics::record_cache_tokens(
+                self.name(),
+                response.usage.cache_read_tokens,
+                response.usage.cache_write_tokens,
+            );
+            Ok(response)
+        }
+        .await;
+
+        match &outcome {
+            Ok(response) => {
+                crate::metrics::record_completion(
+                    self.name(),
+                    response.usage.input_tokens,
+                    response.usage.output_tokens,
+                    response.cost_usd.unwrap_or(0.0),
+                    true,
+                );
+                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
+            }
+            Err(e) => {
+                let status = if e.is_retryable() { "rate_limited" } else { "error" };
+                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
+                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
+            }
+        }
+        outcome
     }
 
     /// Execute a streaming completion, emitting `StreamEvent`s.
@@ -232,45 +255,68 @@ impl CcProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        let start = Instant::now();
         let model = self.resolve_model(&request.model);
         Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
 
-        // Adapter: CC gives us text deltas, we emit StreamEvent::TextDelta.
-        let mut on_delta = |text: &str| {
-            on_event(StreamEvent::TextDelta {
-                text: text.to_owned(),
-            });
-        };
+        let outcome: Result<CompletionResponse> = async {
+            // Adapter: CC gives us text deltas, we emit StreamEvent::TextDelta.
+            let mut on_delta = |text: &str| {
+                on_event(StreamEvent::TextDelta {
+                    text: text.to_owned(),
+                });
+            };
 
-        let output = process::run_streaming(
-            &self.cc_binary,
-            self.working_directory.as_deref(),
-            model,
-            system,
-            &prompt,
-            request.max_tokens,
-            self.timeout,
-            &mut on_delta,
-        )
-        .await?;
+            let output = process::run_streaming(
+                &self.cc_binary,
+                self.working_directory.as_deref(),
+                model,
+                system,
+                &prompt,
+                request.max_tokens,
+                self.timeout,
+                &mut on_delta,
+            )
+            .await?;
 
-        let response = parse::result_to_response(
-            &output.result_text,
-            output.is_error,
-            output.usage.as_ref(),
-            model,
-            output.session_id.as_deref(),
-        )?;
-        // WHY(#4658): Streaming CC output preserves cache tokens; emit them
-        // for metrics parity with the non-streaming path.
-        crate::metrics::record_cache_tokens(
-            self.name(),
-            response.usage.cache_read_tokens,
-            response.usage.cache_write_tokens,
-        );
-        Ok(response)
+            let response = parse::result_to_response(
+                &output.result_text,
+                output.is_error,
+                output.usage.as_ref(),
+                model,
+                output.session_id.as_deref(),
+            )?;
+            // WHY(#4658): Streaming CC output preserves cache tokens; emit them
+            // for metrics parity with the non-streaming path.
+            crate::metrics::record_cache_tokens(
+                self.name(),
+                response.usage.cache_read_tokens,
+                response.usage.cache_write_tokens,
+            );
+            Ok(response)
+        }
+        .await;
+
+        match &outcome {
+            Ok(response) => {
+                crate::metrics::record_completion(
+                    self.name(),
+                    response.usage.input_tokens,
+                    response.usage.output_tokens,
+                    response.cost_usd.unwrap_or(0.0),
+                    true,
+                );
+                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
+            }
+            Err(e) => {
+                let status = if e.is_retryable() { "rate_limited" } else { "error" };
+                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
+                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
+            }
+        }
+        outcome
     }
 }
 
