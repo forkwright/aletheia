@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use sha2::{Digest as _, Sha256};
 use snafu::ResultExt;
-use tokio::runtime::Handle;
+use tokio::runtime::{Handle, RuntimeFlavor};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::task;
@@ -165,6 +165,30 @@ fn cached_distillation_for_session(
         source_id: Some(format!("message:{}:{}", message.session_id, message.id)),
         summary: message.content,
     }))
+}
+
+/// Run a synchronous `SessionStore` operation without pinning a Tokio worker
+/// thread for the duration of the fjall I/O.
+///
+/// WHY: `SessionStore` is protected by a `tokio::sync::Mutex`, but the work
+/// performed while holding the guard is synchronous LSM I/O. On the
+/// multi-thread runtime we move the lock acquisition and the synchronous work
+/// onto a blocking-aware thread with `block_in_place` + `Handle::block_on`,
+/// matching the pattern in `crate::adapters`. The current-thread runtime has no
+/// spare worker, so we acquire the lock async and run the operation inline.
+async fn with_session_store<F, T>(store: &Mutex<SessionStore>, f: F) -> T
+where
+    F: FnOnce(&SessionStore) -> T,
+{
+    if Handle::current().runtime_flavor() == RuntimeFlavor::MultiThread {
+        tokio::task::block_in_place(|| {
+            let guard = Handle::current().block_on(store.lock());
+            f(&guard)
+        })
+    } else {
+        let guard = store.lock().await;
+        f(&guard)
+    }
 }
 
 #[expect(
@@ -400,21 +424,25 @@ pub(super) async fn run_history_stage(
         include_tool_messages: history_policy.include_tool_messages,
     };
     if let Some(store_mutex) = session_store {
-        let store = store_mutex.lock().instrument(span.clone()).await;
-        let (messages, mut hist_result) = history::load_history(
-            &store,
-            &input.session.id,
-            ctx.history_budget,
-            &history_config,
-            &input.content,
-        )
-        .inspect_err(|_| {
-            emitter.emit(&StageError {
-                nous_id: config.id.to_string(),
-                stage: "history",
-                error_type: "load_failed".to_owned(),
-            });
-        })?;
+        let history_budget = ctx.history_budget;
+        let (messages, mut hist_result) = with_session_store(store_mutex, |store| {
+            history::load_history(
+                store,
+                &input.session.id,
+                history_budget,
+                &history_config,
+                &input.content,
+            )
+            .inspect_err(|_| {
+                emitter.emit(&StageError {
+                    nous_id: config.id.to_string(),
+                    stage: "history",
+                    error_type: "load_failed".to_owned(),
+                });
+            })
+        })
+        .instrument(span.clone())
+        .await?;
         // WHY: surface the effective policy in the run record so reviewers can
         // explain inclusion/exclusion decisions without re-reading config.
         hist_result.policy = history_policy;
@@ -863,34 +891,26 @@ pub(super) async fn run_execute_stage(
         }
         Ok(turn_result) => turn_result,
         Err(ref err) if crate::degraded_mode::is_transient_llm_error(err) => {
-            // WHY(#4730, #5245): use a bounded wait instead of try_lock() so a
-            // briefly-contended store does not silently produce a no-cache result.
-            // 50ms is well under any LLM latency — contention at this point is transient.
+            // WHY(#4730, #5245, #5731): the degraded-recovery read is sync fjall I/O.
+            // Run it through `with_session_store` so the async worker is not pinned
+            // while the guard is held.
             let recent_distillation = if let Some(store_mutex) = session_store {
-                match tokio::time::timeout(std::time::Duration::from_millis(50), store_mutex.lock())
-                    .await
-                {
-                    Ok(store) => match cached_distillation_for_session(&store, &input.session.id) {
-                        Ok(summary) => summary,
-                        Err(e) => {
-                            // WHY(#5245): a store read error is distinct from a genuine
-                            // no-cache; surface it instead of silently collapsing both to None.
-                            tracing::warn!(
-                                nous_id = %config.id,
-                                error = ?e,
-                                "degraded recovery: session store read error; no cache available"
-                            );
-                            None
-                        }
-                    },
-                    Err(_contended) => {
-                        tracing::warn!(
-                            nous_id = %config.id,
-                            "degraded recovery: session store lock contended; no cache available"
-                        );
-                        None
-                    }
-                }
+                with_session_store(store_mutex, |store| {
+                    cached_distillation_for_session(store, &input.session.id)
+                })
+                .instrument(span.clone())
+                .await
+                .map_err(|e| {
+                    // WHY(#5245): a store read error is distinct from a genuine
+                    // no-cache; surface it instead of silently collapsing both to None.
+                    tracing::warn!(
+                        nous_id = %config.id,
+                        error = ?e,
+                        "degraded recovery: session store read error; no cache available"
+                    );
+                })
+                .ok()
+                .flatten()
             } else {
                 None
             };
@@ -975,35 +995,38 @@ pub(super) async fn run_finalize_stage(
     );
     let start = Instant::now();
     let outcome = if let Some(store_mutex) = session_store {
-        let store = store_mutex.lock().instrument(span.clone()).await;
-        let finalize_config = crate::finalize::FinalizeConfig::default();
-        match crate::finalize::finalize(
-            &store,
-            &input.session,
-            &input.content,
-            result,
-            &finalize_config,
-        ) {
-            Ok(fr) => {
-                debug!(
-                    messages = fr.messages_persisted(),
-                    usage = fr.usage_recorded(),
-                    "finalize complete"
-                );
-                span.record("status", "ok");
-                FinalizeOutcome::Persisted
+        with_session_store(store_mutex, |store| {
+            let finalize_config = crate::finalize::FinalizeConfig::default();
+            match crate::finalize::finalize(
+                store,
+                &input.session,
+                &input.content,
+                result,
+                &finalize_config,
+            ) {
+                Ok(fr) => {
+                    debug!(
+                        messages = fr.messages_persisted(),
+                        usage = fr.usage_recorded(),
+                        "finalize complete"
+                    );
+                    span.record("status", "ok");
+                    FinalizeOutcome::Persisted
+                }
+                Err(e) => {
+                    error!(error = %e, "finalize failed, returning result without persistence");
+                    span.record("status", "error");
+                    emitter.emit(&StageError {
+                        nous_id: config.id.to_string(),
+                        stage: "finalize",
+                        error_type: "persistence_failed".to_owned(),
+                    });
+                    FinalizeOutcome::Failed
+                }
             }
-            Err(e) => {
-                error!(error = %e, "finalize failed, returning result without persistence");
-                span.record("status", "error");
-                emitter.emit(&StageError {
-                    nous_id: config.id.to_string(),
-                    stage: "finalize",
-                    error_type: "persistence_failed".to_owned(),
-                });
-                FinalizeOutcome::Failed
-            }
-        }
+        })
+        .instrument(span.clone())
+        .await
     } else {
         span.record("status", "skipped");
         emitter.emit(&StageSkipped {
