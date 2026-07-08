@@ -1,0 +1,9 @@
+# Gate config for forkwright/aletheia.
+#
+# WHY(#6363): scope the attested gate to the stages aletheia CI actually enforces
+# (fmt + check + clippy + nextest). The basanos `lint` stage is excluded because the
+# workspace rust-lint baseline carries deliberate debt (see .kanon-ci.toml) and aletheia
+# CI does not gate on it; a Gate-Passed trailer over these stages is honest — it attests
+# exactly what the trailer-verify replaces. Re-add "lint" once the rust baseline reaches zero.
+[gate]
+stages = ["fmt", "check", "clippy", "nextest"]
