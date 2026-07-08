@@ -100,6 +100,21 @@ async fn dispatch_one(
         return;
     };
 
+    // WHY: Session keys are built from external identifiers by the router's
+    // template expansion. Normalize before any use so logs, command records,
+    // and store lookups never carry raw phone numbers, Matrix IDs, or group IDs.
+    let session_key = match normalize_session_key(&decision.session_key) {
+        Ok(key) => key,
+        Err(e) => {
+            warn!(
+                error = %e,
+                matched_by = ?decision.matched_by,
+                "invalid routed session key, dropping message"
+            );
+            return;
+        }
+    };
+
     // NOTE: `!`-commands are intercepted before reaching the nous agent.
     // Plain turns fall through to send_turn as before.
     if let Some(cmd) = command::parse(&msg.text) {
@@ -107,7 +122,7 @@ async fn dispatch_one(
             msg: &msg,
             cmd: &cmd,
             nous_id: decision.nous_id,
-            session_key: &decision.session_key,
+            session_key: &session_key,
             nous_manager: &nous_manager,
             channel_registry: &channel_registry,
             session_store: &session_store,
@@ -126,12 +141,12 @@ async fn dispatch_one(
 
     info!(
         nous_id = %decision.nous_id,
-        session_key = %decision.session_key,
+        session_key = %session_key,
         matched_by = ?decision.matched_by,
         "dispatching turn"
     );
 
-    let turn_result = match handle.send_turn(&decision.session_key, &msg.text).await {
+    let turn_result = match handle.send_turn(&session_key, &msg.text).await {
         Ok(result) => result,
         Err(e) => {
             warn!(error = %e, nous_id = %decision.nous_id, "turn failed");
@@ -507,6 +522,57 @@ fn hex_digit(nibble: u8) -> char {
 fn token_estimate(content: &str) -> i64 {
     let len = i64::try_from(content.len()).unwrap_or(i64::MAX - 3);
     len.saturating_add(3) / 4
+}
+
+/// Maximum byte length for a route-expanded session key before normalization.
+///
+/// WHY: Session keys are indexed by mneme and logged by dispatch; unbounded
+/// template expansion could create unreadable or storage-expensive keys.
+const MAX_SESSION_KEY_LEN: usize = 256;
+
+#[derive(Debug)]
+enum SessionKeyError {
+    Empty,
+    TooLong,
+    InvalidChars,
+}
+
+impl std::fmt::Display for SessionKeyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => write!(f, "routed session key is empty"),
+            Self::TooLong => write!(f, "routed session key exceeds {MAX_SESSION_KEY_LEN} bytes"),
+            Self::InvalidChars => write!(f, "routed session key contains control characters"),
+        }
+    }
+}
+
+/// Normalize and validate a route-derived session key.
+///
+/// Routing templates expand raw external identifiers (phone numbers, Matrix IDs,
+/// group IDs) directly into the session key. This replaces those values with a
+/// stable SHA-256 digest so the same sender/group always resolves to the same
+/// session while the raw identifier is redacted from logs, command records, and
+/// the store. Invalid expansions (empty, oversized, or containing control bytes)
+/// are rejected before they reach the agent turn.
+fn normalize_session_key(raw: &str) -> Result<String, SessionKeyError> {
+    if raw.is_empty() {
+        return Err(SessionKeyError::Empty);
+    }
+    if raw.len() > MAX_SESSION_KEY_LEN {
+        return Err(SessionKeyError::TooLong);
+    }
+    if raw != raw.trim_matches(|c: char| c.is_ascii_whitespace()) {
+        return Err(SessionKeyError::InvalidChars);
+    }
+    if raw.bytes().any(|b| b.is_ascii_control()) {
+        return Err(SessionKeyError::InvalidChars);
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(raw.as_bytes());
+    let digest = hasher.finalize();
+    Ok(format!("h:{}", hex_lower(&digest)))
 }
 
 /// Build a `CommandContext` and execute a parsed command, returning the reply text.
@@ -930,8 +996,10 @@ mod tests {
 
     async fn command_history(harness: &DispatchHarness) -> Vec<mneme::types::Message> {
         let store = harness.session_store.lock().await;
+        let session_key =
+            normalize_session_key("signal:+15550100").expect("routed session key is valid");
         let session = store
-            .find_session("alice", "signal:+15550100")
+            .find_session("alice", &session_key)
             .expect("find session")
             .expect("session exists");
         store.get_history(&session.id, None).expect("history")
@@ -972,6 +1040,8 @@ mod tests {
 
         let invocation = record_json(&history[0]);
         let result = record_json(&history[1]);
+        let session_key =
+            normalize_session_key("signal:+15550100").expect("routed session key is valid");
         assert_eq!(
             json_str(&invocation, "/schema"),
             Some(COMMAND_RECORD_SCHEMA)
@@ -982,7 +1052,7 @@ mod tests {
         assert_eq!(json_str(&invocation, "/origin/sender"), Some("+15550100"));
         assert_eq!(
             json_str(&invocation, "/session_key"),
-            Some("signal:+15550100")
+            Some(session_key.as_str())
         );
         assert_eq!(json_str(&result, "/event"), Some("result"));
         assert_eq!(json_str(&result, "/response/status"), Some("succeeded"));
@@ -1310,5 +1380,74 @@ mod tests {
             blackboard_reply.contains("Blackboard empty"),
             "{blackboard_reply}"
         );
+    }
+
+    #[test]
+    fn normalize_session_key_hashes_phone_numbers() {
+        let key = normalize_session_key("signal:+15550100").expect("valid phone session key");
+        assert!(key.starts_with("h:"), "hashed keys are prefixed: {key}");
+        assert!(
+            !key.contains("+15550100"),
+            "raw phone number must be redacted: {key}"
+        );
+        assert_eq!(
+            key,
+            normalize_session_key("signal:+15550100").expect("stable")
+        );
+    }
+
+    #[test]
+    fn normalize_session_key_hashes_matrix_ids() {
+        let key = normalize_session_key("matrix:@alice:example.org")
+            .expect("valid matrix session key");
+        assert!(
+            !key.contains("@alice:example.org"),
+            "raw matrix id must be redacted: {key}"
+        );
+    }
+
+    #[test]
+    fn normalize_session_key_hashes_group_ids() {
+        let key = normalize_session_key("signal:group-abc!xyz").expect("valid group session key");
+        assert!(
+            !key.contains("group-abc"),
+            "raw group id must be redacted: {key}"
+        );
+    }
+
+    #[test]
+    fn normalize_session_key_hashes_path_like_values() {
+        let key = normalize_session_key("webhook:/api/v1/incoming/abc")
+            .expect("valid path-like session key");
+        assert!(
+            !key.contains("/api/v1"),
+            "raw path must be redacted: {key}"
+        );
+    }
+
+    #[test]
+    fn normalize_session_key_rejects_empty() {
+        assert!(normalize_session_key("").is_err());
+    }
+
+    #[test]
+    fn normalize_session_key_rejects_oversized_keys() {
+        let oversized = "x".repeat(MAX_SESSION_KEY_LEN + 1);
+        assert!(
+            normalize_session_key(&oversized).is_err(),
+            "keys over {MAX_SESSION_KEY_LEN} bytes must be rejected"
+        );
+
+        let at_limit = "y".repeat(MAX_SESSION_KEY_LEN);
+        assert!(
+            normalize_session_key(&at_limit).is_ok(),
+            "keys at the limit must be accepted"
+        );
+    }
+
+    #[test]
+    fn normalize_session_key_rejects_control_characters() {
+        assert!(normalize_session_key("signal:\0sender").is_err());
+        assert!(normalize_session_key("signal:\nsender").is_err());
     }
 }
