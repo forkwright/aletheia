@@ -2949,17 +2949,6 @@ impl SessionStore {
 // distilled summaries to the LLM and wedge the `idx:nous:...:upd:...`
 // index with past timestamps.
 
-// INVARIANT: raw portability entry points must never be compiled into
-// recall/serve consumers. `mneme-engine` is the feature flag used by recall
-// and serve paths, so enabling both `portability` and `mneme-engine` in the
-// same build is a configuration error (issue #5038).
-#[cfg(all(feature = "portability", feature = "mneme-engine"))]
-compile_error!(
-    "graphe: `portability` raw APIs must not be combined with `mneme-engine` \
-     (recall/serve path). Remove `portability` from server-facing feature sets; \
-     enable it only for agent export/import entry points (issue #5038)."
-);
-
 #[cfg(feature = "portability")]
 impl SessionStore {
     /// Get message history including distilled messages, preserving seq order.

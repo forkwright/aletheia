@@ -1398,8 +1398,8 @@ mod tests {
 
     #[test]
     fn normalize_session_key_hashes_matrix_ids() {
-        let key = normalize_session_key("matrix:@alice:example.org")
-            .expect("valid matrix session key");
+        let key =
+            normalize_session_key("matrix:@alice:example.org").expect("valid matrix session key");
         assert!(
             !key.contains("@alice:example.org"),
             "raw matrix id must be redacted: {key}"
@@ -1419,10 +1419,7 @@ mod tests {
     fn normalize_session_key_hashes_path_like_values() {
         let key = normalize_session_key("webhook:/api/v1/incoming/abc")
             .expect("valid path-like session key");
-        assert!(
-            !key.contains("/api/v1"),
-            "raw path must be redacted: {key}"
-        );
+        assert!(!key.contains("/api/v1"), "raw path must be redacted: {key}");
     }
 
     #[test]

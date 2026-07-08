@@ -767,7 +767,7 @@ pub async fn history(
     Ok(Json(HistoryResponse { messages: items }))
 }
 
-/// Resolve or create a session for the given agent and session key.
+/// Resolve or create an active session for the given agent and session key.
 pub(crate) async fn resolve_session(
     state: &SessionsState,
     agent_id: &str,
@@ -785,18 +785,37 @@ pub(crate) async fn resolve_session(
 
     let session = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
-        match store.find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None) {
+        if let Some(session) = store.find_session(&aid, &skey).map_err(ApiError::from)? {
+            return Ok(session);
+        }
+
+        match store.create_session(&id_clone, &aid, &skey, None, model_owned.as_deref()) {
             Ok(session) => Ok(session),
             Err(e) if is_unique_constraint_violation(&e) => {
-                // WHY: Concurrent stream requests may race to create the same session.
-                // Fall back to returning whichever session won the INSERT race.
-                store
-                    .find_session(&aid, &skey)
+                if let Some(session) = store.find_session(&aid, &skey).map_err(ApiError::from)? {
+                    return Ok(session);
+                }
+                let existing = store
+                    .list_sessions(Some(&aid))
                     .map_err(ApiError::from)?
-                    .ok_or_else(|| ApiError::Internal {
+                    .into_iter()
+                    .find(|session| session.session_key == skey);
+                match existing {
+                    Some(session) => Err(ConflictSnafu {
+                        message: format!(
+                            "session '{}' for agent '{}' is {}; use POST /sessions/{}/unarchive before sending a turn",
+                            session.session_key,
+                            session.nous_id,
+                            session.status.as_str(),
+                            session.id
+                        ),
+                    }
+                    .build()),
+                    None => Err(ApiError::Internal {
                         message: "session missing after constraint violation".to_owned(),
                         location: snafu::location!(),
-                    })
+                    }),
+                }
             }
             Err(e) => Err(ApiError::from(e)),
         }

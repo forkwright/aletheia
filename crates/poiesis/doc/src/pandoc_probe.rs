@@ -12,8 +12,8 @@ use crate::process::{CommandOutputError, output_with_timeout};
 use snafu::Snafu;
 
 /// Minimum Pandoc version required by `poiesis-doc`.
-pub const REQUIRED_PANDOC_VERSION: PandocVersion = (3, 0, 0);
-const PANDOC_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+pub const REQUIRED_PANDOC_VERSION: PandocVersion = (3, 1, 0);
+pub(crate) const PROBE_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Semantic version triple used by the probe.
 pub type PandocVersion = (u32, u32, u32);
@@ -144,7 +144,7 @@ impl PandocProbe {
 pub enum PandocProbeError {
     /// `pandoc` binary not found on PATH.
     #[snafu(display(
-        "pandoc not found (searched: {}). Install pandoc >= 3.0.0; on NixOS run `nix develop`, on Ubuntu/Debian run `apt install pandoc`, on macOS run `brew install pandoc`, or download from https://pandoc.org/installing.html",
+        "pandoc not found (searched: {}). Install pandoc >= 3.1.0; on NixOS run `nix develop`, on Ubuntu/Debian run `apt install pandoc`, on macOS run `brew install pandoc`, or download from https://pandoc.org/installing.html",
         searched
             .iter()
             .map(|p| p.display().to_string())
@@ -210,10 +210,10 @@ fn searched_pandoc_candidates() -> Vec<PathBuf> {
         .collect()
 }
 
-fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
+pub(crate) fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
     let mut cmd = Command::new(path);
     cmd.arg("--version");
-    let output = output_with_timeout(&mut cmd, PANDOC_PROBE_TIMEOUT).map_err(|err| match err {
+    let output = output_with_timeout(&mut cmd, PROBE_COMMAND_TIMEOUT).map_err(|err| match err {
         CommandOutputError::Timeout { timeout, .. } => ProbeCommandError::TimedOut {
             timeout_secs: timeout.as_secs(),
         },
@@ -232,7 +232,7 @@ fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn parse_pandoc_version(output: &str) -> Option<PandocVersion> {
+pub(crate) fn parse_pandoc_version(output: &str) -> Option<PandocVersion> {
     let first = output.lines().next()?;
     let version = first.strip_prefix("pandoc ")?.trim();
     let mut parts = version.split('.');
@@ -302,6 +302,39 @@ mod tests {
     }
 
     #[test]
+    fn probe_check_rejects_pandoc_3_0() {
+        let probe = PandocProbe::check_with(
+            || Ok(PathBuf::from("/tmp/fake-pandoc")),
+            |_| Ok("pandoc 3.0.0\n".to_owned()),
+        );
+
+        assert_eq!(
+            probe,
+            PandocProbe::TooOld {
+                path: PathBuf::from("/tmp/fake-pandoc"),
+                found: (3, 0, 0),
+                required: REQUIRED_PANDOC_VERSION,
+            }
+        );
+    }
+
+    #[test]
+    fn probe_check_accepts_pandoc_3_1() {
+        let probe = PandocProbe::check_with(
+            || Ok(PathBuf::from("/tmp/fake-pandoc")),
+            |_| Ok("pandoc 3.1.0\n".to_owned()),
+        );
+
+        assert_eq!(
+            probe,
+            PandocProbe::Present {
+                path: PathBuf::from("/tmp/fake-pandoc"),
+                version: (3, 1, 0),
+            }
+        );
+    }
+
+    #[test]
     fn probe_check_returns_timeout_for_hung_version_source() {
         let probe = PandocProbe::check_with(
             || Ok(PathBuf::from("/tmp/fake-pandoc")),
@@ -342,6 +375,6 @@ mod tests {
         };
 
         assert!(old.to_string().contains("2.19.2"));
-        assert!(old.to_string().contains("3.0.0"));
+        assert!(old.to_string().contains("3.1.0"));
     }
 }

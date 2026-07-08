@@ -281,9 +281,7 @@ impl ChannelListener {
     /// the handles for immediate shutdown or await them for graceful drain. Tasks
     /// also stop naturally once the receiver is dropped (closed channel).
     #[must_use]
-    pub fn into_receiver(
-        mut self,
-    ) -> (mpsc::Receiver<InboundMessage>, SubscriptionHandles) {
+    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, SubscriptionHandles) {
         #[expect(
             clippy::expect_used,
             reason = "rx is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"

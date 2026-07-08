@@ -12,7 +12,7 @@ use super::error::PandocError;
 /// Serialize a `Document` to Pandoc JSON AST bytes.
 ///
 /// The emitted JSON matches Pandoc's `--from json` input format.
-/// `pandoc-api-version` is pinned to `[1, 23, 1, 1]` for Pandoc 3.7.x.
+/// `pandoc-api-version` is pinned to the 1.23 API family used by Pandoc 3.1+.
 ///
 /// NOTE: the current AST is assembled entirely from `serde_json::Value`, whose
 /// serialization is structurally valid by construction. The `Result` return

@@ -222,7 +222,11 @@ impl CodexProvider {
                 crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
             }
             Err(e) => {
-                let status = if e.is_retryable() { "rate_limited" } else { "error" };
+                let status = if e.is_retryable() {
+                    "rate_limited"
+                } else {
+                    "error"
+                };
                 crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
                 crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
             }
@@ -288,7 +292,11 @@ impl CodexProvider {
                 crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
             }
             Err(e) => {
-                let status = if e.is_retryable() { "rate_limited" } else { "error" };
+                let status = if e.is_retryable() {
+                    "rate_limited"
+                } else {
+                    "error"
+                };
                 crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
                 crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
             }
