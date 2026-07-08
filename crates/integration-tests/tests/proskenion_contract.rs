@@ -88,6 +88,13 @@ const PROSKENION_API_INVENTORY: &[DesktopApiContract] = &[
     },
     DesktopApiContract {
         method: "GET",
+        source_path: "/api/v1/knowledge/check",
+        pylon_route: "/api/v1/knowledge/check",
+        expected_shape: "graph health report with counts and status",
+        coverage: ContractCoverage::Covered,
+    },
+    DesktopApiContract {
+        method: "GET",
         source_path: "/api/v1/knowledge/entities",
         pylon_route: "/api/v1/knowledge/entities",
         expected_shape: "entities array and numeric total",

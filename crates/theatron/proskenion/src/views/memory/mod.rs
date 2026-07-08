@@ -18,7 +18,7 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::memory::{
     Entity, EntityDetailStore, EntityListStore, EntityMemory, EntityNavigationHistory, EntitySort,
-    Fact, FactListStore, FactSort, Relationship,
+    Fact, FactListStore, FactSort, GraphCheckReport, Relationship,
 };
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::memory::detail::EntityDetail;
@@ -199,6 +199,7 @@ pub(crate) fn Memory() -> Element {
 
     // ── Fact surface state ──
     let mut fact_store = use_signal(FactListStore::default);
+    let mut graph_check = use_signal(|| FetchState::<GraphCheckReport>::Loading);
 
     // ── Entity (graph) surface state ──
     let mut list_store = use_signal(EntityListStore::new);
@@ -301,6 +302,41 @@ pub(crate) fn Memory() -> Element {
                 }
                 Err(e) => {
                     tracing::warn!("facts connection error: {e}");
+                }
+            }
+        });
+    };
+
+    let mut fetch_graph_check = move || {
+        let cfg = config.read().clone();
+        graph_check.set(FetchState::Loading);
+
+        spawn(async move {
+            let client = match authenticated_client(&cfg) {
+                Ok(client) => client,
+                Err(err) => {
+                    graph_check.set(FetchState::Error(err.to_string()));
+                    return;
+                }
+            };
+            let url = format!(
+                "{}/api/v1/knowledge/check",
+                cfg.server_url.trim_end_matches('/')
+            );
+
+            match client.get(&url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<GraphCheckReport>().await {
+                        Ok(report) => graph_check.set(FetchState::Loaded(report)),
+                        Err(e) => graph_check.set(FetchState::Error(format!("parse error: {e}"))),
+                    }
+                }
+                Ok(resp) => {
+                    let status = resp.status();
+                    graph_check.set(FetchState::Error(format!("server returned {status}")));
+                }
+                Err(e) => {
+                    graph_check.set(FetchState::Error(format!("connection error: {e}")));
                 }
             }
         });
@@ -418,6 +454,7 @@ pub(crate) fn Memory() -> Element {
     use_effect(move || {
         if *tab.read() == MemoryTab::Facts {
             fetch_facts();
+            fetch_graph_check();
         } else if !*graph_loaded.read() {
             graph_loaded.set(true);
             fetch_entities();
@@ -574,6 +611,7 @@ pub(crate) fn Memory() -> Element {
                         onclick: move |_| {
                             if active_tab == MemoryTab::Facts {
                                 fetch_facts();
+                                fetch_graph_check();
                             } else {
                                 list_store.write().page = 0;
                                 fetch_entities();
@@ -586,7 +624,7 @@ pub(crate) fn Memory() -> Element {
 
             if active_tab == MemoryTab::Facts {
                 // ── Facts surface: health strip + filters + list ──
-                HealthStrip { health }
+                HealthStrip { health, graph_check }
                 FactFilters {
                     list_store: fact_store,
                     on_search_change: move |_query: String| {
@@ -608,6 +646,7 @@ pub(crate) fn Memory() -> Element {
                     },
                     on_mutated: move |_| {
                         fetch_facts();
+                        fetch_graph_check();
                     },
                 }
             } else {
