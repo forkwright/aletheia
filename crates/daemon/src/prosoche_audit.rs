@@ -444,11 +444,14 @@ impl ProsocheCheck for ConsistencyCheck {
             let query_hash = Self::query_hash(state);
 
             for (i, (id_a, content_a, terms_a, hash_a)) in normalised.iter().enumerate() {
+                // WHY: lower-case once per fact, reused for every term/pair involving fact A.
+                let content_a_lower = content_a.to_lowercase();
                 for (id_b, content_b, _, hash_b) in normalised.get(i + 1..).unwrap_or_default() {
+                    // WHY: lower-case once per pair, not once per term.
+                    let content_b_lower = content_b.to_lowercase();
                     for term in terms_a {
                         let negated = format!("not {term}");
                         let negated_alt = format!("never {term}");
-                        let content_b_lower = content_b.to_lowercase();
                         if content_b_lower.contains(&negated)
                             || content_b_lower.contains(&negated_alt)
                         {
@@ -500,7 +503,6 @@ impl ProsocheCheck for ConsistencyCheck {
                             break;
                         }
 
-                        let content_a_lower = content_a.to_lowercase();
                         let neg_in_a = content_a_lower.contains(&negated)
                             || content_a_lower.contains(&negated_alt);
                         if neg_in_a
@@ -1817,3 +1819,61 @@ impl ProsocheAuditRunner {
 #[cfg(test)]
 #[path = "prosoche_audit_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod consistency_hoist_tests {
+    use super::*;
+
+    fn test_fact(id: &str, content: &str) -> FactSnapshot {
+        FactSnapshot {
+            fact_id: id.to_owned(),
+            content: content.to_owned(),
+            days_since_touched: Some(1.0),
+        }
+    }
+
+    #[tokio::test]
+    async fn consistency_check_detects_contradictions_across_ten_facts() {
+        let check = ConsistencyCheck;
+        let mut state = ProsocheState {
+            nous_id: "test-nous".to_owned(),
+            checked_at: "2026-04-22T12:00:00Z".to_owned(),
+            ..Default::default()
+        };
+        state.facts = vec![
+            test_fact("f-00", "Rust memory safety is guaranteed"),
+            test_fact(
+                "f-01",
+                "not guaranteed: Rust memory safety in unsafe blocks",
+            ),
+            test_fact("f-02", "Python is a scripting language"),
+            test_fact("f-03", "not scripting: Python is compiled"),
+            test_fact("f-04", "Cats are mammals"),
+            test_fact("f-05", "never mammals: cats are reptiles"),
+            test_fact("f-06", "The sky appears blue"),
+            test_fact("f-07", "not blue during sunset"),
+            test_fact("f-08", "Bananas are yellow"),
+            test_fact("f-09", "not yellow: unripe bananas are green"),
+        ];
+
+        let findings = check.check(&state).await;
+
+        assert_eq!(
+            findings.len(),
+            5,
+            "expected exactly five contradictory pairs among ten facts, got {findings:?}"
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|f| f.finding_id.starts_with("PROSOCHE-CONSISTENCY")),
+            "all findings should come from ConsistencyCheck"
+        );
+        assert!(
+            findings
+                .iter()
+                .all(|f| f.evidence_level == EvidenceLevel::Exploratory),
+            "consistency findings should be Exploratory"
+        );
+    }
+}

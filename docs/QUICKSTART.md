@@ -57,7 +57,15 @@ Download the tarball from the [releases page](https://github.com/forkwright/alet
 
 ```bash
 VERSION=$(curl -s https://api.github.com/repos/forkwright/aletheia/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
-curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) ASSET=aletheia-linux-x86_64 ;;
+  Darwin-arm64) ASSET=aletheia-macos-aarch64 ;;
+  *)
+    echo "No prebuilt aletheia binary for $(uname -s)-$(uname -m); build from source instead." >&2
+    exit 1
+    ;;
+esac
+curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/${ASSET}-${VERSION}.tar.gz" \
   -o aletheia.tar.gz
 tar xzf aletheia.tar.gz
 cd "aletheia-${VERSION}"
@@ -255,6 +263,51 @@ aletheia health           # verify
 ```
 
 **Important:** Do not put API keys in the service file (unit files are world-readable). Use the `EnvironmentFile` directive pointing to a file with `0600` permissions, or rely on the credential file that `aletheia init` writes to `instance/config/credentials/`.
+
+---
+
+## Optional: launchd service (macOS)
+
+For always-on operation on macOS, install the included launchd agent. The
+template is rendered with the `aletheia` binary on your `PATH` plus
+`~/aletheia/instance` after placeholder substitution.
+
+```bash
+ALETHEIA_BIN="${ALETHEIA_BIN:-$(command -v aletheia)}"
+ALETHEIA_INSTANCE_ROOT="${ALETHEIA_INSTANCE_ROOT:-$HOME/aletheia/instance}"
+: "${ALETHEIA_BIN:?aletheia not found on PATH; set ALETHEIA_BIN=/path/to/aletheia}"
+mkdir -p "$HOME/Library/LaunchAgents" "$ALETHEIA_INSTANCE_ROOT/logs"
+sed \
+  -e "s#__ALETHEIA_BIN__#$ALETHEIA_BIN#g" \
+  -e "s#__ALETHEIA_INSTANCE_ROOT__#$ALETHEIA_INSTANCE_ROOT#g" \
+  instance.example/services/com.aletheia.gateway.plist \
+  > "$HOME/Library/LaunchAgents/com.aletheia.gateway.plist"
+```
+
+Edit the generated plist if your binary or instance paths differ. The agent
+sets `ALETHEIA_ROOT` to the instance path, so the server discovers the same
+instance that `aletheia init` created.
+
+Verify and load the agent:
+
+```bash
+plutil -lint "$HOME/Library/LaunchAgents/com.aletheia.gateway.plist"
+launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.aletheia.gateway.plist"
+launchctl enable "gui/$(id -u)/com.aletheia.gateway"
+launchctl kickstart -k "gui/$(id -u)/com.aletheia.gateway"
+tail -f "$ALETHEIA_INSTANCE_ROOT/logs/gateway.log"
+aletheia health
+```
+
+To stop and unload it:
+
+```bash
+launchctl bootout "gui/$(id -u)/com.aletheia.gateway"
+```
+
+**Important:** Do not put API keys in the plist. Use the credential file that
+`aletheia init` writes to `instance/config/credentials/`, or configure secrets
+through files with user-only permissions.
 
 ---
 

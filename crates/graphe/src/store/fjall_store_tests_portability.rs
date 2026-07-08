@@ -532,3 +532,63 @@ fn import_session_adjusts_session_count() {
     store.import_session(&imported, true).expect("re-import");
     assert_eq!(store.session_count(), 2);
 }
+
+#[test]
+fn force_import_displaces_different_owner_and_cleans_nous_index() {
+    // WHY: a forced import that evicts a different session from the same
+    // (nous_id, session_key) slot must remove the displaced session's primary
+    // row AND its nous_idx entry, otherwise list_sessions would surface a
+    // phantom session (#5028).
+    let store = test_store();
+    let displaced = import_session_record(
+        "ses-displaced",
+        SessionStatus::Active,
+        "2024-06-01T00:00:00Z",
+    );
+    store
+        .import_session(&displaced, false)
+        .expect("seed displaced");
+
+    let mut replacement = import_session_record(
+        "ses-replacement",
+        SessionStatus::Active,
+        "2024-06-02T00:00:00Z",
+    );
+    replacement.session_key = displaced.session_key.clone();
+    store
+        .import_session(&replacement, true)
+        .expect("force import displaces owner");
+
+    let live = store
+        .find_session_by_id("ses-replacement")
+        .expect("query replacement")
+        .expect("replacement must be present");
+    assert_eq!(live.id, "ses-replacement");
+
+    let ghost_primary = store
+        .find_session_by_id("ses-displaced")
+        .expect("query displaced primary");
+    assert!(
+        ghost_primary.is_none(),
+        "displaced session's primary row must be removed"
+    );
+
+    let ghost_key = store
+        .find_session("syn", &displaced.session_key)
+        .expect("find by shared key");
+    assert_eq!(
+        ghost_key.map(|s| s.id),
+        Some("ses-replacement".to_owned()),
+        "shared key must now resolve to the replacement session"
+    );
+
+    let listing = store.list_sessions(Some("syn")).expect("list sessions");
+    assert!(
+        !listing.iter().any(|s| s.id == "ses-displaced"),
+        "displaced session must be absent from nous_idx for syn"
+    );
+    assert!(
+        listing.iter().any(|s| s.id == "ses-replacement"),
+        "replacement session must appear in nous_idx for syn"
+    );
+}
