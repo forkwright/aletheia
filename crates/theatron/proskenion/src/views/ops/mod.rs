@@ -269,6 +269,15 @@ const BOTTOM_ROW: &str = "\
     min-height: 0;\
 ";
 
+const LOADING_PANEL_STYLE: &str = "\
+    display: flex; \
+    align-items: center; \
+    justify-content: center; \
+    height: 200px; \
+    color: var(--text-muted); \
+    font-size: var(--text-sm);\
+";
+
 const AUTO_REFRESH_SECS: u64 = 30;
 
 // ── Main component ──
@@ -564,103 +573,109 @@ pub(crate) fn Ops() -> Element {
             // ── Tab content ──
             match tab {
                 OpsTab::Dashboard => rsx! {
-                    if let FetchState::Loading = &*dash_fetch.read() {
-                        div { style: "display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: var(--text-sm);", "Loading\u{2026}" }
-                    }
-                    if let FetchState::Error(err) = &*dash_fetch.read() {
-                        div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
-                    }
+                    match &*dash_fetch.read() {
+                        FetchState::Loading => rsx! {
+                            div { style: "{LOADING_PANEL_STYLE}", "Loading…" }
+                        },
+                        FetchState::Error(err) => rsx! {
+                            div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
+                        },
+                        FetchState::Loaded(()) => rsx! {
+                            AgentCards { store: agent_store }
 
-                    AgentCards { store: agent_store }
-
-                    div {
-                        style: "{BOTTOM_ROW}",
-                        ServiceHealthPanel { store: health_store }
-                        ToggleControlsPanel { store: toggle_store, config }
+                            div {
+                                style: "{BOTTOM_ROW}",
+                                ServiceHealthPanel { store: health_store }
+                                ToggleControlsPanel { store: toggle_store, config }
+                            }
+                        },
                     }
                 },
 
                 OpsTab::Tools => rsx! {
-                    if let FetchState::Loading = &*tools_fetch.read() {
-                        div { style: "display: flex; align-items: center; justify-content: center; height: 200px; color: var(--text-muted); font-size: var(--text-sm);", "Loading\u{2026}" }
-                    }
-                    if let FetchState::Error(err) = &*tools_fetch.read() {
-                        div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
-                    }
-
-                    div {
-                        style: "{CARDS_STYLE}",
-                        div {
-                            style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE}", "{current_stats.total}" }
-                            div { style: "{CARD_LABEL}", "Total Calls" }
-                        }
-                        div {
-                            style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE} color: var(--status-success);", "{current_stats.succeeded}" }
-                            div { style: "{CARD_LABEL}", "Succeeded" }
-                        }
-                        div {
-                            style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE} color: var(--status-error);", "{current_stats.failed}" }
-                            div { style: "{CARD_LABEL}", "Failed" }
-                        }
-                        div {
-                            style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE} color: var(--accent);",
-                                "{current_stats.catalog.len()}"
-                            }
-                            div { style: "{CARD_LABEL}", "Catalog" }
-                        }
-                        div {
-                            style: "{CARD_STYLE}",
-                            div { style: "{CARD_VALUE} color: var(--accent);",
-                                "{current_stats.live_invocations.len()}"
-                            }
-                            div { style: "{CARD_LABEL}", "Live" }
-                        }
-                    }
-
-                    div {
-                        style: "{SECTION_STYLE}",
-                        div { style: "{SECTION_TITLE}", "Tool Catalog" }
-                        if current_stats.catalog.is_empty() {
-                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tools registered" }
-                        }
-                        for tool in &current_stats.catalog {
+                    match &*tools_fetch.read() {
+                        FetchState::Loading => rsx! {
+                            div { style: "{LOADING_PANEL_STYLE}", "Loading…" }
+                        },
+                        FetchState::Error(err) => rsx! {
+                            div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
+                        },
+                        FetchState::Loaded(()) => rsx! {
                             div {
-                                style: "{ENTRY_STYLE}",
-                                span { style: "{ACTIVE_DOT}" }
-                                span { style: "color: var(--text-primary);", "{tool.name}" }
-                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.description}" }
-                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.id}" }
+                                style: "{CARDS_STYLE}",
+                                div {
+                                    style: "{CARD_STYLE}",
+                                    div { style: "{CARD_VALUE}", "{current_stats.total}" }
+                                    div { style: "{CARD_LABEL}", "Total Calls" }
+                                }
+                                div {
+                                    style: "{CARD_STYLE}",
+                                    div { style: "{CARD_VALUE} color: var(--status-success);", "{current_stats.succeeded}" }
+                                    div { style: "{CARD_LABEL}", "Succeeded" }
+                                }
+                                div {
+                                    style: "{CARD_STYLE}",
+                                    div { style: "{CARD_VALUE} color: var(--status-error);", "{current_stats.failed}" }
+                                    div { style: "{CARD_LABEL}", "Failed" }
+                                }
+                                div {
+                                    style: "{CARD_STYLE}",
+                                    div { style: "{CARD_VALUE} color: var(--accent);",
+                                        "{current_stats.catalog.len()}"
+                                    }
+                                    div { style: "{CARD_LABEL}", "Catalog" }
+                                }
+                                div {
+                                    style: "{CARD_STYLE}",
+                                    div { style: "{CARD_VALUE} color: var(--accent);",
+                                        "{current_stats.live_invocations.len()}"
+                                    }
+                                    div { style: "{CARD_LABEL}", "Live" }
+                                }
                             }
-                        }
-                    }
 
-                    div {
-                        style: "{SECTION_STYLE}",
-                        div { style: "{SECTION_TITLE}", "Live Invocations" }
-                        if current_stats.live_invocations.is_empty() {
-                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tool invocations running" }
-                        }
-                        for invocation in &current_stats.live_invocations {
                             div {
-                                style: "{ENTRY_STYLE}",
-                                span { style: "{ACTIVE_DOT}" }
-                                span { style: "color: var(--text-primary); flex: 1;", "{invocation.tool_name}" }
-                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "#{invocation.id}" }
-                                span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{invocation.elapsed_ms}ms" }
+                                style: "{SECTION_STYLE}",
+                                div { style: "{SECTION_TITLE}", "Tool Catalog" }
+                                if current_stats.catalog.is_empty() {
+                                    div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tools registered" }
+                                }
+                                for tool in &current_stats.catalog {
+                                    div {
+                                        style: "{ENTRY_STYLE}",
+                                        span { style: "{ACTIVE_DOT}" }
+                                        span { style: "color: var(--text-primary);", "{tool.name}" }
+                                        span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.description}" }
+                                        span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{tool.id}" }
+                                    }
+                                }
                             }
-                        }
-                    }
 
-                    if current_stats.history_unavailable {
-                        div {
-                            style: "{SECTION_STYLE}",
-                            div { style: "{SECTION_TITLE}", "Tool History" }
-                            div { style: "color: var(--text-muted); font-size: var(--text-sm);", "Tool history unavailable: calls are not persisted yet" }
-                        }
+                            div {
+                                style: "{SECTION_STYLE}",
+                                div { style: "{SECTION_TITLE}", "Live Invocations" }
+                                if current_stats.live_invocations.is_empty() {
+                                    div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tool invocations running" }
+                                }
+                                for invocation in &current_stats.live_invocations {
+                                    div {
+                                        style: "{ENTRY_STYLE}",
+                                        span { style: "{ACTIVE_DOT}" }
+                                        span { style: "color: var(--text-primary); flex: 1;", "{invocation.tool_name}" }
+                                        span { style: "color: var(--text-muted); font-size: var(--text-xs);", "#{invocation.id}" }
+                                        span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{invocation.elapsed_ms}ms" }
+                                    }
+                                }
+                            }
+
+                            if current_stats.history_unavailable {
+                                div {
+                                    style: "{SECTION_STYLE}",
+                                    div { style: "{SECTION_TITLE}", "Tool History" }
+                                    div { style: "color: var(--text-muted); font-size: var(--text-sm);", "Tool history unavailable: calls are not persisted yet" }
+                                }
+                            }
+                        },
                     }
                 },
 

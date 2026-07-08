@@ -1241,6 +1241,79 @@ impl FactHealth {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub(crate) struct GraphCheckReport {
+    fact_count: usize,
+    entity_count: usize,
+    relationship_count: usize,
+    orphaned_entity_count: usize,
+    dangling_edge_count: usize,
+    status: GraphCheckStatus,
+}
+
+impl GraphCheckReport {
+    #[must_use]
+    pub(crate) fn is_consistent(&self) -> bool {
+        self.status == GraphCheckStatus::Healthy && self.structural_issue_count() == 0
+    }
+
+    #[must_use]
+    pub(crate) fn structural_issue_count(&self) -> usize {
+        self.orphaned_entity_count + self.dangling_edge_count
+    }
+
+    #[must_use]
+    pub(crate) fn fact_count(&self) -> usize {
+        self.fact_count
+    }
+
+    #[must_use]
+    pub(crate) fn entity_count(&self) -> usize {
+        self.entity_count
+    }
+
+    #[must_use]
+    pub(crate) fn relationship_count(&self) -> usize {
+        self.relationship_count
+    }
+
+    #[must_use]
+    pub(crate) fn orphaned_entity_count(&self) -> usize {
+        self.orphaned_entity_count
+    }
+
+    #[must_use]
+    pub(crate) fn dangling_edge_count(&self) -> usize {
+        self.dangling_edge_count
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GraphCheckStatus {
+    Healthy,
+    IssuesFound,
+    Unknown,
+}
+
+impl<'de> serde::Deserialize<'de> for GraphCheckStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self::from_raw(&String::deserialize(deserializer)?))
+    }
+}
+
+impl GraphCheckStatus {
+    fn from_raw(raw: &str) -> Self {
+        match raw {
+            "healthy" => Self::Healthy,
+            "issues_found" => Self::IssuesFound,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 /// Which facts the operator wants to review.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum FactReviewMode {
