@@ -545,7 +545,9 @@ fn force_import_displaces_different_owner_and_cleans_nous_index() {
         SessionStatus::Active,
         "2024-06-01T00:00:00Z",
     );
-    store.import_session(&displaced, false).expect("seed displaced");
+    store
+        .import_session(&displaced, false)
+        .expect("seed displaced");
 
     let mut replacement = import_session_record(
         "ses-replacement",

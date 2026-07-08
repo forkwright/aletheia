@@ -74,11 +74,42 @@ grep -Eq '^source_commit=[0-9a-f]{40}$' "${manifest}" || {
     exit 1
 }
 
-for manifest_path in LICENSE LICENSE-DOCS README.md SECURITY.md docs/QUICKSTART.md instance.example/README.md; do
-    grep -Eq "^[0-9a-f]{64} [0-7]{4} [0-9]+ ${manifest_path}$" "${manifest}" || {
+require_manifest_row() {
+    local manifest_path="$1"
+    awk -v path="${manifest_path}" '
+        $1 ~ /^[0-9a-f]{64}$/ && $2 ~ /^[0-7]{4}$/ && $3 ~ /^[0-9]+$/ && $4 == path && NF == 4 {
+            found = 1
+        }
+        END {
+            exit found ? 0 : 1
+        }
+    ' "${manifest}" || {
         echo "release-tarball: manifest missing hash row for ${manifest_path}" >&2
         exit 1
     }
-done
+}
+
+while IFS= read -r packaged_path; do
+    [[ -z "${packaged_path}" || "${packaged_path}" == */ ]] && continue
+    [[ "${packaged_path}" == "${root}/PACKAGE-MANIFEST.txt" ]] && continue
+
+    if [[ "${packaged_path}" != "${root}/"* ]]; then
+        echo "release-tarball: unexpected package path ${packaged_path}" >&2
+        exit 1
+    fi
+
+    require_manifest_row "${packaged_path#${root}/}"
+done <<< "${contents}"
+
+while IFS= read -r manifest_path; do
+    [[ -z "${manifest_path}" ]] && continue
+    require_path "${root}/${manifest_path}"
+done < <(
+    awk '
+        $1 ~ /^[0-9a-f]{64}$/ && $2 ~ /^[0-7]{4}$/ && $3 ~ /^[0-9]+$/ && NF == 4 {
+            print $4
+        }
+    ' "${manifest}"
+)
 
 echo "release-tarball: clean"

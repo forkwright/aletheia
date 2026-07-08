@@ -14,6 +14,17 @@ cd "$(git rev-parse --show-toplevel)"
 
 fail() { echo "" >&2; echo "❌ pre-push: $1" >&2; echo "   (bypass with: git push --no-verify)" >&2; exit 1; }
 
+run_llm_freshness() {
+  echo "pre-push: regenerating _llm L3 index (generated, not committed) ..."
+  uv run scripts/llm-extract-l3.py >/dev/null 2>&1 || fail "_llm extractor failed to run"
+}
+
+run_workspace_clippy() {
+  echo "pre-push: cargo clippy (CI-exact workspace) ..."
+  cargo +1.94.0 clippy --workspace --all-targets -- -D warnings \
+    || fail "clippy (workspace) — fix the warnings above"
+}
+
 echo "pre-push: cargo fmt --check ..."
 cargo +1.94.0 fmt --all -- --check \
   || fail "formatting — run 'cargo +1.94.0 fmt --all' then re-push"
@@ -21,33 +32,52 @@ cargo +1.94.0 fmt --all -- --check \
 # WHY: range vs the upstream the push targets; fall back to origin/main.
 range="origin/main...HEAD"
 git rev-parse --verify --quiet "@{push}" >/dev/null 2>&1 && range="@{push}..HEAD"
-changed="$(git diff --name-only "$range" 2>/dev/null || true)"
+scope_detection_failed=0
+changed=""
+if ! changed="$(git diff --name-only "$range")"; then
+  echo "pre-push: unable to determine changed files for '${range}'; running full scope checks" >&2
+  scope_detection_failed=1
+fi
 
 # _llm L3 index — generated (gitignored), not committed. Regenerate locally so
 # the dev's own _llm/ stays fresh for browsing; the extractor running cleanly is
 # the only gate (a broken extractor fails the push), there is no committed diff.
-if printf '%s\n' "$changed" | grep -qE '^crates/.*\.rs$|(^|/)Cargo\.toml$|^scripts/llm-extract-l3\.py$'; then
-  echo "pre-push: regenerating _llm L3 index (generated, not committed) ..."
-  uv run scripts/llm-extract-l3.py >/dev/null 2>&1 || fail "_llm extractor failed to run"
+if [ "$scope_detection_failed" = "1" ]; then
+  run_llm_freshness
+elif printf '%s\n' "$changed" | grep -qE '^crates/.*\.rs$|(^|/)Cargo\.toml$|^scripts/llm-extract-l3\.py$'; then
+  run_llm_freshness
+elif [ -z "$changed" ]; then
+  echo "pre-push: no changed files detected for ${range}; _llm freshness skipped intentionally"
 fi
 
 if [ "${PREPUSH_NO_CLIPPY:-0}" = "1" ]; then
   echo "pre-push: clippy skipped (PREPUSH_NO_CLIPPY=1); CI gate-attestation is the backstop"
-elif [ "${PREPUSH_FULL:-0}" = "1" ]; then
-  echo "pre-push: cargo clippy (CI-exact workspace) ..."
-  cargo +1.94.0 clippy --workspace --all-targets \
-    --exclude theatron --exclude skene --exclude koilon -- -D warnings \
-    || fail "clippy (workspace) — fix the warnings above"
+elif [ "${PREPUSH_FULL:-0}" = "1" ] || [ "$scope_detection_failed" = "1" ]; then
+  run_workspace_clippy
 else
-  pkgs="$(printf '%s\n' "$changed" | python3 scripts/affected-crates.py 2>/dev/null || true)"
-  if [ -n "$pkgs" ]; then
-    echo "pre-push: cargo clippy on affected crates ($(echo "$pkgs" | tr '\n' ' '))..."
+  if ! pkgs="$(printf '%s\n' "$changed" | python3 scripts/affected-crates.py)"; then
+    echo "pre-push: affected-crates scope detection failed; running full workspace clippy" >&2
+    run_workspace_clippy
+  else
     args=()
-    while IFS= read -r p; do [ -n "$p" ] && args+=("-p" "$p"); done <<< "$pkgs"
-    # WHY: affected-crate clippy is a fast 95% pre-filter; CI runs the bit-exact
-    # --workspace pass. Use PREPUSH_FULL=1 for parity.
-    cargo +1.94.0 clippy "${args[@]}" --all-targets -- -D warnings \
-      || fail "clippy (affected crates) — fix the warnings above"
+    pkg_names=()
+    while IFS= read -r p; do
+      [ -z "$p" ] && continue
+      args+=("-p" "$p")
+      pkg_names+=("$p")
+    done <<< "$pkgs"
+
+    if [ "${#pkg_names[@]}" -gt 0 ]; then
+      echo "pre-push: cargo clippy on affected crates (${pkg_names[*]})..."
+      # WHY: affected-crate clippy is a fast 95% pre-filter; CI runs the bit-exact
+      # --workspace pass. Use PREPUSH_FULL=1 for parity.
+      cargo +1.94.0 clippy "${args[@]}" --all-targets -- -D warnings \
+        || fail "clippy (affected crates) — fix the warnings above"
+    elif [ -z "$changed" ]; then
+      echo "pre-push: no changed files detected for ${range}; clippy skipped intentionally"
+    else
+      echo "pre-push: no affected workspace crates detected; clippy skipped intentionally"
+    fi
   fi
 fi
 

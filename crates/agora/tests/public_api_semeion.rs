@@ -103,12 +103,19 @@ fn signal_provider_with_buffer_capacity() {
 use organon::testing::install_crypto_provider;
 
 #[test]
-fn signal_client_creation_fails_without_http_prefix() {
+fn signal_client_creation_succeeds_without_http_prefix() {
     install_crypto_provider();
     // WHY: SignalClient::new should succeed even without http:// prefix
     // as it normalizes the URL internally
     let client = SignalClient::new("localhost:8080");
     assert!(client.is_ok());
+}
+
+#[test]
+fn signal_client_creation_fails_for_invalid_url() {
+    install_crypto_provider();
+    let client = SignalClient::new("");
+    assert!(matches!(client, Err(SignalError::InvalidUrl { .. })));
 }
 
 #[test]

@@ -59,7 +59,9 @@ impl SignalClient {
     ///
     /// # Errors
     ///
-    /// Returns [`super::error::Error::Http`] if the HTTP client cannot be constructed.
+    /// Returns [`super::error::Error::InvalidUrl`] if the normalized URL cannot be
+    /// parsed, or [`super::error::Error::Http`] if the HTTP client cannot be
+    /// constructed.
     pub fn new(base_url: &str) -> Result<Self> {
         Self::with_timeouts(base_url, RPC_TIMEOUT, HEALTH_TIMEOUT, RECEIVE_TIMEOUT)
     }
@@ -68,7 +70,9 @@ impl SignalClient {
     ///
     /// # Errors
     ///
-    /// Returns [`super::error::Error::Http`] if the HTTP client cannot be constructed.
+    /// Returns [`super::error::Error::InvalidUrl`] if the normalized URL cannot be
+    /// parsed, or [`super::error::Error::Http`] if the HTTP client cannot be
+    /// constructed.
     pub fn with_timeouts(
         base_url: &str,
         rpc_timeout: Duration,
@@ -76,6 +80,13 @@ impl SignalClient {
         receive_timeout: Duration,
     ) -> Result<Self> {
         let base = normalize_url(base_url);
+        reqwest::Url::parse(&base).map_err(|source| {
+            error::InvalidUrlSnafu {
+                url: base.clone(),
+                reason: source.to_string(),
+            }
+            .build()
+        })?;
 
         let client = reqwest::Client::builder()
             .timeout(rpc_timeout)

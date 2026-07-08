@@ -28,6 +28,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Signal daemon base URL could not be parsed after normalization.
+    #[snafu(display("invalid signal URL {url}: {reason}"))]
+    InvalidUrl {
+        url: String,
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// No Signal account configured for the requested operation.
     #[snafu(display("no signal account: {account_id}"))]
     NoAccount {
@@ -56,7 +65,10 @@ impl koina::error_class::Classifiable for Error {
                 ErrorClass::Transient
             }
             Self::Http { .. } => ErrorClass::Unknown,
-            Self::Rpc { .. } | Self::NoAccount { .. } | Self::Json { .. } => ErrorClass::Permanent,
+            Self::Rpc { .. }
+            | Self::InvalidUrl { .. }
+            | Self::NoAccount { .. }
+            | Self::Json { .. } => ErrorClass::Permanent,
         }
     }
 
