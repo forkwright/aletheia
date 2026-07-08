@@ -502,7 +502,7 @@ pub(crate) fn select_injection<S: ::std::hash::BuildHasher>(
 ) -> Option<SerendipityInjection> {
     discoveries
         .iter()
-        .filter(|d| d.surprise >= config.surprise_threshold || d.serendipity_score >= 0.5)
+        .filter(|d| d.surprise >= config.surprise_threshold)
         .find_map(|d| {
             let entity_key = d.entity_id.as_str();
             let (fact_id_str, content) = fact_contents.get(entity_key)?;
@@ -510,7 +510,7 @@ pub(crate) fn select_injection<S: ::std::hash::BuildHasher>(
             Some(SerendipityInjection {
                 content: content.clone(),
                 fact_id,
-                surprise_score: d.surprise.max(d.serendipity_score),
+                surprise_score: d.surprise,
                 connection_reason: format!(
                     "connected to {} (distance: {}, community: {})",
                     d.name,

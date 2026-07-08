@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use super::super::super::*;
 use crate::knowledge::ForgetReason;
-use crate::test_fixtures::{make_fact, make_store};
+use crate::test_fixtures::{make_fact, make_store, test_ts};
 #[test]
 fn query_timeout_returns_typed_error() {
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig {
@@ -639,6 +639,61 @@ fn increment_access_updates_count() {
     assert_eq!(
         found.access.access_count, 2,
         "access count should reflect two increments"
+    );
+}
+
+#[test]
+fn increment_access_leaves_superseded_temporal_rows_unchanged() {
+    let store = make_store();
+    let fact_id = crate::id::FactId::new("access-temporal").expect("valid test id");
+
+    let mut superseded = make_fact(fact_id.as_str(), "agent-a", "Old access fact");
+    superseded.temporal.valid_from = test_ts("2026-01-01T00:00:00Z");
+    superseded.temporal.valid_to = test_ts("2026-02-01T00:00:00Z");
+    superseded.lifecycle.superseded_by =
+        Some(crate::id::FactId::new("access-temporal-v2").expect("valid test id"));
+    superseded.access.access_count = 7;
+    superseded.access.last_accessed_at = Some(test_ts("2026-01-15T00:00:00Z"));
+    let superseded_last_accessed = superseded.access.last_accessed_at;
+    store.insert_fact(&superseded).expect("insert old version");
+
+    let mut live = make_fact(fact_id.as_str(), "agent-a", "Live access fact");
+    live.temporal.valid_from = test_ts("2026-02-01T00:00:00Z");
+    live.temporal.recorded_at = test_ts("2026-02-01T00:00:00Z");
+    live.access.access_count = 3;
+    store.insert_fact(&live).expect("insert live version");
+
+    store
+        .increment_access(std::slice::from_ref(&fact_id))
+        .expect("increment access");
+
+    let versions = store
+        .read_facts_by_id(fact_id.as_str())
+        .expect("read temporal versions");
+    let closed = versions
+        .iter()
+        .find(|fact| fact.lifecycle.superseded_by.is_some())
+        .expect("superseded row exists");
+    assert_eq!(
+        closed.access.access_count, 7,
+        "superseded access count must remain unchanged"
+    );
+    assert_eq!(
+        closed.access.last_accessed_at, superseded_last_accessed,
+        "superseded last access timestamp must remain unchanged"
+    );
+
+    let active = versions
+        .iter()
+        .find(|fact| fact.lifecycle.superseded_by.is_none() && !fact.lifecycle.is_forgotten)
+        .expect("active row exists");
+    assert_eq!(
+        active.access.access_count, 4,
+        "active row should receive the access increment"
+    );
+    assert!(
+        active.access.last_accessed_at.is_some(),
+        "active row should receive a last-accessed timestamp"
     );
 }
 

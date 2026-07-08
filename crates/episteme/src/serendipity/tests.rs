@@ -278,6 +278,36 @@ fn select_injection_picks_surprising_fact() {
 }
 
 #[test]
+fn select_injection_rejects_high_score_without_surprise() {
+    let discoveries = vec![Discovery {
+        entity_id: EntityId::new("wasm").expect("valid test id"),
+        name: "WebAssembly".to_owned(),
+        serendipity_score: 0.54,
+        relevance: 0.5,
+        novelty: 0.58,
+        surprise: 0.0,
+        graph_distance: Some(1),
+        community: 1,
+    }];
+
+    let mut fact_contents = HashMap::new();
+    fact_contents.insert(
+        "wasm".to_owned(),
+        (
+            "fact-wasm-1".to_owned(),
+            "WebAssembly is adjacent to the current project context".to_owned(),
+        ),
+    );
+
+    let injection = select_injection(&discoveries, &fact_contents, &SerendipityConfig::default());
+
+    assert!(
+        injection.is_none(),
+        "serendipity score alone must not bypass the surprise threshold"
+    );
+}
+
+#[test]
 fn select_injection_none_when_no_content() {
     let discoveries = vec![Discovery {
         entity_id: EntityId::new("ml").expect("valid test id"),

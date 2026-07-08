@@ -735,6 +735,140 @@ fn build_prompt_handles_error_tool_calls() {
     );
 }
 
+#[tokio::test]
+async fn extract_refined_classifies_tool_output_from_tool_calls() {
+    struct ToolOutputProvider;
+
+    impl ExtractionProvider for ToolOutputProvider {
+        fn complete<'a>(
+            &'a self,
+            system: &'a str,
+            user_message: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+        > {
+            assert!(
+                system.contains("significant tool/code output"),
+                "tool-heavy appendix should be selected from tool call output"
+            );
+            assert!(
+                user_message.contains("reasoning: I inspected command output"),
+                "classification and prompt text should include reasoning"
+            );
+            assert!(
+                user_message.contains("tool_call: bash"),
+                "classification and prompt text should include tool call metadata"
+            );
+            assert!(
+                user_message.contains("result=stdout:"),
+                "classification and prompt text should include tool call results"
+            );
+            Box::pin(async { Ok(r#"{"entities":[],"relationships":[],"facts":[]}"#.to_owned()) })
+        }
+    }
+
+    let engine = ExtractionEngine::new(ExtractionConfig {
+        min_message_length: 1,
+        ..ExtractionConfig::default()
+    });
+    let output = format!(
+        "stdout:\n```\n$ cargo test\n{}\n```",
+        "output: test passed\n".repeat(20)
+    );
+    let messages = vec![ConversationMessage {
+        role: "assistant".to_owned(),
+        content: "ok".to_owned(),
+        tool_calls: Some(vec![ExtractedToolCall::new(
+            "tc-output",
+            "bash",
+            serde_json::json!({"command": "cargo test"}),
+            Some(output),
+            false,
+        )]),
+        reasoning: Some("I inspected command output before summarizing.".to_owned()),
+    }];
+
+    let refined = engine
+        .extract_refined(&messages, &ToolOutputProvider, "test-nous", "test")
+        .await
+        .expect("extraction should succeed");
+    assert_eq!(
+        refined.turn_type,
+        crate::extract::refinement::TurnType::ToolHeavy,
+        "tool call output should drive tool-heavy classification"
+    );
+}
+
+#[cfg(feature = "mneme-engine")]
+#[tokio::test]
+async fn extract_refined_persist_applies_correction_boost_once() {
+    struct CorrectionProvider;
+
+    impl ExtractionProvider for CorrectionProvider {
+        fn complete<'a>(
+            &'a self,
+            system: &'a str,
+            _: &'a str,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<String, ExtractionError>> + Send + 'a>,
+        > {
+            assert!(
+                system.contains("explicit corrections"),
+                "correction appendix should be selected for correction turns"
+            );
+            Box::pin(async {
+                Ok(r#"{"entities":[],"relationships":[],"facts":[{"subject":"Alice","predicate":"uses","object":"PostgreSQL","confidence":0.6}]}"#.to_owned())
+            })
+        }
+    }
+
+    let store = crate::knowledge_store::KnowledgeStore::open_mem()
+        .expect("in-memory knowledge store should open successfully");
+    let engine = ExtractionEngine::new(ExtractionConfig {
+        min_message_length: 1,
+        ..ExtractionConfig::default()
+    });
+    let messages = vec![ConversationMessage {
+        role: "user".to_owned(),
+        content: "Actually, it's PostgreSQL, not MySQL.".to_owned(),
+        tool_calls: None,
+        reasoning: None,
+    }];
+
+    let refined = engine
+        .extract_refined(&messages, &CorrectionProvider, "test-nous", "test")
+        .await
+        .expect("extraction should succeed");
+    assert_eq!(
+        refined.turn_type,
+        crate::extract::refinement::TurnType::Correction,
+        "correction turn should be classified as correction"
+    );
+    assert!(
+        (refined.extraction.facts[0].confidence - 0.6).abs() < f64::EPSILON,
+        "refinement must not apply the correction confidence boost"
+    );
+    assert!(
+        refined.extraction.facts[0].is_correction,
+        "correction flag should be propagated to persistence"
+    );
+
+    engine
+        .persist(&refined.extraction, &store, "session:test", "test-nous")
+        .expect("persist should succeed");
+    let facts = store
+        .query_facts("test-nous", "2099-01-01T00:00:00Z", 10)
+        .expect("query facts should succeed");
+    let stored = facts
+        .iter()
+        .find(|fact| fact.content == "Alice uses PostgreSQL")
+        .expect("stored correction fact should exist");
+    assert!(
+        (stored.provenance.confidence - 0.8).abs() < f64::EPSILON,
+        "correction confidence should receive exactly one +0.2 boost"
+    );
+}
+
 #[test]
 fn build_prompt_omits_empty_tool_calls_and_reasoning() {
     let engine = ExtractionEngine::new(ExtractionConfig::default());

@@ -402,7 +402,7 @@ fn turn_type_confidence_boost_values() {
         "turn type confidence boost values: assertion failed"
     );
     assert!(
-        (TurnType::Correction.confidence_boost() - 0.2).abs() < f64::EPSILON,
+        (TurnType::Correction.confidence_boost()).abs() < f64::EPSILON,
         "turn type confidence boost values: assertion failed"
     );
     assert!(
@@ -578,12 +578,9 @@ fn full_pipeline_correction_turn() {
     );
 
     let base_confidence = 0.8;
-    let boosted = boosted_confidence(
-        base_confidence,
-        turn_type.confidence_boost() + correction.confidence_boost,
-    );
+    let boosted = boosted_confidence(base_confidence, turn_type.confidence_boost());
     assert!(
-        (boosted - 1.0).abs() < f64::EPSILON,
+        (boosted - 0.8).abs() < f64::EPSILON,
         "full pipeline correction turn: assertion failed"
     );
 
