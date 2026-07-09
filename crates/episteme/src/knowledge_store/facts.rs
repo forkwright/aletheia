@@ -512,7 +512,9 @@ impl KnowledgeStore {
                     continue;
                 }
             };
-            for mut fact in facts {
+            for mut fact in facts.into_iter().filter(|fact| {
+                fact.lifecycle.superseded_by.is_none() && !fact.lifecycle.is_forgotten
+            }) {
                 fact.access.access_count = fact.access.access_count.saturating_add(1);
                 fact.access.last_accessed_at = Some(now);
                 if let Err(e) = self.insert_fact(&fact) {

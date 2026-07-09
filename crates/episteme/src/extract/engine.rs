@@ -34,6 +34,40 @@ fn is_self_reference(subject: &str) -> bool {
     )
 }
 
+fn render_conversation_messages(messages: &[ConversationMessage]) -> String {
+    let mut conversation = String::new();
+    for msg in messages {
+        conversation.push_str(&msg.role);
+        conversation.push_str(": ");
+        conversation.push_str(&msg.content);
+        conversation.push('\n');
+        if let Some(ref reasoning) = msg.reasoning {
+            conversation.push_str("reasoning: ");
+            conversation.push_str(reasoning);
+            conversation.push('\n');
+        }
+        if let Some(ref tool_calls) = msg.tool_calls {
+            for tc in tool_calls {
+                conversation.push_str("tool_call: ");
+                conversation.push_str(&tc.name);
+                conversation.push_str(" id=");
+                conversation.push_str(&tc.id);
+                conversation.push_str(" input=");
+                conversation.push_str(&tc.input.to_string());
+                if let Some(ref result) = tc.result {
+                    conversation.push_str(" result=");
+                    conversation.push_str(result);
+                }
+                if tc.is_error {
+                    conversation.push_str(" [ERROR]");
+                }
+                conversation.push('\n');
+            }
+        }
+    }
+    conversation
+}
+
 /// Drives the extraction pipeline: prompt building, LLM calling, response parsing.
 ///
 /// # Examples
@@ -132,36 +166,7 @@ Rules:
             );
         }
 
-        let mut conversation = String::new();
-        for msg in messages {
-            conversation.push_str(&msg.role);
-            conversation.push_str(": ");
-            conversation.push_str(&msg.content);
-            conversation.push('\n');
-            if let Some(ref reasoning) = msg.reasoning {
-                conversation.push_str("reasoning: ");
-                conversation.push_str(reasoning);
-                conversation.push('\n');
-            }
-            if let Some(ref tool_calls) = msg.tool_calls {
-                for tc in tool_calls {
-                    conversation.push_str("tool_call: ");
-                    conversation.push_str(&tc.name);
-                    conversation.push_str(" id=");
-                    conversation.push_str(&tc.id);
-                    conversation.push_str(" input=");
-                    conversation.push_str(&tc.input.to_string());
-                    if let Some(ref result) = tc.result {
-                        conversation.push_str(" result=");
-                        conversation.push_str(result);
-                    }
-                    if tc.is_error {
-                        conversation.push_str(" [ERROR]");
-                    }
-                    conversation.push('\n');
-                }
-            }
-        }
+        let conversation = render_conversation_messages(messages);
 
         ExtractionPrompt {
             system,
@@ -282,23 +287,13 @@ Rules:
             });
         }
 
-        let combined: String =
-            messages
-                .iter()
-                .map(|m| m.content.as_str())
-                .fold(String::new(), |mut acc, s| {
-                    if !acc.is_empty() {
-                        acc.push('\n');
-                    }
-                    acc.push_str(s);
-                    acc
-                });
+        let combined = render_conversation_messages(messages);
         let turn_type = refinement::classify_turn(&combined);
         let mut extraction = self
             .extract_with_selected_provider(messages, provider, Some(turn_type))
             .await?;
         let correction = refinement::detect_correction(&combined);
-        let boost = turn_type.confidence_boost() + correction.confidence_boost;
+        let boost = turn_type.confidence_boost();
         let mut filtered_count = 0;
         let provider_label = provider.provider_label();
         let model_label = provider.model_label();

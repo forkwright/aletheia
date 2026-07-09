@@ -31,7 +31,6 @@ impl TurnType {
     pub(crate) fn confidence_boost(self) -> f64 {
         match self {
             Self::Planning => 0.1,
-            Self::Correction => 0.2,
             _ => 0.0,
         }
     }
