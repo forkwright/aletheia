@@ -8,7 +8,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use koina::system::{Environment, RealSystem};
 use tracing::{debug, info, warn};
@@ -183,28 +183,55 @@ impl CodexProvider {
     }
 
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        let start = Instant::now();
         let model = self.resolve_model(&request.model);
         Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
 
-        let output = Box::pin(process::run_completion(
-            &self.codex_binary,
-            self.working_directory.as_deref(),
-            request.system.as_deref(),
-            &prompt,
-            self.timeout,
-        ))
-        .await?;
-        let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
-        let response = parse::text_to_response(&text, usage, model);
-        // WHY(#4658): Codex reports cached_input_tokens as cache reads; emit
-        // them so prompt-cache activity shows in provider metrics.
-        crate::metrics::record_cache_tokens(
-            self.name(),
-            response.usage.cache_read_tokens,
-            response.usage.cache_write_tokens,
-        );
-        Ok(response)
+        let outcome: Result<CompletionResponse> = async {
+            let output = Box::pin(process::run_completion(
+                &self.codex_binary,
+                self.working_directory.as_deref(),
+                request.system.as_deref(),
+                &prompt,
+                self.timeout,
+            ))
+            .await?;
+            let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
+            let response = parse::text_to_response(&text, usage, model);
+            // WHY(#4658): Codex reports cached_input_tokens as cache reads; emit
+            // them so prompt-cache activity shows in provider metrics.
+            crate::metrics::record_cache_tokens(
+                self.name(),
+                response.usage.cache_read_tokens,
+                response.usage.cache_write_tokens,
+            );
+            Ok(response)
+        }
+        .await;
+
+        match &outcome {
+            Ok(response) => {
+                crate::metrics::record_completion(
+                    self.name(),
+                    response.usage.input_tokens,
+                    response.usage.output_tokens,
+                    response.cost_usd.unwrap_or(0.0),
+                    true,
+                );
+                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
+            }
+            Err(e) => {
+                let status = if e.is_retryable() {
+                    "rate_limited"
+                } else {
+                    "error"
+                };
+                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
+                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
+            }
+        }
+        outcome
     }
 
     /// Execute a streaming completion, emitting `StreamEvent::TextDelta` for each
@@ -219,35 +246,62 @@ impl CodexProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        let start = Instant::now();
         let model = self.resolve_model(&request.model);
         Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
 
-        let output = Box::pin(process::run_completion(
-            &self.codex_binary,
-            self.working_directory.as_deref(),
-            request.system.as_deref(),
-            &prompt,
-            self.timeout,
-        ))
-        .await?;
-        let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
+        let outcome: Result<CompletionResponse> = async {
+            let output = Box::pin(process::run_completion(
+                &self.codex_binary,
+                self.working_directory.as_deref(),
+                request.system.as_deref(),
+                &prompt,
+                self.timeout,
+            ))
+            .await?;
+            let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
 
-        // WHY: Codex's CLI does not support line-by-line streaming; we emit the
-        // full response as a single TextDelta so callers that consume
-        // complete_streaming see consistent event-based output regardless of
-        // which seat-bridged provider they're talking to.
-        on_event(StreamEvent::TextDelta { text: text.clone() });
+            // WHY: Codex's CLI does not support line-by-line streaming; we emit the
+            // full response as a single TextDelta so callers that consume
+            // complete_streaming see consistent event-based output regardless of
+            // which seat-bridged provider they're talking to.
+            on_event(StreamEvent::TextDelta { text: text.clone() });
 
-        let response = parse::text_to_response(&text, usage, model);
-        // WHY(#4658): The streaming path uses the same CLI output as the
-        // non-streaming path; record cache reads for observability parity.
-        crate::metrics::record_cache_tokens(
-            self.name(),
-            response.usage.cache_read_tokens,
-            response.usage.cache_write_tokens,
-        );
-        Ok(response)
+            let response = parse::text_to_response(&text, usage, model);
+            // WHY(#4658): The streaming path uses the same CLI output as the
+            // non-streaming path; record cache reads for observability parity.
+            crate::metrics::record_cache_tokens(
+                self.name(),
+                response.usage.cache_read_tokens,
+                response.usage.cache_write_tokens,
+            );
+            Ok(response)
+        }
+        .await;
+
+        match &outcome {
+            Ok(response) => {
+                crate::metrics::record_completion(
+                    self.name(),
+                    response.usage.input_tokens,
+                    response.usage.output_tokens,
+                    response.cost_usd.unwrap_or(0.0),
+                    true,
+                );
+                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
+            }
+            Err(e) => {
+                let status = if e.is_retryable() {
+                    "rate_limited"
+                } else {
+                    "error"
+                };
+                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
+                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
+            }
+        }
+        outcome
     }
 }
 

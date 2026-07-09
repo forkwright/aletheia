@@ -57,7 +57,7 @@ pub enum Error {
     },
 
     /// A Pandoc-backed format could not be rendered.
-    #[snafu(display("{format} output requires Pandoc; install pandoc >= 3.0"))]
+    #[snafu(display("{format} output requires Pandoc; install pandoc >= 3.1"))]
     PandocRequired {
         /// The requested format name (e.g. "docx").
         format: String,

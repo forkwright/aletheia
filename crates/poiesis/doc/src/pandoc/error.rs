@@ -8,10 +8,10 @@ use snafu::Snafu;
 pub enum PandocError {
     /// `pandoc` binary was not found on PATH.
     ///
-    /// Install pandoc ≥ 3.0. On NixOS/nix: `nix develop` (pinned in flake).
+    /// Install pandoc ≥ 3.1. On NixOS/nix: `nix develop` (pinned in flake).
     /// On Ubuntu/Debian: `apt install pandoc`. See <https://pandoc.org/installing.html>.
     #[snafu(display(
-        "pandoc not found (searched: {}). Install pandoc \u{2265} 3.0 \
+        "pandoc not found (searched: {}). Install pandoc \u{2265} 3.1 \
          — on NixOS run `nix develop` (pinned in flake.nix); \
          on Ubuntu/Debian `apt install pandoc`; see https://pandoc.org/installing.html",
         searched.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
@@ -24,7 +24,7 @@ pub enum PandocError {
     /// `pandoc` was found but the version is below the minimum requirement.
     #[snafu(display(
         "pandoc at {} is version {found_major}.{found_minor}.{found_patch}, \
-         but \u{2265} 3.0 is required. Run `nix develop` or upgrade via https://pandoc.org/installing.html",
+         but \u{2265} 3.1 is required. Run `nix develop` or upgrade via https://pandoc.org/installing.html",
         path.display()
     ))]
     VersionTooOld {

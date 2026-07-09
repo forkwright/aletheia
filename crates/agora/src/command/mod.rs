@@ -19,13 +19,6 @@ pub enum Command {
     Agents,
     /// `!whoami` — report which agent will receive this conversation.
     WhoAmI,
-    /// `!new [session_name]` — start a fresh session (optional label).
-    New {
-        /// Optional human-readable label for the new session.
-        label: Option<String>,
-    },
-    /// `!end` — close the current session for this conversation thread.
-    End,
     /// `!sessions` — list sessions tracked by the routed nous agent.
     Sessions,
     /// `!ping` — liveness check (no agent turn, just a round-trip ack).
@@ -65,8 +58,6 @@ impl Command {
             Self::Status => "status",
             Self::Agents => "agents",
             Self::WhoAmI => "whoami",
-            Self::New { .. } => "new",
-            Self::End => "end",
             Self::Sessions => "sessions",
             Self::Ping => "ping",
             Self::Channels => "channels",
@@ -86,7 +77,6 @@ impl Command {
     #[must_use]
     pub fn redacted_args(&self) -> Option<String> {
         let args = match self {
-            Self::New { label: Some(label) } => label.as_str(),
             Self::Info {
                 agent_id: Some(agent_id),
             } => agent_id.as_str(),
@@ -106,11 +96,6 @@ const KNOWN_COMMANDS: &[(&str, &str)] = &[
     ("!status", "lifecycle and session info for this agent"),
     ("!agents", "list all running agents"),
     ("!whoami", "show which agent handles this conversation"),
-    (
-        "!new [label]",
-        "start a fresh session (optional label ignored by agent)",
-    ),
-    ("!end", "close the current session"),
     ("!sessions", "count sessions tracked by this agent"),
     ("!ping", "round-trip liveness check"),
     ("!channels", "list channel providers and health"),
@@ -146,14 +131,6 @@ pub fn parse(text: &str) -> Option<Command> {
         "status" | "s" => Command::Status,
         "agents" => Command::Agents,
         "whoami" | "who" => Command::WhoAmI,
-        "new" => Command::New {
-            label: if rest.is_empty() {
-                None
-            } else {
-                Some(rest.to_owned())
-            },
-        },
-        "end" | "quit" | "q" => Command::End,
         "sessions" | "sess" => Command::Sessions,
         "ping" => Command::Ping,
         "channels" | "ch" => Command::Channels,
@@ -304,8 +281,6 @@ pub fn execute(cmd: &Command, ctx: &CommandContext) -> String {
         Command::Status => cmd_status(ctx),
         Command::Agents => cmd_agents(ctx),
         Command::WhoAmI => cmd_whoami(ctx),
-        Command::New { label } => cmd_new(ctx, label.as_deref()),
-        Command::End => cmd_end(ctx),
         Command::Sessions => cmd_sessions(ctx),
         Command::Ping => cmd_ping(ctx),
         Command::Channels => cmd_channels(ctx),
@@ -375,25 +350,6 @@ fn cmd_whoami(ctx: &CommandContext) -> String {
     format!(
         "This conversation routes to agent '{}'.\nSession key: {}",
         ctx.current_nous_id, ctx.session_key
-    )
-}
-
-fn cmd_new(ctx: &CommandContext, label: Option<&str>) -> String {
-    // NOTE: Session reset is handled by the session store: a new session key
-    // is derived from the label (or a new turn starts a new session automatically
-    // once the current session key is retired). The command acknowledges intent;
-    // the next plain turn will open a fresh session under this agent.
-    let note = label.map_or_else(String::new, |l| format!(" (label: '{l}')"));
-    format!(
-        "Session reset requested{note}.\nSend your next message to start a new conversation with agent '{}'.",
-        ctx.current_nous_id
-    )
-}
-
-fn cmd_end(ctx: &CommandContext) -> String {
-    format!(
-        "Session '{}' with agent '{}' ended. Send any message to start a new conversation.",
-        ctx.session_key, ctx.current_nous_id
     )
 }
 
@@ -572,34 +528,6 @@ mod tests {
     fn parse_whoami_variants() {
         assert_eq!(parse("!whoami"), Some(Command::WhoAmI));
         assert_eq!(parse("!who"), Some(Command::WhoAmI));
-    }
-
-    #[test]
-    fn parse_new_no_label() {
-        assert_eq!(parse("!new"), Some(Command::New { label: None }));
-    }
-
-    #[test]
-    fn parse_new_with_label() {
-        assert_eq!(
-            parse("!new my-session"),
-            Some(Command::New {
-                label: Some("my-session".to_owned())
-            })
-        );
-        assert_eq!(
-            parse("!new   work stuff  "),
-            Some(Command::New {
-                label: Some("work stuff".to_owned())
-            })
-        );
-    }
-
-    #[test]
-    fn parse_end_variants() {
-        assert_eq!(parse("!end"), Some(Command::End));
-        assert_eq!(parse("!quit"), Some(Command::End));
-        assert_eq!(parse("!q"), Some(Command::End));
     }
 
     #[test]
@@ -923,8 +851,6 @@ mod tests {
         assert_eq!(Command::Status.name(), "status");
         assert_eq!(Command::Agents.name(), "agents");
         assert_eq!(Command::WhoAmI.name(), "whoami");
-        assert_eq!(Command::New { label: None }.name(), "new");
-        assert_eq!(Command::End.name(), "end");
         assert_eq!(Command::Sessions.name(), "sessions");
         assert_eq!(Command::Ping.name(), "ping");
         assert_eq!(Command::Channels.name(), "channels");
@@ -947,12 +873,12 @@ mod tests {
     #[test]
     fn redacted_args_preserves_non_sensitive_command_args() {
         assert_eq!(
-            Command::New {
-                label: Some("release planning".to_owned()),
+            Command::Info {
+                agent_id: Some("release-planning".to_owned()),
             }
             .redacted_args()
             .as_deref(),
-            Some("release planning")
+            Some("release-planning")
         );
     }
 

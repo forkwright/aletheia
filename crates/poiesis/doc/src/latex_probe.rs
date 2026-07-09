@@ -4,15 +4,11 @@
 //! the PDF dispatcher can choose a system engine without bundling `TeX`.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use crate::pandoc::PdfEngine;
-use crate::process::{CommandOutputError, output_with_timeout};
+use crate::pandoc_probe::{ProbeCommandError, real_version_source};
 use snafu::Snafu;
-
-const LATEX_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Probe result for a system `LaTeX` engine.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,12 +130,6 @@ pub enum LatexProbeError {
     },
 }
 
-#[derive(Debug)]
-pub(crate) enum ProbeCommandError {
-    Failed(String),
-    TimedOut { timeout_secs: u64 },
-}
-
 fn search_latex_candidates() -> Vec<(PdfEngine, PathBuf)> {
     let Some(path_var) = std::env::var_os("PATH") else {
         return Vec::new();
@@ -160,28 +150,6 @@ fn search_latex_candidates() -> Vec<(PdfEngine, PathBuf)> {
     }
 
     candidates
-}
-
-fn real_version_source(path: &Path) -> Result<String, ProbeCommandError> {
-    let mut cmd = Command::new(path);
-    cmd.arg("--version");
-    let output = output_with_timeout(&mut cmd, LATEX_PROBE_TIMEOUT).map_err(|err| match err {
-        CommandOutputError::Timeout { timeout, .. } => ProbeCommandError::TimedOut {
-            timeout_secs: timeout.as_secs(),
-        },
-        CommandOutputError::Spawn { source }
-        | CommandOutputError::TempFile { source }
-        | CommandOutputError::Wait { source } => ProbeCommandError::Failed(source.to_string()),
-    })?;
-
-    if !output.status.success() {
-        return Err(ProbeCommandError::Failed(format!(
-            "exit status {}",
-            output.status
-        )));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn format_paths(paths: &[PathBuf]) -> String {
