@@ -200,3 +200,7 @@ unknown-git = "deny"
 # tagged releases). These are first-party crates in the fleet mono-repo constellation;
 # git sources are expected until crates.io publication is decided.
 allow-org.github = ["forkwright"]
+
+[[advisories.ignore]]
+id = "RUSTSEC-2026-0206"
+reason = "rustybuzz unmaintained (maintenance-status only, no vuln). Transitive GUI text-shaping via theatron (parley/vello, Dioxus-native+Blitz). No maintained successor; not a security surface. Matches the theatron ignore + existing precedent."

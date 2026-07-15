@@ -1,10 +1,8 @@
 # cargo-audit configuration.
 #
-# WHY: cargo-audit does not read deny.toml. This file mirrors the advisory
-# ignore list in deny.toml so both tools stay in sync. When adding or
-# removing an ignore here, update deny.toml's [[advisories.ignore]]
-# entries to match (and vice versa). See standards/CI.md § Vulnerability
-# scanning for policy.
+# WHY: This file is DERIVED from deny.toml [[advisories.ignore]].
+# Do not edit the ignore list here; edit deny.toml and run
+# `kanon audit derive-ignores --apply`. See standards/SUPPLY-CHAIN.md.
 
 [advisories]
 ignore = [
@@ -12,20 +10,23 @@ ignore = [
     "RUSTSEC-2024-0320",
     # bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade
     "RUSTSEC-2025-0141",
-    # paste unmaintained — transitive via tokenizers; no safe upgrade
+    # paste unmaintained, transitive via tokenizers; no safe upgrade
     "RUSTSEC-2024-0436",
     # async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7
     "RUSTSEC-2025-0052",
-    # ttf-parser unmaintained — transitive via fontdb/usvg/rustybuzz/typst-pdf; no upstream fix
+    # ttf-parser unmaintained — transitive via fontdb→usvg→typst-pdf and rustybuzz→typst; maintainer archived the repo with no upstream fix. Alternatives (skrifa) require upstream migration.
     "RUSTSEC-2026-0192",
-    # quick-xml duplicate-attribute CPU DoS — direct users upgraded to 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39
+    # quick-xml duplicate-attribute CPU DoS — direct aletheia/poiesis users upgraded to quick-xml 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39
     "RUSTSEC-2026-0194",
-    # quick-xml NsReader namespace allocation DoS — direct users upgraded to 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39
+    # quick-xml NsReader namespace allocation DoS — direct aletheia/poiesis users upgraded to quick-xml 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39
     "RUSTSEC-2026-0195",
-    # rustls-pemfile 2.x unmaintained — transitive via qdrant-client → tonic 0.12. Blocked on qdrant-client → tonic 0.13+
+    # rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. cargo-deny advisory-DB version does not trigger but crate present (2.2.0); keeps sync with .cargo/audit.toml
     "RUSTSEC-2025-0134",
-    # memmap2 unsound (unchecked pointer offset) — transitive via candle-core/grep-searcher, pinned ^0.9, no upgrade; offset path not exercised. review-by: 2026-12-01
+    # memmap2 unsound (unchecked pointer offset) — transitive via candle-core (safetensors mmap) + grep-searcher, pinned ^0.9; unsound offset path not exercised. cargo-deny does not trigger; keeps sync with .cargo/audit.toml.
+    # review-by: 2026-12-01
     "RUSTSEC-2026-0186",
     # crossbeam-epoch unmaintained — transitive dependency, no upgrade path
     "RUSTSEC-2026-0204",
+    # rustybuzz unmaintained (maintenance-status only, no vuln). Transitive GUI text-shaping via theatron (parley/vello, Dioxus-native+Blitz). No maintained successor; not a security surface. Matches the theatron ignore + existing precedent.
+    "RUSTSEC-2026-0206",
 ]
