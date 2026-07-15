@@ -55,11 +55,18 @@ def main() -> int:
     for job_name, job in security["jobs"].items():
         for step in job.get("steps", []):
             run = str(step.get("run", ""))
+            # WHY: dependabot-triggered runs never receive repo secrets, so a hard-fail
+            # here made every bot PR permanently red with NO supply-chain scan at all
+            # (the opposite of the original private-deps intent; fleet git deps are
+            # public now and fetch anonymously). The step may skip — but only LOUDLY:
+            # a silent exit 0 is still forbidden.
             if "FLEET_REPO_TOKEN" in run and "exit 0" in run:
-                errors.append(
-                    f"{job_name} credential setup exits successfully when "
-                    "FLEET_REPO_TOKEN is missing"
-                )
+                if "skipping credential setup" not in run:
+                    errors.append(
+                        f"{job_name} credential setup exits 0 silently when "
+                        "FLEET_REPO_TOKEN is missing — must announce the skip "
+                        '("skipping credential setup") or fail'
+                    )
 
     auto_merge = load_workflow(".github/workflows/dependabot-auto-merge.yml")
     wait_step = named_step(auto_merge, "auto-merge", "Wait for CI checks to pass")
