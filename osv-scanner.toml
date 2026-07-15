@@ -1,42 +1,47 @@
-# WHY: OSV-Scanner does not read cargo-audit's .cargo/audit.toml or
-# cargo-deny's deny.toml. Keep this ignore list in sync with both files.
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2025-0141"
-# WHY: bincode 1.x informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
-
-[[IgnoredVulns]]
-id = "RUSTSEC-2024-0436"
-# WHY: paste proc-macro informational advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+# WHY: This file is DERIVED from deny.toml [[advisories.ignore]].
+# Do not edit the ignore list here; edit deny.toml and run
+# `kanon audit derive-ignores --apply`. See standards/SUPPLY-CHAIN.md.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0320"
-# WHY: yaml-rust 0.4.5 unmaintained advisory; no fixed version. Transitive dependency. Added: 2026-05-29.
+reason = "yaml-rust unmaintained — transitive via syntect/aletheia-tui, no safe upgrade"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0141"
+reason = "bincode unmaintained — transitive via syntect/aletheia-tui, no safe upgrade"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+reason = "paste unmaintained, transitive via tokenizers; no safe upgrade"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0052"
-# WHY: async-std unmaintained; transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7. Mirrors deny.toml + .cargo/audit.toml.
+reason = "async-std unmaintained — transitive via chromiumoxide 0.7.0; no upgrade path while pinned to 0.7"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0192"
-# WHY: ttf-parser unmaintained; transitive via fontdb/usvg/rustybuzz/typst-pdf; maintainer archived, no upstream fix. Mirrors deny.toml + .cargo/audit.toml.
+reason = "ttf-parser unmaintained — transitive via fontdb→usvg→typst-pdf and rustybuzz→typst; maintainer archived the repo with no upstream fix. Alternatives (skrifa) require upstream migration."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0194"
-# WHY: quick-xml duplicate-attribute CPU DoS; direct aletheia/poiesis users upgraded to 0.41, remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39. Mirrors deny.toml + .cargo/audit.toml.
+reason = "quick-xml duplicate-attribute CPU DoS — direct aletheia/poiesis users upgraded to quick-xml 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0195"
-# WHY: quick-xml NsReader namespace allocation DoS; direct aletheia/poiesis users upgraded to 0.41, remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39. Mirrors deny.toml + .cargo/audit.toml.
+reason = "quick-xml NsReader namespace allocation DoS — direct aletheia/poiesis users upgraded to quick-xml 0.41; remaining transitive copies blocked by latest docx-rs 0.4.20→quick-xml 0.36, spreadsheet-ods 1.0.4/citationberg 0.7.0→0.38, calamine 0.35.0/plist 1.9.0→0.39"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0134"
-# WHY: rustls-pemfile 2.2.0 unmaintained; transitive via qdrant-client→tonic; no safe upgrade. Mirrors deny.toml + .cargo/audit.toml.
+reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. cargo-deny advisory-DB version does not trigger but crate present (2.2.0); keeps sync with .cargo/audit.toml"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0186"
-# WHY: memmap2 unsound (unchecked pointer offset); transitive via candle-core/grep-searcher; no upgrade (pinned ^0.9); offset path not exercised. review-by: 2026-12-01. Mirrors deny.toml + .cargo/audit.toml.
+reason = "memmap2 unsound (unchecked pointer offset) — transitive via candle-core (safetensors mmap) + grep-searcher, pinned ^0.9; unsound offset path not exercised. cargo-deny does not trigger; keeps sync with .cargo/audit.toml. review-by: 2026-12-01"
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0204"
-# WHY: crossbeam-epoch unmaintained — transitive dependency, no upgrade path. Mirrors deny.toml + .cargo/audit.toml.
+reason = "crossbeam-epoch unmaintained — transitive dependency, no upgrade path"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0206"
+reason = "rustybuzz unmaintained (maintenance-status only, no vuln). Transitive GUI text-shaping via theatron (parley/vello, Dioxus-native+Blitz). No maintained successor; not a security surface. Matches the theatron ignore + existing precedent."
