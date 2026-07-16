@@ -111,7 +111,7 @@ mod tests {
         let id = SessionId::from("abc-123".to_string());
         assert_eq!(id.to_string(), "abc-123");
         assert_eq!(&*id, "abc-123");
-        assert!(id == *"abc-123");
+        assert_eq!(id, *"abc-123");
     }
 
     #[test]

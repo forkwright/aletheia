@@ -336,7 +336,7 @@ mod newtype_id_macro {
     #[test]
     fn partial_eq_str() {
         let id = TestStringId::new("cmp");
-        assert!(id == *"cmp");
+        assert_eq!(id, *"cmp");
     }
 
     #[test]

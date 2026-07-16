@@ -183,9 +183,9 @@ mod tests {
             turn_id,
         } = event
         {
-            assert!(session_id == *"s1");
-            assert!(nous_id == *"n1");
-            assert!(turn_id == *"t1");
+            assert_eq!(session_id, *"s1");
+            assert_eq!(nous_id, *"n1");
+            assert_eq!(turn_id, *"t1");
         }
     }
 
