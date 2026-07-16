@@ -38,7 +38,7 @@ fn agent_display_name_empty_string_uses_empty() {
 fn agent_deserialization_minimal() {
     let json = r#"{"id": "syn"}"#;
     let agent: Agent = serde_json::from_str(json).unwrap();
-    assert!(agent.id == *"syn");
+    assert_eq!(agent.id, *"syn");
     assert!(agent.name.is_none());
     assert!(agent.model.is_none());
     assert!(agent.emoji.is_none());
@@ -62,8 +62,8 @@ fn session_deserialization() {
         "status": "active"
     }"#;
     let session: Session = serde_json::from_str(json).unwrap();
-    assert!(session.id == *"sess-1");
-    assert!(session.nous_id == *"syn");
+    assert_eq!(session.id, *"sess-1");
+    assert_eq!(session.nous_id, *"syn");
     assert_eq!(session.key, "main");
     assert_eq!(session.message_count, 5);
     assert_eq!(session.status.as_deref(), Some("active"));
