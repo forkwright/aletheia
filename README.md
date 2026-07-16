@@ -107,3 +107,28 @@ Outbound connections are limited to your explicitly configured services (LLM pro
 ## License
 
 AGPL-3.0-or-later for the runtime and all crates. Apache-2.0 for SDK and client libraries (when published). See [LICENSE](LICENSE).
+
+<!-- kanon:auto-start -->
+## Repository Metadata
+
+- Registry name: `aletheia`
+- Description: Kanon-managed forkwright repository `aletheia`.
+- Forge repo: `forkwright/aletheia`
+- Kanon prefix: `al`
+- Config source: `workflow/kanon.toml [projects.aletheia]`
+- Planning state: `projects/aletheia/STATE.md`
+- Last state update: `not recorded`
+
+Run `kanon docs sync --check --repo aletheia` to verify this generated
+section and `kanon docs sync --apply --repo aletheia` to refresh it.
+
+## Blast zone
+
+- Paths explicitly named by the rendered prompt, role, or template input.
+
+## Acceptance verifier
+
+```bash
+kanon gate
+```
+<!-- kanon:auto-end -->

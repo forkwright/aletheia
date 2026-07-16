@@ -179,3 +179,27 @@ Conventional commits: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `r
 | Chore | `chore/<description>` | `chore/update-deps` |
 
 Branch from `main`. Rebase before pushing. Always squash merge.
+
+<!-- kanon:auto-start -->
+## Generated kanon context
+
+- Registry name: `aletheia`
+- Forge repo: `forkwright/aletheia`
+- Kanon prefix: `al`
+- Config source: `workflow/kanon.toml [projects.aletheia]`
+- Standards source: `crates/basanos/standards/STANDARDS.md`
+- MCP routing catalog: `workflow/AGENTS-mcp-tools.md`
+
+Run `kanon docs sync --check --repo aletheia` to verify this generated
+section and `kanon docs sync --apply --repo aletheia` to refresh it.
+
+## Blast zone
+
+- Paths explicitly named by the rendered prompt, role, or template input.
+
+## Acceptance verifier
+
+```bash
+kanon gate
+```
+<!-- kanon:auto-end -->
