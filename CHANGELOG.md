@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.32.1](https://github.com/forkwright/aletheia/compare/v0.32.0...v0.32.1) (2026-07-16)
+
+
+### Bug Fixes
+
+* **clippy:** manual_assert_eq + for_kv_map + question-mark match (11 sites) ([#6413](https://github.com/forkwright/aletheia/issues/6413)) ([0dcabe6](https://github.com/forkwright/aletheia/commit/0dcabe60d2d652ab344e9c828840897915826dcd))
+
+
+### Documentation
+
+* **kanon:** refresh generated CLAUDE.md/README.md sections ([#6414](https://github.com/forkwright/aletheia/issues/6414)) ([efc5513](https://github.com/forkwright/aletheia/commit/efc5513ff115e2cea03954b826e290bd0ab40c79))
+
 ## [0.32.0](https://github.com/forkwright/aletheia/compare/v0.31.1...v0.32.0) (2026-07-15)
 
 
