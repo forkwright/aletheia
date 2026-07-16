@@ -17,7 +17,7 @@ judgment in specific code from the diff. Evaluate each criterion independently.
 
 # Standards
 
-Review against: `standards/STANDARDS.md`, `standards/RUST.md`, `AGENTS.md`,
+Review against: STANDARDS.md and RUST.md in forkwright/kanon's crates/basanos/standards/, `AGENTS.md`,
 and the PR's own acceptance criteria (listed below).
 
 # Context

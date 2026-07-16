@@ -148,7 +148,7 @@ Release.
 The tarball is a binary-and-docs package, not an agent-operable development package.
 It contains: `LICENSE`, `LICENSE-DOCS`, `README.md`, `SECURITY.md`, `CHANGELOG.md`,
 `Cargo.toml`, `Cargo.lock`, `deny.toml`, `docs/`, `instance.example/`, and `PACKAGE-MANIFEST.txt`.
-Agent-facing development surfaces (`AGENTS.md`, `CLAUDE.md`, `_llm/`, `standards/`) are
+Agent-facing development surfaces (`AGENTS.md`, `CLAUDE.md`, `_llm/`) are
 intentionally excluded — they are internal development context, not runtime artifacts.
 
 The tarball is self-describing:

@@ -15,9 +15,9 @@ acceptance_criteria:
 
 # Standards
 
-- `standards/STANDARDS.md` - information hierarchy and define-once principles
-- `standards/RUST.md` - Rust-specific layout and visibility rules
-- `standards/ARCHITECTURE.md` - dependency direction, crate boundaries
+- STANDARDS.md in forkwright/kanon's crates/basanos/standards/ - information hierarchy and define-once principles
+- RUST.md in forkwright/kanon's crates/basanos/standards/ - Rust-specific layout and visibility rules
+- ARCHITECTURE.md in forkwright/kanon's crates/basanos/standards/ - dependency direction, crate boundaries
 - `AGENTS.md` - where to add things, common mistakes
 
 # Context

@@ -53,8 +53,6 @@ DEFAULT_ALLOWLIST=(
     '^docs/RUNBOOK\.md$'
     '^docs/CUTOVER_CHECKLIST\.md$'
     '^\.gitleaks\.toml$'
-    # WHY: standards are documentation with illustrative examples.
-    '^standards/'
     # WHY: intentionally holds fake credentials used by redaction tests.
     'crates/[^/]+/src/redact\.rs$'
     # WHY: PII-redaction implementation contains literal fixtures whose

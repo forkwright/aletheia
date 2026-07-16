@@ -24,7 +24,7 @@ decisions, terminology, data model constraints, and integration contracts.
 - Operational procedures (put in SOUL.md operations section)
 - Personal context about the operator (put in USER.md)
 - Task-specific notes (put in daily memory files)
-- General standards (those live in `standards/` and apply everywhere)
+- General standards (documented separately; they apply everywhere, not just this domain)
 
 ### Template
 
