@@ -44,11 +44,10 @@ pub(crate) fn parse_self_assessment(response: &str) -> Option<SelfAssessment> {
     let trimmed = response.trim();
 
     // WHY: agents often wrap JSON in markdown code fences
-    let json_str = if let Some(start) = trimmed.find('{') {
+    let json_str = {
+        let start = trimmed.find('{')?;
         let end = trimmed.rfind('}')?;
         trimmed.get(start..=end)?
-    } else {
-        return None;
     };
 
     serde_json::from_str(json_str).ok()

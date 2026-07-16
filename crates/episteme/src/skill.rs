@@ -338,10 +338,9 @@ fn extract_steps(lines: &[String]) -> Vec<String> {
                 } else {
                     line.clone()
                 }
-            } else if let Some(rest) = line.strip_prefix("- ") {
-                rest.trim().to_owned()
             } else {
-                return None;
+                let rest = line.strip_prefix("- ")?;
+                rest.trim().to_owned()
             };
             if stripped.is_empty() {
                 None

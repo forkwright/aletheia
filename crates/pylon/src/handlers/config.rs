@@ -664,6 +664,6 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["section"], "agents");
         assert!(json.get("restart_required").is_some());
-        assert!(json["restart_required"].as_array().unwrap().len() == 1);
+        assert_eq!(json["restart_required"].as_array().unwrap().len(), 1);
     }
 }
