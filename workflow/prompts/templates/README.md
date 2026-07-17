@@ -44,6 +44,6 @@ Frontmatter is parsed by `crates/energeia/src/prompt.rs`.
 
 ## Relationship to PROMPTING.md
 
-`standards/PROMPTING.md` covers API-level prompt construction: XML tags,
+PROMPTING.md in forkwright/kanon's crates/basanos/standards/ covers API-level prompt construction: XML tags,
 voice, caching, structured output. These templates apply those principles
 to specific roles. The two documents are additive.

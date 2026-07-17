@@ -15,10 +15,10 @@ Read [docs/GOLDEN-PATH.md](docs/GOLDEN-PATH.md) first to understand the public d
 
 ## Standards
 
-Universal: [standards/](standards/)
-Rust: [standards/](standards/)
-Writing: [standards/](standards/)
-Shell: [standards/](standards/)
+Universal: STANDARDS.md in forkwright/kanon's crates/basanos/standards/
+Rust: RUST.md in forkwright/kanon's crates/basanos/standards/
+Writing: WRITING.md in forkwright/kanon's crates/basanos/standards/
+Shell: SHELL.md in forkwright/kanon's crates/basanos/standards/
 
 ## Structure
 
@@ -93,7 +93,7 @@ for the release-time substance-audit gate that calls this tool via
 - **Config:** TOML cascade in `taxis` (owned loader, no figment)
 - **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
 - **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
-- **Naming:** Greek names per [standards/](standards/), registry at [docs/lexicon.md](docs/lexicon.md)
+- **Naming:** Greek names per GNOMON.md in forkwright/kanon's crates/basanos/standards/, registry at [docs/lexicon.md](docs/lexicon.md)
 - **No barrel files**: import from the file that owns the symbol
 - **Module imports flow downward**: higher layers depend on lower, never reverse
 

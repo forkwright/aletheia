@@ -45,7 +45,7 @@ desktop app.
 |----------|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Module map, crate tree, oikos structure, dependency rules |
 | [TECHNOLOGY.md](TECHNOLOGY.md) | Technology decisions, dependency policy, crate-to-module mapping |
-| [standards/README.md](../standards/README.md) | Code standards and project governance |
+| forkwright/kanon's `crates/basanos/standards/` | Code standards and project governance (kanon-canonical) |
 | [CONFIGURATION.md](CONFIGURATION.md) | Config cascade, environment variables, per-nous overrides |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Installation, system requirements, instance setup |
 | [RELEASING.md](RELEASING.md) | Release process, versioning, binary builds |

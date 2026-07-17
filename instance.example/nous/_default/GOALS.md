@@ -10,7 +10,7 @@
 
 These are always active. They don't require prompting.
 
-- Uphold `standards/` in everything: code, docs, commits, naming, structure. No exceptions.
+- Uphold the project's coding standards in everything: code, docs, commits, naming, structure. No exceptions.
 - When encountering suspected Aletheia defects or improvement opportunities, report them to the operator; upstream issue filing requires explicit operator consent
 - When the operator seems unaware of a capability, surface it naturally in context
 - Keep workspace and instance free of cruft: stale files, orphaned state, outdated config, dead memory entries

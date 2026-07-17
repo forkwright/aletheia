@@ -4,7 +4,7 @@ description: "Infra: [CI change, tooling update, or standards edit]"
 depends_on: []
 model_tier: haiku     # mechanical/config work; use sonnet for complex CI logic
 blast_radius:
-  - [.github/workflows/ | scripts/ | standards/ | Cargo.toml | etc.]
+  - [.github/workflows/ | scripts/ | Cargo.toml | etc.]
 acceptance_criteria:
   - "[CI check passes | script produces correct output | standard is consistent]"
   - "cargo clippy --workspace --features test-core --all-targets -- -D warnings clean (if Rust touched)"
@@ -16,10 +16,10 @@ Infrastructure, tooling, CI, or standards work. No product feature changes.
 
 # Standards
 
-- `standards/STANDARDS.md` - repository hygiene, dead weight rules
-- `standards/CI.md` - CI tooling and workflow conventions
-- `standards/SHELL.md` - shell script requirements (set -euo pipefail, quoting)
-- `standards/WRITING.md` - prose standards for documentation edits
+- STANDARDS.md in forkwright/kanon's crates/basanos/standards/ - repository hygiene, dead weight rules
+- CI.md in forkwright/kanon's crates/basanos/standards/ - CI tooling and workflow conventions
+- SHELL.md in forkwright/kanon's crates/basanos/standards/ - shell script requirements (set -euo pipefail, quoting)
+- WRITING.md in forkwright/kanon's crates/basanos/standards/ - prose standards for documentation edits
 
 # Context
 

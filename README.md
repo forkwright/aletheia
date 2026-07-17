@@ -54,7 +54,7 @@ Single binary deployment. The substrate includes persistent sessions, Datalog-ba
 
 ## Naming
 
-Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See the in-repo [standards](standards/) and [lexicon.md](docs/lexicon.md) for the naming system and full registry.
+Every name follows a deliberate naming philosophy. Greek provides precision where English flattens: *nous* over "agent" because these are minds, not tools. *Mneme* over "store" because memory is the function, not the container. See the kanon-canonical standards (`forkwright/kanon` at `crates/basanos/standards/`) and [lexicon.md](docs/lexicon.md) for the naming system and full registry.
 
 ---
 

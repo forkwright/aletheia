@@ -14,8 +14,8 @@ acceptance_criteria:
 
 # Standards
 
-- `standards/STANDARDS.md` - universal principles
-- `standards/RUST.md` - Rust-specific rules
+- STANDARDS.md in forkwright/kanon's crates/basanos/standards/ - universal principles
+- RUST.md in forkwright/kanon's crates/basanos/standards/ - Rust-specific rules
 - `AGENTS.md` - build commands, key patterns, where to add things
 
 # Context
