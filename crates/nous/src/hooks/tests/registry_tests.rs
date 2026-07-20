@@ -221,6 +221,7 @@ async fn after_tool_fires_and_does_not_short_circuit() {
 
     let ctx = super::super::AfterToolContext {
         nous_id: "test",
+        tool_use_id: "toolu_test",
         tool_name: "test_tool",
         tool_input: &serde_json::json!({"arg": "value"}),
         tool_result: crate::hooks::ToolResultRecord::Present("tool succeeded"),

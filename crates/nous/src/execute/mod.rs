@@ -534,6 +534,7 @@ pub(crate) async fn execute_with_deadline(
                 }
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
+                    tool_use_id: &tool_call.id,
                     tool_name: &tool_call.name,
                     tool_input: dispatch_items
                         .iter()
@@ -1148,6 +1149,7 @@ pub(crate) async fn execute_streaming_with_deadline(
                 }
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
+                    tool_use_id: &tool_call.id,
                     tool_name: &tool_call.name,
                     tool_input: dispatch_items
                         .iter()

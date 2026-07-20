@@ -77,6 +77,12 @@ pub(crate) struct ToolHookContext<'a> {
 pub(crate) struct AfterToolContext<'a> {
     /// Agent identifier.
     pub nous_id: &'a str,
+    /// Provider tool-use ID for this specific call.
+    ///
+    /// WHY: tool name alone does not disambiguate repeated calls to the same
+    /// tool within one turn — hooks need per-call provenance (matched by ID,
+    /// not name) for approvals, audit, redaction, and training capture.
+    pub tool_use_id: &'a str,
     /// The tool name that was executed.
     pub tool_name: &'a str,
     /// The tool input that was sent.
