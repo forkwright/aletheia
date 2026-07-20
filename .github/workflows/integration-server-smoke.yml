@@ -24,7 +24,10 @@ jobs:
   integration-server-smoke:
     name: full-stack server smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # WHY(#6416): cold build alone runs ~17-18min; 20min left no margin for
+    # the test binary compile + the smoke test itself, so every run was
+    # cancelled before reaching the test.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -45,6 +48,10 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: integration-server-smoke
+          # WHY(#6416): a run that times out before `cargo test` finishes
+          # still completed a real `cargo build`; persist that cache instead
+          # of discarding it and starting cold again next run.
+          cache-on-failure: true
 
       - name: Configure git credentials for private fleet deps
         env:
