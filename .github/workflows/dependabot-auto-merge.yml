@@ -64,7 +64,7 @@ jobs:
             fi
           }
 
-          require_passed_check "gate-attestation" '.[] | select(.name == "gate-attestation") | .bucket'
+          require_passed_check "gate" '.[] | select(.name == "gate") | .bucket'
           require_passed_check "cargo deny" '.[] | select(.name == "cargo deny") | .bucket'
           require_passed_check "cargo audit" '.[] | select(.name == "cargo audit") | .bucket'
           require_passed_check "osv scanner" '.[] | select((.name | ascii_downcase | contains("osv")) or (.workflow == "Security" and (.name | ascii_downcase | contains("scan")))) | .bucket'

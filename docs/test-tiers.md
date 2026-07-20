@@ -69,14 +69,17 @@ must keep the tier names consistent.
 
 ## CI configuration
 
-The PR gate (`.github/workflows/gate-attestation.yml`) first validates test-tier
-feature wiring with `scripts/check-test-tier-features.py` and release feature
-policy/docs freshness with `scripts/release-feature-policy.py`, then enforces the
-**test-core** tier with
-`cargo nextest run --profile ci --workspace --features test-core`, after
-CI-exact fmt and clippy. The `ci` nextest profile writes JUnit output to
-`target/nextest/ci/junit.xml`; the gate uploads that file and nextest logs when
-tests fail. The release pipeline
+The PR gate (`.github/workflows/gate-attestation.yml`) is a hybrid: a
+`check-trailer` job fast-paths any PR carrying a local `kanon gate --stamp`
+`Gate-Passed:` trailer, and a `full-gate-build` job runs only when no trailer
+is found, re-running the exact stages `kanon.toml`'s `[gate].stages` attests —
+CI-exact fmt and clippy, then enforcing the **test-core** tier with
+`cargo nextest run --profile ci --workspace --features test-core`. The `ci`
+nextest profile writes JUnit output to `target/nextest/ci/junit.xml`;
+`full-gate-build` uploads that file and nextest logs when tests fail.
+Test-tier feature wiring (`scripts/check-test-tier-features.py`) and release
+feature policy/docs freshness (`scripts/release-feature-policy.py`) are
+validated by the release pipeline, not the PR gate. The release pipeline
 (`.github/workflows/release.yml`) additionally runs
 `cargo test --workspace --exclude proskenion` and a generated `feature-check`
 matrix from `cargo metadata`. The generator checks every workspace feature
