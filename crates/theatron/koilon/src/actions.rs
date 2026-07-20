@@ -373,7 +373,7 @@ mod tests {
     fn tab_completion_finds_agents() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
-        app.dashboard.agents.push(test_agent("cody", "Cody"));
+        app.dashboard.agents.push(test_agent("alice", "Alice"));
         app.interaction.input.text = "@s".to_string();
         app.interaction.input.cursor = 2;
 
