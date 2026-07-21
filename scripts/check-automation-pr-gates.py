@@ -55,32 +55,40 @@ def main() -> int:
 
     gate = load_workflow(".github/workflows/gate-attestation.yml")
     # #6421/#6433/kanon#2522: gate-attestation delegates the check-trailer/
-    # full-gate-build hybrid mechanism to forkwright/kanon's shared
-    # hybrid-gate.yml reusable workflow — one fact, one place: the trailer/
-    # build/trusted-automation-waiver logic is validated once, in kanon, not
-    # re-derived per caller repo. This repo's own gate-attestation.yml
-    # supplies only: the delegated job's `with:` commands, any repo-local
-    # always-on coverage jobs kanon's reusable has no equivalent for (#6433:
+    # full-gate-build hybrid mechanism to the fleet-shared hybrid-gate.yml
+    # reusable workflow — one fact, one place: the trailer/build/trusted-
+    # automation-waiver logic is validated once, centrally, not re-derived
+    # per caller repo. This repo's own gate-attestation.yml supplies only:
+    # the delegated job's `with:` commands, any repo-local always-on
+    # coverage jobs the reusable has no equivalent for (#6433:
     # gate-coverage-scripts, gate-coverage-compile-checks), and a `gate`
     # aggregator that must depend on and check the result of every OTHER job
     # in this file — generic on job name/count, not a hardcoded pair, so a
     # newly added coverage job (or a future rename) can never silently
     # orphan itself from the required check the way #6433 did.
+    #
+    # WHY the owning repo is NOT checked: the reusable is currently hosted
+    # publicly at forkwright/.github (GitHub cannot resolve a workflow_call
+    # reference into forkwright/kanon — private, personal-account-owned —
+    # for other-repo callers; kanon#2522). It moves back to forkwright/kanon
+    # if/when kanon goes public. Matching only the reusable's own path
+    # segment keeps this validator correct across that move without a
+    # second edit here.
     gate_jobs = gate.get("jobs", {})
 
     def find_hybrid_gate_job(jobs: dict) -> tuple[str, dict] | None:
         for job_id, job in jobs.items():
             uses = str(job.get("uses", ""))
-            if "forkwright/kanon" in uses and "hybrid-gate.yml" in uses:
+            if "/.github/workflows/hybrid-gate.yml" in uses:
                 return job_id, job
         return None
 
     hybrid = find_hybrid_gate_job(gate_jobs)
     if hybrid is None:
         errors.append(
-            "gate-attestation.yml must delegate to forkwright/kanon's "
+            "gate-attestation.yml must delegate to the fleet-shared "
             "hybrid-gate.yml reusable workflow (a job with uses: "
-            "forkwright/kanon/.github/workflows/hybrid-gate.yml@...)"
+            "<owner>/<repo>/.github/workflows/hybrid-gate.yml@...)"
         )
     else:
         hybrid_job_id, hybrid_job = hybrid
