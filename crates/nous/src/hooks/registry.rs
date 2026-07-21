@@ -128,6 +128,7 @@ impl HookRegistry {
                 debug!(
                     hook = entry.hook.name(),
                     priority = entry.priority,
+                    tool_use_id = context.tool_use_id,
                     tool_name = context.tool_name,
                     reason = reason.as_str(),
                     "after_tool hook returned abort (ignored, tool already executed)"

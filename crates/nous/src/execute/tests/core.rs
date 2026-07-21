@@ -10,6 +10,9 @@ use std::sync::{Arc, Mutex};
 use hermeneus::error as llm_error;
 use hermeneus::provider::{DeploymentTarget, LlmProvider};
 
+use crate::hooks::registry::HookRegistry;
+use crate::hooks::{AfterToolContext, HookResult, TurnHook};
+
 use super::*;
 
 struct FallbackSequenceProvider {
@@ -803,6 +806,95 @@ async fn allowed_first_denied_second_preserves_tool_outcome_order() {
         tool_result_ids_from_second_request(&mock),
         vec!["toolu_allowed", "toolu_denied"],
         "LLM-facing tool_result blocks should preserve provider tool_use order"
+    );
+}
+
+/// Records `(tool_use_id, tool_name, tool_input)` for every `after_tool` firing.
+///
+/// WHY(#5017): used to assert hook provenance is matched by tool-use ID, not
+/// tool name — the regression class where two same-named tool calls in one
+/// turn could otherwise be attributed to each other's input.
+struct RecordingAfterToolHook {
+    calls: Arc<Mutex<Vec<(String, String, serde_json::Value)>>>,
+}
+
+impl TurnHook for RecordingAfterToolHook {
+    fn name(&self) -> &'static str {
+        "recording_after_tool"
+    }
+
+    fn after_tool<'a>(
+        &'a self,
+        context: &'a AfterToolContext<'_>,
+    ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
+        let calls = Arc::clone(&self.calls);
+        let record = (
+            context.tool_use_id.to_owned(),
+            context.tool_name.to_owned(),
+            context.tool_input.clone(),
+        );
+        Box::pin(async move {
+            calls.lock().expect("calls lock").push(record);
+            HookResult::Continue
+        })
+    }
+}
+
+#[tokio::test]
+async fn after_tool_hook_matches_input_by_id_when_same_tool_called_twice() {
+    let mock = Arc::new(
+        MockProvider::with_responses(vec![
+            make_multi_tool_response(vec![
+                ("exec", "toolu_a", serde_json::json!({"input": "first"})),
+                ("exec", "toolu_b", serde_json::json!({"input": "second"})),
+            ]),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&mock))));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut hooks = HookRegistry::new();
+    hooks.register(
+        0,
+        Box::new(RecordingAfterToolHook {
+            calls: Arc::clone(&calls),
+        }),
+    );
+
+    execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        Some(&hooks),
+    )
+    .await
+    .expect("execute");
+
+    let recorded = calls.lock().expect("calls lock").clone();
+    assert_eq!(
+        recorded,
+        vec![
+            (
+                "toolu_a".to_owned(),
+                "exec".to_owned(),
+                serde_json::json!({"input": "first"}),
+            ),
+            (
+                "toolu_b".to_owned(),
+                "exec".to_owned(),
+                serde_json::json!({"input": "second"}),
+            ),
+        ],
+        "after_tool hook should receive each call's own input keyed by tool-use id, \
+         not a name-based lookup that could hand both calls the same input"
     );
 }
 

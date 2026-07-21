@@ -92,6 +92,7 @@ fn default_after_tool_returns_continue() {
         .expect("runtime");
     let ctx = AfterToolContext {
         nous_id: "test",
+        tool_use_id: "toolu_test",
         tool_name: "test_tool",
         tool_input: &serde_json::json!({}),
         tool_result: crate::hooks::ToolResultRecord::Present("success"),
