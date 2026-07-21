@@ -483,21 +483,20 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
             RegistrationCondition::RetentionEnabledWithExecutor,
         ),
     ),
-    task(
+    // NOTE: episteme's training-data extractor targets workflow/training/, a
+    // path the current repo layout does not have (see crates/episteme/src/
+    // extract/training.rs) — Planned keeps the task visible without a live
+    // cron probing a path that cannot exist. Re-Implement only once it is
+    // rewired to a real production trigger (Phase 05 REQ-05/06/07/08:
+    // PR-merge lesson extraction, QA-verdict capture, or session-outcome
+    // Facts through mneme).
+    planned(
         "lesson-extraction",
         "Lesson extraction from training data",
         MaintenanceTaskOwner::KnowledgeGraph,
-        Some(MaintenanceConfigSection::KnowledgeMaintenance),
+        MaintenanceConfigSection::KnowledgeMaintenance,
         "Lesson extraction",
-        MaintenanceTaskImplementationStatus::Implemented,
-        CRON_METRICS,
-        None,
-        scheduled(
-            BuiltinTask::LessonExtraction,
-            ScheduleSource::Cron("0 0 5 * * *"),
-            true,
-            RegistrationCondition::KnowledgeExecutorConfigured,
-        ),
+        BuiltinTask::LessonExtraction,
     ),
     task(
         "ops-fact-extraction",

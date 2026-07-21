@@ -863,6 +863,11 @@ async fn execute_knowledge_task(
 ///
 /// WHY: blocking I/O (file reads + JSON parsing) is done on the blocking
 /// pool to avoid starving the async scheduler.
+///
+/// NOTE: the registry entry for this task is `Planned`, not scheduled — the
+/// current repo layout has no `workflow/training/` directory, so this always
+/// takes the skip branch below. Re-wire the registry entry to a real trigger
+/// before promoting it back to `Implemented`.
 async fn execute_lesson_extraction(
     nous_id: &str,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
