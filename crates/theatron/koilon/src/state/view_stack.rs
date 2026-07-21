@@ -292,7 +292,7 @@ mod tests {
             agent_id: "syn".into(),
         };
         let b = View::Sessions {
-            agent_id: "cody".into(),
+            agent_id: "alice".into(),
         };
         assert_ne!(a, b);
     }

@@ -367,7 +367,7 @@ mod tests {
     fn sse_init_marks_active_agents() {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
-        app.dashboard.agents.push(test_agent("cody", "Cody"));
+        app.dashboard.agents.push(test_agent("alice", "Alice"));
 
         let active_turns = vec![ActiveTurn {
             nous_id: "syn".into(),
