@@ -80,17 +80,20 @@ pub fn write_restricted(path: &Path, content: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
 
     {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&tmp)?;
+        let mut open_options = std::fs::OpenOptions::new();
+        open_options.write(true).create(true).truncate(true);
 
+        // WHY: pass the restrictive mode to the open(2) syscall itself so the
+        // temp file never exists with umask-permissive bits, closing the
+        // create-then-chmod race that could leak secret bytes under a
+        // permissive umask.
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            use std::os::unix::fs::OpenOptionsExt as _;
+            open_options.mode(0o600);
         }
+
+        let mut file = open_options.open(&tmp)?;
 
         file.write_all(content)?;
         file.flush()?;
