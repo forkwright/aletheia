@@ -11,6 +11,12 @@
 # placed after any comment leader on the matching source line (e.g.
 # `// pii-allow: ...` in Rust, `# pii-allow: ...` in Python/shell).
 #
+# Maintainer-private patterns (literal hostnames, local paths, or other
+# identifying tokens specific to one maintainer's own infrastructure) do NOT
+# belong in this public file — a shared denylist is itself a topology leak.
+# Supply them via PII_PATTERNS_EXTRA_FILE (scripts/scan-pii.sh), pointed at a
+# file outside this repository; this file stays generic and non-identifying.
+#
 # ---------------------------------------------------------------------------
 # Project-specific synthetic-data markers (kept from the original list).
 # These catch accidental leakage of local-dev fixtures into shared code.
@@ -34,22 +40,19 @@ Acme Workshop LLC
 \b192\.168\.0\.(?:1[6-9]|2[0-9]|3[0-9]|[4-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\b
 
 # ---------------------------------------------------------------------------
-# Operator-private fleet topology and local paths
+# Local development and private-infrastructure path shapes
 # ---------------------------------------------------------------------------
 
-# Fleet hostnames and operator-local repository paths must not appear in this
-# public repository. Use neutral examples such as `host-a`, `local-provider`,
-# `/path/to/...`, or in-repo/public documentation paths instead.
-\b(?:menos|metis|verda|nomos)\b
-menos-ops
-~/dev/kanon
-/home/ck
-~/menos-ops
-~/dev/ergon
-ergon_tools
-/nas/docker/backups/menos
-\$HOME/menos-ops/secrets
-restic-password
+# Literal maintainer hostnames/paths (real fleet box names, real backup
+# mounts, real repository paths under a maintainer's own $HOME) do not
+# belong here — see the PII_PATTERNS_EXTRA_FILE note above. A generic
+# `/home/<name>` catch is deliberately NOT included: this codebase's own
+# synthetic-identity convention (alice, bob, user, agent — see CLAUDE.md)
+# legitimately fills test fixtures with `/home/<synthetic-name>/...` paths,
+# so that shape cannot distinguish a real leak from expected test data.
+
+# Absolute NAS/mounted-backup path.
+/(?:nas|mnt)/[A-Za-z0-9_./-]*backups?\b
 
 # ---------------------------------------------------------------------------
 # Contact identifiers

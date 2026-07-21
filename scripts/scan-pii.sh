@@ -6,7 +6,13 @@ set -euo pipefail
 # unsuppressed match.
 #
 # Override mechanisms:
-#   * PII_ALLOWLIST_PATHS  - newline-separated regexes of paths to skip
+#   * PII_ALLOWLIST_PATHS    - newline-separated regexes of paths to skip
+#   * PII_PATTERNS_EXTRA_FILE - path to an additional patterns file (same
+#                             one-regex-per-line format), loaded after
+#                             .github/pii-patterns.txt. Lets a maintainer
+#                             layer their own private literal hostnames/paths
+#                             from a file outside this repo without adding
+#                             them to the public, shared pattern list.
 #   * pii-allow: <reason>  - trailing marker on the same source line
 #                             (after any comment leader) to suppress one
 #                             match. The reason is not parsed but is
@@ -20,9 +26,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 PATTERNS_FILE="${REPO_ROOT}/.github/pii-patterns.txt"
+EXTRA_PATTERNS_FILE="${PII_PATTERNS_EXTRA_FILE:-}"
 
 if [[ ! -f "${PATTERNS_FILE}" ]]; then
     echo "scan-pii: patterns file not found at ${PATTERNS_FILE}" >&2
+    exit 2
+fi
+
+if [[ -n "${EXTRA_PATTERNS_FILE}" && ! -f "${EXTRA_PATTERNS_FILE}" ]]; then
+    echo "scan-pii: PII_PATTERNS_EXTRA_FILE set but not found at ${EXTRA_PATTERNS_FILE}" >&2
     exit 2
 fi
 
@@ -107,8 +119,12 @@ luhn_ok() {
 }
 
 load_patterns() {
-    # Emit non-comment, non-blank lines from PATTERNS_FILE.
+    # Emit non-comment, non-blank lines from PATTERNS_FILE, then from
+    # EXTRA_PATTERNS_FILE if one was supplied.
     awk '/^[[:space:]]*#/ {next} /^[[:space:]]*$/ {next} {print}' "${PATTERNS_FILE}"
+    if [[ -n "${EXTRA_PATTERNS_FILE}" ]]; then
+        awk '/^[[:space:]]*#/ {next} /^[[:space:]]*$/ {next} {print}' "${EXTRA_PATTERNS_FILE}"
+    fi
 }
 
 # Credit-card pattern is recognised structurally so we can gate it on Luhn.

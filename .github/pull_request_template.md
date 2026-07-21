@@ -29,12 +29,17 @@ If this PR adds a new module, function, or abstraction:
 
 - [ ] `cargo test -p <affected-crate>` passes
 - [ ] `cargo clippy --workspace` passes with zero warnings
-- [ ] `kanon lint --summary --writing` and `kanon lint --summary --workflow` pass (workspace-level gates)
-- [ ] For affected crates at zero rust violations: `kanon lint --summary --rust crates/<name>` passes (crate-scoped gate)
 - [ ] New functionality has tests
 - [ ] No secrets or credentials in the diff
 - [ ] Commit message follows convention (`type(scope): description`)
 - [ ] Binary decisions preserve informative tension (see `docs/ARCHITECTURE.md#preserving-informative-tension`)
+
+<!--
+Maintainer-only, internal orchestration checks (not required from external
+contributors — CI enforces the equivalent gates automatically):
+- [ ] `kanon lint --summary --writing` and `kanon lint --summary --workflow` pass (workspace-level gates)
+- [ ] For affected crates at zero rust violations: `kanon lint --summary --rust crates/<name>` passes (crate-scoped gate)
 - [ ] Architecture facts touched (list fact IDs below; if none, confirm via `kanon mcp architecture_fact list --scope <crate>`)
 
-<!-- List any architecture fact IDs added or updated, e.g.: aletheia.spawn.model, aletheia.eidos.dependency-direction -->
+List any architecture fact IDs added or updated, e.g.: aletheia.spawn.model, aletheia.eidos.dependency-direction
+-->
