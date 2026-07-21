@@ -569,7 +569,7 @@ fn credential_status_parses() {
         matches!(
             cli.command,
             Some(Command::Credential {
-                action: credential::Action::Status
+                action: credential::Action::Status { verbose: false }
             })
         ),
         "credential status subcommand should parse"
@@ -583,7 +583,7 @@ fn credential_refresh_parses() {
         matches!(
             cli.command,
             Some(Command::Credential {
-                action: credential::Action::Refresh
+                action: credential::Action::Refresh { verbose: false }
             })
         ),
         "credential refresh subcommand should parse"

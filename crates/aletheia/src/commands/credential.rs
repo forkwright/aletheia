@@ -1,6 +1,6 @@
 //! `aletheia credential`: credential status, OAuth refresh, and keyring storage.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use snafu::prelude::*;
 
@@ -14,10 +14,18 @@ use crate::error::Result;
 
 #[derive(Debug, Clone, Subcommand)]
 pub(crate) enum Action {
-    /// Show current credential source, expiry, and token prefix
-    Status,
+    /// Show current credential source, expiry, and provider
+    Status {
+        /// Show full credential file paths (default: home-relative)
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Force-refresh OAuth token now
-    Refresh,
+    Refresh {
+        /// Show full credential file paths in troubleshooting output (default: home-relative)
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Store an API token in the OS keyring
     #[cfg(feature = "keyring")]
     Store {
@@ -30,15 +38,21 @@ pub(crate) enum Action {
     Delete,
 }
 
-fn token_preview(s: &str) -> String {
-    if s.len() > 7 {
-        format!(
-            "{}...{}",
-            s.get(..4).unwrap_or(s),
-            s.get(s.len() - 3..).unwrap_or("")
-        )
-    } else {
-        "***".to_owned()
+/// Render a credential-related path home-relative unless `verbose` requests the full path.
+///
+/// WHY: credential status/refresh output is easy to paste into logs, issues, or
+/// screenshots — home-relative paths avoid leaking the operator's username/home
+/// layout by default while staying useful for troubleshooting.
+fn display_path(path: &Path, verbose: bool, env: &impl Environment) -> String {
+    if verbose {
+        return path.display().to_string();
+    }
+    let Some(home) = env.var("HOME") else {
+        return path.display().to_string();
+    };
+    match path.strip_prefix(home) {
+        Ok(rel) => format!("~/{}", rel.display()),
+        Err(_) => path.display().to_string(),
     }
 }
 
@@ -54,7 +68,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
     let cred_path = oikos.credentials().join("anthropic.json");
 
     match action {
-        Action::Status => {
+        Action::Status { verbose } => {
             let mut found_any = false;
 
             if let Some(cred) = CredentialFile::load(&cred_path) {
@@ -64,14 +78,18 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 } else {
                     "static API key"
                 };
-                println!("Source:        file ({})", cred_path.display());
+                println!(
+                    "Source:        file ({})",
+                    display_path(&cred_path, verbose, &RealSystem)
+                );
                 println!("Type:          {cred_type}");
-                // CodeQL: cleartext-logging false positive — token_preview() redacts
-                // to first 4 + last 3 chars only (7 of ~100+ char token). This is
-                // standard practice for credential status display (cf. `gh auth status`).
                 println!(
                     "Token:         {}",
-                    token_preview(cred.token.expose_secret())
+                    if cred.token.expose_secret().is_empty() {
+                        "MISSING"
+                    } else {
+                        "present"
+                    }
                 );
                 if let Some(remaining) = cred.seconds_remaining() {
                     let hours = remaining / 3600;
@@ -105,12 +123,13 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                     found_any = true;
                     println!("Source:        keyring (OS)");
                     println!("Type:          static API key");
-                    // CodeQL: cleartext-logging false positive — token_preview() redacts
-                    // to first 4 + last 3 chars only (7 of ~100+ char token). Same
-                    // masking as the file credential display above.
                     println!(
                         "Token:         {}",
-                        token_preview(cred.secret.expose_secret())
+                        if cred.secret.expose_secret().is_empty() {
+                            "MISSING"
+                        } else {
+                            "present"
+                        }
                     );
                 }
             }
@@ -131,7 +150,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                     found_any = true;
                     println!("Source:        env ({var})");
                     println!("Type:          {key_type}");
-                    println!("Token:         {}", token_preview(&val));
+                    println!("Token:         present");
                 }
             }
 
@@ -140,17 +159,20 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 if cc_path.exists() {
                     println!(
                         "CC provider: Claude Code credentials found at {}",
-                        cc_path.display()
+                        display_path(&cc_path, verbose, &RealSystem)
                     );
                     found_any = true;
                 } else {
-                    println!("CC provider: {} (not found)", cc_path.display());
+                    println!(
+                        "CC provider: {} (not found)",
+                        display_path(&cc_path, verbose, &RealSystem)
+                    );
                 }
             }
 
             if !found_any {
                 println!("No credential found.");
-                println!("Checked: {} (not found)", cred_path.display());
+                println!("Checked: {} (not found)", display_path(&cred_path, verbose, &RealSystem));
                 #[cfg(feature = "keyring")]
                 println!("Checked: OS keyring (empty)");
                 println!("Checked: ANTHROPIC_AUTH_TOKEN (not set)");
@@ -158,7 +180,7 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 println!("Checked: OPENAI_API_KEY (not set)");
             }
         }
-        Action::Refresh => {
+        Action::Refresh { verbose } => {
             // WHY: static API keys have no refresh token; attempting refresh
             // produces a confusing OAuth troubleshooting message
             if let Some(cred) = CredentialFile::load(&cred_path)
@@ -187,8 +209,8 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                      1. Verify the file exists: ls -la {}\n  \
                      2. Check it contains a refresh_token: aletheia credential status\n  \
                      3. Ensure network access to console.anthropic.com",
-                    cred_path.display(),
-                    cred_path.display()
+                    display_path(&cred_path, verbose, &RealSystem),
+                    display_path(&cred_path, verbose, &RealSystem)
                 ),
             }
         }
@@ -227,4 +249,109 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::ffi::OsString;
+
+    use super::display_path;
+    use koina::system::Environment;
+
+    #[derive(Default)]
+    struct TestEnv {
+        vars: HashMap<String, String>,
+    }
+
+    impl TestEnv {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn with_env(mut self, key: &str, value: &str) -> Self {
+            self.vars.insert(key.to_owned(), value.to_owned());
+            self
+        }
+    }
+
+    impl Environment for TestEnv {
+        fn var(&self, name: &str) -> Option<String> {
+            self.vars.get(name).cloned()
+        }
+
+        fn var_os(&self, name: &str) -> Option<OsString> {
+            self.vars.get(name).map(Into::into)
+        }
+
+        fn vars(&self) -> Vec<(String, String)> {
+            self.vars
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        }
+
+        fn current_dir(&self) -> std::io::Result<std::path::PathBuf> {
+            Ok(std::path::PathBuf::from("/test"))
+        }
+
+        fn temp_dir(&self) -> std::path::PathBuf {
+            std::path::PathBuf::from("/tmp")
+        }
+
+        fn current_exe(&self) -> std::io::Result<std::path::PathBuf> {
+            Ok(std::path::PathBuf::from("/test/bin/aletheia"))
+        }
+
+        fn args(&self) -> Vec<String> {
+            vec!["aletheia".to_owned()]
+        }
+    }
+
+    #[test]
+    fn display_path_defaults_to_home_relative() {
+        let env = TestEnv::new().with_env("HOME", "/home/alice");
+        let path = std::path::Path::new(
+            "/home/alice/aletheia/instance/config/credentials/anthropic.json",
+        );
+
+        assert_eq!(
+            display_path(path, false, &env),
+            "~/aletheia/instance/config/credentials/anthropic.json"
+        );
+    }
+
+    #[test]
+    fn display_path_verbose_shows_full_path() {
+        let env = TestEnv::new().with_env("HOME", "/home/alice");
+        let path = std::path::Path::new(
+            "/home/alice/aletheia/instance/config/credentials/anthropic.json",
+        );
+
+        assert_eq!(
+            display_path(path, true, &env),
+            "/home/alice/aletheia/instance/config/credentials/anthropic.json"
+        );
+    }
+
+    #[test]
+    fn display_path_falls_back_to_full_path_outside_home() {
+        let env = TestEnv::new().with_env("HOME", "/home/alice");
+        let path = std::path::Path::new("/etc/aletheia/anthropic.json");
+
+        assert_eq!(display_path(path, false, &env), "/etc/aletheia/anthropic.json");
+    }
+
+    #[test]
+    fn display_path_falls_back_to_full_path_when_home_unset() {
+        let env = TestEnv::new();
+        let path = std::path::Path::new(
+            "/home/alice/aletheia/instance/config/credentials/anthropic.json",
+        );
+
+        assert_eq!(
+            display_path(path, false, &env),
+            "/home/alice/aletheia/instance/config/credentials/anthropic.json"
+        );
+    }
 }
