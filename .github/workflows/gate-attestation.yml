@@ -1,9 +1,14 @@
-# WHY(kanon#2522): migrates the trailer/full-gate-build mechanism onto
-# forkwright/kanon's fleet-shared hybrid-gate.yml (aletheia#6426 generalized
-# into kanon; see forkwright/kanon/.github/workflows/hybrid-gate.yml). Fmt/
-# check/clippy/nextest logic now lives in kanon; this file supplies only
-# aletheia's own commands/flags plus the two coverage jobs kanon's reusable
-# workflow has no equivalent for (see below).
+# WHY(kanon#2522): migrates the trailer/full-gate-build mechanism onto the
+# fleet-shared hybrid-gate.yml (aletheia#6426 generalized into a kanon-
+# designed reusable; see
+# forkwright/.github/.github/workflows/hybrid-gate.yml). Hosted in the
+# public forkwright/.github repo, not forkwright/kanon: GitHub cannot
+# resolve a workflow_call reference into a private repo owned by a personal
+# account for other-repo callers — this adoption originally pointed at
+# kanon and failed to even schedule the workflow (no run appeared at all)
+# before being repointed here. Fmt/check/clippy/nextest logic lives in the
+# reusable; this file supplies only aletheia's own commands/flags plus the
+# two coverage jobs the reusable has no equivalent for (see below).
 #
 # WHY the with: values diverge from fleet default where noted — aletheia is
 # the reference implementation the defaults were modeled on, so exact
@@ -53,13 +58,11 @@
 # superseded push's now-stale run cannot block or falsely pass merge — it
 # just runs to completion against a SHA nothing checks anymore.
 #
-# WHY ai_attribution_check / docs_only_exemption inputs are NOT set below
-# (UNVERIFIED-strip, kanon#2522 A4 follow-up): forkwright/kanon main
-# (hybrid-gate.yml) does not yet declare these workflow_call inputs as of
-# this adoption — passing them would make GH Actions reject the unknown
-# `with:` keys at trigger time. Re-add both (with fidelity notes on
-# no-ai-attribution.yml's extra pattern/waiver coverage, kept alongside for
-# now) once the ai-attribution/docs-only extension lands on kanon main.
+# WHY ai_attribution_check / docs_only_exemption ARE set below: the extended
+# hybrid-gate.yml (declaring both workflow_call inputs) is now live at
+# forkwright/.github. no-ai-attribution.yml stays alongside unchanged — it
+# carries extra pattern/waiver coverage beyond the reusable's inline
+# ai-attribution job, so this is belt-and-suspenders, not a replacement.
 name: Gate Attestation
 
 on:
@@ -74,7 +77,7 @@ env:
 
 jobs:
   hybrid-gate:
-    uses: forkwright/kanon/.github/workflows/hybrid-gate.yml@main
+    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@main
     with:
       fmt_cmd: "cargo fmt --all -- --check"
       check_cmd: "cargo check --workspace --all-targets --features test-core"
@@ -85,6 +88,8 @@ jobs:
       needs_fleet_repo_token: true
       rust_cache_key: "gate-attestation"
       full_gate_timeout_minutes: 45
+      ai_attribution_check: true
+      docs_only_exemption: true
     secrets: inherit
 
   gate-coverage-scripts:
@@ -201,7 +206,7 @@ jobs:
           # to the trailer/build path, so HYBRID_GATE_RESULT alone reflects
           # that waiver correctly — no separate waiver check needed here.
           if [ "$HYBRID_GATE_RESULT" != "success" ]; then
-            echo "ERROR: hybrid gate (trailer/full-gate-build via forkwright/kanon) did not succeed (result: ${HYBRID_GATE_RESULT})." >&2
+            echo "ERROR: hybrid gate (trailer/full-gate-build via the fleet reusable) did not succeed (result: ${HYBRID_GATE_RESULT})." >&2
             exit 1
           fi
 
