@@ -1,0 +1,278 @@
+# docs/MANIFEST.toml - documentation inventory for this repo.
+# Schema: kanon crates/basanos/standards/DOC-MANIFEST.md
+#
+# NOTE on `last_tested`: no dispatch or operator log records a step-by-step
+# execution of these runbooks. Each date below is the last git-log commit
+# touching the file - a floor, not a verified run. Treat entries older than
+# 90 days as genuinely unverified, not merely "due".
+
+[[doc]]
+path = "docs/AIR-GAPPED.md"
+type = "operational"
+evergreen = true
+description = "Air-gapped operation: config recipe for zero outbound connections."
+last_tested = "2026-06-26"
+
+[[doc]]
+path = "docs/API-VERSIONING.md"
+type = "authored"
+evergreen = true
+description = "HTTP API versioning policy: URL-path versioning, stability guarantees for /api/v1/."
+
+[[doc]]
+path = "docs/ARCHITECTURE.md"
+type = "authored"
+evergreen = false
+description = "Canonical module map, crate table, dependency graph, and trait boundaries. Carries a dated substrate-shape snapshot and crate/edge counts."
+
+[[doc]]
+path = "docs/ARCHITECTURE-GUIDE.md"
+type = "authored"
+evergreen = true
+description = "Contributor walkthrough: binary init sequence, message pipeline, crate cheat sheet, where-to-start table."
+
+[[doc]]
+path = "docs/AUTOMATION-PR-GATES.md"
+type = "authored"
+evergreen = true
+description = "Policy: bot-authored PRs get the same verification gate as human PRs, never a free pass on author identity."
+
+[[doc]]
+path = "docs/BENCHMARKS.md"
+type = "authored"
+evergreen = true
+description = "Criterion microbenchmark conventions: where bench files live, how they're registered and run."
+
+[[doc]]
+path = "docs/benchmarks/memory-benchmarks.md"
+type = "authored"
+evergreen = false
+description = "Memory recall benchmark runner (LongMemEval/LoCoMo) design and result tables; provisional, no live results yet. Tracks #2854."
+
+[[doc]]
+path = "docs/CONFIGURATION.md"
+type = "authored"
+evergreen = true
+description = "Full config key reference for instance/config/aletheia.toml and the taxis cascade."
+
+[[doc]]
+path = "docs/DAEMON.md"
+type = "authored"
+evergreen = true
+description = "KAIROS: the oikonomos background daemon subsystem and its operating mode."
+
+[[doc]]
+path = "docs/DATA.md"
+type = "authored"
+evergreen = true
+description = "Data sovereignty: what Aletheia stores, where it lives, how to control it."
+
+[[doc]]
+path = "docs/DEPLOYMENT.md"
+type = "operational"
+evergreen = true
+description = "Production deployment reference: service setup, systemd units, TLS, upgrade path."
+last_tested = "2026-06-28"
+
+[[doc]]
+path = "docs/design/graph-3d.md"
+type = "authored"
+evergreen = false
+description = "Pre-implementation design for the Dioxus desktop 3D force-directed knowledge-graph view."
+
+[[doc]]
+path = "docs/design/prostheke-wasm.md"
+type = "authored"
+evergreen = false
+description = "Pre-implementation design for the prostheke WASM plugin host (M5); decisions and open questions, not yet built."
+
+[[doc]]
+path = "docs/DESKTOP.md"
+type = "authored"
+evergreen = true
+description = "proskenion desktop app: Dioxus/WebView system dependencies and build notes."
+
+[[doc]]
+path = "docs/DISASTER-RECOVERY.md"
+type = "operational"
+evergreen = true
+description = "Recovery runbook for service failure, data corruption, machine loss, or credential compromise."
+last_tested = "2026-06-28"
+
+[[doc]]
+path = "docs/FEATURE-FLAGS.md"
+type = "authored"
+evergreen = true
+description = "Full feature-flag matrix and cross-crate interactions; release-feature coverage is script-derived."
+
+[[doc]]
+path = "docs/FJALL-EVALUATION.md"
+type = "decision-record"
+evergreen = true
+description = "Storage-engine evaluation: verdict to keep fjall as the krites backend. Closes #2290."
+decided = "2026-04-06"
+
+[[doc]]
+path = "docs/glossary.md"
+type = "authored"
+evergreen = true
+description = "Expanded conceptual definitions for project terms; cross-references lexicon.md for the crate registry."
+
+[[doc]]
+path = "docs/GOLDEN-PATH.md"
+type = "operational"
+evergreen = true
+description = "v1.0 target desktop-first user path and current supported first-run path for a public checkout."
+last_tested = "2026-06-28"
+
+[[doc]]
+path = "docs/GRACEFUL-DEGRADATION.md"
+type = "decision-record"
+evergreen = true
+description = "Point-in-time audit of single-local-failure-causes-global-crash sites; open gaps tracked in GitHub issues."
+decided = "2026-04-17"
+
+[[doc]]
+path = "docs/GROUNDS.md"
+type = "decision-record"
+evergreen = true
+description = "Point-in-time audit of abstractions with a single creation path (mesh with one root). Closes #3507."
+decided = "2026-04-17"
+
+[[doc]]
+path = "docs/HOT-RELOAD.md"
+type = "authored"
+evergreen = true
+description = "Hot/cold classification of every AletheiaConfig field for SIGHUP reload versus restart-required."
+
+[[doc]]
+path = "docs/HUBS.md"
+type = "authored"
+evergreen = true
+description = "Navigation index for concepts that touch many components (sessions, agents, etc.)."
+
+[[doc]]
+path = "docs/INGEST.md"
+type = "authored"
+evergreen = true
+description = "Authoritative reference for `aletheia ingest`: supported formats, chunking, JSON fact schema."
+
+[[doc]]
+path = "docs/LESSONS-LEARNED.md"
+type = "authored"
+evergreen = true
+description = "Cross-dispatch pattern extraction: institutional memory between agent observations and durable standards."
+
+[[doc]]
+path = "docs/lexicon.md"
+type = "authored"
+evergreen = true
+description = "Living crate/module name registry with etymology and naming rationale."
+
+[[doc]]
+path = "docs/MCP-SERVERS.md"
+type = "authored"
+evergreen = false
+description = "Operator-side MCP server tool-plane taxonomy for coding-agent orientation aids. Carries a workspace crate count."
+
+[[doc]]
+path = "docs/NETWORK.md"
+type = "authored"
+evergreen = true
+description = "Inventory of every outbound network call the binary makes, for transparency."
+
+[[doc]]
+path = "docs/NO-AI-ATTRIBUTION.md"
+type = "authored"
+evergreen = true
+description = "Policy: no generated-output attribution markers in PR titles/bodies or commit history."
+
+[[doc]]
+path = "docs/OBSERVABILITY-AUDIT.md"
+type = "decision-record"
+evergreen = true
+description = "Point-in-time static-analysis audit of tracing/metrics instrumentation across pylon, nous, hermeneus, organon. Closes #3259."
+decided = "2026-04-16"
+
+[[doc]]
+path = "docs/OBSERVABILITY.md"
+type = "authored"
+evergreen = true
+description = "SLOs, alerting thresholds, and runbook steps for the Prometheus metrics the binary exposes."
+
+[[doc]]
+path = "docs/PACKS.md"
+type = "authored"
+evergreen = true
+description = "Domain pack format: bundling knowledge, tools, and config overlays that extend an agent."
+
+[[doc]]
+path = "docs/paper/draft.md"
+type = "authored"
+evergreen = false
+description = "Draft technical paper on Datalog, kernel sandboxing, and multi-signal recall for persistent agent memory; not yet submitted."
+
+[[doc]]
+path = "docs/PROJECT.md"
+type = "authored"
+evergreen = true
+description = "Project framing: what Aletheia is, the five design pressures, interface status."
+
+[[doc]]
+path = "docs/PROSOCHE.md"
+type = "authored"
+evergreen = true
+description = "Prosoche: the periodic per-agent attention/heartbeat subsystem."
+
+[[doc]]
+path = "docs/QUICKSTART.md"
+type = "operational"
+evergreen = true
+description = "End-to-end zero-to-chatting quickstart, tested on a clean machine."
+last_tested = "2026-07-08"
+
+[[doc]]
+path = "docs/RELEASING.md"
+type = "operational"
+evergreen = true
+description = "Release process: SemVer scheme, release-please wiring, substance-audit gate."
+last_tested = "2026-07-17"
+
+[[doc]]
+path = "docs/RUNBOOK.md"
+type = "operational"
+evergreen = true
+description = "Day-two operations runbook: service architecture, common operational procedures."
+last_tested = "2026-06-28"
+
+[[doc]]
+path = "docs/TECHNOLOGY.md"
+type = "authored"
+evergreen = true
+description = "Technology choices and dependency policy rationale."
+
+[[doc]]
+path = "docs/test-tiers.md"
+type = "authored"
+evergreen = true
+description = "Cargo feature-flag test tiers balancing coverage against build time and resources."
+
+[[doc]]
+path = "docs/TRANSLATION-TAX.md"
+type = "decision-record"
+evergreen = true
+description = "Boundary analysis of six component boundaries where internal state narrows into a channel. Research for #3504."
+decided = "2026-04-17"
+
+[[doc]]
+path = "docs/UPGRADING.md"
+type = "operational"
+evergreen = true
+description = "Upgrade process for an existing installation: version check, backup, migration steps."
+last_tested = "2026-06-28"
+
+[[doc]]
+path = "docs/WORKSPACE_FILES.md"
+type = "authored"
+evergreen = true
+description = "Reference for the per-nous workspace files (SOUL.md, MEMORY.md, etc.) the bootstrap system reads."
