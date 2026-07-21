@@ -5,6 +5,15 @@
 # stamped PRs; a PR with no trailer falls back to a real CI build of the exact
 # stages kanon.toml's [gate].stages attests (fmt, check, clippy, nextest) so
 # the required check is never bypassable and never unconditionally slow.
+#
+# WHY(#6433): kanon.toml [gate].stages and .kanon-ci.toml's pipeline cover only
+# fmt/check/clippy/nextest — a local `kanon gate --stamp` run never touches
+# check-test-tier-features.py, release-feature-policy.py, check/test-release-
+# versioning.py, the poiesis-slides/poiesis-sheet feature-combination checks,
+# or the fuzz-target compile check, so a Gate-Passed trailer cannot attest to
+# them. gate-coverage-scripts and gate-coverage-compile-checks below restore
+# them as always-on jobs — unconditional on trailer state — so coverage never
+# depends on the fast path.
 name: Gate Attestation
 
 on:
@@ -149,9 +158,99 @@ jobs:
             target/nextest/**/*.log
           if-no-files-found: warn
 
+  gate-coverage-scripts:
+    name: gate-coverage-scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # WHY(#6433): pure-python, no compile — restores per-PR coverage that
+    # kanon.toml/.kanon-ci.toml never carried. Runs unconditionally (no
+    # dependency on check-trailer) on every PR, including trusted-automation
+    # PRs that the gate/full-gate-build waiver exempts, since these checks
+    # have no trailer/local-gate relationship to waive.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
+            exit 1
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+
+      - name: Check test tier features
+        run: scripts/check-test-tier-features.py
+
+      - name: Check release feature policy
+        run: |
+          cargo metadata --format-version 1 --no-deps > metadata.json
+          scripts/release-feature-policy.py --metadata metadata.json validate
+
+      - name: Release versioning
+        run: |
+          scripts/check-release-versioning.py
+          scripts/test-release-versioning.py
+
+  gate-coverage-compile-checks:
+    name: gate-coverage-compile-checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # WHY(#6433): same rationale as gate-coverage-scripts — the poiesis
+    # feature-combination checks and the fuzz-target compile check are also
+    # absent from kanon.toml/.kanon-ci.toml, so they run here, always-on,
+    # rather than only inside full-gate-build (which a stamped PR skips).
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: gate-coverage-compile
+
+      - name: Configure git credentials for private fleet deps
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
+            exit 1
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
+
+      - name: Poiesis feature gates
+        run: |
+          cargo check -p poiesis-slides
+          cargo check -p poiesis-slides --no-default-features
+          cargo check -p poiesis-sheet
+          cargo check -p poiesis-sheet --no-default-features --features workbook
+
+      - name: cargo check fuzz targets
+        env:
+          CARGO_TARGET_DIR: target
+        run: cargo check --manifest-path fuzz/Cargo.toml --bins
+
   gate:
     name: gate
-    needs: [check-trailer, full-gate-build]
+    needs: [check-trailer, full-gate-build, gate-coverage-scripts, gate-coverage-compile-checks]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -162,9 +261,26 @@ jobs:
           PR_HEAD_REF: ${{ github.head_ref }}
           TRAILER_FOUND: ${{ needs.check-trailer.outputs.found }}
           BUILD_RESULT: ${{ needs.full-gate-build.result }}
+          COVERAGE_SCRIPTS_RESULT: ${{ needs.gate-coverage-scripts.result }}
+          COVERAGE_COMPILE_RESULT: ${{ needs.gate-coverage-compile-checks.result }}
         run: |
+          # WHY(#6433): gate-coverage-* jobs are NOT part of the trusted-automation
+          # waiver below — unlike fmt/check/clippy/nextest (which a dispatch worker
+          # or bot PR may legitimately be unable to stamp locally), these are plain
+          # always-on CI jobs with no trailer/local-gate relationship, so coverage
+          # holds for every PR, dependabot/release-please included.
+          if [ "$COVERAGE_SCRIPTS_RESULT" != "success" ]; then
+            echo "ERROR: gate-coverage-scripts did not succeed (result: ${COVERAGE_SCRIPTS_RESULT})." >&2
+            exit 1
+          fi
+
+          if [ "$COVERAGE_COMPILE_RESULT" != "success" ]; then
+            echo "ERROR: gate-coverage-compile-checks did not succeed (result: ${COVERAGE_COMPILE_RESULT})." >&2
+            exit 1
+          fi
+
           if [ "$PR_AUTHOR" = "dependabot[bot]" ] || [ "$PR_AUTHOR" = "release-please[bot]" ] || [[ "$PR_HEAD_REF" == release-please--branches--* ]]; then
-            echo "Gate attestation waived for trusted automation PR (author ${PR_AUTHOR}, branch ${PR_HEAD_REF})."
+            echo "Gate attestation (fmt/check/clippy/nextest) waived for trusted automation PR (author ${PR_AUTHOR}, branch ${PR_HEAD_REF})."
             exit 0
           fi
 
