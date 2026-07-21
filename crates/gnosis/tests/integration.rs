@@ -179,7 +179,7 @@ version = "0.1.0"
 edition = "2021"
 "#;
 
-    const FIXTURECORE_LIB: &str = r#"pub trait Message {}
+    const FIXTURECORE_LIB: &str = r"pub trait Message {}
 pub trait Stamped {}
 
 pub fn public_fn() {}
@@ -223,7 +223,7 @@ type PrivateAlias = PrivateStruct;
 pub const PUBLIC_CONST: usize = 1;
 pub(crate) const CRATE_CONST: usize = 2;
 const PRIVATE_CONST: usize = 3;
-"#;
+";
 
     const FIXTURECONSUMER_TOML: &str = r#"[package]
 name = "fixtureconsumer"
@@ -234,12 +234,12 @@ edition = "2021"
 fixturecore = { path = "../fixturecore" }
 "#;
 
-    const FIXTURECONSUMER_LIB: &str = r#"pub use fixturecore::Message;
+    const FIXTURECONSUMER_LIB: &str = r"pub use fixturecore::Message;
 
 pub struct Consumer;
 
 impl fixturecore::Stamped for Consumer {}
-"#;
+";
 
     const FIXTUREOBSERVER_TOML: &str = r#"[package]
 name = "fixtureobserver"
@@ -250,10 +250,10 @@ edition = "2021"
 fixturecore = { path = "../fixturecore" }
 "#;
 
-    const FIXTUREOBSERVER_LIB: &str = r#"pub struct Observer;
+    const FIXTUREOBSERVER_LIB: &str = r"pub struct Observer;
 
 impl fixturecore::Stamped for Observer {}
-"#;
+";
 
     /// Fast counterpart to `workspace_integration::symbol_rdeps_finds_many_callers`.
     #[test]
@@ -305,13 +305,11 @@ impl fixturecore::Stamped for Observer {}
             .collect();
         assert!(
             names.contains(&"Consumer"),
-            "expected Consumer to implement Stamped; got: {:?}",
-            names
+            "expected Consumer to implement Stamped; got: {names:?}"
         );
         assert!(
             names.contains(&"Observer"),
-            "expected Observer to implement Stamped; got: {:?}",
-            names
+            "expected Observer to implement Stamped; got: {names:?}"
         );
     }
 
@@ -332,13 +330,11 @@ impl fixturecore::Stamped for Observer {}
             .collect();
         assert!(
             names.contains(&"fixtureconsumer"),
-            "expected fixtureconsumer to depend on fixturecore; got: {:?}",
-            names
+            "expected fixtureconsumer to depend on fixturecore; got: {names:?}"
         );
         assert!(
             names.contains(&"fixtureobserver"),
-            "expected fixtureobserver to depend on fixturecore; got: {:?}",
-            names
+            "expected fixtureobserver to depend on fixturecore; got: {names:?}"
         );
     }
 
