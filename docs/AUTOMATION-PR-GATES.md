@@ -6,15 +6,20 @@ status only because the PR author is trusted automation.
 
 ## Required Verification
 
-`Gate Attestation` runs the workspace gate on every PR, including automation
-PRs:
+`Gate Attestation` is a hybrid trailer-verify + CI-build fallback, on every
+PR including automation PRs:
 
-- `cargo fmt --all -- --check`
-- publish and workspace policy checks
-- Poiesis feature checks
-- `cargo clippy --workspace --all-targets -- -D warnings`
-- fuzz target compile checks
-- `cargo nextest run --profile ci --workspace --features test-core`
+- `check-trailer` looks for a `Gate-Passed:` trailer (from a local
+  `kanon gate --stamp`) in any PR commit body. Trusted automation
+  (Dependabot, release-please) is waived here.
+- `full-gate-build` runs only when no trailer was found, re-running the exact
+  stages `kanon.toml`'s `[gate].stages` attests:
+  - `cargo fmt --all -- --check`
+  - `cargo check --workspace --all-targets --features test-core`
+  - `cargo clippy --workspace --all-targets --features test-core -- -D warnings`
+  - `cargo nextest run --profile ci --workspace --features test-core`
+- `gate` aggregates both paths: pass if the trailer was found, or if
+  `full-gate-build` succeeded, or for waived automation; fail otherwise.
 
 `Security` runs dependency and vulnerability checks on every PR, including
 Dependabot PRs:
@@ -38,7 +43,7 @@ Only these Dependabot classes are eligible for auto-merge:
 - semantic-version minor updates for direct development dependencies
 
 They are eligible only after the real verification checks report passing:
-`gate-attestation`, `cargo deny`, `cargo audit`, and OSV Scanner. Missing,
+`gate`, `cargo deny`, `cargo audit`, and OSV Scanner. Missing,
 skipped, canceled, neutral, or failed verification checks block auto-merge.
 
 All other Dependabot updates require human review and merge. This includes
