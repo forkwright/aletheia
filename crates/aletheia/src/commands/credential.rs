@@ -172,7 +172,10 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
 
             if !found_any {
                 println!("No credential found.");
-                println!("Checked: {} (not found)", display_path(&cred_path, verbose, &RealSystem));
+                println!(
+                    "Checked: {} (not found)",
+                    display_path(&cred_path, verbose, &RealSystem)
+                );
                 #[cfg(feature = "keyring")]
                 println!("Checked: OS keyring (empty)");
                 println!("Checked: ANTHROPIC_AUTH_TOKEN (not set)");
@@ -311,9 +314,8 @@ mod tests {
     #[test]
     fn display_path_defaults_to_home_relative() {
         let env = TestEnv::new().with_env("HOME", "/home/alice");
-        let path = std::path::Path::new(
-            "/home/alice/aletheia/instance/config/credentials/anthropic.json",
-        );
+        let path =
+            std::path::Path::new("/home/alice/aletheia/instance/config/credentials/anthropic.json");
 
         assert_eq!(
             display_path(path, false, &env),
@@ -324,9 +326,8 @@ mod tests {
     #[test]
     fn display_path_verbose_shows_full_path() {
         let env = TestEnv::new().with_env("HOME", "/home/alice");
-        let path = std::path::Path::new(
-            "/home/alice/aletheia/instance/config/credentials/anthropic.json",
-        );
+        let path =
+            std::path::Path::new("/home/alice/aletheia/instance/config/credentials/anthropic.json");
 
         assert_eq!(
             display_path(path, true, &env),
@@ -339,15 +340,17 @@ mod tests {
         let env = TestEnv::new().with_env("HOME", "/home/alice");
         let path = std::path::Path::new("/etc/aletheia/anthropic.json");
 
-        assert_eq!(display_path(path, false, &env), "/etc/aletheia/anthropic.json");
+        assert_eq!(
+            display_path(path, false, &env),
+            "/etc/aletheia/anthropic.json"
+        );
     }
 
     #[test]
     fn display_path_falls_back_to_full_path_when_home_unset() {
         let env = TestEnv::new();
-        let path = std::path::Path::new(
-            "/home/alice/aletheia/instance/config/credentials/anthropic.json",
-        );
+        let path =
+            std::path::Path::new("/home/alice/aletheia/instance/config/credentials/anthropic.json");
 
         assert_eq!(
             display_path(path, false, &env),
