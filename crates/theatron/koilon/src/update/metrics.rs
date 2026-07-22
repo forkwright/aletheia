@@ -1,31 +1,24 @@
 //! Update handlers for the metrics dashboard view.
 
 use crate::app::App;
+use crate::msg::Msg;
 use crate::state::view_stack::View;
 
 /// Open the metrics dashboard and trigger a background health check.
-pub(crate) async fn handle_open(app: &mut App) {
+pub(crate) fn handle_open(app: &mut App) {
     app.layout.view_stack.push(View::Metrics);
     app.layout.metrics.scroll_offset = 0;
     app.layout.metrics.selected_agent = 0;
 
     // WHY: Fire a detailed health check each time the metrics view opens so the
-    // badge and check list reflect current server state rather than the startup
-    // snapshot. Reachability failures and unparseable responses are stored
-    // separately from the parsed backend health.
+    // badge reflects current server state rather than the startup snapshot. The
+    // check runs in a background task so the update loop never blocks on the
+    // HTTP round-trip; the result arrives as Msg::MetricsHealthLoaded.
     let client = app.client.clone();
-    match client.health_details().await {
-        Ok(resp) => {
-            app.layout.metrics.api_healthy = Some(resp.status == "healthy");
-            app.layout.metrics.health = Some(resp);
-            app.layout.metrics.health_error = None;
-        }
-        Err(err) => {
-            app.layout.metrics.api_healthy = Some(false);
-            app.layout.metrics.health = None;
-            app.layout.metrics.health_error = Some(err.to_string());
-        }
-    }
+    app.background_tasks.spawn(async move {
+        let result = client.health_details().await;
+        Msg::MetricsHealthLoaded(result.map(|r| r.status == "healthy").unwrap_or(false))
+    });
 }
 
 /// Close the metrics dashboard and return to the previous view.

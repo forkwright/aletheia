@@ -337,7 +337,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemorySearchResults(_) => {}
         Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
 
-        Msg::MetricsOpen => metrics::handle_open(app).await,
+        Msg::MetricsOpen => metrics::handle_open(app),
         Msg::MetricsClose => metrics::handle_close(app),
         Msg::MetricsSelectUp => metrics::handle_select_up(app),
         Msg::MetricsSelectDown => metrics::handle_select_down(app),

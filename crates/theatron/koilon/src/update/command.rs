@@ -338,7 +338,7 @@ pub(crate) async fn execute_command(app: &mut App) {
             app.layout.overlay = Some(Overlay::NotificationHistory { scroll: 0 });
         }
         "metrics" | "stats" => {
-            super::metrics::handle_open(app).await;
+            super::metrics::handle_open(app);
         }
         "editor" | "edit" | "e" => {
             super::editor::handle_open(app);
