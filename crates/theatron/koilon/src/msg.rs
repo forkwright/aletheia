@@ -466,13 +466,6 @@ pub enum Msg {
     )]
     MetricsSelectDown,
     /// Loaded result from async health check triggered on open.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "metrics overlay message, constructed in tests only"
-        )
-    )]
     MetricsHealthLoaded(bool),
 
     #[expect(
