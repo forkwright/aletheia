@@ -267,14 +267,17 @@ impl KnowledgeStore {
             });
         }
 
-        let result = run_llm_consolidation(provider, &facts, config)?;
+        let LlmConsolidationResult {
+            result,
+            supersession_batches,
+        } = run_llm_consolidation(provider, &facts, config)?;
 
         if dry_run {
             return Ok(result);
         }
 
         let new_fact_ids = self.persist_consolidated_facts(&result, nous_id)?;
-        self.supersede_originals(&result, &new_fact_ids)?;
+        self.supersede_originals(&supersession_batches, &new_fact_ids)?;
         self.write_audit_record(candidate, &result, &new_fact_ids, nous_id)?;
 
         Ok(result)
@@ -589,23 +592,37 @@ impl KnowledgeStore {
         }))
     }
 
-    /// Mark original facts as superseded.
+    /// Mark each batch's original facts as superseded by its canonical output.
     fn supersede_originals(
         &self,
-        result: &ConsolidationResult,
+        supersession_batches: &[BatchSupersession],
         new_fact_ids: &[FactId],
     ) -> Result<(), ConsolidationError> {
         let now_str = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
-        let superseding_id = new_fact_ids.first().map(FactId::as_str).unwrap_or_default();
 
-        for original_id in &result.superseded_fact_ids {
-            self.supersede_fact_by_id(original_id, superseding_id, &now_str)
-                .map_err(|e| {
+        for batch in supersession_batches {
+            let superseding_id = new_fact_ids
+                .get(batch.consolidated_fact_index)
+                .ok_or_else(|| {
                     StoreSnafu {
-                        message: e.to_string(),
+                        message: format!(
+                            "missing persisted consolidated fact at batch output index {} ({} IDs persisted)",
+                            batch.consolidated_fact_index,
+                            new_fact_ids.len()
+                        ),
                     }
                     .build()
                 })?;
+
+            for original_id in &batch.source_fact_ids {
+                self.supersede_fact_by_id(original_id, superseding_id.as_str(), &now_str)
+                    .map_err(|e| {
+                        StoreSnafu {
+                            message: e.to_string(),
+                        }
+                        .build()
+                    })?;
+            }
         }
         Ok(())
     }
@@ -869,15 +886,28 @@ impl KnowledgeStore {
     }
 }
 
+/// LLM result plus the batch-local mapping needed to apply supersession.
+struct LlmConsolidationResult {
+    result: ConsolidationResult,
+    supersession_batches: Vec<BatchSupersession>,
+}
+
+/// Source facts and canonical first output for one nonempty batch.
+struct BatchSupersession {
+    source_fact_ids: Vec<FactId>,
+    consolidated_fact_index: usize,
+}
+
 /// Run the LLM consolidation prompt across batches and collect results.
 fn run_llm_consolidation(
     provider: &dyn ConsolidationProvider,
     facts: &[SourceFact],
     config: &ConsolidationConfig,
-) -> Result<ConsolidationResult, ConsolidationError> {
+) -> Result<LlmConsolidationResult, ConsolidationError> {
     let batches = batch_facts(facts, config.batch_limit);
     let mut all_consolidated = Vec::new();
     let mut all_superseded = Vec::new();
+    let mut supersession_batches = Vec::new();
 
     for batch in &batches {
         let system = consolidation_system_prompt();
@@ -885,6 +915,10 @@ fn run_llm_consolidation(
 
         let response = provider.consolidate(system, &user_msg)?;
         let entries = parse_consolidation_response(&response)?;
+        // WHY (#5847): lifecycle supersession is single-valued. Preserve the
+        // existing first-output behavior within a batch while retaining the
+        // correct first output separately for every batch in the run.
+        let first_consolidated_fact_index = all_consolidated.len();
 
         let batch_fact_ids: Vec<FactId> = batch.iter().map(|s| s.id.clone()).collect();
         // WHY (#3634): preserve source recorded_at timestamps so multiplicity
@@ -908,9 +942,10 @@ fn run_llm_consolidation(
                 content: entry.content.clone(),
                 confidence: 0.95,
                 tier: "inferred".to_owned(),
-                // WHY: each ConsolidatedFact owns its source IDs, and we also
-                // need the same IDs for all_superseded after the loop; Arc<[FactId]>
-                // would eliminate this but ConsolidatedFact is part of the public API.
+                // WHY: each ConsolidatedFact owns its source IDs, while the
+                // audit result and supersession plan also retain them after
+                // the loop; Arc<[FactId]> would eliminate this clone but
+                // ConsolidatedFact is part of the public API.
                 source_fact_ids: batch_fact_ids.clone(),
                 source_recorded_ats: batch_recorded_ats.clone(),
                 source_scopes: batch_scopes.clone(),
@@ -930,15 +965,22 @@ fn run_llm_consolidation(
                 "LLM consolidation returned no outputs for batch; skipping supersession to avoid data loss"
             );
         } else {
-            all_superseded.extend(batch_fact_ids);
+            all_superseded.extend(batch_fact_ids.iter().cloned());
+            supersession_batches.push(BatchSupersession {
+                source_fact_ids: batch_fact_ids,
+                consolidated_fact_index: first_consolidated_fact_index,
+            });
         }
     }
 
-    Ok(ConsolidationResult {
-        original_count: facts.len(),
-        consolidated_count: all_consolidated.len(),
-        consolidated_facts: all_consolidated,
-        superseded_fact_ids: all_superseded,
+    Ok(LlmConsolidationResult {
+        result: ConsolidationResult {
+            original_count: facts.len(),
+            consolidated_count: all_consolidated.len(),
+            consolidated_facts: all_consolidated,
+            superseded_fact_ids: all_superseded,
+        },
+        supersession_batches,
     })
 }
 

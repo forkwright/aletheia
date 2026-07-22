@@ -8,9 +8,11 @@
 //! convergence strength.
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use std::collections::BTreeSet;
+
 use super::*;
 use crate::consolidation::ConsolidationResult;
-use crate::test_fixtures::{make_entity, make_store};
+use crate::test_fixtures::{make_entity, make_fact, make_store};
 
 // kanon:ignore RUST/doc-promised-observability — doc comment describes data-flow invariants, not tracing
 /// Requirement #3634: consolidating N source facts into one Fact must
@@ -343,7 +345,10 @@ fn run_llm_consolidation_empty_response_skips_supersession() {
         })
         .collect();
 
-    let result = run_llm_consolidation(&provider, &facts, &ConsolidationConfig::default())
+    let LlmConsolidationResult {
+        result,
+        supersession_batches,
+    } = run_llm_consolidation(&provider, &facts, &ConsolidationConfig::default())
         .expect("run_llm_consolidation must succeed");
 
     assert!(
@@ -353,6 +358,10 @@ fn run_llm_consolidation_empty_response_skips_supersession() {
     assert!(
         result.superseded_fact_ids.is_empty(),
         "empty LLM response must not supersede any source facts"
+    );
+    assert!(
+        supersession_batches.is_empty(),
+        "empty LLM response must not create a batch supersession plan"
     );
 }
 
@@ -407,5 +416,108 @@ fn execute_consolidation_empty_response_preserves_source_facts() {
     assert!(
         ids.contains(&"f-empty-0"),
         "source fact must remain retrievable after empty consolidation; got {ids:?}"
+    );
+}
+
+// WHY (#5847): one output per provider call makes each persisted consolidated
+// fact correspond to exactly one source batch.
+struct OneFactPerBatchProvider;
+
+impl ConsolidationProvider for OneFactPerBatchProvider {
+    fn consolidate(
+        &self,
+        _system: &str,
+        _user_message: &str,
+    ) -> Result<String, ConsolidationError> {
+        Ok(r#"[{"content":"consolidated batch"}]"#.to_owned())
+    }
+}
+
+/// Requirement #5847: each batch's sources must point to that batch's own
+/// consolidated fact, not the first fact persisted by the entire run.
+#[test]
+fn multi_batch_consolidation_supersedes_sources_with_their_own_batch_fact() {
+    let store = make_store();
+    let entity = make_entity("e-multi-batch", "Multi Batch Entity", "topic");
+    store.insert_entity(&entity).expect("insert entity");
+
+    let source_facts: Vec<_> = (0..4)
+        .map(|i| {
+            make_fact(
+                &format!("f-multi-batch-{i}"),
+                "alice",
+                &format!("source fact {i}"),
+            )
+        })
+        .collect();
+    for fact in &source_facts {
+        store.insert_fact(fact).expect("insert source fact");
+        store
+            .insert_fact_entity(&fact.id, &entity.id)
+            .expect("link source fact to entity");
+    }
+
+    let candidate = ConsolidationCandidate {
+        trigger: ConsolidationTrigger::EntityOverflow {
+            entity_id: entity.id.clone(),
+            fact_count: source_facts.len(),
+        },
+        fact_ids: source_facts.iter().map(|fact| fact.id.clone()).collect(),
+        fact_count: source_facts.len(),
+        entity_id: Some(entity.id.clone()),
+        cluster_id: None,
+    };
+    let config = ConsolidationConfig {
+        min_age_days: 0,
+        batch_limit: 2,
+        ..ConsolidationConfig::default()
+    };
+
+    let result = store
+        .execute_consolidation(
+            &OneFactPerBatchProvider,
+            &candidate,
+            "alice",
+            &config,
+            false,
+        )
+        .expect("multi-batch consolidation succeeds");
+
+    assert_eq!(
+        result.consolidated_count, 2,
+        "four sources with batch_limit two must produce two consolidated facts"
+    );
+
+    let mut superseding_ids = BTreeSet::new();
+    for source in &source_facts {
+        let stored = store
+            .read_facts_by_id(source.id.as_str())
+            .expect("read superseded source fact");
+        let superseding_id = stored
+            .first()
+            .expect("source fact row exists")
+            .lifecycle
+            .superseded_by
+            .clone()
+            .expect("source fact is superseded");
+        let provenance = store
+            .get_consolidation_provenance(&superseding_id)
+            .expect("read consolidated provenance")
+            .expect("superseding fact has provenance");
+
+        assert!(
+            provenance.0.contains(&source.id),
+            "source {} must point to a consolidated fact built from it; target {} has sources {:?}",
+            source.id,
+            superseding_id,
+            provenance.0
+        );
+        superseding_ids.insert(superseding_id);
+    }
+
+    assert_eq!(
+        superseding_ids.len(),
+        2,
+        "two batches must produce two distinct supersession targets"
     );
 }
