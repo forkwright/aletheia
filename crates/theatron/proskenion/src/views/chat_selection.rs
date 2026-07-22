@@ -1,6 +1,7 @@
 //! Shared chat activation helpers for cross-view navigation.
 
 use skene::api::types::{HistoryMessage, HistoryResponse};
+use skene::id::NousId;
 
 use crate::components::chat::ChatState;
 use crate::components::chat::{ChatMessage as LegacyChatMessage, MessageRole};
@@ -13,6 +14,15 @@ use crate::state::platform::WindowState;
 pub(crate) struct ChatActivation {
     /// Whether the active agent/session changed.
     pub session_changed: bool,
+}
+
+/// Resolve the session key used to stream a chat turn.
+///
+/// Session-picker selections keep their explicit key. Sidebar-only agent
+/// selections have no session key, so they use a stable key scoped to the
+/// active agent instead of sharing one process-wide fallback.
+pub(crate) fn resolve_chat_session_key(nous_id: &NousId, session_key: Option<&str>) -> String {
+    session_key.map_or_else(|| format!("{nous_id}:default"), str::to_owned)
 }
 
 pub(crate) fn activate_chat_selection(
@@ -158,6 +168,31 @@ mod tests {
             "incident-review".to_string(),
             "Incident Review".to_string(),
         )
+    }
+
+    #[test]
+    fn sidebar_selected_agents_route_to_distinct_default_session_keys() {
+        let mut agent_store = AgentStore::new();
+        agent_store.load_from_api(vec![agent("syn"), agent("arc")]);
+
+        assert!(agent_store.set_active(&NousId::from("syn")));
+        let first_agent = agent_store.active_id.as_ref().unwrap();
+        let first_key = resolve_chat_session_key(first_agent, None);
+
+        assert!(agent_store.set_active(&NousId::from("arc")));
+        let second_agent = agent_store.active_id.as_ref().unwrap();
+        let second_key = resolve_chat_session_key(second_agent, None);
+
+        assert_eq!(first_key, "syn:default");
+        assert_eq!(second_key, "arc:default");
+        assert_ne!(first_key, second_key);
+    }
+
+    #[test]
+    fn resolve_chat_session_key_preserves_explicit_selection() {
+        let key = resolve_chat_session_key(&NousId::from("syn"), Some("incident-review"));
+
+        assert_eq!(key, "incident-review");
     }
 
     #[test]
