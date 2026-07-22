@@ -357,6 +357,11 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
         check_positive_u64(body_limit, "maxBytes", errors);
     }
 
+    // WHY(#6080): 0 would feed `tokio::time::interval(Duration::from_secs(0))`,
+    // which ticks as fast as possible — a degenerate keepalive that spins CPU on
+    // every open SSE stream. Seconds granularity means 1s is the sane minimum.
+    check_positive_u64(value, "sseHeartbeatIntervalSecs", errors);
+
     if let Some(csrf) = value.get("csrf") {
         let enabled = csrf.get("enabled").and_then(Value::as_bool);
         let disable_acknowledged = csrf
