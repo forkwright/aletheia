@@ -131,8 +131,8 @@ impl PutBuilder {
     /// Add an explicit row with custom param references.
     ///
     /// Each entry is a Datalog expression: `"$param_name"`, `"null"`, a quoted
-    /// literal like `"\"9999-12-31\""`, etc. Required for multi-row puts where
-    /// different rows bind different params (e.g. `SUPERSEDE_FACT`).
+    /// literal like `"\"2026-01-01T00:00:00Z\""`, etc. Required for multi-row
+    /// puts where different rows bind different params (e.g. `SUPERSEDE_FACT`).
     pub(crate) fn row(mut self, exprs: &[&str]) -> Self {
         self.rows
             .push(exprs.iter().map(|s| (*s).to_owned()).collect());
