@@ -214,7 +214,14 @@ async fn run_sse_connection(
             };
 
             let event = match maybe_event {
-                Ok(Some(event)) => event,
+                Ok(Some(Ok(event))) => event,
+                Ok(Some(Err(e))) => {
+                    // WHY: keryx v1.4.0 surfaces mid-stream transport failures
+                    // as Err items. Break to the silent reconnect path below;
+                    // only a confirmed loss is reported to the UI.
+                    tracing::warn!(error = %e, "SSE transport error — reconnecting");
+                    break;
+                }
                 Ok(None) => break,
                 Err(_elapsed) => {
                     let now_ms =

@@ -175,7 +175,18 @@ fn stream_turn_with_read_timeout(
             };
 
             let event = match maybe_event {
-                Ok(Some(event)) => event,
+                Ok(Some(Ok(event))) => event,
+                Ok(Some(Err(e))) => {
+                    // WHY: keryx v1.4.0 yields Result<SseEvent, SseError> so a
+                    // mid-stream transport failure is observable. Surface it
+                    // as a stream error instead of letting the truncated feed
+                    // pass for a clean end-of-stream.
+                    tracing::warn!(error = %e, "stream read failed");
+                    if tx.send(StreamEvent::Error(e.to_string())).await.is_err() {
+                        tracing::debug!("stream receiver dropped before transport error");
+                    }
+                    break;
+                }
                 Ok(None) => break,
                 Err(_elapsed) => {
                     // WHY(#4564): Desktop per-turn streaming must use the
