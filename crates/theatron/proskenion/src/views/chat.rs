@@ -45,6 +45,7 @@ use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservat
 use crate::views::chat_helpers::{format_tool_call, render_approval};
 use crate::views::chat_selection::{
     activate_chat_selection, history_messages_to_legacy, oldest_history_seq, parse_history_messages,
+    resolve_chat_session_key,
 };
 
 /// Estimated message height in pixels for virtual scroll calculations.
@@ -608,7 +609,7 @@ pub(crate) fn Chat() -> Element {
         }
 
         // WHY: Guard against no agent selected -- don't silently send to "default".
-        if agent_store.read().active_id.is_none() {
+        let Some(active_nous_id) = agent_store.read().active_id.clone() else {
             if let Some(mut toast_store) = try_consume_context::<Signal<ToastStore>>() {
                 toast_store.write().push(
                     ToastSeverity::Warning,
@@ -616,7 +617,12 @@ pub(crate) fn Chat() -> Element {
                 );
             }
             return;
-        }
+        };
+
+        let session_key = resolve_chat_session_key(
+            &active_nous_id,
+            legacy_state.read().session_key.as_deref(),
+        );
 
         // WHY: Set streaming flag BEFORE spawning to prevent double-submit race.
         // Without this, rapid Ctrl+Enter could spawn two concurrent tasks.
@@ -695,19 +701,9 @@ pub(crate) fn Chat() -> Element {
                 }
             };
 
-            // WHY: Use agent_store.active_id (set by topbar pill clicks) instead
-            // of legacy_state.agent_id (which is always None). Without this,
-            // the server returns 404 because there's no agent named "default".
-            let nous_id = agent_store
-                .read()
-                .active_id
-                .as_ref()
-                .map(|id| id.to_string())
-                .unwrap_or_else(|| "default".to_string());
-            let Some(session_key) = legacy_state.read().session_key.clone() else {
-                tracing::warn!("no session key available — aborting send");
-                return;
-            };
+            // WHY: Capture the selected agent at submission time so a later
+            // sidebar click cannot reroute this in-flight turn.
+            let nous_id = active_nous_id.to_string();
 
             let mut rx = crate::api::streaming::stream_turn(
                 client,
