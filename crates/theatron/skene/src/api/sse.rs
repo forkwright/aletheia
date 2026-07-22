@@ -106,7 +106,18 @@ impl SseConnection {
                     loop {
                         let maybe_event = tokio::time::timeout(READ_TIMEOUT, es.next()).await;
                         let event = match maybe_event {
-                            Ok(Some(event)) => event,
+                            Ok(Some(Ok(event))) => event,
+                            Ok(Some(Err(e))) => {
+                                // WHY: keryx v1.4.0 surfaces mid-stream
+                                // transport failures as Err items. Treat the
+                                // feed as dropped and fall through to the
+                                // Disconnected + backoff reconnect path below.
+                                tracing::warn!(
+                                    error = %e,
+                                    "SSE transport error — treating as disconnect"
+                                );
+                                break;
+                            }
                             Ok(None) => break,
                             Err(_elapsed) => {
                                 // WHY: No event received within READ_TIMEOUT. A healthy
