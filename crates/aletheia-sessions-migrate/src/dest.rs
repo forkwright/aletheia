@@ -49,8 +49,8 @@ use snafu::ResultExt as _;
 use tracing::{debug, info, instrument};
 
 use crate::error::{
-    DestinationNotEmptySnafu, FjallOpSnafu, FjallOpenSnafu, FjallPartitionSnafu, IoSnafu,
-    JsonSnafu, NumericRangeSnafu, Result,
+    DestinationNotEmptySnafu, FjallOpenSnafu, IoSnafu, JsonSnafu, NumericRangeSnafu, Result,
+    fjall_op_err, fjall_partition_err,
 };
 use crate::source::{DistillationRecord, LegacyExtras, LegacySidecarEntry};
 
@@ -99,28 +99,6 @@ fn try_u64_usize(field: &str, v: usize) -> Result<u64> {
         }
         .build()
     })
-}
-
-fn fjall_op_err<S: Into<String>>(operation: S) -> impl FnOnce(fjall::Error) -> crate::error::Error {
-    let op = operation.into();
-    move |e| {
-        FjallOpSnafu {
-            operation: op,
-            message: e.to_string(),
-        }
-        .build()
-    }
-}
-
-fn partition_err<S: Into<String>>(name: S) -> impl FnOnce(fjall::Error) -> crate::error::Error {
-    let n = name.into();
-    move |e| {
-        FjallPartitionSnafu {
-            partition: n,
-            message: e.to_string(),
-        }
-        .build()
-    }
 }
 
 /// Helper that owns the fjall handle and named partitions during migration.
@@ -175,35 +153,35 @@ impl Destination {
         let sessions = db
             .db
             .keyspace("sessions", KeyspaceCreateOptions::default)
-            .map_err(partition_err("sessions"))?;
+            .map_err(fjall_partition_err("sessions"))?;
         let messages = db
             .db
             .keyspace("messages", KeyspaceCreateOptions::default)
-            .map_err(partition_err("messages"))?;
+            .map_err(fjall_partition_err("messages"))?;
         let usage = db
             .db
             .keyspace("usage", KeyspaceCreateOptions::default)
-            .map_err(partition_err("usage"))?;
+            .map_err(fjall_partition_err("usage"))?;
         let distillations = db
             .db
             .keyspace("distillations", KeyspaceCreateOptions::default)
-            .map_err(partition_err("distillations"))?;
+            .map_err(fjall_partition_err("distillations"))?;
         let notes = db
             .db
             .keyspace("notes", KeyspaceCreateOptions::default)
-            .map_err(partition_err("notes"))?;
+            .map_err(fjall_partition_err("notes"))?;
         let blackboard = db
             .db
             .keyspace("blackboard", KeyspaceCreateOptions::default)
-            .map_err(partition_err("blackboard"))?;
+            .map_err(fjall_partition_err("blackboard"))?;
         let counters = db
             .db
             .keyspace("counters", KeyspaceCreateOptions::default)
-            .map_err(partition_err("counters"))?;
+            .map_err(fjall_partition_err("counters"))?;
         let migration_legacy = db
             .db
             .keyspace("migration_legacy", KeyspaceCreateOptions::default)
-            .map_err(partition_err("migration_legacy"))?;
+            .map_err(fjall_partition_err("migration_legacy"))?;
         Ok(Self {
             db,
             sessions,

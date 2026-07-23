@@ -24,7 +24,7 @@ use tracing::info;
 
 use crate::dest::ALL_PARTITIONS;
 use crate::error::{
-    FjallOpSnafu, FjallOpenSnafu, FjallPartitionSnafu, JsonSnafu, NumericRangeSnafu, Result,
+    FjallOpenSnafu, JsonSnafu, NumericRangeSnafu, Result, fjall_op_err, fjall_partition_err,
 };
 use crate::migrate::{SourceData, load_source_data, open_source};
 use crate::schema;
@@ -557,30 +557,6 @@ fn source_message_body_hash(messages: &[Message]) -> [u8; 32] {
         h.update(b"\x1e");
     }
     h.finalize().into()
-}
-
-fn fjall_partition_err<S: Into<String>>(
-    name: S,
-) -> impl FnOnce(fjall::Error) -> crate::error::Error {
-    let n = name.into();
-    move |e| {
-        FjallPartitionSnafu {
-            partition: n,
-            message: e.to_string(),
-        }
-        .build()
-    }
-}
-
-fn fjall_op_err<S: Into<String>>(operation: S) -> impl FnOnce(fjall::Error) -> crate::error::Error {
-    let op = operation.into();
-    move |e| {
-        FjallOpSnafu {
-            operation: op,
-            message: e.to_string(),
-        }
-        .build()
-    }
 }
 
 fn dest_session_count(db: &FjallDb) -> Result<usize> {
