@@ -1567,6 +1567,10 @@ fn validate_startup_accepts_repomix_enabled_with_valid_workspace_root() {
     std::fs::create_dir_all(dir.path().join("data")).unwrap();
     std::fs::create_dir_all(dir.path().join("nous")).unwrap();
     let workspace_root = tempfile::tempdir().unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test seeds a Cargo.toml into the temp workspace root so validate_startup accepts it"
+    )]
     std::fs::write(workspace_root.path().join("Cargo.toml"), "[workspace]\n").unwrap();
 
     let oikos = crate::oikos::Oikos::from_root(dir.path());
