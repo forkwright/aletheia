@@ -788,7 +788,7 @@ pub(crate) fn Chat() -> Element {
                         Some(body),
                         Some(crate::state::toasts::ToastAction {
                             label: "Open".to_string(),
-                            action_id,
+                            action_id: crate::state::toasts::ToastActionId(action_id),
                         }),
                     );
                 }
