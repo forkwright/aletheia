@@ -452,6 +452,7 @@ mod tests {
 
     #[test]
     fn base_url_is_normalized() {
+        organon::testing::install_crypto_provider();
         let client = GatewayClient::new("http://127.0.0.1:18789/", None).expect("valid client");
         assert_eq!(client.base_url(), "http://127.0.0.1:18789");
     }
