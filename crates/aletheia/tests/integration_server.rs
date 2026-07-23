@@ -40,6 +40,15 @@ fn setup_instance(port: u16) -> tempfile::TempDir {
     std::fs::create_dir_all(instance.join("data")).expect("create data dir");
     std::fs::create_dir_all(instance.join("logs")).expect("create logs dir");
     std::fs::create_dir_all(instance.join("nous/_default")).expect("create nous/_default dir");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
+    std::fs::write(
+        instance.join("nous/_default/SOUL.md"),
+        "# Test Agent\n\nMinimal smoke-test identity.\n",
+    )
+    .expect("write SOUL.md");
 
     let config = format!(
         r#"[gateway]
@@ -53,8 +62,19 @@ mode = "none"
 enabled = false
 disableAcknowledged = true
 
+# WHY: local_only metrics 403s even loopback peers (ConnectInfo gap, see
+# tracking issue); public is safe on the 127.0.0.1-bound test instance and
+# keeps the smoke assertion on metrics content, not the exposure ACL.
+[gateway.metrics]
+mode = "public"
+
 [sandbox]
 enabled = false
+
+[[agents.list]]
+id = "main"
+default = true
+workspace = "nous/_default"
 
 [embedding]
 provider = "mock"
@@ -172,8 +192,8 @@ fn server_starts_serves_health_and_shuts_down() {
     );
 
     // Verify sessions endpoint
-    let (code, _) = http_get(port, "/api/v1/sessions").expect("sessions request");
-    assert_eq!(code, 200);
+    let (code, body) = http_get(port, "/api/v1/sessions").expect("sessions request");
+    assert_eq!(code, 200, "sessions body: {body}");
 
     // Verify metrics endpoint
     let (code, body) = http_get(port, "/metrics").expect("metrics request");
