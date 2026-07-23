@@ -25,6 +25,6 @@ fi
 if [[ "$tool_calls" -ge "$THRESHOLD" ]]; then
   mkdir -p "$SENTINEL_DIR"
   printf '{"nousId":"%s","toolCalls":%s,"timestamp":"%s"}\n' \
-    "$nous_id" "$tool_calls" "$(date -Iseconds)" \
+    "$nous_id" "$tool_calls" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     > "$SENTINEL_DIR/${nous_id}.sentinel"
 fi

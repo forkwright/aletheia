@@ -12,6 +12,6 @@ description: Append turn metadata to a daily log file
 handler:
   type: shell
   command: /bin/sh
-  args: ["-c", "echo \"$(date -Iseconds) {{nousId}} {{sessionId}} tokens_in={{inputTokens}} tokens_out={{outputTokens}} tools={{toolCalls}}\" >> /tmp/aletheia-turns.log"]
+  args: ["-c", "echo \"$(date -u +\"%Y-%m-%dT%H:%M:%SZ\") {{nousId}} {{sessionId}} tokens_in={{inputTokens}} tokens_out={{outputTokens}} tools={{toolCalls}}\" >> /tmp/aletheia-turns.log"]
   timeout: 5s
   failAction: silent
