@@ -717,7 +717,7 @@ fn search_tiered_for_recall_enriches_graph_importance() {
 }
 
 /// #5852: `search_tiered_for_recall_scoped` is nous's exclusive production
-/// recall route (`search_impl.rs`) and had the same graph_importance gap.
+/// recall route (`search_impl.rs`) and had the same `graph_importance` gap.
 #[test]
 fn search_tiered_for_recall_scoped_enriches_graph_importance() {
     struct UnusedRewriteProvider;
