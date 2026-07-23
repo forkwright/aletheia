@@ -1044,3 +1044,205 @@ fn compute_attribution_returns_some_for_oauth_credential() {
         "compute_attribution must return Some for CredentialSource::OAuth"
     );
 }
+
+/// #5724: `prepare_wire_request` must borrow (zero allocation) on the common
+/// no-mutation path -- API-key credential, `PromptCacheMode::Disabled`, and
+/// no caller-set cache flags to scrub.
+#[test]
+fn prepare_wire_request_borrows_when_no_mutation_needed() {
+    use std::sync::Arc;
+
+    use koina::credential::{Credential, CredentialProvider, CredentialSource};
+
+    struct EnvKeyProvider;
+
+    impl CredentialProvider for EnvKeyProvider {
+        fn get_credential(&self) -> Option<Credential> {
+            Some(Credential {
+                secret: SecretString::from("sk-env-test-key"),
+                source: CredentialSource::Environment,
+            })
+        }
+
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
+        fn name(&self) -> &str {
+            "env-key"
+        }
+    }
+
+    let config = ProviderConfig {
+        prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::with_credential_provider(Arc::new(EnvKeyProvider), &config)
+        .expect("valid config");
+
+    let req = test_request();
+    let result = provider.prepare_wire_request(&req);
+    assert!(
+        matches!(result, Cow::Borrowed(_)),
+        "no-mutation path (API-key + cache-disabled, flags already false) must borrow, not clone"
+    );
+}
+
+/// #5724: cache flags are zeroed -- and a clone is made -- only when
+/// `PromptCacheMode::Disabled` and the caller actually set a cache flag.
+#[test]
+fn prepare_wire_request_scrubs_cache_flags_when_disabled() {
+    use std::sync::Arc;
+
+    use koina::credential::{Credential, CredentialProvider, CredentialSource};
+
+    struct EnvKeyProvider;
+
+    impl CredentialProvider for EnvKeyProvider {
+        fn get_credential(&self) -> Option<Credential> {
+            Some(Credential {
+                secret: SecretString::from("sk-env-test-key"),
+                source: CredentialSource::Environment,
+            })
+        }
+
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
+        fn name(&self) -> &str {
+            "env-key"
+        }
+    }
+
+    let config = ProviderConfig {
+        prompt_cache_mode: crate::provider::PromptCacheMode::Disabled,
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::with_credential_provider(Arc::new(EnvKeyProvider), &config)
+        .expect("valid config");
+
+    let mut req = test_request();
+    req.cache_system = true;
+    req.cache_tools = true;
+    req.cache_turns = true;
+
+    let result = provider.prepare_wire_request(&req);
+    assert!(
+        matches!(result, Cow::Owned(_)),
+        "a caller-set cache flag under Disabled mode must trigger a clone"
+    );
+    assert!(!result.cache_system);
+    assert!(!result.cache_tools);
+    assert!(!result.cache_turns);
+}
+
+/// #5724: `Ephemeral`/`Extended` cache modes leave caller-provided cache
+/// flags untouched and still borrow when no OAuth identity mutation applies.
+#[test]
+fn prepare_wire_request_leaves_cache_flags_when_not_disabled() {
+    use std::sync::Arc;
+
+    use koina::credential::{Credential, CredentialProvider, CredentialSource};
+
+    struct EnvKeyProvider;
+
+    impl CredentialProvider for EnvKeyProvider {
+        fn get_credential(&self) -> Option<Credential> {
+            Some(Credential {
+                secret: SecretString::from("sk-env-test-key"),
+                source: CredentialSource::Environment,
+            })
+        }
+
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
+        fn name(&self) -> &str {
+            "env-key"
+        }
+    }
+
+    let config = ProviderConfig {
+        prompt_cache_mode: crate::provider::PromptCacheMode::Ephemeral,
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::with_credential_provider(Arc::new(EnvKeyProvider), &config)
+        .expect("valid config");
+
+    let mut req = test_request();
+    req.cache_system = true;
+
+    let result = provider.prepare_wire_request(&req);
+    assert!(
+        matches!(result, Cow::Borrowed(_)),
+        "Ephemeral mode must not scrub caller-provided cache flags, and OAuth is inactive here"
+    );
+    assert!(result.cache_system);
+}
+
+/// #5724: an OAuth credential always prepends the CC identity system prompt
+/// and forces `cache_system` off, regardless of the operator's cache policy.
+#[test]
+fn prepare_wire_request_prepends_oauth_identity() {
+    use std::sync::Arc;
+
+    use koina::credential::{Credential, CredentialProvider, CredentialSource};
+
+    struct OAuthProvider;
+
+    impl CredentialProvider for OAuthProvider {
+        fn get_credential(&self) -> Option<Credential> {
+            Some(Credential {
+                secret: SecretString::from("oauth-access-token"),
+                source: CredentialSource::OAuth,
+            })
+        }
+
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
+        fn name(&self) -> &str {
+            "oauth"
+        }
+    }
+
+    let config = ProviderConfig {
+        prompt_cache_mode: crate::provider::PromptCacheMode::Ephemeral,
+        ..ProviderConfig::default()
+    };
+    let provider = AnthropicProvider::with_credential_provider(Arc::new(OAuthProvider), &config)
+        .expect("valid config");
+
+    let mut req = test_request();
+    req.system = Some("operator system prompt".to_owned());
+    req.cache_system = true;
+
+    let result = provider.prepare_wire_request(&req);
+    assert!(
+        matches!(result, Cow::Owned(_)),
+        "OAuth credential must always trigger the identity-prepend mutation"
+    );
+    assert_eq!(
+        result.system.as_deref(),
+        Some("You are Claude Code, Anthropic's official CLI for Claude.")
+    );
+    assert!(
+        !result.cache_system,
+        "OAuth path must force cache_system off"
+    );
+    assert_eq!(
+        result.messages.len(),
+        2,
+        "original system prompt moves into messages[0]"
+    );
+    assert_eq!(result.messages[0].role, Role::User);
+    match &result.messages[0].content {
+        Content::Text(text) => assert!(text.contains("operator system prompt")),
+        Content::Blocks(_) => {
+            panic!("expected Text content for the injected system-context message")
+        }
+    }
+}
