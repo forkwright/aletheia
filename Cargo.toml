@@ -28,7 +28,6 @@ members = [
     "crates/symbolon",
     "crates/taxis",
     "crates/thesauros",
-    "crates/theatron",
     "crates/theatron/skene",
     "crates/theatron/koilon",
     "crates/poiesis/charts",

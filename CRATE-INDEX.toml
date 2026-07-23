@@ -495,7 +495,7 @@ path = "crates/theatron/skene"
 layer = "desktop"
 purpose = "Shared API client, types, SSE, and streaming infrastructure for Aletheia UIs"
 depends_on = ["koina"]
-used_by = ["koilon", "proskenion", "theatron"]
+used_by = ["koilon", "proskenion"]
 
 [crates.skene.features]
 test-core = "test tier fixtures"
@@ -527,14 +527,6 @@ used_by = ["agora", "aletheia", "diaporeia", "integration-tests", "nous", "oikon
 [crates.taxis.features]
 test-core = "test tier fixtures"
 test-full = "full test tier fixtures"
-
-[crates.theatron]
-path = "crates/theatron"
-layer = "desktop"
-purpose = "Thin facade re-exporting skene types for external consumers"
-depends_on = ["skene"]
-used_by = []
-features = {}
 
 [crates.thesauros]
 path = "crates/thesauros"
