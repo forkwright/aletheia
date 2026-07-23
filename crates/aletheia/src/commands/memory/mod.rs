@@ -457,6 +457,7 @@ mod validation_tests {
 
     #[tokio::test]
     async fn is_server_running_returns_false_for_unreachable_well_formed_url() {
+        organon::testing::install_crypto_provider();
         let res = super::is_server_running("http://127.0.0.1:1")
             .await
             .unwrap();

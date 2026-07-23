@@ -481,6 +481,7 @@ mod tests {
 
     #[tokio::test]
     async fn api_dry_run_does_not_send_post() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("input.txt");
         std::fs::write(&input, "one fact").unwrap();
@@ -625,6 +626,7 @@ mod tests {
 
     #[tokio::test]
     async fn is_server_running_returns_false_for_unreachable_well_formed_url() {
+        organon::testing::install_crypto_provider();
         let res = is_server_running("http://127.0.0.1:1").await.unwrap();
         assert!(!res, "expected false when no listener; got {res}");
     }
