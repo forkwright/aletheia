@@ -679,9 +679,13 @@ mod tests {
     fn cleanup_expired_revocations_boundary() {
         let store = memory_store();
 
-        let now = jiff::Zoned::now();
+        // WHY(#6455): `jiff::Timestamp` is UTC-native (unlike `jiff::Zoned`,
+        // which resolves to the host's local timezone). Formatting a local
+        // `Zoned` with a literal `Z` suffix mislabels non-UTC wallclock as
+        // UTC, so on a non-UTC box every fixture below reads as already
+        // expired. Mirrors the fix already applied to `koina::fjall::now_iso`.
+        let now = jiff::Timestamp::now();
         let past = now
-            .clone()
             .checked_sub(jiff::Span::new().seconds(1))
             .unwrap()
             .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
@@ -691,7 +695,6 @@ mod tests {
         // a few microseconds later. Wall-clock-equal-to-now is untestable
         // without a time-injection seam in production.
         let near_future = now
-            .clone()
             .checked_add(jiff::Span::new().milliseconds(100))
             .unwrap()
             .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
