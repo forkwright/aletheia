@@ -229,7 +229,10 @@ pub(crate) fn discover_serendipitous_facts(
 
     Ok(SerendipityDiscoveryReport {
         items_processed,
-        items_modified: discovery_count,
+        // WHY (#5865): this pass only surfaces candidates via read queries —
+        // no insert_fact/forget_fact/mutation ever runs here, so items_modified
+        // must not alias discovery_count (candidates surfaced != items changed).
+        items_modified: 0,
         discovery_count,
         selected_fact_id: selected_injection
             .as_ref()
@@ -261,4 +264,111 @@ fn fact_entity_ids(store: &KnowledgeStore, fact_id: &str) -> crate::error::Resul
         }
     }
     Ok(entity_ids)
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use crate::id::{EntityId, FactId};
+    use crate::knowledge::{
+        Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
+        FactTemporal, Relationship, Visibility, far_future,
+    };
+
+    use super::*;
+
+    fn make_entity(id: &str, name: &str) -> Entity {
+        Entity {
+            id: EntityId::new(id).expect("valid entity id"),
+            name: name.to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: vec![],
+            created_at: jiff::Timestamp::now(),
+            updated_at: jiff::Timestamp::now(),
+        }
+    }
+
+    fn make_relationship(src: &str, dst: &str) -> Relationship {
+        Relationship {
+            src: EntityId::new(src).expect("valid entity id"),
+            dst: EntityId::new(dst).expect("valid entity id"),
+            relation: "related_to".to_owned(),
+            weight: 0.8,
+            created_at: jiff::Timestamp::now(),
+        }
+    }
+
+    fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
+        let now = jiff::Timestamp::now();
+        Fact {
+            id: FactId::new(id).expect("valid fact id"),
+            nous_id: nous_id.to_owned(),
+            content: content.to_owned(),
+            fact_type: "observation".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            temporal: FactTemporal {
+                valid_from: now,
+                valid_to: far_future(),
+                recorded_at: now,
+            },
+            provenance: FactProvenance {
+                confidence: 0.9,
+                tier: EpistemicTier::Verified,
+                source_session_id: Some("test-session".to_owned()),
+                stability_hours: 720.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+        }
+    }
+
+    // WHY (#5865): the pass is read-only — it must report zero mutations
+    // even when it surfaces discovery candidates.
+    #[test]
+    fn discover_serendipitous_facts_reports_zero_mutations_on_non_empty_discovery() {
+        let store = KnowledgeStore::open_mem().expect("open_mem");
+
+        store
+            .insert_entity(&make_entity("alice", "Alice"))
+            .expect("insert alice");
+        store
+            .insert_entity(&make_entity("bob", "Bob"))
+            .expect("insert bob");
+        store
+            .insert_relationship(&make_relationship("alice", "bob"))
+            .expect("insert relationship");
+
+        let fact = make_fact("fact-1", "test-nous", "Alice knows something interesting");
+        store.insert_fact(&fact).expect("insert fact");
+        store
+            .insert_fact_entity(
+                &FactId::new("fact-1").expect("valid fact id"),
+                &EntityId::new("alice").expect("valid entity id"),
+            )
+            .expect("insert fact-entity link");
+
+        let report =
+            discover_serendipitous_facts(&store, "test-nous").expect("discovery run succeeds");
+
+        assert!(
+            report.discovery_count > 0,
+            "expected at least one discovery candidate from the alice-bob relationship, got {}",
+            report.discovery_count
+        );
+        assert_eq!(
+            report.items_modified, 0,
+            "serendipity discovery is read-only and must never report store mutations"
+        );
+    }
 }
