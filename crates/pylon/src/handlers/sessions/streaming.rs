@@ -49,6 +49,16 @@ const HEX_DECIMAL_DIGITS: u8 = 10;
 const ASCII_DIGIT_ZERO: u8 = b'0';
 const ASCII_LOWER_A: u8 = b'a';
 
+/// Event type recorded/emitted in place of an event that failed to serialize
+/// as JSON.
+///
+/// WHY(#5374): shared by the live-stream axum conversion and the turn-buffer
+/// replay recorder so a serialization failure looks identical whether a
+/// client observes it live or on reconnect replay.
+const SERIALIZATION_ERROR_EVENT_TYPE: &str = "error";
+const SERIALIZATION_ERROR_DATA: &str =
+    r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#;
+
 type AxumEventStream =
     Pin<Box<dyn tokio_stream::Stream<Item = Result<Event, Infallible>> + Send + 'static>>;
 type BoxedSse = Sse<KeepAliveStream<AxumEventStream>>;
@@ -1193,10 +1203,8 @@ pub async fn stream_turn(
                     // WHY: Use the TurnStreamEvent::Error shape so the fallback event has the
                     // same structure as all other error events in the stream (#3160).
                     Ok(Event::default()
-                        .event("error")
-                        .data(
-                            r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#,
-                        )
+                        .event(SERIALIZATION_ERROR_EVENT_TYPE)
+                        .data(SERIALIZATION_ERROR_DATA)
                         .id(seq.to_string()))
                 }
             }
@@ -1269,10 +1277,8 @@ fn sse_event_to_axum_with_id((seq, event): (u64, SseEvent)) -> Result<Event, Inf
         Err(e) => {
             warn!(error = %e, "failed to serialize SSE event");
             Ok(Event::default()
-                .event("error")
-                .data(
-                    r#"{"type":"error","code":"serialization_error","message":"serialization failed"}"#,
-                )
+                .event(SERIALIZATION_ERROR_EVENT_TYPE)
+                .data(SERIALIZATION_ERROR_DATA)
                 .id(seq.to_string()))
         }
     }
@@ -1745,10 +1751,39 @@ async fn emit_turn_result_events_buffered(
     }
 }
 
+/// Compute the `(event_type, data)` pair to persist for a turn-buffer record.
+///
+/// WHY(#5374): pulled out of `record_sse_event`/`record_turn_event` so the
+/// serialization-failure branch is unit-testable without needing an event
+/// value that genuinely fails to serialize. On `Err`, substitutes the shared
+/// `SERIALIZATION_ERROR_EVENT_TYPE`/`SERIALIZATION_ERROR_DATA` marker instead
+/// of persisting an empty-string payload under the original event type, so a
+/// client replaying the buffer sees the same error shape a live subscriber
+/// would have seen rather than silent corruption.
+fn serialization_record_payload(
+    event_type: &'static str,
+    serialized: Result<String, serde_json::Error>,
+) -> (String, String) {
+    match serialized {
+        Ok(data) => (event_type.to_owned(), data),
+        Err(e) => {
+            warn!(
+                error = %e,
+                original_event_type = event_type,
+                "failed to serialize event for turn buffer replay"
+            );
+            (
+                SERIALIZATION_ERROR_EVENT_TYPE.to_owned(),
+                SERIALIZATION_ERROR_DATA.to_owned(),
+            )
+        }
+    }
+}
+
 /// Record an [`SseEvent`] to the turn buffer. Returns the retained event to send.
 async fn record_sse_event(buf: &TurnBufferHandle, event: &SseEvent) -> Option<(u64, SseEvent)> {
-    let event_type = event.event_type().to_owned();
-    let data = serde_json::to_string(event).unwrap_or_default();
+    let (event_type, data) =
+        serialization_record_payload(event.event_type(), serde_json::to_string(event));
     match buf.record(&event_type, &data).await {
         RecordOutcome::Recorded { seq } => Some((seq, event.clone())),
         RecordOutcome::ReplayGap {
@@ -1765,8 +1800,8 @@ async fn record_turn_event(
     buf: &TurnBufferHandle,
     event: &PylonTurnStreamEvent,
 ) -> Option<(u64, PylonTurnStreamEvent)> {
-    let event_type = event.event_type().to_owned();
-    let data = serde_json::to_string(event).unwrap_or_default();
+    let (event_type, data) =
+        serialization_record_payload(event.event_type(), serde_json::to_string(event));
     match buf.record(&event_type, &data).await {
         RecordOutcome::Recorded { seq } => Some((seq, event.clone())),
         RecordOutcome::ReplayGap {

@@ -575,5 +575,62 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
     );
 }
 
+// ── serialization_record_payload / record_sse_event / record_turn_event: serialization-failure handling (#5374) ──
+
+/// A genuine `serde_json::Error` for exercising the `Err` branch, obtained
+/// from a deliberately-failing deserialization rather than fabricated.
+fn fake_serialization_error() -> serde_json::Error {
+    serde_json::from_str::<serde_json::Value>("not valid json")
+        .expect_err("garbage input must fail to parse")
+}
+
+#[test]
+fn serialization_record_payload_passes_through_on_success() {
+    let (event_type, data) = serialization_record_payload(
+        "text_delta",
+        Ok(r#"{"type":"text_delta","text":"hi"}"#.to_owned()),
+    );
+
+    assert_eq!(event_type, "text_delta");
+    assert_eq!(data, r#"{"type":"text_delta","text":"hi"}"#);
+}
+
+#[test]
+fn serialization_record_payload_uses_explicit_marker_on_failure() {
+    let (event_type, data) =
+        serialization_record_payload("text_delta", Err(fake_serialization_error()));
+
+    assert_eq!(event_type, SERIALIZATION_ERROR_EVENT_TYPE);
+    assert_eq!(data, SERIALIZATION_ERROR_DATA);
+    assert!(
+        !data.is_empty(),
+        "a serialization failure must not persist an empty payload"
+    );
+    assert_ne!(
+        event_type, "text_delta",
+        "a serialization failure must not persist under the original event type"
+    );
+}
+
+#[tokio::test]
+async fn buffer_record_of_serialization_failure_payload_is_not_empty() {
+    let registry = crate::turn_buffer::TurnBufferRegistry::new();
+    let buffer = registry.get_or_create("ses-1", "turn-1").await;
+    let handle = TurnBufferHandle::new(buffer);
+
+    let (event_type, data) =
+        serialization_record_payload("tool_use", Err(fake_serialization_error()));
+    handle.record(&event_type, &data).await;
+
+    let (events, _) = handle.events_after(0).await;
+    let recorded = events.first().expect("one event recorded");
+    assert_eq!(recorded.event_type, SERIALIZATION_ERROR_EVENT_TYPE);
+    assert_eq!(recorded.data, SERIALIZATION_ERROR_DATA);
+    assert!(
+        !recorded.data.is_empty(),
+        "replay buffer must never persist an empty-string payload for a failed serialization"
+    );
+}
+
 #[path = "streaming_reconnect_tests.rs"]
 mod reconnect_tests;
