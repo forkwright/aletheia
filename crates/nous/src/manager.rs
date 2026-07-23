@@ -42,6 +42,15 @@ enum ShutdownOutcome {
     TimedOut,
 }
 
+/// One actor's shutdown-join bundle: its id, its optional join handle, and the
+/// two shared turn-state atoms the abort path must reset (#5735).
+type ShutdownJoin = (
+    String,
+    Option<JoinHandle<()>>,
+    Arc<AtomicBool>,
+    Arc<AtomicU64>,
+);
+
 struct ActorEntry {
     /// Wrapped in `Mutex<_>` so the manager can swap the handle for a restarted
     /// actor while the entry itself is accessed through a shared reference.
@@ -131,6 +140,25 @@ impl ActorEntry {
                 e.into_inner()
             })
             .load(Ordering::Acquire)
+    }
+
+    /// Clone the shared `active_turn` Arc so a caller can reset it after the
+    /// `ActorEntry` itself has been consumed (e.g. abort-on-shutdown-timeout,
+    /// where `finalize_turn` never runs). (#5735)
+    fn active_turn_arc(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.active_turn.read().unwrap_or_else(|e| {
+            warn!("active_turn lock poisoned, recovering");
+            e.into_inner()
+        }))
+    }
+
+    /// Clone the shared `turn_started_at_ms` Arc so a caller can reset it
+    /// after the `ActorEntry` itself has been consumed. (#5735)
+    fn turn_started_at_ms_arc(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.turn_started_at_ms.read().unwrap_or_else(|e| {
+            warn!("turn_started_at_ms lock poisoned, recovering");
+            e.into_inner()
+        }))
     }
 
     /// Swap the `active_turn` Arc for a new actor's shared flag.
@@ -1057,12 +1085,19 @@ impl NousManager {
             .map(|(id, e)| (id.clone(), e.current_handle()))
             .collect();
 
-        // WHY: take all join handles before any await: must not hold MutexGuard across .await
-        let joins: Vec<(String, Option<JoinHandle<()>>)> = entries
+        // WHY: take all join handles before any await: must not hold MutexGuard across .await.
+        // The active_turn/turn_started_at_ms Arcs are cloned alongside the join handle so the
+        // abort branch below can reset them even though `e` (and the ActorEntry it owns) is
+        // dropped at the end of this closure: an abort drops the actor future mid-turn,
+        // skipping `finalize_turn`'s reset, which would otherwise leave a health-poller reading
+        // stale busy state in the window before the drain completes. (#5735)
+        let joins: Vec<ShutdownJoin> = entries
             .into_iter()
             .map(|(id, e)| {
                 let join = e.take_join();
-                (id, join)
+                let active_turn = e.active_turn_arc();
+                let turn_started_at_ms = e.turn_started_at_ms_arc();
+                (id, join, active_turn, turn_started_at_ms)
             })
             .collect();
 
@@ -1079,7 +1114,7 @@ impl NousManager {
         // actor not yet drained is aborted.
         let shutdown_start = std::time::Instant::now();
         let mut join_set: JoinSet<(String, Duration, ShutdownOutcome)> = JoinSet::new();
-        for (id, join_opt) in joins {
+        for (id, join_opt, active_turn, turn_started_at_ms) in joins {
             if let Some(join) = join_opt {
                 join_set.spawn(async move {
                     let started = std::time::Instant::now();
@@ -1093,6 +1128,13 @@ impl NousManager {
                         Ok(Err(e)) => (id, elapsed, ShutdownOutcome::Panicked(e.to_string())),
                         Err(_) => {
                             abort.abort();
+                            // WHY: abort drops the actor future mid-turn, so
+                            // `finalize_turn` never runs to reset these. Force the
+                            // reset here so a health-poller racing the window between
+                            // this abort and `self.actors.drain()` cannot observe
+                            // stale busy=true state. (#5735)
+                            active_turn.store(false, Ordering::Release);
+                            turn_started_at_ms.store(0, Ordering::Release);
                             (id, elapsed, ShutdownOutcome::TimedOut)
                         }
                     }
