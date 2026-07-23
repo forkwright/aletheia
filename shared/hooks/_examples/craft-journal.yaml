@@ -13,7 +13,7 @@ nousFilter: [my-agent]
 handler:
   type: shell
   command: /bin/sh
-  args: ["-c", "echo \"$(date -Iseconds) session={{sessionId}} tools={{toolCalls}}\" >> <nous-dir>/<agent-id>/craft-journal.log"]
+  args: ["-c", "echo \"$(date -u +\"%Y-%m-%dT%H:%M:%SZ\") session={{sessionId}} tools={{toolCalls}}\" >> <nous-dir>/<agent-id>/craft-journal.log"]
   # Replace <nous-dir> and <agent-id> with your agent's workspace directory
   timeout: 5s
   failAction: silent
