@@ -5,5 +5,15 @@
 # workspace rust-lint baseline carries deliberate debt (see .kanon-ci.toml) and aletheia
 # CI does not gate on it; a Gate-Passed trailer over these stages is honest — it attests
 # exactly what the trailer-verify replaces. Re-add "lint" once the rust baseline reaches zero.
+#
+# WHY(#6433): check-test-tier-features.py, release-feature-policy.py validate,
+# check/test-release-versioning.py, the poiesis-slides/poiesis-sheet feature-
+# combination checks, and the fuzz-target compile check are enforced per-PR
+# but deliberately absent from these stages and from .kanon-ci.toml — no local
+# `kanon gate` invocation runs them, so a Gate-Passed trailer cannot attest to
+# them. They run as always-on jobs in .github/workflows/gate-attestation.yml
+# (gate-coverage-scripts, gate-coverage-compile-checks) instead, unconditional
+# on trailer state. This is the explicit, commented gap the stages list and
+# .kanon-ci.toml's pipeline are allowed to carry — any further gap is a defect.
 [gate]
 stages = ["fmt", "check", "clippy", "nextest"]

@@ -397,7 +397,7 @@ Displays agent count, active sessions, uptime, and provider status.
 
 ## API smoke test
 
-Create a session and send a message to verify the full request path. Replace `YOUR_TOKEN` with the token from `aletheia credential status`.
+Create a session and send a message to verify the full request path. `aletheia credential status` reports presence/expiry only (never token content); read the raw value with `jq -r .token instance/config/credentials/anthropic.json` and use it as `YOUR_TOKEN` below.
 
 ```bash
 # Create a session (nous_id and session_key are both required)

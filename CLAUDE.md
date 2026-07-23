@@ -24,7 +24,7 @@ Shell: SHELL.md in forkwright/kanon's crates/basanos/standards/
 
 [docs/GOLDEN-PATH.md](docs/GOLDEN-PATH.md): first orientation read for the public app workflow and implemented/planned app surfaces.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate workspace, module map, dependency graph, trait boundaries.
-[docs/ARCHITECTURE-QUICK.md](docs/ARCHITECTURE-QUICK.md): one-page crate reference for cold-start.
+[docs/ARCHITECTURE-GUIDE.md](docs/ARCHITECTURE-GUIDE.md): crate cheat sheet and walkthrough for cold-start.
 
 ### Loading recipes
 

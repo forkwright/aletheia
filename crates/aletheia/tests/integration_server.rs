@@ -51,6 +51,7 @@ mode = "none"
 
 [gateway.csrf]
 enabled = false
+disableAcknowledged = true
 
 [sandbox]
 enabled = false

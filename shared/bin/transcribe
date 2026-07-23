@@ -4,7 +4,8 @@ ALETHEIA_ROOT="${ALETHEIA_ROOT:-$HOME/aletheia/instance}"
 THEKE="$ALETHEIA_ROOT/theke"
 DEFAULT_MODEL="tiny"
 DEFAULT_DOMAIN="default"
-WORKDIR="/tmp/transcribe-$$"
+umask 077
+WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/transcribe.XXXXXX")
 log() { echo "[transcribe] $*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 INPUT="" MODEL="$DEFAULT_MODEL" DOMAIN="$DEFAULT_DOMAIN" NAME="" DO_SUMMARY=true
@@ -19,7 +20,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -z "$INPUT" ]] && die "No input file."
-mkdir -p "$WORKDIR"
 trap 'rm -rf "$WORKDIR"' EXIT
 if [[ "$INPUT" == *:* ]]; then
   REMOTE="$INPUT"
@@ -37,6 +37,7 @@ STEM="${BASENAME%.*}"
 DATE=$(date +%Y-%m-%d)
 OUT_DIR="$THEKE/$DOMAIN/transcripts/$DATE-$(echo "$NAME" | tr ' ' '-' | tr '[:upper:]' '[:lower:]')"
 mkdir -p "$OUT_DIR"
+DISPLAY_DIR="${OUT_DIR#"$ALETHEIA_ROOT"/}"
 DUR_SEC=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$LOCAL_FILE" 2>/dev/null || echo "")
 if [[ -z "$DUR_SEC" || "$DUR_SEC" == "N/A" ]]; then
   log "Duration: unknown"
@@ -45,7 +46,7 @@ else
   log "Duration: ~${DUR_MIN}m"
 fi
 log "Model: $MODEL | Domain: $DOMAIN"
-log "Output: $OUT_DIR/"
+log "Output: $DISPLAY_DIR/"
 log "Transcribing..."
 whisper "$LOCAL_FILE" --model "$MODEL" --output_format txt --output_dir "$WORKDIR" --language en 2>"$WORKDIR/err.log" \
   || die "Whisper failed. $(tail -3 "$WORKDIR/err.log")"
@@ -53,7 +54,7 @@ SRC_TXT="$WORKDIR/${STEM}.txt"
 [[ -f "$SRC_TXT" ]] || die "No transcript produced"
 cp "$SRC_TXT" "$OUT_DIR/transcript.txt"
 LINES=$(wc -l < "$OUT_DIR/transcript.txt")
-log "Transcript: $LINES lines → $OUT_DIR/transcript.txt"
+log "Transcript: $LINES lines → $DISPLAY_DIR/transcript.txt"
 if $DO_SUMMARY; then
   cat > "$OUT_DIR/summary.md" << EOF
 # Meeting Summary — $NAME
@@ -67,6 +68,5 @@ if $DO_SUMMARY; then
 EOF
   log "Summary stub created"
 fi
-chmod -R g+rw "$OUT_DIR" 2>/dev/null || true  # NOTE: failure is non-fatal here
 log "Done."
 echo "$OUT_DIR"

@@ -20,7 +20,7 @@ enable a subsequent coder or refactor prompt to proceed with confidence.
 
 - STANDARDS.md in forkwright/kanon's crates/basanos/standards/ - philosophy and naming conventions inform analysis
 - `docs/ARCHITECTURE.md` - crate structure and dependency graph
-- `docs/ARCHITECTURE-QUICK.md` - one-page crate reference for orientation
+- `docs/ARCHITECTURE-GUIDE.md` - crate cheat sheet and walkthrough for orientation
 
 # Context
 

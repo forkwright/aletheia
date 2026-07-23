@@ -63,8 +63,40 @@ EOF
 
     run env HOME="$HOME" ALETHEIA_ROOT="$HOME/instance" "$SCRIPT" --status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"$HOME/instance/config/credentials/anthropic.json"* ]]
+    [[ "$output" == *"~/instance/config/credentials/anthropic.json"* ]]
+    [[ "$output" != *"$HOME/instance/config/credentials/anthropic.json"* ]]
     [[ "$output" == *"VALID"* ]]
+
+    rm -rf "$HOME"
+}
+
+@test "status --verbose shows full credential file path" {
+    export HOME="$(mktemp -d)"
+    mkdir -p "$HOME/instance/config/credentials"
+    cat > "$HOME/instance/config/credentials/anthropic.json" <<'EOF'
+{"token": "sk-ant-oat01-fake-token", "refreshToken": "fake-refresh", "expiresAt": 4102444800000}
+EOF
+
+    run env HOME="$HOME" ALETHEIA_ROOT="$HOME/instance" "$SCRIPT" --status --verbose
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"$HOME/instance/config/credentials/anthropic.json"* ]]
+
+    rm -rf "$HOME"
+}
+
+@test "status does not print token or refresh-token content" {
+    export HOME="$(mktemp -d)"
+    mkdir -p "$HOME/instance/config/credentials"
+    cat > "$HOME/instance/config/credentials/anthropic.json" <<'EOF'
+{"token": "sk-ant-oat01-fake-token", "refreshToken": "fake-refresh", "expiresAt": 4102444800000}
+EOF
+
+    run env HOME="$HOME" ALETHEIA_ROOT="$HOME/instance" "$SCRIPT" --status
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"sk-ant-oat01-fake-token"* ]]
+    [[ "$output" != *"fake-refresh"* ]]
+    [[ "$output" == *"Token:           present"* ]]
+    [[ "$output" == *"Refresh token:   present"* ]]
 
     rm -rf "$HOME"
 }

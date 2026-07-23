@@ -32,6 +32,7 @@ Cargo metadata cannot infer.
 | **aletheia** | `bookkeeper` | no | Bookkeeper maintenance tools | `organon/bookkeeper` |
 | **aletheia** | `computer-use` | no | Computer-use tools | `organon/computer-use` |
 | **aletheia** | `z3` | no | Z3 SMT solver tool | `organon/z3` |
+| **aletheia** | `test-support` | no | Test-support providers (mock embedding) for the full-stack smoke binary | `mneme/test-support`, `hermeneus/test-support` |
 | **aletheia** | `test-core` | no | - | `mneme/test-core`, `nous/test-core`, `pylon/test-core` |
 | **aletheia** | `test-full` | no | - | `test-core`, `mneme/test-full`, `online-tests` |
 | **aletheia-routing** | `test-core` | no | - | - |

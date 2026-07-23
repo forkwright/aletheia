@@ -10,17 +10,16 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# WHY: maps a kanon.toml [gate].stages entry to the substring a full-gate-build
-# step's run command must contain, so the check stays data-driven against the
-# shared gate contract instead of a second hardcoded stage list.
-STAGE_COMMAND_HINTS = {
-    "fmt": "cargo fmt",
-    "check": "cargo check",
-    "clippy": "cargo clippy",
-    "nextest": "cargo nextest",
+# WHY: maps a kanon.toml [gate].stages entry to the hybrid-gate `with:` input
+# name and substring that input's command string must contain, so the check
+# stays data-driven against the shared gate contract instead of a second
+# hardcoded stage list.
+STAGE_INPUT_HINTS = {
+    "fmt": ("fmt_cmd", "cargo fmt"),
+    "check": ("check_cmd", "cargo check"),
+    "clippy": ("clippy_cmd", "cargo clippy"),
+    "nextest": ("nextest_cmd", "cargo nextest"),
 }
-
-AUTOMATION_LOGINS = ("dependabot[bot]", "release-please[bot]")
 
 
 def load_workflow(path: str) -> dict:
@@ -55,69 +54,77 @@ def main() -> int:
     errors: list[str] = []
 
     gate = load_workflow(".github/workflows/gate-attestation.yml")
-    # #6421: gate-attestation is a hybrid — check-trailer is the fast stamp-trust path
-    # (local `kanon gate --stamp` Gate-Passed trailer), full-gate-build is the CI-build
-    # fallback for trailer-less PRs (re-running the exact kanon.toml [gate].stages),
-    # and gate aggregates both. Dependency security stays gated for bots by the cargo
-    # audit/deny jobs (which must not waive Dependabot — enforced below). Validate the
-    # 3-job shape and that no job silently short-circuits the contract.
+    # #6421/#6433/kanon#2522: gate-attestation delegates the check-trailer/
+    # full-gate-build hybrid mechanism to the fleet-shared hybrid-gate.yml
+    # reusable workflow — one fact, one place: the trailer/build/trusted-
+    # automation-waiver logic is validated once, centrally, not re-derived
+    # per caller repo. This repo's own gate-attestation.yml supplies only:
+    # the delegated job's `with:` commands, any repo-local always-on
+    # coverage jobs the reusable has no equivalent for (#6433:
+    # gate-coverage-scripts, gate-coverage-compile-checks), and a `gate`
+    # aggregator that must depend on and check the result of every OTHER job
+    # in this file — generic on job name/count, not a hardcoded pair, so a
+    # newly added coverage job (or a future rename) can never silently
+    # orphan itself from the required check the way #6433 did.
+    #
+    # WHY the owning repo is NOT checked: the reusable is currently hosted
+    # publicly at forkwright/.github (GitHub cannot resolve a workflow_call
+    # reference into forkwright/kanon — private, personal-account-owned —
+    # for other-repo callers; kanon#2522). It moves back to forkwright/kanon
+    # if/when kanon goes public. Matching only the reusable's own path
+    # segment keeps this validator correct across that move without a
+    # second edit here.
     gate_jobs = gate.get("jobs", {})
 
-    check_trailer = gate_jobs.get("check-trailer")
-    if check_trailer is None:
-        errors.append("gate-attestation.yml must define a check-trailer job")
-    else:
-        text = job_step_text(check_trailer)
-        for login in AUTOMATION_LOGINS:
-            if login not in text:
-                errors.append(f"check-trailer must waive trusted automation login {login}")
-        if "release-please--branches--" not in text:
-            errors.append("check-trailer must waive release-please branch-shaped PRs")
-        if "Gate-Passed:" not in text:
-            errors.append("check-trailer must verify the Gate-Passed trailer")
-        if "exit 1" in text:
-            errors.append(
-                "check-trailer must never exit 1 — a missing trailer is a normal "
-                "outcome routed to full-gate-build, not a check-trailer failure"
-            )
-        outputs = check_trailer.get("outputs", {})
-        if "found" not in outputs:
-            errors.append("check-trailer must expose an outputs.found")
+    def find_hybrid_gate_job(jobs: dict) -> tuple[str, dict] | None:
+        for job_id, job in jobs.items():
+            uses = str(job.get("uses", ""))
+            if "/.github/workflows/hybrid-gate.yml" in uses:
+                return job_id, job
+        return None
 
-    full_gate_build = gate_jobs.get("full-gate-build")
-    if full_gate_build is None:
-        errors.append("gate-attestation.yml must define a full-gate-build job")
+    hybrid = find_hybrid_gate_job(gate_jobs)
+    if hybrid is None:
+        errors.append(
+            "gate-attestation.yml must delegate to the fleet-shared "
+            "hybrid-gate.yml reusable workflow (a job with uses: "
+            "<owner>/<repo>/.github/workflows/hybrid-gate.yml@...)"
+        )
     else:
-        needs = full_gate_build.get("needs", [])
-        needs = [needs] if isinstance(needs, str) else needs
-        if "check-trailer" not in needs:
-            errors.append("full-gate-build must need check-trailer")
-        job_if = str(full_gate_build.get("if", ""))
-        if "check-trailer.outputs.found" not in job_if:
-            errors.append(
-                "full-gate-build must be gated on needs.check-trailer.outputs.found "
-                "(skip when a trailer was already found)"
-            )
-        text = job_step_text(full_gate_build)
+        hybrid_job_id, hybrid_job = hybrid
+        with_block = hybrid_job.get("with", {}) or {}
+
         try:
             kanon_toml = tomllib.loads((ROOT / "kanon.toml").read_text(encoding="utf-8"))
             stages = kanon_toml.get("gate", {}).get("stages", [])
         except FileNotFoundError:
             stages = []
         if not stages:
-            errors.append("kanon.toml [gate].stages must be non-empty to validate full-gate-build against")
+            errors.append(
+                "kanon.toml [gate].stages must be non-empty to validate the "
+                "hybrid-gate job's with: block against"
+            )
         for stage in stages:
-            hint = STAGE_COMMAND_HINTS.get(stage)
+            hint = STAGE_INPUT_HINTS.get(stage)
             if hint is None:
-                errors.append(f"no STAGE_COMMAND_HINTS entry for kanon.toml gate stage '{stage}'")
+                errors.append(f"no STAGE_INPUT_HINTS entry for kanon.toml gate stage '{stage}'")
                 continue
-            if hint not in text:
+            input_name, hint_text = hint
+            if hint_text not in str(with_block.get(input_name, "")):
                 errors.append(
-                    f"full-gate-build must run a step covering kanon.toml gate stage "
-                    f"'{stage}' ({hint})"
+                    f"hybrid-gate job's with.{input_name} must cover kanon.toml "
+                    f"gate stage '{stage}' ({hint_text})"
                 )
-        if "FLEET_REPO_TOKEN" not in text:
-            errors.append("full-gate-build must configure FLEET_REPO_TOKEN for private fleet deps")
+
+        # WHY: Cargo.toml resolves a git dependency on forkwright/theatron —
+        # needs_fleet_repo_token must be true or full-gate-build can't
+        # authenticate that fetch on a trailer-less PR.
+        cargo_toml_text = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
+        if "github.com/forkwright" in cargo_toml_text and with_block.get("needs_fleet_repo_token") is not True:
+            errors.append(
+                "hybrid-gate job's with.needs_fleet_repo_token must be true — "
+                "Cargo.toml resolves a forkwright git dependency"
+            )
 
     gate_job = gate_jobs.get("gate")
     if gate_job is None:
@@ -125,21 +132,28 @@ def main() -> int:
     else:
         needs = gate_job.get("needs", [])
         needs = [needs] if isinstance(needs, str) else needs
-        for required_need in ("check-trailer", "full-gate-build"):
-            if required_need not in needs:
-                errors.append(f"gate aggregator must need {required_need}")
-        if str(gate_job.get("if", "")).strip() != "always()":
-            errors.append("gate aggregator must run unconditionally (if: always()) to aggregate both paths")
         text = job_step_text(gate_job)
-        for login in AUTOMATION_LOGINS:
-            if login not in text:
-                errors.append(f"gate aggregator must waive trusted automation login {login}")
-        if "check-trailer.outputs.found" not in text:
-            errors.append("gate aggregator must check needs.check-trailer.outputs.found")
-        if "full-gate-build.result" not in text:
-            errors.append("gate aggregator must check needs.full-gate-build.result")
+
+        other_job_ids = [j for j in gate_jobs if j != "gate"]
+        if not other_job_ids:
+            errors.append("gate-attestation.yml must define at least one job besides the gate aggregator")
+        for job_id in other_job_ids:
+            if job_id not in needs:
+                errors.append(f"gate aggregator must need '{job_id}'")
+            if f"needs.{job_id}.result" not in text:
+                errors.append(f"gate aggregator must check needs.{job_id}.result")
+
+        if str(gate_job.get("if", "")).strip() != "always()":
+            errors.append("gate aggregator must run unconditionally (if: always()) to aggregate every dependency")
         if "exit 1" not in text:
-            errors.append("gate aggregator must fail closed (exit 1) when neither path passed")
+            errors.append("gate aggregator must fail closed (exit 1) when any dependency did not succeed")
+        # WHY(kanon#2522): the dependabot[bot]/release-please[bot] trusted-
+        # automation waiver for the trailer/build path now lives inside
+        # forkwright/kanon's hybrid-gate.yml (validated once, centrally, for
+        # every adopting repo) — no longer re-checked in this repo's own
+        # aggregator text. gate-coverage-scripts/gate-coverage-compile-checks
+        # were never part of that waiver (enforced above via the generic
+        # every-other-job check) and still hold for every PR.
 
     security = load_workflow(".github/workflows/security.yml")
     cargo_deny = security["jobs"]["cargo-deny"]

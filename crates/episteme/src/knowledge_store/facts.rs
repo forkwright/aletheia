@@ -219,7 +219,7 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
-        use crate::knowledge::format_timestamp;
+        use crate::knowledge::{far_future, format_timestamp};
         let now = jiff::Timestamp::now();
         let now_str = format_timestamp(&now);
 
@@ -348,6 +348,13 @@ impl KnowledgeStore {
         params.insert(
             String::from("new_tier"),
             DataValue::Str(new_fact.provenance.tier.as_str().into()),
+        );
+        // WHY (#5862): the new row's open-interval sentinel must match the
+        // normal insert path byte-for-byte (`format_timestamp(&far_future())`)
+        // so Datalog string-equality on `valid_to` sees one canonical value.
+        params.insert(
+            String::from("new_valid_to"),
+            DataValue::Str(format_timestamp(&far_future()).into()),
         );
         params.insert(
             String::from("source_session_id"),
@@ -2032,6 +2039,81 @@ mod tests {
         );
         assert_eq!(diff.removed[0].id.as_str(), "diff-old");
         assert!(diff.modified.is_empty(), "no modified pairs expected");
+    }
+
+    #[test]
+    fn supersede_writes_same_valid_to_sentinel_as_insert() {
+        let store = make_store();
+
+        // Normal insert path stores `valid_to` via `fact_to_params`.
+        let inserted = make_fact("sent-normal", "alice", "Normally inserted open fact");
+        store.insert_fact(&inserted).expect("insert normal");
+
+        // Supersede path writes the new row's `valid_to` from query params.
+        let old_fact = make_fact("sent-old", "alice", "Original fact");
+        store.insert_fact(&old_fact).expect("insert old");
+        let new_fact = make_fact("sent-new", "alice", "Replacement fact");
+        store
+            .supersede_fact(&old_fact, &new_fact)
+            .expect("supersede");
+
+        let stored = store
+            .run_query(
+                "?[id, valid_to] := *facts{id, valid_to}, id in ['sent-normal', 'sent-new']",
+                std::collections::BTreeMap::new(),
+            )
+            .expect("raw valid_to read");
+        assert_eq!(stored.row_count(), 2, "both facts should be stored");
+
+        let expected = crate::knowledge::format_timestamp(&crate::knowledge::far_future());
+        for row in 0..stored.row_count() {
+            let id = stored.get_string(row, "id").expect("id is a string");
+            let valid_to = stored
+                .get_string(row, "valid_to")
+                .expect("valid_to is a string");
+            assert_eq!(
+                valid_to, expected,
+                "{id}: stored valid_to must match format_timestamp(&far_future()) byte-for-byte"
+            );
+        }
+    }
+
+    #[test]
+    fn query_facts_diff_far_future_bound_excludes_open_facts() {
+        let store = make_store();
+
+        // Open fact written by the normal insert path.
+        let normal = make_fact("ff-normal", "alice", "Open fact via insert");
+        store.insert_fact(&normal).expect("insert normal");
+
+        // Open fact written by supersede_fact.
+        let old_fact = make_fact("ff-old", "alice", "Old version");
+        store.insert_fact(&old_fact).expect("insert old");
+        let new_fact = make_fact("ff-new", "alice", "New version");
+        store
+            .supersede_fact(&old_fact, &new_fact)
+            .expect("supersede");
+
+        let sentinel = crate::knowledge::format_timestamp(&crate::knowledge::far_future());
+        let diff = store
+            .query_facts_diff("alice", "2025-01-01", &sentinel)
+            .expect("query diff with far-future bound");
+
+        assert!(
+            diff.removed.is_empty(),
+            "open facts from either write path must not appear as removed under a far-future bound"
+        );
+        assert_eq!(
+            diff.modified.len(),
+            1,
+            "the superseded old fact pairs with its successor as a modification"
+        );
+        assert_eq!(diff.modified[0].0.id.as_str(), "ff-old");
+        assert_eq!(diff.modified[0].1.id.as_str(), "ff-new");
+        assert!(
+            diff.added.iter().any(|f| f.id.as_str() == "ff-normal"),
+            "the open fact is still reported as added in the interval"
+        );
     }
 
     // ── Error paths: invalid fact_id ───────────────────────────────────────────
