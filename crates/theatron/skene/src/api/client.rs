@@ -880,12 +880,14 @@ mod tests {
 
     #[test]
     fn rest_client_builds_with_timeout() {
+        crate::install_test_crypto_provider();
         let client = build_http_client(None);
         assert!(client.is_ok(), "REST client must build");
     }
 
     #[test]
     fn streaming_client_builds_without_total_timeout() {
+        crate::install_test_crypto_provider();
         let client = build_streaming_client(None);
         assert!(client.is_ok(), "streaming client must build");
     }
@@ -899,6 +901,7 @@ mod tests {
 
     #[test]
     fn api_client_provides_distinct_rest_and_streaming_clients() {
+        crate::install_test_crypto_provider();
         let client = match ApiClient::new("http://localhost:18789", None) {
             Ok(client) => client,
             Err(err) => panic!("ApiClient must build both clients: {err}"),
@@ -911,6 +914,7 @@ mod tests {
 
     #[tokio::test]
     async fn rest_http_error_preserves_pylon_envelope() {
+        crate::install_test_crypto_provider();
         let body = r#"{"error":{"code":"validation_error","message":"invalid request","request_id":"req-rest","details":{"errors":[{"field":"nous_id","code":"required","message":"nous_id is required"}]}}}"#;
         let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", "", body);
         let client = ApiClient::new(&base_url, None).expect("build test client");
@@ -935,6 +939,7 @@ mod tests {
 
     #[tokio::test]
     async fn rest_rate_limit_with_pylon_envelope_preserves_body() {
+        crate::install_test_crypto_provider();
         let body = r#"{"error":{"code":"rate_limited","message":"rate limited, retry after 9s","request_id":"req-rate","details":{"retry_after_secs":9}}}"#;
         let (base_url, server) =
             serve_http_error_once("429 Too Many Requests", "retry-after: 9\r\n", body);
@@ -960,6 +965,7 @@ mod tests {
 
     #[tokio::test]
     async fn rest_legacy_rate_limit_keeps_retry_after_variant() {
+        crate::install_test_crypto_provider();
         let (base_url, server) =
             serve_http_error_once("429 Too Many Requests", "retry-after: 7\r\n", "not json");
         let client = ApiClient::new(&base_url, None).expect("build test client");

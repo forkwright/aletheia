@@ -20,6 +20,13 @@ pub mod id;
 /// SSE wire protocol parser for reqwest response streams.
 pub mod sse;
 
+/// Install the rustls crypto provider for tests that build reqwest clients.
+/// Production installs it at startup; tests must install explicitly.
+#[cfg(test)]
+pub(crate) fn install_test_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 #[cfg(test)]
 mod tests {
     // kanon:ignore RUST/allow-not-expect — test module needs use super::* for kanon test-missing-use-super rule; tests use fully-qualified super:: paths

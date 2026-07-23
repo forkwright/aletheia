@@ -539,6 +539,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_read_loop_delivers_completion_after_error_event() {
+        crate::install_test_crypto_provider();
         let body = concat!(
             "event: message_start\n",
             "data: {\"type\":\"message_start\",\"session_id\":\"s1\",\"nous_id\":\"syn\",\"turn_id\":\"t1\"}\n\n",
@@ -580,6 +581,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_message_http_error_preserves_pylon_envelope() {
+        crate::install_test_crypto_provider();
         let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
         let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", body);
         let client = build_streaming_client(None).expect("build streaming test client");

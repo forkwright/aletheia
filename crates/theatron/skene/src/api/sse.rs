@@ -647,6 +647,7 @@ mod tests {
 
     #[tokio::test]
     async fn connection_receives_domain_event_sse_response() {
+        crate::install_test_crypto_provider();
         let body = concat!(
             "event: fact.created\n",
             "data: {\"fact_id\":\"f1\",\"nous_id\":\"syn\",\"content_preview\":\"hello\"}\n\n",
