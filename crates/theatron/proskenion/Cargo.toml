@@ -118,7 +118,7 @@ serde_json = "1"
 tracing = "0.1"
 
 # Error handling
-snafu = "0.8"
+snafu = "0.9"
 
 # Futures
 futures-util = "0.3"

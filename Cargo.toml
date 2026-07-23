@@ -132,7 +132,7 @@ rayon = { version = "1", default-features = false }
 # standalone [workspace.dependencies] block; pin is mirrored there manually.
 
 # Error handling
-snafu = "0.8"
+snafu = "0.9"
 
 # Serialization
 serde_json = { version = "1", default-features = false, features = ["std"] }
