@@ -24,7 +24,8 @@ use hermeneus::types::Message;
 use crate::contradiction::ContradictionLog;
 use crate::distill::{DistillConfig, DistillEngine};
 use crate::error::{
-    DreamConsolidationTargetSnafu, DreamTranscriptSourceSnafu, ProbeVerificationSnafu, Result,
+    DreamConsolidationTargetSnafu, DreamLockJoinSnafu, DreamTranscriptSourceSnafu,
+    ProbeVerificationSnafu, Result,
 };
 use crate::flush::MemoryFlush;
 use crate::probe::{ProbeConfig, ProbeVerifier};
@@ -437,14 +438,19 @@ impl DreamEngine {
                 }) {
                 Ok(t) => t,
                 Err(e) => {
-                    acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
+                    // WHY: rollback issues blocking std::fs I/O; run it on the
+                    // blocking pool so this async task never stalls a Tokio
+                    // worker thread.
+                    run_lock_op(move || acquired.rollback())
+                        .await
+                        .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
                     return Err(e);
                 }
             };
 
         if transcripts.is_empty() {
             tracing::info!("no transcripts to consolidate");
-            acquired.mark_complete()?;
+            run_lock_op(move || acquired.mark_complete()).await?;
             return Ok(MergeReport::default());
         }
 
@@ -481,7 +487,12 @@ impl DreamEngine {
 
             if let Err(e) = self.verify_flush_grounding(&result.memory_flush, &transcript.messages)
             {
-                acquired.rollback().unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
+                // WHY: rollback issues blocking std::fs I/O; run it on the
+                // blocking pool so this async task never stalls a Tokio
+                // worker thread.
+                run_lock_op(move || acquired.rollback())
+                    .await
+                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
                 return Err(e);
             }
 
@@ -508,29 +519,14 @@ impl DreamEngine {
                 }
             }
 
-            // NOTE: mark contradicted facts for stale decay.
-            if !result.contradiction_log.is_empty() {
-                match target
-                    .mark_contradictions_stale(&result.contradiction_log, &transcript.nous_id)
-                    .context(DreamConsolidationTargetSnafu {
-                        context: "mark contradicted facts stale",
-                    }) {
-                    Ok(count) => {
-                        total_report.facts_stale = total_report.facts_stale.saturating_add(count);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            session_id = %transcript.session_id,
-                            error = %e,
-                            "stale marking failed for session, continuing"
-                        );
-                    }
-                }
-            }
+            Self::mark_contradictions_stale_into(target, &result, transcript, &mut total_report);
         }
 
         // NOTE: all transcripts processed; mark consolidation complete.
-        acquired.mark_complete()?;
+        // WHY: mark_complete issues blocking std::fs I/O; run it on the
+        // blocking pool so this async task never stalls a Tokio worker
+        // thread.
+        run_lock_op(move || acquired.mark_complete()).await?;
 
         Ok(total_report)
     }
@@ -539,6 +535,33 @@ impl DreamEngine {
     #[cfg(test)]
     pub(crate) fn set_last_scan_at(&self, ts: i64) {
         self.last_scan_at.store(ts, Ordering::Relaxed);
+    }
+
+    fn mark_contradictions_stale_into(
+        target: &dyn ConsolidationTarget,
+        result: &crate::distill::DistillResult,
+        transcript: &SessionTranscript,
+        total_report: &mut MergeReport,
+    ) {
+        if result.contradiction_log.is_empty() {
+            return;
+        }
+        match target
+            .mark_contradictions_stale(&result.contradiction_log, &transcript.nous_id)
+            .context(DreamConsolidationTargetSnafu {
+                context: "mark contradicted facts stale",
+            }) {
+            Ok(count) => {
+                total_report.facts_stale = total_report.facts_stale.saturating_add(count);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %transcript.session_id,
+                    error = %e,
+                    "stale marking failed for session, continuing"
+                );
+            }
+        }
     }
 
     fn verify_flush_grounding(&self, flush: &MemoryFlush, messages: &[Message]) -> Result<()> {
@@ -553,6 +576,27 @@ impl DreamEngine {
         }
         .fail()
     }
+}
+
+/// Run a blocking [`lock::AcquiredLock`] operation (`mark_complete`/`rollback`)
+/// on the Tokio blocking pool.
+///
+/// WHY: both operations perform synchronous `std::fs` I/O (open, seek,
+/// write, `set_times`, `remove_file`); running them inline on the async
+/// runtime thread that drives `run_consolidation` would stall a Tokio
+/// worker for the duration of the syscalls.
+///
+/// # Errors
+///
+/// Returns `DreamLockJoin` if the blocking task panicked, otherwise the
+/// inner operation's own `Result`.
+async fn run_lock_op<F>(op: F) -> Result<()>
+where
+    F: FnOnce() -> Result<()> + Send + 'static,
+{
+    tokio::task::spawn_blocking(op)
+        .await
+        .context(DreamLockJoinSnafu)?
 }
 
 fn format_probe_transcript(messages: &[Message]) -> String {
