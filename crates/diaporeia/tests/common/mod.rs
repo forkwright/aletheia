@@ -43,6 +43,7 @@ pub struct StateBuilder {
     signing_key: String,
     instance_root: tempfile::TempDir,
     repomix_enabled: bool,
+    repomix_workspace_root: Option<std::path::PathBuf>,
     knowledge_graph_enabled: bool,
     missing_auth_facade: bool,
     knowledge_store: Option<std::sync::Arc<mneme::knowledge_store::KnowledgeStore>>,
@@ -59,6 +60,7 @@ impl StateBuilder {
             signing_key: "integration-test-signing-key-at-least-32-bytes!".to_owned(),
             instance_root,
             repomix_enabled: false,
+            repomix_workspace_root: None,
             knowledge_graph_enabled: false,
             missing_auth_facade: false,
             knowledge_store: None,
@@ -79,6 +81,14 @@ impl StateBuilder {
 
     pub fn repomix_enabled(mut self) -> Self {
         self.repomix_enabled = true;
+        self
+    }
+
+    /// Set the configured repomix workspace root (the directory containing
+    /// the workspace `Cargo.toml`). Required for `repomix_pack` to reach the
+    /// real pack logic instead of the missing-config error.
+    pub fn repomix_workspace_root(mut self, root: std::path::PathBuf) -> Self {
+        self.repomix_workspace_root = Some(root);
         self
     }
 
@@ -159,6 +169,10 @@ impl StateBuilder {
         if self.repomix_enabled {
             cfg.mcp.repomix.enabled = true;
             cfg.mcp.repomix.max_output_tokens = 10_000;
+            cfg.mcp
+                .repomix
+                .workspace_root
+                .clone_from(&self.repomix_workspace_root);
         }
         if self.knowledge_graph_enabled {
             cfg.mcp.knowledge_graph.enabled = true;

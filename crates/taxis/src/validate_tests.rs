@@ -1513,6 +1513,102 @@ fn validate_startup_passes_with_complete_layout() {
     );
 }
 
+// --- validate_startup repomix workspace_root checks (#5612) ---
+
+#[test]
+fn validate_startup_rejects_repomix_enabled_without_workspace_root() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+    config.mcp.repomix.enabled = true;
+    config.mcp.repomix.workspace_root = None;
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains("mcp.repomix.workspaceRoot")),
+        "error should name the missing workspaceRoot config key: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_rejects_repomix_workspace_root_without_cargo_toml() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+    let bogus_root = tempfile::tempdir().unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+    config.mcp.repomix.enabled = true;
+    config.mcp.repomix.workspace_root = Some(bogus_root.path().to_path_buf());
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains("does not contain a Cargo.toml")),
+        "error should reject a workspaceRoot with no Cargo.toml: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_accepts_repomix_enabled_with_valid_workspace_root() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+    let workspace_root = tempfile::tempdir().unwrap();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test seeds a Cargo.toml into the temp workspace root so validate_startup accepts it"
+    )]
+    std::fs::write(workspace_root.path().join("Cargo.toml"), "[workspace]\n").unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+    config.mcp.repomix.enabled = true;
+    config.mcp.repomix.workspace_root = Some(workspace_root.path().to_path_buf());
+
+    // WHY: an empty agents.list still fails validation, so assert only that
+    // no repomix-related error appears — the workspace_root check is the
+    // subject of this test.
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().all(|e| !e.contains("repomix")),
+        "no repomix errors should be present with a valid workspace_root: {err:?}"
+    );
+}
+
+#[test]
+fn validate_startup_ignores_workspace_root_when_repomix_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join("nous")).unwrap();
+
+    let oikos = crate::oikos::Oikos::from_root(dir.path());
+    let mut config = AletheiaConfig::default();
+    config.agents.list.clear();
+    config.mcp.repomix.enabled = false;
+    config.mcp.repomix.workspace_root = None;
+
+    let err = validate_startup(&config, &oikos).unwrap_err();
+    assert!(
+        err.errors.iter().all(|e| !e.contains("repomix")),
+        "disabled repomix must not be checked for workspace_root: {err:?}"
+    );
+}
+
 #[test]
 fn validate_startup_rejects_agent_workspace_missing_soul() {
     let dir = tempfile::tempdir().unwrap();

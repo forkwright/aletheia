@@ -38,6 +38,16 @@ use taxis::oikos::Oikos;
 mod common;
 use common::{StateBuilder, issue_token};
 
+/// The real workspace root (directory containing the workspace `Cargo.toml`),
+/// resolved at compile time from this crate's manifest directory.
+fn workspace_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("crates/diaporeia has a workspace root two levels up")
+        .to_path_buf()
+}
+
 /// Build a test router in stateless+json mode.
 fn test_router(state: &Arc<DiaporeiaState>) -> axum::Router {
     let rate_cfg = state.config.try_read().unwrap().mcp.rate_limit.clone();
@@ -228,6 +238,7 @@ async fn repomix_pack_allows_operator_role() {
     let (state, jwt, _tmp) = StateBuilder::new()
         .auth_mode("token")
         .repomix_enabled()
+        .repomix_workspace_root(workspace_root())
         .build();
     let token = issue_token(&jwt, "bob", Role::Operator);
 
@@ -259,11 +270,61 @@ async fn repomix_pack_allows_operator_role() {
     let text = extract_tool_text(response)
         .await
         .expect("tool response text");
-    // The workspace root detection will fail because we're in a temp dir with no Cargo.toml.
-    // The tool should return a repomix pack error (internal error) rather than unauthorized.
     assert!(
-        text.contains("could not detect workspace root") || text.contains("packed_context"),
-        "Operator must reach the pack logic, got: {text}"
+        text.contains("packed_context"),
+        "Operator must reach the pack logic with a configured workspace_root, got: {text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn repomix_pack_fails_without_configured_workspace_root() {
+    // WHY: repomix_pack must resolve the workspace root from config, never
+    // from the process cwd — an enabled surface with no configured
+    // workspace_root must fail with a clear config error, not attempt any
+    // cwd-based detection.
+    let (state, jwt, _tmp) = StateBuilder::new()
+        .auth_mode("token")
+        .repomix_enabled()
+        .build();
+    let token = issue_token(&jwt, "bob", Role::Operator);
+
+    let router = test_router(&state);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header(header::HOST, "localhost")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json, text/event-stream")
+                .body(tool_call_request(
+                    1,
+                    "repomix_pack",
+                    &serde_json::json!({
+                        "crate_names": ["diaporeia"],
+                        "template": "single_crate",
+                    }),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let error = json.get("error").expect("error field must be present");
+    let message = error
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        message.contains("workspaceRoot"),
+        "missing workspace_root must surface a config error naming workspaceRoot, got: {message}"
     );
 }
 

@@ -238,24 +238,6 @@ pub(crate) fn pack(
     })
 }
 
-/// Detect the workspace root by walking up from the current directory.
-pub(crate) fn detect_workspace_root() -> Option<PathBuf> {
-    let mut current = std::env::current_dir().ok()?;
-    loop {
-        let cargo_toml = current.join("Cargo.toml");
-        if cargo_toml.exists()
-            && let Ok(content) = std::fs::read_to_string(&cargo_toml)
-            && (content.contains("[workspace]") || current.join("crates").is_dir())
-        {
-            return Some(current);
-        }
-        if !current.pop() {
-            break;
-        }
-    }
-    None
-}
-
 impl WorkspacePackages {
     fn load(workspace_root: &Path) -> Result<Self, crate::error::Error> {
         let root = std::fs::canonicalize(workspace_root).map_err(|e| {
