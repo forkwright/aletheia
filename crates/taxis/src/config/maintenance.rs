@@ -717,6 +717,14 @@ pub struct RepomixMcpConfig {
     /// When `None`, built-in templates (`single_crate`, `crate_with_deps`,
     /// `cross_crate`) are used.
     pub templates_dir: Option<String>,
+    /// Absolute path to the workspace root (the directory containing the
+    /// workspace `Cargo.toml`) used to resolve crate sources for `repomix_pack`.
+    ///
+    /// Required when `enabled` is `true` — `taxis::validate::validate_startup`
+    /// rejects a config that enables repomix without a resolvable
+    /// `workspace_root`. `None` by default; the daemon's process working
+    /// directory is never used to guess this location.
+    pub workspace_root: Option<PathBuf>,
 }
 
 impl Default for RepomixMcpConfig {
@@ -725,6 +733,7 @@ impl Default for RepomixMcpConfig {
             enabled: false,
             max_output_tokens: 128_000,
             templates_dir: None,
+            workspace_root: None,
         }
     }
 }

@@ -1475,7 +1475,9 @@ impl DiaporeiaServer {
     ///
     /// Uses native Rust compression (comment stripping, whitespace collapse)
     /// to approximate repomix output without requiring an external npm
-    /// binary. Respects `mcp.repomix.max_output_tokens` from config.
+    /// binary. Respects `mcp.repomix.max_output_tokens` and resolves crate
+    /// sources under the configured `mcp.repomix.workspace_root` — never the
+    /// daemon's process working directory.
     ///
     /// Requires `Operator` role or above because packing can be expensive
     /// and generates dispatch context.
@@ -1490,10 +1492,15 @@ impl DiaporeiaServer {
         require_role(self, &context, Role::Operator, "repomix_pack")?;
         let config = require_repomix(self).await?;
 
-        let workspace_root = crate::repomix::detect_workspace_root().ok_or_else(|| {
+        // NOTE: `validate_startup` rejects a config that enables repomix
+        // without a `workspace_root`, so this should be unreachable in a
+        // properly started instance; it remains a defense-in-depth guard
+        // against config mutated after startup (e.g. hot-reload).
+        let workspace_root = config.mcp.repomix.workspace_root.clone().ok_or_else(|| {
             rmcp::ErrorData::from(
                 RepomixPackSnafu {
-                    message: "could not detect workspace root (no Cargo.toml with [workspace])"
+                    message: "mcp.repomix.enabled is true but mcp.repomix.workspaceRoot is not \
+                              configured; set it in aletheia.toml"
                         .to_owned(),
                 }
                 .build(),

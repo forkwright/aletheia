@@ -120,6 +120,28 @@ pub fn validate_startup(config: &AletheiaConfig, oikos: &Oikos) -> Result<(), Va
         errors.extend(err.failures);
     }
 
+    // WHY: repomix_pack has no cwd-based fallback — a misconfigured instance
+    // must fail loudly at startup rather than error per-request in production.
+    if config.mcp.repomix.enabled {
+        match &config.mcp.repomix.workspace_root {
+            None => errors.push(
+                "mcp.repomix.enabled is true but mcp.repomix.workspaceRoot is not set\n  \
+                 help: set mcp.repomix.workspaceRoot to the absolute path of the workspace \
+                 directory containing Cargo.toml, or set mcp.repomix.enabled = false"
+                    .to_owned(),
+            ),
+            Some(root) => {
+                if !root.join("Cargo.toml").is_file() {
+                    errors.push(format!(
+                        "mcp.repomix.workspaceRoot '{}' does not contain a Cargo.toml\n  \
+                         help: point mcp.repomix.workspaceRoot at the workspace root directory",
+                        root.display()
+                    ));
+                }
+            }
+        }
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
