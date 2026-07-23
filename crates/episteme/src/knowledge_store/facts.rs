@@ -2072,8 +2072,7 @@ mod tests {
                 .get_string(row, "valid_to")
                 .expect("valid_to is a string");
             assert_eq!(
-                valid_to,
-                expected,
+                valid_to, expected,
                 "{id}: stored valid_to must match format_timestamp(&far_future()) byte-for-byte"
             );
         }

@@ -55,6 +55,8 @@ bookkeeper = ["organon/bookkeeper"]
 computer-use = ["organon/computer-use"]
 # Z3 SMT solver passthrough. Default off to avoid pulling bundled libz3.
 z3 = ["organon/z3"]
+# Test-support providers (mock embedding) for the full-stack smoke binary.
+test-support = ["mneme/test-support", "hermeneus/test-support"]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["mneme/test-core", "nous/test-core", "pylon/test-core"]
 test-full = ["test-core", "mneme/test-full", "online-tests"]
