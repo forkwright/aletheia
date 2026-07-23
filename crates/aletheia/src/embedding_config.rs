@@ -61,7 +61,7 @@ impl std::error::Error for EmbeddingConfigIssue {}
 
 fn provider_support(provider: &str) -> Option<ProviderSupport> {
     match provider {
-        "mock" if cfg!(test) => Some(ProviderSupport::Available),
+        "mock" if cfg!(any(test, feature = "test-support")) => Some(ProviderSupport::Available),
         "mock" => Some(ProviderSupport::MissingFeature("test-support")),
         "candle" if cfg!(feature = "embed-candle") => Some(ProviderSupport::Available),
         "candle" => Some(ProviderSupport::MissingFeature("embed-candle")),

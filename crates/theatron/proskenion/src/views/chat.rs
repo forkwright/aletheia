@@ -44,8 +44,8 @@ use crate::state::toasts::{ToastSeverity, ToastStore};
 use crate::state::view_preservation::{PreservedViewState, ViewKey, ViewPreservationStore};
 use crate::views::chat_helpers::{format_tool_call, render_approval};
 use crate::views::chat_selection::{
-    activate_chat_selection, history_messages_to_legacy, oldest_history_seq, parse_history_messages,
-    resolve_chat_session_key,
+    activate_chat_selection, history_messages_to_legacy, oldest_history_seq,
+    parse_history_messages, resolve_chat_session_key,
 };
 
 /// Estimated message height in pixels for virtual scroll calculations.
@@ -619,10 +619,8 @@ pub(crate) fn Chat() -> Element {
             return;
         };
 
-        let session_key = resolve_chat_session_key(
-            &active_nous_id,
-            legacy_state.read().session_key.as_deref(),
-        );
+        let session_key =
+            resolve_chat_session_key(&active_nous_id, legacy_state.read().session_key.as_deref());
 
         // WHY: Set streaming flag BEFORE spawning to prevent double-submit race.
         // Without this, rapid Ctrl+Enter could spawn two concurrent tasks.

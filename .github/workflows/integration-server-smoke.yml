@@ -66,7 +66,7 @@ jobs:
           chmod 0600 ~/.git-credentials
 
       - name: Build aletheia binary
-        run: cargo build -p aletheia
+        run: cargo build -p aletheia --features test-support
 
       - name: Run ignored full-stack smoke test
-        run: cargo test -p aletheia --test integration_server -- --include-ignored
+        run: cargo test -p aletheia --test integration_server --features test-support -- --include-ignored
