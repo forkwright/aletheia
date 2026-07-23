@@ -519,25 +519,7 @@ impl DreamEngine {
                 }
             }
 
-            // NOTE: mark contradicted facts for stale decay.
-            if !result.contradiction_log.is_empty() {
-                match target
-                    .mark_contradictions_stale(&result.contradiction_log, &transcript.nous_id)
-                    .context(DreamConsolidationTargetSnafu {
-                        context: "mark contradicted facts stale",
-                    }) {
-                    Ok(count) => {
-                        total_report.facts_stale = total_report.facts_stale.saturating_add(count);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            session_id = %transcript.session_id,
-                            error = %e,
-                            "stale marking failed for session, continuing"
-                        );
-                    }
-                }
-            }
+            Self::mark_contradictions_stale_into(target, &result, transcript, &mut total_report);
         }
 
         // NOTE: all transcripts processed; mark consolidation complete.
@@ -553,6 +535,33 @@ impl DreamEngine {
     #[cfg(test)]
     pub(crate) fn set_last_scan_at(&self, ts: i64) {
         self.last_scan_at.store(ts, Ordering::Relaxed);
+    }
+
+    fn mark_contradictions_stale_into(
+        target: &dyn ConsolidationTarget,
+        result: &crate::distill::DistillResult,
+        transcript: &SessionTranscript,
+        total_report: &mut MergeReport,
+    ) {
+        if result.contradiction_log.is_empty() {
+            return;
+        }
+        match target
+            .mark_contradictions_stale(&result.contradiction_log, &transcript.nous_id)
+            .context(DreamConsolidationTargetSnafu {
+                context: "mark contradicted facts stale",
+            }) {
+            Ok(count) => {
+                total_report.facts_stale = total_report.facts_stale.saturating_add(count);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %transcript.session_id,
+                    error = %e,
+                    "stale marking failed for session, continuing"
+                );
+            }
+        }
     }
 
     fn verify_flush_grounding(&self, flush: &MemoryFlush, messages: &[Message]) -> Result<()> {
