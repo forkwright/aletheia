@@ -135,7 +135,7 @@ mod tests {
     fn invalid_id_error_display() {
         let err = Error::InvalidId {
             message: "bad format".to_owned(),
-            location: snafu::Location::new("test", 0, 0),
+            location: snafu::location!(),
         };
         assert!(err.to_string().contains("bad format"));
     }

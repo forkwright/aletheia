@@ -165,7 +165,7 @@ pub fn register_pack_tools_with_sandbox(
                             tool_name: tool_def.name.clone(),
                             pack_name: pack.manifest.name.clone(),
                             reason: e.to_string(),
-                            location: snafu::Location::new(file!(), line!(), column!()),
+                            location: snafu::location!(),
                         };
                         errors.push(err);
                     }
@@ -214,7 +214,7 @@ fn prepare_tool(
         tool_name: tool_def.name.clone(),
         pack_name: pack_name.to_owned(),
         reason: e.to_string(),
-        location: snafu::Location::new(file!(), line!(), column!()),
+        location: snafu::location!(),
     })?;
 
     let def = ToolDef {
@@ -307,7 +307,7 @@ fn tool_registration_error(
         tool_name: tool_def.name.clone(),
         pack_name: pack_name.to_owned(),
         reason,
-        location: snafu::Location::new(file!(), line!(), column!()),
+        location: snafu::location!(),
     }
 }
 
@@ -320,7 +320,7 @@ fn validate_command_path(pack_root: &Path, command: &str) -> Result<PathBuf, err
             .canonicalize()
             .map_err(|_io_err| error::Error::ToolCommandNotFound {
                 path: resolved.clone(),
-                location: snafu::Location::new(file!(), line!(), column!()),
+                location: snafu::location!(),
             })?;
 
     let canonical_root =
@@ -328,13 +328,13 @@ fn validate_command_path(pack_root: &Path, command: &str) -> Result<PathBuf, err
             .canonicalize()
             .map_err(|_io_err| error::Error::ToolCommandNotFound {
                 path: pack_root.to_path_buf(),
-                location: snafu::Location::new(file!(), line!(), column!()),
+                location: snafu::location!(),
             })?;
 
     if !canonical.starts_with(&canonical_root) {
         return Err(error::Error::ToolCommandEscape {
             path: resolved,
-            location: snafu::Location::new(file!(), line!(), column!()),
+            location: snafu::location!(),
         });
     }
 
@@ -380,7 +380,7 @@ fn parse_property_type(type_name: &str, tool_name: &str) -> Result<PropertyType,
         _ => Err(error::Error::UnknownPropertyType {
             type_name: type_name.to_owned(),
             tool_name: tool_name.to_owned(),
-            location: snafu::Location::new(file!(), line!(), column!()),
+            location: snafu::location!(),
         }),
     }
 }

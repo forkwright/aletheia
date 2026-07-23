@@ -215,7 +215,7 @@ mod tests {
     fn convert_llm_auth_error() {
         let err = crate::error::Error::Llm {
             source: hermeneus::error::AuthFailedSnafu { message: "bad key" }.build(),
-            location: snafu::Location::new("test", 1, 1),
+            location: snafu::location!(),
         };
         let uf = to_user_facing(&err).expect("should convert");
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
@@ -228,7 +228,7 @@ mod tests {
                 retry_after_ms: 5000_u64,
             }
             .build(),
-            location: snafu::Location::new("test", 1, 1),
+            location: snafu::location!(),
         };
         let uf = to_user_facing(&err).expect("should convert");
         match uf {
@@ -249,7 +249,7 @@ mod tests {
                 context: hermeneus::error::ApiErrorContext::empty(),
             }
             .build(),
-            location: snafu::Location::new("test", 1, 1),
+            location: snafu::location!(),
         };
         let uf = to_user_facing(&err).expect("should convert");
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
@@ -262,7 +262,7 @@ mod tests {
                 message: "connection refused",
             }
             .build(),
-            location: snafu::Location::new("test", 1, 1),
+            location: snafu::location!(),
         };
         let uf = to_user_facing(&err).expect("should convert");
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
@@ -273,7 +273,7 @@ mod tests {
         let err = crate::error::Error::PipelineStage {
             stage: "execute".to_owned(),
             message: "provider 'anthropic' is currently unavailable".to_owned(),
-            location: snafu::Location::new("test", 1, 1),
+            location: snafu::location!(),
         };
         let uf = to_user_facing(&err).expect("should convert");
         assert!(matches!(uf, UserFacingError::ProviderUnavailable { .. }));
@@ -283,7 +283,7 @@ mod tests {
     fn convert_internal_error_returns_none() {
         let err = crate::error::Error::ActorSend {
             message: "actor shut down".to_owned(),
-            location: snafu::Location::new("test", 1, 1),
+            location: snafu::location!(),
         };
         assert!(to_user_facing(&err).is_none());
     }
