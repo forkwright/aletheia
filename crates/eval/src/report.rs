@@ -2,7 +2,6 @@
 
 use owo_colors::OwoColorize;
 use serde::Serialize;
-use tracing::info;
 
 use crate::coverage::{self, SkipClass, SkipKind, Summary};
 use crate::provenance::EvalProvenance;
@@ -25,12 +24,12 @@ fn print_report_inner(report: &RunReport, base_url: &str, coverage: Option<&Summ
     let use_color = supports_color::on(supports_color::Stream::Stdout).is_some();
 
     if use_color {
-        info!("{} — {}", "Behavioral Eval".bold(), base_url.dimmed());
+        println!("{} — {}", "Behavioral Eval".bold(), base_url.dimmed());
     } else {
-        info!("Behavioral Eval — {base_url}");
+        println!("Behavioral Eval — {base_url}");
     }
-    info!("{}", "\u{2501}".repeat(39));
-    info!("");
+    println!("{}", "\u{2501}".repeat(39));
+    println!();
 
     let mut current_category = "";
 
@@ -38,9 +37,9 @@ fn print_report_inner(report: &RunReport, base_url: &str, coverage: Option<&Summ
         if result.meta.category != current_category {
             current_category = result.meta.category;
             if use_color {
-                info!("  {}:", current_category.bold());
+                println!("  {}:", current_category.bold());
             } else {
-                info!("  {current_category}:");
+                println!("  {current_category}:");
             }
         }
 
@@ -48,38 +47,38 @@ fn print_report_inner(report: &RunReport, base_url: &str, coverage: Option<&Summ
             ScenarioOutcome::Passed { duration } => {
                 let ms = duration.as_millis();
                 if use_color {
-                    info!(
+                    println!(
                         "    {}  {:<40} {}",
                         "PASS".green(),
                         result.meta.id,
                         format!("{ms}ms").dimmed()
                     );
                 } else {
-                    info!("    PASS  {:<40} {ms}ms", result.meta.id);
+                    println!("    PASS  {:<40} {ms}ms", result.meta.id);
                 }
             }
             ScenarioOutcome::Failed { duration, error } => {
                 let ms = duration.as_millis();
                 if use_color {
-                    info!(
+                    println!(
                         "    {}  {:<40} {}",
                         "FAIL".red(),
                         result.meta.id,
                         format!("{ms}ms").dimmed()
                     );
-                    info!("          {}", error.to_string().red());
+                    println!("          {}", error.to_string().red());
                 } else {
-                    info!("    FAIL  {:<40} {ms}ms", result.meta.id);
-                    info!("          {error}");
+                    println!("    FAIL  {:<40} {ms}ms", result.meta.id);
+                    println!("          {error}");
                 }
             }
             ScenarioOutcome::Skipped { reason } => {
                 if use_color {
-                    info!("    {}  {}", "SKIP".yellow(), result.meta.id,);
-                    info!("          {}", reason.dimmed());
+                    println!("    {}  {}", "SKIP".yellow(), result.meta.id);
+                    println!("          {}", reason.dimmed());
                 } else {
-                    info!("    SKIP  {}", result.meta.id);
-                    info!("          {reason}");
+                    println!("    SKIP  {}", result.meta.id);
+                    println!("          {reason}");
                 }
             }
         }
@@ -87,12 +86,12 @@ fn print_report_inner(report: &RunReport, base_url: &str, coverage: Option<&Summ
         for sub in &result.sub_results {
             let sub_icon = if sub.passed { "  ✓" } else { "  ✗" };
             let sub_label = format_sub_result(sub);
-            info!("      {sub_icon} {sub_label}");
+            println!("      {sub_icon} {sub_label}");
         }
     }
 
-    info!("");
-    info!("{}", "\u{2501}".repeat(39));
+    println!();
+    println!("{}", "\u{2501}".repeat(39));
 
     let total_secs = report.total_duration.as_secs_f64();
     let summary = format!(
@@ -102,12 +101,12 @@ fn print_report_inner(report: &RunReport, base_url: &str, coverage: Option<&Summ
 
     if use_color {
         if report.failed > 0 {
-            info!("{}", summary.red().bold());
+            println!("{}", summary.red().bold());
         } else {
-            info!("{}", summary.green().bold());
+            println!("{}", summary.green().bold());
         }
     } else {
-        info!("{summary}");
+        println!("{summary}");
     }
 
     if let Some(coverage) = coverage {
@@ -126,18 +125,18 @@ fn print_coverage_summary(summary: &Summary, use_color: bool) {
         coverage::format_bps(summary.required_skip_ratio_bps)
     );
     if use_color && !summary.passed {
-        info!("{}", coverage_summary.red().bold());
+        println!("{}", coverage_summary.red().bold());
     } else if use_color {
-        info!("{}", coverage_summary.green().bold());
+        println!("{}", coverage_summary.green().bold());
     } else {
-        info!("{coverage_summary}");
+        println!("{coverage_summary}");
     }
 
     for violation in summary.violation_messages() {
         if use_color {
-            info!("  {}", violation.red());
+            println!("  {}", violation.red());
         } else {
-            info!("  {violation}");
+            println!("  {violation}");
         }
     }
 }
@@ -156,23 +155,30 @@ fn format_sub_result(sub: &ScenarioSubResult) -> String {
 }
 
 /// Print the report as JSON for machine consumption.
+///
+/// WHY: written directly to stdout via `println!`, not `tracing::info!` — the
+/// JSON payload is a program output, not a diagnostic event, and must stay
+/// parseable regardless of tracing subscriber configuration (or its absence,
+/// as on the plain CLI eval path).
 #[tracing::instrument(skip_all)]
 pub fn print_report_json(report: &RunReport) {
     let json_report = build_json_report(report, None);
 
     match serde_json::to_string_pretty(&json_report) {
-        Ok(json) => info!("{json}"),
+        Ok(json) => println!("{json}"),
         Err(e) => tracing::error!(error = %e, "failed to serialize eval report as JSON"),
     }
 }
 
 /// Print the report as JSON with coverage policy details.
+///
+/// WHY: see [`print_report_json`] — stdout, not tracing, for the payload.
 #[tracing::instrument(skip_all)]
 pub fn print_report_json_with_coverage(report: &RunReport, coverage: &Summary) {
     let json_report = build_json_report(report, Some(coverage));
 
     match serde_json::to_string_pretty(&json_report) {
-        Ok(json) => info!("{json}"),
+        Ok(json) => println!("{json}"),
         Err(e) => tracing::error!(error = %e, "failed to serialize eval report as JSON"),
     }
 }
