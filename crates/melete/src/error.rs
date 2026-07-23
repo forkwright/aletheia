@@ -50,6 +50,14 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Blocking-pool task running a consolidation lock operation panicked.
+    #[snafu(display("consolidation lock task panicked: {source}"))]
+    DreamLockJoin {
+        source: tokio::task::JoinError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Consolidation lock is held by another active process.
     #[snafu(display("consolidation lock held by PID {pid}"))]
     DreamLockHeld {
