@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::consolidation::ConsolidationResult;
+use crate::engine::DataValue;
 use crate::test_fixtures::{make_entity, make_fact, make_store};
 
 // kanon:ignore RUST/doc-promised-observability — doc comment describes data-flow invariants, not tracing
@@ -520,4 +521,102 @@ fn multi_batch_consolidation_supersedes_sources_with_their_own_batch_fact() {
         2,
         "two batches must produce two distinct supersession targets"
     );
+}
+
+/// The `consolidation_audit` shape in force before #6380 added `nous_id`.
+/// `KnowledgeStore::open_mem` always builds the current schema (`nous_id`
+/// baked in via `CONSOLIDATION_AUDIT_DDL`), so a real legacy table has to be
+/// recreated by hand to exercise the backfill branch under test.
+const PRE_6380_CONSOLIDATION_AUDIT_DDL: &str = r":create consolidation_audit {
+    id: String =>
+    trigger_type: String,
+    trigger_id: String,
+    original_count: Int,
+    consolidated_count: Int,
+    original_fact_ids: String,
+    consolidated_fact_ids: String,
+    consolidated_at: String
+}";
+
+/// Insert one row into a pre-#6380 `consolidation_audit` table (no `nous_id`
+/// column).
+fn insert_pre_6380_audit_row(store: &KnowledgeStore, id: &str, consolidated_at: &str) {
+    let script = r"
+?[id, trigger_type, trigger_id, original_count, consolidated_count,
+   original_fact_ids, consolidated_fact_ids, consolidated_at] <-
+    [[$id, 'entity_overflow', 'entity-legacy', 3, 1, '[]', '[]', $consolidated_at]]
+
+:put consolidation_audit {id => trigger_type, trigger_id, original_count,
+                          consolidated_count, original_fact_ids,
+                          consolidated_fact_ids, consolidated_at}
+";
+    let mut params = BTreeMap::new();
+    params.insert("id".to_owned(), DataValue::Str(id.into()));
+    params.insert(
+        "consolidated_at".to_owned(),
+        DataValue::Str(consolidated_at.into()),
+    );
+    store
+        .run_mut_query(script, params)
+        .expect("insert pre-#6380 audit row");
+}
+
+/// Requirement #6384: `ensure_consolidation_audit_owner_scope` must migrate a
+/// genuine pre-#6380 `consolidation_audit` table (no `nous_id` column at
+/// all), not the current schema that already bakes the column in. Every
+/// legacy row must survive the migration, and each must land with
+/// `nous_id == ""` — the conservative default, since a legacy row does not
+/// reliably prove a single owner (#6380).
+#[test]
+fn ensure_consolidation_audit_owner_scope_backfills_pre_6380_table() {
+    let store = make_store();
+
+    // `make_store` builds the CURRENT schema (nous_id already baked in via
+    // `init_schema` -> `CONSOLIDATION_AUDIT_DDL`). Drop it and recreate the
+    // relation in the exact pre-#6380 shape so the backfill branch has a
+    // real legacy table to migrate, rather than a no-op over the current one.
+    store
+        .run_mut_query("::remove consolidation_audit", BTreeMap::new())
+        .expect("drop current-schema consolidation_audit relation");
+    store
+        .run_mut_query(PRE_6380_CONSOLIDATION_AUDIT_DDL, BTreeMap::new())
+        .expect("recreate consolidation_audit in the pre-#6380 shape");
+
+    let legacy_ids = ["audit-legacy-1", "audit-legacy-2", "audit-legacy-3"];
+    for (i, id) in legacy_ids.iter().enumerate() {
+        insert_pre_6380_audit_row(&store, id, &format!("2026-01-0{}T00:00:00Z", i + 1));
+    }
+
+    store
+        .ensure_consolidation_audit_owner_scope()
+        .expect("migration must succeed against a real pre-#6380 table");
+
+    let rows = store
+        .run_query(
+            "?[id, nous_id] := *consolidation_audit{id, nous_id}",
+            BTreeMap::new(),
+        )
+        .expect("query migrated consolidation_audit rows");
+
+    assert_eq!(
+        rows.row_count(),
+        legacy_ids.len(),
+        "backfill must preserve every legacy row, not drop or duplicate any"
+    );
+
+    let mut migrated_ids = BTreeSet::new();
+    for i in 0..rows.row_count() {
+        assert_eq!(
+            rows.get_string(i, "nous_id").as_deref(),
+            Some(""),
+            "row {i} must backfill to the empty owner default, not an arbitrary nous"
+        );
+        migrated_ids.insert(rows.get_string(i, "id").expect("row has an id"));
+    }
+    for id in legacy_ids {
+        assert!(
+            migrated_ids.contains(id),
+            "legacy row {id} must survive the migration"
+        );
+    }
 }
