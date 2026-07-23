@@ -42,6 +42,15 @@ enum ShutdownOutcome {
     TimedOut,
 }
 
+/// One actor's shutdown-join bundle: its id, its optional join handle, and the
+/// two shared turn-state atoms the abort path must reset (#5735).
+type ShutdownJoin = (
+    String,
+    Option<JoinHandle<()>>,
+    Arc<AtomicBool>,
+    Arc<AtomicU64>,
+);
+
 struct ActorEntry {
     /// Wrapped in `Mutex<_>` so the manager can swap the handle for a restarted
     /// actor while the entry itself is accessed through a shared reference.
@@ -1082,16 +1091,15 @@ impl NousManager {
         // dropped at the end of this closure: an abort drops the actor future mid-turn,
         // skipping `finalize_turn`'s reset, which would otherwise leave a health-poller reading
         // stale busy state in the window before the drain completes. (#5735)
-        let joins: Vec<(String, Option<JoinHandle<()>>, Arc<AtomicBool>, Arc<AtomicU64>)> =
-            entries
-                .into_iter()
-                .map(|(id, e)| {
-                    let join = e.take_join();
-                    let active_turn = e.active_turn_arc();
-                    let turn_started_at_ms = e.turn_started_at_ms_arc();
-                    (id, join, active_turn, turn_started_at_ms)
-                })
-                .collect();
+        let joins: Vec<ShutdownJoin> = entries
+            .into_iter()
+            .map(|(id, e)| {
+                let join = e.take_join();
+                let active_turn = e.active_turn_arc();
+                let turn_started_at_ms = e.turn_started_at_ms_arc();
+                (id, join, active_turn, turn_started_at_ms)
+            })
+            .collect();
 
         for (id, handle) in &handles {
             if let Err(e) = handle.shutdown().await {
