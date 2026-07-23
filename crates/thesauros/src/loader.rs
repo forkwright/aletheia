@@ -218,14 +218,14 @@ fn resolve_single_section(
                 return Err(error::Error::ContextFileTooLarge {
                     path: file_path.clone(),
                     limit: MAX_CONTEXT_FILE_BYTES,
-                    location: snafu::Location::new(file!(), line!(), column!()),
+                    location: snafu::location!(),
                 });
             }
             Err(source) => {
                 return Err(error::Error::ReadFile {
                     path: file_path.clone(),
                     source,
-                    location: snafu::Location::new(file!(), line!(), column!()),
+                    location: snafu::location!(),
                 });
             }
         }

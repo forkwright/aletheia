@@ -177,7 +177,7 @@ pub(crate) fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
         toml::from_str(&contents).map_err(|e| error::Error::ParseManifest {
             path: manifest_path,
             reason: e.to_string(),
-            location: snafu::Location::new(file!(), line!(), column!()),
+            location: snafu::location!(),
         })?;
 
     validate_manifest(&manifest)?;
@@ -193,14 +193,14 @@ fn validate_manifest(manifest: &PackManifest) -> Result<()> {
     if !is_valid_pack_name(&manifest.name) {
         return Err(error::Error::InvalidPackName {
             name: manifest.name.clone(),
-            location: snafu::Location::new(file!(), line!(), column!()),
+            location: snafu::location!(),
         });
     }
 
     if manifest.version.is_empty() {
         return Err(error::Error::InvalidPackVersion {
             pack: manifest.name.clone(),
-            location: snafu::Location::new(file!(), line!(), column!()),
+            location: snafu::location!(),
         });
     }
 

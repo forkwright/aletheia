@@ -10,7 +10,7 @@
 
 use std::time::Duration;
 
-pub use skeue::{Toast, ToastAction, ToastId, ToastSeverity};
+pub use skeue::{Toast, ToastAction, ToastActionId, ToastId, ToastSeverity};
 
 /// Auto-dismiss duration for informational toasts.
 const DEFAULT_DISMISS_MS: u64 = 5_000;
@@ -155,7 +155,7 @@ mod tests {
             None,
             Some(ToastAction {
                 label: "Open".to_string(),
-                action_id: "open_file".to_string(),
+                action_id: ToastActionId("open_file".to_string()),
             }),
         );
         assert!(store.toasts()[0].auto_dismiss.is_none());

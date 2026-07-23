@@ -1473,6 +1473,7 @@ mod tests {
 
     #[test]
     fn build_signal_provider_uses_configured_signal_account() {
+        organon::testing::install_crypto_provider();
         let mut signal = SignalConfig::default();
         signal.accounts.insert(
             "default".to_owned(),

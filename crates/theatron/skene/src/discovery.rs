@@ -638,6 +638,7 @@ mod tests {
 
     #[tokio::test]
     async fn discovery_accepts_503_health_body() {
+        crate::install_test_crypto_provider();
         let url = spawn_probe_server(503, health_json_body("unhealthy")).await;
         let config = DiscoveryConfig::default().with_base_urls([url.clone()]);
         let discovered = discover_server_with_config(&config).await;

@@ -746,6 +746,7 @@ mod tests {
 
     #[test]
     fn run_openai_provider_updates_registry_config() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let _oikos = init_instance(&dir);
 
@@ -905,6 +906,7 @@ mod tests {
 
     #[test]
     fn run_rejects_duplicate_id_before_scaffolding() {
+        organon::testing::install_crypto_provider();
         let dir = tempfile::tempdir().unwrap();
         let _oikos = init_instance(&dir);
 

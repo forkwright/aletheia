@@ -5,7 +5,7 @@
 //! wired here.
 
 use dioxus::prelude::*;
-use themelion::theme::ThemeProvider;
+use themelion::ThemeProvider;
 
 use crate::layout::Layout;
 use crate::platform;

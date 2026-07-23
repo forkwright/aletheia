@@ -2583,6 +2583,7 @@ mod tests {
 
     #[tokio::test]
     async fn guard_knowledge_lock_accepts_well_formed_url_when_no_server() {
+        organon::testing::install_crypto_provider();
         // 127.0.0.1:1 is not bound — the reqwest call fails, but a well-formed
         // URL should pass the parse check and return Ok(()) (no server detected).
         let res = guard_knowledge_lock("http://127.0.0.1:1").await;

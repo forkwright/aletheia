@@ -105,7 +105,7 @@ mod tests {
     use super::*;
 
     fn install_crypto() {
-        let _ = rustls::crypto::ring::default_provider().install_default();
+        crate::install_test_crypto_provider();
     }
 
     fn health_body(status: &str, check_status: &str) -> String {

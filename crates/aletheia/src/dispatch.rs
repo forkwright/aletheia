@@ -1322,6 +1322,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn blackboard_command_uses_session_adapter() {
+        organon::testing::install_crypto_provider();
         let (_dir, oikos) = make_oikos();
         let session_store = Arc::new(Mutex::new(
             SessionStore::open_in_memory().expect("in-memory session store"),

@@ -144,7 +144,7 @@ mod tests {
     fn pack_not_found_display() {
         let err = Error::PackNotFound {
             path: PathBuf::from("/missing/pack"),
-            location: snafu::Location::new("test", 0, 0),
+            location: snafu::location!(),
         };
         assert!(err.to_string().contains("/missing/pack"));
     }
@@ -167,7 +167,7 @@ mod tests {
         let err = Error::ParseManifest {
             path: PathBuf::from("/some/pack.toml"),
             reason: "expected mapping".to_owned(),
-            location: snafu::Location::new("test", 0, 0),
+            location: snafu::location!(),
         };
         let msg = err.to_string();
         assert!(msg.contains("pack.toml"));

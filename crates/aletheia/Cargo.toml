@@ -124,6 +124,7 @@ toml_edit = "0.25"
 assert_cmd = "2"
 predicates = "3"
 hermeneus = { path = "../hermeneus", features = ["test-support"] }
+organon = { path = "../organon", features = ["test-support"] }
 mneme = { path = "../mneme", features = ["test-support"] }
 rmp-serde = "1.2"
 serde_json = { workspace = true }

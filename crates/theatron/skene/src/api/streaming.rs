@@ -27,6 +27,35 @@ use super::error::{
 /// for a consistent timeout policy across both connection types.
 pub const STREAM_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
+/// Read a non-success streaming response and surface it as
+/// [`StreamEvent::Error`], including the retry-after hint on 429s without a
+/// pylon error envelope.
+async fn send_http_error(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent>) {
+    let status = resp.status();
+    let reason = status.canonical_reason().unwrap_or("Unknown");
+    let retry_after_secs = (status == StatusCode::TOO_MANY_REQUESTS)
+        .then(|| parse_retry_after_secs(resp.headers()))
+        .flatten();
+    let body = match resp.text().await {
+        Ok(body) => body,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to read stream error response body");
+            String::new()
+        }
+    };
+    let has_pylon_envelope = parse_pylon_error_envelope(status.as_u16(), &body).is_some();
+    let mut message = format_http_error_body(status.as_u16(), reason, &body);
+    if status == StatusCode::TOO_MANY_REQUESTS
+        && !has_pylon_envelope
+        && let Some(secs) = retry_after_secs
+    {
+        message = format!("{message} (retry after {secs}s)");
+    }
+    if tx.send(StreamEvent::Error(message)).await.is_err() {
+        tracing::debug!("stream receiver dropped before HTTP error");
+    }
+}
+
 /// Streams a turn response from POST /api/v1/sessions/stream.
 /// Returns a channel that yields parsed `StreamEvent`s.
 ///
@@ -84,29 +113,7 @@ pub fn stream_message(
         };
 
         if !resp.status().is_success() {
-            let status = resp.status();
-            let reason = status.canonical_reason().unwrap_or("Unknown");
-            let retry_after_secs = (status == StatusCode::TOO_MANY_REQUESTS)
-                .then(|| parse_retry_after_secs(resp.headers()))
-                .flatten();
-            let body = match resp.text().await {
-                Ok(body) => body,
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to read stream error response body");
-                    String::new()
-                }
-            };
-            let has_pylon_envelope = parse_pylon_error_envelope(status.as_u16(), &body).is_some();
-            let mut message = format_http_error_body(status.as_u16(), reason, &body);
-            if status == StatusCode::TOO_MANY_REQUESTS
-                && !has_pylon_envelope
-                && let Some(secs) = retry_after_secs
-            {
-                message = format!("{message} (retry after {secs}s)");
-            }
-            if tx.send(StreamEvent::Error(message)).await.is_err() {
-                tracing::debug!("stream receiver dropped before HTTP error");
-            }
+            send_http_error(resp, &tx).await;
             return;
         }
 
@@ -115,7 +122,18 @@ pub fn stream_message(
         loop {
             let maybe_event = tokio::time::timeout(STREAM_READ_TIMEOUT, es.next()).await;
             let event = match maybe_event {
-                Ok(Some(event)) => event,
+                Ok(Some(Ok(event))) => event,
+                Ok(Some(Err(e))) => {
+                    // WHY: keryx v1.4.0 yields Result<SseEvent, SseError> so a
+                    // mid-stream transport failure is observable. Surface it
+                    // as a stream error instead of letting the truncated feed
+                    // pass for a clean end-of-stream.
+                    tracing::warn!(error = %e, "stream read failed");
+                    if tx.send(StreamEvent::Error(e.to_string())).await.is_err() {
+                        tracing::debug!("stream receiver dropped before transport error");
+                    }
+                    break;
+                }
                 Ok(None) => break,
                 Err(_elapsed) => {
                     // WHY: No event received within STREAM_READ_TIMEOUT. A healthy
@@ -521,6 +539,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_read_loop_delivers_completion_after_error_event() {
+        crate::install_test_crypto_provider();
         let body = concat!(
             "event: message_start\n",
             "data: {\"type\":\"message_start\",\"session_id\":\"s1\",\"nous_id\":\"syn\",\"turn_id\":\"t1\"}\n\n",
@@ -562,6 +581,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_message_http_error_preserves_pylon_envelope() {
+        crate::install_test_crypto_provider();
         let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
         let (base_url, server) = serve_http_error_once("422 Unprocessable Entity", body);
         let client = build_streaming_client(None).expect("build streaming test client");

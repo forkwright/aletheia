@@ -45,6 +45,7 @@ pub use crate::state::{
 #[cfg(test)]
 use crate::theme::THEME;
 use crate::theme::Theme;
+use crate::theme::ThemeMode;
 use crate::update::extract_text_content;
 use crate::view;
 
@@ -274,7 +275,7 @@ impl App {
             config.token.as_ref().map(|t| t.expose_secret().to_owned()),
         )?;
 
-        let theme = Theme::for_mode(config.theme);
+        let theme = Theme::for_mode(config.theme.and_then(ThemeMode::forced));
         tracing::info!(depth = ?theme.depth, mode = ?theme.mode, "theme initialized");
 
         let command_history = load_command_history(&config);

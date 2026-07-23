@@ -51,7 +51,7 @@ pub(crate) fn ToastContainer() -> Element {
                         toast,
                         on_dismiss: move |id: ToastId| { store.write().dismiss(id); },
                         on_action: move |action: ToastAction| {
-                            if let Some(nav) = navigation::parse_action_id(&action.action_id)
+                            if let Some(nav) = navigation::parse_action_id(&action.action_id.0)
                                 && let Some(mut sig) = try_consume_context::<Signal<Option<NavAction>>>()
                             {
                                 sig.set(Some(nav));

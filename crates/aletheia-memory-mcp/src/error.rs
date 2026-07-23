@@ -139,7 +139,7 @@ mod tests {
         let raw = serde_json::from_str::<serde_json::Value>("{invalid").unwrap_err();
         let err = Error::Serialization {
             source: raw,
-            location: snafu::Location::new("test", 0, 0),
+            location: snafu::location!(),
         };
         let mcp: rmcp::ErrorData = err.into();
         assert_eq!(mcp.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
