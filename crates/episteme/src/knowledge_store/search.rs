@@ -1217,6 +1217,13 @@ impl KnowledgeStore {
             }
         }
 
+        // WHY (#5852): the tiered path built RecallResult with graph_importance
+        // hard-coded to 0.0 and never enriched it, unlike search_vectors /
+        // search_text_for_recall — silently discarding PageRank centrality from
+        // the production recall ranking factor.
+        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        self.enrich_recall_results(&mut recalled, &graph_ctx);
+
         Ok(crate::query_rewrite::TieredSearchResult {
             tier: tiered.tier,
             results: recalled,
@@ -1271,6 +1278,12 @@ impl KnowledgeStore {
                 break;
             }
         }
+
+        // WHY (#5852): see search_tiered_for_recall — the scoped path had the
+        // same graph_importance gap, and this is nous's exclusive production
+        // recall route (search_impl.rs), so the ranking factor was inert.
+        let graph_ctx = self.load_graph_context().unwrap_or_default();
+        self.enrich_recall_results(&mut recalled, &graph_ctx);
 
         Ok(crate::query_rewrite::TieredSearchResult {
             tier: tiered.tier,

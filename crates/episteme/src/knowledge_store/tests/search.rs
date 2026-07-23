@@ -645,6 +645,150 @@ async fn search_vectors_async_works() {
     assert!(!results.is_empty());
 }
 
+/// #5852: `search_tiered_for_recall` must enrich `graph_importance` from the
+/// `graph_scores` relation like the other recall search paths, not leave it
+/// hard-coded at 0.0.
+#[test]
+fn search_tiered_for_recall_enriches_graph_importance() {
+    struct UnusedRewriteProvider;
+    impl crate::query_rewrite::RewriteProvider for UnusedRewriteProvider {
+        fn complete(
+            &self,
+            _system: &str,
+            _user_message: &str,
+        ) -> Result<String, crate::query_rewrite::RewriteError> {
+            panic!("fast-path tiered search must not invoke the rewrite provider")
+        }
+    }
+
+    let store = make_store();
+
+    let fact = make_fact("f-hub", "alice", "graph importance regression fact keyword");
+    store.insert_fact(&fact).expect("insert fact");
+
+    let entity = make_entity("entity-hub", "Hub Entity", "topic");
+    store.insert_entity(&entity).expect("insert entity");
+    store
+        .insert_fact_entity(&fact.id, &entity.id)
+        .expect("link fact to entity");
+
+    store
+        .run_mut_query(
+            r#"
+            ?[entity_id, score_type, score, cluster_id, updated_at] <- [
+                ["entity-hub", "pagerank", 0.87, -1, "2026-06-01T00:00:00Z"]
+            ]
+            :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+            "#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed pagerank score");
+
+    let base_query = crate::knowledge_store::HybridQuery {
+        text: "graph importance regression fact keyword".to_owned(),
+        embedding: vec![0.5, 0.5, 0.5, 0.5],
+        seed_entities: Vec::new(),
+        limit: 5,
+        ef: 20,
+    };
+    let rewriter = crate::query_rewrite::QueryRewriter::with_defaults();
+    let provider = UnusedRewriteProvider;
+    // WHY: force the fast path so the never-called rewrite provider is never invoked.
+    let config = crate::query_rewrite::TieredSearchConfig {
+        fast_path_min_results: 1,
+        fast_path_score_threshold: 0.0,
+        ..Default::default()
+    };
+
+    let tiered = store
+        .search_tiered_for_recall(&base_query, &rewriter, &provider, None, &config)
+        .expect("tiered recall for fact");
+
+    let hub = tiered
+        .results
+        .iter()
+        .find(|r| r.source_id.as_str() == "f-hub")
+        .expect("hub fact present in tiered recall results");
+    assert!(
+        hub.graph_importance > 0.0,
+        "tiered recall must enrich graph_importance from graph_scores, got {}",
+        hub.graph_importance
+    );
+}
+
+/// #5852: `search_tiered_for_recall_scoped` is nous's exclusive production
+/// recall route (`search_impl.rs`) and had the same `graph_importance` gap.
+#[test]
+fn search_tiered_for_recall_scoped_enriches_graph_importance() {
+    struct UnusedRewriteProvider;
+    impl crate::query_rewrite::RewriteProvider for UnusedRewriteProvider {
+        fn complete(
+            &self,
+            _system: &str,
+            _user_message: &str,
+        ) -> Result<String, crate::query_rewrite::RewriteError> {
+            panic!("fast-path tiered search must not invoke the rewrite provider")
+        }
+    }
+
+    let store = make_store();
+
+    let fact = make_fact(
+        "f-hub-scoped",
+        "alice",
+        "graph importance scoped regression fact keyword",
+    );
+    store.insert_fact(&fact).expect("insert fact");
+
+    let entity = make_entity("entity-hub-scoped", "Hub Entity Scoped", "topic");
+    store.insert_entity(&entity).expect("insert entity");
+    store
+        .insert_fact_entity(&fact.id, &entity.id)
+        .expect("link fact to entity");
+
+    store
+        .run_mut_query(
+            r#"
+            ?[entity_id, score_type, score, cluster_id, updated_at] <- [
+                ["entity-hub-scoped", "pagerank", 0.87, -1, "2026-06-01T00:00:00Z"]
+            ]
+            :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+            "#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed pagerank score");
+
+    let base_query = crate::knowledge_store::HybridQuery {
+        text: "graph importance scoped regression fact keyword".to_owned(),
+        embedding: vec![0.5, 0.5, 0.5, 0.5],
+        seed_entities: Vec::new(),
+        limit: 5,
+        ef: 20,
+    };
+    let rewriter = crate::query_rewrite::QueryRewriter::with_defaults();
+    let provider = UnusedRewriteProvider;
+    let config = crate::query_rewrite::TieredSearchConfig {
+        fast_path_min_results: 1,
+        fast_path_score_threshold: 0.0,
+        ..Default::default()
+    };
+
+    let tiered = store
+        .search_tiered_for_recall_scoped(&base_query, &rewriter, &provider, None, &config, "alice")
+        .expect("scoped tiered recall for fact");
+
+    let hub = tiered
+        .results
+        .iter()
+        .find(|r| r.source_id.as_str() == "f-hub-scoped")
+        .expect("hub fact present in scoped tiered recall results");
+    assert!(
+        hub.graph_importance > 0.0,
+        "scoped tiered recall must enrich graph_importance from graph_scores, got {}",
+        hub.graph_importance
+    );
+}
+
 mod correctness {
     use crate::knowledge::{EmbeddedChunk, ForgetReason};
     use crate::test_fixtures::{make_store, test_ts};
