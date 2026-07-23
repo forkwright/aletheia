@@ -33,7 +33,7 @@
 //! `metadata` method is provided for replay provenance without breaking the
 //! existing trait contract.
 
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -1636,12 +1636,6 @@ impl Deref for ProsocheAuditOutcome {
 
     fn deref(&self) -> &Self::Target {
         &self.report
-    }
-}
-
-impl DerefMut for ProsocheAuditOutcome {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.report
     }
 }
 

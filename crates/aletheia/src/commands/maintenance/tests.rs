@@ -8,7 +8,7 @@ use oikonomos::maintenance::{maintenance_task_by_id, manual_maintenance_task_ids
 use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 
-use super::build_config;
+use super::{build_config, resolve_example_root};
 
 static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -74,6 +74,25 @@ fn manual_registry_exposes_instance_backup_not_fjall_backup() {
         legacy.id(),
         "instance-backup",
         "legacy alias must point to instance-backup"
+    );
+}
+
+#[test]
+fn resolve_example_root_finds_sibling_when_present() {
+    // WHY: the sibling-discovery branch is the only branch of
+    // resolve_example_root that actually runs on a deployed binary; this
+    // test exercises it directly, without going through build_config or
+    // touching process cwd.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let instance_root = tmp.path().join("instance");
+    let sibling_example = tmp.path().join("instance.example");
+    std::fs::create_dir_all(&instance_root).expect("mkdir instance");
+    std::fs::create_dir_all(&sibling_example).expect("mkdir sibling example");
+
+    assert_eq!(
+        resolve_example_root(&instance_root),
+        sibling_example,
+        "sibling instance.example must be preferred when present"
     );
 }
 
