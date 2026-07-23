@@ -714,6 +714,77 @@ async fn shutdown_all_completes_cleanly_under_budget() {
     assert_eq!(mgr.count(), 0, "manager should be empty after shutdown");
 }
 
+/// An actor aborted mid-turn on the shutdown timeout path must have its
+/// shared `active_turn`/`turn_started_at_ms` atomics reset: `abort()` drops
+/// the actor future without running `finalize_turn`, so without an explicit
+/// reset a health-poller racing the drain window would read stale busy
+/// state. (#5735)
+#[tokio::test]
+async fn shutdown_all_timeout_resets_active_turn_after_abort() {
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager(oikos);
+
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+
+    // NOTE: capture Arc clones before shutdown drains `mgr.actors` — once
+    // `shutdown_all_with_timeout` takes ownership of the map, the ActorEntry
+    // (and its RwLock<Arc<_>> wrappers) is gone, so a post-shutdown assertion
+    // must go through Arcs taken up front, mirroring what a health-poller
+    // holding a pre-shutdown clone would observe.
+    let (active_turn, turn_started_at_ms) = {
+        let actors = &mgr.actors;
+        let entry = actors.get("syn").expect("actor registered");
+        // NOTE: simulate an actor mid-turn when shutdown begins.
+        entry
+            .active_turn
+            .read()
+            .expect("active_turn lock")
+            .store(true, std::sync::atomic::Ordering::Release);
+        entry
+            .turn_started_at_ms
+            .read()
+            .expect("turn_started_at_ms lock")
+            .store(123, std::sync::atomic::Ordering::Release);
+        (entry.active_turn_arc(), entry.turn_started_at_ms_arc())
+    };
+
+    // WHY: swap in a task that outlives the shutdown budget so the
+    // timeout/abort branch is exercised deterministically, same technique as
+    // `shutdown_all_timeout_aborts_stuck_actor`.
+    let blocking_join: JoinHandle<()> = tokio::spawn(async {
+        // WHY: 1 hour sleep stands in for a stuck turn; the shutdown timeout
+        // path aborts this task long before it fires.
+        tokio::time::sleep(Duration::from_hours(1)).await;
+    });
+    {
+        let actors = &mgr.actors;
+        let entry = actors.get("syn").expect("actor registered");
+        let mut guard = entry
+            .join
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(original) = guard.take() {
+            original.abort();
+        }
+        *guard = Some(blocking_join);
+    }
+
+    mgr.shutdown_all_with_timeout(Duration::from_millis(250))
+        .await;
+
+    assert!(
+        !active_turn.load(std::sync::atomic::Ordering::Acquire),
+        "active_turn must be reset to false after abort-on-timeout"
+    );
+    assert_eq!(
+        turn_started_at_ms.load(std::sync::atomic::Ordering::Acquire),
+        0,
+        "turn_started_at_ms must be reset to 0 after abort-on-timeout"
+    );
+}
+
 #[test]
 fn backoff_calculation() {
     let max_secs = taxis::config::NousBehaviorConfig::default().manager_max_restart_backoff_secs;
