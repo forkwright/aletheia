@@ -191,3 +191,33 @@ pub(crate) enum Error {
         location: snafu::Location,
     },
 }
+
+/// Build a closure that maps a [`fjall::Error`] to [`Error::FjallOp`],
+/// tagged with `operation`. Shared by `dest.rs` and `verify.rs` so error
+/// construction stays in one place.
+pub(crate) fn fjall_op_err<S: Into<String>>(operation: S) -> impl FnOnce(fjall::Error) -> Error {
+    let op = operation.into();
+    move |e| {
+        FjallOpSnafu {
+            operation: op,
+            message: e.to_string(),
+        }
+        .build()
+    }
+}
+
+/// Build a closure that maps a [`fjall::Error`] to [`Error::FjallPartition`],
+/// tagged with `partition`. Shared by `dest.rs` and `verify.rs` so error
+/// construction stays in one place.
+pub(crate) fn fjall_partition_err<S: Into<String>>(
+    partition: S,
+) -> impl FnOnce(fjall::Error) -> Error {
+    let n = partition.into();
+    move |e| {
+        FjallPartitionSnafu {
+            partition: n,
+            message: e.to_string(),
+        }
+        .build()
+    }
+}
