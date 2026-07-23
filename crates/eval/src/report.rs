@@ -74,7 +74,7 @@ fn print_report_inner(report: &RunReport, base_url: &str, coverage: Option<&Summ
             }
             ScenarioOutcome::Skipped { reason } => {
                 if use_color {
-                    println!("    {}  {}", "SKIP".yellow(), result.meta.id,);
+                    println!("    {}  {}", "SKIP".yellow(), result.meta.id);
                     println!("          {}", reason.dimmed());
                 } else {
                     println!("    SKIP  {}", result.meta.id);
