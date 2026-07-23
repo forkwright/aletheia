@@ -347,6 +347,50 @@ fn no_args_does_not_panic() {
     assert_ne!(exit_code, 101, "aletheia exited with a panic exit code");
 }
 
+// ── Eval: --json stdout is parseable JSON, not tracing output ───────────────
+
+/// Regression test for #5397: eval report rendering used `tracing::info!` for
+/// `--json` output. On the plain CLI eval path no tracing subscriber is
+/// installed (only the `server` subcommand initializes one), so the report
+/// was silently dropped instead of reaching stdout as parseable JSON.
+#[test]
+fn eval_json_stdout_is_parseable_json_with_no_log_prefix() {
+    // Port 19999 has nothing listening; the scenario fails fast on connection
+    // refused, but the report must still be written to stdout as raw JSON.
+    let output = aletheia()
+        .args([
+            "eval",
+            "--url",
+            "http://127.0.0.1:19999",
+            "--scenario",
+            "health-returns-ok",
+            "--timeout",
+            "2",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run aletheia eval --json");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        !stdout.trim().is_empty(),
+        "eval --json must write the report to stdout, got empty output"
+    );
+    assert!(
+        !stdout.contains("INFO") && !stdout.contains("WARN") && !stdout.contains("ERROR"),
+        "eval --json stdout must not carry a tracing log-level prefix; got: {stdout}"
+    );
+
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap_or_else(|e| {
+        panic!("eval --json stdout is not parseable JSON: {e}\nstdout: {stdout}")
+    });
+    assert!(
+        parsed.get("results").is_some(),
+        "parsed eval report JSON should contain a results field; got: {parsed}"
+    );
+}
+
 // ── Backup verify ────────────────────────────────────────────────────────────
 
 #[test]
