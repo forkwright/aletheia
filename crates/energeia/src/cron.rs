@@ -16,6 +16,7 @@
 //! | `cron.fire.started` | info | `task_name`, `scheduled` | Fire state persisted as Started |
 //! | `cron.fire.finished` | info | `task_name`, `scheduled`, `succeeded` | Fire state persisted as Finished |
 //! | `cron.fire.stale` | warn | `task_name`, `started_at` | Started fire with no Finished record detected |
+//! | `cron.fire.outer_panic` | error | `error` | Outer fire task (tracked in `outer_tasks`) panicked or was aborted before completing |
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -371,6 +372,16 @@ pub struct CronScheduler {
     lock_store: Arc<CronLockStore>,
     overlap_policy: OverlapPolicy,
     in_flight: Arc<parking_lot::Mutex<HashSet<CompactString>>>,
+    /// Outer fire-task handles.
+    ///
+    /// WHY: `spawn_fire` previously discarded the outer `JoinHandle`
+    /// (fire-and-forget), so a panic in the outer task body — after the
+    /// inner callback task is awaited, e.g. during `record_fire_finished`
+    /// or `in_flight` removal — was only a Tokio `WARN` log and otherwise
+    /// unobservable. Tracking handles here and draining them in
+    /// `join_outer_tasks` at shutdown makes such a panic an auditable
+    /// error instead.
+    outer_tasks: parking_lot::Mutex<tokio::task::JoinSet<()>>,
 }
 
 impl CronScheduler {
@@ -383,6 +394,7 @@ impl CronScheduler {
             lock_store,
             overlap_policy: OverlapPolicy::default(),
             in_flight: Arc::new(parking_lot::Mutex::new(HashSet::new())),
+            outer_tasks: parking_lot::Mutex::new(tokio::task::JoinSet::new()),
         }
     }
 
@@ -437,6 +449,7 @@ impl CronScheduler {
 
             let Some((jittered_next, task, base_scheduled)) = earliest else {
                 tracing::info!("no scheduled cron tasks; exiting scheduler loop");
+                self.join_outer_tasks().await;
                 return Ok(());
             };
 
@@ -456,6 +469,7 @@ impl CronScheduler {
                 biased;
                 () = cancel.cancelled() => {
                     tracing::info!("cron scheduler shutting down");
+                    self.join_outer_tasks().await;
                     return Ok(());
                 }
                 () = tokio::time::sleep(sleep_duration) => {}
@@ -546,7 +560,11 @@ impl CronScheduler {
 
         let task_name = task.name.clone();
         let task_for_callback = task.clone();
-        tokio::spawn(async move {
+        // WHY: The outer JoinHandle is tracked in `outer_tasks` (rather than
+        // discarded) so a panic in this outer body — after the inner
+        // callback task is awaited — surfaces via `join_outer_tasks` instead
+        // of vanishing with a dropped handle.
+        self.outer_tasks.lock().spawn(async move {
             // WHY: Wrap callback in a child task so panics surface as JoinError
             // rather than propagating to the outer fire task. This lets us
             // reliably record Finished state even when the callback panics.
@@ -564,6 +582,28 @@ impl CronScheduler {
                 in_flight.lock().remove(task.name.as_str());
             }
         });
+    }
+
+    /// Drain and await all outer fire-task handles tracked since the last
+    /// call, surfacing any panic or cancellation as an `error`-level log.
+    ///
+    /// Called from every exit path of [`run`](Self::run) so an outer-task
+    /// panic — previously lost with the discarded `JoinHandle` — is
+    /// observed instead. Returns the number of tasks that did not complete
+    /// normally (panicked or were aborted).
+    async fn join_outer_tasks(&self) -> usize {
+        let mut set = {
+            let mut guard = self.outer_tasks.lock();
+            std::mem::take(&mut *guard)
+        };
+        let mut failed = 0usize;
+        while let Some(result) = set.join_next().await {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "cron.fire.outer_panic");
+                failed = failed.saturating_add(1);
+            }
+        }
+        failed
     }
 }
 
@@ -847,6 +887,32 @@ mod tests {
             total <= 1,
             "SkipIfInFlight should prevent overlapping fires, got {total}"
         );
+    }
+
+    #[tokio::test]
+    async fn join_outer_tasks_surfaces_outer_task_panic() {
+        // WHY: Regression test for the dropped outer JoinHandle (previously
+        // fire-and-forget `tokio::spawn`). A panic in the outer fire-task
+        // body — e.g. during `record_fire_finished` or `in_flight.remove`,
+        // after the inner callback is awaited — must be observable via
+        // `join_outer_tasks` rather than only a Tokio WARN log.
+        let scheduler = CronScheduler::new(vec![], Arc::new(dummy_lock_store()));
+        {
+            let mut guard = scheduler.outer_tasks.lock();
+            guard.spawn(async {
+                panic!("simulated panic in outer fire-task body");
+            });
+            guard.spawn(async {});
+        }
+
+        let failed = scheduler.join_outer_tasks().await;
+
+        assert_eq!(
+            failed, 1,
+            "join_outer_tasks should surface exactly the one panicking outer task"
+        );
+        // The JoinSet was drained; a second call has nothing left to join.
+        assert_eq!(scheduler.join_outer_tasks().await, 0);
     }
 
     #[tokio::test]
