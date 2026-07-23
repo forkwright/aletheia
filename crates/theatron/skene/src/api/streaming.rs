@@ -33,6 +33,35 @@ pub const STREAM_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 /// `client` must be the streaming instance from `ApiClient::streaming_client()`: auth headers
 /// are already embedded. `Accept: text/event-stream` is set per-request to override
 /// the client-level `Accept: application/json` default.
+/// Read a non-success streaming response and surface it as
+/// [`StreamEvent::Error`], including the retry-after hint on 429s without a
+/// pylon error envelope.
+async fn send_http_error(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent>) {
+    let status = resp.status();
+    let reason = status.canonical_reason().unwrap_or("Unknown");
+    let retry_after_secs = (status == StatusCode::TOO_MANY_REQUESTS)
+        .then(|| parse_retry_after_secs(resp.headers()))
+        .flatten();
+    let body = match resp.text().await {
+        Ok(body) => body,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to read stream error response body");
+            String::new()
+        }
+    };
+    let has_pylon_envelope = parse_pylon_error_envelope(status.as_u16(), &body).is_some();
+    let mut message = format_http_error_body(status.as_u16(), reason, &body);
+    if status == StatusCode::TOO_MANY_REQUESTS
+        && !has_pylon_envelope
+        && let Some(secs) = retry_after_secs
+    {
+        message = format!("{message} (retry after {secs}s)");
+    }
+    if tx.send(StreamEvent::Error(message)).await.is_err() {
+        tracing::debug!("stream receiver dropped before HTTP error");
+    }
+}
+
 #[tracing::instrument(skip_all)]
 #[expect(
     clippy::needless_pass_by_value,
@@ -84,29 +113,7 @@ pub fn stream_message(
         };
 
         if !resp.status().is_success() {
-            let status = resp.status();
-            let reason = status.canonical_reason().unwrap_or("Unknown");
-            let retry_after_secs = (status == StatusCode::TOO_MANY_REQUESTS)
-                .then(|| parse_retry_after_secs(resp.headers()))
-                .flatten();
-            let body = match resp.text().await {
-                Ok(body) => body,
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to read stream error response body");
-                    String::new()
-                }
-            };
-            let has_pylon_envelope = parse_pylon_error_envelope(status.as_u16(), &body).is_some();
-            let mut message = format_http_error_body(status.as_u16(), reason, &body);
-            if status == StatusCode::TOO_MANY_REQUESTS
-                && !has_pylon_envelope
-                && let Some(secs) = retry_after_secs
-            {
-                message = format!("{message} (retry after {secs}s)");
-            }
-            if tx.send(StreamEvent::Error(message)).await.is_err() {
-                tracing::debug!("stream receiver dropped before HTTP error");
-            }
+            send_http_error(resp, &tx).await;
             return;
         }
 
