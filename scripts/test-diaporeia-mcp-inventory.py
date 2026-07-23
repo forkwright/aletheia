@@ -147,6 +147,41 @@ def test_determinism() -> None:
     expect(a == b, "generate_block must be deterministic")
 
 
+WORKSPACE_FILES_FIXTURE = '''\
+pub(crate) const WORKSPACE_FILES: &[(&str, &str, &str)] = &[
+    (
+        "soul",
+        "Nous SOUL",
+        "Character and principles for a nous agent",
+    ),
+    ("goals", "Nous Goals", "Active goals for a nous agent"),
+];
+'''
+
+
+def test_workspace_tuple_regex_handles_multiline_trailing_comma() -> None:
+    """Regression test for a multi-line tuple with a trailing comma before ')'.
+
+    The real WORKSPACE_FILES constant mixes multi-line tuples (one field per
+    line, trailing comma before the closing paren) with single-line tuples
+    (no trailing comma). Both forms must parse identically, or entries are
+    silently dropped from the generated inventory without --check failing.
+    """
+    wf_match = GENERATOR.WORKSPACE_FILES_RE.search(WORKSPACE_FILES_FIXTURE)
+    expect(wf_match is not None, "WORKSPACE_FILES_RE should match the fixture constant")
+    if wf_match is None:
+        return
+
+    slugs = [
+        m.group("slug") for m in GENERATOR.WORKSPACE_TUPLE_RE.finditer(wf_match.group(1))
+    ]
+    expect(
+        slugs == ["soul", "goals"],
+        "multi-line tuples with a trailing comma before ')' must parse "
+        f"alongside single-line tuples without one, got {slugs}",
+    )
+
+
 def test_check_mode(tmp: Path) -> None:
     claude = tmp / "CLAUDE.md"
     generated = GENERATOR.generate_block(FIXTURE_SOURCE)
@@ -180,6 +215,7 @@ def main() -> int:
     test_parses_tool_name_tier_role()
     test_mutation_heuristic()
     test_determinism()
+    test_workspace_tuple_regex_handles_multiline_trailing_comma()
 
     with tempfile.TemporaryDirectory() as tmp_str:
         test_check_mode(Path(tmp_str))

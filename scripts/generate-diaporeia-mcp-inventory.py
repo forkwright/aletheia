@@ -64,7 +64,7 @@ WORKSPACE_FILES_RE = re.compile(
     re.DOTALL,
 )
 WORKSPACE_TUPLE_RE = re.compile(
-    r'\(\s*"(?P<slug>[^"]+)"\s*,\s*"(?P<name>[^"]+)"\s*,\s*"(?P<desc>[^"]+)"\s*\)',
+    r'\(\s*"(?P<slug>[^"]+)"\s*,\s*"(?P<name>[^"]+)"\s*,\s*"(?P<desc>[^"]+)"\s*,?\s*\)',
 )
 RAW_RESOURCE_TEMPLATE_RE = re.compile(
     r'RawResourceTemplate::new\(\s*"(?P<uri>[^"]+)"\s*,\s*"(?P<name>[^"]+)"\s*\)'
