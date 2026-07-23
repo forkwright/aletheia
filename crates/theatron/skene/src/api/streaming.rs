@@ -27,12 +27,6 @@ use super::error::{
 /// for a consistent timeout policy across both connection types.
 pub const STREAM_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
-/// Streams a turn response from POST /api/v1/sessions/stream.
-/// Returns a channel that yields parsed `StreamEvent`s.
-///
-/// `client` must be the streaming instance from `ApiClient::streaming_client()`: auth headers
-/// are already embedded. `Accept: text/event-stream` is set per-request to override
-/// the client-level `Accept: application/json` default.
 /// Read a non-success streaming response and surface it as
 /// [`StreamEvent::Error`], including the retry-after hint on 429s without a
 /// pylon error envelope.
@@ -62,6 +56,12 @@ async fn send_http_error(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent>
     }
 }
 
+/// Streams a turn response from POST /api/v1/sessions/stream.
+/// Returns a channel that yields parsed `StreamEvent`s.
+///
+/// `client` must be the streaming instance from `ApiClient::streaming_client()`: auth headers
+/// are already embedded. `Accept: text/event-stream` is set per-request to override
+/// the client-level `Accept: application/json` default.
 #[tracing::instrument(skip_all)]
 #[expect(
     clippy::needless_pass_by_value,
