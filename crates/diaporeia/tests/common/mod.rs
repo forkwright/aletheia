@@ -169,7 +169,10 @@ impl StateBuilder {
         if self.repomix_enabled {
             cfg.mcp.repomix.enabled = true;
             cfg.mcp.repomix.max_output_tokens = 10_000;
-            cfg.mcp.repomix.workspace_root = self.repomix_workspace_root.clone();
+            cfg.mcp
+                .repomix
+                .workspace_root
+                .clone_from(&self.repomix_workspace_root);
         }
         if self.knowledge_graph_enabled {
             cfg.mcp.knowledge_graph.enabled = true;
