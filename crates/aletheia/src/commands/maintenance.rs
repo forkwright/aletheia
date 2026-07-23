@@ -589,6 +589,10 @@ fn merge_unavailable_tasks(
     statuses
 }
 
+// WHY: the CARGO_MANIFEST_DIR-relative checkout lookup only ever resolves on
+// the box that compiled the binary (embedded at compile time), so it is
+// #[cfg(test)]-scoped rather than a runtime production fallback — a deployed
+// binary's manifest dir never exists on the target host.
 fn resolve_example_root(instance_root: &Path) -> PathBuf {
     let sibling = instance_root
         .parent()
@@ -598,12 +602,15 @@ fn resolve_example_root(instance_root: &Path) -> PathBuf {
         return sibling;
     }
 
-    let checkout_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("instance.example");
-    if checkout_candidate.exists() {
-        return checkout_candidate;
+    #[cfg(test)]
+    {
+        let checkout_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("instance.example");
+        if checkout_candidate.exists() {
+            return checkout_candidate;
+        }
     }
 
     instance_root.parent().map_or_else(
