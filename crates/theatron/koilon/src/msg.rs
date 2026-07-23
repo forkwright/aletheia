@@ -436,10 +436,6 @@ pub enum Msg {
     SessionSearchDown,
     SessionSearchSelect,
 
-    #[expect(
-        dead_code,
-        reason = "metrics overlay entry point, keybinding not yet wired"
-    )]
     MetricsOpen,
     #[cfg_attr(
         not(test),
@@ -468,18 +464,10 @@ pub enum Msg {
     /// Loaded result from async health check triggered on open.
     MetricsHealthLoaded(bool),
 
-    #[expect(
-        dead_code,
-        reason = "planning view entry point, keybinding not yet wired"
-    )]
     PlanningOpen,
     #[expect(dead_code, reason = "planning view close, wired in keybinding handler")]
     PlanningClose,
 
-    #[expect(
-        dead_code,
-        reason = "retrospective view entry point, keybinding not yet wired"
-    )]
     RetrospectiveOpen,
     #[expect(
         dead_code,
