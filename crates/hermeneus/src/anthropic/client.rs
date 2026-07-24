@@ -256,7 +256,6 @@ impl AnthropicProvider {
                 deployment_target: config.deployment_target,
             },
         };
-        // TODO(#2178): add allow_insecure config field
         if !has_allowed_transport(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
@@ -325,7 +324,6 @@ impl AnthropicProvider {
                 deployment_target: config.deployment_target,
             },
         };
-        // TODO(#2178): add allow_insecure config field
         if !has_allowed_transport(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(

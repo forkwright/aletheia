@@ -32,10 +32,10 @@ fn test_select_prompt_routing() {
 #[test]
 fn test_dream_consolidation_preserves_tool_trail() {
     // WHY(#95): The actual dream-consolidation call site does not yet exist
-    // (background task registry wiring is TODO #2261). This test verifies
-    // that the routing primitive is correctly set up: DreamConsolidation
-    // selects RESTORE_PROMPT, and RESTORE_PROMPT instructs the model to
-    // preserve tool-call trails.
+    // (no background task currently wires a DreamConsolidation call site into
+    // the compact stage). This test verifies that the routing primitive is
+    // correctly set up: DreamConsolidation selects RESTORE_PROMPT, and
+    // RESTORE_PROMPT instructs the model to preserve tool-call trails.
     let prompt = select_prompt(CompactReason::DreamConsolidation);
     assert_eq!(prompt, prompts::RESTORE_PROMPT);
     assert!(
