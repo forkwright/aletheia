@@ -148,7 +148,7 @@ if [[ "$START_SERVER" == true ]]; then
     SERVER_PID=$!
 
     for _ in $(seq 1 100); do
-        if curl -fsS "$SERVER_URL/health" >/dev/null 2>&1; then
+        if curl -fsS "$SERVER_URL/api/health" >/dev/null 2>&1; then
             break
         fi
         if ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
@@ -158,7 +158,7 @@ if [[ "$START_SERVER" == true ]]; then
     done
 fi
 
-if ! curl -fsS "$SERVER_URL/health" >/dev/null 2>&1; then
+if ! curl -fsS "$SERVER_URL/api/health" >/dev/null 2>&1; then
     degrade "$(printf 'server health check failed for %s; provide a live --server-url or inspect %s/server.log' "$SERVER_URL" "$LOGDIR")"
 fi
 
