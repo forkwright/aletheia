@@ -110,12 +110,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Logging
-# WHY: tracing-appender + tracing-subscriber dropped in v1.2 migration —
-# proskenion now consumes `bathron::logging::init_with_stderr` (theatron
-# v1.3.0) which encapsulates the daily-rotated file appender + opt-in
-# stderr layer behind a single function call. See `lib.rs::run` for the
-# call site and the `bathron` dep above with `features = ["logging"]`.
+# WHY: bathron::logging::init_with_stderr (theatron v1.3.0) encapsulates
+# the daily-rotated file appender + opt-in stderr layer behind a single
+# function call. See `lib.rs::run` for the normal-path call site and the
+# `bathron` dep above with `features = ["logging"]`. tracing-subscriber is
+# a direct dep (not just transitive via bathron) for the fail-closed
+# stderr-only fallback when no platform data directory resolves (#5063).
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Error handling
 snafu = "0.9"
