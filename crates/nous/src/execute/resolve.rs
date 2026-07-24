@@ -1,6 +1,6 @@
 //! Resolution helpers for the execute stage.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tracing::{debug, warn};
@@ -233,5 +233,98 @@ pub(super) fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtra
         }
     }
 
+    normalize_tool_use_ids(&mut extract.tool_uses);
     extract
+}
+
+/// Normalize malformed provider-supplied `tool_use` ids in place.
+///
+/// WHY: normalize-don't-fail. Empty or duplicate ids are a malformed-provider
+/// condition, not a caller bug, and downstream correlation (spawn-isolation
+/// enforcement, dispatch policy filtering, hook context) keys entirely on
+/// this id. Failing the whole turn over one bad block would be a worse
+/// outcome than degrading gracefully with a synthesized/disambiguated id, so
+/// this deliberately does not return a turn-level error.
+fn normalize_tool_use_ids(tool_uses: &mut [(String, String, serde_json::Value)]) {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut dup_counts: HashMap<String, usize> = HashMap::new();
+
+    for (index, (id, name, _)) in tool_uses.iter_mut().enumerate() {
+        let name = name.clone();
+
+        if id.is_empty() {
+            let synthetic_id = format!("synth-{index}");
+            warn!(
+                index,
+                tool_name = %name,
+                "provider tool_use block had an empty id; synthesized {synthetic_id}"
+            );
+            id.clone_from(&synthetic_id);
+            seen.insert(synthetic_id);
+            continue;
+        }
+
+        if seen.contains(id.as_str()) {
+            let dup_count = dup_counts.entry(id.clone()).or_insert(0);
+            *dup_count += 1;
+            let new_id = format!("{id}-dup{dup_count}");
+            warn!(
+                tool_use_id = %id,
+                tool_name = %name,
+                "duplicate provider tool_use id; disambiguated to {new_id}"
+            );
+            id.clone_from(&new_id);
+            seen.insert(new_id);
+        } else {
+            seen.insert(id.clone());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_tool_use_ids_synthesizes_empty_id() {
+        let mut tool_uses = vec![
+            (
+                "id-1".to_string(),
+                "tool_a".to_string(),
+                serde_json::json!({}),
+            ),
+            (String::new(), "tool_b".to_string(), serde_json::json!({})),
+        ];
+
+        normalize_tool_use_ids(&mut tool_uses);
+
+        let ids: Vec<&str> = tool_uses.iter().map(|(id, _, _)| id.as_str()).collect();
+        assert_eq!(ids, ["id-1", "synth-1"]);
+    }
+
+    #[test]
+    fn normalize_tool_use_ids_disambiguates_duplicate_ids() {
+        let mut tool_uses = vec![
+            (
+                "dup-id".to_string(),
+                "tool_a".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "dup-id".to_string(),
+                "tool_b".to_string(),
+                serde_json::json!({}),
+            ),
+            (
+                "dup-id".to_string(),
+                "tool_c".to_string(),
+                serde_json::json!({}),
+            ),
+        ];
+
+        normalize_tool_use_ids(&mut tool_uses);
+
+        let ids: Vec<&str> = tool_uses.iter().map(|(id, _, _)| id.as_str()).collect();
+        assert_eq!(ids, ["dup-id", "dup-id-dup1", "dup-id-dup2"]);
+    }
 }
