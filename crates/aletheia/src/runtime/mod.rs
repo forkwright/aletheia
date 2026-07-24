@@ -982,6 +982,8 @@ impl RuntimeBuilder {
             Arc::new(pylon::credential_runtime::CredentialRuntimeManager::new(
                 Arc::clone(&provider_registry),
             ));
+        let turn_buffer_completed_ttl =
+            std::time::Duration::from_secs(self.config.api_limits.turn_buffer_completed_ttl_secs);
         let state = Arc::new(AppState {
             session_store,
             nous_manager: Arc::clone(&nous_manager),
@@ -1006,7 +1008,10 @@ impl RuntimeBuilder {
             #[cfg(feature = "recall")]
             knowledge_store,
             embedding_provider: Some(Arc::clone(&embedding_provider)),
-            turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
+            turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::with_limits(
+                turn_buffer_completed_ttl,
+                self.config.api_limits.turn_buffer_max_events_per_turn,
+            )),
             metrics_registry,
             event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
             approval_registry: Arc::new(pylon::approval_registry::ApprovalRegistry::new()),

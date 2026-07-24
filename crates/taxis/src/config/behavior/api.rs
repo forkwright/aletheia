@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 pub(crate) const DEFAULT_IDEMPOTENCY_TTL_SECS: u64 = 300;
 /// Default value used for `ApiLimitsConfig::idempotency_capacity`.
 pub(crate) const DEFAULT_IDEMPOTENCY_CAPACITY: usize = 10_000;
+/// Default value used for `ApiLimitsConfig::turn_buffer_completed_ttl_secs`.
+pub(crate) const DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS: u64 = 300;
+/// Default value used for `ApiLimitsConfig::turn_buffer_max_events_per_turn`.
+pub(crate) const DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN: usize = 10_000;
 
 /// Pylon API request size and idempotency cache limits.
 ///
@@ -42,6 +46,10 @@ pub struct ApiLimitsConfig {
     pub clock_skew_leeway_secs: u64,
     /// Time in seconds before token expiry that triggers a warning. Default: 3600.
     pub expiry_warning_threshold_secs: u64,
+    /// TTL in seconds for completed/failed/aborted turn buffers before they are reaped.
+    pub turn_buffer_completed_ttl_secs: u64,
+    /// Maximum SSE events retained per turn buffer.
+    pub turn_buffer_max_events_per_turn: usize,
 }
 
 impl Default for ApiLimitsConfig {
@@ -60,6 +68,8 @@ impl Default for ApiLimitsConfig {
             idempotency_max_key_length: 64,
             clock_skew_leeway_secs: 30,
             expiry_warning_threshold_secs: 3_600,
+            turn_buffer_completed_ttl_secs: DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS,
+            turn_buffer_max_events_per_turn: DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN,
         }
     }
 }
@@ -68,3 +78,11 @@ impl Default for ApiLimitsConfig {
 const _: () = assert!(DEFAULT_IDEMPOTENCY_TTL_SECS == pylon::idempotency::DEFAULT_TTL.as_secs());
 #[cfg(test)]
 const _: () = assert!(DEFAULT_IDEMPOTENCY_CAPACITY == pylon::idempotency::DEFAULT_CAPACITY);
+#[cfg(test)]
+const _: () = assert!(
+    DEFAULT_TURN_BUFFER_COMPLETED_TTL_SECS == pylon::turn_buffer::DEFAULT_COMPLETED_TTL.as_secs()
+);
+#[cfg(test)]
+const _: () = assert!(
+    DEFAULT_TURN_BUFFER_MAX_EVENTS_PER_TURN == pylon::turn_buffer::DEFAULT_MAX_EVENTS_PER_TURN
+);

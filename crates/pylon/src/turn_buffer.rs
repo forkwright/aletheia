@@ -21,10 +21,12 @@ use tokio::sync::{Mutex, Notify};
 use tracing::{Instrument as _, debug, warn};
 
 /// Default time-to-live for completed turn buffers before they are reaped.
-const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
+/// Fallback default; runtime reads `ApiLimitsConfig::turn_buffer_completed_ttl_secs`.
+pub const DEFAULT_COMPLETED_TTL: Duration = Duration::from_mins(5);
 
 /// Maximum events retained per turn buffer to bound memory usage.
-const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
+/// Fallback default; runtime reads `ApiLimitsConfig::turn_buffer_max_events_per_turn`.
+pub const DEFAULT_MAX_EVENTS_PER_TURN: usize = 10_000;
 
 /// Retained marker emitted when a turn buffer reaches its capacity limit.
 pub(crate) const REPLAY_GAP_EVENT_TYPE: &str = "replay_gap";
@@ -244,7 +246,8 @@ impl TurnBufferRegistry {
     }
 
     /// Create a registry with explicit replay retention limits.
-    pub(crate) fn with_limits(completed_ttl: Duration, max_events_per_turn: usize) -> Self {
+    #[must_use]
+    pub fn with_limits(completed_ttl: Duration, max_events_per_turn: usize) -> Self {
         Self {
             buffers: Mutex::new(HashMap::new()),
             completed_ttl,
