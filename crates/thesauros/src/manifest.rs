@@ -185,10 +185,11 @@ pub(crate) fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
     Ok(manifest)
 }
 
-/// Validate pack name and version fields.
+/// Validate pack name, version, and declared tool timeouts.
 ///
 /// Name must be 1--64 characters, alphanumeric and hyphens only.
 /// Version must be non-empty.
+/// Every tool's timeout must be non-zero milliseconds.
 fn validate_manifest(manifest: &PackManifest) -> Result<()> {
     if !is_valid_pack_name(&manifest.name) {
         return Err(error::Error::InvalidPackName {
@@ -202,6 +203,17 @@ fn validate_manifest(manifest: &PackManifest) -> Result<()> {
             pack: manifest.name.clone(),
             location: snafu::location!(),
         });
+    }
+
+    for tool in &manifest.tools {
+        if tool.timeout == 0 {
+            return Err(error::Error::InvalidToolTimeout {
+                pack: manifest.name.clone(),
+                tool: tool.name.clone(),
+                timeout: tool.timeout,
+                location: snafu::location!(),
+            });
+        }
     }
 
     Ok(())
@@ -541,6 +553,26 @@ description = "Table name"
         let dir = setup_pack(&[("pack.toml", minimal_manifest())]);
         let manifest = load_manifest(dir.path()).unwrap();
         assert!(manifest.tools.is_empty());
+    }
+
+    #[test]
+    fn rejects_zero_tool_timeout() {
+        let toml = r#"
+name = "tool-pack"
+version = "1.0"
+
+[[tools]]
+name = "zero_timeout_tool"
+description = "A tool with a zero timeout"
+command = "tools/zero.sh"
+timeout = 0
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::InvalidToolTimeout { .. }),
+            "expected InvalidToolTimeout, got: {err}"
+        );
     }
 
     #[test]

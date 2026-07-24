@@ -397,10 +397,11 @@ impl RuntimeBuilder {
         };
 
         if self.domain_packs {
-            let tool_errors = thesauros::tools::register_pack_tools_with_sandbox(
+            let tool_errors = thesauros::tools::register_pack_tools_with_sandbox_and_limits(
                 &packs,
                 &mut tool_registry,
                 sandbox_config(&self.config),
+                self.config.tool_limits.subprocess_timeout_secs,
             );
             for err in &tool_errors {
                 warn!(error = %err, "failed to register pack tool");
