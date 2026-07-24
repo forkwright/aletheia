@@ -266,9 +266,18 @@ impl SubprocessRunner {
     ) -> Result<SubprocessOutput, SubprocessError> {
         let start = Instant::now();
         let mut cmd = Command::new(&request.program);
+        // WHY: pipe stdin only when input is actually provided. An unconditional
+        // pipe leaves the write end open with nothing written for the no-input
+        // case, so any child that blocks reading stdin until EOF hangs until the
+        // wall-clock timeout instead of seeing immediate EOF.
+        let stdin_mode = if request.stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        };
         cmd.args(&request.args)
             .current_dir(&request.current_dir)
-            .stdin(Stdio::piped())
+            .stdin(stdin_mode)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
