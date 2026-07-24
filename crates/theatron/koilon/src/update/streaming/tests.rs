@@ -341,6 +341,76 @@ fn stream_error_shows_toast() {
 }
 
 #[test]
+fn stream_error_marks_running_ops_tools_failed() {
+    let mut app = test_app();
+    app.connection.active_turn_id = Some("t1".into());
+    let tid = ToolId::from("t1".to_string());
+    handle_stream_tool_start(&mut app, "grep".to_string(), tid, None);
+
+    handle_stream_error(&mut app, "connection reset".to_string());
+
+    assert_eq!(app.layout.ops.tool_calls.len(), 1);
+    assert_eq!(
+        app.layout.ops.tool_calls[0].status,
+        crate::state::ops::OpsToolStatus::Failed
+    );
+    assert!(app.layout.ops.tool_calls[0].duration_ms.is_some());
+    assert_eq!(
+        app.layout.ops.tool_calls[0].error_message.as_deref(),
+        Some("connection reset")
+    );
+}
+
+#[test]
+fn stream_error_with_no_running_tool_leaves_ops_pane_empty() {
+    let mut app = test_app();
+    app.connection.active_turn_id = Some("t1".into());
+
+    handle_stream_error(&mut app, "connection reset".to_string());
+
+    assert!(app.layout.ops.tool_calls.is_empty());
+}
+
+#[test]
+fn stream_error_does_not_reopen_already_completed_ops_tool() {
+    let mut app = test_app();
+    let tid = ToolId::from("t1".to_string());
+    handle_stream_tool_start(&mut app, "read_file".to_string(), tid.clone(), None);
+    handle_stream_tool_result(&mut app, "read_file".to_string(), tid, false, 100, None);
+
+    handle_stream_error(&mut app, "connection reset".to_string());
+
+    assert_eq!(
+        app.layout.ops.tool_calls[0].status,
+        crate::state::ops::OpsToolStatus::Complete
+    );
+    assert_eq!(app.layout.ops.tool_calls[0].duration_ms, Some(100));
+}
+
+#[test]
+fn turn_abort_marks_running_ops_tools_failed() {
+    let mut app = test_app();
+    app.dashboard.agents.push(test_agent("syn", "Syn"));
+    app.dashboard.focused_agent = Some("syn".into());
+    app.connection.active_turn_id = Some("t1".into());
+    let tid = ToolId::from("t1".to_string());
+    handle_stream_tool_start(&mut app, "bash".to_string(), tid, None);
+
+    handle_stream_turn_abort(&mut app, "user cancelled".to_string());
+
+    assert_eq!(app.layout.ops.tool_calls.len(), 1);
+    assert_eq!(
+        app.layout.ops.tool_calls[0].status,
+        crate::state::ops::OpsToolStatus::Failed
+    );
+    assert!(app.layout.ops.tool_calls[0].duration_ms.is_some());
+    assert_eq!(
+        app.layout.ops.tool_calls[0].error_message.as_deref(),
+        Some("aborted: user cancelled")
+    );
+}
+
+#[test]
 fn stream_error_clears_tool_calls_and_resets_agent() {
     let mut app = test_app();
     app.dashboard.agents.push(test_agent("syn", "Syn"));
