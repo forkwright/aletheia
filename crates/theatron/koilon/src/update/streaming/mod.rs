@@ -3,6 +3,7 @@ use crate::app::App;
 use crate::id::{NousId, ToolId, TurnId};
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
+use crate::state::ops::OpsToolStatus;
 use crate::state::virtual_scroll::estimate_message_height;
 use crate::state::{
     ActiveTool, AgentStatus, ChatMessage, Overlay, PlanApprovalOverlay, PlanStepApproval,
@@ -395,6 +396,37 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
 }
 
+// WHY: Mirrors the completion path handle_stream_tool_result/handle_stream_plan_complete
+// already use (OpsState::complete_tool / complete_tool_by_id) so error/abort paths leave
+// a truthful terminal state instead of a stale "running" spinner in the ops pane.
+fn fail_running_ops_tools(app: &mut App, reason: &str) {
+    let running: Vec<(Option<ToolId>, String, u64)> = app
+        .layout
+        .ops
+        .tool_calls
+        .iter()
+        .filter(|tc| tc.status == OpsToolStatus::Running)
+        .map(|tc| {
+            let elapsed_ms = u64::try_from(tc.started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+            (tc.tool_id.clone(), tc.name.clone(), elapsed_ms)
+        })
+        .collect();
+
+    for (tool_id, name, elapsed_ms) in running {
+        let output = Some(reason.to_string());
+        match tool_id {
+            Some(id) => app
+                .layout
+                .ops
+                .complete_tool_by_id(&id, true, elapsed_ms, output),
+            None => app
+                .layout
+                .ops
+                .complete_tool(&name, true, elapsed_ms, output),
+        }
+    }
+}
+
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     tracing::info!("turn aborted: {reason}");
@@ -410,6 +442,7 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.connection.stall_message = None;
     app.connection.active_turn_id = None;
     app.connection.stream_rx = None;
+    fail_running_ops_tools(app, &format!("aborted: {reason}"));
     if let Some(ref agent_id) = app.dashboard.focused_agent
         && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
@@ -425,7 +458,8 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
     app.connection.stream_phase = crate::state::StreamPhase::Error;
     app.connection.streaming_line_buffer.clear();
-    app.viewport.error_toast = Some(ErrorToast::new(sanitize_for_display(&msg).into_owned()));
+    let clean_msg = sanitize_for_display(&msg).into_owned();
+    app.viewport.error_toast = Some(ErrorToast::new(clean_msg.clone()));
     app.connection.active_turn_id = None;
     app.connection.stream_rx = None;
     app.connection.stream_last_event_at = None;
@@ -434,6 +468,7 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     // WHY: Clear tool calls to remove stale spinners; preserve streaming_text
     // so the user can read any partial response received before the error.
     app.connection.streaming_tool_calls.clear();
+    fail_running_ops_tools(app, &clean_msg);
     if let Some(ref agent_id) = app.dashboard.focused_agent
         && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
