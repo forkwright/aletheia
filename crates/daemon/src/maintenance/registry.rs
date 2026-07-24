@@ -76,6 +76,8 @@ pub enum ManualMaintenanceTask {
     DriftDetection,
     /// Run database size monitoring.
     DbMonitor,
+    /// Run data retention cleanup.
+    Retention,
     /// Run whole-instance backup.
     InstanceBackup,
     /// Run prompt audit log retention.
@@ -475,7 +477,7 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
         "Data retention cleanup",
         MaintenanceTaskImplementationStatus::Implemented,
         CRON_METRICS,
-        None,
+        Some(ManualMaintenanceTask::Retention),
         scheduled(
             BuiltinTask::RetentionExecution,
             ScheduleSource::Cron("0 30 3 * * *"),

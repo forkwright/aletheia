@@ -6,20 +6,22 @@ use std::sync::Arc;
 use clap::Subcommand;
 use snafu::prelude::*;
 
+use mneme::store::SessionStore;
 use oikonomos::maintenance::{
     AutoDreamConfig, DbMonitor, DbMonitoringConfig, DerivedRulesConfig, DriftDetectionConfig,
     DriftDetector, InstanceBackupConfig, KnowledgeMaintenanceConfig, KnowledgeMaintenanceExecutor,
     MaintenanceConfig, MaintenanceConfigSection, MaintenanceRuntimeCapabilities,
     MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus, MaintenanceTaskOwner,
     ManualMaintenanceTask, PromptAuditRetentionConfig, PromptAuditRotator, ProposeRulesConfig,
-    TraceRotationConfig, TraceRotator, maintenance_task_by_id, maintenance_task_registry,
-    manual_maintenance_task_ids, manual_maintenance_tasks,
+    RetentionExecutor, TraceRotationConfig, TraceRotator, maintenance_task_by_id,
+    maintenance_task_registry, manual_maintenance_task_ids, manual_maintenance_tasks,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditOutcome, ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
 use oikonomos::schedule::TaskStatus;
 use taxis::loader::load_config;
 use taxis::oikos::Oikos;
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -137,26 +139,37 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             }
         }
         Action::Run { task, verbose } => {
-            let tasks: Vec<&'static MaintenanceTaskDefinition> = if task == "all" {
-                manual_maintenance_tasks().collect()
-            } else {
-                vec![manual_task_definition(&task, knowledge_executor.is_some())?]
-            };
-            for definition in tasks {
-                if task == "all"
-                    && definition.owner() == MaintenanceTaskOwner::KnowledgeGraph
-                    && knowledge_executor.is_none()
-                {
-                    println!(
-                        "{}: skipped (no knowledge executor configured)",
-                        definition.id()
-                    );
-                    continue;
-                }
-                run_task(definition, &maint, knowledge_executor.as_ref(), verbose).await?;
-            }
+            run_manual_tasks(task, verbose, &oikos, &maint, knowledge_executor.as_ref()).await?;
         }
         Action::Reset { task } => reset_task_state(&oikos, &task)?,
+    }
+    Ok(())
+}
+
+async fn run_manual_tasks(
+    task: String,
+    verbose: bool,
+    oikos: &Oikos,
+    maint: &MaintenanceConfig,
+    knowledge_executor: Option<&Arc<dyn KnowledgeMaintenanceExecutor>>,
+) -> Result<()> {
+    let tasks: Vec<&'static MaintenanceTaskDefinition> = if task == "all" {
+        manual_maintenance_tasks().collect()
+    } else {
+        vec![manual_task_definition(&task, knowledge_executor.is_some())?]
+    };
+    for definition in tasks {
+        if task == "all"
+            && definition.owner() == MaintenanceTaskOwner::KnowledgeGraph
+            && knowledge_executor.is_none()
+        {
+            println!(
+                "{}: skipped (no knowledge executor configured)",
+                definition.id()
+            );
+            continue;
+        }
+        run_task(definition, oikos, maint, knowledge_executor, verbose).await?;
     }
     Ok(())
 }
@@ -233,6 +246,7 @@ fn manual_task_definition(
 /// Execute a single maintenance task by name.
 async fn run_task(
     definition: &MaintenanceTaskDefinition,
+    oikos: &Oikos,
     maint: &MaintenanceConfig,
     knowledge_executor: Option<&Arc<dyn KnowledgeMaintenanceExecutor>>,
     verbose: bool,
@@ -271,6 +285,7 @@ async fn run_task(
                 );
             }
         }
+        ManualMaintenanceTask::Retention => run_retention(oikos).await?,
         ManualMaintenanceTask::InstanceBackup => {
             let manager =
                 oikonomos::maintenance::InstanceBackup::new(maint.instance_backup.clone());
@@ -348,6 +363,36 @@ fn run_drift_detection(cfg: DriftDetectionConfig, verbose: bool) -> Result<()> {
     } else {
         println!("drift-detection: template unavailable (template: {template_display})");
     }
+    Ok(())
+}
+
+async fn run_retention(oikos: &Oikos) -> Result<()> {
+    let db_path = oikos.sessions_db();
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_whatever_context(|_| format!("failed to create data dir {}", parent.display()))?;
+    }
+    let store = SessionStore::open(&db_path).with_whatever_context(|_| {
+        format!("failed to open session store at {}", db_path.display())
+    })?;
+    let adapter =
+        crate::session_retention::SessionRetentionAdapter::new(Arc::new(Mutex::new(store)));
+    // WHY: SessionRetentionAdapter::execute_retention acquires the store via
+    // Mutex::blocking_lock, which panics if called on an async runtime thread.
+    // Run it on a blocking thread (the daemon reaches the same trait method via
+    // its blocking task runner).
+    let summary = tokio::task::spawn_blocking(move || adapter.execute_retention())
+        .await
+        .whatever_context("retention task join failed")?
+        .whatever_context("retention execution failed")?;
+    println!(
+        "retention-execution: {} sessions cleaned, {} messages cleaned, {} blackboard entries cleaned, {} cap-enforced sessions cleaned, {} bytes freed",
+        summary.sessions_cleaned,
+        summary.messages_cleaned,
+        summary.blackboard_entries_cleaned,
+        summary.cap_sessions_cleaned,
+        summary.bytes_freed,
+    );
     Ok(())
 }
 
