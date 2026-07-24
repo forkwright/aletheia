@@ -10,7 +10,7 @@ use snafu::Snafu;
 #[non_exhaustive]
 #[expect(
     missing_docs,
-    reason = "snafu error variant fields (path, source, location, reason, type_name, tool_name, pack_name, name, pack) are self-documenting via display format"
+    reason = "snafu error variant fields (path, source, location, reason, type_name, tool_name, pack_name, name, pack, tool, timeout) are self-documenting via display format"
 )]
 // kanon:ignore RUST/non-exhaustive-enum -- WHY: #[non_exhaustive] is already present; linter false-positive when intervening #[expect] separates the attribute from the enum keyword
 pub enum Error {
@@ -125,6 +125,18 @@ pub enum Error {
     #[snafu(display("pack '{pack}' has an empty version string"))]
     InvalidPackVersion {
         pack: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Pack tool declares a zero-millisecond timeout.
+    #[snafu(display(
+        "pack '{pack}' tool '{tool}' has an invalid timeout of {timeout}ms: must be non-zero"
+    ))]
+    InvalidToolTimeout {
+        pack: String,
+        tool: String,
+        timeout: u64,
         #[snafu(implicit)]
         location: snafu::Location,
     },

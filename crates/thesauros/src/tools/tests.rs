@@ -830,3 +830,173 @@ async fn shell_executor_truncates_at_char_boundary() {
     );
     assert!(text.len() <= MAX_OUTPUT_BYTES + "[output truncated]".len() + 2);
 }
+
+fn unsandboxed_test_config() -> organon::sandbox::SandboxConfig {
+    organon::sandbox::SandboxConfig {
+        enabled: false,
+        nproc_limit: 4096,
+        ..organon::sandbox::SandboxConfig::default()
+    }
+}
+
+#[test]
+fn register_with_limits_rejects_zero_timeout() {
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/echo.sh");
+
+    let tool = PackToolDef {
+        name: "zero_timeout_tool".to_owned(),
+        description: "Zero timeout".to_owned(),
+        command: "tools/echo.sh".to_owned(),
+        timeout: 0,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let errors = register_pack_tools_with_sandbox_and_limits(
+        &[pack],
+        &mut registry,
+        unsandboxed_test_config(),
+        60,
+    );
+
+    assert_eq!(errors.len(), 1, "errors: {errors:?}");
+    assert!(
+        matches!(errors[0], error::Error::InvalidToolTimeout { .. }),
+        "expected InvalidToolTimeout, got: {}",
+        errors[0]
+    );
+    assert!(registry.definitions().is_empty());
+}
+
+#[tokio::test]
+async fn register_with_limits_clamps_timeout_below_floor() {
+    let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 0.4")]);
+    make_executable(&dir, "tools/sleep.sh");
+
+    let tool = PackToolDef {
+        name: "below_floor_tool".to_owned(),
+        description: "Below clamp floor".to_owned(),
+        command: "tools/sleep.sh".to_owned(),
+        timeout: 1,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let errors = register_pack_tools_with_sandbox_and_limits(
+        &[pack],
+        &mut registry,
+        unsandboxed_test_config(),
+        60,
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let input = ToolInput {
+        name: ToolName::new("below_floor_tool").expect("below_floor_tool is a valid tool name"),
+        tool_use_id: "toolu_floor".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = registry
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("execute should return a result");
+    assert!(
+        !result.is_error,
+        "a 1ms declared timeout must be clamped up to the 1_000ms floor \
+         so a 0.4s script completes, got: {}",
+        result.content.text_summary()
+    );
+}
+
+#[tokio::test]
+async fn register_with_limits_clamps_timeout_above_ceiling() {
+    let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 3")]);
+    make_executable(&dir, "tools/sleep.sh");
+
+    let tool = PackToolDef {
+        name: "above_ceiling_tool".to_owned(),
+        description: "Above deployment ceiling".to_owned(),
+        command: "tools/sleep.sh".to_owned(),
+        timeout: 999_999_000,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let errors = register_pack_tools_with_sandbox_and_limits(
+        &[pack],
+        &mut registry,
+        unsandboxed_test_config(),
+        1,
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let input = ToolInput {
+        name: ToolName::new("above_ceiling_tool").expect("above_ceiling_tool is a valid tool name"),
+        tool_use_id: "toolu_ceiling".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = registry
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("execute should return a result");
+    assert!(
+        result.is_error && result.content.text_summary().contains("timed out"),
+        "a huge declared timeout must be clamped down to the 1s deployment ceiling \
+         so a 3s script times out, got: {}",
+        result.content.text_summary()
+    );
+}
+
+#[tokio::test]
+async fn register_with_limits_leaves_in_range_timeout_unclamped() {
+    let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 0.05")]);
+    make_executable(&dir, "tools/sleep.sh");
+
+    let tool = PackToolDef {
+        name: "in_range_tool".to_owned(),
+        description: "In-range timeout".to_owned(),
+        command: "tools/sleep.sh".to_owned(),
+        timeout: 5_000,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let errors = register_pack_tools_with_sandbox_and_limits(
+        &[pack],
+        &mut registry,
+        unsandboxed_test_config(),
+        60,
+    );
+    assert!(errors.is_empty(), "errors: {errors:?}");
+
+    let input = ToolInput {
+        name: ToolName::new("in_range_tool").expect("in_range_tool is a valid tool name"),
+        tool_use_id: "toolu_range".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = registry
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("execute should return a result");
+    assert!(
+        !result.is_error,
+        "a declared timeout already within [1_000ms, ceiling] must pass through unclamped, got: {}",
+        result.content.text_summary()
+    );
+}

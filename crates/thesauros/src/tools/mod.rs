@@ -137,10 +137,37 @@ pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) ->
 ///
 /// Runtime callers pass the same sandbox config used by built-in tools so pack
 /// shell tools inherit the deployment's process, filesystem, and egress policy.
+/// Declared tool timeouts are used as-is (no deployment-policy ceiling); prefer
+/// [`register_pack_tools_with_sandbox_and_limits`] in production.
 pub fn register_pack_tools_with_sandbox(
     packs: &[LoadedPack],
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
+) -> Vec<error::Error> {
+    register_pack_tools_impl(packs, registry, sandbox, None)
+}
+
+/// Register all tools from loaded packs, clamping each tool's declared timeout to the
+/// deployment's subprocess timeout policy.
+///
+/// `subprocess_timeout_secs` is the deployment-wide ceiling (`ToolLimitsConfig`); a
+/// pack tool declaring a timeout above this ceiling, or below a usable floor, is
+/// clamped rather than honored verbatim, with a warning logged per clamped tool.
+pub fn register_pack_tools_with_sandbox_and_limits(
+    packs: &[LoadedPack],
+    registry: &mut ToolRegistry,
+    sandbox: organon::sandbox::SandboxConfig,
+    subprocess_timeout_secs: u64,
+) -> Vec<error::Error> {
+    let max_timeout_ms = subprocess_timeout_secs.saturating_mul(1_000);
+    register_pack_tools_impl(packs, registry, sandbox, Some(max_timeout_ms))
+}
+
+fn register_pack_tools_impl(
+    packs: &[LoadedPack],
+    registry: &mut ToolRegistry,
+    sandbox: organon::sandbox::SandboxConfig,
+    max_timeout_ms: Option<u64>,
 ) -> Vec<error::Error> {
     let mut errors = Vec::new();
     let runner = SubprocessRunner::new(sandbox);
@@ -151,7 +178,13 @@ pub fn register_pack_tools_with_sandbox(
         let errors_before = errors.len();
 
         for tool_def in &pack.manifest.tools {
-            match prepare_tool(tool_def, &pack.root, &pack.manifest.name, runner.clone()) {
+            match prepare_tool(
+                tool_def,
+                &pack.root,
+                &pack.manifest.name,
+                runner.clone(),
+                max_timeout_ms,
+            ) {
                 Ok((def, executor)) => match registry.register(def, executor) {
                     Ok(()) => {
                         info!(
@@ -191,12 +224,28 @@ pub fn register_pack_tools_with_sandbox(
 }
 
 /// Validate and convert a single pack tool definition into organon types.
+///
+/// `max_timeout_ms`, when `Some`, is the deployment's subprocess timeout ceiling
+/// in milliseconds; the tool's declared timeout is clamped to `[1_000, max_timeout_ms]`
+/// (with the ceiling itself floored to `1_000` to keep the clamp bounds valid) and a
+/// warning is logged when clamping changes the effective value. `None` preserves the
+/// declared timeout unclamped (test-only call paths).
 fn prepare_tool(
     tool_def: &PackToolDef,
     pack_root: &Path,
     pack_name: &str,
     runner: SubprocessRunner,
+    max_timeout_ms: Option<u64>,
 ) -> Result<(ToolDef, Box<dyn ToolExecutor>), error::Error> {
+    if tool_def.timeout == 0 {
+        return Err(error::Error::InvalidToolTimeout {
+            pack: pack_name.to_owned(),
+            tool: tool_def.name.clone(),
+            timeout: tool_def.timeout,
+            location: snafu::location!(),
+        });
+    }
+
     let command_path = validate_command_path(pack_root, &tool_def.command)?;
     let groups = parse_groups(tool_def, pack_name)?;
     let tags = parse_tags(tool_def, pack_name)?;
@@ -229,11 +278,31 @@ fn prepare_tool(
         tags,
     };
 
+    let effective_timeout_ms = match max_timeout_ms {
+        Some(max) => {
+            // WHY: guard against a ceiling below the floor (e.g. a misconfigured
+            // near-zero subprocess_timeout_secs) so clamp's min<=max invariant holds
+            let max = max.max(1_000);
+            let clamped = tool_def.timeout.clamp(1_000, max);
+            if clamped != tool_def.timeout {
+                tracing::warn!(
+                    pack = %pack_name,
+                    tool = %tool_def.name,
+                    requested_ms = tool_def.timeout,
+                    effective_ms = clamped,
+                    "pack tool timeout clamped to deployment policy"
+                );
+            }
+            clamped
+        }
+        None => tool_def.timeout,
+    };
+
     let executor = Box::new(ShellToolExecutor {
         command_path,
         pack_root: pack_root.to_path_buf(),
         runner,
-        timeout_ms: tool_def.timeout,
+        timeout_ms: effective_timeout_ms,
     });
 
     Ok((def, executor))
