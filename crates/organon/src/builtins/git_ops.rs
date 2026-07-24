@@ -69,21 +69,21 @@ fn validate_ref(raw: &str) -> std::result::Result<&str, String> {
 }
 
 /// Captured output from a `git` subprocess invocation.
-struct GitRunOutput {
-    stdout: String,
-    stderr: String,
-    code: i32,
-    duration_ms: u64,
+pub(crate) struct GitRunOutput {
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
+    pub(crate) code: i32,
+    pub(crate) duration_ms: u64,
 }
 
 #[derive(Clone)]
-struct GitCommandRunner {
+pub(crate) struct GitCommandRunner {
     runner: SubprocessRunner,
     program: OsString,
 }
 
 impl GitCommandRunner {
-    fn new(runner: SubprocessRunner) -> Self {
+    pub(crate) fn new(runner: SubprocessRunner) -> Self {
         Self {
             runner,
             program: OsString::from("git"),
@@ -92,7 +92,7 @@ impl GitCommandRunner {
 }
 
 /// Run `git` in the workspace root. Returns stdout on success, stderr on failure.
-fn run_git(
+pub(crate) fn run_git(
     ctx: &ToolContext,
     git: &GitCommandRunner,
     args: &[&str],
