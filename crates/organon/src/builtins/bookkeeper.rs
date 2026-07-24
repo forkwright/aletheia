@@ -4,25 +4,22 @@
 //! - `katharos` (καθαρός — clean): conservative stale worktree cleanup
 
 use std::future::Future;
-use std::io::Read as _;
 use std::pin::Pin;
-use std::process::{Command, Stdio}; // kanon:ignore RUST/no-direct-process-command
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use indexmap::IndexMap;
 
 use koina::id::ToolName;
 
+use crate::builtins::git_ops::{GitCommandRunner, run_git as shared_run_git};
 use crate::error::Result;
-use crate::process_guard::ProcessGuard;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::sandbox::SandboxConfig;
+use crate::subprocess::SubprocessRunner;
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
-
-const GIT_TIMEOUT: Duration = Duration::from_secs(30);
-const MAX_GIT_OUTPUT: usize = 256 * 1024;
 
 /// Stub executor for deferred bookkeeper tools.
 ///
@@ -210,7 +207,14 @@ fn execute_katharos(input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> 
         )));
     }
 
-    let worktrees = match list_worktrees(&ctx.workspace) {
+    // WHY: bookkeeper registration (`register()` below) takes no sandbox
+    // param and `KatharosExecutor` is a unit struct with no sandbox field, so
+    // threading the deployment's configured sandbox through would require a
+    // separate, larger wiring change to the registration entrypoint. Scoped
+    // out of this refactor, which only consolidates the git subprocess path.
+    let git = GitCommandRunner::new(SubprocessRunner::new(SandboxConfig::default()));
+
+    let worktrees = match list_worktrees(ctx, &git, &ctx.workspace) {
         Ok(entries) => entries,
         Err(message) => return Ok(ToolResult::error(message)),
     };
@@ -237,7 +241,7 @@ fn execute_katharos(input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> 
             continue;
         }
 
-        if !entry.prunable && !worktree_is_clean(&worktree_path) {
+        if !entry.prunable && !worktree_is_clean(ctx, &git, &worktree_path) {
             actions.push(CleanupAction::SkippedDirty(entry.path));
             continue;
         }
@@ -252,7 +256,7 @@ fn execute_katharos(input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> 
             continue;
         }
 
-        match remove_worktree(&ctx.workspace, &entry.path) {
+        match remove_worktree(ctx, &git, &ctx.workspace, &entry.path) {
             Ok(()) => actions.push(CleanupAction::Removed(entry.path)),
             Err(message) => return Ok(ToolResult::error(message)),
         }
@@ -263,7 +267,12 @@ fn execute_katharos(input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> 
             .iter()
             .any(|action| matches!(action, CleanupAction::Pruned(_)))
     {
-        match run_git(&ctx.workspace, &["worktree", "prune", "--expire", "now"]) {
+        match run_git(
+            ctx,
+            &git,
+            &ctx.workspace,
+            &["worktree", "prune", "--expire", "now"],
+        ) {
             Ok(_) => {}
             Err(message) => return Ok(ToolResult::error(message)),
         }
@@ -279,8 +288,12 @@ fn project_matches_workspace(project: &str, ctx: &ToolContext) -> bool {
         .is_some_and(|name| name == project)
 }
 
-fn list_worktrees(repo: &std::path::Path) -> std::result::Result<Vec<WorktreeEntry>, String> {
-    let output = run_git(repo, &["worktree", "list", "--porcelain"])?;
+fn list_worktrees(
+    ctx: &ToolContext,
+    git: &GitCommandRunner,
+    repo: &std::path::Path,
+) -> std::result::Result<Vec<WorktreeEntry>, String> {
+    let output = run_git(ctx, git, repo, &["worktree", "list", "--porcelain"])?;
     let mut entries = Vec::new();
     let mut current: Option<WorktreeEntry> = None;
 
@@ -313,17 +326,25 @@ fn is_old_enough(path: &std::path::Path, cutoff: SystemTime) -> bool {
         .is_ok_and(|modified| modified <= cutoff)
 }
 
-fn worktree_is_clean(path: &std::path::Path) -> bool {
-    run_git(path, &["status", "--porcelain"])
+fn worktree_is_clean(ctx: &ToolContext, git: &GitCommandRunner, path: &std::path::Path) -> bool {
+    run_git(ctx, git, path, &["status", "--porcelain"])
         .map(|output| output.trim().is_empty())
         .unwrap_or(false)
 }
 
 fn remove_worktree(
+    ctx: &ToolContext,
+    git: &GitCommandRunner,
     repo: &std::path::Path,
     path: &std::path::Path,
 ) -> std::result::Result<(), String> {
-    run_git(repo, &["worktree", "remove", path_to_git_arg(path)?]).map(|_| ())
+    run_git(
+        ctx,
+        git,
+        repo,
+        &["worktree", "remove", path_to_git_arg(path)?],
+    )
+    .map(|_| ())
 }
 
 fn path_to_git_arg(path: &std::path::Path) -> std::result::Result<&str, String> {
@@ -331,66 +352,31 @@ fn path_to_git_arg(path: &std::path::Path) -> std::result::Result<&str, String> 
         .ok_or_else(|| format!("worktree path is not UTF-8: {}", path.display()))
 }
 
-fn run_git(repo: &std::path::Path, args: &[&str]) -> std::result::Result<String, String> {
-    let child = Command::new("git") // kanon:ignore RUST/no-direct-process-command
-        .args(args)
-        .current_dir(repo)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|source| format!("failed to spawn git: {source}"))?;
-    let mut guard = ProcessGuard::new(child);
-
-    let deadline = Instant::now() + GIT_TIMEOUT;
-    let status = loop {
-        match guard.get_mut().try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    return Err(format!("git {} timed out after 30s", args.join(" ")));
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(source) => return Err(format!("git wait failed: {source}")),
-        }
+fn run_git(
+    ctx: &ToolContext,
+    git: &GitCommandRunner,
+    repo: &std::path::Path,
+    args: &[&str],
+) -> std::result::Result<String, String> {
+    let workspace_ctx;
+    let ctx = if ctx.workspace == repo {
+        ctx
+    } else {
+        workspace_ctx = ToolContext {
+            workspace: repo.to_path_buf(),
+            ..ctx.clone()
+        };
+        &workspace_ctx
     };
 
-    let mut stdout = String::new();
-    if let Some(ref mut pipe) = guard.get_mut().stdout {
-        pipe.read_to_string(&mut stdout)
-            .map_err(|source| format!("failed to read git stdout: {source}"))?;
-    }
-
-    let mut stderr = String::new();
-    if let Some(ref mut pipe) = guard.get_mut().stderr {
-        pipe.read_to_string(&mut stderr)
-            .map_err(|source| format!("failed to read git stderr: {source}"))?;
-    }
-
-    #[expect(
-        clippy::zombie_processes,
-        reason = "process already reaped via try_wait in poll loop above"
-    )]
-    let _child = guard.detach();
-
-    if stdout.len() > MAX_GIT_OUTPUT {
-        let mut end = MAX_GIT_OUTPUT;
-        while end > 0 && !stdout.is_char_boundary(end) {
-            end -= 1;
-        }
-        stdout.truncate(end);
-        stdout.push_str("\n[output truncated]");
-    }
-
-    if status.success() {
-        Ok(stdout)
-    } else {
-        Err(format!(
-            "git {} failed with status {}: {}",
+    match shared_run_git(ctx, git, args) {
+        Ok(out) => Ok(out.stdout),
+        Err(out) if !out.stderr.trim().is_empty() => Err(out.stderr),
+        Err(out) => Err(format!(
+            "git {} failed with exit code {}",
             args.join(" "),
-            status.code().unwrap_or(-1),
-            stderr.trim()
-        ))
+            out.code
+        )),
     }
 }
 
@@ -481,7 +467,10 @@ mod tests {
     }
 
     fn run_test_git(repo: &std::path::Path, args: &[&str]) -> String {
-        run_git(repo, args).unwrap_or_else(|message| panic!("git command failed: {message}"))
+        let ctx = test_context(repo.to_path_buf(), vec![repo.to_path_buf()]);
+        let git = GitCommandRunner::new(SubprocessRunner::new(SandboxConfig::default()));
+        run_git(&ctx, &git, repo, args)
+            .unwrap_or_else(|message| panic!("git command failed: {message}"))
     }
 
     fn write_test_file(path: &std::path::Path, content: &str) {
