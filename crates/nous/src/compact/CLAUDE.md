@@ -42,6 +42,7 @@ forces an explicit decision.
 
 - **aletheia#95** (auto-dream consolidation): `TaskType::Consolidation` exists in
   `tasks/types.rs`, yet compaction has no call site wired from a dream or
-  consolidation task. The `TODO(#2261)` in `pipeline/stages.rs` tracks the
-  background summarization wiring. Once wired, the call site should use
-  `select_prompt(CompactReason::DreamConsolidation)` to obtain `RESTORE_PROMPT`.
+  consolidation task — melete's dream-consolidation flow (`crates/melete/src/dream/`)
+  uses its own summarization and never calls into `nous::compact`. Once wired, the
+  call site should use `select_prompt(CompactReason::DreamConsolidation)` to obtain
+  `RESTORE_PROMPT`.

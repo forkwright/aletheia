@@ -65,7 +65,7 @@ pub(crate) async fn map_error_response(
 
     match status {
         401 => error::AuthFailedSnafu { message }.build(),
-        // TODO(#2183): fallback 1000ms when no retry-after header present.
+        // NOTE: fallback 1000ms when no retry-after header present.
         // Most 429s include the header; this covers edge cases where it's absent.
         429 => error::RateLimitedSnafu {
             retry_after_ms: retry_after_ms.unwrap_or(1000),

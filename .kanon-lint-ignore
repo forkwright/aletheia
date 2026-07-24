@@ -82,10 +82,7 @@ RUST/silent-error-ok:crates/poiesis/verify/src/lib.rs
 RUST/unreachable-in-match:crates/theatron/koilon/src/update/overlay.rs
 
 # WHY(#3987): existing TODO markers are tracked as lint-baseline debt pending owner triage
-RUST/todo-marker-needs-quadrant-and-artifact:crates/hermeneus/src/anthropic/client.rs
-RUST/todo-marker-needs-quadrant-and-artifact:crates/hermeneus/src/anthropic/error.rs
 RUST/todo-marker-needs-quadrant-and-artifact:crates/nous/src/audit.rs
-RUST/todo-marker-needs-quadrant-and-artifact:crates/pylon/src/idempotency.rs
 RUST/todo-marker-needs-quadrant-and-artifact:crates/pylon/src/tests/mod.rs
 RUST/todo-marker-needs-quadrant-and-artifact:crates/theatron/proskenion/src/views/ops/credentials.rs
 

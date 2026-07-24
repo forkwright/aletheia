@@ -455,7 +455,7 @@ pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAud
         fact_ids_filtered,
         tool_names,
         tool_surface_hash: surface.hash().as_str().to_owned(),
-        // TODO(#3384): thread request_id from pylon middleware
+        // TODO(#4853): thread request_id from pylon middleware
         // through PipelineInput once the extraction path reaches nous.
         request_id: None,
     }
