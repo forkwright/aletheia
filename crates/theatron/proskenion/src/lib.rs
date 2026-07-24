@@ -24,9 +24,13 @@ pub(crate) mod views;
 
 /// Launch the desktop application.
 ///
-/// Initialises log-to-file, loads persisted window state, and configures the
+/// Initialises logging, loads persisted window state, and configures the
 /// desktop window before showing it. Closing the window exits the process
 /// cleanly — no minimize-to-tray, no hidden background process.
+///
+/// Logs to a rotating file under the platform data directory when one
+/// resolves; otherwise falls back to stderr-only (no persistent log file —
+/// never cwd-relative, see #5063).
 ///
 /// Pass `verbose = true` (e.g. from a `--verbose` CLI flag) to also emit logs
 /// to stderr. When `RUST_LOG` is set in the environment stderr output is added
@@ -37,20 +41,38 @@ pub fn run(verbose: bool) {
     // WHY: log path stays at ~/.local/share/aletheia/logs/. bathron's default
     // would route to ~/.local/state/aletheia/logs/ via dirs::state_dir, which
     // would break operator `tail -f` muscle memory.
-    let log_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("aletheia")
-        .join("logs");
-    let cfg = bathron::logging::LogConfig::new("proskenion", tracing::Level::INFO)
-        .with_log_dir(log_dir)
-        .with_ansi_on_file(false)
-        .with_filter_directive("proskenion=info");
     let also_to_stderr = verbose || std::env::var("RUST_LOG").is_ok();
-    let _log_guard = match bathron::logging::init_with_stderr(cfg, also_to_stderr) {
-        Ok(guard) => guard,
-        Err(e) => {
-            tracing::error!(error = %e, "failed to initialize logging");
-            return;
+    // WHY: fail closed (#5063) instead of the former
+    // `unwrap_or_else(|| PathBuf::from("."))` — that silently wrote
+    // ./aletheia/logs relative to whatever cwd the app was launched from
+    // (repo checkout, Downloads, packaged app dir, service wrapper). With
+    // no platform data directory resolved there is no intentional place to
+    // persist logs, so the file layer is skipped entirely in favor of
+    // stderr-only output.
+    let _log_guard = match dirs::data_local_dir() {
+        Some(data_dir) => {
+            let log_dir = data_dir.join("aletheia").join("logs");
+            let cfg = bathron::logging::LogConfig::new("proskenion", tracing::Level::INFO)
+                .with_log_dir(log_dir)
+                .with_ansi_on_file(false)
+                .with_filter_directive("proskenion=info");
+            match bathron::logging::init_with_stderr(cfg, also_to_stderr) {
+                Ok(guard) => Some(guard),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to initialize logging");
+                    return;
+                }
+            }
+        }
+        None => {
+            eprintln!(
+                "proskenion: no platform data directory available; running \
+                 stderr-only, no persistent log file (see #5063)"
+            );
+            if let Err(e) = init_stderr_only_logging() {
+                eprintln!("proskenion: failed to initialize stderr logging: {e}");
+            }
+            None
         }
     };
 
@@ -129,6 +151,22 @@ pub fn run(verbose: bool) {
     dioxus::LaunchBuilder::desktop()
         .with_cfg(config)
         .launch(app::App);
+}
+
+/// Install a stderr-only tracing subscriber.
+///
+/// Fallback path (#5063) for when [`dirs::data_local_dir`] returns `None`
+/// and [`run`] has no intentional platform directory to persist logs
+/// under. Honors `RUST_LOG` if set, otherwise defaults to
+/// `proskenion=info`.
+fn init_stderr_only_logging() -> Result<(), tracing::subscriber::SetGlobalDefaultError> {
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("proskenion=info"));
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(env_filter)
+        .with_writer(std::io::stderr)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)
 }
 
 #[cfg(test)]
