@@ -149,7 +149,7 @@ pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
 /// Load a single domain pack from a directory.
 fn load_single_pack(pack_root: &Path) -> Result<LoadedPack> {
     let manifest = manifest::load_manifest(pack_root)?;
-    let sections = resolve_context_sections(pack_root, &manifest);
+    let sections = resolve_context_sections(pack_root, &manifest)?;
 
     Ok(LoadedPack {
         manifest,
@@ -159,12 +159,17 @@ fn load_single_pack(pack_root: &Path) -> Result<LoadedPack> {
 }
 
 /// Resolve all context entries into sections with file contents.
-fn resolve_context_sections(pack_root: &Path, manifest: &PackManifest) -> Vec<PackSection> {
+///
+/// A resolution/read failure on a `Priority::Required` entry fails the whole
+/// pack (propagated to the caller). Failures on any other priority are
+/// logged and the entry is skipped, so the pack still loads.
+fn resolve_context_sections(pack_root: &Path, manifest: &PackManifest) -> Result<Vec<PackSection>> {
     let mut sections = Vec::with_capacity(manifest.context.len());
 
     for entry in &manifest.context {
         match resolve_single_section(pack_root, entry, &manifest.name) {
             Ok(section) => sections.push(section),
+            Err(e) if entry.priority == Priority::Required => return Err(e),
             Err(e) => {
                 warn!(
                     path = %entry.path,
@@ -176,7 +181,7 @@ fn resolve_context_sections(pack_root: &Path, manifest: &PackManifest) -> Vec<Pa
         }
     }
 
-    sections
+    Ok(sections)
 }
 
 /// Resolve a single context entry into a section.
@@ -489,6 +494,19 @@ system_prompt_additions = ["Answer in bullet points."]
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.sections.len(), 1);
         assert_eq!(pack.sections[0].name, "exists.md");
+    }
+
+    #[test]
+    fn missing_required_context_file_fails_the_pack() {
+        // WHY(#5206): a Required context entry that cannot resolve must fail the
+        // whole pack, not be silently warn+skipped like lower priorities.
+        let toml = "name = \"strict\"\nversion = \"1.0\"\n\n[[context]]\npath = \"missing.md\"\npriority = \"required\"\n";
+        let dir = setup_pack(&[("pack.toml", toml)]);
+
+        assert!(
+            load_single_pack(dir.path()).is_err(),
+            "a missing Required context file must fail the whole pack load"
+        );
     }
 
     #[test]
