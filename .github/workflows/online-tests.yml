@@ -76,17 +76,10 @@ jobs:
           restore-keys: |
             hf-${{ runner.os }}-${{ env.HF_MODEL_CACHE_KEY }}-
 
-      - name: Configure git credentials for private fleet deps
-        env:
-          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
-        run: |
-          if [ -z "${FLEET_REPO_TOKEN}" ]; then
-            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
-            exit 1
-          fi
-          git config --global credential.helper store
-          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
-          chmod 0600 ~/.git-credentials
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
@@ -212,17 +205,10 @@ jobs:
           restore-keys: |
             hf-${{ runner.os }}-${{ env.HF_MODEL_CACHE_KEY }}-
 
-      - name: Configure git credentials for private fleet deps
-        env:
-          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
-        run: |
-          if [ -z "${FLEET_REPO_TOKEN}" ]; then
-            echo "FLEET_REPO_TOKEN is not set; private fleet deps will fail to fetch." >&2
-            exit 1
-          fi
-          git config --global credential.helper store
-          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
-          chmod 0600 ~/.git-credentials
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
