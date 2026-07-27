@@ -40,21 +40,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false # PROJECT: security hardening — never expose token to steps
-      - name: Configure git credentials for private fleet deps
-        env:
-          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
-        run: |
-          if [ -z "${FLEET_REPO_TOKEN}" ]; then
-            # WHY: dependabot-triggered runs never receive repo secrets, and the fleet git
-            # deps (theatron) are public - anonymous fetch works. Skip instead of failing
-            # so bot PRs can run supply-chain checks; the token path stays for any future
-            # private dep (set it in BOTH repo and Dependabot secret stores then).
-            echo "FLEET_REPO_TOKEN not set; skipping credential setup (public fleet deps fetch anonymously)."
-            exit 0
-          fi
-          git config --global credential.helper store
-          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
-          chmod 0600 ~/.git-credentials
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           # WHY: run every check explicitly so a schema regression in one
@@ -63,7 +52,11 @@ jobs:
           # `arguments:` passes post-subcommand flags only.
           command: check advisories licenses bans sources
           arguments: --all-features
-          credentials: https://forkwright:${{ secrets.FLEET_REPO_TOKEN }}@github.com
+          # WARNING: do not reintroduce a `credentials:` input interpolating the fleet token.
+          # Dependabot runs resolve it empty, which renders `https://forkwright:@github.com` -
+          # a malformed credential that git prefers over an anonymous fetch and then fails on.
+          # Fleet git deps are public; the shared fleet-git-credentials action above already
+          # handles the authenticated case for any future private dep.
           use-git-cli: true
 
   cargo-audit:
@@ -77,21 +70,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Configure git credentials for private fleet deps
-        env:
-          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
-        run: |
-          if [ -z "${FLEET_REPO_TOKEN}" ]; then
-            # WHY: dependabot-triggered runs never receive repo secrets, and the fleet git
-            # deps (theatron) are public - anonymous fetch works. Skip instead of failing
-            # so bot PRs can run supply-chain checks; the token path stays for any future
-            # private dep (set it in BOTH repo and Dependabot secret stores then).
-            echo "FLEET_REPO_TOKEN not set; skipping credential setup (public fleet deps fetch anonymously)."
-            exit 0
-          fi
-          git config --global credential.helper store
-          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
-          chmod 0600 ~/.git-credentials
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           toolchain: stable

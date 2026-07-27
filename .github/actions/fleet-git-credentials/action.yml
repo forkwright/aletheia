@@ -1,0 +1,32 @@
+name: Fleet git credentials
+description: >-
+  Configure git credentials for forkwright git dependencies, tolerating an absent token.
+  Every job that fetches fleet deps calls this instead of carrying its own copy of the guard.
+
+inputs:
+  token:
+    description: >-
+      Token with read access to private forkwright repos. Empty is a supported case, not an
+      error - public deps fetch anonymously.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        FLEET_REPO_TOKEN: ${{ inputs.token }}
+      run: |
+        if [ -z "${FLEET_REPO_TOKEN}" ]; then
+          # WHY: dependabot-triggered runs read a separate secret store and receive no Actions
+          # secrets, so the token is always empty for them. Every forkwright git dep is public,
+          # so anonymous fetch succeeds. Failing here would make every bot PR unmergeable by
+          # construction. The token path stays for any future private dep - populate BOTH the
+          # Actions and Dependabot secret stores at that point.
+          echo "FLEET_REPO_TOKEN not set; skipping credential setup (public fleet deps fetch anonymously)."
+          exit 0
+        fi
+        git config --global credential.helper store
+        printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+        chmod 0600 ~/.git-credentials
