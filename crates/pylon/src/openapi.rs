@@ -3,6 +3,16 @@
     clippy::expect_used,
     reason = "OpenAPI JSON serialization is infallible"
 )]
+// WARNING: this one is `allow`, not `expect`, and cannot be `expect`. The
+// utoipa `OpenApi` derive does expand to a `for_each` loop, so the lint is
+// real under `cargo clippy`. But the gate also runs `cargo check`, where
+// clippy lints never fire, so an `expect` goes unfulfilled there and
+// `-D warnings` turns that into a hard error. The suppression is therefore
+// satisfied in one pass and violated in the other; only `allow` survives both.
+#![allow(
+    clippy::needless_for_each,
+    reason = "utoipa OpenApi derive expands to generated for_each loops"
+)]
 
 use std::sync::Arc;
 
