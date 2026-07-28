@@ -325,7 +325,8 @@ fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // NOTE: no `use super::*` — the remaining tests reference everything by full path. The glob
+    // was carried by the truncate_str tests that moved to parodos with the function.
 
     #[test]
     fn get_on_empty_slice_returns_empty() {
