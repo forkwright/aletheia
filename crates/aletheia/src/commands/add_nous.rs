@@ -939,6 +939,26 @@ mod tests {
         perms.set_readonly(true);
         std::fs::set_permissions(&config_dir, perms).unwrap();
 
+        // WHY: skip when running as root — root bypasses permission-bit checks,
+        // so `run()` would succeed here and the assertion below would break.
+        let root_probe = config_dir.join(".root-probe");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "test probes whether the read-only permission bit is actually enforced"
+        )]
+        let is_root = std::fs::write(&root_probe, b"x").is_ok();
+        let _ = std::fs::remove_file(&root_probe);
+        if is_root {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&config_dir).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&config_dir, perms).unwrap();
+            eprintln!(
+                "skipping: running as root, which bypasses the permission bits this test relies on"
+            );
+            return;
+        }
+
         let args = AddNousArgs {
             name: "unwritable".to_owned(),
             provider: "anthropic".to_owned(),

@@ -85,6 +85,11 @@ image = { version = "0.25", default-features = false, features = [
     "bmp",
 ] }
 
+[dev-dependencies]
+# WHY: editor-state tests write fixtures to a private tempdir rather than a fixed name under the
+# shared OS temp root, so two users or two runs cannot collide on the same path.
+tempfile = { workspace = true }
+
 # koilon uses inline lints rather than lints.workspace = true because Cargo
 # does not allow combining workspace lint inheritance with package-level overrides,
 # and the TUI codebase is not pedantic-clean. Deny-level rules are kept in sync
