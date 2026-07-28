@@ -8,6 +8,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
 use crate::state::metrics::{MetricsState, sparkline};
+use crate::text::truncate_chars_ellipsis;
 use crate::theme::Theme;
 
 /// Minimum terminal width required to show the full header row without truncation.
@@ -273,7 +274,7 @@ fn render_agent_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             let output_tok = agent_metrics.map_or(0, |m| m.output_tokens);
             let cache_tok = agent_metrics.map_or(0, |m| m.cache_read_tokens);
 
-            let name = truncate_str(&agent.name, 16);
+            let name = truncate_chars_ellipsis(&agent.name, 16);
             let name_style = if is_selected {
                 theme.style_fg().add_modifier(Modifier::BOLD)
             } else {
@@ -322,26 +323,6 @@ fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(paragraph, area);
 }
 
-fn truncate_str(s: &str, max_chars: usize) -> String {
-    let mut chars = s.chars();
-    let mut result = String::with_capacity(max_chars + 1);
-    let mut count = 0;
-    while count < max_chars {
-        match chars.next() {
-            Some(c) => {
-                result.push(c);
-                count += 1;
-            }
-            None => break,
-        }
-    }
-    if chars.next().is_some() {
-        result.pop();
-        result.push('…');
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,27 +350,5 @@ mod tests {
         let end = (start + 10).min(agents.len());
         let visible = agents.get(start..end).unwrap_or(&[]);
         assert_eq!(visible.len(), 1);
-    }
-
-    #[test]
-    fn truncate_str_short() {
-        assert_eq!(truncate_str("hello", 10), "hello");
-    }
-
-    #[test]
-    fn truncate_str_exact() {
-        assert_eq!(truncate_str("hello", 5), "hello");
-    }
-
-    #[test]
-    fn truncate_str_long() {
-        let result = truncate_str("hello world", 8);
-        assert!(result.ends_with('…'));
-        assert_eq!(result.chars().count(), 8);
-    }
-
-    #[test]
-    fn truncate_str_empty() {
-        assert_eq!(truncate_str("", 5), "");
     }
 }
