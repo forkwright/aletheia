@@ -1066,10 +1066,7 @@ mod tests {
             changed: 5,
         };
         let (text, is_error) = reload_summary(Some(&outcome)).unwrap();
-        assert_eq!(
-            text,
-            "Reloaded 2 of 5 changed value(s) without a restart."
-        );
+        assert_eq!(text, "Reloaded 2 of 5 changed value(s) without a restart.");
         assert!(!is_error);
     }
 
