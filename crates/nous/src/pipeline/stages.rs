@@ -1010,6 +1010,11 @@ pub(super) async fn run_finalize_stage(
                         usage = fr.usage_recorded(),
                         "finalize complete"
                     );
+                    crate::metrics::record_cache_usage(
+                        &config.id,
+                        result.usage.cache_read_tokens,
+                        result.usage.cache_write_tokens,
+                    );
                     span.record("status", "ok");
                     FinalizeOutcome::Persisted
                 }
