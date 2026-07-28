@@ -739,6 +739,16 @@ pub(crate) fn centered_rect_pub(percent_x: u16, percent_y: u16, area: Rect) -> R
     centered_rect(percent_x, percent_y, area)
 }
 
+// WARNING: not provably equivalent to `parodos::layout::centered_rect_pct` —
+// this uses ratatui's `Layout::split` (default `Flex::Start`) over two
+// pre-divided `(100 - percent) / 2` margin constraints, not direct pixel
+// arithmetic. When `100 - percent` is odd (e.g. percent = 85, used by
+// DIFF_POPUP_HEIGHT_PCT here and POPUP_HEIGHT_PCT in settings.rs), the three
+// constraints sum to 99% and `Flex::Start` leaves the shortfall unallocated
+// at the trailing edge instead of splitting it across both margins — a
+// different (off-center) result than `centered_rect_pct`'s floor-based
+// offset. Do not collapse into the parodos helper without confirming pixel
+// parity across the percent values actually used.
 #[expect(
     clippy::indexing_slicing,
     reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"
