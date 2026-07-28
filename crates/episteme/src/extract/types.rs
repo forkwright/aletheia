@@ -178,6 +178,8 @@ pub struct PersistResult {
     pub causal_edges_inserted: usize,
     /// Number of fact-entity edges linked during persistence.
     pub fact_entities_inserted: usize,
+    /// Number of fact-entity link attempts that failed and were dropped.
+    pub fact_entity_link_failures: usize,
 }
 
 impl PersistResult {
