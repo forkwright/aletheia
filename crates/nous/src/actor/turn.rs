@@ -627,16 +627,24 @@ impl NousActor {
     pub(super) fn record_pipeline_panic(&mut self) {
         self.runtime.pipeline_panic_count += 1;
         let now = std::time::Instant::now();
-        self.runtime.pipeline_panic_timestamps.push(now);
+        self.runtime.pipeline_panic_timestamps.push_back(now);
         self.runtime.last_panic_at = Some(now);
 
         let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
         let cutoff = std::time::Instant::now()
             .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
-        self.runtime
+        // WHY: entries are pushed in monotonic time order, so the deque is
+        // sorted ascending — drop the expired prefix from the front instead
+        // of rescanning the whole collection on every panic.
+        while self
+            .runtime
             .pipeline_panic_timestamps
-            .retain(|t| *t > cutoff);
+            .front()
+            .is_some_and(|t| *t <= cutoff)
+        {
+            self.runtime.pipeline_panic_timestamps.pop_front();
+        }
 
         let threshold = self.nous_behavior.degraded_panic_threshold;
         tracing::debug!(

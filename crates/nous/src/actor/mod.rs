@@ -1,7 +1,7 @@
 // kanon:ignore RUST/file-too-long — NousActor owns all actor state and message-loop logic; cross-nous and lifecycle handlers are cohesive and extracting them would split tightly coupled paths
 //! Tokio actor for a single nous agent instance.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::{Duration, Instant};
@@ -134,7 +134,10 @@ pub(crate) struct BackgroundFailureState {
     /// Total background task failures (panics and non-panic join errors) since start.
     pub(crate) total_count: u32,
     /// Timestamps of recent background task failures within the degraded window.
-    pub(crate) timestamps: Vec<Instant>,
+    ///
+    /// INVARIANT: pushed in monotonic time order, so the deque stays sorted ascending and
+    /// window expiry is a front-prefix drop rather than a full rescan.
+    pub(crate) timestamps: VecDeque<Instant>,
     /// Message from the most recent background task failure.
     pub(crate) latest_message: Option<String>,
     /// Kind label of the most recent background task failure (`panic`, `error`, ...).
@@ -163,11 +166,17 @@ pub(crate) struct ActorRuntime {
     /// Number of pipeline panics caught by the panic boundary since start.
     pipeline_panic_count: u32,
     /// Timestamps of recent pipeline panics for degraded-mode window calculation.
-    pipeline_panic_timestamps: Vec<Instant>,
+    ///
+    /// INVARIANT: entries are pushed in monotonic time order (single-threaded
+    /// actor, `Instant::now()` at push time), so the deque stays sorted
+    /// ascending and expiry is a front-prefix drop, not a full rescan.
+    pipeline_panic_timestamps: VecDeque<Instant>,
     /// Number of background task panics since start.
     background_panic_count: u32,
     /// Timestamps of recent background task panics (for logging/monitoring only).
-    background_panic_timestamps: Vec<Instant>,
+    ///
+    /// INVARIANT: same ordering guarantee as `pipeline_panic_timestamps`.
+    background_panic_timestamps: VecDeque<Instant>,
     /// Aggregated background task failure counters and recent-window state.
     background_failure: BackgroundFailureState,
     /// When the actor started running.
@@ -350,12 +359,12 @@ impl NousActor {
                 turn_started_at_ms,
                 distillation_in_progress: Arc::new(AtomicBool::new(false)),
                 pipeline_panic_count: 0,
-                pipeline_panic_timestamps: Vec::new(),
+                pipeline_panic_timestamps: VecDeque::new(),
                 background_panic_count: 0,
-                background_panic_timestamps: Vec::new(),
+                background_panic_timestamps: VecDeque::new(),
                 background_failure: BackgroundFailureState {
                     total_count: 0,
-                    timestamps: Vec::new(),
+                    timestamps: VecDeque::new(),
                     latest_message: None,
                     latest_kind: None,
                 },

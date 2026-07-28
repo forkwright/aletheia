@@ -56,16 +56,23 @@ impl NousActor {
     pub(super) fn record_background_panic(&mut self, message: Option<String>) {
         self.runtime.background_panic_count += 1;
         let now = std::time::Instant::now();
-        self.runtime.background_panic_timestamps.push(now);
+        self.runtime.background_panic_timestamps.push_back(now);
 
-        // WHY: drop timestamps outside the window so logging/monitoring stay accurate
+        // WHY: drop timestamps outside the window so logging/monitoring stay accurate.
+        // Entries are pushed in monotonic time order, so the deque is sorted
+        // ascending and expiry is a front-prefix drop, not a full rescan.
         let degraded_window = Duration::from_secs(self.nous_behavior.degraded_window_secs);
         let cutoff = std::time::Instant::now()
             .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
-        self.runtime
+        while self
+            .runtime
             .background_panic_timestamps
-            .retain(|t| *t > cutoff);
+            .front()
+            .is_some_and(|t| *t <= cutoff)
+        {
+            self.runtime.background_panic_timestamps.pop_front();
+        }
 
         self.record_background_failure("panic", message);
 
@@ -84,7 +91,7 @@ impl NousActor {
     pub(super) fn record_background_failure(&mut self, kind: &str, message: Option<String>) {
         self.runtime.background_failure.total_count += 1;
         let now = std::time::Instant::now();
-        self.runtime.background_failure.timestamps.push(now);
+        self.runtime.background_failure.timestamps.push_back(now);
 
         // WHY(#5147): keep only failures inside the configured degraded window so
         // `background_health_degraded` reflects recent flapping, not ancient history.
@@ -92,10 +99,17 @@ impl NousActor {
         let cutoff = std::time::Instant::now()
             .checked_sub(degraded_window)
             .unwrap_or(self.runtime.started_at);
-        self.runtime
+        // WHY: entries are pushed in monotonic time order, so the deque is sorted ascending —
+        // drop the expired prefix from the front instead of rescanning on every failure.
+        while self
+            .runtime
             .background_failure
             .timestamps
-            .retain(|t| *t > cutoff);
+            .front()
+            .is_some_and(|t| *t <= cutoff)
+        {
+            self.runtime.background_failure.timestamps.pop_front();
+        }
 
         self.runtime.background_failure.latest_kind = Some(kind.to_owned());
         self.runtime.background_failure.latest_message = message;
