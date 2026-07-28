@@ -475,7 +475,7 @@ fn verified_can_be_superseded_by_verified() {
 }
 
 #[test]
-fn verified_can_be_superseded_by_inferred() {
+fn verified_not_superseded_by_inferred_contradicts() {
     let candidate = make_candidate("f-old", "old verified", 0.7, EpistemicTier::Verified, 0.9);
     let fact = make_fact_with_tier("new inferred", 0.95, EpistemicTier::Inferred, vec![]);
     let action = resolve_action(
@@ -487,10 +487,25 @@ fn verified_can_be_superseded_by_inferred() {
     );
     assert_eq!(
         action,
-        ConflictAction::Supersede {
-            old_id: FactId::new("f-old").expect("valid test id")
-        },
-        "verified can be superseded by inferred: values should be equal"
+        ConflictAction::Drop,
+        "verified not superseded by inferred contradicts: values should be equal"
+    );
+}
+
+#[test]
+fn verified_not_superseded_by_inferred_refines() {
+    let candidate = make_candidate("f-old", "old verified", 0.7, EpistemicTier::Verified, 0.9);
+    let fact = make_fact_with_tier(
+        "new inferred refinement",
+        0.95,
+        EpistemicTier::Inferred,
+        vec![],
+    );
+    let action = resolve_action(&ConflictClassification::Refines, &candidate, &fact, 1, 1);
+    assert_eq!(
+        action,
+        ConflictAction::Drop,
+        "verified not superseded by inferred refines: values should be equal"
     );
 }
 

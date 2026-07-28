@@ -295,7 +295,7 @@ impl KnowledgeStore {
         let mut new_fact_ids = Vec::new();
 
         for consolidated in &result.consolidated_facts {
-            // WHY (#4660): conservative merge of source policy metadata keeps
+            // WHY(#4660): conservative merge of source policy metadata keeps
             // a confidential or project-scoped input from silently becoming
             // public/global.
             let merged = merge_consolidated_metadata(consolidated)?;
@@ -355,7 +355,7 @@ impl KnowledgeStore {
                 .build()
             })?;
 
-            // WHY (#3634): record multiplicity metadata in the side-index so
+            // WHY(#3634): record multiplicity metadata in the side-index so
             // downstream recall and conflict resolution can weight a
             // consolidated fact by how many independent observations
             // converged on it. Failing to record multiplicity must not
@@ -364,7 +364,7 @@ impl KnowledgeStore {
             let multiplicity = compute_multiplicity(&new_id, consolidated, &now_str);
             self.record_fact_multiplicity(&multiplicity)?;
 
-            // WHY (#4660): keep source fact IDs and source session IDs
+            // WHY(#4660): keep source fact IDs and source session IDs
             // inspectable from the consolidated fact's provenance side-index.
             self.record_consolidation_provenance(&new_id, consolidated)?;
 
@@ -898,6 +898,31 @@ struct BatchSupersession {
     consolidated_fact_index: usize,
 }
 
+/// Mean confidence across one consolidation batch's source facts.
+///
+/// WHY(#5853): every source fact is weighted equally — `SourceFact` carries
+/// no other signal (explicit trust weight, corroboration count) to
+/// differentiate one source from another within a batch, so an unweighted
+/// arithmetic mean of the source confidences is the only scheme the data
+/// supports without inventing a factor the batch does not actually carry.
+///
+/// INVARIANT: `batch_facts` (via `slice::chunks`) never yields an empty
+/// batch for nonempty input, so the empty branch below is unreachable in
+/// practice; it exists to keep this function total and to avoid a NaN
+/// confidence reaching a persisted fact if that invariant is ever violated.
+fn batch_mean_confidence(batch: &[SourceFact]) -> f64 {
+    if batch.is_empty() {
+        return 0.5;
+    }
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_precision_loss,
+        reason = "batch length is bounded by config.batch_limit (a small batch size); precision loss is acceptable for an averaged confidence value"
+    )]
+    let count = batch.len() as f64;
+    batch.iter().map(|source| source.confidence).sum::<f64>() / count
+}
+
 /// Run the LLM consolidation prompt across batches and collect results.
 fn run_llm_consolidation(
     provider: &dyn ConsolidationProvider,
@@ -915,17 +940,17 @@ fn run_llm_consolidation(
 
         let response = provider.consolidate(system, &user_msg)?;
         let entries = parse_consolidation_response(&response)?;
-        // WHY (#5847): lifecycle supersession is single-valued. Preserve the
+        // WHY(#5847): lifecycle supersession is single-valued. Preserve the
         // existing first-output behavior within a batch while retaining the
         // correct first output separately for every batch in the run.
         let first_consolidated_fact_index = all_consolidated.len();
 
         let batch_fact_ids: Vec<FactId> = batch.iter().map(|s| s.id.clone()).collect();
-        // WHY (#3634): preserve source recorded_at timestamps so multiplicity
+        // WHY(#3634): preserve source recorded_at timestamps so multiplicity
         // metadata (time-spread, first/last observation) can be computed
         // downstream. Aligned by index to `batch_fact_ids`.
         let batch_recorded_ats: Vec<String> = batch.iter().map(|s| s.recorded_at.clone()).collect();
-        // WHY (#4660): carry source policy metadata through the batch so the
+        // WHY(#4660): carry source policy metadata through the batch so the
         // conservative merge in `persist_consolidated_facts` can enforce scope,
         // project, sensitivity, and visibility boundaries.
         let batch_scopes: Vec<Option<MemoryScope>> = batch.iter().map(|s| s.scope).collect();
@@ -936,11 +961,14 @@ fn run_llm_consolidation(
         let batch_visibilities: Vec<Visibility> = batch.iter().map(|s| s.visibility).collect();
         let batch_session_ids: Vec<Option<String>> =
             batch.iter().map(|s| s.source_session_id.clone()).collect();
+        // WHY(#5853): a consolidated fact's confidence reflects the sources
+        // it was built from rather than a fixed constant.
+        let batch_confidence = batch_mean_confidence(batch);
 
         for entry in &entries {
             all_consolidated.push(ConsolidatedFact {
                 content: entry.content.clone(),
-                confidence: 0.95,
+                confidence: batch_confidence,
                 tier: "inferred".to_owned(),
                 // WHY: each ConsolidatedFact owns its source IDs, while the
                 // audit result and supersession plan also retain them after
@@ -956,7 +984,7 @@ fn run_llm_consolidation(
             });
         }
 
-        // WHY (#5849): A batch that produces zero consolidated outputs must not
+        // WHY(#5849): A batch that produces zero consolidated outputs must not
         // supersede its source facts. Marking originals as superseded with no
         // replacement would silently destroy knowledge.
         if entries.is_empty() {

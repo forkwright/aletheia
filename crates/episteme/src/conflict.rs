@@ -495,7 +495,7 @@ pub(crate) fn classify_against_candidates(
 /// - REFINES → supersede (refinement always wins)
 /// - SUPPLEMENTS → insert (both live)
 /// - UNRELATED → insert
-/// - Exception: `Verified` tier never superseded by `Assumed` tier
+/// - Exception: `Verified` tier never superseded by `Assumed` or `Inferred` tier
 ///
 /// `existing_source_count` / `new_source_count` are the consolidated-fact
 /// multiplicities (`fact_multiplicity` side-index; 1 for non-consolidated /
@@ -511,9 +511,15 @@ pub(crate) fn resolve_action(
 ) -> ConflictAction {
     match classification {
         ConflictClassification::Contradicts => {
-            // WHY: Verified facts are never superseded by Assumed-tier facts.
+            // WHY(#5854): Verified facts are never superseded by Assumed-
+            // or Inferred-tier facts — Inferred was previously missing from
+            // this guard, letting a reasoned-but-unverified fact override
+            // ground-truth via the confidence comparison below.
             if candidate.existing_tier == EpistemicTier::Verified
-                && new_fact.tier == EpistemicTier::Assumed
+                && matches!(
+                    new_fact.tier,
+                    EpistemicTier::Assumed | EpistemicTier::Inferred
+                )
             {
                 return ConflictAction::Drop;
             }
@@ -529,7 +535,7 @@ pub(crate) fn resolve_action(
             } else if new_fact.confidence < candidate.existing_confidence {
                 ConflictAction::Drop
             } else if existing_source_count > new_source_count {
-                // WHY (#4415): equal confidence — the existing fact has more
+                // WHY(#4415): equal confidence — the existing fact has more
                 // independent converging observations, so it wins the tie. The
                 // `>=` recency default applies when counts are equal or the new
                 // fact has at least as many sources.
@@ -541,9 +547,15 @@ pub(crate) fn resolve_action(
             }
         }
         ConflictClassification::Refines => {
-            // WHY: Verified facts are never superseded by Assumed-tier facts.
+            // WHY(#5854): Verified facts are never superseded by Assumed-
+            // or Inferred-tier facts — REFINES supersedes unconditionally
+            // otherwise, so this guard is the only thing stopping a
+            // reasoned-but-unverified fact from overriding ground-truth.
             if candidate.existing_tier == EpistemicTier::Verified
-                && new_fact.tier == EpistemicTier::Assumed
+                && matches!(
+                    new_fact.tier,
+                    EpistemicTier::Assumed | EpistemicTier::Inferred
+                )
             {
                 return ConflictAction::Drop;
             }
@@ -581,7 +593,7 @@ pub(crate) fn detect_conflicts(
         } else {
             match classify_against_candidates(classifier, &fact, &candidates)? {
                 Some((classification, candidate_idx)) => {
-                    // WHY (#4415): consult the fact_multiplicity side-index so an
+                    // WHY(#4415): consult the fact_multiplicity side-index so an
                     // equal-confidence contradiction is broken toward the fact
                     // with more independent converging sources. Non-consolidated
                     // facts (None) count as a single observation; the new fact is
