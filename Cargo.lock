@@ -2317,6 +2317,7 @@ dependencies = [
  "nous",
  "organon",
  "rmcp",
+ "rmcp-macros",
  "schemars",
  "serde",
  "serde_json",
@@ -2443,6 +2444,7 @@ dependencies = [
  "sha2 0.11.0",
  "snafu",
  "supports-color",
+ "tempfile",
  "tokio",
  "tracing",
  "wiremock",
@@ -4678,6 +4680,7 @@ dependencies = [
  "skene",
  "snafu",
  "syntect",
+ "tempfile",
  "tokio",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
@@ -8986,13 +8989,6 @@ dependencies = [
  "smawk",
  "unicode-linebreak",
  "unicode-width",
-]
-
-[[package]]
-name = "theatron"
-version = "0.32.1"
-dependencies = [
- "skene",
 ]
 
 [[package]]
