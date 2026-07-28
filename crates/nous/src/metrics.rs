@@ -344,13 +344,6 @@ pub(crate) fn record_health_poller_restart() {
 /// the Anthropic response `cache_read_input_tokens` field (cache hits).
 /// `cache_creation_tokens` maps to `cache_creation_input_tokens` (cache misses
 /// that populate the cache for subsequent requests).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "forked agent cache coherence — wired from pipeline turn completion"
-    )
-)]
 pub(crate) fn record_cache_usage(
     nous_id: &str,
     cache_read_tokens: u64,
