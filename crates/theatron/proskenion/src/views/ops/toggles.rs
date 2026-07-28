@@ -2,14 +2,14 @@
 
 use dioxus::prelude::*;
 use skene::api::routes::{
-    config::feature_flags_url,
+    config::{feature_flags_url, reload_url},
     nous::{agent_tools_url, agent_url},
 };
 use skeue::EmptyState;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-use crate::state::ops::{ToggleActionResult, ToggleApplyState, ToggleStore};
+use crate::state::ops::{ReloadOutcome, ToggleActionResult, ToggleApplyState, ToggleStore};
 
 const PANEL_STYLE: &str = "\
     background: var(--bg-surface); \
@@ -109,6 +109,28 @@ const CONFIRM_BOX: &str = "\
     text-align: center;\
 ";
 
+const RELOAD_BTN: &str = "\
+    background: var(--accent); \
+    color: var(--text-inverse); \
+    border: 1px solid var(--accent); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
+    cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);\
+";
+
+const RELOAD_BTN_DISABLED: &str = "\
+    background: var(--bg-surface); \
+    color: var(--text-muted); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-1) var(--space-3); \
+    font-size: var(--text-xs); \
+    font-weight: var(--weight-semibold); \
+    cursor: not-allowed;\
+";
+
 const CONFIRM_BTN: &str = "\
     padding: var(--space-2) var(--space-4); \
     border-radius: var(--radius-md); \
@@ -169,6 +191,10 @@ pub(crate) fn ToggleControlsPanel(
             style: "{PANEL_STYLE}",
 
             div { style: "{SECTION_TITLE}", "Controls" }
+
+            div { style: "{SUBSECTION_TITLE}", "Config" }
+
+            ConfigReloadRow { store, config }
 
             div { style: "{SUBSECTION_TITLE}", "Agents" }
 
@@ -450,6 +476,68 @@ fn FeatureFlagRow(
             }
             if let Some(ref err) = error {
                 div { style: "{ERROR_STYLE}", "{err}" }
+            }
+        }
+    }
+}
+
+/// Build the one-line summary shown beneath the reload button.
+///
+/// Returns `(text, is_error)` so the caller can pick the error vs. muted
+/// style without re-matching on the outcome.
+fn reload_summary(outcome: Option<&ReloadOutcome>) -> Option<(String, bool)> {
+    match outcome {
+        None => None,
+        Some(ReloadOutcome::Applied {
+            hot_reloaded,
+            changed,
+        }) => {
+            if *changed == 0 {
+                Some(("Config already up to date.".to_string(), false))
+            } else {
+                let text = format!(
+                    "Reloaded {hot_reloaded} of {changed} changed value(s) without a restart."
+                );
+                Some((text, false))
+            }
+        }
+        Some(ReloadOutcome::Failed(message)) => Some((message.clone(), true)),
+    }
+}
+
+// WHY(#5799): backend exposes POST /api/v1/config/reload (re-read
+// aletheia.toml + env overrides, apply hot-reloadable values) with no UI
+// caller. This row fills that gap, matching the fire_feature_toggle
+// spawn/request/state-update shape: optimistic-free (nothing to flip), busy
+// button while pending, and the same connection/parse/status error surface.
+#[component]
+fn ConfigReloadRow(store: Signal<ToggleStore>, config: Signal<ConnectionConfig>) -> Element {
+    let (pending, outcome) = {
+        let data = store.read();
+        (data.reload_pending, data.reload_outcome.clone())
+    };
+    let summary = reload_summary(outcome.as_ref());
+
+    rsx! {
+        div {
+            div {
+                style: "{ROW_STYLE}",
+                span { style: "{TOGGLE_LABEL}", "Reload config from disk" }
+                if pending {
+                    button { style: "{RELOAD_BTN_DISABLED}", disabled: true, "Reloading\u{2026}" }
+                } else {
+                    button {
+                        style: "{RELOAD_BTN}",
+                        onclick: move |_| fire_config_reload(store, config),
+                        "Reload Config"
+                    }
+                }
+            }
+            if let Some((text, is_error)) = summary {
+                div {
+                    style: if is_error { "{ERROR_STYLE}" } else { "{FLAG_DESC}" },
+                    "{text}"
+                }
             }
         }
     }
@@ -848,12 +936,79 @@ fn fire_feature_toggle(
     });
 }
 
+/// Server response shape for `POST /api/v1/config/reload`.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct ConfigReloadResponse {
+    #[serde(default)]
+    hot_reloaded: usize,
+    #[serde(default)]
+    restart_required: Vec<String>,
+    #[serde(default)]
+    changed: Vec<String>,
+}
+
+fn fire_config_reload(mut store: Signal<ToggleStore>, config: Signal<ConnectionConfig>) {
+    store.write().begin_reload();
+
+    let cfg = config.read().clone();
+
+    spawn(async move {
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                store.write().resolve_reload_failure(err.to_string());
+                return;
+            }
+        };
+        let url = reload_url(&cfg.server_url);
+
+        // NOTE: no body -- POST /api/v1/config/reload re-reads aletheia.toml
+        // + env overrides from disk; there is nothing for the client to send.
+        let result = client.post(&url).send().await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<ConfigReloadResponse>().await {
+                    Ok(body) => {
+                        store.write().resolve_reload_success(
+                            body.hot_reloaded,
+                            body.changed.len(),
+                            body.restart_required,
+                        );
+                    }
+                    Err(err) => {
+                        store.write().resolve_reload_failure(format!(
+                            "failed to parse reload response: {err}"
+                        ));
+                    }
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let detail = resp.text().await.unwrap_or_default();
+                let message = if detail.is_empty() {
+                    format!("server returned {status}")
+                } else {
+                    format!("server returned {status}: {}", detail.trim())
+                };
+                store.write().resolve_reload_failure(message);
+            }
+            Err(e) => {
+                store
+                    .write()
+                    .resolve_reload_failure(format!("connection error: {e}"));
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use crate::state::ops::{FeatureFlag, ToggleStore};
+    use super::reload_summary;
+    use crate::state::ops::{FeatureFlag, ReloadOutcome, ToggleStore};
 
-    use skene::api::routes::config::feature_flags_url;
+    use skene::api::routes::config::{feature_flags_url, reload_url};
 
     #[test]
     fn feature_flags_url_uses_put_section_endpoint() {
@@ -868,6 +1023,62 @@ mod tests {
         assert_eq!(
             feature_flags_url("http://localhost:8080/"),
             "http://localhost:8080/api/v1/config/feature_flags"
+        );
+    }
+
+    #[test]
+    fn reload_url_uses_reload_endpoint() {
+        assert_eq!(
+            reload_url("https://example.com"),
+            "https://example.com/api/v1/config/reload"
+        );
+    }
+
+    #[test]
+    fn reload_url_trims_trailing_slash() {
+        assert_eq!(
+            reload_url("http://localhost:8080/"),
+            "http://localhost:8080/api/v1/config/reload"
+        );
+    }
+
+    #[test]
+    fn reload_summary_none_when_no_outcome_yet() {
+        assert_eq!(reload_summary(None), None);
+    }
+
+    #[test]
+    fn reload_summary_reports_up_to_date_when_nothing_changed() {
+        let outcome = ReloadOutcome::Applied {
+            hot_reloaded: 0,
+            changed: 0,
+        };
+        assert_eq!(
+            reload_summary(Some(&outcome)),
+            Some(("Config already up to date.".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn reload_summary_reports_counts_when_changed() {
+        let outcome = ReloadOutcome::Applied {
+            hot_reloaded: 2,
+            changed: 5,
+        };
+        let (text, is_error) = reload_summary(Some(&outcome)).unwrap();
+        assert_eq!(
+            text,
+            "Reloaded 2 of 5 changed value(s) without a restart."
+        );
+        assert!(!is_error);
+    }
+
+    #[test]
+    fn reload_summary_surfaces_failure_as_error() {
+        let outcome = ReloadOutcome::Failed("connection error: timed out".to_string());
+        assert_eq!(
+            reload_summary(Some(&outcome)),
+            Some(("connection error: timed out".to_string(), true))
         );
     }
 

@@ -298,6 +298,15 @@ impl ToggleApplyState {
     }
 }
 
+/// Outcome of the last manual config reload (`POST /api/v1/config/reload`).
+#[derive(Debug, Clone)]
+pub(crate) enum ReloadOutcome {
+    /// Reload applied; counts summarize the server-reported diff.
+    Applied { hot_reloaded: usize, changed: usize },
+    /// Reload failed; carries a human-readable message.
+    Failed(String),
+}
+
 /// A system-wide feature flag.
 #[derive(Debug, Clone)]
 pub(crate) struct FeatureFlag {
@@ -331,6 +340,11 @@ pub(crate) struct ToggleStore {
     /// Surfaced in the feature-flag panel so operators know when a restart is
     /// needed for a change to take effect.
     pub restart_required: Vec<String>,
+    /// Whether a manual config reload is currently in flight.
+    pub reload_pending: bool,
+    /// Outcome of the last manual config reload, kept visible until the next
+    /// reload attempt or a full panel refresh.
+    pub reload_outcome: Option<ReloadOutcome>,
 }
 
 impl ToggleStore {
@@ -502,6 +516,36 @@ impl ToggleStore {
                 f.error = error.or(Some("Update failed".to_string()));
             }
         }
+    }
+
+    /// Mark a manual config reload as in flight.
+    pub(crate) fn begin_reload(&mut self) {
+        self.reload_pending = true;
+    }
+
+    /// Resolve a successful config reload.
+    ///
+    /// WHY: `restart_required` is replaced wholesale rather than merged --
+    /// reload re-reads the entire config file from disk, so its diff
+    /// supersedes any partial list left over from an earlier section update.
+    pub(crate) fn resolve_reload_success(
+        &mut self,
+        hot_reloaded: usize,
+        changed: usize,
+        restart_required: Vec<String>,
+    ) {
+        self.reload_pending = false;
+        self.restart_required = restart_required;
+        self.reload_outcome = Some(ReloadOutcome::Applied {
+            hot_reloaded,
+            changed,
+        });
+    }
+
+    /// Resolve a failed config reload.
+    pub(crate) fn resolve_reload_failure(&mut self, message: String) {
+        self.reload_pending = false;
+        self.reload_outcome = Some(ReloadOutcome::Failed(message));
     }
 
     /// Get tools filtered by the currently expanded agent.
@@ -1075,6 +1119,67 @@ mod tests {
         assert!(entry.contains_key("enabled"));
         assert!(!entry.contains_key("error"));
         assert!(!entry.contains_key("pending"));
+    }
+
+    #[test]
+    fn toggle_store_begin_reload_sets_pending() {
+        let mut store = ToggleStore::new();
+        assert!(!store.reload_pending);
+        store.begin_reload();
+        assert!(store.reload_pending, "must set pending flag");
+        assert!(store.reload_outcome.is_none());
+    }
+
+    #[test]
+    fn toggle_store_resolve_reload_success_clears_pending_and_sets_outcome() {
+        let mut store = ToggleStore::new();
+        store.begin_reload();
+        store.resolve_reload_success(2, 5, vec!["gateway.port".to_string()]);
+
+        assert!(!store.reload_pending, "must clear pending");
+        assert_eq!(
+            store.restart_required,
+            vec!["gateway.port".to_string()],
+            "must replace restart_required with the reload's diff"
+        );
+        match store.reload_outcome {
+            Some(ReloadOutcome::Applied {
+                hot_reloaded,
+                changed,
+            }) => {
+                assert_eq!(hot_reloaded, 2);
+                assert_eq!(changed, 5);
+            }
+            other => panic!("expected Applied outcome, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn toggle_store_resolve_reload_success_replaces_stale_restart_required() {
+        let mut store = ToggleStore::new();
+        store.restart_required = vec!["stale.path".to_string()];
+        store.begin_reload();
+        store.resolve_reload_success(0, 0, Vec::new());
+
+        assert!(
+            store.restart_required.is_empty(),
+            "a clean reload must clear a stale restart_required list"
+        );
+    }
+
+    #[test]
+    fn toggle_store_resolve_reload_failure_clears_pending_and_sets_message() {
+        let mut store = ToggleStore::new();
+        store.begin_reload();
+        store.resolve_reload_failure("connection error: timed out".to_string());
+
+        assert!(!store.reload_pending, "must clear pending");
+        match store.reload_outcome {
+            Some(ReloadOutcome::Failed(message)) => {
+                assert_eq!(message, "connection error: timed out");
+            }
+            other => panic!("expected Failed outcome, got {other:?}"),
+        }
     }
 
     #[test]
