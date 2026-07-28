@@ -202,10 +202,12 @@ impl CandidateTracker {
         if let Some(existing) = candidates.iter_mut().find(|c| {
             c.nous_id == nous_id && signature_similarity(&c.signature, &sig) >= SIMILARITY_THRESHOLD
         }) {
-            existing.recurrence_count += 1;
             existing.last_seen = now;
+            // WHY: recurrence_count tracks distinct sessions, not raw
+            // invocations — only bump it on a session not already recorded.
             if !existing.session_refs.contains(&session_id.to_owned()) {
                 existing.session_refs.push(session_id.to_owned());
+                existing.recurrence_count += 1;
             }
             existing.evidence.push(observation);
             if existing.evidence.len() > MAX_EVIDENCE_OBSERVATIONS {
@@ -466,6 +468,12 @@ mod tests {
             .filter(|s| s.as_str() == "s1")
             .count();
         assert_eq!(session_count, 1, "duplicate session should not be added");
+        // WHY: asserting only on session_refs let the unconditional increment survive here —
+        // recurrence_count is the field promotion reads, so it is the one that must hold.
+        assert_eq!(
+            candidates[0].recurrence_count, 1,
+            "recurrence_count counts distinct sessions, so a repeat within one session must not bump it"
+        );
     }
 
     #[test]
