@@ -596,11 +596,10 @@ Rules:
                 }
                 .build()
             })?;
-            let aliases = if entity.description.is_empty() {
-                vec![]
-            } else {
-                vec![entity.description.clone()]
-            };
+            // WHY: an entity description is prose, not a name the entity answers to. Using it
+            // as the sole alias pollutes the alias set that dedup blocking and the prefix query
+            // read from. Empty is correct until a real alias source exists.
+            let aliases: Vec<String> = Vec::new();
             let entity_type = if entity.entity_type.is_empty() {
                 tracing::debug!(name = %entity.name, "entity has empty type, defaulting to 'concept'");
                 "concept".to_owned()
@@ -792,12 +791,15 @@ Rules:
                 };
                 match store.insert_fact_entity(&f.id, &entity_id) {
                     Ok(()) => result.fact_entities_inserted += 1,
-                    Err(error) => tracing::debug!(
-                        %error,
-                        fact_id = %f.id,
-                        entity_id = %entity_id,
-                        "failed to link fact to referenced entity"
-                    ),
+                    Err(error) => {
+                        result.fact_entity_link_failures += 1;
+                        tracing::warn!(
+                            %error,
+                            fact_id = %f.id,
+                            entity_id = %entity_id,
+                            "failed to link fact to referenced entity"
+                        );
+                    }
                 }
             }
         }

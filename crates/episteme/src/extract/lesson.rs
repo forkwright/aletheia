@@ -426,11 +426,10 @@ pub(crate) fn persist_lesson(
             }
             .build()
         })?;
-        let aliases = if entity.description.is_empty() {
-            vec![]
-        } else {
-            vec![entity.description.clone()]
-        };
+        // WHY: an entity description is prose, not a name the entity answers to. Using it as
+        // the sole alias pollutes the alias set that dedup blocking and the prefix query read
+        // from. Empty is correct until a real alias source exists.
+        let aliases: Vec<String> = Vec::new();
         let entity_type = if entity.entity_type.is_empty() {
             "concept".to_owned()
         } else {
