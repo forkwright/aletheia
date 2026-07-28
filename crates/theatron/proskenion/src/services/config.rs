@@ -285,34 +285,38 @@ fn save_notification_prefs_in(
 fn write_desktop_config(path: &Path, desktop: &DesktopConfig) -> Result<(), ConfigError> {
     let content = toml::to_string_pretty(desktop).context(SerializeSnafu)?;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context(CreateDirSnafu {
-            path: parent.to_path_buf(),
-        })?;
-    }
+    let parent = path.parent().ok_or(ConfigError::NoConfigDir)?;
+    std::fs::create_dir_all(parent).context(CreateDirSnafu {
+        path: parent.to_path_buf(),
+    })?;
 
-    // WHY: On Unix create the file with 0o600 mode atomically. On Windows
-    // the equivalent `OpenOptionsExt::mode` does not exist; the file lives
-    // in the user's config directory where default ACLs are user-private.
+    // WHY: Atomic write via tempfile + rename so a crash or power loss
+    // between truncate and flush cannot leave a truncated/empty desktop.toml
+    // (mirrors platform::window_state::save_sync). On Unix the temp file is
+    // created 0o600 before persist so the renamed file never inherits a
+    // wider default mode. On Windows the equivalent permissions API does
+    // not exist; the file lives in the user's config directory where
+    // default ACLs are user-private.
     #[cfg(unix)]
-    let mut file = {
-        use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)
-            .context(WriteFileSnafu { path })?
+    let mut tmp = {
+        use std::os::unix::fs::PermissionsExt as _;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        tempfile::Builder::new()
+            .permissions(perms)
+            .tempfile_in(parent)
+            .context(WriteFileSnafu { path: parent })?
     };
     #[cfg(not(unix))]
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(path)
-        .context(WriteFileSnafu { path })?;
-    file.write_all(content.as_bytes())
+    let mut tmp = tempfile::Builder::new()
+        .tempfile_in(parent)
+        .context(WriteFileSnafu { path: parent })?;
+    tmp.write_all(content.as_bytes())
+        .context(WriteFileSnafu { path: parent })?;
+    tmp.as_file()
+        .sync_all()
+        .context(WriteFileSnafu { path: parent })?;
+    tmp.persist(path)
+        .map_err(|e| e.error)
         .context(WriteFileSnafu { path })?;
 
     Ok(())
