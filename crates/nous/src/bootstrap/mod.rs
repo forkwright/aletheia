@@ -1918,13 +1918,6 @@ pub fn classify_task_hint(content: &str) -> TaskHint {
     if max == 0 {
         return TaskHint::General;
     }
-    if coding == 0
-        && planning == 0
-        && research == 1
-        && lower.split_whitespace().next() == Some("what")
-    {
-        return TaskHint::General;
-    }
 
     // WHY: ties broken coding > research > planning since coding is the most common task
     if coding >= research && coding >= planning {

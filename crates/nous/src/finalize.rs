@@ -38,7 +38,7 @@ const PARTIAL_MARKER_PREFIX: &str = "[partial: ";
 /// are a millisecond timestamp, so the result is monotonically increasing
 /// within each millisecond and practically unique across restarts.
 fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
-    // NOTE: ULID is 128-bit: shift right 65 bits to keep upper 63 bits (47-bit timestamp + 16-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
+    // NOTE: ULID is 128-bit: shift right 65 bits to keep upper 63 bits (48-bit timestamp + 15-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
     let raw = ulid.as_u128();
     #[expect(
         clippy::as_conversions,
