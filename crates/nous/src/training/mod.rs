@@ -359,8 +359,15 @@ impl CaptureInput<'_> {
         }
 
         // Recall utilization rate: referenced / injected.
+        // WHY: gated on `!facts.is_empty()`, not `results_injected > 0`
+        // alone — `facts` carries the per-fact `was_referenced` flags the
+        // rate depends on. When the pipeline boundary leaves `facts` empty
+        // (#3418), `results_injected > 0` would still flip have_any_signal
+        // on top of a rate that is structurally always 0, reporting a
+        // signal that was never actually observed.
         if let Some(recall) = self.recall_signals.as_ref()
             && recall.results_injected > 0
+            && !recall.facts.is_empty()
         {
             have_any_signal = true;
             let referenced =
