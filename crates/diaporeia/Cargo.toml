@@ -34,6 +34,13 @@ rmcp = { version = "=1.5.0", features = [
     "transport-streamable-http-client-reqwest",
     "transport-streamable-http-server",
 ] }
+# WARNING: rmcp-macros must carry the same exact pin as rmcp. It is a separate
+# crate reached through a caret requirement, so the pin above does not cover it,
+# and its expansion calls rmcp runtime APIs directly -- rmcp-macros 1.8.0 emits
+# `rmcp::handler::server::common::schema_for_input`, which rmcp 1.5.0 does not
+# export. A lock regeneration that moves one without the other breaks every
+# `#[tool]` site with a missing-function error that names neither crate (#6502).
+rmcp-macros = "=1.5.0"
 schemars = "1"
 
 # HTTP (for streamable HTTP transport Axum integration)
