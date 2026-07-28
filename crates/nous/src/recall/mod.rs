@@ -573,7 +573,18 @@ impl RecallStage {
             });
 
         let candidates = self.build_candidates(merged, nous_id, answered_ids.as_ref());
-        let ranked = self.rank_candidates(candidates);
+        // WHY: mirror run_single — recompute side_ids from the merged
+        // candidate set via side_ranker rather than falling through to the
+        // static self.side_query_ids. Without this the side-query re-rank
+        // never sees cycle-2 candidates.
+        let side_ids = side_ranker.and_then(|ranker| {
+            let egress_candidates = self.provider_egress_candidates(candidates.clone(), nous_id);
+            self.side_query_ids(query, &egress_candidates, ranker)
+        });
+        let ranked = self.rank_candidates_with_side_ids(
+            candidates,
+            self.side_query_ids.as_ref().or(side_ids.as_ref()),
+        );
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
 
