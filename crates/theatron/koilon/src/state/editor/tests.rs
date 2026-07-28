@@ -223,29 +223,25 @@ fn editor_tab_ensure_cursor_visible() {
 
 #[test]
 fn editor_state_open_file_deduplicates() {
-    let dir = std::env::temp_dir().join("editor_test_dedup");
-    let _ = std::fs::create_dir_all(&dir);
-    let file_path = dir.join("test.txt");
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let file_path = dir.path().join("test.txt");
     let _ = std::fs::write(&file_path, "content");
 
-    let mut state = EditorState::new(dir.clone());
+    let mut state = EditorState::new(dir.path().to_path_buf());
     state.open_file(&file_path);
     state.open_file(&file_path);
     assert_eq!(state.tabs.len(), 1);
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn editor_state_close_tab() {
-    let dir = std::env::temp_dir().join("editor_test_close");
-    let _ = std::fs::create_dir_all(&dir);
-    let f1 = dir.join("a.txt");
-    let f2 = dir.join("b.txt");
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let f1 = dir.path().join("a.txt");
+    let f2 = dir.path().join("b.txt");
     let _ = std::fs::write(&f1, "a");
     let _ = std::fs::write(&f2, "b");
 
-    let mut state = EditorState::new(dir.clone());
+    let mut state = EditorState::new(dir.path().to_path_buf());
     state.open_file(&f1);
     state.open_file(&f2);
     assert_eq!(state.tabs.len(), 2);
@@ -253,8 +249,6 @@ fn editor_state_close_tab() {
     state.close_tab(0);
     assert_eq!(state.tabs.len(), 1);
     assert_eq!(state.active_tab, 0);
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
