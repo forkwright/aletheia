@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.5](https://github.com/forkwright/aletheia/compare/v0.33.4...v0.33.5) (2026-07-29)
+
+
+### Bug Fixes
+
+* **ci:** fail the ripgrep-backed checks when ripgrep is missing instead of reporting clean ([#6524](https://github.com/forkwright/aletheia/issues/6524)) ([1a984db](https://github.com/forkwright/aletheia/commit/1a984dba39b1b788a3cee4d8fa071cfdd6be6143))
+
 ## [0.33.4](https://github.com/forkwright/aletheia/compare/v0.33.3...v0.33.4) (2026-07-29)
 
 
