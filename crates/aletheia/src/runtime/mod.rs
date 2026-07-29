@@ -34,7 +34,7 @@ use taxis::config::DaemonRunnerOutputMode;
 #[cfg(feature = "recall")]
 use taxis::config::resolve_nous;
 use taxis::oikos::Oikos;
-use taxis::validate::{validate_section, validate_startup};
+use taxis::validate::{validate_config, validate_startup};
 
 use crate::commands::maintenance;
 use crate::daemon_bridge;
@@ -267,25 +267,11 @@ impl RuntimeBuilder {
         );
 
         if self.config_strict {
-            let config_value = serde_json::to_value(&self.config)
-                .whatever_context("failed to serialize config for validation")?;
-            for section in &[
-                "agents",
-                "gateway",
-                "maintenance",
-                "data",
-                "embedding",
-                "channels",
-                "bindings",
-                "credential",
-                "providers",
-                "tools",
-            ] {
-                if let Some(section_value) = config_value.get(section) {
-                    validate_section(section, section_value)
-                        .with_whatever_context(|_| format!("invalid config section '{section}'"))?;
-                }
-            }
+            // WHY(#5770): shares one derived section list with `check-config`
+            // (see `builder_validation::validate`) so the two paths cannot
+            // disagree about which sections a config must satisfy.
+            validate_config(&self.config)
+                .with_whatever_context(|error| format!("invalid config: {error}"))?;
             crate::embedding_config::validate_embedding_settings(&self.config.embedding)
                 .with_whatever_context(|error| format!("invalid embedding config: {error}"))?;
             info!("config validated");
