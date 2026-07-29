@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use koina::id::ToolName;
 use organon::registry::ToolRegistry;
-use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef};
+use organon::types::Reversibility;
 use tokio::sync::mpsc;
 
 use super::*;
@@ -16,31 +16,6 @@ use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
 use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
 use crate::pipeline::LoopDetector;
 use crate::stream::TurnStreamEvent;
-
-fn tool_def_with(name: &str, rev: Reversibility) -> ToolDef {
-    ToolDef {
-        name: ToolName::new(name).expect("valid"),
-        description: format!("Test tool: {name}"),
-        extended_description: None,
-        input_schema: InputSchema {
-            properties: indexmap::IndexMap::default(),
-            required: vec![],
-        },
-        category: ToolCategory::Workspace,
-        reversibility: rev,
-        auto_activate: true,
-        groups: vec![organon::types::ToolGroupId::Read],
-        tags: vec![],
-    }
-}
-
-fn make_registry_rev(name: &str, rev: Reversibility) -> ToolRegistry {
-    let mut registry = ToolRegistry::new();
-    registry
-        .register(tool_def_with(name, rev), Box::new(EchoExecutor))
-        .expect("register");
-    registry
-}
 
 fn allow_active_for_tests(
     registry: &ToolRegistry,
@@ -247,6 +222,13 @@ async fn reversibility_class_call_denied_skips_execution() {
     );
     assert_eq!(all_calls.len(), 1);
     assert!(all_calls[0].is_error, "denied call must be marked error");
+    // WHY(#5827): is_error alone cannot distinguish this from a tool that ran and
+    // failed. `unexecuted` is what carries that distinction out to the after_tool loop.
+    assert_eq!(
+        result.unexecuted,
+        vec!["tool-1".to_owned()],
+        "a denied call must be reported as never executed"
+    );
     assert!(
         all_calls[0]
             .result

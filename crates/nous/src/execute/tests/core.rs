@@ -1676,3 +1676,83 @@ async fn after_tool_hook_skips_calls_abandoned_by_a_loop_warning() {
         );
     }
 }
+
+/// WHY(#5827): `after_tool` means "a tool ran". A call denied inside dispatch is
+/// recorded so its `tool_use` block stays paired with a `tool_result`, but it never
+/// executed, and it carries `is_error=true`/`duration_ms=0` — which a hook cannot tell
+/// apart from a tool that ran and failed. Audit hooks gating on `is_error` and
+/// cost-control hooks metering duration both read that as a real execution.
+///
+/// The denial here is the no-gate `Mandatory` fallback: an approval-required tool with
+/// no approval gate wired is default-denied. Its dispatch item is `Ready`, so it clears
+/// the `ready_input_for` guard and reaches the hook loop — this is the path #6512's
+/// outcome check deliberately did not cover.
+#[tokio::test]
+async fn after_tool_hook_skips_calls_denied_before_execution() {
+    let mock = Arc::new(
+        MockProvider::with_responses(vec![
+            make_multi_tool_response(vec![
+                ("safe", "toolu_safe", serde_json::json!({})),
+                ("danger", "toolu_denied", serde_json::json!({})),
+            ]),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&mock))));
+
+    // `danger` is Irreversible, so it requires approval; no gate is wired below, so
+    // dispatch default-denies it without ever calling the executor.
+    let mut tools = ToolRegistry::new();
+    tools
+        .register(make_tool_def("safe"), Box::new(EchoExecutor))
+        .expect("register safe");
+    tools
+        .register(
+            make_tool_def_rev("danger", organon::types::Reversibility::Irreversible),
+            Box::new(EchoExecutor),
+        )
+        .expect("register danger");
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut hooks = HookRegistry::new();
+    hooks.register(
+        0,
+        Box::new(RecordingAfterToolHook {
+            calls: Arc::clone(&calls),
+        }),
+    );
+
+    execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        Some(&hooks),
+    )
+    .await
+    .expect("execute");
+
+    let fired: Vec<String> = calls
+        .lock()
+        .expect("calls lock")
+        .iter()
+        .map(|(id, _, _)| id.clone())
+        .collect();
+
+    // WHY: the positive case has to hold too. Without it this test would still pass if
+    // after_tool never fired at all — a hook that is silently unregistered would read as
+    // a fix.
+    assert!(
+        fired.iter().any(|id| id == "toolu_safe"),
+        "after_tool must still fire for the tool that actually executed — fired: {fired:?}"
+    );
+    assert!(
+        !fired.iter().any(|id| id == "toolu_denied"),
+        "after_tool fired for a call denied before execution, so a hook was told a tool \
+         ran when it did not — fired: {fired:?}"
+    );
+}

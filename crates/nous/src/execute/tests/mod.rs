@@ -165,6 +165,10 @@ fn make_tool_response(
 }
 
 fn make_tool_def(name: &str) -> ToolDef {
+    make_tool_def_rev(name, organon::types::Reversibility::FullyReversible)
+}
+
+fn make_tool_def_rev(name: &str, rev: organon::types::Reversibility) -> ToolDef {
     ToolDef {
         name: ToolName::new(name).expect("valid"),
         description: format!("Test tool: {name}"),
@@ -174,11 +178,19 @@ fn make_tool_def(name: &str) -> ToolDef {
             required: vec![],
         },
         category: ToolCategory::Workspace,
-        reversibility: organon::types::Reversibility::FullyReversible,
+        reversibility: rev,
         auto_activate: true,
         groups: vec![organon::types::ToolGroupId::Read],
         tags: vec![],
     }
+}
+
+fn make_registry_rev(name: &str, rev: organon::types::Reversibility) -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(make_tool_def_rev(name, rev), Box::new(EchoExecutor))
+        .expect("register");
+    registry
 }
 
 fn make_registry_with(name: &str, executor: Box<dyn ToolExecutor>) -> ToolRegistry {
