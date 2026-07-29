@@ -121,6 +121,9 @@ jobs:
       - name: Check test tier features
         run: scripts/check-test-tier-features.py
 
+      - name: Check shared temp paths
+        run: scripts/check-shared-temp-paths.sh
+
       - name: Check release feature policy
         run: |
           cargo metadata --format-version 1 --no-deps > metadata.json

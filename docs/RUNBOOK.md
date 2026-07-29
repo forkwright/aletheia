@@ -446,8 +446,15 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "session|nous_id"
 
 ## Export logs to file
 
+The export carries session and nous IDs, so it goes to the per-user state
+directory rather than the shared temp root, where it would be world-readable
+and open to symlink attack.
+
 ```bash
-journalctl --user -u aletheia --since "24 hours ago" --output cat > /tmp/aletheia.log
+export_dir="${ALETHEIA_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/aletheia}"
+mkdir -p "$export_dir" && chmod 700 "$export_dir"
+journalctl --user -u aletheia --since "24 hours ago" --output cat \
+  > "$export_dir/journal-export.log"
 ```
 
 ## Log verbosity

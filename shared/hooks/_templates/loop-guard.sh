@@ -7,7 +7,11 @@ set -euo pipefail
 # and does NOT load or execute YAML/shell hook files.
 
 THRESHOLD="${LOOP_GUARD_THRESHOLD:-15}"
-SENTINEL_DIR="${TMPDIR:-/tmp}/aletheia-loop-guard"
+# WARNING: the sentinel carries a nous ID and persists, so it belongs in the
+# per-user state directory rather than the shared temp root. A fixed name under
+# TMPDIR is owned by whichever account creates it first, leaves the nous ID
+# world-readable, and is open to symlink attack.
+SENTINEL_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/aletheia/loop-guard"
 
 payload=$(cat)
 tool_calls=$(printf '%s' "$payload" | grep -o '"toolCalls":[0-9]*' | head -1 | cut -d: -f2)
@@ -24,6 +28,7 @@ fi
 
 if [[ "$tool_calls" -ge "$THRESHOLD" ]]; then
   mkdir -p "$SENTINEL_DIR"
+  chmod 700 "$SENTINEL_DIR"
   printf '{"nousId":"%s","toolCalls":%s,"timestamp":"%s"}\n' \
     "$nous_id" "$tool_calls" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     > "$SENTINEL_DIR/${nous_id}.sentinel"
