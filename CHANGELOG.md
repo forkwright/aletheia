@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.4](https://github.com/forkwright/aletheia/compare/v0.33.3...v0.33.4) (2026-07-29)
+
+
+### Bug Fixes
+
+* **proskenion,pylon:** adopt bathron's durable-replace primitive ([#6520](https://github.com/forkwright/aletheia/issues/6520)) ([cc705e4](https://github.com/forkwright/aletheia/commit/cc705e4b743324a46698b9b9642abc305ca4c4cd))
+
 ## [0.33.3](https://github.com/forkwright/aletheia/compare/v0.33.2...v0.33.3) (2026-07-29)
 
 
