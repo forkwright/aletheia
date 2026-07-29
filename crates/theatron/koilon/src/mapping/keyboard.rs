@@ -545,7 +545,11 @@ impl crate::app::App {
             (_, KeyCode::Enter) => Some(Msg::MemoryDrillIn),
             (KeyModifiers::NONE, KeyCode::Char('s')) => Some(Msg::MemorySortCycle),
             (KeyModifiers::NONE, KeyCode::Char('f')) => Some(Msg::MemoryFilterOpen),
-            (KeyModifiers::NONE, KeyCode::Char('/')) => Some(Msg::MemorySearchOpen),
+            // WHY(#5815): `/` intentionally has no binding here. Semantic recall
+            // has no pylon endpoint, so opening the search overlay could only
+            // ever end in a failure toast. The overlay's state, messages, and
+            // handlers are retained for wiring once the endpoint exists; rebind
+            // `/` to `Msg::MemorySearchOpen` at that point.
             (KeyModifiers::NONE, KeyCode::Char('d')) => Some(Msg::MemoryForget),
             (KeyModifiers::NONE, KeyCode::Char('r')) => Some(Msg::MemoryRestore),
             (KeyModifiers::NONE, KeyCode::Char('e')) => Some(Msg::MemoryEditConfidence),
