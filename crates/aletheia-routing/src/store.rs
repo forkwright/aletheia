@@ -218,7 +218,16 @@ impl AfterActionStore {
     /// is derived from the real outcome dimensions rather than the collapsed
     /// `success` boolean. The outcome is also appended to the bounded audit log
     /// so operators can inspect why a turn was counted as success or failure.
-    pub async fn record_outcome(&self, outcome: &TurnOutcome) -> Result<(), AfterActionStoreError> {
+    ///
+    /// WHY(#5740) this returns nothing: the write path touches only the three
+    /// in-memory maps above, so there is no failure it could report. It
+    /// previously returned `Result<(), AfterActionStoreError>` that was always
+    /// `Ok`, which gave every caller an error arm no input could reach — an
+    /// error handler that cannot fire is indistinguishable from one that is
+    /// broken. The fallible operations on this type are the ones that touch
+    /// `dir`: [`refresh`](Self::refresh), [`refresh_window`](Self::refresh_window)
+    /// and the rebuild branch of [`rolling_stats`](Self::rolling_stats).
+    pub async fn record_outcome(&self, outcome: &TurnOutcome) {
         let success = outcome.interactive_outcome.as_ref().map_or(
             outcome.success,
             super::types::InteractiveOutcome::is_success,
@@ -237,7 +246,6 @@ impl AfterActionStore {
         if audit_log.len() > MAX_AUDIT_LOG_SIZE {
             audit_log.pop_front();
         }
-        Ok(())
     }
 
     /// Return a clone of the most recently recorded interactive outcomes.
@@ -710,7 +718,7 @@ mod tests {
         let provider = ProviderId::new("claude");
         for i in 0..5u32 {
             let outcome = TurnOutcome::new(provider.clone(), TaskCategory::Feature, i < 4, true);
-            store.record_outcome(&outcome).await.unwrap();
+            store.record_outcome(&outcome).await;
         }
 
         let stats = store
@@ -747,7 +755,7 @@ mod tests {
                 i == 0, // 1 success, 1 failure
                 true,
             );
-            store.record_outcome(&outcome).await.unwrap();
+            store.record_outcome(&outcome).await;
         }
 
         // Both paths' data should be visible in the same cache
@@ -805,7 +813,7 @@ mod tests {
                 explicit_user_rating: None,
             }),
         };
-        store.record_outcome(&outcome).await.unwrap();
+        store.record_outcome(&outcome).await;
 
         let stats = store
             .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(1))

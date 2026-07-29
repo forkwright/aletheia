@@ -34,7 +34,8 @@ pub use types::{
 
 use std::sync::Arc;
 
-use tracing::Instrument;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 /// A no-op router used when no empirical router is configured.
 ///
@@ -67,19 +68,40 @@ impl Router for NoOpRouter {
 /// completed turns from being discarded when the binary has not enabled an
 /// empirical selection policy.
 pub struct RecordingRouter {
-    /// Shared empirical outcome store.
-    store: Arc<AfterActionStore>,
     /// Static provider/model returned for route calls.
     provider: Arc<str>,
+    /// Sender to the background outcome-drain task.
+    outcome_tx: mpsc::UnboundedSender<TurnOutcome>,
+    /// Background task handle kept alive for the router lifetime.
+    ///
+    /// WHY(#5740): owning the handle is the point. Dropping it — as the
+    /// previous per-outcome `tokio::spawn` did — leaves a task nothing can
+    /// cancel, observe or bound, so a panic in the write path vanishes and
+    /// shutdown races the writes. Held here, the task is cancelled when the
+    /// router is dropped, and a closed channel becomes a reportable error.
+    _outcome_drain: JoinHandle<()>,
 }
 
 impl RecordingRouter {
     /// Create a router that records outcomes while preserving static routing.
     #[must_use]
     pub fn new(store: Arc<AfterActionStore>, provider: impl Into<Arc<str>>) -> Self {
+        // WHY: mirrors `energeia::routing::empirical::EmpiricalRouter` — a
+        // single drain task serializes the async store writes so the sync
+        // `after_action` trait method never blocks the response path, and the
+        // two implementations of the same trait method do not diverge in how
+        // they treat the write.
+        let (outcome_tx, mut outcome_rx) = mpsc::unbounded_channel::<TurnOutcome>();
+        let outcome_drain = tokio::spawn(async move {
+            while let Some(outcome) = outcome_rx.recv().await {
+                store.record_outcome(&outcome).await;
+            }
+        });
+
         Self {
-            store,
             provider: provider.into(),
+            outcome_tx,
+            _outcome_drain: outcome_drain,
         }
     }
 }
@@ -95,22 +117,17 @@ impl Router for RecordingRouter {
         _decision: &RoutingDecision,
         outcome: &TurnOutcome,
     ) -> Result<(), RouterError> {
-        let store = Arc::clone(&self.store);
-        let outcome = outcome.clone();
-        tokio::spawn(
-            async move {
-                if let Err(error) = store.record_outcome(&outcome).await {
-                    tracing::error!(
-                        error = %error,
-                        provider = %outcome.provider,
-                        category = %outcome.task_category,
-                        success = outcome.success,
-                        "recording router failed to store after-action outcome"
-                    );
-                }
-            }
-            .instrument(tracing::Span::current()),
-        );
+        // WHY: a closed channel is the one way this write can actually fail —
+        // it means the drain task panicked or the runtime is shutting down.
+        // Reporting it to the caller is what distinguishes "recorded" from
+        // "silently discarded", which the previous fire-and-forget could not.
+        self.outcome_tx
+            .send(outcome.clone())
+            .map_err(|_closed| RouterError::AfterActionWrite {
+                message: "after-action outcome channel closed (drain task panicked \
+                    or runtime shutting down)"
+                    .to_string(),
+            })?;
         Ok(())
     }
 }
@@ -238,6 +255,72 @@ mod tests {
         }
 
         panic!("recording router did not write outcome");
+    }
+
+    /// WHY(#5740): the drain task must absorb a burst without losing records.
+    /// The per-outcome `tokio::spawn` this replaced had no ordering or
+    /// completion guarantee between concurrently spawned writes, and nothing
+    /// bounded how many were in flight at once.
+    #[tokio::test]
+    async fn recording_router_drains_every_outcome_through_one_task() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let router = RecordingRouter::new(Arc::clone(&store), "claude-sonnet");
+        let provider = ProviderId::new("claude-sonnet");
+        let decision = RoutingDecision::new("claude-sonnet", None);
+
+        for i in 0..64u32 {
+            let outcome = TurnOutcome::new(provider.clone(), TaskCategory::Feature, i % 2 == 0, true);
+            router
+                .after_action(&decision, &outcome)
+                .expect("drain channel must accept the outcome");
+        }
+
+        for _ in 0..1000 {
+            if let Ok(Some(stats)) = store
+                .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
+                .await
+                && stats.total == 64
+            {
+                assert_eq!(stats.successes, 32);
+                assert_eq!(stats.failures, 32);
+                return;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        panic!("recording router dropped outcomes on the way to the store");
+    }
+
+    /// WHY(#5740): this is the failure the issue asked for a test of, in the
+    /// only form the code can actually produce. `AfterActionStore::record_outcome`
+    /// writes three in-memory maps and cannot fail, so no store-write error is
+    /// injectable; the reachable failure is a drain task that is gone, which
+    /// the previous fire-and-forget reported as success.
+    #[test]
+    fn recording_router_reports_a_closed_drain_channel() {
+        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+        let router = runtime.block_on(async {
+            RecordingRouter::new(Arc::new(AfterActionStore::in_memory()), "claude-sonnet")
+        });
+
+        // Dropping the runtime drops the drain task, and with it the receiver.
+        runtime.shutdown_timeout(Duration::from_secs(0));
+
+        let outcome = TurnOutcome::new(
+            ProviderId::new("claude-sonnet"),
+            TaskCategory::Feature,
+            true,
+            true,
+        );
+        let error = router
+            .after_action(&RoutingDecision::new("claude-sonnet", None), &outcome)
+            .expect_err("a dropped drain task must not report a recorded outcome");
+
+        let RouterError::AfterActionWrite { message } = error;
+        assert!(
+            message.contains("channel closed"),
+            "unexpected message: {message}"
+        );
     }
 
     // WHY(#3969): FallthroughRouter must accept the primary decision when its
