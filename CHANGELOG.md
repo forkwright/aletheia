@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.33.6](https://github.com/forkwright/aletheia/compare/v0.33.5...v0.33.6) (2026-07-29)
+
+
+### Bug Fixes
+
+* **nous:** emit truthful compaction hook telemetry from observed state ([#6526](https://github.com/forkwright/aletheia/issues/6526)) ([8460296](https://github.com/forkwright/aletheia/commit/846029640fda71a6607ac6489c7a8e76b7c4824c))
+* **pylon:** report sessions by lifecycle status instead of a blind total ([#6528](https://github.com/forkwright/aletheia/issues/6528)) ([26a5529](https://github.com/forkwright/aletheia/commit/26a5529aba6bf4fb6abcae4ca960492b55fbc549)), closes [#5039](https://github.com/forkwright/aletheia/issues/5039)
+
 ## [0.33.5](https://github.com/forkwright/aletheia/compare/v0.33.4...v0.33.5) (2026-07-29)
 
 
