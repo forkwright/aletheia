@@ -661,4 +661,59 @@ auth_token = "{legacy_token}"
         assert_eq!(active.url, "http://save-me:18789");
         assert_eq!(active.auth_token.as_deref(), Some(raw_token));
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_desktop_config_replaces_the_file_instead_of_truncating_in_place() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.toml");
+
+        let config_for = |url: &str| DesktopConfig {
+            connection: ConnectionConfig {
+                server_url: url.to_string(),
+                ..ConnectionConfig::default()
+            },
+            notifications: NotificationPreferences::default(),
+        };
+
+        write_desktop_config(&path, &config_for("http://first:18789")).unwrap();
+        let inode_before = std::fs::metadata(&path).unwrap().ino();
+
+        write_desktop_config(&path, &config_for("http://second:18789")).unwrap();
+        let after = std::fs::metadata(&path).unwrap();
+
+        // INVARIANT: persist() renames a sibling temp file over the target, which
+        // swaps in a fresh inode. A truncate-then-write implementation keeps the
+        // original inode and leaves the file empty between the two syscalls, so
+        // this assertion is what distinguishes an atomic write from a torn one.
+        assert_ne!(
+            inode_before,
+            after.ino(),
+            "desktop.toml was rewritten in place; a crash mid-write would truncate it"
+        );
+
+        // WHY: the temp file is created 0o600 before persist so the renamed file
+        // cannot inherit a wider default mode from the process umask.
+        assert_eq!(
+            after.permissions().mode() & 0o777,
+            0o600,
+            "desktop.toml must stay user-private across an atomic replace"
+        );
+
+        let parsed: DesktopConfig =
+            toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(parsed.connection.server_url, "http://second:18789");
+
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name != "desktop.toml")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temp files survived the write: {leftovers:?}"
+        );
+    }
 }
