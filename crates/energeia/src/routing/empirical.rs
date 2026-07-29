@@ -76,15 +76,7 @@ impl EmpiricalRouter {
         let drain_store = Arc::clone(&store);
         let outcome_drain = tokio::spawn(async move {
             while let Some(outcome) = outcome_rx.recv().await {
-                if let Err(error) = drain_store.record_outcome(&outcome).await {
-                    tracing::error!(
-                        error = %error,
-                        provider = %outcome.provider,
-                        category = %outcome.task_category,
-                        success = outcome.success,
-                        "empirical router failed to record after-action outcome"
-                    );
-                }
+                drain_store.record_outcome(&outcome).await;
             }
         });
 
