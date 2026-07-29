@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.2](https://github.com/forkwright/aletheia/compare/v0.33.1...v0.33.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **nous:** answer every tool_use when a loop warning ends dispatch early ([#6512](https://github.com/forkwright/aletheia/issues/6512)) ([fa8fe8b](https://github.com/forkwright/aletheia/commit/fa8fe8be3736d091f380e157f3e3cf964b93f19a)), closes [#5820](https://github.com/forkwright/aletheia/issues/5820)
+
 ## [0.33.1](https://github.com/forkwright/aletheia/compare/v0.33.0...v0.33.1) (2026-07-29)
 
 
