@@ -327,6 +327,47 @@ pub(super) const TOOL_OUTCOME_DENIED_BY_HOOK: &str = "denied_by_hook";
 const TOOL_OUTCOME_DENIED_INACTIVE: &str = "denied_inactive";
 const TOOL_OUTCOME_NOT_FOUND: &str = "not_found";
 const TOOL_OUTCOME_FAILED: &str = "failed";
+pub(super) const TOOL_OUTCOME_UNDISPATCHED: &str = "undispatched_loop_warning";
+
+/// Close out tool calls that a loop warning stopped us from dispatching.
+///
+/// INVARIANT: the assistant message carrying this turn's `tool_use` blocks is pushed
+/// before dispatch begins, so every one of those blocks needs a `tool_result` with a
+/// matching `tool_use_id` in the following user message. A `LoopVerdict::Warn` ends
+/// dispatch early, so without this the trailing calls would carry no result at all and
+/// the next request would be rejected for unpaired blocks.
+fn record_undispatched_calls(
+    all_tool_calls: &mut Vec<ToolCall>,
+    tool_results: &mut Vec<ContentBlock>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    tool_ctx: &ToolContext,
+    remaining: &[ToolDispatchItem],
+) {
+    for item in remaining {
+        let (id, name, input) = match item {
+            ToolDispatchItem::Ready { id, name, input }
+            | ToolDispatchItem::Denied {
+                id, name, input, ..
+            } => (id, name, input),
+        };
+        record_denied_call(
+            all_tool_calls,
+            tool_results,
+            stream_tx,
+            tool_ctx,
+            DeniedToolCall {
+                id,
+                name,
+                input,
+                message: format!(
+                    "tool_loop: Tool '{name}' was not run because a repetition loop was detected \
+                     earlier in this turn"
+                ),
+                approval: Some(TOOL_OUTCOME_UNDISPATCHED),
+            },
+        );
+    }
+}
 
 fn record_approval_policy_outcome(
     tool_id: &str,
@@ -906,8 +947,9 @@ async fn dispatch_single_tool(
 /// Dispatch tool calls from an LLM response and collect results.
 ///
 /// Records each tool call in the loop detector AFTER execution (so error
-/// status is known). On [`LoopVerdict::Warn`], stops processing remaining
-/// tools and returns the warning. On [`LoopVerdict::Halt`], returns an error.
+/// status is known). On [`LoopVerdict::Warn`], stops executing the remaining
+/// tools, records an error result for each so no `tool_use` block is left
+/// unpaired, and returns the warning. On [`LoopVerdict::Halt`], returns an error.
 ///
 /// Legacy tuple adapter used by direct dispatch tests and callers that have no
 /// pre-dispatch denials to preserve.
@@ -972,7 +1014,7 @@ pub(super) async fn dispatch_tool_items(
 ) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
 
-    for item in tool_items {
+    for (index, item) in tool_items.iter().enumerate() {
         let (tool_id, tool_name, tool_input) = match item {
             ToolDispatchItem::Ready { id, name, input } => (id, name, input),
             ToolDispatchItem::Denied {
@@ -1072,6 +1114,13 @@ pub(super) async fn dispatch_tool_items(
             match loop_detector.record(tool_name, &input_hash, is_error) {
                 LoopVerdict::Ok => {}
                 LoopVerdict::Warn { message, .. } => {
+                    record_undispatched_calls(
+                        all_tool_calls,
+                        &mut tool_results,
+                        stream_tx,
+                        tool_ctx,
+                        tool_items.get(index + 1..).unwrap_or(&[]),
+                    );
                     return Ok(DispatchResult {
                         blocks: tool_results,
                         loop_warning: Some(message),
@@ -1230,6 +1279,13 @@ pub(super) async fn dispatch_tool_items(
         match loop_detector.record(tool_name, &input_hash, is_error) {
             LoopVerdict::Ok => {}
             LoopVerdict::Warn { message, .. } => {
+                record_undispatched_calls(
+                    all_tool_calls,
+                    &mut tool_results,
+                    stream_tx,
+                    tool_ctx,
+                    tool_items.get(index + 1..).unwrap_or(&[]),
+                );
                 return Ok(DispatchResult {
                     blocks: tool_results,
                     loop_warning: Some(message),
