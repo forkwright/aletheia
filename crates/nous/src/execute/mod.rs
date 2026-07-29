@@ -506,6 +506,7 @@ pub(crate) async fn execute_with_deadline(
         let DispatchResult {
             mut blocks,
             loop_warning,
+            unexecuted,
         } = dispatch_tool_items(
             &dispatch_items,
             tools,
@@ -522,8 +523,9 @@ pub(crate) async fn execute_with_deadline(
         )
         .await?;
 
-        // WHY: fire after_tool hooks for each tool executed in this iteration.
-        // Hooks run in priority order but do not short-circuit (tool is already executed).
+        // WHY: fire after_tool hooks for each tool that actually executed in this
+        // iteration. Hooks run in priority order but do not short-circuit (tool is
+        // already executed).
         if let Some(hook_registry) = hooks {
             for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
                 if !dispatch_items
@@ -532,12 +534,14 @@ pub(crate) async fn execute_with_deadline(
                 {
                     continue;
                 }
-                // WHY: a loop warning ends dispatch early and the abandoned calls are
-                // recorded so their tool_use blocks stay paired. They were never run, so
-                // firing after_tool for them would report execution that did not happen.
-                // NOTE: denied-inside-dispatch calls still reach the hook — that is the
-                // wider defect tracked as #5827, which this guard does not close.
-                if tool_call.approval.as_deref() == Some(dispatch::TOOL_OUTCOME_UNDISPATCHED) {
+                // WHY(#5827): after_tool means "a tool ran". Calls that dispatch recorded
+                // without executing — approval-gate denials, the no-gate Mandatory
+                // fallback, the policy re-check, and the calls a loop warning abandons —
+                // are in this slice so their tool_use blocks stay paired, but firing the
+                // hook for them reports execution that did not happen. They carry
+                // is_error=true and duration_ms=0, which a hook cannot tell apart from a
+                // tool that ran and failed, so the skip has to happen here.
+                if unexecuted.iter().any(|id| id == &tool_call.id) {
                     continue;
                 }
                 let after_tool_ctx = AfterToolContext {
@@ -1129,6 +1133,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         let DispatchResult {
             mut blocks,
             loop_warning,
+            unexecuted,
         } = dispatch_tool_items(
             &dispatch_items,
             tools,
@@ -1145,8 +1150,9 @@ pub(crate) async fn execute_streaming_with_deadline(
         )
         .await?;
 
-        // WHY: fire after_tool hooks for each tool executed in this iteration.
-        // Hooks run in priority order but do not short-circuit (tool is already executed).
+        // WHY: fire after_tool hooks for each tool that actually executed in this
+        // iteration. Hooks run in priority order but do not short-circuit (tool is
+        // already executed).
         if let Some(hook_registry) = hooks {
             for tool_call in all_tool_calls.get(all_tool_calls_before..).unwrap_or(&[]) {
                 if !dispatch_items
@@ -1155,12 +1161,14 @@ pub(crate) async fn execute_streaming_with_deadline(
                 {
                     continue;
                 }
-                // WHY: a loop warning ends dispatch early and the abandoned calls are
-                // recorded so their tool_use blocks stay paired. They were never run, so
-                // firing after_tool for them would report execution that did not happen.
-                // NOTE: denied-inside-dispatch calls still reach the hook — that is the
-                // wider defect tracked as #5827, which this guard does not close.
-                if tool_call.approval.as_deref() == Some(dispatch::TOOL_OUTCOME_UNDISPATCHED) {
+                // WHY(#5827): after_tool means "a tool ran". Calls that dispatch recorded
+                // without executing — approval-gate denials, the no-gate Mandatory
+                // fallback, the policy re-check, and the calls a loop warning abandons —
+                // are in this slice so their tool_use blocks stay paired, but firing the
+                // hook for them reports execution that did not happen. They carry
+                // is_error=true and duration_ms=0, which a hook cannot tell apart from a
+                // tool that ran and failed, so the skip has to happen here.
+                if unexecuted.iter().any(|id| id == &tool_call.id) {
                     continue;
                 }
                 let after_tool_ctx = AfterToolContext {
