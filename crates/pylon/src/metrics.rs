@@ -15,6 +15,9 @@ use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
+use mneme::store::SessionStatusCounts;
+use mneme::types::SessionStatus;
+
 #[cfg(test)]
 use koina::metrics::MetricsRegistry;
 
@@ -49,6 +52,16 @@ static HTTP_REQUEST_DURATION_SECONDS: LazyLock<HttpDurationFamily> =
     LazyLock::new(|| Family::new_with_constructor(http_duration_histogram));
 
 static ACTIVE_SESSIONS: LazyLock<Gauge> = LazyLock::new(Gauge::default);
+
+/// Label set for the lifecycle-partitioned session gauge.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+pub(crate) struct SessionStatusLabels {
+    pub(crate) status: String,
+}
+
+static SESSIONS_BY_STATUS: LazyLock<Family<SessionStatusLabels, Gauge>> =
+    LazyLock::new(Family::default);
+static SESSIONS_TOTAL: LazyLock<Gauge> = LazyLock::new(Gauge::default);
 static UPTIME_SECONDS: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
@@ -77,8 +90,18 @@ pub fn register(registry: &mut Registry) {
     );
     registry.register(
         "aletheia_active_sessions",
-        "Number of active sessions",
+        "Number of sessions with lifecycle status active",
         ACTIVE_SESSIONS.clone(),
+    );
+    registry.register(
+        "aletheia_sessions",
+        "Number of retained sessions by lifecycle status",
+        SESSIONS_BY_STATUS.clone(),
+    );
+    registry.register(
+        "aletheia_sessions_total",
+        "Number of retained sessions across all lifecycle statuses",
+        SESSIONS_TOTAL.clone(),
     );
     registry.register(
         "aletheia_uptime_seconds",
@@ -130,9 +153,31 @@ pub(crate) fn record_request(method: &str, path: &str, status: u16, duration_sec
 }
 
 /// Update system gauge metrics.
-pub(crate) fn update_system_gauges(uptime_secs: f64, active_sessions: i64) {
+///
+/// WHY: `aletheia_active_sessions` means what its name says — sessions with
+/// lifecycle status `Active`. Retained history is reported separately by
+/// status so operators can see it rather than have it silently inflate live
+/// workload (issue #5039).
+pub(crate) fn update_system_gauges(uptime_secs: f64, sessions: &SessionStatusCounts) {
     UPTIME_SECONDS.set(uptime_secs);
-    ACTIVE_SESSIONS.set(active_sessions);
+    ACTIVE_SESSIONS.set(saturating_gauge(sessions.active));
+    SESSIONS_TOTAL.set(saturating_gauge(sessions.total()));
+    for status in [
+        SessionStatus::Active,
+        SessionStatus::Archived,
+        SessionStatus::Distilled,
+    ] {
+        SESSIONS_BY_STATUS
+            .get_or_create(&SessionStatusLabels {
+                status: status.as_str().to_owned(),
+            })
+            .set(saturating_gauge(sessions.get(status)));
+    }
+}
+
+/// NOTE: session counts fit in i64; saturate on theoretical overflow.
+fn saturating_gauge(n: usize) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
 }
 
 /// Normalize a URL path by replacing dynamic segments with `{id}`.
@@ -211,7 +256,14 @@ mod tests {
         let registry = MetricsRegistry::new();
         init(&registry);
         record_request("GET", "/api/health", 200, 0.001);
-        update_system_gauges(10.0, 3);
+        update_system_gauges(
+            10.0,
+            &SessionStatusCounts {
+                active: 3,
+                archived: 0,
+                distilled: 0,
+            },
+        );
 
         let mut buffer = String::new();
         registry.encode(&mut buffer).expect("encode");
@@ -227,5 +279,45 @@ mod tests {
             buffer.contains("aletheia_active_sessions"),
             "expected sessions gauge; got: {buffer}"
         );
+    }
+
+    /// The gauge named `active` must report only `Active` sessions, and the
+    /// retained history must be visible rather than folded into it (#5039).
+    #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "test: encoding metrics into a String buffer is infallible"
+    )]
+    fn session_gauges_separate_active_from_retained_history() {
+        let registry = MetricsRegistry::new();
+        init(&registry);
+        update_system_gauges(
+            1.0,
+            &SessionStatusCounts {
+                active: 2,
+                archived: 5,
+                distilled: 7,
+            },
+        );
+
+        let mut buffer = String::new();
+        registry.encode(&mut buffer).expect("encode");
+
+        // The pre-fix code set this to the total (14) rather than the active count.
+        assert!(
+            buffer.contains("aletheia_active_sessions 2\n"),
+            "active gauge must exclude archived and distilled; got: {buffer}"
+        );
+        assert!(
+            buffer.contains("aletheia_sessions_total 14\n"),
+            "total gauge must count every status; got: {buffer}"
+        );
+        for (status, count) in [("active", 2), ("archived", 5), ("distilled", 7)] {
+            let expected = format!("aletheia_sessions{{status=\"{status}\"}} {count}\n");
+            assert!(
+                buffer.contains(&expected),
+                "expected `{expected}` in: {buffer}"
+            );
+        }
     }
 }

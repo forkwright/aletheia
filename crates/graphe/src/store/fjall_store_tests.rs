@@ -7,7 +7,7 @@
 
 use super::{
     FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
-    test_finalize_failure, test_persist_counter,
+    SessionStatusCounts, SessionStore, test_finalize_failure, test_persist_counter,
 };
 use crate::error::Error;
 use crate::test_fixtures::test_store;
@@ -270,6 +270,94 @@ fn session_count_tracks_creates_and_deletes() {
         .find_or_create_session("ses-c", "nous-c", "main", None, None)
         .expect("create c");
     assert_eq!(store.session_count(), 2);
+}
+
+/// Lifecycle transitions must move a session between status buckets rather
+/// than leaving it counted as active forever (#5039).
+#[test]
+fn session_counts_track_lifecycle_status() {
+    let store = test_store();
+    assert_eq!(store.session_counts(), SessionStatusCounts::default());
+
+    for id in ["ses-a", "ses-b", "ses-c"] {
+        store
+            .create_session(id, "nous-a", id, None, None)
+            .expect("create");
+    }
+    let counts = store.session_counts();
+    assert_eq!(counts.active, 3, "new sessions start active");
+    assert_eq!(counts.total(), 3);
+
+    store
+        .update_session_status("ses-b", SessionStatus::Archived)
+        .expect("archive b");
+    store
+        .update_session_status("ses-c", SessionStatus::Distilled)
+        .expect("distill c");
+
+    let counts = store.session_counts();
+    // The pre-fix counter reported 3 active here, because it never consulted status.
+    assert_eq!(counts.active, 1, "only ses-a is still active");
+    assert_eq!(counts.archived, 1);
+    assert_eq!(counts.distilled, 1);
+    assert_eq!(counts.total(), 3, "all three rows are still retained");
+    assert_eq!(store.session_count(), 3, "total stays status-blind");
+
+    // Reactivating a distilled session moves it back, without changing the total.
+    store
+        .find_or_create_session("ses-c", "nous-a", "ses-c", None, None)
+        .expect("reactivate c");
+    let counts = store.session_counts();
+    assert_eq!(counts.active, 2);
+    assert_eq!(counts.distilled, 0);
+    assert_eq!(counts.total(), 3);
+
+    // Deleting an archived session must discount the archived bucket, not active.
+    store.delete_session("ses-b").expect("delete b");
+    let counts = store.session_counts();
+    assert_eq!(counts.active, 2);
+    assert_eq!(counts.archived, 0);
+    assert_eq!(counts.total(), 2);
+
+    // A repeated status write is a no-op, not a double count.
+    store
+        .update_session_status("ses-a", SessionStatus::Archived)
+        .expect("archive a");
+    store
+        .update_session_status("ses-a", SessionStatus::Archived)
+        .expect("archive a again");
+    let counts = store.session_counts();
+    assert_eq!(counts.active, 1);
+    assert_eq!(counts.archived, 1);
+    assert_eq!(counts.total(), 2);
+}
+
+/// Counts must survive a reopen: the startup scan buckets by status rather
+/// than counting rows blindly (#5039).
+#[test]
+fn session_counts_are_rebuilt_by_status_on_open() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    {
+        let store = SessionStore::open(dir.path()).expect("open");
+        for id in ["ses-a", "ses-b", "ses-c"] {
+            store
+                .create_session(id, "nous-a", id, None, None)
+                .expect("create");
+        }
+        store
+            .update_session_status("ses-b", SessionStatus::Archived)
+            .expect("archive b");
+        store
+            .update_session_status("ses-c", SessionStatus::Distilled)
+            .expect("distill c");
+    }
+
+    let store = SessionStore::open(dir.path()).expect("reopen");
+    let counts = store.session_counts();
+    assert_eq!(counts.active, 1);
+    assert_eq!(counts.archived, 1);
+    assert_eq!(counts.distilled, 1);
+    assert_eq!(counts.total(), 3);
 }
 
 #[test]
