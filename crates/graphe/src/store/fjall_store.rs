@@ -148,6 +148,127 @@ const PARTITIONS: &[&str] = &[
     "counters",
 ];
 
+/// Session row counts broken down by lifecycle status.
+///
+/// A point-in-time copy taken from [`SessionStore::session_counts`]; the
+/// individual fields are consistent with each other only to the extent that no
+/// write landed mid-read, which is sufficient for observability.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SessionStatusCounts {
+    /// Sessions live and accepting new messages.
+    pub active: usize,
+    /// Sessions closed and retained for history.
+    pub archived: usize,
+    /// Sessions distilled into a summary and prunable.
+    pub distilled: usize,
+}
+
+impl SessionStatusCounts {
+    /// Total retained session rows across every lifecycle status.
+    #[must_use]
+    pub fn total(&self) -> usize {
+        self.active + self.archived + self.distilled
+    }
+
+    /// Count for one lifecycle status.
+    #[must_use]
+    pub fn get(&self, status: SessionStatus) -> usize {
+        match status {
+            SessionStatus::Active => self.active,
+            SessionStatus::Archived => self.archived,
+            SessionStatus::Distilled => self.distilled,
+        }
+    }
+}
+
+/// O(1) session-row counters, partitioned by lifecycle status.
+///
+/// WHY: sole owner of session counting. The total and the per-status gauges are
+/// derived from the same counters rather than maintained separately, so they
+/// cannot drift apart — a status-blind total reported as "active sessions" is
+/// the defect this type exists to prevent (issue #5039).
+#[derive(Debug, Default)]
+struct SessionCounters {
+    active: AtomicUsize,
+    archived: AtomicUsize,
+    distilled: AtomicUsize,
+}
+
+impl SessionCounters {
+    /// INVARIANT: exhaustive over `SessionStatus`. A new lifecycle variant must
+    /// fail to compile here rather than be silently folded into another bucket.
+    fn slot(&self, status: SessionStatus) -> &AtomicUsize {
+        match status {
+            SessionStatus::Active => &self.active,
+            SessionStatus::Archived => &self.archived,
+            SessionStatus::Distilled => &self.distilled,
+        }
+    }
+
+    /// Account for a newly written session row.
+    fn record_added(&self, status: SessionStatus) {
+        self.slot(status).fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Account for a removed session row.
+    ///
+    /// WARNING: saturates at zero. An unbalanced decrement must not wrap a
+    /// `usize` to `usize::MAX` and publish that as a gauge value.
+    fn record_removed(&self, status: SessionStatus) {
+        let _ = self
+            .slot(status)
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                Some(n.saturating_sub(1))
+            });
+    }
+
+    /// Account for a session row whose status changed in place.
+    fn record_transition(&self, from: SessionStatus, to: SessionStatus) {
+        if from != to {
+            self.record_removed(from);
+            self.record_added(to);
+        }
+    }
+
+    /// Account for the outcome of a find-or-create.
+    ///
+    /// WHY: both `find_or_create_session` and `finalize_turn_with_type` write a
+    /// session row through the same path, so they must account for it the same
+    /// way. Keeping that rule here rather than at each call site is what stops
+    /// one of them from silently skipping it, as `finalize_turn` did.
+    fn record_find_or_create(&self, outcome: &FindOrCreateOutcome) {
+        if outcome.created {
+            self.record_added(outcome.session.status);
+        } else if let Some(previous) = outcome.reactivated_from {
+            self.record_transition(previous, outcome.session.status);
+        }
+    }
+
+    /// Account for an import that may overwrite one row and displace another.
+    fn record_import(
+        &self,
+        overwritten: Option<SessionStatus>,
+        imported: SessionStatus,
+        displaced: Option<SessionStatus>,
+    ) {
+        match overwritten {
+            Some(previous) => self.record_transition(previous, imported),
+            None => self.record_added(imported),
+        }
+        if let Some(status) = displaced {
+            self.record_removed(status);
+        }
+    }
+
+    fn snapshot(&self) -> SessionStatusCounts {
+        SessionStatusCounts {
+            active: self.active.load(Ordering::Relaxed),
+            archived: self.archived.load(Ordering::Relaxed),
+            distilled: self.distilled.load(Ordering::Relaxed),
+        }
+    }
+}
+
 /// Fjall-backed session store.
 ///
 /// Open with [`SessionStore::open`] for persistent storage or
@@ -161,11 +282,12 @@ pub struct SessionStore {
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
     _temp_dir: Option<tempfile::TempDir>,
-    /// Approximate number of session rows, maintained by create/delete paths.
+    /// Approximate session row counts by lifecycle status, maintained by the
+    /// create, status-change, delete and import paths.
     ///
-    /// WHY: O(1) counter for the Prometheus `/metrics` scrape path; avoids a
+    /// WHY: O(1) counters for the Prometheus `/metrics` scrape path; avoid a
     /// full LSM scan on every scrape (issue #5662).
-    session_count: AtomicUsize,
+    session_counts: SessionCounters,
 }
 
 /// One message to append as part of a batched turn finalization.
@@ -356,6 +478,33 @@ struct FindOrCreateSessionSpec<'a> {
     parent_session_id: Option<&'a str>,
 }
 
+/// What a find-or-create did, in the terms the session counters need.
+///
+/// WHY: the caller must distinguish "added a row" from "changed an existing
+/// row's status" to keep the per-status counters correct. A bare `mutated`
+/// flag cannot express the difference (issue #5039).
+struct FindOrCreateOutcome {
+    session: Session,
+    /// The transaction was written and needs committing.
+    mutated: bool,
+    /// A new session row was added.
+    created: bool,
+    /// Status the row held before being reactivated, when that happened.
+    reactivated_from: Option<SessionStatus>,
+}
+
+impl FindOrCreateOutcome {
+    /// An existing active session, returned without touching the transaction.
+    fn unchanged(session: Session) -> Self {
+        Self {
+            session,
+            mutated: false,
+            created: false,
+            reactivated_from: None,
+        }
+    }
+}
+
 impl SessionStore {
     /// Open (or create) a persistent session store at the given path.
     ///
@@ -414,17 +563,24 @@ impl SessionStore {
             })?;
         Self::backfill_legacy_session_types(&fdb.db, &sessions_part)?;
         let snap = fdb.db.read_tx();
-        let mut count = 0usize;
+        let session_counts = SessionCounters::default();
         for guard in snap.range::<&str, _>(&sessions_part, ..) {
-            let (k, _v) = guard.into_inner().map_err(|e| {
+            let (k, v) = guard.into_inner().map_err(|e| {
                 error::StorageSnafu {
                     message: format!("fjall session-count scan: {e}"),
                 }
                 .build()
             })?;
-            if !k.starts_with(b"idx:") {
-                count += 1;
+            if k.starts_with(b"idx:") {
+                continue;
             }
+            // WHY: the row must be decoded to bucket it by lifecycle status. A
+            // row that will not decode still exists and is still retained, so
+            // count it as Archived rather than dropping it from the total — an
+            // undercount here would understate retained volume forever.
+            let status =
+                serde_json::from_slice::<Session>(&v).map_or(SessionStatus::Archived, |s| s.status);
+            session_counts.record_added(status);
         }
 
         Ok(Self {
@@ -432,7 +588,7 @@ impl SessionStore {
             path,
             write_lock: fdb.write_lock,
             _temp_dir: fdb._temp_dir,
-            session_count: AtomicUsize::new(count),
+            session_counts,
         })
     }
 
@@ -809,7 +965,7 @@ impl SessionStore {
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         sessions_part: &fjall::SingleWriterTxKeyspace,
         spec: FindOrCreateSessionSpec<'_>,
-    ) -> Result<(Session, bool, bool)> {
+    ) -> Result<FindOrCreateOutcome> {
         use fjall::Readable;
         let FindOrCreateSessionSpec {
             id,
@@ -892,21 +1048,25 @@ impl SessionStore {
         Self::write_session_in_tx(tx, sessions_part, &session)?;
         metrics::record_session_created(nous_id, session_type.as_str());
         info!(id, nous_id, session_key, %session_type, "created session");
-        Ok((session, true, true))
+        Ok(FindOrCreateOutcome {
+            session,
+            mutated: true,
+            created: true,
+            reactivated_from: None,
+        })
     }
 
     /// Return an active session, reactivating it if necessary, inside a tx.
     ///
-    /// Returns `(session, mutated, created)`: `mutated` is `true` when the
-    /// transaction was written (reactivation); `created` is always `false`
-    /// because this function only handles existing sessions.
+    /// `created` is always `false` because this function only handles existing
+    /// sessions.
     fn active_or_reactivated_session(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         sessions_part: &fjall::SingleWriterTxKeyspace,
         mut session: Session,
-    ) -> Result<(Session, bool, bool)> {
+    ) -> Result<FindOrCreateOutcome> {
         match session.status {
-            SessionStatus::Active => Ok((session, false, false)),
+            SessionStatus::Active => Ok(FindOrCreateOutcome::unchanged(session)),
             SessionStatus::Archived => {
                 // WHY: Archived sessions are lifecycle-closed by operator or
                 // policy action. Silently reactivating them loses the intent
@@ -915,14 +1075,19 @@ impl SessionStore {
                 // endpoint before resuming the session.
                 Err(error::SessionIsArchivedSnafu { id: session.id }.build())
             }
-            _ => {
+            previous => {
                 let old_updated_at = session.updated_at.clone();
                 session.status = SessionStatus::Active;
                 session.updated_at = now_iso();
                 Self::update_session_nous_index(tx, sessions_part, &session, &old_updated_at);
                 Self::write_session_in_tx(tx, sessions_part, &session)?;
                 info!(id = session.id, "reactivated session");
-                Ok((session, true, false))
+                Ok(FindOrCreateOutcome {
+                    session,
+                    mutated: true,
+                    created: false,
+                    reactivated_from: Some(previous),
+                })
             }
         }
     }
@@ -977,14 +1142,26 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Return the number of sessions in O(1).
+    /// Return the total number of retained sessions in O(1).
+    ///
+    /// Counts every lifecycle status. Use [`Self::session_counts`] when the
+    /// caller means live sessions specifically.
     ///
     /// WHY: the Prometheus `/metrics` handler scrapes this every 15-30 seconds.
     /// A full `list_sessions(None)` scan blocks the Tokio worker thread and
     /// holds the session-store mutex for unbounded time as sessions grow
     /// (issue #5662).
     pub fn session_count(&self) -> usize {
-        self.session_count.load(Ordering::Relaxed)
+        self.session_counts.snapshot().total()
+    }
+
+    /// Return session counts broken down by lifecycle status, in O(1).
+    ///
+    /// WHY: `/metrics` needs to distinguish live workload from retained
+    /// history. Reporting the total under an "active sessions" name overstates
+    /// live workload and hides retained volume (issue #5039).
+    pub fn session_counts(&self) -> SessionStatusCounts {
+        self.session_counts.snapshot()
     }
 
     /// Find an active session by nous ID and session key.
@@ -1097,7 +1274,7 @@ impl SessionStore {
         }
 
         self.write_session(&session)?;
-        self.session_count.fetch_add(1, Ordering::Relaxed);
+        self.session_counts.record_added(session.status);
         metrics::record_session_created(nous_id, session_type.as_str());
         info!(id, nous_id, session_key, %session_type, "created session");
         Ok(session)
@@ -1140,7 +1317,7 @@ impl SessionStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
         let mut tx = self.db.write_tx();
-        let (session, mutated, created) = Self::find_or_create_session_in_tx(
+        let outcome = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             FindOrCreateSessionSpec {
@@ -1152,7 +1329,7 @@ impl SessionStore {
                 parent_session_id,
             },
         )?;
-        if mutated {
+        if outcome.mutated {
             tx.commit().map_err(|e| {
                 error::StorageSnafu {
                     message: format!("fjall find_or_create_session commit: {e}"),
@@ -1160,11 +1337,9 @@ impl SessionStore {
                 .build()
             })?;
             self.ensure_durable()?;
-            if created {
-                self.session_count.fetch_add(1, Ordering::Relaxed);
-            }
+            self.session_counts.record_find_or_create(&outcome);
         }
-        Ok(session)
+        Ok(outcome.session)
     }
 
     /// List sessions, optionally filtered by nous ID.
@@ -1311,6 +1486,7 @@ impl SessionStore {
             .ok_or_else(|| error::SessionNotFoundSnafu { id: id.to_owned() }.build())?;
 
         let old_updated_at = session.updated_at.clone();
+        let previous_status = session.status;
         session.status = status;
         session.updated_at = now_iso();
 
@@ -1324,6 +1500,8 @@ impl SessionStore {
             .build()
         })?;
         self.ensure_durable()?;
+        self.session_counts
+            .record_transition(previous_status, status);
         Ok(())
     }
 
@@ -1467,7 +1645,7 @@ impl SessionStore {
             }
             .build()
         })?;
-        self.session_count.fetch_sub(1, Ordering::Relaxed);
+        self.session_counts.record_removed(session.status);
 
         Ok(true)
     }
@@ -2278,7 +2456,7 @@ impl SessionStore {
 
         let mut tx = self.db.write_tx();
 
-        let (mut session, _mutated, _) = Self::find_or_create_session_in_tx(
+        let find_outcome = Self::find_or_create_session_in_tx(
             &mut tx,
             &sessions_part,
             FindOrCreateSessionSpec {
@@ -2290,6 +2468,7 @@ impl SessionStore {
                 parent_session_id: request.parent_session_id,
             },
         )?;
+        let mut session = find_outcome.session.clone();
 
         let mut messages_persisted = 0usize;
         for spec in request.messages {
@@ -2354,6 +2533,12 @@ impl SessionStore {
             .build()
         })?;
         self.ensure_durable()?;
+
+        // WHY: finalize_turn creates or reactivates the session inside its own
+        // transaction, so it owns the counter update for that row just as
+        // create_session and find_or_create_session do. Discarding the outcome
+        // here silently undercounted sessions first written by a turn.
+        self.session_counts.record_find_or_create(&find_outcome);
 
         debug!(
             session_id = request.session_id,
@@ -3146,9 +3331,12 @@ impl SessionStore {
         // - `idx:nous:{nous_id}:upd:{ts}:{id}` — orphaned when `nous_id` or
         //   `updated_at` changes; both are embedded in the key prefix.
         let mut tx = self.db.write_tx();
+        let mut overwritten_status: Option<SessionStatus> = None;
+        let mut displaced_status: Option<SessionStatus> = None;
         if let Some(prev_bytes) = existing_self.as_ref() {
             let prev: Session =
                 serde_json::from_slice(prev_bytes).context(error::StoredJsonSnafu)?;
+            overwritten_status = Some(prev.status);
             if prev.nous_id != session.nous_id || prev.session_key != session.session_key {
                 let stale_key_idx = Self::session_key_index_key(&prev.nous_id, &prev.session_key);
                 tx.remove(&sessions_part, stale_key_idx.as_str());
@@ -3180,6 +3368,7 @@ impl SessionStore {
                 );
                 tx.remove(&sessions_part, displaced_nous_idx.as_str());
                 tx.remove(&sessions_part, displaced.id.as_str());
+                displaced_status = Some(displaced.status);
             }
         }
 
@@ -3203,20 +3392,15 @@ impl SessionStore {
         })?;
         self.ensure_durable()?;
 
-        // WHY: imports can overwrite or displace existing sessions; adjust the
-        // counter to reflect the true delta in session rows (issue #5662).
-        let displaced = existing_key_owner
-            .as_deref()
-            .is_some_and(|owner| owner != session.id.as_str());
-        match (existing_self.is_none(), displaced) {
-            (true, false) => {
-                self.session_count.fetch_add(1, Ordering::Relaxed);
-            }
-            (false, true) => {
-                self.session_count.fetch_sub(1, Ordering::Relaxed);
-            }
-            _ => {}
-        }
+        // WHY: imports can overwrite or displace existing sessions; account for
+        // the true delta in session rows (issue #5662) and for the lifecycle
+        // status each of those rows carried (issue #5039). An overwrite can
+        // change the status of an existing row, which is neither an add nor a
+        // remove.
+        // NOTE: only a displaced row that actually existed was removed above; a
+        // dangling key index leaves nothing to discount.
+        self.session_counts
+            .record_import(overwritten_status, session.status, displaced_status);
 
         metrics::record_session_created(&session.nous_id, session.session_type.as_str());
         info!(
