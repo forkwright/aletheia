@@ -38,7 +38,12 @@ pub struct SessionState {
     pub turn_id: Ulid,
     pub token_estimate: i64,
     pub cumulative_tokens: u64,
-    pub distillation_count: u32,
+    // NOTE(#6527): the distillation count deliberately does not live here. The
+    // authoritative counter is the persisted `metrics.distillation_count`,
+    // incremented in graphe's `store/fjall_store.rs`; nous reads it directly in
+    // `distillation.rs` and `actor/background.rs`. A `distillation_count` field
+    // on this struct was declared and never incremented, so every reader got a
+    // plausible zero regardless of how many passes the session had run.
     pub bootstrap_hash: Option<String>,
     /// Last time the session was accessed. Used for LRU eviction.
     pub last_accessed: Instant,
@@ -90,7 +95,6 @@ impl SessionState {
             turn: 0,
             turn_id: Ulid::new(),
             token_estimate: 0,
-            distillation_count: 0,
             thinking_enabled: config.generation.thinking_enabled,
             thinking_budget: config.generation.thinking_budget,
             bootstrap_hash: None,
@@ -397,7 +401,6 @@ mod tests {
         let state = SessionState::new("ses-1".to_owned(), "main".to_owned(), &make_config());
         assert_eq!(state.id, "ses-1");
         assert_eq!(state.session_key, "main");
-        assert_eq!(state.distillation_count, 0);
         assert!(state.bootstrap_hash.is_none());
     }
 
