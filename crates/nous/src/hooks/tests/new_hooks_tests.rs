@@ -85,7 +85,7 @@ impl TurnHook for CountingBeforeCompactHook {
 
     fn before_compact<'a>(
         &'a self,
-        _context: &'a CompactionContext<'_>,
+        _context: &'a BeforeCompactionContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         let c = Arc::clone(&self.count);
         Box::pin(async move {
@@ -106,7 +106,7 @@ impl TurnHook for Hook1AfterCompact {
 
     fn after_compact<'a>(
         &'a self,
-        _context: &'a CompactionContext<'_>,
+        _context: &'a AfterCompactionContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         let c = Arc::clone(&self.called);
         Box::pin(async move {
@@ -129,7 +129,7 @@ impl TurnHook for Hook2AfterCompact {
 
     fn after_compact<'a>(
         &'a self,
-        _context: &'a CompactionContext<'_>,
+        _context: &'a AfterCompactionContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         let c = Arc::clone(&self.called);
         Box::pin(async move {
@@ -178,7 +178,7 @@ fn default_before_compact_returns_continue() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("runtime");
-    let ctx = test_compaction_context();
+    let ctx = test_before_compaction_context();
     let result = rt.block_on(hook.before_compact(&ctx));
     assert_eq!(
         result,
@@ -193,7 +193,7 @@ fn default_after_compact_returns_continue() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("runtime");
-    let ctx = test_compaction_context();
+    let ctx = test_after_compaction_context();
     let result = rt.block_on(hook.after_compact(&ctx));
     assert_eq!(
         result,
@@ -259,7 +259,7 @@ fn before_compact_hook_fires_before_distillation() {
     );
 
     assert_eq!(count.load(Ordering::Relaxed), 0);
-    let ctx = test_compaction_context();
+    let ctx = test_before_compaction_context();
     rt.block_on(registry.run_before_compact(&ctx));
     assert_eq!(count.load(Ordering::Relaxed), 1);
 }
@@ -287,7 +287,7 @@ fn after_compact_hook_does_not_short_circuit() {
         }),
     );
 
-    let ctx = test_compaction_context();
+    let ctx = test_after_compaction_context();
     rt.block_on(registry.run_after_compact(&ctx));
 
     // Both hooks should fire even though Hook1 returned Abort

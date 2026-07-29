@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use super::builtins::{AuditLoggingHook, CostControlHook, ScopeEnforcementHook};
 use super::registry::HookRegistry;
 use super::{
-    AfterToolContext, CompactionContext, HookResult, QueryContext, SessionStartContext,
-    ToolHookContext, ToolHookResult, TurnContext, TurnHook, TurnUsage,
+    AfterCompactionContext, AfterToolContext, BeforeCompactionContext, HookResult, QueryContext,
+    SessionStartContext, ToolHookContext, ToolHookResult, TurnContext, TurnHook, TurnUsage,
 };
 use crate::pipeline::{PipelineContext, TurnResult};
 
@@ -96,7 +96,7 @@ impl TurnHook for AbortingHook {
 
     fn before_compact<'a>(
         &'a self,
-        _context: &'a CompactionContext<'_>,
+        _context: &'a BeforeCompactionContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         Box::pin(std::future::ready(HookResult::Abort {
             reason: "compaction aborted".to_owned(),
@@ -215,13 +215,23 @@ fn test_session_start_context() -> SessionStartContext<'static> {
     }
 }
 
-fn test_compaction_context() -> CompactionContext<'static> {
-    CompactionContext {
+fn test_before_compaction_context() -> BeforeCompactionContext<'static> {
+    BeforeCompactionContext {
+        nous_id: "test-agent",
+        messages_before: 12,
+        tokens_before: 5000,
+    }
+}
+
+fn test_after_compaction_context() -> AfterCompactionContext<'static> {
+    AfterCompactionContext {
         nous_id: "test-agent",
         messages_distilled: 10,
+        messages_before: 12,
+        messages_after: 2,
         tokens_before: 5000,
         tokens_after: 1000,
-        distillation_number: 1,
+        full_compaction_triggered: true,
     }
 }
 
