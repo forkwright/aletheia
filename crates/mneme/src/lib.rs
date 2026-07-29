@@ -273,7 +273,8 @@ pub mod metrics {
     pub use episteme::metrics::{
         record_confidence_inflation, record_embedding_duration, record_extraction,
         record_extraction_confidence, record_extraction_conflict, record_extraction_contradiction,
-        record_extraction_correction, record_extraction_quality, register as register_knowledge,
+        record_extraction_correction, record_extraction_quality, record_recall_duration,
+        register as register_knowledge,
     };
     pub use graphe::metrics::{record_backup_duration, register as register_sessions};
 }

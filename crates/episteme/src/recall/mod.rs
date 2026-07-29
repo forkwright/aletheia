@@ -532,13 +532,18 @@ impl RecallEngine {
 
     /// Score and rank a batch of candidates. Returns sorted by score descending.
     ///
+    /// WHY: this is a stateless scoring unit with no agent context, so it does
+    /// not record `aletheia_recall_duration_seconds` itself — doing so forced a
+    /// constant `nous_id` label and made the metric unfilterable. Callers that
+    /// know the recalling agent time this call and record it via
+    /// [`crate::metrics::record_recall_duration`].
+    ///
     /// # Complexity
     ///
     /// O(C log C) where C is candidate count. O(C) for scoring, O(C log C) for sort.
     #[must_use]
     #[instrument(skip(self, candidates), fields(count = candidates.len()))]
     pub fn rank(&self, mut candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
-        let start = std::time::Instant::now();
         for candidate in &mut candidates {
             candidate.score = self.compute_score(&candidate.factors);
         }
@@ -547,7 +552,6 @@ impl RecallEngine {
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        crate::metrics::record_recall_duration("_all", start.elapsed().as_secs_f64());
         candidates
     }
 

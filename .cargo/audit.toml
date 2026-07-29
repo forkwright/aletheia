@@ -2,7 +2,7 @@
 #
 # WHY: This file is DERIVED from deny.toml [[advisories.ignore]].
 # Do not edit the ignore list here; edit deny.toml and run
-# `kanon audit derive-ignores --apply`. See SUPPLY-CHAIN.md in forkwright/kanon's crates/basanos/standards/.
+# `kanon audit derive-ignores --apply`. See standards/SUPPLY-CHAIN.md.
 
 [advisories]
 ignore = [

@@ -255,8 +255,12 @@ pub fn record_extraction(nous_id: &str, success: bool) {
         .inc();
 }
 
-/// Record recall duration.
-pub(crate) fn record_recall_duration(nous_id: &str, duration_secs: f64) {
+/// Record recall-scoring duration for the recalling agent.
+///
+/// WHY: `RecallEngine::rank` is stateless and cannot name the agent it scores
+/// for, so recording lives with the caller that holds the agent identity.
+/// Passing a constant here re-introduces the unfilterable-label defect.
+pub fn record_recall_duration(nous_id: &str, duration_secs: f64) {
     RECALL_DURATION_SECONDS
         .get_or_create(&NousLabels {
             nous_id: nous_id.to_owned(),

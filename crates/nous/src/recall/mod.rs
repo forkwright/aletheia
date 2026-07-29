@@ -290,19 +290,29 @@ impl RecallStage {
     }
 
     /// Rank candidates, applying side-query pre-filter when configured.
-    fn rank_candidates(&self, candidates: Vec<ScoredResult>) -> Vec<ScoredResult> {
-        self.rank_candidates_with_side_ids(candidates, self.side_query_ids.as_ref())
+    fn rank_candidates(&self, candidates: Vec<ScoredResult>, nous_id: &str) -> Vec<ScoredResult> {
+        self.rank_candidates_with_side_ids(candidates, self.side_query_ids.as_ref(), nous_id)
     }
 
+    /// Rank candidates and record scoring latency against the recalling agent.
+    ///
+    /// WHY: `RecallEngine` is stateless and has no agent context, so it cannot
+    /// label `aletheia_recall_duration_seconds` with the agent it scored for.
+    /// This stage is the innermost caller that knows `nous_id`, so it owns the
+    /// timing and the metric.
     fn rank_candidates_with_side_ids(
         &self,
         candidates: Vec<ScoredResult>,
         side_ids: Option<&HashSet<String>>,
+        nous_id: &str,
     ) -> Vec<ScoredResult> {
-        match side_ids {
+        let start = std::time::Instant::now();
+        let ranked = match side_ids {
             Some(ids) if !ids.is_empty() => self.engine.rank_with_prefilter(candidates, ids),
             None | Some(_) => self.engine.rank(candidates),
-        }
+        };
+        mneme::metrics::record_recall_duration(nous_id, start.elapsed().as_secs_f64());
+        ranked
     }
 
     /// Run recall using BM25 text search only (no vector embeddings required).
@@ -340,7 +350,7 @@ impl RecallStage {
         }
 
         let candidates = self.build_candidates(raw, nous_id, None);
-        let ranked = self.rank_candidates(candidates);
+        let ranked = self.rank_candidates(candidates, nous_id);
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
 
@@ -468,6 +478,7 @@ impl RecallStage {
         let ranked = self.rank_candidates_with_side_ids(
             candidates,
             self.side_query_ids.as_ref().or(side_ids.as_ref()),
+            nous_id,
         );
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
@@ -518,6 +529,7 @@ impl RecallStage {
         let ranked_c1 = self.rank_candidates_with_side_ids(
             candidates_c1,
             self.side_query_ids.as_ref().or(side_ids_c1.as_ref()),
+            nous_id,
         );
 
         let terms = discover_terminology(&ranked_c1, query);
@@ -592,6 +604,7 @@ impl RecallStage {
         let ranked = self.rank_candidates_with_side_ids(
             candidates,
             self.side_query_ids.as_ref().or(side_ids.as_ref()),
+            nous_id,
         );
         Ok(self.finalize_results(ranked, remaining_budget, nous_id))
     }
