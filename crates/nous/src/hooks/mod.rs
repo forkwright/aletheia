@@ -72,7 +72,8 @@ pub(crate) struct ToolHookContext<'a> {
 #[derive(Debug)]
 #[expect(
     dead_code,
-    reason = "context fields are exposed to hooks for optional use"
+    reason = "schema-contract: these fields are the payload handed to hook \
+              implementors, so the compiler sees no in-crate read"
 )]
 pub(crate) struct AfterToolContext<'a> {
     /// Agent identifier.
@@ -119,7 +120,8 @@ impl<'a> ToolResultRecord<'a> {
 #[derive(Debug)]
 #[expect(
     dead_code,
-    reason = "context fields are exposed to hooks for optional use"
+    reason = "schema-contract: these fields are the payload handed to hook \
+              implementors, so the compiler sees no in-crate read"
 )]
 pub(crate) struct SessionStartContext<'a> {
     /// Agent identifier.
@@ -130,23 +132,63 @@ pub(crate) struct SessionStartContext<'a> {
     pub timestamp: &'a str,
 }
 
-/// Context passed to `before_compact` and `after_compact` hooks.
+/// Context passed to `before_compact` hooks.
+///
+/// WHY(#5025): split from the post-compaction context because a
+/// before-compaction observer cannot know any post-compaction figure. The
+/// single shared context forced `tokens_after: 0` here, which a hook could not
+/// distinguish from a genuine zero. Separate types make the unknowable
+/// unrepresentable rather than merely undocumented.
 #[derive(Debug)]
 #[expect(
     dead_code,
-    reason = "context fields are exposed to hooks for optional use"
+    reason = "schema-contract: these fields are the payload handed to hook \
+              implementors, so the compiler sees no in-crate read"
 )]
-pub(crate) struct CompactionContext<'a> {
+pub(crate) struct BeforeCompactionContext<'a> {
     /// Agent identifier.
     pub nous_id: &'a str,
-    /// Number of messages that were distilled.
-    pub messages_distilled: usize,
-    /// Token count before distillation.
+    /// Messages in context at the moment compaction began.
+    pub messages_before: usize,
+    /// Estimated token count in context at the moment compaction began.
     pub tokens_before: u64,
-    /// Token count of the generated summary.
+}
+
+/// Context passed to `after_compact` hooks.
+///
+/// WHY(#5025): every field is sourced from observed pipeline state rather than
+/// a placeholder. `messages_distilled` is the removal delta the field name
+/// promises, not the total message count on either side of the pass — the two
+/// call sites previously reported opposite quantities under this one name.
+#[derive(Debug)]
+#[expect(
+    dead_code,
+    reason = "schema-contract: these fields are the payload handed to hook \
+              implementors, so the compiler sees no in-crate read"
+)]
+pub(crate) struct AfterCompactionContext<'a> {
+    /// Agent identifier.
+    pub nous_id: &'a str,
+    /// Messages removed from context by this compaction pass.
+    ///
+    /// Saturating difference of [`Self::messages_before`] and
+    /// [`Self::messages_after`]; zero when the pass was a no-op.
+    pub messages_distilled: usize,
+    /// Messages in context at the moment compaction began.
+    pub messages_before: usize,
+    /// Messages remaining in context once compaction completed.
+    pub messages_after: usize,
+    /// Estimated token count in context at the moment compaction began.
+    pub tokens_before: u64,
+    /// Estimated token count in context once compaction completed.
     pub tokens_after: u64,
-    /// Which distillation pass this is (1-indexed).
-    pub distillation_number: u32,
+    /// Whether full LLM-backed compaction ran, or only microcompaction.
+    ///
+    /// WHY(#5025): the two have different semantics — microcompaction clears
+    /// tool results in place, full compaction replaces history with a
+    /// generated summary. A hook auditing distillation must be able to tell
+    /// them apart rather than inferring it from the token delta.
+    pub full_compaction_triggered: bool,
 }
 
 /// Result from `before_query` and `on_turn_complete` hooks.
@@ -285,7 +327,7 @@ pub(crate) trait TurnHook: Send + Sync {
     /// Fires right before context distillation begins.
     fn before_compact<'a>(
         &'a self,
-        _context: &'a CompactionContext<'_>,
+        _context: &'a BeforeCompactionContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         Box::pin(std::future::ready(HookResult::Continue))
     }
@@ -293,7 +335,7 @@ pub(crate) trait TurnHook: Send + Sync {
     /// Fires after distillation completes and summary is committed.
     fn after_compact<'a>(
         &'a self,
-        _context: &'a CompactionContext<'_>,
+        _context: &'a AfterCompactionContext<'_>,
     ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
         Box::pin(std::future::ready(HookResult::Continue))
     }

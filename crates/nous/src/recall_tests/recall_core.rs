@@ -875,3 +875,32 @@ fn side_query_manifest_excludes_memory_content() {
         "other-nous private memory content should not leak to the side-query provider"
     );
 }
+
+#[test]
+fn recall_duration_metric_is_labelled_with_the_recalling_agent() {
+    let registry = koina::metrics::MetricsRegistry::new();
+    registry.with_registry(mneme::metrics::register_knowledge);
+
+    let stage = RecallStage::new(RecallConfig::default());
+    let search = MockVectorSearch::new(vec![
+        make_knowledge_result("alpha fact", 0.1),
+        make_knowledge_result("beta fact", 0.2),
+    ]);
+    stage
+        .run("query", "probe-agent", &mock_embed(), &search, 10_000)
+        .expect("recall should succeed");
+
+    let mut encoded = String::new();
+    registry
+        .encode(&mut encoded)
+        .expect("encoding metrics into a String is infallible");
+
+    assert!(
+        encoded.contains("aletheia_recall_duration_seconds_count{nous_id=\"probe-agent\"}"),
+        "recall duration should carry the recalling agent's id; got: {encoded}"
+    );
+    assert!(
+        !encoded.contains("aletheia_recall_duration_seconds_count{nous_id=\"_all\"}"),
+        "recall duration must not aggregate every agent under a constant label; got: {encoded}"
+    );
+}

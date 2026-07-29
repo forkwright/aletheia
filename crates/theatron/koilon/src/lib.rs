@@ -23,6 +23,7 @@ mod markdown;
 mod msg;
 mod sanitize;
 mod state;
+mod text;
 mod theme;
 mod update;
 mod view;

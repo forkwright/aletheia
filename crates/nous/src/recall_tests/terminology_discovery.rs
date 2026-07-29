@@ -582,3 +582,79 @@ fn sovereignty_filter_reports_filtered_count_in_result() {
         "filtered fact IDs should be preserved for prompt audit"
     );
 }
+
+/// Side ranker that always selects a fixed set, standing in for the
+/// production ranker's computed choice.
+struct FixedSideRanker {
+    ids: Vec<String>,
+}
+
+impl mneme::side_query::SideQueryRanker for FixedSideRanker {
+    fn rank_memories(
+        &self,
+        _query: &str,
+        _manifest_text: &str,
+        _max_results: usize,
+    ) -> Result<Vec<String>, mneme::side_query::SideQueryError> {
+        Ok(self.ids.clone())
+    }
+}
+
+/// The caller's static side-query IDs outrank the computed ones in cycle 1,
+/// as they already do at every other ranking site (#6497).
+///
+/// Observable through the search count rather than the returned set, because
+/// the final ranking applies the static IDs regardless and would mask the
+/// difference. Cycle 1's ranked set is what `discover_terminology` and
+/// `detect_gaps` see, and their emptiness is what decides whether cycle 2
+/// searches at all:
+///
+/// - `fact-static` carries only the query's own words, so it yields no novel
+///   terms and no capitalised phrases — cycle 2 is skipped.
+/// - `fact-computed` carries novel terms, so it triggers cycle 2.
+///
+/// The ranker selects `fact-computed` and the caller pins `fact-static`. One
+/// search means the caller won.
+#[test]
+fn cycle_one_prefers_the_callers_side_query_ids() {
+    let cycle1 = vec![
+        make_knowledge_result_with_id("photon lattice", 0.1, "fact-static"),
+        make_knowledge_result_with_id(
+            "quantum entanglement measurement protocols",
+            0.2,
+            "fact-computed",
+        ),
+    ];
+    let search = CycledMockSearch::new(vec![cycle1, vec![]]);
+    let ranker = FixedSideRanker {
+        ids: vec!["fact-computed".to_owned()],
+    };
+
+    let config = RecallConfig {
+        iterative: true,
+        max_cycles: 2,
+        min_score: 0.0,
+        max_results: 10,
+        ..Default::default()
+    };
+    let stage = RecallStage::new(config)
+        .with_side_query_ids(std::iter::once("fact-static".to_owned()).collect());
+
+    let _result = stage
+        .run_with_recall_enhancements(
+            "photon lattice",
+            "syn",
+            &mock_embed(),
+            &search,
+            50_000,
+            Some(&ranker),
+            None,
+        )
+        .expect("recall should succeed");
+
+    assert_eq!(
+        search.call_count(),
+        1,
+        "cycle 1 ranked the caller's pinned fact, which discovers nothing, so cycle 2 must not run"
+    );
+}

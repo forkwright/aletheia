@@ -258,12 +258,10 @@ async fn before_compact_fires_and_can_short_circuit() {
     registry.register(10, Box::new(NoopHook::new("first")));
     registry.register(20, Box::new(AbortingHook));
 
-    let ctx = super::super::CompactionContext {
+    let ctx = super::super::BeforeCompactionContext {
         nous_id: "test",
-        messages_distilled: 10,
+        messages_before: 10,
         tokens_before: 1000,
-        tokens_after: 500,
-        distillation_number: 1,
     };
 
     let result = registry.run_before_compact(&ctx).await;
@@ -279,12 +277,14 @@ async fn after_compact_fires_and_does_not_short_circuit() {
     registry.register(10, Box::new(NoopHook::new("first")));
     registry.register(20, Box::new(NoopHook::new("second")));
 
-    let ctx = super::super::CompactionContext {
+    let ctx = super::super::AfterCompactionContext {
         nous_id: "test",
-        messages_distilled: 10,
+        messages_distilled: 8,
+        messages_before: 10,
+        messages_after: 2,
         tokens_before: 1000,
         tokens_after: 500,
-        distillation_number: 1,
+        full_compaction_triggered: true,
     };
 
     registry.run_after_compact(&ctx).await;

@@ -215,6 +215,10 @@ fn estimate_cursor_line(overlay: &SettingsOverlay) -> usize {
     line
 }
 
+// WARNING: not provably equivalent to `parodos::layout::centered_rect_pct` —
+// see the matching note on `view/overlay/mod.rs::centered_rect`. This crate's
+// POPUP_HEIGHT_PCT = 85 hits the same odd-remainder case (100 - 85 = 15,
+// 15 / 2 = 7, so the three constraints sum to 99% under `Flex::Start`).
 #[expect(
     clippy::indexing_slicing,
     reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"

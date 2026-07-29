@@ -539,6 +539,66 @@ fn quality_score_rewards_recall_reference() {
     assert!(r > u, "referenced ({r}) should exceed unreferenced ({u})");
 }
 
+/// Build the `RecallSignals` the pipeline actually emits today.
+///
+/// WHY: every other recall test in this file populates `facts` by hand,
+/// so none of them reaches the shape production runs on — the pipeline
+/// hardcodes `facts: Vec::new()` under a `WHY(#3418)` comment. The two
+/// tests below pin the empty-`facts` path specifically.
+fn pipeline_shaped_recall() -> RecallSignals {
+    RecallSignals {
+        candidates_found: 3,
+        results_injected: 2,
+        tokens_consumed: 50,
+        facts: Vec::new(),
+    }
+}
+
+#[test]
+fn quality_score_none_when_recall_has_no_per_fact_data() {
+    // Recall fired and injected results, but `facts` is empty, so the
+    // utilization rate has nothing to measure. It must not count as a
+    // signal: with no other signal present the score is None, not a
+    // Some(_) whose recall component is a structural zero.
+    let input = CaptureInput {
+        recall_signals: Some(pipeline_shaped_recall()),
+        ..good_input()
+    };
+    assert!(
+        input.compute_quality_score().is_none(),
+        "results_injected > 0 with empty facts must not claim a recall signal"
+    );
+}
+
+#[test]
+fn quality_score_ignores_empty_recall_beside_a_real_signal() {
+    // The guard must suppress only the recall component, not the record.
+    // A turn carrying a genuine signal still scores, and scores exactly
+    // as it would with no recall attached at all.
+    let tool_outcomes = Some(vec![ToolOutcome {
+        name: "shell".to_owned(),
+        success: true,
+        duration_ms: 10,
+        error_kind: None,
+    }]);
+    let with_empty_recall = CaptureInput {
+        tool_outcomes: tool_outcomes.clone(),
+        recall_signals: Some(pipeline_shaped_recall()),
+        ..good_input()
+    };
+    let without_recall = CaptureInput {
+        tool_outcomes,
+        ..good_input()
+    };
+
+    let with = with_empty_recall.compute_quality_score().expect("some");
+    let without = without_recall.compute_quality_score().expect("some");
+    assert!(
+        (with - without).abs() < f32::EPSILON,
+        "empty recall facts must contribute nothing ({with} vs {without})"
+    );
+}
+
 // -- PII redaction --------------------------------------------------------
 
 #[test]

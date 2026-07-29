@@ -30,6 +30,21 @@ pub(super) struct DispatchResult {
     pub blocks: Vec<ContentBlock>,
     /// Loop warning message to inject into conversation, if detected.
     pub loop_warning: Option<String>,
+    /// `tool_use` ids recorded in `all_tool_calls` without the tool ever running.
+    ///
+    /// INVARIANT: every call recorded by `record_denied_call` appears here, and only
+    /// those. That function is the single point at which a tool call enters
+    /// `all_tool_calls` without being executed — classification denials, approval-gate
+    /// denials, the no-gate `Mandatory` fallback, the policy re-check, and the calls a
+    /// loop warning abandons all route through it — so membership here is the
+    /// authoritative answer to "did this tool run?".
+    ///
+    /// WHY: `ToolCall::approval` cannot answer that question. It is an outcome label,
+    /// not an execution record, and its vocabulary is overloaded — `TOOL_OUTCOME_FAILED`
+    /// tags a parse error that never dispatched, and an executed call carries an
+    /// approval outcome rather than a denial one. Deriving execution from that string
+    /// would put a second, drifting owner on a fact this list already owns.
+    pub unexecuted: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -327,6 +342,49 @@ pub(super) const TOOL_OUTCOME_DENIED_BY_HOOK: &str = "denied_by_hook";
 const TOOL_OUTCOME_DENIED_INACTIVE: &str = "denied_inactive";
 const TOOL_OUTCOME_NOT_FOUND: &str = "not_found";
 const TOOL_OUTCOME_FAILED: &str = "failed";
+const TOOL_OUTCOME_UNDISPATCHED: &str = "undispatched_loop_warning";
+
+/// Close out tool calls that a loop warning stopped us from dispatching.
+///
+/// INVARIANT: the assistant message carrying this turn's `tool_use` blocks is pushed
+/// before dispatch begins, so every one of those blocks needs a `tool_result` with a
+/// matching `tool_use_id` in the following user message. A `LoopVerdict::Warn` ends
+/// dispatch early, so without this the trailing calls would carry no result at all and
+/// the next request would be rejected for unpaired blocks.
+fn record_undispatched_calls(
+    all_tool_calls: &mut Vec<ToolCall>,
+    unexecuted: &mut Vec<String>,
+    tool_results: &mut Vec<ContentBlock>,
+    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
+    tool_ctx: &ToolContext,
+    remaining: &[ToolDispatchItem],
+) {
+    for item in remaining {
+        let (id, name, input) = match item {
+            ToolDispatchItem::Ready { id, name, input }
+            | ToolDispatchItem::Denied {
+                id, name, input, ..
+            } => (id, name, input),
+        };
+        record_denied_call(
+            all_tool_calls,
+            unexecuted,
+            tool_results,
+            stream_tx,
+            tool_ctx,
+            DeniedToolCall {
+                id,
+                name,
+                input,
+                message: format!(
+                    "tool_loop: Tool '{name}' was not run because a repetition loop was detected \
+                     earlier in this turn"
+                ),
+                approval: Some(TOOL_OUTCOME_UNDISPATCHED),
+            },
+        );
+    }
+}
 
 fn record_approval_policy_outcome(
     tool_id: &str,
@@ -431,11 +489,13 @@ struct DeniedToolCall<'a> {
 
 fn record_denied_call(
     all_tool_calls: &mut Vec<ToolCall>,
+    unexecuted: &mut Vec<String>,
     tool_results: &mut Vec<ContentBlock>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
     denied: DeniedToolCall<'_>,
 ) {
+    unexecuted.push(denied.id.to_owned());
     all_tool_calls.push(ToolCall {
         id: denied.id.to_owned(),
         name: denied.name.to_owned(),
@@ -906,8 +966,9 @@ async fn dispatch_single_tool(
 /// Dispatch tool calls from an LLM response and collect results.
 ///
 /// Records each tool call in the loop detector AFTER execution (so error
-/// status is known). On [`LoopVerdict::Warn`], stops processing remaining
-/// tools and returns the warning. On [`LoopVerdict::Halt`], returns an error.
+/// status is known). On [`LoopVerdict::Warn`], stops executing the remaining
+/// tools, records an error result for each so no `tool_use` block is left
+/// unpaired, and returns the warning. On [`LoopVerdict::Halt`], returns an error.
 ///
 /// Legacy tuple adapter used by direct dispatch tests and callers that have no
 /// pre-dispatch denials to preserve.
@@ -971,8 +1032,9 @@ pub(super) async fn dispatch_tool_items(
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
+    let mut unexecuted: Vec<String> = Vec::new();
 
-    for item in tool_items {
+    for (index, item) in tool_items.iter().enumerate() {
         let (tool_id, tool_name, tool_input) = match item {
             ToolDispatchItem::Ready { id, name, input } => (id, name, input),
             ToolDispatchItem::Denied {
@@ -984,6 +1046,7 @@ pub(super) async fn dispatch_tool_items(
             } => {
                 record_denied_call(
                     all_tool_calls,
+                    &mut unexecuted,
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
@@ -1011,6 +1074,7 @@ pub(super) async fn dispatch_tool_items(
             );
             record_denied_call(
                 all_tool_calls,
+                &mut unexecuted,
                 &mut tool_results,
                 stream_tx,
                 tool_ctx,
@@ -1072,9 +1136,18 @@ pub(super) async fn dispatch_tool_items(
             match loop_detector.record(tool_name, &input_hash, is_error) {
                 LoopVerdict::Ok => {}
                 LoopVerdict::Warn { message, .. } => {
+                    record_undispatched_calls(
+                        all_tool_calls,
+                        &mut unexecuted,
+                        &mut tool_results,
+                        stream_tx,
+                        tool_ctx,
+                        tool_items.get(index + 1..).unwrap_or(&[]),
+                    );
                     return Ok(DispatchResult {
                         blocks: tool_results,
                         loop_warning: Some(message),
+                        unexecuted,
                     });
                 }
                 LoopVerdict::Halt { pattern, .. } => {
@@ -1098,6 +1171,7 @@ pub(super) async fn dispatch_tool_items(
             Err(e) => {
                 record_denied_call(
                     all_tool_calls,
+                    &mut unexecuted,
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
@@ -1185,6 +1259,7 @@ pub(super) async fn dispatch_tool_items(
                     };
                     record_denied_call(
                         all_tool_calls,
+                        &mut unexecuted,
                         &mut tool_results,
                         stream_tx,
                         tool_ctx,
@@ -1230,9 +1305,18 @@ pub(super) async fn dispatch_tool_items(
         match loop_detector.record(tool_name, &input_hash, is_error) {
             LoopVerdict::Ok => {}
             LoopVerdict::Warn { message, .. } => {
+                record_undispatched_calls(
+                    all_tool_calls,
+                    &mut unexecuted,
+                    &mut tool_results,
+                    stream_tx,
+                    tool_ctx,
+                    tool_items.get(index + 1..).unwrap_or(&[]),
+                );
                 return Ok(DispatchResult {
                     blocks: tool_results,
                     loop_warning: Some(message),
+                    unexecuted,
                 });
             }
             LoopVerdict::Halt { pattern, .. } => {
@@ -1248,6 +1332,7 @@ pub(super) async fn dispatch_tool_items(
     Ok(DispatchResult {
         blocks: tool_results,
         loop_warning: None,
+        unexecuted,
     })
 }
 

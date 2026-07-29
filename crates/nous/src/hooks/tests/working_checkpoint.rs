@@ -7,7 +7,10 @@ use std::sync::Arc;
 use organon::types::WorkingCheckpointStore;
 
 use crate::hooks::builtins::WorkingCheckpointInjector;
-use crate::hooks::{CompactionContext, HookResult, QueryContext, TurnContext, TurnHook};
+use crate::hooks::{
+    AfterCompactionContext, BeforeCompactionContext, HookResult, QueryContext, TurnContext,
+    TurnHook,
+};
 use crate::pipeline::{PipelineContext, TurnResult, TurnUsage};
 use crate::working_memory::FjallWorkingCheckpointStore;
 
@@ -37,16 +40,23 @@ fn compact_hooks(
     hook: &WorkingCheckpointInjector,
     _turn: u64,
 ) -> impl std::future::Future<Output = ()> + use<'_> {
-    let compact_ctx = CompactionContext {
+    let before_ctx = BeforeCompactionContext {
+        nous_id: "test-agent",
+        messages_before: 12,
+        tokens_before: 5000,
+    };
+    let after_ctx = AfterCompactionContext {
         nous_id: "test-agent",
         messages_distilled: 10,
+        messages_before: 12,
+        messages_after: 2,
         tokens_before: 5000,
         tokens_after: 1000,
-        distillation_number: 1,
+        full_compaction_triggered: true,
     };
     async move {
-        let _ = hook.before_compact(&compact_ctx).await;
-        let _ = hook.after_compact(&compact_ctx).await;
+        let _ = hook.before_compact(&before_ctx).await;
+        let _ = hook.after_compact(&after_ctx).await;
     }
 }
 

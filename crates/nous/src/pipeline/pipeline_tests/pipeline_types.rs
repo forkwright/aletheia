@@ -301,96 +301,131 @@ async fn assemble_context_conditional_turn_one_selects_cold_start() {
     );
 }
 
+/// Shared setup for tests that drive a full `run_pipeline` turn.
+///
+/// WHY(#5025): the pipeline entry point takes twenty-two arguments and needs a
+/// populated Oikos root on disk. Holding that in one place keeps each test to
+/// the behaviour it is actually asserting, and keeps the temp dir alive for the
+/// duration of the run.
+struct PipelineHarness {
+    _dir: tempfile::TempDir,
+    oikos: Oikos,
+    nous_config: NousConfig,
+    pipeline_config: PipelineConfig,
+    tool_ctx: organon::types::ToolContext,
+}
+
+impl PipelineHarness {
+    fn new() -> Self {
+        use std::collections::HashSet;
+        use std::fs;
+        use std::path::PathBuf;
+        use std::sync::RwLock;
+
+        use koina::id::{NousId, SessionId};
+        use organon::types::ToolContext;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().expect("create temp dir");
+        let root = dir.path();
+        fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
+        fs::create_dir_all(root.join("shared")).expect("create shared dir");
+        fs::create_dir_all(root.join("theke")).expect("create theke dir");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
+        )]
+        fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.")
+            .expect("write SOUL.md");
+
+        let oikos = Oikos::from_root(root);
+        let nous_config = NousConfig {
+            id: Arc::from("test-agent"),
+            generation: crate::config::NousGenerationConfig {
+                model: "test-model".to_owned(),
+                ..crate::config::NousGenerationConfig::default()
+            },
+            ..NousConfig::default()
+        };
+
+        let tool_ctx = ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            turn_number: 0,
+            workspace: PathBuf::from("/tmp/test"),
+            allowed_roots: vec![PathBuf::from("/tmp")],
+            services: None,
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+        };
+
+        Self {
+            _dir: dir,
+            oikos,
+            nous_config,
+            pipeline_config: PipelineConfig::default(),
+            tool_ctx,
+        }
+    }
+
+    async fn run(
+        &self,
+        content: &str,
+        hooks: Option<&crate::hooks::registry::HookRegistry>,
+    ) -> error::Result<TurnResult> {
+        use hermeneus::provider::ProviderRegistry;
+        use hermeneus::test_utils::MockProvider;
+        use organon::registry::ToolRegistry;
+
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(
+            MockProvider::new("Hello from pipeline!").models(&["test-model"]),
+        ));
+
+        let session = crate::session::SessionState::new(
+            "test-session".to_owned(),
+            "main".to_owned(),
+            &self.nous_config,
+        );
+        let input = PipelineInput {
+            content: content.to_owned(),
+            session,
+            config: self.pipeline_config.clone(),
+        };
+
+        run_pipeline(
+            input,
+            &self.oikos,
+            &self.nous_config,
+            &self.pipeline_config,
+            Arc::new(providers),
+            &ToolRegistry::new(),
+            &self.tool_ctx,
+            None::<Arc<dyn mneme::embedding::EmbeddingProvider>>,
+            None::<Arc<dyn crate::recall::VectorSearch>>,
+            None,
+            None,
+            None,
+            Vec::new(),
+            None,
+            None,
+            None,
+            hooks,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+    }
+}
+
 #[tokio::test]
 async fn run_pipeline_simple() {
-    use std::collections::HashSet;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::{Arc, RwLock};
-
-    use tempfile::TempDir;
-
-    use hermeneus::provider::ProviderRegistry;
-    use hermeneus::test_utils::MockProvider;
-    use koina::id::{NousId, SessionId};
-    use organon::registry::ToolRegistry;
-    use organon::types::ToolContext;
-
-    let dir = TempDir::new().expect("create temp dir");
-    let root = dir.path();
-    fs::create_dir_all(root.join("nous/test-agent")).expect("create nous dir");
-    fs::create_dir_all(root.join("shared")).expect("create shared dir");
-    fs::create_dir_all(root.join("theke")).expect("create theke dir");
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "nous bootstrap and test setup writes configuration files to temp directories; synchronous I/O is required in test contexts"
-    )]
-    fs::write(root.join("nous/test-agent/SOUL.md"), "I am a test agent.").expect("write SOUL.md");
-
-    let oikos = Oikos::from_root(root);
-    let nous_config = NousConfig {
-        id: Arc::from("test-agent"),
-        generation: crate::config::NousGenerationConfig {
-            model: "test-model".to_owned(),
-            ..crate::config::NousGenerationConfig::default()
-        },
-        ..NousConfig::default()
-    };
-    let pipeline_config = PipelineConfig::default();
-
-    let mut providers = ProviderRegistry::new();
-    providers.register(Box::new(
-        MockProvider::new("Hello from pipeline!").models(&["test-model"]),
-    ));
-
-    let tools = ToolRegistry::new();
-    let tool_ctx = ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: PathBuf::from("/tmp/test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
-        services: None,
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
-
-    let session = crate::session::SessionState::new(
-        "test-session".to_owned(),
-        "main".to_owned(),
-        &nous_config,
-    );
-    let input = PipelineInput {
-        content: "Hello".to_owned(),
-        session,
-        config: pipeline_config.clone(),
-    };
-
-    let result = run_pipeline(
-        input,
-        &oikos,
-        &nous_config,
-        &pipeline_config,
-        Arc::new(providers),
-        &tools,
-        &tool_ctx,
-        None::<Arc<dyn mneme::embedding::EmbeddingProvider>>,
-        None::<Arc<dyn crate::recall::VectorSearch>>,
-        None,
-        None,
-        None,
-        Vec::new(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect("pipeline should succeed");
+    let result = PipelineHarness::new()
+        .run("Hello", None)
+        .await
+        .expect("pipeline should succeed");
 
     assert_eq!(
         result.content, "Hello from pipeline!",
@@ -521,5 +556,138 @@ fn turn_usage_cache_tokens_not_counted_in_total() {
         usage.total_tokens(),
         150,
         "cache tokens should not be in total"
+    );
+}
+
+/// What a `before_compact` hook was handed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BeforeRecord {
+    messages_before: usize,
+    tokens_before: u64,
+}
+
+/// What an `after_compact` hook was handed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AfterRecord {
+    messages_distilled: usize,
+    messages_before: usize,
+    messages_after: usize,
+    tokens_before: u64,
+    tokens_after: u64,
+    full_compaction_triggered: bool,
+}
+
+/// Records the compaction contexts the pipeline actually emitted.
+///
+/// WHY(#5025): the regression class is placeholder telemetry — a field
+/// carrying a plausible number rather than the quantity its name promises.
+/// Capturing both contexts lets the assertions compare the pair against each
+/// other and against observed message counts, rather than against a constant
+/// that a placeholder could also satisfy.
+#[derive(Debug, Default)]
+struct CompactionProbe {
+    before: std::sync::Mutex<Option<BeforeRecord>>,
+    after: std::sync::Mutex<Option<AfterRecord>>,
+}
+
+type HookFuture<'a> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = crate::hooks::HookResult> + Send + 'a>>;
+
+impl crate::hooks::TurnHook for Arc<CompactionProbe> {
+    fn name(&self) -> &'static str {
+        "compaction_probe"
+    }
+
+    fn before_compact<'a>(
+        &'a self,
+        context: &'a crate::hooks::BeforeCompactionContext<'_>,
+    ) -> HookFuture<'a> {
+        let record = BeforeRecord {
+            messages_before: context.messages_before,
+            tokens_before: context.tokens_before,
+        };
+        Box::pin(async move {
+            *self.before.lock().expect("before lock") = Some(record);
+            crate::hooks::HookResult::Continue
+        })
+    }
+
+    fn after_compact<'a>(
+        &'a self,
+        context: &'a crate::hooks::AfterCompactionContext<'_>,
+    ) -> HookFuture<'a> {
+        let record = AfterRecord {
+            messages_distilled: context.messages_distilled,
+            messages_before: context.messages_before,
+            messages_after: context.messages_after,
+            tokens_before: context.tokens_before,
+            tokens_after: context.tokens_after,
+            full_compaction_triggered: context.full_compaction_triggered,
+        };
+        Box::pin(async move {
+            *self.after.lock().expect("after lock") = Some(record);
+            crate::hooks::HookResult::Continue
+        })
+    }
+}
+
+#[tokio::test]
+async fn compaction_hooks_receive_observed_state_not_placeholders() {
+    let harness = PipelineHarness::new();
+    let probe = Arc::new(CompactionProbe::default());
+    let mut hooks = crate::hooks::registry::HookRegistry::new();
+    hooks.register(0, Box::new(Arc::clone(&probe)));
+
+    harness
+        .run("Hello", Some(&hooks))
+        .await
+        .expect("pipeline should succeed");
+
+    let before = probe
+        .before
+        .lock()
+        .expect("before lock")
+        .expect("before_compact hook should have fired");
+    let after = probe
+        .after
+        .lock()
+        .expect("after lock")
+        .expect("after_compact hook should have fired");
+
+    assert_eq!(
+        after.messages_before, before.messages_before,
+        "the pre-compaction snapshot must be the same value in both contexts; \
+         a differing figure means one side re-derived it after the fact"
+    );
+    assert_eq!(
+        after.tokens_before, before.tokens_before,
+        "tokens_before must be carried from the before-compaction snapshot, not recomputed"
+    );
+
+    // WHY(#5025): this is the assertion that fails on the pre-fix code. The old
+    // after_compact site set `messages_distilled: ctx.messages.len()`, i.e. the
+    // messages *remaining*. On this turn nothing is removed, so the truthful
+    // delta is 0 while the old code reported the full message count.
+    assert_eq!(
+        after.messages_distilled,
+        before.messages_before.saturating_sub(after.messages_after),
+        "messages_distilled must be the removal delta the field name promises, \
+         not the total on either side of the pass"
+    );
+    assert_eq!(
+        after.messages_after, before.messages_before,
+        "no compaction is expected on a single short turn, so the count should be unchanged"
+    );
+    assert_eq!(
+        after.messages_distilled, 0,
+        "nothing was removed, so no messages were distilled"
+    );
+    assert_eq!(
+        after.tokens_after, before.tokens_before,
+        "nothing was compacted, so the token estimate should be unchanged"
+    );
+    assert!(
+        !after.full_compaction_triggered,
+        "a single short turn must not report full compaction"
     );
 }

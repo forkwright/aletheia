@@ -97,6 +97,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         path_template: "/api/v1/config/{section}",
     },
     ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/config/reload",
+    },
+    ClientRouteContract {
         method: "GET",
         path_template: "/api/v1/system/credentials",
     },
@@ -419,6 +423,15 @@ pub mod config {
     #[must_use]
     pub fn feature_flags_url(base_url: &str) -> String {
         keryx::url::join_base_path(base_url, &feature_flags_path())
+    }
+
+    /// Path for the config reload endpoint.
+    pub const RELOAD_PATH: &str = "/api/v1/config/reload";
+
+    /// Build the absolute URL for the config reload endpoint.
+    #[must_use]
+    pub fn reload_url(base_url: &str) -> String {
+        keryx::url::join_base_path(base_url, RELOAD_PATH)
     }
 }
 

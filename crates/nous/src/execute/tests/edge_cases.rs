@@ -683,3 +683,71 @@ async fn tool_diagnostics_injected_into_llm_content() {
         "result summary should contain diagnostic stderr: {result_text}"
     );
 }
+
+// ── loop-warning tool_result pairing (#5820) ─────────────────────────────────
+
+/// WHY: the assistant message carrying this turn's `tool_use` blocks is pushed before
+/// dispatch runs, so the API requires a `tool_result` for every one of them in the
+/// following user message. A `LoopVerdict::Warn` ends dispatch early; the calls after
+/// that point are never executed and must still be answered.
+#[tokio::test]
+async fn loop_warning_still_pairs_every_tool_use_with_a_result() {
+    use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
+    use crate::pipeline::LoopDetector;
+
+    let tools = make_registry_with("read_file", Box::new(EchoExecutor));
+    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
+
+    // Identical name + input on every call, so the detector trips on repetition.
+    let tool_uses: Vec<(String, String, serde_json::Value)> = (0..4)
+        .map(|i| {
+            (
+                format!("call-{i}"),
+                "read_file".to_owned(),
+                serde_json::json!({"path": "same.txt"}),
+            )
+        })
+        .collect();
+
+    // Threshold 2 makes the warning fire partway through, leaving a tail undispatched.
+    let mut loop_detector = LoopDetector::new(2);
+    let mut all_calls = Vec::new();
+
+    let result = dispatch_tools(
+        &tool_uses,
+        &tools,
+        &test_tool_ctx(),
+        &mut loop_detector,
+        &mut all_calls,
+        1,
+        None,
+        None,
+        &policy,
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect("dispatch ok");
+
+    assert!(
+        result.loop_warning.is_some(),
+        "threshold 2 over 4 identical calls must raise a loop warning"
+    );
+
+    let answered: HashSet<&str> = result
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::ToolResult { tool_use_id, .. } => Some(tool_use_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    let requested: HashSet<&str> = tool_uses.iter().map(|(id, _, _)| id.as_str()).collect();
+
+    assert_eq!(
+        answered, requested,
+        "every tool_use must be answered by a tool_result — unpaired blocks are rejected \
+         by the provider on the next request"
+    );
+}

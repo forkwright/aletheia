@@ -1,6 +1,6 @@
 //! Resolution helpers for the execute stage.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use tracing::{debug, warn};
@@ -247,13 +247,12 @@ pub(super) fn process_response_blocks(content: &[ContentBlock]) -> ResponseExtra
 /// this deliberately does not return a turn-level error.
 fn normalize_tool_use_ids(tool_uses: &mut [(String, String, serde_json::Value)]) {
     let mut seen: HashSet<String> = HashSet::new();
-    let mut dup_counts: HashMap<String, usize> = HashMap::new();
 
     for (index, (id, name, _)) in tool_uses.iter_mut().enumerate() {
         let name = name.clone();
 
         if id.is_empty() {
-            let synthetic_id = format!("synth-{index}");
+            let synthetic_id = free_id(format!("synth-{index}"), &seen);
             warn!(
                 index,
                 tool_name = %name,
@@ -265,9 +264,7 @@ fn normalize_tool_use_ids(tool_uses: &mut [(String, String, serde_json::Value)])
         }
 
         if seen.contains(id.as_str()) {
-            let dup_count = dup_counts.entry(id.clone()).or_insert(0);
-            *dup_count += 1;
-            let new_id = format!("{id}-dup{dup_count}");
+            let new_id = free_id(id.clone(), &seen);
             warn!(
                 tool_use_id = %id,
                 tool_name = %name,
@@ -278,6 +275,32 @@ fn normalize_tool_use_ids(tool_uses: &mut [(String, String, serde_json::Value)])
         } else {
             seen.insert(id.clone());
         }
+    }
+}
+
+/// Return `candidate` if no earlier block claimed it, else the first free
+/// `{candidate}-dup{n}`.
+///
+/// WHY: both callers can propose an id that a *literal* provider id elsewhere in
+/// the same response already occupies — a literal `synth-1` ahead of an empty id
+/// at index 1, or a literal `a-dup1` ahead of a second `a`. Deriving the
+/// replacement from a per-id counter instead of from `seen` reintroduces exactly
+/// the duplicate this function exists to remove, so the candidate is probed
+/// against `seen` rather than assumed free.
+///
+/// INVARIANT: terminates — `seen` is finite and each probe is distinct, so some
+/// `n` yields an unclaimed id.
+fn free_id(candidate: String, seen: &HashSet<String>) -> String {
+    if !seen.contains(&candidate) {
+        return candidate;
+    }
+    let mut n = 1usize;
+    loop {
+        let probe = format!("{candidate}-dup{n}");
+        if !seen.contains(&probe) {
+            return probe;
+        }
+        n += 1;
     }
 }
 
@@ -326,5 +349,74 @@ mod tests {
 
         let ids: Vec<&str> = tool_uses.iter().map(|(id, _, _)| id.as_str()).collect();
         assert_eq!(ids, ["dup-id", "dup-id-dup1", "dup-id-dup2"]);
+    }
+
+    #[test]
+    fn normalize_tool_use_ids_disambiguates_synthesized_id_taken_by_a_literal() {
+        let mut tool_uses = vec![
+            (
+                "synth-1".to_string(),
+                "tool_a".to_string(),
+                serde_json::json!({}),
+            ),
+            (String::new(), "tool_b".to_string(), serde_json::json!({})),
+        ];
+
+        normalize_tool_use_ids(&mut tool_uses);
+
+        let ids: Vec<&str> = tool_uses.iter().map(|(id, _, _)| id.as_str()).collect();
+        assert_eq!(ids, ["synth-1", "synth-1-dup1"]);
+    }
+
+    #[test]
+    fn normalize_tool_use_ids_disambiguates_dup_suffix_taken_by_a_literal() {
+        let mut tool_uses = vec![
+            ("a".to_string(), "tool_a".to_string(), serde_json::json!({})),
+            (
+                "a-dup1".to_string(),
+                "tool_b".to_string(),
+                serde_json::json!({}),
+            ),
+            ("a".to_string(), "tool_c".to_string(), serde_json::json!({})),
+        ];
+
+        normalize_tool_use_ids(&mut tool_uses);
+
+        let ids: Vec<&str> = tool_uses.iter().map(|(id, _, _)| id.as_str()).collect();
+        assert_eq!(ids, ["a", "a-dup1", "a-dup2"]);
+    }
+
+    #[test]
+    fn normalize_tool_use_ids_leaves_no_duplicates_under_adversarial_input() {
+        // WARNING: this input must collide on *both* branches, or it is a green
+        // that cannot go red. `synth-1` ahead of the empty id at index 1 traps
+        // the synthesis branch; `a-dup1` ahead of the second `a` traps the
+        // disambiguation branch. Both were live defects before this test.
+        let mut tool_uses = vec![
+            (
+                "synth-1".to_string(),
+                "tool_a".to_string(),
+                serde_json::json!({}),
+            ),
+            (String::new(), "tool_b".to_string(), serde_json::json!({})),
+            ("a".to_string(), "tool_c".to_string(), serde_json::json!({})),
+            (
+                "a-dup1".to_string(),
+                "tool_d".to_string(),
+                serde_json::json!({}),
+            ),
+            ("a".to_string(), "tool_e".to_string(), serde_json::json!({})),
+        ];
+
+        normalize_tool_use_ids(&mut tool_uses);
+
+        let ids: Vec<&str> = tool_uses.iter().map(|(id, _, _)| id.as_str()).collect();
+        let unique: HashSet<&str> = ids.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            ids.len(),
+            "ids must be pairwise distinct: {ids:?}"
+        );
+        assert!(!ids.iter().any(|id| id.is_empty()));
     }
 }

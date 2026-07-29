@@ -321,6 +321,10 @@ pub enum Msg {
     MemoryConfidenceBackspace,
     MemoryConfidenceSubmit,
     MemoryConfidenceCancel,
+    #[expect(
+        dead_code,
+        reason = "WHY(#5815): `/` is unbound until the pylon semantic-recall endpoint exists; the overlay scaffolding is retained for that wiring"
+    )]
     MemorySearchOpen,
     MemorySearchInput(char),
     MemorySearchBackspace,

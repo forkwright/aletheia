@@ -6,7 +6,8 @@ mod tree;
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "tests create temporary files on disk for editor state verification"
+    clippy::expect_used,
+    reason = "tests create temporary files on disk for editor state verification, and a fixture that cannot be created is a test-setup failure worth panicking on"
 )]
 mod tests;
 

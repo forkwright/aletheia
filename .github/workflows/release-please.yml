@@ -17,11 +17,6 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      prs_created: ${{ steps.release.outputs.prs_created }}
-      pr: ${{ steps.release.outputs.pr }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -29,48 +24,19 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # WHY: release-type "simple" bumps Cargo.toml's workspace version via
-  # extra-files but has no cargo-workspace awareness, so Cargo.lock's
-  # per-member version fields go stale the moment the release PR opens —
-  # every contributor's first cargo invocation off main then regenerates a
-  # ~49-package version-only diff with zero dependency signal (#6418).
-  # This job re-syncs Cargo.lock into the SAME release PR right after
-  # release-please updates it, so the eventual release commit already
-  # carries a matching lockfile.
-  sync-lockfile:
-    needs: release-please
-    if: success() && needs.release-please.outputs.prs_created == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ fromJson(needs.release-please.outputs.pr).headBranchName }}
-          persist-credentials: false
-
-      # WHY: the only fleet git dependency (forkwright/theatron) is public,
-      # so lockfile regeneration fetches it anonymously — no FLEET_REPO_TOKEN
-      # needed here (see security.yml: "fleet git deps are public now").
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-
-      - name: Regenerate Cargo.lock for release version bump
-        run: cargo generate-lockfile
-
-      # WHY: the token is embedded only in this step's push URL (never
-      # persisted to disk via checkout, matching this repo's
-      # persist-credentials:false convention) so no other step in the job
-      # can read it.
-      - name: Commit Cargo.lock if it changed
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_BRANCH: ${{ fromJson(needs.release-please.outputs.pr).headBranchName }}
-        run: |
-          if git diff --quiet -- Cargo.lock; then
-            echo "Cargo.lock already in sync with the bumped version; nothing to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock
-          git commit -m "chore: regenerate Cargo.lock for release version bump"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:${HEAD_BRANCH}"
+  # WHY(#6513): Cargo.lock's per-member version fields (#6418) are patched by
+  # release-please itself, via the `$.package[?(!@.source)].version` extra-file
+  # added in #6516 — the same entry the rest of the fleet uses. A second job
+  # regenerating the lockfile and pushing the result is a duplicate owner of
+  # that capability, and the duplicate is the one that breaks releases: its
+  # push authenticates with GITHUB_TOKEN, and GitHub raises no workflow-
+  # triggering events for pushes made with that token. Every required check
+  # then goes missing rather than red, leaving the release PR permanently
+  # BLOCKED with nothing to re-run and nothing to approve.
+  #
+  # WARNING: do not reintroduce a lockfile-amend step here. If Cargo.lock ever
+  # needs a fix release-please cannot express, it belongs in the extra-files
+  # list, not in a push from CI. Release 0.33.1 (#6509) carried the amend
+  # commit as its head and got zero workflow runs; 0.33.3 (#6518), the first
+  # release after #6516, has release-please's own commit as its head, a
+  # Cargo.lock already at 0.33.3, and a full set of runs.

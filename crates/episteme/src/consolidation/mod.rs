@@ -193,7 +193,7 @@ pub struct ConsolidationCandidate {
 pub struct ConsolidatedFact {
     /// The consolidated fact content.
     pub content: String,
-    /// Confidence score (fixed at 0.95 for consolidation outputs).
+    /// Confidence score: the mean of the source facts' confidences (#5853).
     pub confidence: f64,
     /// Epistemic tier (always `inferred` for LLM consolidation outputs).
     pub tier: String,

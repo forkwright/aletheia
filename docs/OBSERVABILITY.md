@@ -89,7 +89,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 | `aletheia_knowledge_low_confidence_admissions_total` | Counter | `nous_id`, `threshold` | Facts admitted despite confidence below 0.5 |
 | `aletheia_knowledge_admission_total` | Counter | `nous_id`, `fact_type`, `outcome`, `reason` | Admission gate decisions |
 | `aletheia_conflict_unclassifiable_total` | Counter | - | Unclassifiable conflict-classifier responses |
-| `aletheia_recall_duration_seconds` | Histogram | `nous_id` | Recall query latency |
+| `aletheia_recall_duration_seconds` | Histogram | `nous_id` | Recall scoring latency, per recalling agent |
 | `aletheia_embedding_duration_seconds` | Histogram | `provider` | Embedding computation latency |
 
 > **Quality semantics:** `aletheia_knowledge_facts_total` and `aletheia_knowledge_extractions_total` measure throughput and liveness. The `aletheia_extraction_*_quality` counters measure whether the admitted facts are calibrated, non-redundant, and non-contradictory. A healthy deployment should see stable or falling rejection/empty-extraction rates, a broad confidence distribution rather than a spike at 0.95+, and contradiction rates that are low relative to the volume of new facts.

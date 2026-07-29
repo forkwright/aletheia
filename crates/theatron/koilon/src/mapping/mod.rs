@@ -99,6 +99,22 @@ mod tests {
     }
 
     #[test]
+    fn slash_in_memory_inspector_is_unbound() {
+        // WHY(#5815): semantic recall has no pylon endpoint, so `/` must not
+        // offer a control whose only outcome is a failure toast. This asserts
+        // the binding is absent, not merely that the hint text changed.
+        let mut app = test_app();
+        app.layout
+            .view_stack
+            .push(crate::state::view_stack::View::MemoryInspector);
+        let event = Event::Terminal(key(KeyCode::Char('/')));
+        assert!(
+            app.map_event(event).is_none(),
+            "`/` must be unbound in the memory inspector while semantic recall is unavailable"
+        );
+    }
+
+    #[test]
     fn slash_on_empty_input_opens_slash_complete() {
         let app = test_app();
         let event = Event::Terminal(key(KeyCode::Char('/')));

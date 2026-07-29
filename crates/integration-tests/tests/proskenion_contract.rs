@@ -143,6 +143,13 @@ const PROSKENION_API_INVENTORY: &[DesktopApiContract] = &[
         coverage: ContractCoverage::Covered,
     },
     DesktopApiContract {
+        method: "POST",
+        source_path: "/api/v1/config/reload",
+        pylon_route: "/api/v1/config/reload",
+        expected_shape: "object with hot_reloaded count, restart_required list, changed list",
+        coverage: ContractCoverage::Covered,
+    },
+    DesktopApiContract {
         method: "GET",
         source_path: "/api/v1/knowledge/facts",
         pylon_route: "/api/v1/knowledge/facts",

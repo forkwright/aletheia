@@ -4,7 +4,6 @@
 //! the desktop falls back to AES-256-GCM encrypted files under the desktop
 //! config directory. TOML settings store only stable non-secret references.
 
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use aes_gcm::aead::generic_array::GenericArray;
@@ -308,25 +307,15 @@ fn write_secure_file(path: &Path, bytes: &[u8]) -> Result<(), SecretStoreError> 
             .context(CreateDirSnafu { path: parent })?;
     }
 
-    #[cfg(unix)]
-    let mut tmp = {
-        use std::os::unix::fs::PermissionsExt as _;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        tempfile::Builder::new()
-            .permissions(perms)
-            .tempfile_in(parent)
-            .context(WriteFileSnafu { path })?
-    };
-    #[cfg(not(unix))]
-    let mut tmp = tempfile::Builder::new()
-        .tempfile_in(parent)
-        .context(WriteFileSnafu { path })?;
-
-    tmp.write_all(bytes).context(WriteFileSnafu { path })?;
-    tmp.as_file().sync_all().context(WriteFileSnafu { path })?;
-    tmp.persist(path)
-        .map_err(|err| err.error)
-        .context(WriteFileSnafu { path })?;
+    // WHY: 0o600 on the secret file itself; the 0o700 on its parent above stays
+    // this function's decision — `write_atomic` deliberately neither creates the
+    // parent nor sets its mode, so a caller writing secret material keeps that.
+    bathron::atomic::write_atomic(path, bytes, Some(0o600)).map_err(|source| {
+        SecretStoreError::WriteFile {
+            path: path.to_path_buf(),
+            source: std::io::Error::other(source),
+        }
+    })?;
     Ok(())
 }
 
@@ -389,6 +378,43 @@ mod tests {
         let raw = std::fs::read_to_string(fallback_file(base, token_ref)).unwrap();
         assert!(!raw.contains(token));
         assert!(raw.starts_with(FALLBACK_SENTINEL));
+    }
+
+    /// The secret file is owner-only and its directory owner-only-traversable,
+    /// on a replacement as well as a first write. `write_atomic` deliberately
+    /// does not touch the parent's mode, so the 0o700 is this module's to keep.
+    #[cfg(unix)]
+    #[test]
+    fn stored_secret_is_owner_only_on_every_write() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let token_ref = "server-srv_modes";
+
+        store_token(base, token_ref, "first").unwrap();
+
+        let path = fallback_file(base, token_ref);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        store_token(base, token_ref, "second").unwrap();
+
+        let file_mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(
+            file_mode & 0o777,
+            0o600,
+            "secret file expected 0o600, got {:o}",
+            file_mode & 0o777
+        );
+
+        let parent = path.parent().unwrap();
+        let dir_mode = std::fs::metadata(parent).unwrap().permissions().mode();
+        assert_eq!(
+            dir_mode & 0o777,
+            0o700,
+            "secret dir expected 0o700, got {:o}",
+            dir_mode & 0o777
+        );
     }
 
     #[test]

@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::Duration;
 
 use super::*;
@@ -19,18 +18,6 @@ fn sample_meta(id: &'static str, category: &'static str) -> ScenarioMeta {
 
 fn sample_provenance() -> EvalProvenance {
     EvalProvenance::new("er-test", "http://localhost")
-}
-
-fn create_dir(path: &Path) {
-    std::fs::create_dir_all(path).expect("test directory should be created");
-}
-
-fn remove_file_if_exists(path: &Path) {
-    match std::fs::remove_file(path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => panic!("failed to remove {}: {error}", path.display()),
-    }
 }
 
 #[test]
@@ -201,10 +188,8 @@ fn eval_record_does_not_serialize_token() {
 
 #[test]
 fn append_jsonl_creates_file() {
-    let dir = std::env::temp_dir().join("aletheia-eval-test");
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("test-output.jsonl");
-    let _ = std::fs::remove_file(&path);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("test-output.jsonl");
 
     let records = vec![EvalRecord {
         timestamp: "1234567890".to_owned(),
@@ -229,16 +214,12 @@ fn append_jsonl_creates_file() {
     let content = std::fs::read_to_string(&path).expect("should read file");
     assert!(content.contains("test-1"), "file should contain record");
     assert!(content.ends_with('\n'), "file should end with newline");
-
-    let _ = std::fs::remove_file(&path);
 }
 
 #[test]
 fn append_jsonl_appends_to_existing() {
-    let dir = std::env::temp_dir().join("aletheia-eval-test");
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("test-append.jsonl");
-    let _ = std::fs::remove_file(&path);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("test-append.jsonl");
 
     let record1 = vec![EvalRecord {
         timestamp: "1".to_owned(),
@@ -287,8 +268,6 @@ fn append_jsonl_appends_to_existing() {
         lines[1].contains("second"),
         "second line should be second record"
     );
-
-    let _ = std::fs::remove_file(&path);
 }
 
 #[test]
@@ -317,14 +296,9 @@ fn millis_from_duration_converts() {
 
 #[test]
 fn append_jsonl_stamped_writes_meta_sibling() {
-    let dir = std::env::temp_dir().join("aletheia-eval-stamped-test");
-    create_dir(&dir);
-    let path = dir.join("stamped-test.jsonl");
-    let meta_path = dir.join("stamped-test.jsonl.meta.json");
-    let manifest_path = dir.join("stamped-test.jsonl.manifest.json");
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&manifest_path);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("stamped-test.jsonl");
+    let meta_path = dir.path().join("stamped-test.jsonl.meta.json");
 
     let report = RunReport {
         passed: 2,
@@ -355,24 +329,14 @@ fn append_jsonl_stamped_writes_meta_sibling() {
         Some(2),
         "meta should carry passed count"
     );
-
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&manifest_path);
 }
 
 #[test]
 fn append_jsonl_stamped_with_coverage_writes_denominators() {
-    let dir = std::env::temp_dir().join("aletheia-eval-coverage-test");
-    create_dir(&dir);
-    let path = dir.join("stamped-coverage.jsonl");
-    let meta_path = dir.join("stamped-coverage.jsonl.meta.json");
-    let coverage_path = dir.join("stamped-coverage.jsonl.coverage.json");
-    let manifest_path = dir.join("stamped-coverage.jsonl.manifest.json");
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&coverage_path);
-    remove_file_if_exists(&manifest_path);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("stamped-coverage.jsonl");
+    let meta_path = dir.path().join("stamped-coverage.jsonl.meta.json");
+    let coverage_path = dir.path().join("stamped-coverage.jsonl.coverage.json");
 
     let report = RunReport {
         passed: 1,
@@ -424,23 +388,14 @@ fn append_jsonl_stamped_with_coverage_writes_denominators() {
     let jsonl_content = std::fs::read_to_string(&path).expect("should read JSONL file");
     assert!(jsonl_content.contains("\"skip_kind\":\"missing_auth_token\""));
     assert!(jsonl_content.contains("\"coverage\""));
-
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&coverage_path);
-    remove_file_if_exists(&manifest_path);
 }
 
 #[test]
 fn append_jsonl_stamped_writes_tags_sibling() {
-    let dir = std::env::temp_dir().join("aletheia-eval-tags-test");
-    create_dir(&dir);
-    let path = dir.join("stamped-tags.jsonl");
-    let tags_path = dir.join("stamped-tags.jsonl.tags.json");
-    let manifest_path = dir.join("stamped-tags.jsonl.manifest.json");
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&tags_path);
-    remove_file_if_exists(&manifest_path);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("stamped-tags.jsonl");
+    let tags_path = dir.path().join("stamped-tags.jsonl.tags.json");
+    let manifest_path = dir.path().join("stamped-tags.jsonl.manifest.json");
 
     let report = RunReport {
         passed: 1,
@@ -481,24 +436,13 @@ fn append_jsonl_stamped_writes_tags_sibling() {
         serde_json::from_str(&manifest_content).expect("manifest should be valid JSON");
     assert_eq!(manifest.runs.len(), 1);
     assert_eq!(manifest.runs[0].tags_path, tags_path.display().to_string());
-
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&tags_path);
-    remove_file_if_exists(&manifest_path);
 }
 
 #[test]
 fn append_jsonl_stamped_is_idempotent_for_run_id() {
-    let dir = std::env::temp_dir().join("aletheia-eval-idempotent-test");
-    create_dir(&dir);
-    let path = dir.join("stamped-idempotent.jsonl");
-    let meta_path = dir.join("stamped-idempotent.jsonl.meta.json");
-    let tags_path = dir.join("stamped-idempotent.jsonl.tags.json");
-    let manifest_path = dir.join("stamped-idempotent.jsonl.manifest.json");
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&tags_path);
-    remove_file_if_exists(&manifest_path);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("stamped-idempotent.jsonl");
+    let manifest_path = dir.path().join("stamped-idempotent.jsonl.manifest.json");
 
     let report = RunReport {
         passed: 1,
@@ -526,25 +470,15 @@ fn append_jsonl_stamped_is_idempotent_for_run_id() {
         serde_json::from_str(&manifest_content).expect("manifest should be valid JSON");
     assert_eq!(manifest.runs.len(), 1);
     assert!(!manifest.runs[0].recovered_from_partial_write);
-
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&tags_path);
-    remove_file_if_exists(&manifest_path);
 }
 
 #[test]
 fn append_jsonl_stamped_recovers_jsonl_without_sidecars() {
-    let dir = std::env::temp_dir().join("aletheia-eval-recovery-test");
-    create_dir(&dir);
-    let path = dir.join("stamped-recovery.jsonl");
-    let meta_path = dir.join("stamped-recovery.jsonl.meta.json");
-    let tags_path = dir.join("stamped-recovery.jsonl.tags.json");
-    let manifest_path = dir.join("stamped-recovery.jsonl.manifest.json");
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&tags_path);
-    remove_file_if_exists(&manifest_path);
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join("stamped-recovery.jsonl");
+    let meta_path = dir.path().join("stamped-recovery.jsonl.meta.json");
+    let tags_path = dir.path().join("stamped-recovery.jsonl.tags.json");
+    let manifest_path = dir.path().join("stamped-recovery.jsonl.manifest.json");
 
     let report = RunReport {
         passed: 1,
@@ -575,9 +509,4 @@ fn append_jsonl_stamped_recovers_jsonl_without_sidecars() {
         serde_json::from_str(&manifest_content).expect("manifest should be valid JSON");
     assert_eq!(manifest.runs.len(), 1);
     assert!(manifest.runs[0].recovered_from_partial_write);
-
-    remove_file_if_exists(&path);
-    remove_file_if_exists(&meta_path);
-    remove_file_if_exists(&tags_path);
-    remove_file_if_exists(&manifest_path);
 }

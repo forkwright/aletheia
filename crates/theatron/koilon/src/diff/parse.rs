@@ -105,6 +105,11 @@ pub(crate) fn parse_hunk_header(line: &str) -> (usize, usize) {
     (old_start, new_start)
 }
 
+// WARNING: not the same contract as `parodos::text::truncate_chars_ellipsis` —
+// the `s.len() <= max_chars` guard below compares byte length, not char count,
+// so multi-byte UTF-8 input can be truncated when it should pass through
+// unchanged (or vice versa). Do not collapse into the parodos helper without
+// first fixing this to a char-count guard.
 pub(crate) fn truncate_str(s: &str, max_chars: usize) -> String {
     if s.len() <= max_chars {
         s.to_string()
