@@ -271,9 +271,10 @@ mod tests {
         for i in 0..64u32 {
             let outcome =
                 TurnOutcome::new(provider.clone(), TaskCategory::Feature, i % 2 == 0, true);
-            router
-                .after_action(&decision, &outcome)
-                .expect("drain channel must accept the outcome");
+            assert!(
+                router.after_action(&decision, &outcome).is_ok(),
+                "drain channel must accept the outcome"
+            );
         }
 
         for _ in 0..1000 {
@@ -299,7 +300,9 @@ mod tests {
     /// the previous fire-and-forget reported as success.
     #[test]
     fn recording_router_reports_a_closed_drain_channel() {
-        let runtime = tokio::runtime::Runtime::new().expect("test runtime");
+        let Ok(runtime) = tokio::runtime::Runtime::new() else {
+            panic!("test runtime must build");
+        };
         let router = runtime.block_on(async {
             RecordingRouter::new(Arc::new(AfterActionStore::in_memory()), "claude-sonnet")
         });
@@ -313,9 +316,11 @@ mod tests {
             true,
             true,
         );
-        let error = router
-            .after_action(&RoutingDecision::new("claude-sonnet", None), &outcome)
-            .expect_err("a dropped drain task must not report a recorded outcome");
+        let Err(error) =
+            router.after_action(&RoutingDecision::new("claude-sonnet", None), &outcome)
+        else {
+            panic!("a dropped drain task must not report a recorded outcome");
+        };
 
         let RouterError::AfterActionWrite { message } = error;
         assert!(
