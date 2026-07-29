@@ -23,6 +23,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # WHY(#6523): ubuntu-latest carries no ripgrep, and the check consumed rg
+      # through a process substitution whose failure it discarded — so it
+      # reported clean on every PR without scanning anything.
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Check retired backup references
         run: scripts/check-docs-retired-backup.sh
       - name: Check public doc contracts

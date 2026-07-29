@@ -21,6 +21,16 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
+# WHY(#6523): the scan below discards rg's exit status, because rg exits 1 on
+# "no matches" and that is the passing case. Without this preflight a missing rg
+# is indistinguishable from a clean tree: the loop reads no lines, failures
+# stays 0, and this script reports clean having scanned nothing. That is what it
+# did on every PR while the runner had no ripgrep installed.
+if ! command -v rg >/dev/null 2>&1; then
+    printf 'shared-temp-path: ripgrep (rg) is required\n' >&2
+    exit 2
+fi
+
 SCAN_PATHS=(shared docs/RUNBOOK.md)
 
 failures=0
