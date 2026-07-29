@@ -851,19 +851,45 @@ impl NousActor {
             reason = "await compiled away without knowledge-store feature"
         )
     )]
-    async fn resolve_skill_sections(&self, content: &str) -> Vec<BootstrapSection> {
+    async fn resolve_skill_sections(&mut self, content: &str) -> Vec<BootstrapSection> {
         #[cfg(feature = "knowledge-store")]
         {
-            if let Some(ref loader) = self.stores.skill_loader {
+            // WHY(#5733): the loader reports the access-count debt instead of
+            // spawning it, so the bump is admitted through the same JoinSet and
+            // MAX_SPAWNED_TASKS guard as every other background task. The
+            // borrow of `stores` ends before `runtime` is borrowed mutably.
+            let resolved = if let Some(ref loader) = self.stores.skill_loader {
                 let task_context = crate::skills::extract_task_context(content);
                 let max_skills = self.config.behavior.skills_max_skills;
                 tracing::debug!(
                     max_skills,
                     "resolve_skill_sections: max_skills from behavior"
                 );
-                return loader
+                let resolved = loader
                     .resolve_skills(&self.id, &task_context, max_skills, content)
                     .await;
+                let increment = (!resolved.accessed.is_empty())
+                    .then(|| loader.increment_access_task(resolved.accessed));
+                Some((resolved.sections, increment))
+            } else {
+                None
+            };
+
+            if let Some((sections, increment)) = resolved {
+                if let Some(increment) = increment {
+                    if self.runtime.background_tasks.len() >= MAX_SPAWNED_TASKS {
+                        warn!(
+                            nous_id = %self.id,
+                            limit = MAX_SPAWNED_TASKS,
+                            current = self.runtime.background_tasks.len(),
+                            task_type = "skill_access_increment",
+                            "background task limit reached, skipping"
+                        );
+                    } else {
+                        self.runtime.background_tasks.spawn(increment);
+                    }
+                }
+                return sections;
             }
         }
         // WHY: suppress unused-variable warning when tui feature is off

@@ -608,8 +608,11 @@ fn render_memory_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     spans.push(Span::styled(" nav  ", theme.style_dim()));
     spans.push(Span::styled("Enter", theme.style_accent()));
     spans.push(Span::styled(" detail  ", theme.style_dim()));
-    spans.push(Span::styled("/", theme.style_accent()));
-    spans.push(Span::styled(" search (unavailable)  ", theme.style_dim()));
+    // WHY(#5815): semantic recall has no pylon endpoint yet, so no `/` hint is
+    // advertised. An accent-styled key hint reads as an available control even
+    // beside an "(unavailable)" label, and submitting only ever produced a
+    // failure toast. Restore the hint together with the binding in
+    // `mapping::keyboard` when the recall endpoint lands.
     spans.push(Span::styled("f", theme.style_accent()));
     spans.push(Span::styled(" filter  ", theme.style_dim()));
     spans.push(Span::styled("Esc", theme.style_accent()));

@@ -520,3 +520,125 @@ async fn prosoche_daemon_adopts_existing_db_session_id() {
 }
 
 // ── cross-nous panic boundary tests (#3606) ──────────────────────────────────
+
+// ── mod.rs: skill access-count increment is a tracked background task (#5733) ─
+
+/// Build a searchable skill fact for the in-memory knowledge store.
+#[cfg(feature = "knowledge-store")]
+fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str) -> mneme::knowledge::Fact {
+    use mneme::knowledge::{FactAccess, FactLifecycle, FactProvenance, FactTemporal};
+
+    let content = serde_json::to_string(&mneme::skill::SkillContent {
+        name: skill_name.to_owned(),
+        description: format!("Skill: {skill_name}"),
+        steps: vec!["step 1".to_owned()],
+        tools_used: vec!["Read".to_owned()],
+        domain_tags: vec![skill_name.to_owned()],
+        origin: "seeded".to_owned(),
+        triggers: vec![],
+        always: false,
+    })
+    .expect("skill content serializes to JSON");
+
+    let now = jiff::Timestamp::now();
+    mneme::knowledge::Fact {
+        id: mneme::id::FactId::new(id).expect("valid test id"),
+        nous_id: nous_id.to_owned(),
+        content,
+        fact_type: "skill".to_owned(),
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: jiff::Timestamp::from_second(i64::MAX / 2).unwrap_or(now),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: mneme::knowledge::EpistemicTier::Verified,
+            source_session_id: None,
+            stability_hours: 2190.0,
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+        sensitivity: mneme::knowledge::FactSensitivity::Public,
+        visibility: mneme::knowledge::Visibility::Private,
+        scope: None,
+        project_id: None,
+    }
+}
+
+/// Seed an actor with an in-memory knowledge store holding one searchable skill.
+#[cfg(feature = "knowledge-store")]
+fn seed_skill_loader(actor: &mut NousActor) {
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("in-memory store");
+    let skill = make_skill_fact("sk-docker", "test-agent", "docker");
+    store.insert_fact(&skill).expect("insert skill");
+    actor.stores.skill_loader = Some(crate::skills::SkillLoader::new(store));
+}
+
+/// The access-count bump must be registered in `background_tasks`, not spawned
+/// loose. Regression test for #5733: `resolve_skills` called `tokio::spawn` and
+/// dropped the `JoinHandle`, so the task escaped shutdown cancellation, panic
+/// accounting, and the `MAX_SPAWNED_TASKS` guard.
+///
+/// This asserts the `JoinSet` is what grew, which is false against the pre-fix
+/// loose spawn and true once the task is admitted through the actor.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn skill_access_increment_is_registered_in_background_tasks() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    seed_skill_loader(&mut actor);
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "actor should start with no background tasks"
+    );
+
+    let sections = actor.resolve_skill_sections("docker").await;
+
+    assert!(
+        !sections.is_empty(),
+        "seeded skill should resolve to at least one section"
+    );
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "the access-count increment must be tracked in the JoinSet, not spawned loose"
+    );
+}
+
+/// The increment is subject to the same backpressure as every other background
+/// task: at `MAX_SPAWNED_TASKS` it is skipped rather than spawned unbounded.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn skill_access_increment_respects_spawn_limit() {
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    seed_skill_loader(&mut actor);
+
+    for _ in 0..MAX_SPAWNED_TASKS {
+        actor
+            .runtime
+            .background_tasks
+            .spawn(std::future::pending::<()>());
+    }
+
+    let sections = actor.resolve_skill_sections("docker").await;
+
+    assert!(
+        !sections.is_empty(),
+        "skills must still resolve when the spawn limit is reached"
+    );
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        MAX_SPAWNED_TASKS,
+        "at the limit the increment is skipped, not spawned past the guard"
+    );
+}

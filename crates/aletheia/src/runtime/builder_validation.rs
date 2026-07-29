@@ -1,7 +1,7 @@
 use std::fmt::Arguments;
 use std::io::Write as _;
 
-use taxis::validate::validate_section;
+use taxis::validate::validate_each_section;
 
 use super::RuntimeBuilder;
 use super::validate::validate_jwt;
@@ -47,35 +47,26 @@ impl RuntimeBuilder {
 
         print_line(format_args!("  [pass] config loaded"));
 
-        let config_value = match serde_json::to_value(&self.config) {
-            Ok(v) => v,
+        // WHY(#5770): the section list is derived from the serialized config
+        // rather than listed here, so `check-config` and server startup cannot
+        // report different verdicts on the same file. The previous hand-kept
+        // list omitted `credential`, which startup validates, so an invalid
+        // `credential.source` passed check-config and then failed the start.
+        let sections = match validate_each_section(&self.config) {
+            Ok(sections) => sections,
             Err(e) => {
                 print_line(format_args!("  [FAIL] config serialization: {e}"));
                 snafu::whatever!("config validation aborted: could not serialize config");
             }
         };
 
-        for section in &[
-            "agents",
-            "gateway",
-            "maintenance",
-            "data",
-            "embedding",
-            "channels",
-            "bindings",
-            "providers",
-            "tools",
-        ] {
-            if let Some(section_value) = config_value.get(section) {
-                match validate_section(section, section_value) {
-                    Ok(()) => print_line(format_args!("  [pass] {section}")),
-                    Err(e) => {
-                        print_line(format_args!("  [FAIL] {section}: {e}"));
-                        all_ok = false;
-                    }
+        for (section, outcome) in sections {
+            match outcome {
+                Ok(()) => print_line(format_args!("  [pass] {section}")),
+                Err(e) => {
+                    print_line(format_args!("  [FAIL] {section}: {e}"));
+                    all_ok = false;
                 }
-            } else {
-                print_line(format_args!("  [pass] {section} (using defaults)"));
             }
         }
 
