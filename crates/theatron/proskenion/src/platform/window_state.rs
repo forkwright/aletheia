@@ -4,8 +4,7 @@
 //! to `~/.config/aletheia-desktop/window-state.toml`. Writes are debounced
 //! to avoid excessive disk I/O during window drag/resize operations.
 
-use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -101,7 +100,16 @@ pub(crate) fn load_or_default() -> WindowState {
 
 /// Save window state to disk synchronously.
 fn save_sync(state: &WindowState) -> Result<(), WindowStateError> {
-    let path = state_path()?;
+    save_to(&state_path()?, state)
+}
+
+/// Save window state to an explicit path.
+///
+/// WHY separate from [`save_sync`]: `state_path` resolves the real user config
+/// directory, so a test exercising it would write to the developer's own
+/// `~/.config`. Splitting the path resolution out is what lets the write itself
+/// be covered.
+fn save_to(path: &Path, state: &WindowState) -> Result<(), WindowStateError> {
     let parent = path.parent().ok_or(WindowStateError::NoConfigDir)?;
 
     std::fs::create_dir_all(parent).context(CreateDirSnafu {
@@ -110,31 +118,16 @@ fn save_sync(state: &WindowState) -> Result<(), WindowStateError> {
 
     let content = toml::to_string_pretty(state).context(SerializeSnafu)?;
 
-    // WHY: Unix builds restrict the temp file to owner-only before the atomic
-    // persist so the final window-state file inherits 0o600 permissions. On
-    // Windows `Permissions::from_mode` does not exist; the file is created in
-    // the user's `%APPDATA%` directory where default ACLs are user-private.
-    #[cfg(unix)]
-    let mut tmp = {
-        use std::os::unix::fs::PermissionsExt as _;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        tempfile::Builder::new()
-            .permissions(perms)
-            .tempfile_in(parent)
-            .context(WriteFileSnafu { path: parent })?
-    };
-    #[cfg(not(unix))]
-    let mut tmp = tempfile::Builder::new()
-        .tempfile_in(parent)
-        .context(WriteFileSnafu { path: parent })?;
-    tmp.write_all(content.as_bytes())
-        .context(WriteFileSnafu { path: parent })?;
-    tmp.as_file()
-        .sync_all()
-        .context(WriteFileSnafu { path: parent })?;
-    tmp.persist(&path)
-        .map_err(|e| e.error)
-        .context(WriteFileSnafu { path: &path })?;
+    // WHY: the mode restricts the window-state file to owner-only on unix, and
+    // is applied to the replacement before the rename so the file is never
+    // briefly visible at the default mode. It is ignored on Windows, where the
+    // file lands in `%APPDATA%` under user-private default ACLs.
+    bathron::atomic::write_atomic(path, content.as_bytes(), Some(0o600)).map_err(|source| {
+        WindowStateError::WriteFile {
+            path: path.to_path_buf(),
+            source: std::io::Error::other(source),
+        }
+    })?;
 
     Ok(())
 }
@@ -283,14 +276,38 @@ mod tests {
             ..WindowState::default()
         };
 
-        let content = toml::to_string_pretty(&state).unwrap();
-        std::fs::write(&path, &content).unwrap();
+        save_to(&path, &state).unwrap();
 
         let loaded_content = std::fs::read_to_string(&path).unwrap();
         let loaded: WindowState = toml::from_str(&loaded_content).unwrap();
         assert_eq!(loaded.x, 200);
         assert_eq!(loaded.width, 1400);
         assert_eq!(loaded.active_view, "/planning");
+    }
+
+    /// The written file is owner-only, and stays so when it replaces an
+    /// existing file — the mode has to be applied to each replacement, not just
+    /// to the first create.
+    #[cfg(unix)]
+    #[test]
+    fn saved_state_is_owner_only_on_every_write() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("window-state.toml");
+
+        std::fs::write(&path, "").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        save_to(&path, &WindowState::default()).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "expected 0o600, got {:o}",
+            mode & 0o777
+        );
     }
 
     #[test]

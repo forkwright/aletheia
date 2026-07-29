@@ -882,10 +882,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9"
+
+[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+
+[[package]]
+name = "bathron"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+dependencies = [
+ "dirs",
+ "serde",
+ "snafu",
+ "tempfile",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "biblatex"
@@ -4603,8 +4623,8 @@ dependencies = [
 
 [[package]]
 name = "keryx"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
  "bytes",
  "futures-core",
@@ -6002,11 +6022,11 @@ dependencies = [
 
 [[package]]
 name = "parodos"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
  "arboard",
- "base64 0.22.1",
+ "base64 0.23.0",
  "crossterm",
  "image",
  "ratatui",
@@ -6967,6 +6987,7 @@ version = "0.33.3"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
+ "bathron",
  "dianoia",
  "futures",
  "hermeneus",
@@ -9063,8 +9084,8 @@ dependencies = [
 
 [[package]]
 name = "themelion"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 
 [[package]]
 name = "thesauros"

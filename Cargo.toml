@@ -125,7 +125,7 @@ aletheia-lexica = { path = "crates/aletheia-lexica" }
 rayon = { version = "1", default-features = false }
 
 # theatron substrate (cross-repo git deps)
-# WHY: forkwright/aletheia#3870 — single source of truth for the v1.4.0 pin.
+# WHY: forkwright/aletheia#3870 — single source of truth for the v1.5.0 pin.
 # Member crates inherit via `<dep> = { workspace = true }`.
 # proskenion is excluded from the workspace (GTK/webkit2gtk) and uses its own
 # standalone [workspace.dependencies] block; pin is mirrored there manually.
@@ -257,34 +257,39 @@ loom = { version = "0.7", default-features = false }
 # readable. Cargo resolves them identically to inline form.
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.4.0"
-version = "1.4.0"
+tag = "v1.5.0"
+version = "1.5.0"
 
 [workspace.dependencies.themelion]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.4.0"
-version = "1.4.0"
+tag = "v1.5.0"
+version = "1.5.0"
 
 [workspace.dependencies.skeue]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.4.0"
-version = "1.4.0"
+tag = "v1.5.0"
+version = "1.5.0"
 
 [workspace.dependencies.gramma]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.4.0"
-version = "1.4.0"
+tag = "v1.5.0"
+version = "1.5.0"
 
 [workspace.dependencies.bathron]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.4.0"
-version = "1.4.0"
-features = ["logging"]
+tag = "v1.5.0"
+version = "1.5.0"
+# WHY `logging` is here despite pylon — this workspace's only bathron consumer
+# — using just the durable-replace primitive: scripts/check-proskenion-pins.py
+# compares `features` and `default-features` as part of the pin, so the two
+# workspaces must declare identical feature sets. proskenion does use
+# bathron::logging. Narrowing this list means changing that guard first.
+features = ["logging", "atomic-write"]
 
 [workspace.dependencies.keryx]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.4.0"
-version = "1.4.0"
+tag = "v1.5.0"
+version = "1.5.0"
 
 [workspace.dependencies.serde]
 version = "1"

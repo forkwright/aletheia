@@ -331,12 +331,13 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bathron"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
  "dirs",
  "serde",
  "snafu",
+ "tempfile",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -2147,8 +2148,8 @@ dependencies = [
 
 [[package]]
 name = "gramma"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
  "syntect",
 ]
@@ -2772,8 +2773,8 @@ dependencies = [
 
 [[package]]
 name = "keryx"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
  "bytes",
  "futures-core",
@@ -2808,7 +2809,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.32.1"
+version = "0.33.2"
 dependencies = [
  "jiff",
  "prometheus-client",
@@ -4112,6 +4113,7 @@ dependencies = [
  "tokio-util",
  "toml 1.1.0+spec-1.1.0",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4952,7 +4954,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.32.1"
+version = "0.33.2"
 dependencies = [
  "bytes",
  "form_urlencoded",
@@ -4972,8 +4974,8 @@ dependencies = [
 
 [[package]]
 name = "skeue"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
  "dioxus",
  "gramma",
@@ -5322,8 +5324,8 @@ dependencies = [
 
 [[package]]
 name = "themelion"
-version = "1.4.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.4.0#79d729f84da86d05ea7847592afc748299df4067"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
  "dioxus",
 ]
