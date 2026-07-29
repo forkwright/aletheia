@@ -898,9 +898,13 @@ name = "bathron"
 version = "1.5.0"
 source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
 dependencies = [
+ "dirs",
  "serde",
  "snafu",
  "tempfile",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
 ]
 
 [[package]]

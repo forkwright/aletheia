@@ -279,12 +279,12 @@ version = "1.5.0"
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.5.0"
 version = "1.5.0"
-# WHY only `atomic-write`: pylon is this workspace's sole bathron consumer and
-# uses only the durable-replace primitive. `logging` was carried here while
-# nothing in the root workspace depended on bathron at all; enabling it now
-# would pull tracing-appender and dirs into pylon's build for no caller. The
-# proskenion workspace declares its own pin and does need `logging`.
-features = ["atomic-write"]
+# WHY `logging` is here despite pylon — this workspace's only bathron consumer
+# — using just the durable-replace primitive: scripts/check-proskenion-pins.py
+# compares `features` and `default-features` as part of the pin, so the two
+# workspaces must declare identical feature sets. proskenion does use
+# bathron::logging. Narrowing this list means changing that guard first.
+features = ["logging", "atomic-write"]
 
 [workspace.dependencies.keryx]
 git = "https://github.com/forkwright/theatron.git"
