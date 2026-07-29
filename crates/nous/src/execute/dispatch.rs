@@ -327,7 +327,7 @@ pub(super) const TOOL_OUTCOME_DENIED_BY_HOOK: &str = "denied_by_hook";
 const TOOL_OUTCOME_DENIED_INACTIVE: &str = "denied_inactive";
 const TOOL_OUTCOME_NOT_FOUND: &str = "not_found";
 const TOOL_OUTCOME_FAILED: &str = "failed";
-const TOOL_OUTCOME_UNDISPATCHED: &str = "undispatched_loop_warning";
+pub(super) const TOOL_OUTCOME_UNDISPATCHED: &str = "undispatched_loop_warning";
 
 /// Close out tool calls that a loop warning stopped us from dispatching.
 ///

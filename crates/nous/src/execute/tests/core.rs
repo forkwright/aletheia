@@ -1606,3 +1606,73 @@ async fn test_routing_enabled_allows_local_tier_model() {
     assert_eq!(result.content, "local opus answer");
     assert_eq!(result.usage.llm_calls, 1);
 }
+
+/// WHY(#5820): a loop warning ends dispatch early, and the abandoned calls are recorded
+/// so their `tool_use` blocks stay paired with a `tool_result`. Those calls never ran, so
+/// `after_tool` must not fire for them — a hook that sees them would be told a tool
+/// executed when it did not.
+#[tokio::test]
+async fn after_tool_hook_skips_calls_abandoned_by_a_loop_warning() {
+    let mock = Arc::new(
+        MockProvider::with_responses(vec![
+            // Identical name + input on all four, so the detector trips mid-dispatch.
+            make_multi_tool_response(vec![
+                ("exec", "toolu_a", serde_json::json!({"input": "same"})),
+                ("exec", "toolu_b", serde_json::json!({"input": "same"})),
+                ("exec", "toolu_c", serde_json::json!({"input": "same"})),
+                ("exec", "toolu_d", serde_json::json!({"input": "same"})),
+            ]),
+            make_text_response("Done!"),
+        ])
+        .models(&["test-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&mock))));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let mut hooks = HookRegistry::new();
+    hooks.register(
+        0,
+        Box::new(RecordingAfterToolHook {
+            calls: Arc::clone(&calls),
+        }),
+    );
+
+    let mut config = test_config();
+    config.limits.loop_detection_threshold = 2;
+
+    execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        Some(&hooks),
+    )
+    .await
+    .expect("execute");
+
+    let fired: Vec<String> = calls
+        .lock()
+        .expect("calls lock")
+        .iter()
+        .map(|(id, _, _)| id.clone())
+        .collect();
+
+    assert!(
+        fired.len() < 4,
+        "the loop warning must abandon at least one call — got all {} dispatched, so the \
+         detector never tripped and this test is not exercising the guard",
+        fired.len()
+    );
+    for abandoned in ["toolu_c", "toolu_d"] {
+        assert!(
+            !fired.iter().any(|id| id == abandoned),
+            "after_tool fired for {abandoned}, which was abandoned by the loop warning and \
+             never executed — fired: {fired:?}"
+        );
+    }
+}

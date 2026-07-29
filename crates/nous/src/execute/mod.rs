@@ -532,6 +532,14 @@ pub(crate) async fn execute_with_deadline(
                 {
                     continue;
                 }
+                // WHY: a loop warning ends dispatch early and the abandoned calls are
+                // recorded so their tool_use blocks stay paired. They were never run, so
+                // firing after_tool for them would report execution that did not happen.
+                // NOTE: denied-inside-dispatch calls still reach the hook — that is the
+                // wider defect tracked as #5827, which this guard does not close.
+                if tool_call.approval.as_deref() == Some(dispatch::TOOL_OUTCOME_UNDISPATCHED) {
+                    continue;
+                }
                 let after_tool_ctx = AfterToolContext {
                     nous_id: &session.nous_id,
                     tool_use_id: &tool_call.id,
@@ -1145,6 +1153,14 @@ pub(crate) async fn execute_streaming_with_deadline(
                     .iter()
                     .any(|item| item.ready_input_for(&tool_call.id).is_some())
                 {
+                    continue;
+                }
+                // WHY: a loop warning ends dispatch early and the abandoned calls are
+                // recorded so their tool_use blocks stay paired. They were never run, so
+                // firing after_tool for them would report execution that did not happen.
+                // NOTE: denied-inside-dispatch calls still reach the hook — that is the
+                // wider defect tracked as #5827, which this guard does not close.
+                if tool_call.approval.as_deref() == Some(dispatch::TOOL_OUTCOME_UNDISPATCHED) {
                     continue;
                 }
                 let after_tool_ctx = AfterToolContext {
