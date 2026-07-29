@@ -269,7 +269,8 @@ mod tests {
         let decision = RoutingDecision::new("claude-sonnet", None);
 
         for i in 0..64u32 {
-            let outcome = TurnOutcome::new(provider.clone(), TaskCategory::Feature, i % 2 == 0, true);
+            let outcome =
+                TurnOutcome::new(provider.clone(), TaskCategory::Feature, i % 2 == 0, true);
             router
                 .after_action(&decision, &outcome)
                 .expect("drain channel must accept the outcome");
