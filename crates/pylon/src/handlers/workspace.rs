@@ -644,67 +644,20 @@ fn require_writable_extension(absolute: &Path, original: &str) -> Result<(), Api
 ///
 /// INVARIANT: `dest` is never observed in a partially-written state. On any
 /// failure the temp file is removed so no orphan or partial artifact is left
-/// in the vault.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "atomic vault write needs a synchronous open(parent) to fsync the directory entry after rename; tokio::fs offers no parent-dir sync and the cost is one bounded local syscall"
-)]
+/// in the vault — `bathron`'s `NamedTempFile` unlinks itself on drop, including
+/// the error paths.
+///
+/// WHY the mode is `None`: vault files take the directory's default
+/// permissions, unlike proskenion's config and secret files. Nothing here
+/// narrows them, so passing a mode would invent a policy this handler does not
+/// have.
 fn atomic_write(dest: &Path, bytes: &[u8]) -> Result<std::fs::Metadata, ApiError> {
-    use std::io::Write as _;
-
-    let parent = dest.parent().ok_or_else(|| {
+    bathron::atomic::write_atomic(dest, bytes, None).map_err(|source| {
         InternalSnafu {
-            message: format!("write target has no parent directory: {}", dest.display()),
+            message: format!("failed to write {}: {source}", dest.display()),
         }
         .build()
     })?;
-
-    let file_name = dest.file_name().map_or_else(
-        || "file".to_owned(),
-        |name| name.to_string_lossy().into_owned(),
-    );
-    let unique = koina::ulid::Ulid::new();
-    let tmp_path = parent.join(format!(".{file_name}.{unique}.tmp"));
-
-    // WARNING: every early return below MUST clean up `tmp_path`, or a failed
-    // write leaves an orphan dotfile in the operator's vault.
-    let write_result = (|| -> std::io::Result<()> {
-        let mut file = std::fs::File::create(&tmp_path)?;
-        file.write_all(bytes)?;
-        file.flush()?;
-        // WHY: fsync the file data before rename so the rename does not expose
-        // an empty or short file if the machine loses power mid-write.
-        file.sync_all()?;
-        Ok(())
-    })();
-
-    if let Err(e) = write_result {
-        let _ = std::fs::remove_file(&tmp_path);
-        return Err(InternalSnafu {
-            message: format!(
-                "failed to stage workspace write for {}: {e}",
-                dest.display()
-            ),
-        }
-        .build());
-    }
-
-    if let Err(e) = std::fs::rename(&tmp_path, dest) {
-        let _ = std::fs::remove_file(&tmp_path);
-        return Err(InternalSnafu {
-            message: format!(
-                "failed to commit workspace write for {}: {e}",
-                dest.display()
-            ),
-        }
-        .build());
-    }
-
-    // WHY: fsync the directory so the rename itself is durable; a crash after a
-    // successful rename could otherwise lose the directory entry update.
-    if let Ok(dir) = std::fs::File::open(parent) {
-        let _ = dir.sync_all();
-    }
 
     std::fs::metadata(dest).map_err(|e| {
         InternalSnafu {

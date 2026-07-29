@@ -7,7 +7,6 @@
 //! The file is restricted to owner-only access (0o600).
 
 use std::collections::HashMap;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -347,24 +346,10 @@ pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), Settin
 
     // WHY: Restrict settings.toml to owner-only on Unix. Windows uses the
     // default ACLs inside the user's config directory.
-    #[cfg(unix)]
-    let mut tmp = {
-        use std::os::unix::fs::PermissionsExt as _;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        tempfile::Builder::new()
-            .permissions(perms)
-            .tempfile_in(parent)
-            .context(WriteFileSnafu)?
-    };
-    #[cfg(not(unix))]
-    let mut tmp = tempfile::Builder::new()
-        .tempfile_in(parent)
-        .context(WriteFileSnafu)?;
-    tmp.write_all(contents.as_bytes()).context(WriteFileSnafu)?;
-    tmp.as_file().sync_all().context(WriteFileSnafu)?;
-    tmp.persist(&path)
-        .map_err(|e| e.error)
-        .context(WriteFileSnafu)?;
+    bathron::atomic::write_atomic(&path, contents.as_bytes(), Some(0o600))
+        .map_err(|source| SettingsConfigError::WriteFile {
+            source: std::io::Error::other(source),
+        })?;
     Ok(())
 }
 
@@ -719,6 +704,26 @@ mod tests {
         let active = store.active().expect("active server after upsert");
         assert_eq!(active.url, "http://remote.example.com:18789");
         assert_eq!(active.auth_token.as_deref(), Some(raw_token));
+    }
+
+    /// `settings.toml` is owner-only, and stays so when it replaces an existing
+    /// file — the mode has to be applied to each replacement, not just to the
+    /// first create.
+    #[cfg(unix)]
+    #[test]
+    fn saved_settings_are_owner_only_on_every_write() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let (_dir, base) = temp_base();
+        let path = settings_path_from(&base);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        save_in(&SettingsConfig::default(), &base).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "expected 0o600, got {:o}", mode & 0o777);
     }
 
     #[test]
