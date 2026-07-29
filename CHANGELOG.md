@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.33.3](https://github.com/forkwright/aletheia/compare/v0.33.2...v0.33.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* **ci:** drop the lockfile-amend job that blocks every release PR ([#6519](https://github.com/forkwright/aletheia/issues/6519)) ([0396aa0](https://github.com/forkwright/aletheia/commit/0396aa03fee215c314389c04e9aa125408be7fa8))
+* **nous:** stop firing after_tool for calls denied before execution ([#6517](https://github.com/forkwright/aletheia/issues/6517)) ([c03814a](https://github.com/forkwright/aletheia/commit/c03814aea1c385a33a37a765091a24a8fe1e8b57)), closes [#5827](https://github.com/forkwright/aletheia/issues/5827)
+* **release:** patch Cargo.lock on release like the rest of the fleet ([#6516](https://github.com/forkwright/aletheia/issues/6516)) ([a2d1e51](https://github.com/forkwright/aletheia/commit/a2d1e51efe6acdfd974b932aac0c0e336cab9e5f))
+
 ## [0.33.2](https://github.com/forkwright/aletheia/compare/v0.33.1...v0.33.2) (2026-07-29)
 
 
