@@ -3,8 +3,8 @@
 use tracing::{debug, warn};
 
 use super::{
-    AfterToolContext, CompactionContext, HookResult, QueryContext, SessionStartContext,
-    ToolHookContext, ToolHookResult, TurnContext, TurnHook,
+    AfterCompactionContext, AfterToolContext, BeforeCompactionContext, HookResult, QueryContext,
+    SessionStartContext, ToolHookContext, ToolHookResult, TurnContext, TurnHook,
 };
 
 /// Entry in the hook registry: a hook with its priority.
@@ -159,7 +159,10 @@ impl HookRegistry {
     /// Run all `before_compact` hooks in priority order.
     ///
     /// Short-circuits on `HookResult::Abort`.
-    pub(crate) async fn run_before_compact(&self, context: &CompactionContext<'_>) -> HookResult {
+    pub(crate) async fn run_before_compact(
+        &self,
+        context: &BeforeCompactionContext<'_>,
+    ) -> HookResult {
         for entry in &self.hooks {
             let result = entry.hook.before_compact(context).await;
             if let HookResult::Abort { ref reason } = result {
@@ -179,7 +182,7 @@ impl HookRegistry {
     ///
     /// Does not short-circuit: all hooks run even if one returns Abort,
     /// because distillation is already complete and audit hooks should always fire.
-    pub(crate) async fn run_after_compact(&self, context: &CompactionContext<'_>) {
+    pub(crate) async fn run_after_compact(&self, context: &AfterCompactionContext<'_>) {
         for entry in &self.hooks {
             let result = entry.hook.after_compact(context).await;
             if let HookResult::Abort { ref reason } = result {

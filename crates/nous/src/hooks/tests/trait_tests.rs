@@ -144,12 +144,10 @@ fn default_before_compact_returns_continue() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("runtime");
-    let ctx = super::super::CompactionContext {
+    let ctx = super::super::BeforeCompactionContext {
         nous_id: "test",
-        messages_distilled: 10,
+        messages_before: 10,
         tokens_before: 1000,
-        tokens_after: 500,
-        distillation_number: 1,
     };
     let result = rt.block_on(hook.before_compact(&ctx));
     assert_eq!(
@@ -171,12 +169,14 @@ fn default_after_compact_returns_continue() {
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("runtime");
-    let ctx = super::super::CompactionContext {
+    let ctx = super::super::AfterCompactionContext {
         nous_id: "test",
-        messages_distilled: 10,
+        messages_distilled: 8,
+        messages_before: 10,
+        messages_after: 2,
         tokens_before: 1000,
         tokens_after: 500,
-        distillation_number: 1,
+        full_compaction_triggered: true,
     };
     let result = rt.block_on(hook.after_compact(&ctx));
     assert_eq!(

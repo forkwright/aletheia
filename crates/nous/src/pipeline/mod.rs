@@ -27,7 +27,9 @@ use crate::config::{NousConfig, PipelineConfig};
 use crate::error;
 use crate::history::HistoryResult;
 use crate::hooks::registry::HookRegistry;
-use crate::hooks::{CompactionContext, QueryContext, SessionStartContext, TurnContext};
+use crate::hooks::{
+    AfterCompactionContext, BeforeCompactionContext, QueryContext, SessionStartContext, TurnContext,
+};
 use crate::session::SessionState;
 use crate::stream::TurnStreamEvent;
 use crate::working_state::WorkingState;
@@ -1235,12 +1237,10 @@ pub(crate) async fn run_pipeline(
         let pre_compact_message_count = ctx.messages.len();
 
         if let Some(hook_registry) = hooks {
-            let compact_ctx = CompactionContext {
+            let compact_ctx = BeforeCompactionContext {
                 nous_id: &config.id,
-                messages_distilled: pre_compact_message_count,
+                messages_before: pre_compact_message_count,
                 tokens_before: pre_compact_tokens,
-                tokens_after: 0, // Not known until after compaction
-                distillation_number: 1,
             };
             // kanon:ignore RUST/no-silent-result-swallow — hook failure must not abort the turn
             let _ = hook_registry.run_before_compact(&compact_ctx).await;
@@ -1280,12 +1280,24 @@ pub(crate) async fn run_pipeline(
                 .iter()
                 .map(|m| u64::try_from(m.token_estimate.max(0)).unwrap_or(0))
                 .sum();
-            let compact_ctx = CompactionContext {
+            let messages_after = ctx.messages.len();
+            let compact_ctx = AfterCompactionContext {
                 nous_id: &config.id,
-                messages_distilled: ctx.messages.len(),
+                // WHY(#5025): the removal delta, which is what the field name
+                // promises. Saturating because a compaction pass may add a
+                // summary message, leaving more messages than it started with.
+                messages_distilled: pre_compact_message_count.saturating_sub(messages_after),
+                messages_before: pre_compact_message_count,
+                messages_after,
                 tokens_before: pre_compact_tokens,
                 tokens_after,
-                distillation_number: 1,
+                // WHY(#5025): sourced from the stage's own metrics rather than
+                // assumed. `compaction_metrics` is None when neither pass
+                // changed anything, which is not a full compaction.
+                full_compaction_triggered: ctx
+                    .compaction_metrics
+                    .as_ref()
+                    .is_some_and(|m| m.full_compaction_triggered),
             };
             hook_registry.run_after_compact(&compact_ctx).await;
         }
