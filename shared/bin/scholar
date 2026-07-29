@@ -58,6 +58,11 @@ CROSSREF_BASE = "https://api.crossref.org"
 S2_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
 ALETHEIA_ROOT = os.environ.get("ALETHEIA_ROOT", str(Path.home() / "aletheia" / "instance"))
 NOUS_DIR = os.environ.get("ALETHEIA_NOUS", os.path.join(ALETHEIA_ROOT, "nous"))
+# WHY: a fixed name under the shared temp root belongs to whichever account
+# creates it first; every other account on the host then fails to write there.
+SCRATCH_DIR = os.path.join(
+    os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache")), "aletheia", "scholar-read"
+)
 RESEARCH_EMAIL = os.environ.get("RESEARCH_EMAIL", "research@example.org")
 
 def _http_get(url, headers=None, timeout=15):
@@ -607,7 +612,7 @@ def main():
         return
 
     if args.command == "read":
-        path = fetch_paper(args.identifier, "/tmp/scholar-read")
+        path = fetch_paper(args.identifier, SCRATCH_DIR)
         if path and path.endswith(".md"):
             with open(path) as f:
                 print(f.read())

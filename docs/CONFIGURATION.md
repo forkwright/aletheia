@@ -962,7 +962,9 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_MEMORY_USER` | `shared/bin/start.sh` | Identity attributed to stored memory. Defaults to the current `whoami`. |
 | `ALETHEIA_SHARED` | instance nous templates | Shared-resources root referenced by agent templates (`$ALETHEIA_SHARED/config/...`). |
 | `ALETHEIA_THEKE` | instance nous templates | Vault (theke) root referenced by agent templates (`$ALETHEIA_THEKE/<domain>`). |
-| `ALETHEIA_LOG_DIR` | `scripts/health-monitor.sh` | Log directory. Defaults to `$XDG_STATE_HOME/aletheia` (`~/.local/state/aletheia`). |
+| `ALETHEIA_LOG_DIR` | `scripts/health-monitor.sh`, `shared/hooks/_examples/log-turns.yaml`, RUNBOOK journal export | Log directory. Defaults to `$XDG_STATE_HOME/aletheia` (`~/.local/state/aletheia`), created mode 0700. Operational logs never go to a shared temp root: a fixed name there is world-readable, belongs to whichever account created it first, and is open to symlink attack. |
+| `XDG_STATE_HOME` | `shared/hooks/_templates/loop-guard.sh` and the `ALETHEIA_LOG_DIR` default | Per-user state root. `$XDG_STATE_HOME/aletheia` holds persistent operational state such as the loop-guard sentinels. Defaults to `~/.local/state`. |
+| `XDG_CACHE_HOME` | `shared/bin/scholar` | Per-user cache root. `$XDG_CACHE_HOME/aletheia/scholar-read` holds fetched papers. Defaults to `~/.cache`. |
 | `ALETHEIA_URL` | `scripts/aletheia-heartbeat.sh`, `aletheia-health.service` | Base server URL for health and heartbeat probes. Defaults to `http://127.0.0.1:18789`. |
 | `ALETHEIA_HEALTH_URL` | `deploy.sh`, `rollback.sh`, `health-monitor.sh` | Health endpoint. Defaults to `http://localhost:18789/api/health`. |
 | `ALETHEIA_METRICS_URL` | `scripts/health-monitor.sh` | Metrics endpoint. Defaults to `http://localhost:18789/metrics`. |
