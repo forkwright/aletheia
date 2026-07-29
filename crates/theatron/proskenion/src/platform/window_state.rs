@@ -302,7 +302,12 @@ mod tests {
         save_to(&path, &WindowState::default()).unwrap();
 
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600, "expected 0o600, got {:o}", mode & 0o777);
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "expected 0o600, got {:o}",
+            mode & 0o777
+        );
     }
 
     #[test]

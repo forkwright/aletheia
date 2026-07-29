@@ -346,10 +346,11 @@ pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), Settin
 
     // WHY: Restrict settings.toml to owner-only on Unix. Windows uses the
     // default ACLs inside the user's config directory.
-    bathron::atomic::write_atomic(&path, contents.as_bytes(), Some(0o600))
-        .map_err(|source| SettingsConfigError::WriteFile {
+    bathron::atomic::write_atomic(&path, contents.as_bytes(), Some(0o600)).map_err(|source| {
+        SettingsConfigError::WriteFile {
             source: std::io::Error::other(source),
-        })?;
+        }
+    })?;
     Ok(())
 }
 
@@ -723,7 +724,12 @@ mod tests {
         save_in(&SettingsConfig::default(), &base).unwrap();
 
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600, "expected 0o600, got {:o}", mode & 0o777);
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "expected 0o600, got {:o}",
+            mode & 0o777
+        );
     }
 
     #[test]
