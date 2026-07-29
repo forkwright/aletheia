@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.33.1](https://github.com/forkwright/aletheia/compare/v0.33.0...v0.33.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **hooks:** keep operational metadata out of the shared temp root ([#6511](https://github.com/forkwright/aletheia/issues/6511)) ([10ba64f](https://github.com/forkwright/aletheia/commit/10ba64f1947c4b1dfee40fcf78ee40237e8a9985)), closes [#5332](https://github.com/forkwright/aletheia/issues/5332)
+* **nous:** apply the caller's side-query IDs in recall's cycle-1 ranking ([#6510](https://github.com/forkwright/aletheia/issues/6510)) ([51a114b](https://github.com/forkwright/aletheia/commit/51a114b10deba10c57add37fc647d8fd877d2b49)), closes [#6497](https://github.com/forkwright/aletheia/issues/6497)
+* **nous:** scope the auto-dream lock directory to the user ([#6508](https://github.com/forkwright/aletheia/issues/6508)) ([ff5533c](https://github.com/forkwright/aletheia/commit/ff5533cb803627152d4f4d73b85c204df555671e)), closes [#6495](https://github.com/forkwright/aletheia/issues/6495)
+
 ## [0.33.0](https://github.com/forkwright/aletheia/compare/v0.32.1...v0.33.0) (2026-07-28)
 
 
