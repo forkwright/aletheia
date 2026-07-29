@@ -183,6 +183,46 @@ pub trait Environment: Send + Sync {
     fn args(&self) -> Vec<String>;
 }
 
+/// Resolve the directory aletheia owns for this user's runtime state.
+///
+/// The path is stable across a single user's processes — which is what makes
+/// it usable for lock files — and distinct for every user on the host.
+///
+/// Prefers `$XDG_RUNTIME_DIR`, which the platform already creates per-user and
+/// mode-0700. Falls back to a subdirectory of [`Environment::temp_dir`] named
+/// for the effective UID.
+///
+/// WHY: the temp root is shared by every account on the host, so a fixed name
+/// directly under it belongs to whichever user created it first and every
+/// other account then fails to write there. Randomising the name is the usual
+/// answer to temp-root collisions and is the wrong one here — a lock path that
+/// differs per process excludes nobody. The scope has to narrow to the user,
+/// not the process.
+///
+/// Resolution only. The caller creates the directory, and should set the mode
+/// itself if the contents are sensitive: the temp-root fallback inherits
+/// whatever the temp root permits, which is typically world-readable.
+#[must_use]
+pub fn user_runtime_dir(env: &impl Environment) -> PathBuf {
+    if let Some(dir) = env
+        .var("XDG_RUNTIME_DIR")
+        .filter(|dir| !dir.trim().is_empty())
+    {
+        return PathBuf::from(dir).join("aletheia");
+    }
+    #[cfg(unix)]
+    {
+        let euid = rustix::process::geteuid().as_raw();
+        env.temp_dir().join(format!("aletheia-{euid}"))
+    }
+    // WHY: Windows resolves the temp root inside the user's own profile
+    // (`%LOCALAPPDATA%\Temp`), so it is already per-user and needs no suffix.
+    #[cfg(not(unix))]
+    {
+        env.temp_dir().join("aletheia")
+    }
+}
+
 /// Production system implementation backed by the operating system.
 ///
 /// Delegates every operation to the standard library or OS syscalls.
@@ -362,6 +402,60 @@ mod tests {
     use jiff::Timestamp;
 
     use super::*;
+
+    #[test]
+    fn user_runtime_dir_prefers_xdg_runtime_dir() {
+        let sys = TestSystem::new().with_env("XDG_RUNTIME_DIR", "/run/user/1000");
+        assert_eq!(user_runtime_dir(&sys), Path::new("/run/user/1000/aletheia"));
+    }
+
+    #[test]
+    fn user_runtime_dir_ignores_a_blank_xdg_runtime_dir() {
+        // An exported-but-empty variable is the shape a login shell leaves
+        // behind when the session had no runtime dir; treating it as a path
+        // would resolve the lock to a relative `aletheia`.
+        let sys = TestSystem::new()
+            .with_env("XDG_RUNTIME_DIR", "   ")
+            .with_temp_dir("/tmp");
+        let dir = user_runtime_dir(&sys);
+        assert!(
+            dir.starts_with("/tmp"),
+            "expected temp-root fallback: {dir:?}"
+        );
+    }
+
+    #[test]
+    fn user_runtime_dir_under_the_temp_root_is_scoped_to_the_user() {
+        // The defect this guards (#6495): a fixed name directly under the
+        // shared temp root is owned by whichever account created it first,
+        // and every other account then fails to write there. The fallback
+        // must carry something that differs per user.
+        let sys = TestSystem::new().with_temp_dir("/tmp");
+        let dir = user_runtime_dir(&sys);
+        assert_ne!(
+            dir,
+            Path::new("/tmp/aletheia"),
+            "temp-root fallback must not be a fixed shared name"
+        );
+        assert!(
+            dir.starts_with("/tmp"),
+            "expected temp-root fallback: {dir:?}"
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            dir,
+            Path::new("/tmp").join(format!("aletheia-{}", rustix::process::geteuid().as_raw())),
+            "temp-root fallback must carry the effective UID"
+        );
+    }
+
+    #[test]
+    fn user_runtime_dir_is_stable_across_calls() {
+        // Stability is the half that makes it usable as a lock path at all —
+        // a per-process name would exclude nobody.
+        let sys = TestSystem::new().with_temp_dir("/tmp");
+        assert_eq!(user_runtime_dir(&sys), user_runtime_dir(&sys));
+    }
 
     #[test]
     fn read_missing_file_returns_not_found() {

@@ -454,12 +454,28 @@ impl NousActor {
             config.model.clone(),
         ));
 
-        let lock_dir = std::env::temp_dir().join("aletheia-auto-dream");
+        // WHY(#6495): the lock path must be stable for one user's processes
+        // and distinct between users. A fixed name under the shared temp root
+        // is neither — it belongs to whichever account created it first, and
+        // every other account on the host loses auto-dream entirely.
+        let lock_dir =
+            koina::system::user_runtime_dir(&koina::system::RealSystem).join("auto-dream");
         // WHY: create_dir_all hits the filesystem synchronously on the async
         // worker thread. Use tokio::fs so the await yields the worker while the
         // blocking syscall runs on Tokio's blocking pool. (#5703)
         if let Err(e) = tokio::fs::create_dir_all(&lock_dir).await {
-            warn!(nous_id = %self.id, error = %e, "auto-dream lock directory unavailable");
+            // WHY(#6495): error, not warn. The only consequence of this branch
+            // is that dreaming silently stops happening, which is
+            // indistinguishable from having nothing to consolidate — so the
+            // log line is the entire signal an operator gets.
+            // NOTE: fully qualified because this function is gated on
+            // `knowledge-store` and a plain import would be unused without it.
+            tracing::error!(
+                nous_id = %self.id,
+                lock_dir = %lock_dir.display(),
+                error = %e,
+                "auto-dream disabled: lock directory could not be created",
+            );
             return;
         }
 
