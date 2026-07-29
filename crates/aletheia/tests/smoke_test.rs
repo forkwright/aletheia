@@ -288,6 +288,78 @@ fn init_yes_followed_by_check_config_exits_zero() {
     );
 }
 
+/// `check-config` must reject an invalid `credential.source` rather than
+/// reporting `Configuration OK`. Regression test for #5770: `check-config`
+/// and server startup kept independent section lists, and check-config's
+/// omitted `credential` — so an operator got a clean pre-flight report and
+/// then a failed start on the very same file.
+///
+/// This asserts the failure, not the fix's shape: it fires against the old
+/// hand-maintained list and is silent once both paths share one derived list.
+#[test]
+fn check_config_rejects_invalid_credential_source() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let instance_path = tmp.path().join("instance");
+    let instance_arg = instance_path
+        .to_str()
+        .expect("instance path is valid UTF-8")
+        .to_owned();
+
+    let init_out = aletheia()
+        .args(["init", "--instance-root", &instance_arg, "--yes"])
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("ALETHEIA_ALLOW_AUTH_NONE")
+        .output()
+        .expect("failed to run aletheia init");
+    assert!(
+        init_out.status.success(),
+        "init -y must exit 0; got {:?}\nstderr: {}",
+        init_out.status.code(),
+        String::from_utf8_lossy(&init_out.stderr),
+    );
+
+    let config_file = instance_path.join("config").join("aletheia.toml");
+    let config = std::fs::read_to_string(&config_file).expect("read generated config");
+    // WHY: "env-only" is syntactically fine and deserializes cleanly — only
+    // validate_credential rejects it. That isolates the section-list gap from
+    // parse errors, which check-config already caught.
+    let patched = config.replace(
+        "[credential]\nsource = \"auto\"",
+        "[credential]\nsource = \"env-only\"",
+    );
+    assert_ne!(
+        patched, config,
+        "init should write [credential] source = \"auto\"; the test's patch target has moved"
+    );
+    let mut handle =
+        std::fs::File::create(&config_file).expect("reopen config for the invalid-source patch");
+    std::io::Write::write_all(&mut handle, patched.as_bytes())
+        .expect("write config with invalid credential.source");
+    drop(handle);
+
+    let check_out = aletheia()
+        .args(["-r", &instance_arg, "check-config"])
+        .env_remove("ALETHEIA_ALLOW_AUTH_NONE")
+        .output()
+        .expect("failed to run aletheia check-config");
+
+    let stdout = String::from_utf8_lossy(&check_out.stdout);
+    let stderr = String::from_utf8_lossy(&check_out.stderr);
+    assert!(
+        !check_out.status.success(),
+        "check-config must fail on an invalid credential.source; got {:?}\nstdout: {stdout}\nstderr: {stderr}",
+        check_out.status.code(),
+    );
+    assert!(
+        !stdout.contains("Configuration OK"),
+        "check-config must not report Configuration OK on an invalid credential.source; got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[FAIL] credential"),
+        "check-config should name the failing section; got: {stdout}"
+    );
+}
+
 // ── Import: missing file produces useful error ───────────────────────────────
 
 #[test]

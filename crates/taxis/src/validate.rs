@@ -30,6 +30,47 @@ impl ValidationError {
     }
 }
 
+/// Validate every config section, returning one outcome per section.
+///
+/// The section list is derived from the serialized config rather than
+/// maintained by hand, so every caller checks the same set and no two
+/// callers can drift apart. Callers that need a single verdict use
+/// [`validate_config`]; callers that report per section (`check-config`)
+/// consume the outcomes directly.
+///
+/// Sections omitted from serialization (those with
+/// `skip_serializing_if`) carry nothing to validate and are absent from
+/// the result.
+///
+/// # Errors
+///
+/// Returns [`ValidationError`] if the config does not serialize to a JSON
+/// object, which leaves no sections to enumerate.
+#[expect(
+    clippy::type_complexity,
+    reason = "per-section outcomes: the outer Result is enumeration failure, the inner is that section's verdict"
+)]
+// kanon:ignore RUST/validate-returns-unit — returns per-section verdicts, not a unit success signal
+pub fn validate_each_section(
+    config: &AletheiaConfig,
+) -> Result<Vec<(String, Result<(), ValidationError>)>, ValidationError> {
+    let value = serde_json::to_value(config).unwrap_or(Value::Null);
+    let Value::Object(sections) = value else {
+        return ValidationSnafu {
+            errors: vec!["config did not serialize to a JSON object".to_owned()],
+        }
+        .fail();
+    };
+
+    Ok(sections
+        .into_iter()
+        .map(|(section, val)| {
+            let outcome = validate_section(&section, &val);
+            (section, outcome)
+        })
+        .collect())
+}
+
 /// Validate an entire [`AletheiaConfig`] by checking each section.
 ///
 /// Serializes to JSON and validates each top-level section using
@@ -41,18 +82,10 @@ impl ValidationError {
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
-pub(crate) fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
-    let value = serde_json::to_value(config).unwrap_or(Value::Null);
-    let Value::Object(ref sections) = value else {
-        return ValidationSnafu {
-            errors: vec!["config did not serialize to a JSON object".to_owned()],
-        }
-        .fail();
-    };
-
+pub fn validate_config(config: &AletheiaConfig) -> Result<(), ValidationError> {
     let mut all_errors = Vec::new();
-    for (section, val) in sections {
-        if let Err(err) = validate_section(section, val) {
+    for (section, outcome) in validate_each_section(config)? {
+        if let Err(err) = outcome {
             for e in err.errors {
                 all_errors.push(format!("{section}: {e}"));
             }
