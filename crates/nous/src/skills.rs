@@ -122,6 +122,33 @@ pub(crate) struct SkillLoader {
     knowledge_store: Arc<KnowledgeStore>,
 }
 
+/// Outcome of a skill resolution: the sections to inject, plus the skills
+/// whose access counts the caller still owes the store.
+///
+/// WHY(#5733): the increment is a background write, and the only component
+/// allowed to spawn background work is the actor that owns the `JoinSet`.
+/// Returning the ids rather than spawning here keeps that ownership intact —
+/// the loader states the debt, the actor decides whether it has the capacity
+/// to pay it.
+#[cfg(feature = "knowledge-store")]
+pub(crate) struct ResolvedSkills {
+    /// Bootstrap sections to inject into the system prompt.
+    pub(crate) sections: Vec<BootstrapSection>,
+    /// Skill fact ids selected for injection, awaiting an access-count bump.
+    pub(crate) accessed: Vec<mneme::id::FactId>,
+}
+
+#[cfg(feature = "knowledge-store")]
+impl ResolvedSkills {
+    /// No skills resolved, so nothing to inject and no access debt.
+    fn empty() -> Self {
+        Self {
+            sections: Vec::new(),
+            accessed: Vec::new(),
+        }
+    }
+}
+
 #[cfg(feature = "knowledge-store")]
 impl SkillLoader {
     /// Create a new loader backed by the given knowledge store.
@@ -129,10 +156,30 @@ impl SkillLoader {
         Self { knowledge_store }
     }
 
-    /// Resolve skills relevant to `task_context` and return bootstrap sections.
+    /// Build the deferred access-count increment for `ids`.
     ///
-    /// Returns at most `max_skills` sections ordered by relevance. Returns an
-    /// empty vec on any error so skill loading never breaks the pipeline.
+    /// The returned future owns its store handle, so the caller can spawn it
+    /// onto a `JoinSet` without borrowing the loader.
+    pub(crate) fn increment_access_task(
+        &self,
+        ids: Vec<mneme::id::FactId>,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static + use<> {
+        let store = Arc::clone(&self.knowledge_store);
+        let span = tracing::info_span!("skill_loader.increment_access", count = ids.len());
+        async move {
+            if let Err(e) = store.increment_access_async(ids).await {
+                warn!(error = %e, "failed to increment skill access counts");
+            }
+        }
+        .instrument(span)
+    }
+
+    /// Resolve skills relevant to `task_context`.
+    ///
+    /// Returns at most `max_skills` sections ordered by relevance, together
+    /// with the ids whose access counts the caller owes the store. Returns an
+    /// empty [`ResolvedSkills`] on any error so skill loading never breaks the
+    /// pipeline.
     ///
     /// # Latency
     ///
@@ -149,7 +196,7 @@ impl SkillLoader {
         task_context: &str,
         max_skills: usize,
         user_content: &str,
-    ) -> Vec<BootstrapSection> {
+    ) -> ResolvedSkills {
         let span = tracing::info_span!(
             "skill_loader.resolve_skills",
             nous_id = %nous_id,
@@ -159,10 +206,11 @@ impl SkillLoader {
         );
         let start = std::time::Instant::now();
 
-        let sections = self
+        let resolved = self
             .do_resolve(nous_id, task_context, max_skills, user_content)
             .instrument(span.clone())
             .await;
+        let sections = &resolved.sections;
 
         #[expect(
             clippy::cast_possible_truncation,
@@ -173,7 +221,7 @@ impl SkillLoader {
         #[expect(clippy::as_conversions, reason = "usize→u64: skill count fits in u64")]
         span.record("skills_found", sections.len() as u64); // kanon:ignore RUST/as-cast
 
-        sections
+        resolved
     }
 
     async fn do_resolve(
@@ -182,9 +230,9 @@ impl SkillLoader {
         task_context: &str,
         max_skills: usize,
         user_content: &str,
-    ) -> Vec<BootstrapSection> {
+    ) -> ResolvedSkills {
         if task_context.is_empty() || max_skills == 0 {
-            return vec![];
+            return ResolvedSkills::empty();
         }
 
         // WHY: fetch 2x candidates to have headroom for ranking
@@ -202,17 +250,17 @@ impl SkillLoader {
             Ok(Ok(c)) => c,
             Ok(Err(e)) => {
                 warn!(error = %e, "skill search failed, continuing without skills");
-                return vec![];
+                return ResolvedSkills::empty();
             }
             Err(e) => {
                 warn!(error = %e, "skill search task panicked");
-                return vec![];
+                return ResolvedSkills::empty();
             }
         };
 
         if candidates.is_empty() {
             tracing::debug!("no skills matched task context");
-            return vec![];
+            return ResolvedSkills::empty();
         }
 
         let ranked = rank_skills(candidates);
@@ -222,23 +270,12 @@ impl SkillLoader {
 
         let sections: Vec<BootstrapSection> = facts_to_sections(&selected);
 
-        // WHY: background increment avoids blocking the pipeline
-        if !selected.is_empty() {
-            let ids: Vec<_> = selected.iter().map(|f| f.id.clone()).collect();
-            let store = Arc::clone(&self.knowledge_store);
-            let increment_span =
-                tracing::info_span!("skill_loader.increment_access", count = ids.len());
-            tokio::spawn(
-                async move {
-                    if let Err(e) = store.increment_access_async(ids).await {
-                        warn!(error = %e, "failed to increment skill access counts");
-                    }
-                }
-                .instrument(increment_span),
-            );
-        }
+        // WHY(#5733): the access-count bump stays a background write so it
+        // never blocks the pipeline, but it is reported rather than spawned
+        // here — see `ResolvedSkills`.
+        let accessed: Vec<_> = selected.iter().map(|f| f.id.clone()).collect();
 
-        sections
+        ResolvedSkills { sections, accessed }
     }
 }
 
