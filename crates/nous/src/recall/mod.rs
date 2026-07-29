@@ -510,7 +510,15 @@ impl RecallStage {
             let egress_candidates = self.provider_egress_candidates(candidates_c1.clone(), nous_id);
             self.side_query_ids(query, &egress_candidates, ranker)
         });
-        let ranked_c1 = self.rank_candidates_with_side_ids(candidates_c1, side_ids_c1.as_ref());
+        // WHY(#6497): the caller's static IDs outrank the computed ones at every
+        // ranking site, cycle 1 included. Exempting the exploratory pass would
+        // mean a caller that pinned IDs is ignored for the discovery that
+        // decides whether cycle 2 runs, and returned unheeded on the
+        // early-return path below.
+        let ranked_c1 = self.rank_candidates_with_side_ids(
+            candidates_c1,
+            self.side_query_ids.as_ref().or(side_ids_c1.as_ref()),
+        );
 
         let terms = discover_terminology(&ranked_c1, query);
         let gaps = detect_gaps(&ranked_c1);
