@@ -36,6 +36,8 @@ pub mod cost_ledger;
 pub mod cron;
 /// Prompt dependency DAG and parallel frontier computation.
 pub mod dag;
+/// Shared unified-diff parsing helpers used by QA and steward.
+pub(crate) mod diff;
 /// Dispatch engine trait and session types.
 pub mod engine;
 /// Error types for energeia operations.

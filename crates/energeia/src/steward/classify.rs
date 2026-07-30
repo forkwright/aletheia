@@ -193,7 +193,7 @@ pub fn parse_suppressions(diff: &str) -> Vec<SuppressionFinding> {
         }
 
         if line.starts_with("@@ ") {
-            if let Some(new_start) = parse_hunk_new_start(line) {
+            if let Some(new_start) = crate::diff::parse_hunk_new_start(line) {
                 line_number = new_start;
             }
             continue;
@@ -379,17 +379,6 @@ pub fn apply_gate_trailer_override(
     } else {
         ci_status
     }
-}
-
-/// Parse the new-file start line from a unified diff hunk header.
-///
-/// Format: `@@ -old_start,old_count +new_start,new_count @@`
-#[must_use]
-pub(crate) fn parse_hunk_new_start(hunk_line: &str) -> Option<u32> {
-    let plus_idx = hunk_line.find('+')?;
-    let after_plus = hunk_line.get(plus_idx + 1..)?;
-    let end = after_plus.find(|c: char| !c.is_ascii_digit())?;
-    after_plus.get(..end)?.parse().ok()
 }
 
 #[cfg(test)]
