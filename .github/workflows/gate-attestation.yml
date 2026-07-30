@@ -141,6 +141,17 @@ jobs:
           scripts/check-release-versioning.py
           scripts/test-release-versioning.py
 
+      # WHY: the pin check compares proskenion's theatron pins against the ROOT
+      # Cargo.toml, but its only PR-time home was desktop.yml, whose paths
+      # filter covers crates/theatron/proskenion/**, crates/theatron/skene/**,
+      # scripts/*proskenion* and desktop.yml itself — not the root manifest.
+      # So a PR that re-pinned theatron in the root workspace drifted the two
+      # manifests apart with the check never running, and the failure surfaced
+      # later on an unrelated PR that happened to touch a proskenion path.
+      # Running it here binds it to every PR; it is pure-python, no compile.
+      - name: Check proskenion theatron pins
+        run: scripts/check-proskenion-pins.py
+
   gate-coverage-compile-checks:
     name: gate-coverage-compile-checks
     runs-on: ubuntu-latest
