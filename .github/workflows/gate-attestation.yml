@@ -77,6 +77,24 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# WHY: hybrid-gate.yml declares the concurrency group for the job it runs, and
+# a called workflow evaluates `github.workflow` / `github.ref` in the CALLER's
+# context — so for a repo whose gate workflow is only the delegating job, the
+# callee's group already governs the whole run. This repo is not that shape:
+# gate-coverage-scripts, gate-coverage-compile-checks and gate run here, in the
+# caller, and the callee's group does not reach them. A superseded push left
+# those three running against a SHA nothing would check.
+#
+# WARNING: the key must NOT be hybrid-gate.yml's `${{ github.workflow }}-${{
+# github.ref }}`. That callee documents that a caller sharing its key makes the
+# group self-cancel, since both expressions evaluate in this same caller
+# context and would collide. The `-caller` infix keeps this group distinct, so
+# it cancels superseded runs of the caller-side jobs while the callee keeps
+# managing its own.
+concurrency:
+  group: ${{ github.workflow }}-caller-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hybrid-gate:
     uses: forkwright/.github/.github/workflows/hybrid-gate.yml@main
