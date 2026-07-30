@@ -11,7 +11,6 @@
 //! Auth values are treated as opaque references in the canonical store. This
 //! module may read legacy plaintext tokens only to migrate existing profiles.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use snafu::{ResultExt, Snafu};
@@ -290,34 +289,22 @@ fn write_desktop_config(path: &Path, desktop: &DesktopConfig) -> Result<(), Conf
         path: parent.to_path_buf(),
     })?;
 
-    // WHY: Atomic write via tempfile + rename so a crash or power loss
-    // between truncate and flush cannot leave a truncated/empty desktop.toml
-    // (mirrors platform::window_state::save_sync). On Unix the temp file is
-    // created 0o600 before persist so the renamed file never inherits a
-    // wider default mode. On Windows the equivalent permissions API does
-    // not exist; the file lives in the user's config directory where
-    // default ACLs are user-private.
-    #[cfg(unix)]
-    let mut tmp = {
-        use std::os::unix::fs::PermissionsExt as _;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        tempfile::Builder::new()
-            .permissions(perms)
-            .tempfile_in(parent)
-            .context(WriteFileSnafu { path: parent })?
-    };
-    #[cfg(not(unix))]
-    let mut tmp = tempfile::Builder::new()
-        .tempfile_in(parent)
-        .context(WriteFileSnafu { path: parent })?;
-    tmp.write_all(content.as_bytes())
-        .context(WriteFileSnafu { path: parent })?;
-    tmp.as_file()
-        .sync_all()
-        .context(WriteFileSnafu { path: parent })?;
-    tmp.persist(path)
-        .map_err(|e| e.error)
-        .context(WriteFileSnafu { path })?;
+    // WHY: bathron owns the atomic replace sequence fleet-wide, so a crash or
+    // power loss between truncate and flush cannot leave desktop.toml empty.
+    // It also fsyncs the containing directory, which a bare tempfile-and-rename
+    // does not, so the rename itself survives power loss rather than only the
+    // file contents. The 0o600 mode is applied to the replacement before the
+    // rename, so the file is never briefly visible at the process umask; it is
+    // ignored on Windows, where the user's config directory carries
+    // user-private ACLs.
+    // WARNING: write_atomic deliberately does not create the parent directory,
+    // which is why create_dir_all above is still required.
+    bathron::atomic::write_atomic(path, content.as_bytes(), Some(0o600)).map_err(|source| {
+        ConfigError::WriteFile {
+            path: path.to_path_buf(),
+            source: std::io::Error::other(source),
+        }
+    })?;
 
     Ok(())
 }
@@ -325,6 +312,8 @@ fn write_desktop_config(path: &Path, desktop: &DesktopConfig) -> Result<(), Conf
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
+    use std::io::Write as _;
+
     use super::*;
 
     fn temp_base() -> (tempfile::TempDir, PathBuf) {
