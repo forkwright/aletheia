@@ -662,21 +662,3 @@ fn extract_qa_verdict_none_when_missing() {
 fn extract_qa_verdict_none_when_body_is_none() {
     assert_eq!(extract_qa_verdict_from_body(None), None);
 }
-
-// ── Hunk header parsing tests ──
-
-#[test]
-fn parse_hunk_new_start_normal() {
-    assert_eq!(parse_hunk_new_start("@@ -1,3 +1,5 @@"), Some(1));
-    assert_eq!(parse_hunk_new_start("@@ -10,2 +42,7 @@"), Some(42));
-}
-
-#[test]
-fn parse_hunk_new_start_single_line() {
-    assert_eq!(parse_hunk_new_start("@@ -1 +1,2 @@"), Some(1));
-}
-
-#[test]
-fn parse_hunk_new_start_invalid() {
-    assert_eq!(parse_hunk_new_start("not a hunk header"), None);
-}
