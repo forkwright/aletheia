@@ -21,42 +21,50 @@ pub(crate) fn model_family(model: &str) -> &str {
         .map_or(model, |pos| model.get(..pos).unwrap_or(model))
 }
 
-/// Estimate cost using configured pricing.
-///
-/// Lookup order:
+/// Look up pricing for `model`, in order:
 /// 1. Exact model ID match.
 /// 2. Family match: any pricing key whose [`model_family`] matches the
 ///    requested model's family (e.g. `claude-sonnet-4-6` covers
 ///    `claude-sonnet-4-20250514`).
+/// 3. Prefix / dated-snapshot match: any pricing key that is a dash-prefix
+///    of `model` (e.g. `claude-haiku-4-5` covers `claude-haiku-4-5-20251001`,
+///    a case the family check above misses because
+///    `model_family("claude-haiku-4-5")` = `"claude-haiku-4"`, which differs
+///    from `model_family("claude-haiku-4-5-20251001")` = `"claude-haiku-4-5"`).
+fn lookup_pricing<'a>(
+    pricing: &'a HashMap<String, ModelPricing>,
+    model: &str,
+) -> Option<&'a ModelPricing> {
+    pricing.get(model).or_else(|| {
+        let family = model_family(model);
+        pricing
+            .iter()
+            .find(|(key, _)| model_family(key) == family)
+            .or_else(|| {
+                pricing.iter().find(|(key, _)| {
+                    model.len() > key.len()
+                        && model.starts_with(key.as_str())
+                        && model.as_bytes().get(key.len()) == Some(&b'-')
+                })
+            })
+            .map(|(_, matched)| matched)
+    })
+}
+
+/// Estimate cost using configured pricing.
 ///
-/// Returns `0.0` and logs a warning when neither lookup succeeds.
+/// See [`lookup_pricing`] for the lookup order.
+///
+/// Returns `0.0` and logs a warning when no lookup succeeds.
 pub(crate) fn estimate_cost(
     pricing: &HashMap<String, ModelPricing>,
     model: &str,
     input_tokens: u64,
     output_tokens: u64,
 ) -> f64 {
-    let p = if let Some(exact) = pricing.get(model) {
-        exact
-    } else {
-        let family = model_family(model);
-        if let Some((_, matched)) = pricing.iter().find(|(key, _)| model_family(key) == family) {
-            matched
-        } else if let Some((_, matched)) = pricing.iter().find(|(key, _)| {
-            // WHY: model_family("claude-haiku-4-5") = "claude-haiku-4", which differs from
-            // model_family("claude-haiku-4-5-20251001") = "claude-haiku-4-5".  The family
-            // check above misses this case.  A prefix check catches dated-snapshot variants
-            // whose model ID contains a second numeric component (e.g. haiku-4-5) so that
-            // the last-segment strip produces a different family string.
-            model.len() > key.len()
-                && model.starts_with(key.as_str())
-                && model.as_bytes().get(key.len()) == Some(&b'-')
-        }) {
-            matched
-        } else {
-            tracing::warn!(model, "no pricing configured for model; cost reported as 0");
-            return 0.0;
-        }
+    let Some(p) = lookup_pricing(pricing, model) else {
+        tracing::warn!(model, "no pricing configured for model; cost reported as 0");
+        return 0.0;
     };
     #[expect(
         clippy::cast_precision_loss,
@@ -81,21 +89,8 @@ pub(crate) fn estimate_cost_with_cache(
     usage: &crate::types::Usage,
 ) -> f64 {
     let base = estimate_cost(pricing, model, usage.input_tokens, usage.output_tokens);
-    let p = if let Some(exact) = pricing.get(model) {
-        exact
-    } else {
-        let family = model_family(model);
-        if let Some((_, matched)) = pricing.iter().find(|(key, _)| model_family(key) == family) {
-            matched
-        } else if let Some((_, matched)) = pricing.iter().find(|(key, _)| {
-            model.len() > key.len()
-                && model.starts_with(key.as_str())
-                && model.as_bytes().get(key.len()) == Some(&b'-')
-        }) {
-            matched
-        } else {
-            return base;
-        }
+    let Some(p) = lookup_pricing(pricing, model) else {
+        return base;
     };
     #[expect(
         clippy::cast_precision_loss,
