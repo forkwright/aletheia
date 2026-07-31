@@ -821,6 +821,83 @@ impl KnowledgeStore {
         }
     }
 
+    /// Delete `consolidation_audit` rows for `nous_id` recorded before `cutoff`.
+    ///
+    /// Returns `(examined, removed)`: the nous's total audit row count before
+    /// the delete, and how many of those fell outside the retention window.
+    ///
+    /// WHY(#5674): the relation is append-only — one row per consolidation run,
+    /// keyed on a fresh ULID — with no TTL and no row cap, so it grows for the
+    /// life of the instance. `garbage_collect` in the binary crate's
+    /// `KnowledgeMaintenanceExecutor` calls this on the scheduled graph-cleanup
+    /// cadence.
+    ///
+    /// `cutoff` must be a timestamp in the same format as the stored
+    /// `consolidated_at` values (see [`mneme::knowledge::format_timestamp`]).
+    /// The comparison is lexicographic, which is the same ordering
+    /// [`Self::last_consolidation_time`] already relies on for `:sort`.
+    pub fn prune_consolidation_audit(
+        &self,
+        nous_id: &str,
+        cutoff: &str,
+    ) -> Result<(u64, u64), ConsolidationError> {
+        self.ensure_consolidation_audit_owner_scope()?;
+
+        let count_script = r"
+?[id] := *consolidation_audit{id, nous_id: $nous_id}
+";
+        let mut count_params = BTreeMap::new();
+        count_params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        let examined = self
+            .run_query(count_script, count_params)
+            .map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?
+            .row_count();
+
+        let expired_script = r"
+?[id] := *consolidation_audit{id, nous_id: $nous_id, consolidated_at},
+         consolidated_at < $cutoff
+";
+        let mut expired_params = BTreeMap::new();
+        expired_params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        expired_params.insert("cutoff".to_owned(), DataValue::Str(cutoff.into()));
+        let removed = self
+            .run_query(expired_script, expired_params)
+            .map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?
+            .row_count();
+
+        if removed > 0 {
+            let rm_script = r"
+?[id] := *consolidation_audit{id, nous_id: $nous_id, consolidated_at},
+         consolidated_at < $cutoff
+:rm consolidation_audit {id}
+";
+            let mut rm_params = BTreeMap::new();
+            rm_params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+            rm_params.insert("cutoff".to_owned(), DataValue::Str(cutoff.into()));
+            self.run_mut_query(rm_script, rm_params).map_err(|e| {
+                StoreSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
+        }
+
+        Ok((
+            u64::try_from(examined).unwrap_or(u64::MAX),
+            u64::try_from(removed).unwrap_or(u64::MAX),
+        ))
+    }
+
     /// Run a full consolidation cycle for a nous.
     ///
     /// 1. Check rate limit
