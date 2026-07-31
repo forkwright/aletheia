@@ -141,6 +141,9 @@ jobs:
           scripts/check-release-versioning.py
           scripts/test-release-versioning.py
 
+      - name: Diaporeia MCP inventory generator tests
+        run: scripts/test-diaporeia-mcp-inventory.py
+
   gate-coverage-compile-checks:
     name: gate-coverage-compile-checks
     runs-on: ubuntu-latest
