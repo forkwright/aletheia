@@ -29,6 +29,7 @@ async fn app_with_metrics_mode(
 
 #[tokio::test]
 async fn metrics_local_only_allows_loopback() {
+    let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::LocalOnly, false).await;
     let mut req = Request::get("/metrics").body(Body::empty()).unwrap();
     req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
@@ -55,6 +56,7 @@ async fn metrics_local_only_denies_remote() {
 
 #[tokio::test]
 async fn metrics_public_allows_unauthenticated_remote() {
+    let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Public, false).await;
     let resp = app
         .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
@@ -75,6 +77,7 @@ async fn metrics_bearer_requires_authentication() {
 
 #[tokio::test]
 async fn metrics_bearer_accepts_valid_token() {
+    let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Bearer, false).await;
     let resp = app
         .oneshot(authed_get("/metrics"))
@@ -95,6 +98,7 @@ async fn metrics_disabled_returns_not_found() {
 
 #[tokio::test]
 async fn metrics_redacts_sensitive_labels_by_default() {
+    let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Public, false).await;
 
     // Record an HTTP request so the registry contains a `path` label.
@@ -118,6 +122,7 @@ async fn metrics_redacts_sensitive_labels_by_default() {
 
 #[tokio::test]
 async fn metrics_detailed_preserves_sensitive_labels() {
+    let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Public, true).await;
 
     let _ = app
