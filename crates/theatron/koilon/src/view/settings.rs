@@ -1,5 +1,5 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
 /// Width percentage for the settings popup.
@@ -20,6 +20,7 @@ use ratatui::widgets::{
 
 use crate::state::settings::{FieldType, SaveStatus, SettingsOverlay};
 use crate::theme::Theme;
+use crate::view::centered_rect;
 
 pub(crate) fn render(overlay: &SettingsOverlay, frame: &mut Frame, area: Rect, theme: &Theme) {
     let popup = centered_rect(POPUP_WIDTH_PCT, POPUP_HEIGHT_PCT, area);
@@ -213,33 +214,4 @@ fn estimate_cursor_line(overlay: &SettingsOverlay) -> usize {
         }
     }
     line
-}
-
-// WARNING: not provably equivalent to `parodos::layout::centered_rect_pct` —
-// see the matching note on `view/overlay/mod.rs::centered_rect`. This crate's
-// POPUP_HEIGHT_PCT = 85 hits the same odd-remainder case (100 - 85 = 15,
-// 15 / 2 = 7, so the three constraints sum to 99% under `Flex::Start`).
-#[expect(
-    clippy::indexing_slicing,
-    reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"
-)]
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let v = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        // kanon:ignore RUST/indexing-slicing — v split with 3 constraints; index 1 always valid; inner split also 3 constraints
-        .split(v[1])[1]
 }
