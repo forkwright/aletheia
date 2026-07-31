@@ -700,7 +700,7 @@ mod validate_memory_path {
 }
 
 mod training_config {
-    use eidos::training::TrainingConfig;
+    use eidos::training::{DecontaminationPolicy, TrainingConfig};
 
     #[test]
     fn default_is_disabled_with_standard_path() {
@@ -733,7 +733,7 @@ mod training_config {
             path: "var/training/custom".to_owned(),
             max_shard_bytes: 100 * 1024 * 1024,
             pii_filter_enabled: false,
-            author_classifier_enabled: true,
+            decontamination_policy: DecontaminationPolicy::FailClosed,
             author_classifier_threshold: 0.9,
         };
         let json = serde_json::to_string(&cfg).expect("serialize");
@@ -742,10 +742,7 @@ mod training_config {
         assert_eq!(back.path, cfg.path);
         assert_eq!(back.max_shard_bytes, cfg.max_shard_bytes);
         assert_eq!(back.pii_filter_enabled, cfg.pii_filter_enabled);
-        assert_eq!(
-            back.author_classifier_enabled,
-            cfg.author_classifier_enabled
-        );
+        assert_eq!(back.decontamination_policy, cfg.decontamination_policy);
         assert!((back.author_classifier_threshold - cfg.author_classifier_threshold).abs() < 1e-6);
     }
 }
