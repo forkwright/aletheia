@@ -13,7 +13,9 @@ pub(crate) use types::{DiffViewState, compute_diff};
 #[cfg(test)]
 use crate::theme::Theme;
 #[cfg(test)]
-pub(crate) use parse::{parse_hunk_header, truncate_str};
+use parse::pad_to;
+#[cfg(test)]
+pub(crate) use parse::parse_hunk_header;
 #[cfg(test)]
 pub(crate) use render::{render_side_by_side, render_unified, render_word_diff};
 #[cfg(test)]
@@ -389,22 +391,59 @@ diff --git a/b.rs b/b.rs
         assert!(state.total_lines > 10);
     }
 
-    // ── truncate_str ──
+    // ── Content truncation ──
 
     #[test]
-    fn truncate_str_short() {
-        assert_eq!(truncate_str("hello", 10), "hello");
+    fn side_by_side_keeps_multibyte_line_within_char_budget() {
+        // WHY(#6542): at width 80 the content budget is 32 chars. This line is 16
+        // chars but 48 bytes, so a byte-length guard truncated it with an ellipsis
+        // at half the budget it was asked to respect. Non-ASCII only: the ASCII
+        // path measured identically either way, which is why this survived.
+        let theme = default_theme();
+        let content = "日本語のテキストはここにあります";
+        assert_eq!(content.chars().count(), 16);
+        assert!(content.len() > 32, "must exceed the budget in bytes");
+
+        let diff = compute_diff("test.rs", &format!("{content}\n"), "changed\n");
+        let rendered: String = render_side_by_side(&diff, 80, &theme)
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|s| s.content.to_string())
+            .collect();
+
+        assert!(
+            rendered.contains(content),
+            "content within the char budget must render whole, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains('…'),
+            "no ellipsis is expected below the budget, got: {rendered}"
+        );
+    }
+
+    // ── pad_to ──
+
+    #[test]
+    fn pad_to_pads_multibyte_string_to_char_width() {
+        // WHY(#6542): 3 chars, 9 bytes. The byte guard read this as already at or
+        // past width 6 and returned it truncated instead of padded, collapsing the
+        // column the padding exists to hold open.
+        assert_eq!(pad_to("日本語".to_owned(), 6), "日本語   ");
     }
 
     #[test]
-    fn truncate_str_exact() {
-        assert_eq!(truncate_str("hello", 5), "hello");
+    fn pad_to_truncates_by_chars_not_bytes() {
+        assert_eq!(pad_to("日本語テスト".to_owned(), 3), "日本語");
     }
 
     #[test]
-    fn truncate_str_long() {
-        let result = truncate_str("hello world", 6);
-        assert!(result.len() <= 8); // may have ellipsis char
+    fn pad_to_leaves_exact_width_unchanged() {
+        assert_eq!(pad_to("abc".to_owned(), 3), "abc");
+    }
+
+    #[test]
+    fn pad_to_pads_ascii_to_width() {
+        assert_eq!(pad_to("ab".to_owned(), 4), "ab  ");
     }
 
     // ── File path display ──

@@ -5,9 +5,10 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use similar::{ChangeTag, TextDiff};
 
+use crate::text::truncate_chars_ellipsis;
 use crate::theme::Theme;
 
-use super::parse::{pad_to, truncate_str};
+use super::parse::pad_to;
 use super::types::{DiffChange, DiffMode, DiffViewState, FileDiff, collapse_to_replacements};
 
 pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {
@@ -167,7 +168,7 @@ pub(crate) fn render_side_by_side(
             match change {
                 DiffChange::Equal(text) => {
                     let display = text.trim_end_matches('\n');
-                    let truncated = truncate_str(display, content_width);
+                    let truncated = truncate_chars_ellipsis(display, content_width);
                     let left = format!("{old_line:>4} {truncated:<content_width$} ");
                     let right = format!("{new_line:>4} {truncated:<content_width$}");
                     lines.push(Line::from(vec![
@@ -180,7 +181,7 @@ pub(crate) fn render_side_by_side(
                 }
                 DiffChange::Delete(text) => {
                     let display = text.trim_end_matches('\n');
-                    let truncated = truncate_str(display, content_width);
+                    let truncated = truncate_chars_ellipsis(display, content_width);
                     let left = format!("{old_line:>4} {truncated:<content_width$} ");
                     let right = format!("{:>4} {:<content_width$}", "", "");
                     lines.push(Line::from(vec![
@@ -195,7 +196,7 @@ pub(crate) fn render_side_by_side(
                 }
                 DiffChange::Insert(text) => {
                     let display = text.trim_end_matches('\n');
-                    let truncated = truncate_str(display, content_width);
+                    let truncated = truncate_chars_ellipsis(display, content_width);
                     let left = format!("{:>4} {:<content_width$} ", "", "");
                     let right = format!("{new_line:>4} {truncated:<content_width$}");
                     lines.push(Line::from(vec![
@@ -206,8 +207,10 @@ pub(crate) fn render_side_by_side(
                     new_line += 1;
                 }
                 DiffChange::Replace { old, new } => {
-                    let old_disp = truncate_str(old.trim_end_matches('\n'), content_width);
-                    let new_disp = truncate_str(new.trim_end_matches('\n'), content_width);
+                    let old_disp =
+                        truncate_chars_ellipsis(old.trim_end_matches('\n'), content_width);
+                    let new_disp =
+                        truncate_chars_ellipsis(new.trim_end_matches('\n'), content_width);
                     let left = format!("{old_line:>4} {old_disp:<content_width$} ");
                     let right = format!("{new_line:>4} {new_disp:<content_width$}");
                     lines.push(Line::from(vec![

@@ -105,36 +105,15 @@ pub(crate) fn parse_hunk_header(line: &str) -> (usize, usize) {
     (old_start, new_start)
 }
 
-// WARNING: not the same contract as `parodos::text::truncate_chars_ellipsis` —
-// the `s.len() <= max_chars` guard below compares byte length, not char count,
-// so multi-byte UTF-8 input can be truncated when it should pass through
-// unchanged (or vice versa). Do not collapse into the parodos helper without
-// first fixing this to a char-count guard.
-pub(crate) fn truncate_str(s: &str, max_chars: usize) -> String {
-    if s.len() <= max_chars {
-        s.to_string()
-    } else {
-        let mut end = max_chars.min(s.len());
-        while end > 0 && !s.is_char_boundary(end) {
-            end -= 1;
-        }
-        let truncated = s.get(..end).unwrap_or(s);
-        if end >= 2 {
-            format!(
-                "{}…",
-                truncated
-                    .get(..truncated.len().saturating_sub(1))
-                    .unwrap_or(truncated)
-            )
-        } else {
-            truncated.to_string()
-        }
-    }
-}
-
+// WHY(#6542): width here is a char count, not a byte count. `format!("{s:<width$}")`
+// in the else branch pads by char count, so a byte-length guard made the two halves
+// disagree: a multi-byte string could satisfy `s.len() >= width` while holding fewer
+// than `width` chars, taking the truncating branch and returning the string unpadded
+// — the column it was meant to fill then collapsed. Measuring chars throughout keeps
+// the guard, the truncation and the padding on one unit.
 pub(super) fn pad_to(s: String, width: usize) -> String {
-    if s.len() >= width {
-        s.get(..width).unwrap_or(&s).to_string()
+    if s.chars().count() >= width {
+        s.chars().take(width).collect()
     } else {
         format!("{s:<width$}")
     }
