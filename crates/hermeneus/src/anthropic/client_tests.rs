@@ -12,7 +12,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use koina::secret::SecretString;
 
 use super::*;
-use crate::anthropic::pricing::{estimate_cost, model_family};
+use crate::anthropic::pricing::{estimate_cost, estimate_cost_with_cache, model_family};
 use crate::error::Error;
 use crate::models::BACKOFF_MAX_MS;
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ProviderConfig};
@@ -749,6 +749,147 @@ fn estimate_cost_default_pricing_resolves_haiku() {
             "default pricing must cover supported model {model}, got cost={c}"
         );
     }
+}
+
+fn cache_usage(input: u64, output: u64, read: u64, write: u64) -> crate::types::Usage {
+    crate::types::Usage {
+        input_tokens: input,
+        output_tokens: output,
+        cache_read_tokens: read,
+        cache_write_tokens: write,
+    }
+}
+
+/// The cache estimator must fall back to the base estimate (zero) rather than
+/// pricing cache tokens off an entry that does not exist.
+#[test]
+fn estimate_cost_with_cache_no_pricing_returns_zero() {
+    let pricing = HashMap::new();
+    let cost = estimate_cost_with_cache(
+        &pricing,
+        "some-unknown-model",
+        &cache_usage(1000, 100, 5000, 2000),
+    );
+    assert!(
+        cost.abs() < f64::EPSILON,
+        "unknown model must cost zero even with cache tokens, got {cost}"
+    );
+}
+
+/// Exact-match tier, with the documented cache ratios applied on top of base.
+#[test]
+fn estimate_cost_with_cache_exact_match_prices_cache_tokens() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "custom-model".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 10.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    let cost = estimate_cost_with_cache(
+        &pricing,
+        "custom-model",
+        &cache_usage(1_000_000, 0, 1_000_000, 1_000_000),
+    );
+    let expected =
+        10.0 + 10.0 * koina::models::cache_read_ratio() + 10.0 * koina::models::cache_write_ratio();
+    assert!(
+        (cost - expected).abs() < 0.0001,
+        "expected {expected}, got {cost}"
+    );
+}
+
+/// Family tier reached through the cache estimator.
+///
+/// WHY this test exists: the three-tier lookup used to be copy-pasted into
+/// `estimate_cost_with_cache`, and no test ever called that function — so the
+/// second copy's family and prefix tiers were entirely unexercised. This pins
+/// them to the shared helper.
+#[test]
+fn estimate_cost_with_cache_resolves_family_alias() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-sonnet-4-6".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 3.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    let cost = estimate_cost_with_cache(
+        &pricing,
+        "claude-sonnet-4-20250514",
+        &cache_usage(0, 0, 1_000_000, 0),
+    );
+    let expected = 3.0 * koina::models::cache_read_ratio();
+    assert!(
+        (cost - expected).abs() < 0.0001,
+        "cache tokens must price via family resolution: expected {expected}, got {cost}"
+    );
+}
+
+/// Prefix tier reached through the cache estimator (the dated-snapshot shape
+/// that the family strip alone misses).
+#[test]
+fn estimate_cost_with_cache_resolves_prefix_snapshot() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-haiku-4-5".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 1.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    let cost = estimate_cost_with_cache(
+        &pricing,
+        "claude-haiku-4-5-20251001",
+        &cache_usage(0, 0, 0, 1_000_000),
+    );
+    let expected = 1.0 * koina::models::cache_write_ratio();
+    assert!(
+        (cost - expected).abs() < 0.0001,
+        "cache-write tokens must price via prefix resolution: expected {expected}, got {cost}"
+    );
+}
+
+/// INVARIANT: base and cache components of one estimate are priced from the
+/// same map entry.
+///
+/// WHY: `HashMap::iter` has no defined order, so when several keys match the
+/// same family the two independent lookups the code used to perform could
+/// settle on different entries and blend two price points into one figure.
+/// Resolving once makes that unrepresentable. Both entries below are in family
+/// `claude-sonnet-4`, so only the two self-consistent totals are admissible.
+#[test]
+fn estimate_cost_with_cache_does_not_blend_two_pricing_entries() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-sonnet-4-6".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 3.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    pricing.insert(
+        "claude-sonnet-4-9".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 30.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    let cost = estimate_cost_with_cache(
+        &pricing,
+        "claude-sonnet-4-20250514",
+        &cache_usage(1_000_000, 0, 1_000_000, 0),
+    );
+    let ratio = koina::models::cache_read_ratio();
+    let consistent_low = 3.0 + 3.0 * ratio;
+    let consistent_high = 30.0 + 30.0 * ratio;
+    assert!(
+        (cost - consistent_low).abs() < 0.0001 || (cost - consistent_high).abs() < 0.0001,
+        "base and cache must resolve to one entry; got {cost}, \
+         admissible: {consistent_low} or {consistent_high}"
+    );
 }
 
 #[test]

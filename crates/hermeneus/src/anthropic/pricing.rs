@@ -21,28 +21,33 @@ pub(crate) fn model_family(model: &str) -> &str {
         .map_or(model, |pos| model.get(..pos).unwrap_or(model))
 }
 
-/// Estimate cost using configured pricing.
+/// Resolve the pricing entry for `model` using the three-tier lookup.
 ///
 /// Lookup order:
 /// 1. Exact model ID match.
 /// 2. Family match: any pricing key whose [`model_family`] matches the
 ///    requested model's family (e.g. `claude-sonnet-4-6` covers
 ///    `claude-sonnet-4-20250514`).
+/// 3. Prefix match: any pricing key the model ID extends on a dash boundary.
 ///
-/// Returns `0.0` and logs a warning when neither lookup succeeds.
-pub(crate) fn estimate_cost(
-    pricing: &HashMap<String, ModelPricing>,
+/// WHY: both cost estimators need the same entry, and resolving it once means
+/// the base and cache components of a single estimate can never be priced from
+/// two different map entries — `HashMap::iter` yields no defined order, so two
+/// independent lookups may settle on different keys when several match.
+fn lookup_pricing_entry<'a>(
+    pricing: &'a HashMap<String, ModelPricing>,
     model: &str,
-    input_tokens: u64,
-    output_tokens: u64,
-) -> f64 {
-    let p = if let Some(exact) = pricing.get(model) {
-        exact
-    } else {
-        let family = model_family(model);
-        if let Some((_, matched)) = pricing.iter().find(|(key, _)| model_family(key) == family) {
-            matched
-        } else if let Some((_, matched)) = pricing.iter().find(|(key, _)| {
+) -> Option<&'a ModelPricing> {
+    if let Some(exact) = pricing.get(model) {
+        return Some(exact);
+    }
+    let family = model_family(model);
+    if let Some((_, matched)) = pricing.iter().find(|(key, _)| model_family(key) == family) {
+        return Some(matched);
+    }
+    pricing
+        .iter()
+        .find(|(key, _)| {
             // WHY: model_family("claude-haiku-4-5") = "claude-haiku-4", which differs from
             // model_family("claude-haiku-4-5-20251001") = "claude-haiku-4-5".  The family
             // check above misses this case.  A prefix check catches dated-snapshot variants
@@ -51,12 +56,23 @@ pub(crate) fn estimate_cost(
             model.len() > key.len()
                 && model.starts_with(key.as_str())
                 && model.as_bytes().get(key.len()) == Some(&b'-')
-        }) {
-            matched
-        } else {
-            tracing::warn!(model, "no pricing configured for model; cost reported as 0");
-            return 0.0;
-        }
+        })
+        .map(|(_, matched)| matched)
+}
+
+/// Estimate cost using configured pricing.
+///
+/// Resolves pricing via [`lookup_pricing_entry`]; returns `0.0` and logs a
+/// warning when no tier matches.
+pub(crate) fn estimate_cost(
+    pricing: &HashMap<String, ModelPricing>,
+    model: &str,
+    input_tokens: u64,
+    output_tokens: u64,
+) -> f64 {
+    let Some(p) = lookup_pricing_entry(pricing, model) else {
+        tracing::warn!(model, "no pricing configured for model; cost reported as 0");
+        return 0.0;
     };
     #[expect(
         clippy::cast_precision_loss,
@@ -81,21 +97,8 @@ pub(crate) fn estimate_cost_with_cache(
     usage: &crate::types::Usage,
 ) -> f64 {
     let base = estimate_cost(pricing, model, usage.input_tokens, usage.output_tokens);
-    let p = if let Some(exact) = pricing.get(model) {
-        exact
-    } else {
-        let family = model_family(model);
-        if let Some((_, matched)) = pricing.iter().find(|(key, _)| model_family(key) == family) {
-            matched
-        } else if let Some((_, matched)) = pricing.iter().find(|(key, _)| {
-            model.len() > key.len()
-                && model.starts_with(key.as_str())
-                && model.as_bytes().get(key.len()) == Some(&b'-')
-        }) {
-            matched
-        } else {
-            return base;
-        }
+    let Some(p) = lookup_pricing_entry(pricing, model) else {
+        return base;
     };
     #[expect(
         clippy::cast_precision_loss,
