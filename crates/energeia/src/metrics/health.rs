@@ -161,8 +161,6 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
     // Load raw data — time filtering happens in-process after the scans.
     let all_dispatches = store.list_dispatches(SCAN_LIMIT_DISPATCHES)?;
     let all_sessions = store.list_all_sessions(SCAN_LIMIT_SESSIONS)?;
-    let all_ci_validations = store.list_all_ci_validations(SCAN_LIMIT_CI_VALIDATIONS)?;
-    let all_qa_verdicts = store.list_all_qa_verdicts(SCAN_LIMIT_QA_VERDICTS)?;
 
     let dispatches: Vec<&DispatchRecord> = all_dispatches
         .iter()
@@ -173,6 +171,24 @@ pub fn compute_health_report(store: &EnergeiaStore, window_days: u32) -> Result<
         .iter()
         .filter(|s| cutoff_ms.is_none_or(|cutoff| s.created_at.as_millisecond() >= cutoff))
         .collect();
+
+    // WHY(#5722): every downstream read of a CI validation goes through
+    // `ci_by_session`, which is only ever looked up by the id of an in-window
+    // session; every downstream read of a QA verdict is guarded by
+    // `dispatch_ids.contains(..)` in `corrective_rate`. Records outside those
+    // two sets cannot affect any metric, so they are rejected during the scan
+    // instead of being accumulated and discarded. Without this the report
+    // materialized up to SCAN_LIMIT_CI_VALIDATIONS + SCAN_LIMIT_QA_VERDICTS
+    // (400_000) records regardless of `window_days`.
+    let in_window_session_ids: HashSet<&str> = sessions.iter().map(|s| s.id.as_str()).collect();
+    let in_window_dispatch_ids: HashSet<&str> = dispatches.iter().map(|d| d.id.as_str()).collect();
+
+    let all_ci_validations = store.list_ci_validations_where(SCAN_LIMIT_CI_VALIDATIONS, |v| {
+        in_window_session_ids.contains(v.session_id.as_str())
+    })?;
+    let all_qa_verdicts = store.list_qa_verdicts_where(SCAN_LIMIT_QA_VERDICTS, |v| {
+        in_window_dispatch_ids.contains(v.dispatch_id.as_str())
+    })?;
 
     // Build session-id → CI validations map for O(1) per-session lookup.
     let ci_by_session: HashMap<String, Vec<&CiValidationRecord>> = {
@@ -655,6 +671,7 @@ mod health_tests;
 mod window_tests {
     use super::*;
     use crate::store::EnergeiaStore;
+    use crate::store::records::{DispatchId, SessionId};
 
     fn setup() -> (tempfile::TempDir, EnergeiaStore) {
         let dir = tempfile::TempDir::new().expect("temp dir");
@@ -672,5 +689,96 @@ mod window_tests {
             result.is_err(),
             "u32::MAX window_days must return Err rather than panic"
         );
+    }
+
+    /// Build one dispatch with one session, plus `orphan_count` CI validations
+    /// and QA verdicts attached to ids that belong to no live session or
+    /// dispatch. The orphans stand in for records that have aged out of the
+    /// reporting window.
+    fn seed(store: &EnergeiaStore, orphan_count: usize) -> (DispatchId, SessionId) {
+        let spec = crate::types::DispatchSpec::new("proj".to_owned(), vec![1]);
+        let dispatch_id = store.create_dispatch("proj", &spec).expect("dispatch");
+        let session_id = store.create_session(&dispatch_id, 1).expect("session");
+
+        store
+            .add_ci_validation(&session_id, "build", 1, CiValidationStatus::Pass, None)
+            .expect("live ci validation");
+        store
+            .add_qa_verdict(&dispatch_id, "proj", crate::types::QaVerdict::Pass)
+            .expect("live qa verdict");
+
+        for i in 0..orphan_count {
+            let orphan_session = SessionId::new(format!("orphan-session-{i}"));
+            let orphan_dispatch = DispatchId::new(format!("orphan-dispatch-{i}"));
+            store
+                .add_ci_validation(&orphan_session, "build", 2, CiValidationStatus::Fail, None)
+                .expect("orphan ci validation");
+            store
+                .add_qa_verdict(&orphan_dispatch, "proj", crate::types::QaVerdict::Fail)
+                .expect("orphan qa verdict");
+        }
+
+        (dispatch_id, session_id)
+    }
+
+    /// The defect (#5722): the health path retained every CI validation and QA
+    /// verdict in the store, up to `200_000` each, even though only records
+    /// belonging to an in-window session or dispatch can affect a metric.
+    ///
+    /// Asserting over the scan's retained length is what makes this fail on the
+    /// pre-fix code, where the scans were unfiltered.
+    #[test]
+    fn scans_retain_only_records_reachable_from_the_window() {
+        let (_dir, store) = setup();
+        let (dispatch_id, session_id) = seed(&store, 50);
+
+        let ci = store
+            .list_ci_validations_where(SCAN_LIMIT_CI_VALIDATIONS, |v| v.session_id == session_id)
+            .expect("ci scan");
+        let qa = store
+            .list_qa_verdicts_where(SCAN_LIMIT_QA_VERDICTS, |v| v.dispatch_id == dispatch_id)
+            .expect("qa scan");
+
+        assert_eq!(
+            ci.len(),
+            1,
+            "51 CI validations are stored but only 1 belongs to a live session"
+        );
+        assert_eq!(
+            qa.len(),
+            1,
+            "51 QA verdicts are stored but only 1 belongs to a live dispatch"
+        );
+    }
+
+    /// The filter is an optimization, so it must not move any metric. Orphaned
+    /// records carry the opposite verdict/status to the live ones, so a filter
+    /// that admitted them would change `corrective_rate` and
+    /// `qa_false_positive_rate`.
+    #[test]
+    fn orphaned_records_do_not_change_the_report() {
+        let (_dir_a, store_a) = setup();
+        seed(&store_a, 0);
+        let without_orphans = compute_health_report(&store_a, 0).expect("report a");
+
+        let (_dir_b, store_b) = setup();
+        seed(&store_b, 50);
+        let with_orphans = compute_health_report(&store_b, 0).expect("report b");
+
+        for (a, b) in without_orphans.metrics.iter().zip(&with_orphans.metrics) {
+            assert_eq!(a.name, b.name, "metric order must be stable");
+            assert!(
+                (a.value - b.value).abs() < f64::EPSILON,
+                "metric {} moved from {} to {} when unreachable records were added",
+                a.name,
+                a.value,
+                b.value
+            );
+            assert_eq!(
+                a.sample_size, b.sample_size,
+                "metric {} sample size",
+                a.name
+            );
+        }
     }
 }
