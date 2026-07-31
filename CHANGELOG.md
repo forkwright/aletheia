@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.8](https://github.com/forkwright/aletheia/compare/v0.33.7...v0.33.8) (2026-07-30)
+
+
+### Bug Fixes
+
+* **energeia:** dedupe parse_hunk_new_start into a shared diff module ([#6540](https://github.com/forkwright/aletheia/issues/6540)) ([5d79fc8](https://github.com/forkwright/aletheia/commit/5d79fc860e74965e3441d552224b5f700b06f520)), closes [#6539](https://github.com/forkwright/aletheia/issues/6539)
+
 ## [0.33.7](https://github.com/forkwright/aletheia/compare/v0.33.6...v0.33.7) (2026-07-30)
 
 
