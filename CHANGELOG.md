@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.33.8](https://github.com/forkwright/aletheia/compare/v0.33.7...v0.33.8) (2026-07-30)
+
+
+### Bug Fixes
+
+* **energeia:** dedupe parse_hunk_new_start into a shared diff module ([#6540](https://github.com/forkwright/aletheia/issues/6540)) ([5d79fc8](https://github.com/forkwright/aletheia/commit/5d79fc860e74965e3441d552224b5f700b06f520)), closes [#6539](https://github.com/forkwright/aletheia/issues/6539)
+
+## [0.33.7](https://github.com/forkwright/aletheia/compare/v0.33.6...v0.33.7) (2026-07-30)
+
+
+### Bug Fixes
+
+* **config:** derive the validated-section list instead of keeping two ([#6535](https://github.com/forkwright/aletheia/issues/6535)) ([90b3f33](https://github.com/forkwright/aletheia/commit/90b3f331db41109db25e32c0388ad5107941f740)), closes [#5770](https://github.com/forkwright/aletheia/issues/5770)
+* **koilon:** stop advertising an unavailable memory search control ([#6534](https://github.com/forkwright/aletheia/issues/6534)) ([dbc6eec](https://github.com/forkwright/aletheia/commit/dbc6eec3689036785262b94ca2eb48d879b89d89))
+* **nous:** admit the skill access bump through the actor's JoinSet ([#6536](https://github.com/forkwright/aletheia/issues/6536)) ([587a85d](https://github.com/forkwright/aletheia/commit/587a85d507c064da6bf3a73d67fb1b7eeeb52503)), closes [#5733](https://github.com/forkwright/aletheia/issues/5733)
+* **nous:** drop SessionState.distillation_count, which was structurally zero ([#6531](https://github.com/forkwright/aletheia/issues/6531)) ([bcb4e4c](https://github.com/forkwright/aletheia/commit/bcb4e4c123c6d5deaefdbeca7e6a0f02180bd9d1)), closes [#6527](https://github.com/forkwright/aletheia/issues/6527)
+* **nous:** label recall duration with the recalling agent ([#6533](https://github.com/forkwright/aletheia/issues/6533)) ([55cae9b](https://github.com/forkwright/aletheia/commit/55cae9bb26a7c498514de07127c0935295dca5ee))
+* **nous:** probe the seen-set before claiming a normalized tool_use id ([#6530](https://github.com/forkwright/aletheia/issues/6530)) ([423afc1](https://github.com/forkwright/aletheia/commit/423afc11410f0e2da33db933855cc25f1c6e4fa5)), closes [#6485](https://github.com/forkwright/aletheia/issues/6485)
+
 ## [0.33.6](https://github.com/forkwright/aletheia/compare/v0.33.5...v0.33.6) (2026-07-29)
 
 

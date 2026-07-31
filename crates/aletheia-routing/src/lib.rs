@@ -298,17 +298,24 @@ mod tests {
     /// writes three in-memory maps and cannot fail, so no store-write error is
     /// injectable; the reachable failure is a drain task that is gone, which
     /// the previous fire-and-forget reported as success.
-    #[test]
-    fn recording_router_reports_a_closed_drain_channel() {
-        let Ok(runtime) = tokio::runtime::Runtime::new() else {
-            panic!("test runtime must build");
-        };
-        let router = runtime.block_on(async {
-            RecordingRouter::new(Arc::new(AfterActionStore::in_memory()), "claude-sonnet")
-        });
+    #[tokio::test]
+    #[expect(
+        clippy::used_underscore_binding,
+        reason = "test deliberately reaches into the leading-underscore field to abort the \
+            drain task directly; the underscore only signals 'held, not read' to production code"
+    )]
+    async fn recording_router_reports_a_closed_drain_channel() {
+        let mut router =
+            RecordingRouter::new(Arc::new(AfterActionStore::in_memory()), "claude-sonnet");
 
-        // Dropping the runtime drops the drain task, and with it the receiver.
-        runtime.shutdown_timeout(Duration::from_secs(0));
+        // Abort the drain task and wait for the abort to land, so the receiver
+        // is deterministically gone before `after_action` runs below.
+        // `runtime.shutdown_timeout` (the previous approach here) only bounds
+        // how long shutdown waits on *blocking* tasks; it can return before
+        // the scheduler has actually dropped a parked async task, which raced
+        // this test's assertion against the drain task's real teardown.
+        router._outcome_drain.abort();
+        let _ = (&mut router._outcome_drain).await;
 
         let outcome = TurnOutcome::new(
             ProviderId::new("claude-sonnet"),

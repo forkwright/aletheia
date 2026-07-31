@@ -255,7 +255,7 @@ fn check_anti_patterns(diff: &str, issues: &mut Vec<MechanicalIssue>) {
 
         // NOTE: Parse `@@ -old,count +new,count @@` to track line numbers.
         if line.starts_with("@@ ") {
-            if let Some(new_start) = parse_hunk_new_start(line) {
+            if let Some(new_start) = crate::diff::parse_hunk_new_start(line) {
                 line_number = new_start;
             }
             continue;
@@ -309,16 +309,6 @@ fn check_blanket_glob_import(
             details: Some(format!("{file}:{line_number}")),
         });
     }
-}
-
-/// Parse the new-file start line from a unified diff hunk header.
-///
-/// Format: `@@ -old_start,old_count +new_start,new_count @@`
-fn parse_hunk_new_start(hunk_line: &str) -> Option<u32> {
-    let plus_idx = hunk_line.find('+')?;
-    let after_plus = hunk_line.get(plus_idx + 1..)?;
-    let end = after_plus.find(|c: char| !c.is_ascii_digit())?;
-    after_plus.get(..end)?.parse().ok()
 }
 
 #[cfg(test)]
@@ -579,12 +569,6 @@ diff --git a/src/lib.rs b/src/lib.rs
         let issues = mechanical_check(diff, &prompt);
 
         assert!(!issues.iter().any(|i| i.message.contains("blanket use")));
-    }
-
-    #[test]
-    fn parse_hunk_new_start_basic() {
-        assert_eq!(parse_hunk_new_start("@@ -1,3 +10,4 @@"), Some(10));
-        assert_eq!(parse_hunk_new_start("@@ -0,0 +1,5 @@"), Some(1));
     }
 
     fn stub_prompt(blast_radius: Vec<String>) -> PromptSpec {

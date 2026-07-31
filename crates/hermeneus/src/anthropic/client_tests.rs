@@ -12,11 +12,11 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use koina::secret::SecretString;
 
 use super::*;
-use crate::anthropic::pricing::{estimate_cost, model_family};
+use crate::anthropic::pricing::{estimate_cost, estimate_cost_with_cache, model_family};
 use crate::error::Error;
 use crate::models::BACKOFF_MAX_MS;
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ProviderConfig};
-use crate::types::{CompletionRequest, Content, Message, Role};
+use crate::types::{CompletionRequest, Content, Message, Role, Usage};
 
 fn test_config_with(base_url: &str) -> ProviderConfig {
     ProviderConfig {
@@ -749,6 +749,64 @@ fn estimate_cost_default_pricing_resolves_haiku() {
             "default pricing must cover supported model {model}, got cost={c}"
         );
     }
+}
+
+/// `estimate_cost_with_cache` has its own copy of the pricing lookup (shared
+/// via `lookup_pricing`); exercise the family-match fallback directly with
+/// nonzero cache tokens so a regression that drops this branch during
+/// extraction fails here, not just in `estimate_cost`'s own tests.
+#[test]
+fn estimate_cost_with_cache_family_resolution_includes_cache_tokens() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-sonnet-4-6".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 3.0,
+            output_cost_per_mtok: 15.0,
+        },
+    );
+    let usage = Usage {
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        cache_read_tokens: 1_000_000,
+        cache_write_tokens: 1_000_000,
+    };
+    let cost = estimate_cost_with_cache(&pricing, "claude-sonnet-4-20250514", &usage);
+    // base: 1_000_000 * $3.00/MTok = $3.00
+    // cache read: 1_000_000 * $3.00/MTok * 0.10 = $0.30
+    // cache write: 1_000_000 * $3.00/MTok * 1.25 = $3.75
+    assert!(
+        (cost - 7.05).abs() < 0.0001,
+        "expected ~$7.05 via family resolution with cache tokens, got {cost}"
+    );
+}
+
+/// Same as above but for the prefix / dated-snapshot fallback (the branch
+/// the family check itself cannot reach, see `lookup_pricing`).
+#[test]
+fn estimate_cost_with_cache_prefix_dated_snapshot_resolution_includes_cache_tokens() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-haiku-4-5".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 1.0,
+            output_cost_per_mtok: 5.0,
+        },
+    );
+    let usage = Usage {
+        input_tokens: 0,
+        output_tokens: 1_000_000,
+        cache_read_tokens: 500_000,
+        cache_write_tokens: 200_000,
+    };
+    let cost = estimate_cost_with_cache(&pricing, "claude-haiku-4-5-20251001", &usage);
+    // base: 1_000_000 * $5.00/MTok = $5.00
+    // cache read: 500_000 * $1.00/MTok * 0.10 = $0.05
+    // cache write: 200_000 * $1.00/MTok * 1.25 = $0.25
+    assert!(
+        (cost - 5.30).abs() < 0.0001,
+        "expected ~$5.30 via prefix/dated-snapshot resolution with cache tokens, got {cost}"
+    );
 }
 
 #[test]
