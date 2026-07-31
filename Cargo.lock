@@ -4692,7 +4692,6 @@ dependencies = [
  "proptest",
  "rand 0.10.2",
  "regex",
- "reqwest 0.13.4",
  "rustix 1.1.4",
  "serde",
  "serde_json",
@@ -4702,6 +4701,7 @@ dependencies = [
  "toml 1.1.2+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "url",
  "zeroize",
 ]
 
