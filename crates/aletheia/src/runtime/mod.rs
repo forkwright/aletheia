@@ -758,7 +758,16 @@ impl RuntimeBuilder {
                     crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(Arc::clone(ks))
                         .with_embedding_provider(Arc::clone(&embedding_provider))
                         .with_tuning(dedup_tuning)
-                        .with_consolidation_provider(consolidation_provider),
+                        .with_consolidation_provider(consolidation_provider)
+                        // WHY (#5674): the graph-cleanup cron's audit retention
+                        // window is an operator knob; without this the adapter
+                        // would silently prune on its own hardcoded default.
+                        .with_audit_retention_days(
+                            self.config
+                                .maintenance
+                                .cron_tasks
+                                .graph_cleanup_audit_retention_days,
+                        ),
                 );
                 daemon_runner = daemon_runner.with_knowledge_maintenance(km_executor);
             }
