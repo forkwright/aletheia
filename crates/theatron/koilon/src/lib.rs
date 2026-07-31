@@ -38,12 +38,10 @@ use crossterm::{
 use futures_util::StreamExt;
 use ratatui::DefaultTerminal;
 use snafu::prelude::*;
-use tracing_appender::rolling;
-use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::app::App;
 use crate::config::Config;
-use crate::error::{IoSnafu, LogDirectiveSnafu};
+use crate::error::{IoSnafu, LoggingSnafu};
 use crate::events::Event;
 use crate::hyperlink::OscLink;
 
@@ -74,6 +72,23 @@ pub async fn run_tui(
     run_tui_inner(url, token, agent, session, logout).await
 }
 
+/// Resolve the directory the TUI writes its rotating log files to, given the
+/// platform's per-user data directory.
+///
+/// Returns `None` when the platform exposes no data directory, which disables
+/// file logging rather than choosing a directory on the user's behalf.
+///
+/// WHY(#5887): the previous `unwrap_or_else(|| PathBuf::from("."))` fallback
+/// resolved to `./aletheia/` — relative to whatever directory the TUI happened
+/// to be launched from — so it scattered `tui.log` through repo checkouts and
+/// home directories. This is the same fail-open path proskenion closed in
+/// #5063. Unlike proskenion, koilon cannot fall back to a stderr layer: ratatui
+/// owns the terminal, and log lines written to stderr would render on top of
+/// the UI. With nowhere to persist logs, no subscriber is installed.
+fn resolve_log_dir(data_local_dir: Option<std::path::PathBuf>) -> Option<std::path::PathBuf> {
+    data_local_dir.map(|dir| dir.join("aletheia"))
+}
+
 async fn run_tui_inner(
     url: Option<String>,
     token: Option<String>,
@@ -81,22 +96,23 @@ async fn run_tui_inner(
     session: Option<String>,
     logout: bool,
 ) -> error::Result<()> {
-    let log_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("aletheia");
-    tokio::fs::create_dir_all(&log_dir).await.context(IoSnafu {
-        context: "create log directory",
-    })?;
-    let file_appender = rolling::daily(&log_dir, "tui.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-    fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("koilon=debug".parse().context(LogDirectiveSnafu)?),
-        )
-        .with_writer(non_blocking)
-        .with_ansi(false)
-        .init();
+    // WHY: the guard flushes the non-blocking writer thread on drop, so it is
+    // bound for the lifetime of the TUI rather than discarded at the end of
+    // this statement.
+    // WHY: `app_name` is "tui", not "koilon", so the rotated files keep the
+    // `tui.log.<date>` names the manual appender produced. bathron derives the
+    // filename prefix from the app name, and renaming an operator's log file is
+    // not part of adopting the shared initializer.
+    let _log_guard = match resolve_log_dir(dirs::data_local_dir()) {
+        Some(log_dir) => {
+            let config = bathron::logging::LogConfig::new("tui", tracing::Level::DEBUG)
+                .with_log_dir(log_dir)
+                .with_ansi_on_file(false)
+                .with_filter_directive("koilon=debug");
+            Some(bathron::logging::init(config).context(LoggingSnafu)?)
+        }
+        None => None,
+    };
 
     tracing::info!("starting aletheia-tui");
 
@@ -321,6 +337,22 @@ async fn recv_stream(
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_log_dir_declines_when_no_data_dir_exists() {
+        // WHY(#5887): the replaced `unwrap_or_else(|| PathBuf::from("."))`
+        // returned a cwd-relative path here, so the TUI wrote tui.log into
+        // whatever directory it was launched from. Declining is the fix.
+        assert_eq!(resolve_log_dir(None), None);
+    }
+
+    #[test]
+    fn resolve_log_dir_nests_under_the_data_dir() {
+        assert_eq!(
+            resolve_log_dir(Some(std::path::PathBuf::from("/data"))),
+            Some(std::path::PathBuf::from("/data/aletheia"))
+        );
+    }
 
     #[tokio::test]
     async fn recv_sse_none_never_resolves() {
