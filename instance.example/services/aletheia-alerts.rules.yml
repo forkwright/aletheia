@@ -39,7 +39,7 @@ groups:
 
       - alert: LlmCircuitBreakerOpen
         expr: |
-          increase(aletheia_llm_circuit_breaker_transitions_total{to="open"}[5m]) > 0
+          increase(aletheia_llm_circuit_breaker_transitions_total{to="down"}[5m]) > 0
         for: 1m
         labels:
           severity: warning
