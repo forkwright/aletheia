@@ -39,6 +39,8 @@
 //! - Empty or whitespace-only responses
 //! - Tool-use-only turns (tool calls present but no text content)
 //! - Error, degraded, content-filtered, or max-tokens stop reasons
+//! - Correction turns, which are user feedback on the previous turn rather
+//!   than a user task; they are captured as DPO preference pairs instead
 //!
 //! This keeps the training corpus clean of failure modes and non-content
 //! turns that would teach the model to reproduce degenerate outputs.
@@ -313,6 +315,11 @@ impl CaptureInput<'_> {
     /// | Response substance (length-scaled, saturating at 400 chars) | 0.20 | `assistant_response` |
     /// | Non-error stop reason | 0.10 | `stop_reason` — `EndTurn` / `StopSequence` = 1.0 |
     /// | Correction penalty | 0.10 | `is_correction = Some(true)` → 0.0 else 1.0 |
+    ///
+    /// NOTE: the correction penalty is a backstop, not the primary control.
+    /// `maybe_capture` rejects correction turns outright, so on that path this
+    /// arm only fires for `Some(false)`. The penalty is kept for direct callers
+    /// of this function, which is a public API.
     ///
     /// WHY this mix: these are the only DPO/ORPO-relevant signals
     /// available without a judge model. Tool success is the strongest
@@ -1022,6 +1029,27 @@ impl TrainingCapture {
             debug!(
                 session_id = input.session_id,
                 "training capture skipped: tool-use-only turn"
+            );
+            return false;
+        }
+
+        // WHY: a correction turn is user feedback about the *previous* turn, not
+        // a user task paired with a good answer. Its assistant response is an
+        // acknowledgement ("You're right, I apologize"), so capturing it into the
+        // supervised corpus trains correction-shaped prompts to produce
+        // acknowledgement — a sycophancy pattern that accumulates silently. The
+        // `W_CORRECTION` penalty in `compute_quality_score` records the problem in
+        // metadata but nothing downstream skips the write, so the gate has to be
+        // here.
+        //
+        // WHY this loses no signal: correction turns are the DPO trigger, and the
+        // DPO path in `pipeline` runs off `FinalizeOutcome::Persisted` independently
+        // of this return value. Excluding the turn from SFT leaves the preference
+        // pair untouched.
+        if input.is_correction == Some(true) {
+            debug!(
+                session_id = input.session_id,
+                "training capture skipped: correction turn (DPO pair captured separately)"
             );
             return false;
         }
