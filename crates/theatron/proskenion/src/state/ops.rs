@@ -307,6 +307,17 @@ pub(crate) enum ReloadOutcome {
     Failed(String),
 }
 
+/// Outcome of the last manual agent recovery
+/// (`POST /api/v1/nous/{id}/recover`).
+#[derive(Debug, Clone)]
+pub(crate) enum RecoverOutcome {
+    /// Server accepted the request; `recovered` is its own report of whether
+    /// the actor actually left the degraded state.
+    Applied { recovered: bool },
+    /// Recovery failed; carries a human-readable message.
+    Failed(String),
+}
+
 /// A system-wide feature flag.
 #[derive(Debug, Clone)]
 pub(crate) struct FeatureFlag {
@@ -345,6 +356,17 @@ pub(crate) struct ToggleStore {
     /// Outcome of the last manual config reload, kept visible until the next
     /// reload attempt or a full panel refresh.
     pub reload_outcome: Option<ReloadOutcome>,
+    /// Agent whose manual recovery is currently in flight.
+    ///
+    /// WHY store-level rather than a field on `AgentToggle`: the toggle list
+    /// is rebuilt wholesale from the server on every panel refresh, which
+    /// would discard per-toggle in-flight state. Recovery is a deliberate
+    /// operator action on a degraded actor, so one in flight at a time is
+    /// the honest model.
+    pub recover_pending: Option<NousId>,
+    /// Outcome of the last manual recovery, paired with the agent it
+    /// targeted. Kept visible until the next recovery attempt.
+    pub recover_outcome: Option<(NousId, RecoverOutcome)>,
 }
 
 impl ToggleStore {
@@ -546,6 +568,43 @@ impl ToggleStore {
     pub(crate) fn resolve_reload_failure(&mut self, message: String) {
         self.reload_pending = false;
         self.reload_outcome = Some(ReloadOutcome::Failed(message));
+    }
+
+    /// Mark a manual recovery of one agent as in flight.
+    ///
+    /// WHY the stale outcome is cleared: it belongs to the previous attempt,
+    /// and leaving it rendered beside a spinner reads as the result of the
+    /// attempt now running.
+    pub(crate) fn begin_recover(&mut self, id: &NousId) {
+        self.recover_pending = Some(id.clone());
+        self.recover_outcome = None;
+    }
+
+    /// Resolve a successful manual recovery.
+    pub(crate) fn resolve_recover_success(&mut self, id: &NousId, recovered: bool) {
+        self.recover_pending = None;
+        self.recover_outcome = Some((id.clone(), RecoverOutcome::Applied { recovered }));
+    }
+
+    /// Resolve a failed manual recovery.
+    pub(crate) fn resolve_recover_failure(&mut self, id: &NousId, message: String) {
+        self.recover_pending = None;
+        self.recover_outcome = Some((id.clone(), RecoverOutcome::Failed(message)));
+    }
+
+    /// Whether a manual recovery is in flight for one agent.
+    #[must_use]
+    pub(crate) fn is_recovering(&self, id: &NousId) -> bool {
+        self.recover_pending.as_ref() == Some(id)
+    }
+
+    /// The last recovery outcome, if it targeted this agent.
+    #[must_use]
+    pub(crate) fn recover_outcome_for(&self, id: &NousId) -> Option<&RecoverOutcome> {
+        self.recover_outcome
+            .as_ref()
+            .filter(|(target, _)| target == id)
+            .map(|(_, outcome)| outcome)
     }
 
     /// Get tools filtered by the currently expanded agent.

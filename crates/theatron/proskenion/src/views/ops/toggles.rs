@@ -3,13 +3,15 @@
 use dioxus::prelude::*;
 use skene::api::routes::{
     config::{feature_flags_url, reload_url},
-    nous::{agent_tools_url, agent_url},
+    nous::{agent_recover_url, agent_tools_url, agent_url},
 };
 use skeue::EmptyState;
 
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
-use crate::state::ops::{ReloadOutcome, ToggleActionResult, ToggleApplyState, ToggleStore};
+use crate::state::ops::{
+    RecoverOutcome, ReloadOutcome, ToggleActionResult, ToggleApplyState, ToggleStore,
+};
 
 const PANEL_STYLE: &str = "\
     background: var(--bg-surface); \
@@ -310,6 +312,20 @@ fn AgentToggleRow(
     let status_label = toggle_status_label(pending, apply_state, live_status.as_deref());
     let status_style = toggle_status_style(pending, apply_state);
 
+    // WHY(#5800): the recover action is offered only while the server reports
+    // this agent degraded -- "degraded" is the same live_status sentinel
+    // toggle_status_label and ToggleStore::set_agent_live_status key on. On any
+    // other lifecycle the endpoint has nothing to reset, so advertising it
+    // would be a control that cannot do anything.
+    let is_degraded = live_status.as_deref() == Some("degraded");
+    let (recovering, recover_result) = {
+        let data = store.read();
+        (
+            data.is_recovering(&id),
+            recover_summary(data.recover_outcome_for(&id)),
+        )
+    };
+
     rsx! {
         div {
             style: "{ROW_STYLE}",
@@ -318,6 +334,20 @@ fn AgentToggleRow(
                 span { style: "{TOGGLE_LABEL}", "{name}" }
                 if let Some(label) = status_label {
                     span { style: "{status_style}", "{label}" }
+                }
+                if is_degraded {
+                    if recovering {
+                        button { style: "{RELOAD_BTN_DISABLED}", disabled: true, "Recovering\u{2026}" }
+                    } else {
+                        button {
+                            style: "{RELOAD_BTN}",
+                            onclick: {
+                                let id = id.clone();
+                                move |_| fire_agent_recover(store, config, id.clone())
+                            },
+                            "Recover"
+                        }
+                    }
                 }
                 button {
                     style: "{EXPAND_BTN}",
@@ -349,6 +379,13 @@ fn AgentToggleRow(
                     }
                 },
             )}
+        }
+
+        if let Some((text, is_error)) = recover_result {
+            div {
+                style: if is_error { "{ERROR_STYLE}" } else { "{FLAG_DESC}" },
+                "{text}"
+            }
         }
 
         if is_expanded {
@@ -909,12 +946,7 @@ fn fire_feature_toggle(
             }
             Ok(resp) => {
                 let status = resp.status();
-                let detail = resp.text().await.unwrap_or_default();
-                let message = if detail.is_empty() {
-                    format!("server returned {status}")
-                } else {
-                    format!("server returned {status}: {}", detail.trim())
-                };
+                let message = status_failure_message(status, resp).await;
                 store.write().resolve_feature(
                     &flag_key,
                     false,
@@ -985,12 +1017,7 @@ fn fire_config_reload(mut store: Signal<ToggleStore>, config: Signal<ConnectionC
             }
             Ok(resp) => {
                 let status = resp.status();
-                let detail = resp.text().await.unwrap_or_default();
-                let message = if detail.is_empty() {
-                    format!("server returned {status}")
-                } else {
-                    format!("server returned {status}: {}", detail.trim())
-                };
+                let message = status_failure_message(status, resp).await;
                 store.write().resolve_reload_failure(message);
             }
             Err(e) => {
@@ -1002,13 +1029,114 @@ fn fire_config_reload(mut store: Signal<ToggleStore>, config: Signal<ConnectionC
     });
 }
 
+/// Render a non-success response as an operator-facing message.
+///
+/// WHY the three arms are distinct: an unreadable body and an empty body are
+/// different facts, and collapsing the read error into `unwrap_or_default`
+/// reports "no detail" for a response whose detail simply could not be read.
+/// The status is the actionable part in every case, so it is always present.
+async fn status_failure_message(status: reqwest::StatusCode, resp: reqwest::Response) -> String {
+    match resp.text().await {
+        Ok(detail) if !detail.trim().is_empty() => {
+            format!("server returned {status}: {}", detail.trim())
+        }
+        Ok(_) => format!("server returned {status}"),
+        Err(err) => format!("server returned {status} (body unreadable: {err})"),
+    }
+}
+
+/// Server response shape for `POST /api/v1/nous/{id}/recover`.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct NousRecoverResponse {
+    #[serde(default)]
+    recovered: bool,
+}
+
+/// Summarize a recovery outcome as `(text, is_error)`.
+///
+/// WHY `recovered: false` is not an error: the server accepted and ran the
+/// request, it simply reports the actor did not leave the degraded state.
+/// Rendering that as a failed request would misattribute the cause.
+fn recover_summary(outcome: Option<&RecoverOutcome>) -> Option<(String, bool)> {
+    match outcome {
+        None => None,
+        Some(RecoverOutcome::Applied { recovered: true }) => {
+            Some(("Agent reset to idle.".to_string(), false))
+        }
+        Some(RecoverOutcome::Applied { recovered: false }) => Some((
+            "Server reported the agent did not leave the degraded state.".to_string(),
+            true,
+        )),
+        Some(RecoverOutcome::Failed(message)) => Some((message.clone(), true)),
+    }
+}
+
+// WHY(#5800): backend exposes POST /api/v1/nous/{id}/recover (reset a
+// degraded actor to idle) with no UI caller, so an operator watching an
+// agent sit in "degraded" had no action to take. This mirrors the
+// fire_config_reload spawn/request/state-update shape: no optimistic flip,
+// busy button while pending, same connection/parse/status error surface.
+fn fire_agent_recover(
+    mut store: Signal<ToggleStore>,
+    config: Signal<ConnectionConfig>,
+    id: skene::id::NousId,
+) {
+    store.write().begin_recover(&id);
+
+    let cfg = config.read().clone();
+
+    spawn(async move {
+        let client = match authenticated_client(&cfg) {
+            Ok(client) => client,
+            Err(err) => {
+                store.write().resolve_recover_failure(&id, err.to_string());
+                return;
+            }
+        };
+        let url = agent_recover_url(&cfg.server_url, id.as_str());
+
+        // NOTE: no body -- the agent is identified by the path segment and
+        // recovery takes no parameters.
+        let result = client.post(&url).send().await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<NousRecoverResponse>().await {
+                    Ok(body) => {
+                        store.write().resolve_recover_success(&id, body.recovered);
+                    }
+                    Err(err) => {
+                        store.write().resolve_recover_failure(
+                            &id,
+                            format!("failed to parse recover response: {err}"),
+                        );
+                    }
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                store
+                    .write()
+                    .resolve_recover_failure(&id, status_failure_message(status, resp).await);
+            }
+            Err(e) => {
+                store
+                    .write()
+                    .resolve_recover_failure(&id, format!("connection error: {e}"));
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use super::reload_summary;
-    use crate::state::ops::{FeatureFlag, ReloadOutcome, ToggleStore};
-
     use skene::api::routes::config::{feature_flags_url, reload_url};
+    use skene::api::routes::nous::agent_recover_url;
+    use skene::id::NousId;
+
+    use super::{recover_summary, reload_summary};
+    use crate::state::ops::{FeatureFlag, RecoverOutcome, ReloadOutcome, ToggleStore};
 
     #[test]
     fn feature_flags_url_uses_put_section_endpoint() {
@@ -1039,6 +1167,88 @@ mod tests {
         assert_eq!(
             reload_url("http://localhost:8080/"),
             "http://localhost:8080/api/v1/config/reload"
+        );
+    }
+
+    #[test]
+    fn agent_recover_url_uses_recover_endpoint() {
+        assert_eq!(
+            agent_recover_url("https://example.com", "alpha"),
+            "https://example.com/api/v1/nous/alpha/recover"
+        );
+    }
+
+    #[test]
+    fn agent_recover_url_percent_encodes_the_id() {
+        assert_eq!(
+            agent_recover_url("http://localhost:8080/", "a/b"),
+            "http://localhost:8080/api/v1/nous/a%2Fb/recover"
+        );
+    }
+
+    #[test]
+    fn recover_summary_none_when_no_outcome_yet() {
+        assert_eq!(recover_summary(None), None);
+    }
+
+    #[test]
+    fn recover_summary_reports_reset_when_recovered() {
+        let summary = recover_summary(Some(&RecoverOutcome::Applied { recovered: true })).unwrap();
+        assert_eq!(summary.0, "Agent reset to idle.");
+        assert!(!summary.1, "a successful reset is not an error");
+    }
+
+    #[test]
+    fn recover_summary_flags_a_server_reported_non_recovery() {
+        let summary = recover_summary(Some(&RecoverOutcome::Applied { recovered: false })).unwrap();
+        assert!(
+            summary.1,
+            "the actor staying degraded must surface as an error"
+        );
+    }
+
+    #[test]
+    fn recover_summary_surfaces_the_failure_message() {
+        let summary =
+            recover_summary(Some(&RecoverOutcome::Failed("server returned 404".into()))).unwrap();
+        assert_eq!(summary.0, "server returned 404");
+        assert!(summary.1);
+    }
+
+    #[test]
+    fn recover_state_is_scoped_to_the_agent_it_targets() {
+        let mut store = ToggleStore::new();
+        let alpha: NousId = "alpha".into();
+        let beta: NousId = "beta".into();
+
+        store.begin_recover(&alpha);
+        assert!(store.is_recovering(&alpha));
+        assert!(
+            !store.is_recovering(&beta),
+            "an in-flight recovery must not mark a different agent busy"
+        );
+
+        store.resolve_recover_success(&alpha, true);
+        assert!(!store.is_recovering(&alpha));
+        assert!(store.recover_outcome_for(&alpha).is_some());
+        assert!(
+            store.recover_outcome_for(&beta).is_none(),
+            "an outcome must not render against a different agent"
+        );
+    }
+
+    #[test]
+    fn beginning_a_recovery_clears_the_previous_outcome() {
+        let mut store = ToggleStore::new();
+        let alpha: NousId = "alpha".into();
+
+        store.resolve_recover_failure(&alpha, "connection error".into());
+        assert!(store.recover_outcome_for(&alpha).is_some());
+
+        store.begin_recover(&alpha);
+        assert!(
+            store.recover_outcome_for(&alpha).is_none(),
+            "a stale outcome beside a spinner reads as this attempt's result"
         );
     }
 
