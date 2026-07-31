@@ -13,7 +13,13 @@ workspace = true
 
 [features]
 default = ["graph-algo", "reranker"]
-graph-algo = []
+# WHY: krites owns the graph algorithms and `mneme/graph-algo` forwards here,
+# so this must forward on to krites rather than terminate. It resolves the same
+# way today only because krites is depended on with default features and its
+# default already includes graph-algo — the chain held by coincidence, not by
+# declaration. The `?` keeps krites optional: the forward applies only when a
+# feature that pulls krites in (mneme-engine) is already enabled.
+graph-algo = ["krites?/graph-algo"]
 reranker = ["dep:reqwest", "dep:rustls", "dep:tokio"]
 gliner = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 nuextract = ["dep:ort", "dep:tokio", "dep:tokenizers"]
