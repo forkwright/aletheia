@@ -186,7 +186,7 @@ impl<'a> GlinerExtractionProvider<'a> {
         let (shape, data) = tokio::task::spawn_blocking(move || {
             let mut session = session
                 .lock()
-                .map_err(|_| provider_failed("lock_session", "mutex poisoned"))?;
+                .map_err(|_poisoned| provider_failed("lock_session", "mutex poisoned"))?;
             let outputs = session
                 .run(ort::inputs![
                     "input_ids" => Tensor::from_array((Shape::new([1, usize_to_i64(input_ids.len())?]), input_ids))
@@ -209,7 +209,10 @@ impl<'a> GlinerExtractionProvider<'a> {
             let (shape, data) = logits
                 .try_extract_tensor::<f32>()
                 .map_err(|err| provider_failed("view_logits", err))?;
-            Ok::<_, BookkeepingError>((shape, data.to_vec()))
+            // WHY: `shape` and `data` both borrow `outputs`, which borrows the
+            // `MutexGuard`; neither may escape the closure. `data` was already
+            // copied, so the shape must be owned too.
+            Ok::<_, BookkeepingError>((shape.clone(), data.to_vec()))
         })
         .await
         .map_err(|err| provider_failed("spawn_blocking", err))??;
