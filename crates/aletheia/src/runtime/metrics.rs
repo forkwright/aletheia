@@ -30,6 +30,15 @@ impl oikonomos::maintenance::BackupMetricsRecorder for RuntimeBackupMetricsRecor
     fn record_backup_duration(&self, duration_secs: f64, success: bool) {
         mneme::metrics::record_backup_duration(duration_secs, success);
     }
+
+    fn record_backup_state(
+        &self,
+        last_success_unixtime: Option<i64>,
+        enabled: bool,
+        interval_secs: u64,
+    ) {
+        mneme::metrics::record_backup_state(last_success_unixtime, enabled, interval_secs);
+    }
 }
 
 pub(super) fn task_state_component(agent_id: &str) -> String {

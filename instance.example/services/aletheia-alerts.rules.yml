@@ -47,14 +47,33 @@ groups:
           summary: "LLM provider circuit breaker opened"
           runbook_url: "../docs/OBSERVABILITY.md#llmcircuitbreakeropen"
 
+      # Freshness comes from the newest backup manifest on disk, not from this
+      # process's attempt counter. A counter-based rule went silent exactly when
+      # it mattered: with no successful backup ever, or after a restart, the
+      # status="ok" series does not exist and `increase(...) == 0` matches
+      # nothing instead of alerting. (#6445)
+      - alert: BackupMissing
+        expr: |
+          aletheia_backup_enabled == 1
+            and aletheia_backup_last_success_unixtime_seconds == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backups are enabled but no valid backup set exists on disk"
+          runbook_url: "../docs/OBSERVABILITY.md#backupmissing"
+
       - alert: BackupStale
         expr: |
-          increase(aletheia_backup_duration_seconds_count{status="ok"}[48h]) == 0
-        for: 1m
+          aletheia_backup_enabled == 1
+            and aletheia_backup_last_success_unixtime_seconds > 0
+            and (time() - aletheia_backup_last_success_unixtime_seconds)
+                > (2 * aletheia_backup_interval_seconds)
+        for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "No successful backup in the last 48 hours"
+          summary: "Newest backup is older than twice the configured backup interval"
           runbook_url: "../docs/OBSERVABILITY.md#backupstale"
 
       - alert: BackgroundTaskFailures
