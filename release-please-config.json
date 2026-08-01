@@ -28,6 +28,16 @@
                     "type": "toml",
                     "path": "Cargo.lock",
                     "jsonpath": "$.package[?(!@.source)].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "crates/theatron/proskenion/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name == 'koina')].version"
+                },
+                {
+                    "type": "toml",
+                    "path": "crates/theatron/proskenion/Cargo.lock",
+                    "jsonpath": "$.package[?(@.name == 'skene')].version"
                 }
             ]
         }
