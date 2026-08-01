@@ -38,6 +38,12 @@ pub enum ClassifyError {
         "classification produced invalid output shape (expected 4-element array, got {len} elements)"
     ))]
     InvalidOutputShape { len: usize },
+
+    /// Artifact declares the classes in an order the runtime cannot interpret.
+    #[snafu(display(
+        "classifier artifact class order mismatch: expected [{expected}], artifact declares [{actual}]"
+    ))]
+    ClassOrderMismatch { expected: String, actual: String },
 }
 
 /// Result type alias for author-classifier operations.
