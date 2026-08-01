@@ -620,3 +620,88 @@ fn ensure_consolidation_audit_owner_scope_backfills_pre_6380_table() {
         );
     }
 }
+
+/// Insert one row into the current-schema `consolidation_audit` table.
+fn insert_audit_row(store: &KnowledgeStore, id: &str, nous_id: &str, consolidated_at: &str) {
+    let script = r"
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
+   original_fact_ids, consolidated_fact_ids, consolidated_at] <-
+    [[$id, $nous_id, 'entity_overflow', 'entity-1', 3, 1, '[]', '[]', $consolidated_at]]
+
+:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
+                          consolidated_count, original_fact_ids,
+                          consolidated_fact_ids, consolidated_at}
+";
+    let mut params = BTreeMap::new();
+    params.insert("id".to_owned(), DataValue::Str(id.into()));
+    params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+    params.insert(
+        "consolidated_at".to_owned(),
+        DataValue::Str(consolidated_at.into()),
+    );
+    store
+        .run_mut_query(script, params)
+        .expect("insert audit row");
+}
+
+fn audit_ids(store: &KnowledgeStore) -> BTreeSet<String> {
+    let rows = store
+        .run_query("?[id] := *consolidation_audit{id}", BTreeMap::new())
+        .expect("query consolidation_audit ids");
+    (0..rows.row_count())
+        .map(|i| rows.get_string(i, "id").expect("row has an id"))
+        .collect()
+}
+
+/// Requirement #5674: `consolidation_audit` is append-only with no TTL and no
+/// row cap, so it grows for the life of the instance. Pruning must remove the
+/// rows outside the retention window and nothing else — in particular it must
+/// not reach across `nous_id`, because the relation is shared by every nous on
+/// the store.
+#[test]
+fn prune_consolidation_audit_removes_only_expired_rows_for_the_named_nous() {
+    let store = make_store();
+
+    insert_audit_row(&store, "audit-old-1", "nous-a", "2026-01-01T00:00:00Z");
+    insert_audit_row(&store, "audit-old-2", "nous-a", "2026-02-01T00:00:00Z");
+    insert_audit_row(&store, "audit-fresh", "nous-a", "2026-06-01T00:00:00Z");
+    insert_audit_row(&store, "audit-other", "nous-b", "2026-01-01T00:00:00Z");
+
+    let (examined, removed) = store
+        .prune_consolidation_audit("nous-a", "2026-03-01T00:00:00Z")
+        .expect("prune must succeed");
+
+    assert_eq!(examined, 3, "examined counts only nous-a's rows");
+    assert_eq!(removed, 2, "both pre-cutoff nous-a rows are removed");
+
+    let remaining = audit_ids(&store);
+    assert_eq!(
+        remaining,
+        ["audit-fresh".to_owned(), "audit-other".to_owned()]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        "the in-window row and the other nous's row must both survive"
+    );
+}
+
+/// A cutoff older than every stored row must delete nothing and report it,
+/// rather than reporting a successful prune it did not perform.
+#[test]
+fn prune_consolidation_audit_is_a_no_op_when_nothing_is_expired() {
+    let store = make_store();
+
+    insert_audit_row(&store, "audit-fresh", "nous-a", "2026-06-01T00:00:00Z");
+
+    let (examined, removed) = store
+        .prune_consolidation_audit("nous-a", "2026-01-01T00:00:00Z")
+        .expect("prune must succeed");
+
+    assert_eq!(examined, 1);
+    assert_eq!(removed, 0);
+    assert_eq!(
+        audit_ids(&store),
+        ["audit-fresh".to_owned()]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+    );
+}

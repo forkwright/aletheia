@@ -561,6 +561,13 @@ pub struct CronTaskSettings {
     pub reflection: CronTaskEntry,
     /// Graph cleanup: periodic knowledge graph orphan removal.
     pub graph_cleanup: CronTaskEntry,
+    /// Retention window, in days, for `consolidation_audit` rows removed by
+    /// the graph-cleanup task.
+    ///
+    /// WHY(#5674): the relation is append-only with no TTL, so without a
+    /// window it grows for the life of the instance. `0` disables audit
+    /// pruning and leaves every row in place.
+    pub graph_cleanup_audit_retention_days: u32,
 }
 
 impl Default for CronTaskSettings {
@@ -578,6 +585,10 @@ impl Default for CronTaskSettings {
                 enabled: false,
                 interval_secs: 7 * 24 * 3600,
             },
+            // WHY 90 days: long enough that an operator investigating a
+            // consolidation regression still has the audit trail for the
+            // quarter, short enough that the relation stops growing.
+            graph_cleanup_audit_retention_days: 90,
         }
     }
 }

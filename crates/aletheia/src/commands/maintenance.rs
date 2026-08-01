@@ -65,7 +65,13 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
     };
     let config = load_config(&oikos).whatever_context("failed to load config")?;
     let maint = build_config(&oikos, &config.maintenance, &config.prompt_audit);
-    let knowledge_executor = build_knowledge_executor(&oikos);
+    let knowledge_executor = build_knowledge_executor(
+        &oikos,
+        config
+            .maintenance
+            .cron_tasks
+            .graph_cleanup_audit_retention_days,
+    );
 
     match action {
         Action::Status { json } => {
@@ -541,7 +547,10 @@ async fn run_prosoche_self_audit(maint: &MaintenanceConfig) {
 }
 
 #[cfg(feature = "recall")]
-fn build_knowledge_executor(oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
+fn build_knowledge_executor(
+    oikos: &Oikos,
+    audit_retention_days: u32,
+) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
     let kb_path = oikos.knowledge_db();
@@ -550,12 +559,19 @@ fn build_knowledge_executor(oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanc
     }
     let store = KnowledgeStore::open_fjall(&kb_path, KnowledgeConfig::default()).ok()?;
     Some(Arc::new(
-        crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(store),
+        // WHY (#5674): `aletheia maintenance run knowledge-gc` must prune on the
+        // operator's configured window, not the adapter's built-in default —
+        // otherwise the CLI and the daemon disagree about what they deleted.
+        crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(store)
+            .with_audit_retention_days(audit_retention_days),
     ))
 }
 
 #[cfg(not(feature = "recall"))]
-fn build_knowledge_executor(_oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
+fn build_knowledge_executor(
+    _oikos: &Oikos,
+    _audit_retention_days: u32,
+) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
     None
 }
 
