@@ -861,19 +861,44 @@ fn estimate_cost_with_cache_exact_match_wins_over_family_sibling() {
 /// cache tokens off a default `ModelPricing`, so an unconfigured model would
 /// start reporting a nonzero cost — the one case the base estimator is
 /// documented to report as zero.
+///
+/// WHY the populated case: an empty map misses at every tier for free, so it
+/// cannot tell a correct miss from a lookup that matches too much. A family or
+/// prefix tier widened to match any key still returns `None` when there is no
+/// key to return. The populated entries below share no family with the queried
+/// model and are not dash-prefixes of it, so they must all be rejected — which
+/// is what makes a widened tier observable here.
 #[test]
 fn estimate_cost_with_cache_unpriced_model_stays_zero() {
-    let pricing = HashMap::new();
     let usage = Usage {
         input_tokens: 1_000,
         output_tokens: 100,
         cache_read_tokens: 5_000,
         cache_write_tokens: 2_000,
     };
-    let cost = estimate_cost_with_cache(&pricing, "some-unknown-model", &usage);
+
+    let empty = HashMap::new();
+    let cost = estimate_cost_with_cache(&empty, "some-unknown-model", &usage);
     assert!(
         cost.abs() < f64::EPSILON,
         "an unconfigured model must cost zero even with cache tokens, got {cost}"
+    );
+
+    let mut populated = HashMap::new();
+    for key in ["claude-sonnet-4-6", "claude-haiku-4-5"] {
+        populated.insert(
+            key.to_owned(),
+            ModelPricing {
+                input_cost_per_mtok: 1_000.0,
+                output_cost_per_mtok: 1_000.0,
+            },
+        );
+    }
+    let cost = estimate_cost_with_cache(&populated, "some-unknown-model", &usage);
+    assert!(
+        cost.abs() < f64::EPSILON,
+        "a model matching no configured entry must cost zero even when other \
+         entries are priced, got {cost}"
     );
 }
 
