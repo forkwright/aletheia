@@ -1,5 +1,9 @@
 //! Git diff parsing and string utilities.
 
+use unicode_width::UnicodeWidthStr;
+
+use crate::text::truncate_cols_ellipsis;
+
 use super::types::{DiffChange, DiffHunk, FileDiff};
 
 pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
@@ -105,16 +109,16 @@ pub(crate) fn parse_hunk_header(line: &str) -> (usize, usize) {
     (old_start, new_start)
 }
 
-// WHY(#6542): width here is a char count, not a byte count. `format!("{s:<width$}")`
-// in the else branch pads by char count, so a byte-length guard made the two halves
-// disagree: a multi-byte string could satisfy `s.len() >= width` while holding fewer
-// than `width` chars, taking the truncating branch and returning the string unpadded
-// — the column it was meant to fill then collapsed. Measuring chars throughout keeps
-// the guard, the truncation and the padding on one unit.
+// WHY(#6542): `width` is a terminal column budget, so every measurement here is in
+// display columns. Bytes, chars and columns all disagree on non-ASCII — a CJK char
+// is three bytes, one char and two columns — and the pane is composed against the
+// column grid, so measuring in any other unit lands the `│` separator off its
+// column. `format!("{s:<width$}")` pads by chars and so cannot be used for this.
 pub(super) fn pad_to(s: String, width: usize) -> String {
-    if s.chars().count() >= width {
-        s.chars().take(width).collect()
+    let cols = UnicodeWidthStr::width(s.as_str());
+    if cols >= width {
+        truncate_cols_ellipsis(&s, width)
     } else {
-        format!("{s:<width$}")
+        format!("{s}{}", " ".repeat(width - cols))
     }
 }

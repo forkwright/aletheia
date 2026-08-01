@@ -29,6 +29,7 @@ pub(crate) use types::{DiffChange, DiffHunk, DiffMode, FileDiff, collapse_to_rep
 mod tests {
     use ratatui::layout::Rect;
     use ratatui::text::Span;
+    use unicode_width::UnicodeWidthStr;
 
     use super::*;
 
@@ -394,14 +395,14 @@ diff --git a/b.rs b/b.rs
     // ── Content truncation ──
 
     #[test]
-    fn side_by_side_keeps_multibyte_line_within_char_budget() {
-        // WHY(#6542): at width 80 the content budget is 32 chars. This line is 16
-        // chars but 48 bytes, so a byte-length guard truncated it with an ellipsis
-        // at half the budget it was asked to respect. Non-ASCII only: the ASCII
-        // path measured identically either way, which is why this survived.
+    fn side_by_side_keeps_multibyte_line_within_column_budget() {
+        // WHY(#6542): at width 80 the content budget is 32 columns. This line is 16
+        // chars, 48 bytes and exactly 32 columns, so it fills the budget precisely
+        // and must render whole. A byte-length guard truncated it with an ellipsis
+        // at well under the budget it was asked to respect.
         let theme = default_theme();
         let content = "日本語のテキストはここにあります";
-        assert_eq!(content.chars().count(), 16);
+        assert_eq!(UnicodeWidthStr::width(content), 32);
         assert!(content.len() > 32, "must exceed the budget in bytes");
 
         let diff = compute_diff("test.rs", &format!("{content}\n"), "changed\n");
@@ -413,7 +414,7 @@ diff --git a/b.rs b/b.rs
 
         assert!(
             rendered.contains(content),
-            "content within the char budget must render whole, got: {rendered}"
+            "content within the column budget must render whole, got: {rendered}"
         );
         assert!(
             !rendered.contains('…'),
@@ -421,19 +422,48 @@ diff --git a/b.rs b/b.rs
         );
     }
 
+    #[test]
+    fn side_by_side_separator_sits_at_the_half_width_column() {
+        // WHY(#6542): the panes are laid out in terminal columns, but truncation and
+        // padding both measured chars. A CJK char is one char and two columns, so a
+        // line of them built a left pane twice as wide as its half and pushed the
+        // `│` out of the column it marks. ASCII measures the same either way, which
+        // is why only non-ASCII content exposes it.
+        let theme = default_theme();
+        let content = "日本語のテキストはここにあります";
+        let diff = compute_diff("test.rs", &format!("{content}\n"), "changed\n");
+
+        for line in render_side_by_side(&diff, 80, &theme) {
+            let Some(sep) = line.spans.iter().position(|s| s.content.as_ref() == "│") else {
+                continue;
+            };
+            let left: String = line.spans[..sep]
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect();
+            assert_eq!(
+                UnicodeWidthStr::width(left.as_str()),
+                40,
+                "left pane must occupy exactly half of width 80, got: {left}"
+            );
+        }
+    }
+
     // ── pad_to ──
 
     #[test]
-    fn pad_to_pads_multibyte_string_to_char_width() {
-        // WHY(#6542): 3 chars, 9 bytes. The byte guard read this as already at or
-        // past width 6 and returned it truncated instead of padded, collapsing the
-        // column the padding exists to hold open.
-        assert_eq!(pad_to("日本語".to_owned(), 6), "日本語   ");
+    fn pad_to_leaves_string_that_already_fills_the_columns() {
+        // WHY(#6542): 3 chars, 9 bytes, 6 columns. It already fills a 6-column
+        // budget exactly, so no padding is due. Counting chars instead appended
+        // three spaces and overran the pane by three columns.
+        assert_eq!(pad_to("日本語".to_owned(), 6), "日本語");
     }
 
     #[test]
-    fn pad_to_truncates_by_chars_not_bytes() {
-        assert_eq!(pad_to("日本語テスト".to_owned(), 3), "日本語");
+    fn pad_to_truncates_by_columns_not_chars() {
+        // WHY(#6542): 6 chars but 12 columns. A 3-column budget fits one CJK char
+        // plus the ellipsis; taking 3 chars would have rendered 6 columns.
+        assert_eq!(pad_to("日本語テスト".to_owned(), 3), "日…");
     }
 
     #[test]
