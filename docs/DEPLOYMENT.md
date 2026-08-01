@@ -260,11 +260,15 @@ without an LLM provider and the health check reports degraded status.
 
 ### TLS (optional)
 
-Generate self-signed certificates for LAN use:
+Generate self-signed certificates for LAN use. The output directory defaults to
+`config/tls` under the resolved instance root, so pass `-r` (or set
+`ALETHEIA_ROOT`) rather than relying on the working directory:
 
 ```bash
-aletheia tls generate --output-dir instance/config/tls --days 365 --san localhost --san 192.168.1.100
+aletheia -r /srv/aletheia/instance tls generate --days 365 --san localhost --san 192.168.1.100
 ```
+
+Pass `--output-dir` only to write somewhere other than the instance root.
 
 Then enable in config:
 
