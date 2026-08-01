@@ -809,6 +809,48 @@ fn estimate_cost_with_cache_prefix_dated_snapshot_resolution_includes_cache_toke
     );
 }
 
+/// INVARIANT: the base and cache components of one estimate are priced from the
+/// same pricing entry.
+///
+/// WHY: `estimate_cost_with_cache` resolves pricing twice — once inside
+/// `estimate_cost` for the base, then again for the cache ratios. Both entries
+/// below sit in family `claude-sonnet-4`, so the family tier has two candidates
+/// and only the two self-consistent totals are admissible; a blend of the two
+/// price points is not.
+#[test]
+fn estimate_cost_with_cache_does_not_blend_two_pricing_entries() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-sonnet-4-6".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 3.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    pricing.insert(
+        "claude-sonnet-4-9".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 30.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    let usage = Usage {
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        cache_read_tokens: 1_000_000,
+        cache_write_tokens: 0,
+    };
+    let cost = estimate_cost_with_cache(&pricing, "claude-sonnet-4-20250514", &usage);
+    let ratio = koina::models::cache_read_ratio();
+    let consistent_low = 3.0 + 3.0 * ratio;
+    let consistent_high = 30.0 + 30.0 * ratio;
+    assert!(
+        (cost - consistent_low).abs() < 0.0001 || (cost - consistent_high).abs() < 0.0001,
+        "base and cache must resolve to one entry; got {cost}, \
+         admissible: {consistent_low} or {consistent_high}"
+    );
+}
+
 #[test]
 fn model_family_strips_last_segment() {
     assert_eq!(
