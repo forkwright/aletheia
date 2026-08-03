@@ -627,6 +627,40 @@ pub(crate) async fn execute_builtin_with_behavior(
                 report.bytes_freed
             ))))
         }
+        BuiltinTask::ProsocheAuditRotation => {
+            let (config, report_dir) = maintenance.map_or_else(
+                || {
+                    let defaults = crate::maintenance::MaintenanceConfig::default();
+                    (defaults.prosoche_audit.clone(), defaults.prosoche_audit_dir)
+                },
+                |m| (m.prosoche_audit.clone(), m.prosoche_audit_dir.clone()),
+            );
+            let report = tokio::task::spawn_blocking(move || {
+                let _span = tracing::info_span!("prosoche_audit_rotation").entered();
+                crate::maintenance::ProsocheAuditRotator::new(config, report_dir).prune()
+            })
+            .await
+            .context(error::BlockingJoinSnafu {
+                context: "prosoche audit rotation",
+            })??;
+
+            tracing::info!(
+                files_pruned = report.files_pruned,
+                files_retained = report.files_retained,
+                malformed_files_skipped = report.malformed_files_skipped,
+                fallback_files_pruned = report.fallback_files_pruned,
+                bytes_freed = report.bytes_freed,
+                "maintenance: prosoche audit rotation complete"
+            );
+            Ok(ExecutionResult::success(Some(format!(
+                "{} reports pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
+                report.files_pruned,
+                report.files_retained,
+                report.malformed_files_skipped,
+                report.fallback_files_pruned,
+                report.bytes_freed
+            ))))
+        }
         BuiltinTask::RetentionExecution => {
             let Some(executor) = retention_executor else {
                 tracing::info!("retention execution skipped — no executor configured");
@@ -810,6 +844,7 @@ async fn execute_knowledge_task(
             | BuiltinTask::ProposeRules
             | BuiltinTask::InstanceBackup
             | BuiltinTask::PromptAuditRotation
+            | BuiltinTask::ProsocheAuditRotation
             | BuiltinTask::RoutingStoreRefresh => error::TaskFailedSnafu {
                 task_id: format!("{builtin_clone:?}"),
                 reason: "non-knowledge task routed to knowledge executor".to_owned(),

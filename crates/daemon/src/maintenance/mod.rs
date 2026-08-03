@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use koina::system::{Environment, RealSystem};
 
+/// Shared retention primitive for directories of date-stamped files.
+pub(crate) mod dated_file_retention;
 /// Database size monitoring with configurable warning and alert thresholds.
 pub(crate) mod db_monitor;
 /// Instance drift detection: compare a live instance against the example template.
@@ -17,6 +19,8 @@ pub mod instance_backup;
 pub(crate) mod knowledge;
 /// Prompt audit log retention pruning (#3411).
 pub(crate) mod prompt_audit_rotation;
+/// Prosoche audit report retention pruning (#5667).
+pub(crate) mod prosoche_audit_rotation;
 /// Canonical maintenance task registry.
 pub mod registry;
 /// Data retention policy execution trait and summary types.
@@ -24,6 +28,7 @@ pub(crate) mod retention;
 /// Trace file rotation, gzip compression, and archive pruning.
 pub(crate) mod trace_rotation;
 
+pub use dated_file_retention::DatedFileRetentionReport;
 pub use db_monitor::{
     DbHealth, DbInfo, DbMonitor, DbMonitoringConfig, DbShape, DbSizeReport, DbStatus,
     SessionStoreHealthProbe,
@@ -42,6 +47,7 @@ pub use knowledge::{
 pub use prompt_audit_rotation::{
     PromptAuditRetentionConfig, PromptAuditRetentionReport, PromptAuditRotator,
 };
+pub use prosoche_audit_rotation::{ProsocheAuditRetentionConfig, ProsocheAuditRotator};
 pub use registry::{
     MaintenanceConfigSection, MaintenanceRuntimeCapabilities, MaintenanceTaskDefinition,
     MaintenanceTaskImplementationStatus, MaintenanceTaskOwner, ManualMaintenanceTask,
@@ -108,6 +114,8 @@ pub struct MaintenanceConfig {
     pub propose_rules: ProposeRulesConfig,
     /// Prompt audit log retention pruning (#3411).
     pub prompt_audit: PromptAuditRetentionConfig,
+    /// Prosoche audit report retention pruning (#5667).
+    pub prosoche_audit: ProsocheAuditRetentionConfig,
     /// Runtime handle for refreshing empirical routing after-action stats.
     pub after_action_store: Option<Arc<aletheia_routing::AfterActionStore>>,
 }
@@ -131,6 +139,7 @@ impl Default for MaintenanceConfig {
             cron: crate::cron::CronConfig::default(),
             propose_rules: ProposeRulesConfig::default(),
             prompt_audit: PromptAuditRetentionConfig::default(),
+            prosoche_audit: ProsocheAuditRetentionConfig::default(),
             after_action_store: None,
         }
     }

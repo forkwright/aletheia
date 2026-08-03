@@ -13,8 +13,9 @@ use oikonomos::maintenance::{
     MaintenanceConfig, MaintenanceConfigSection, MaintenanceRuntimeCapabilities,
     MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus, MaintenanceTaskOwner,
     ManualMaintenanceTask, PromptAuditRetentionConfig, PromptAuditRotator, ProposeRulesConfig,
-    RetentionExecutor, TraceRotationConfig, TraceRotator, maintenance_task_by_id,
-    maintenance_task_registry, manual_maintenance_task_ids, manual_maintenance_tasks,
+    ProsocheAuditRetentionConfig, ProsocheAuditRotator, RetentionExecutor, TraceRotationConfig,
+    TraceRotator, maintenance_task_by_id, maintenance_task_registry, manual_maintenance_task_ids,
+    manual_maintenance_tasks,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditOutcome, ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
@@ -315,6 +316,20 @@ async fn run_task(
                 .whatever_context("prompt audit rotation failed")?;
             println!(
                 "prompt-audit-rotation: {} files pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
+                report.files_pruned,
+                report.files_retained,
+                report.malformed_files_skipped,
+                report.fallback_files_pruned,
+                report.bytes_freed
+            );
+        }
+        ManualMaintenanceTask::ProsocheAuditRotation => {
+            let report =
+                ProsocheAuditRotator::new(maint.prosoche_audit.clone(), &maint.prosoche_audit_dir)
+                    .prune()
+                    .whatever_context("prosoche audit rotation failed")?;
+            println!(
+                "prosoche-audit-rotation: {} reports pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
                 report.files_pruned,
                 report.files_retained,
                 report.malformed_files_skipped,
@@ -740,6 +755,9 @@ pub(crate) fn build_config(
         backup_metrics: None,
         prosoche_audit_dir: oikos.data().join("prosoche-audits"),
         propose_rules: ProposeRulesConfig::default(),
+        // NOTE: the window is the built-in default; no taxis setting exposes it
+        // yet, so the directory is bounded without widening the config schema.
+        prosoche_audit: ProsocheAuditRetentionConfig::default(),
         prompt_audit: PromptAuditRetentionConfig {
             enabled: prompt_audit.enabled,
             log_dir: prompt_audit
