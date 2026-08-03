@@ -73,12 +73,13 @@ fn finish_dispatch_aggregates_sessions() {
     let spec = sample_dispatch_spec();
     let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
 
-    let sess1 = store.create_session(&dispatch_id, 1).unwrap();
-    let sess2 = store.create_session(&dispatch_id, 2).unwrap();
+    store.create_session(&dispatch_id, 1).unwrap();
+    store.create_session(&dispatch_id, 2).unwrap();
 
     store
         .update_session(
-            &sess1,
+            &dispatch_id,
+            1,
             SessionUpdate {
                 status: Some(SessionStatus::Success),
                 cost_usd: Some(1.50),
@@ -89,7 +90,8 @@ fn finish_dispatch_aggregates_sessions() {
         .unwrap();
     store
         .update_session(
-            &sess2,
+            &dispatch_id,
+            2,
             SessionUpdate {
                 status: Some(SessionStatus::Success),
                 cost_usd: Some(2.25),
@@ -158,11 +160,12 @@ fn update_session_partial() {
     let (_dir, store) = setup_test_store();
     let spec = sample_dispatch_spec();
     let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
-    let session_id = store.create_session(&dispatch_id, 1).unwrap();
+    store.create_session(&dispatch_id, 1).unwrap();
 
     store
         .update_session(
-            &session_id,
+            &dispatch_id,
+            1,
             SessionUpdate {
                 status: Some(SessionStatus::Success),
                 cost_usd: Some(0.42),
@@ -186,9 +189,44 @@ fn update_session_partial() {
 #[test]
 fn update_nonexistent_session_returns_not_found() {
     let (_dir, store) = setup_test_store();
-    let id = SessionId::new("01NONEXISTENT");
-    let result = store.update_session(&id, SessionUpdate::default());
+    let dispatch_id = DispatchId::new("01NONEXISTENT");
+    let result = store.update_session(&dispatch_id, 1, SessionUpdate::default());
     assert!(result.is_err());
+}
+
+#[test]
+fn update_session_does_not_read_unrelated_sessions() {
+    let (_dir, store) = setup_test_store();
+    let spec = sample_dispatch_spec();
+    let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+    store.create_session(&dispatch_id, 1).unwrap();
+
+    // WHY(#5687): an undeserializable record under another dispatch, keyed so
+    // it sorts ahead of the target — dispatch IDs are ULIDs, which never begin
+    // with an all-zero timestamp. A scan-based lookup walks the whole `session:`
+    // prefix and deserializes every record it passes, so it reaches this one
+    // first and fails; a keyed point read never touches it. Without a record
+    // the old code would choke on, this test would pass either way and assert
+    // nothing about how the record is addressed.
+    let poison_key = schema::session_key(&DispatchId::new("00000000000000000000000000"), 1);
+    store
+        .keyspace
+        .insert(poison_key.as_bytes(), b"not-a-session-record".as_slice())
+        .unwrap();
+
+    store
+        .update_session(
+            &dispatch_id,
+            1,
+            SessionUpdate {
+                cost_usd: Some(1.25),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let sessions = store.list_sessions_for_dispatch(&dispatch_id).unwrap();
+    assert_eq!(sessions[0].cost_usd, 1.25);
 }
 
 // ── Lesson tests ──

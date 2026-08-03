@@ -7,6 +7,11 @@ on:
     paths:
       - "crates/theatron/proskenion/**"
       - "crates/theatron/skene/**"
+      # WHY: koina is a path dependency of both proskenion and skene, but is a
+      # root-workspace member. Root CI compiles koina without ever building
+      # proskenion (workspace-excluded), so a breaking koina API change is
+      # invisible until the tag-triggered release job compiles the desktop app.
+      - "crates/koina/**"
       - "scripts/*proskenion*"
       - ".github/workflows/desktop.yml"
   push:
@@ -14,6 +19,7 @@ on:
     paths:
       - "crates/theatron/proskenion/**"
       - "crates/theatron/skene/**"
+      - "crates/koina/**"
       - "scripts/*proskenion*"
       - ".github/workflows/desktop.yml"
 
@@ -62,6 +68,9 @@ jobs:
         uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2
         with:
           tool: nextest
+
+      - name: Check desktop CI path filter covers proskenion path deps
+        run: scripts/check-desktop-ci-paths.py
 
       - name: Check proskenion theatron pins
         run: scripts/check-proskenion-pins.py

@@ -2809,13 +2809,12 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.33.2"
+version = "0.33.8"
 dependencies = [
  "jiff",
  "prometheus-client",
  "rand 0.10.1",
  "regex",
- "reqwest",
  "rustix",
  "serde",
  "serde_json",
@@ -2824,6 +2823,7 @@ dependencies = [
  "toml 1.1.0+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "url",
  "zeroize",
 ]
 
@@ -4954,7 +4954,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.33.2"
+version = "0.33.8"
 dependencies = [
  "bytes",
  "form_urlencoded",

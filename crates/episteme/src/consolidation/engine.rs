@@ -3,6 +3,7 @@
 //! Implements consolidation operations on `KnowledgeStore`: candidate
 //! identification, LLM-driven consolidation execution, and audit trail.
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use tracing::instrument;
 
 use super::{
@@ -551,15 +552,46 @@ impl KnowledgeStore {
         &self,
         fact_id: &FactId,
     ) -> Result<Option<FactMultiplicity>, ConsolidationError> {
+        // WHY(#5672): the batched read is the single owner of the
+        // `fact_multiplicity` decode, so the one-fact path delegates rather
+        // than carrying a second copy that can drift from it.
+        let mut found = self.get_fact_multiplicities(std::slice::from_ref(fact_id))?;
+        Ok(found.remove(fact_id.as_str()))
+    }
+
+    /// Look up multiplicity metadata for many consolidated facts in one query.
+    ///
+    /// Returns a map keyed by fact id. Facts with no multiplicity record are
+    /// absent from the map rather than present with a zero value, matching
+    /// [`Self::get_fact_multiplicity`]'s `None`.
+    ///
+    /// WHY(#5672): the recall hot path enriches a whole result set at once.
+    /// A constant rule of the requested ids joined against the stored relation
+    /// keeps the lookup indexed while costing one query instead of one per fact.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the knowledge store query fails.
+    #[instrument(skip(self, fact_ids))]
+    pub fn get_fact_multiplicities(
+        &self,
+        fact_ids: &[FactId],
+    ) -> Result<std::collections::HashMap<String, FactMultiplicity>, ConsolidationError> {
+        if fact_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
         let script = r"
-?[source_count, first_observed, last_observed, time_spread_seconds, recorded_at] :=
-    *fact_multiplicity{fact_id: $fact_id, source_count, first_observed,
+requested[fact_id] <- $fact_ids
+?[fact_id, source_count, first_observed, last_observed, time_spread_seconds, recorded_at] :=
+    requested[fact_id],
+    *fact_multiplicity{fact_id, source_count, first_observed,
                        last_observed, time_spread_seconds, recorded_at}
 ";
         let mut params = BTreeMap::new();
         params.insert(
-            "fact_id".to_owned(),
-            DataValue::Str(fact_id.as_str().into()),
+            "fact_ids".to_owned(),
+            crate::knowledge_store::id_rows(fact_ids.iter().map(FactId::as_str)),
         );
         let result = self.run_query(script, params).map_err(|e| {
             StoreSnafu {
@@ -568,28 +600,40 @@ impl KnowledgeStore {
             .build()
         })?;
 
-        if result.is_empty() {
-            return Ok(None);
+        let mut found = std::collections::HashMap::with_capacity(result.rows().len());
+        for row in 0..result.rows().len() {
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let id_str = result.get_string(row, "fact_id").unwrap_or_default();
+            let Ok(fact_id) = FactId::new(&id_str) else {
+                // WHY: a stored id that no longer parses is unreachable by any
+                // caller, which addresses facts by `FactId`. Skip rather than
+                // fail the whole batch.
+                tracing::warn!(fact_id = %id_str, "skipping undecodable fact id in multiplicity batch");
+                continue;
+            };
+            let source_count_i64 = result.get_i64(row, "source_count").unwrap_or(0);
+            let source_count = u32::try_from(source_count_i64).unwrap_or(0);
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let first_observed = result.get_string(row, "first_observed").unwrap_or_default();
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let last_observed = result.get_string(row, "last_observed").unwrap_or_default();
+            let time_spread_seconds = result.get_i64(row, "time_spread_seconds").unwrap_or(0);
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let recorded_at = result.get_string(row, "recorded_at").unwrap_or_default();
+
+            found.insert(
+                id_str,
+                FactMultiplicity {
+                    fact_id,
+                    source_count,
+                    first_observed,
+                    last_observed,
+                    time_spread_seconds,
+                    recorded_at,
+                },
+            );
         }
-
-        let source_count_i64 = result.get_i64(0, "source_count").unwrap_or(0);
-        let source_count = u32::try_from(source_count_i64).unwrap_or(0);
-        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
-        let first_observed = result.get_string(0, "first_observed").unwrap_or_default();
-        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
-        let last_observed = result.get_string(0, "last_observed").unwrap_or_default();
-        let time_spread_seconds = result.get_i64(0, "time_spread_seconds").unwrap_or(0);
-        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
-        let recorded_at = result.get_string(0, "recorded_at").unwrap_or_default();
-
-        Ok(Some(FactMultiplicity {
-            fact_id: fact_id.clone(),
-            source_count,
-            first_observed,
-            last_observed,
-            time_spread_seconds,
-            recorded_at,
-        }))
+        Ok(found)
     }
 
     /// Mark each batch's original facts as superseded by its canonical output.
@@ -614,7 +658,7 @@ impl KnowledgeStore {
                     .build()
                 })?;
 
-            for original_id in &batch.source_fact_ids {
+            for original_id in batch.source_fact_ids.iter() {
                 self.supersede_fact_by_id(original_id, superseding_id.as_str(), &now_str)
                     .map_err(|e| {
                         StoreSnafu {
@@ -971,7 +1015,7 @@ struct LlmConsolidationResult {
 
 /// Source facts and canonical first output for one nonempty batch.
 struct BatchSupersession {
-    source_fact_ids: Vec<FactId>,
+    source_fact_ids: Arc<[FactId]>,
     consolidated_fact_index: usize,
 }
 
@@ -1022,21 +1066,26 @@ fn run_llm_consolidation(
         // correct first output separately for every batch in the run.
         let first_consolidated_fact_index = all_consolidated.len();
 
-        let batch_fact_ids: Vec<FactId> = batch.iter().map(|s| s.id.clone()).collect();
+        // WHY(#5694): this metadata is per-batch, not per-fact — every output
+        // fact in the batch carries the same values. Building each one as an
+        // `Arc<[_]>` once means the loop below clones a pointer per output
+        // fact instead of a full copy of seven batch-length vectors.
+        let batch_fact_ids: Arc<[FactId]> = batch.iter().map(|s| s.id.clone()).collect();
         // WHY(#3634): preserve source recorded_at timestamps so multiplicity
         // metadata (time-spread, first/last observation) can be computed
         // downstream. Aligned by index to `batch_fact_ids`.
-        let batch_recorded_ats: Vec<String> = batch.iter().map(|s| s.recorded_at.clone()).collect();
+        let batch_recorded_ats: Arc<[String]> =
+            batch.iter().map(|s| s.recorded_at.clone()).collect();
         // WHY(#4660): carry source policy metadata through the batch so the
         // conservative merge in `persist_consolidated_facts` can enforce scope,
         // project, sensitivity, and visibility boundaries.
-        let batch_scopes: Vec<Option<MemoryScope>> = batch.iter().map(|s| s.scope).collect();
-        let batch_project_ids: Vec<Option<String>> =
+        let batch_scopes: Arc<[Option<MemoryScope>]> = batch.iter().map(|s| s.scope).collect();
+        let batch_project_ids: Arc<[Option<String>]> =
             batch.iter().map(|s| s.project_id.clone()).collect();
-        let batch_sensitivities: Vec<FactSensitivity> =
+        let batch_sensitivities: Arc<[FactSensitivity]> =
             batch.iter().map(|s| s.sensitivity).collect();
-        let batch_visibilities: Vec<Visibility> = batch.iter().map(|s| s.visibility).collect();
-        let batch_session_ids: Vec<Option<String>> =
+        let batch_visibilities: Arc<[Visibility]> = batch.iter().map(|s| s.visibility).collect();
+        let batch_session_ids: Arc<[Option<String>]> =
             batch.iter().map(|s| s.source_session_id.clone()).collect();
         // WHY(#5853): a consolidated fact's confidence reflects the sources
         // it was built from rather than a fixed constant.
@@ -1047,17 +1096,13 @@ fn run_llm_consolidation(
                 content: entry.content.clone(),
                 confidence: batch_confidence,
                 tier: "inferred".to_owned(),
-                // WHY: each ConsolidatedFact owns its source IDs, while the
-                // audit result and supersession plan also retain them after
-                // the loop; Arc<[FactId]> would eliminate this clone but
-                // ConsolidatedFact is part of the public API.
-                source_fact_ids: batch_fact_ids.clone(),
-                source_recorded_ats: batch_recorded_ats.clone(),
-                source_scopes: batch_scopes.clone(),
-                source_project_ids: batch_project_ids.clone(),
-                source_sensitivities: batch_sensitivities.clone(),
-                source_visibilities: batch_visibilities.clone(),
-                source_session_ids: batch_session_ids.clone(),
+                source_fact_ids: Arc::clone(&batch_fact_ids),
+                source_recorded_ats: Arc::clone(&batch_recorded_ats),
+                source_scopes: Arc::clone(&batch_scopes),
+                source_project_ids: Arc::clone(&batch_project_ids),
+                source_sensitivities: Arc::clone(&batch_sensitivities),
+                source_visibilities: Arc::clone(&batch_visibilities),
+                source_session_ids: Arc::clone(&batch_session_ids),
             });
         }
 
@@ -1132,9 +1177,9 @@ fn merge_consolidated_metadata(
     for (((scope, project_id), src_sensitivity), src_visibility) in consolidated
         .source_scopes
         .iter()
-        .zip(&consolidated.source_project_ids)
-        .zip(&consolidated.source_sensitivities)
-        .zip(&consolidated.source_visibilities)
+        .zip(consolidated.source_project_ids.iter())
+        .zip(consolidated.source_sensitivities.iter())
+        .zip(consolidated.source_visibilities.iter())
     {
         sensitivity = sensitivity.max(*src_sensitivity);
 

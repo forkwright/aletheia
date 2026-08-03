@@ -29,7 +29,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 | `aletheia_llm_tokens_total` | Counter | `provider`, `direction` | Token consumption (`input` or `output`) |
 | `aletheia_llm_cost_usd_total` | Counter | `provider` | Estimated spend in USD |
 | `aletheia_llm_cache_tokens_total` | Counter | `provider`, `direction` | Prompt cache tokens (`read` or `write`) |
-| `aletheia_llm_circuit_breaker_transitions_total` | Counter | `provider`, `from`, `to` | Circuit breaker state changes |
+| `aletheia_llm_circuit_breaker_transitions_total` | Counter | `provider`, `from`, `to` | Provider health state changes (`up`, `degraded`, `down`, `probing`) |
 | `aletheia_llm_concurrency_limit` | Gauge | `provider` | Current adaptive concurrency limit |
 | `aletheia_llm_concurrency_in_flight` | Gauge | `provider` | In-flight requests |
 | `aletheia_llm_concurrency_latency_ewma_seconds` | Gauge | `provider` | EWMA latency estimate used by the limiter |
@@ -71,8 +71,13 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 |--------|------|--------|-------------|
 | `aletheia_sessions_total` | Counter | `session_type` | Sessions created |
 | `aletheia_backup_duration_seconds` | Histogram | `status` | Backup duration (`ok` or `error`) |
+| `aletheia_backup_last_success_unixtime_seconds` | Gauge | — | `created_at` of the newest valid backup manifest on disk; `0` when none exists |
+| `aletheia_backup_enabled` | Gauge | — | Whether periodic whole-instance backups are enabled |
+| `aletheia_backup_interval_seconds` | Gauge | — | Configured interval between automatic backups |
 
-> **Note:** `aletheia_backup_duration_seconds` is live. The runtime installs `RuntimeBackupMetricsRecorder` (`crates/aletheia/src/runtime/mod.rs:594`), and the daemon's whole-instance backup task records each run (`crates/daemon/src/execution.rs:436-448`). Semantics: failures always record `status="error"`; success records `status="ok"` only when the run produced a backup (`report.backup_path.is_some()`) — skipped backups record nothing. Backup staleness alerting should use the local backup set cadence configured under `[maintenance.backup]`.
+> **Note:** `aletheia_backup_duration_seconds` measures *attempts*, not freshness. Failures always record `status="error"`; success records `status="ok"` only when the run produced a backup (`report.backup_path.is_some()`) — skipped backups record nothing. Because the family is process-local, the `status="ok"` series does not exist until this process completes a backup, so it cannot answer "is there a recent backup".
+>
+> **Freshness comes from the three gauges instead.** They are derived from the backup manifests on disk (`InstanceBackup::latest_backup_time`), published at startup and after every backup outcome — success, skip, and failure — so they survive a restart and are defined even when no backup has ever run. A backup set counts only once it has been atomically renamed into place with a parseable `manifest.json`; an in-progress staging directory or a truncated manifest reads as *no backup*, never as a fresh one. An unreadable backup directory also reports `0`, because at a recovery boundary an unreadable store is not evidence of a good backup.
 
 ### Knowledge and embeddings
 
@@ -115,7 +120,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 | LLM p95 latency | < 30 seconds | `aletheia_llm_request_duration_seconds` |
 | LLM TTFT p95 | < 5 seconds | `aletheia_llm_ttft_seconds` |
 | Nous inbox saturation | 0 sustained events over 5 minutes | `increase(aletheia_nous_inbox_saturation_total[5m])` |
-| Backup freshness | Deployment-defined | `aletheia_backup_duration_seconds{status="ok"}` (recorded per completed whole-instance backup) |
+| Backup freshness | Deployment-defined | `aletheia_backup_last_success_unixtime_seconds` (newest backup manifest on disk; `0` when none) |
 | Hung processes | 0 | `aletheia_watchdog_hung_processes` |
 | Extraction confidence inflation | < 5% of batches over 10 minutes | `rate(aletheia_extraction_confidence_inflation_total[10m]) / rate(aletheia_knowledge_extractions_total{status="ok"}[10m])` |
 | Extraction rejection/empty rate | < 50% of batches over 10 minutes | `rate(aletheia_extraction_quality_total{status="rejected"}[10m]) / rate(aletheia_extraction_quality_total[10m])` |
@@ -168,7 +173,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 
 ### LlmCircuitBreakerOpen
 
-**What it means:** A circuit breaker transitioned to `open` state within the last 5 minutes.
+**What it means:** A provider's circuit opened — its health tracker transitioned to `down` within the last 5 minutes, after consecutive failures, a rate limit, or an auth failure.
 
 **Impact:** Requests to that provider are failing fast. Fallback or retry logic is active.
 
@@ -176,21 +181,33 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 1. Identify the provider from the `provider` label
 2. Check provider health and credentials
 3. Review `aletheia_llm_requests_total{status="error"}` for error patterns
-4. If transient, the circuit should auto-recover to `half_open` then `closed`
+4. If transient, the circuit auto-recovers: after the cooldown one request is elected as a probe (`down` -> `probing`), and success returns it to `up`. An auth failure never auto-recovers.
 5. If persistent, switch primary provider in config or rotate credentials
+
+### BackupMissing
+
+**What it means:** Backups are enabled but no valid backup set exists on disk — `aletheia_backup_last_success_unixtime_seconds` is `0`.
+
+**Impact:** No recovery point exists at all. This is the first-boot and never-succeeded case, and it is more severe than a stale backup.
+
+**Steps:**
+1. Confirm the backup directory is readable and is the path configured under `[maintenance.backup]`. An unreadable directory reports `0` deliberately, so this alert also covers a permissions or mount fault.
+2. Check `aletheia_backup_duration_seconds{status="error"}` for failed runs (failures are always recorded).
+3. Look for a stranded staging directory in the backup dir: a set only becomes valid once it is renamed into place with a parseable `manifest.json`.
+4. Run a manual backup and confirm the gauge becomes non-zero.
 
 ### BackupStale
 
-**What it means:** No successful backup has completed in the last 48 hours.
+**What it means:** The newest backup on disk is older than twice the configured backup interval (`aletheia_backup_interval_seconds`), not a fixed 48 hours.
 
-**Impact:** Data loss risk. Session store cannot be restored to a recent point in time.
+**Impact:** Data loss risk. The instance cannot be restored to a recent point in time.
 
 **Steps:**
 1. Check `aletheia_backup_duration_seconds{status="error"}` for failed backup runs (failures are always recorded).
-2. If the metric has no recent `status="ok"` samples, recent runs either failed or were skipped (skipped runs record nothing). Check the daemon's whole-instance backup task and run a manual backup if needed.
+2. If there are no recent `status="ok"` samples, recent runs either failed or were skipped (skipped runs record nothing). Check the daemon's whole-instance backup task.
 3. Check cron timer: `systemctl --user list-timers | grep aletheia`
 4. Review backup script logs: `journalctl --user -u aletheia-health --since "48 hours ago"`
-5. Test a restore from the latest backup file
+5. Test a restore from the latest backup set
 
 ### BackgroundTaskFailures
 

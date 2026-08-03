@@ -718,9 +718,6 @@ fn down_reason_label(reason: &DownReason) -> String {
 /// - `"warn"` with `"degraded: no-embeddings"` when the real provider failed
 ///   to load and the server is running BM25-only (#3380)
 fn check_embedding_provider(state: &HealthState) -> HealthCheck {
-    /// Sentinel model name emitted by `LazyEmbeddingProvider` while still loading.
-    const LOADING_MODEL_NAME: &str = "embedding-loading";
-
     let Some(provider) = state.embedding_provider.as_ref() else {
         return HealthCheck {
             name: "embedding_provider".to_owned(),
@@ -732,7 +729,7 @@ fn check_embedding_provider(state: &HealthState) -> HealthCheck {
 
     let model_name = provider.model_name();
 
-    if model_name == LOADING_MODEL_NAME {
+    if model_name == mneme::embedding::LOADING_MODEL_NAME {
         HealthCheck {
             name: "embedding_provider".to_owned(),
             status: "warn".to_owned(),

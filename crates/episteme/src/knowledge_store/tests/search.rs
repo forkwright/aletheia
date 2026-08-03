@@ -908,3 +908,288 @@ mod correctness {
             .expect("correct-dimension embedding must be accepted");
     }
 }
+
+/// Seed one `fact_multiplicity` side-index row for a fact.
+fn seed_multiplicity(store: &crate::knowledge_store::KnowledgeStore, fact_id: &str, count: i64) {
+    store
+        .run_mut_query(
+            &format!(
+                r#"
+                ?[fact_id, source_count, first_observed, last_observed,
+                  time_spread_seconds, recorded_at] <- [
+                    ["{fact_id}", {count}, "2026-06-01T00:00:00Z", "2026-06-02T00:00:00Z",
+                     86400, "2026-06-02T00:00:00Z"]
+                ]
+                :put fact_multiplicity {{ fact_id => source_count, first_observed,
+                                          last_observed, time_spread_seconds, recorded_at }}
+                "#
+            ),
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed fact multiplicity");
+}
+
+fn test_fact_id(id: &str) -> crate::id::FactId {
+    crate::id::FactId::new(id).expect("valid test fact id")
+}
+
+/// #5672: the batched side-index read must key every row back to the fact that
+/// asked for it, and must return only the requested ids.
+///
+/// WHY: the per-fact loop this replaced could not mis-attribute a row — it
+/// only ever held one fact at a time. A batched join can, so the failure this
+/// asserts against is new with the batching and is the reason it exists.
+#[test]
+fn get_fact_multiplicities_keys_each_record_to_its_own_fact() {
+    let store = make_store();
+    for id in ["f-mult-a", "f-mult-b", "f-mult-c", "f-mult-other"] {
+        store
+            .insert_fact(&make_fact(id, "agent-a", "multiplicity batch fact"))
+            .expect("insert fact");
+    }
+    seed_multiplicity(&store, "f-mult-a", 3);
+    seed_multiplicity(&store, "f-mult-c", 7);
+    seed_multiplicity(&store, "f-mult-other", 11);
+
+    let requested = [
+        test_fact_id("f-mult-a"),
+        test_fact_id("f-mult-b"),
+        test_fact_id("f-mult-c"),
+    ];
+    let found = store
+        .get_fact_multiplicities(&requested)
+        .expect("batched multiplicity read");
+
+    assert_eq!(
+        found.get("f-mult-a").map(|m| m.source_count),
+        Some(3),
+        "each requested fact must carry its own source_count; got {found:?}"
+    );
+    assert_eq!(
+        found.get("f-mult-c").map(|m| m.source_count),
+        Some(7),
+        "each requested fact must carry its own source_count; got {found:?}"
+    );
+    assert!(
+        !found.contains_key("f-mult-b"),
+        "a requested fact with no multiplicity record must be absent, not defaulted; got {found:?}"
+    );
+    assert!(
+        !found.contains_key("f-mult-other"),
+        "the batch must return only the requested ids, not every row in the relation; got {found:?}"
+    );
+}
+
+/// #5672: the one-fact lookup delegates to the batched read, so it must keep
+/// returning `Some` for a recorded fact and `None` for an unrecorded one.
+#[test]
+fn get_fact_multiplicity_resolves_through_the_batched_read() {
+    let store = make_store();
+    for id in ["f-single-a", "f-single-b"] {
+        store
+            .insert_fact(&make_fact(id, "agent-a", "single multiplicity fact"))
+            .expect("insert fact");
+    }
+    seed_multiplicity(&store, "f-single-a", 5);
+
+    let present = store
+        .get_fact_multiplicity(&test_fact_id("f-single-a"))
+        .expect("multiplicity read");
+    assert_eq!(
+        present.map(|m| m.source_count),
+        Some(5),
+        "a recorded fact must still resolve through the delegating single read"
+    );
+
+    let absent = store
+        .get_fact_multiplicity(&test_fact_id("f-single-b"))
+        .expect("multiplicity read");
+    assert!(
+        absent.is_none(),
+        "a fact with no multiplicity record must read as None, got {absent:?}"
+    );
+}
+
+/// #5672: `enrich_source_counts` now reads the side-index once for the whole
+/// result set; each result must still receive its own `source_count`.
+#[test]
+fn search_text_for_recall_enriches_source_count_per_fact() {
+    let store = make_store();
+    store
+        .insert_fact(&make_fact(
+            "f-conv-a",
+            "agent-a",
+            "convergence enrichment marker alpha",
+        ))
+        .expect("insert fact");
+    store
+        .insert_fact(&make_fact(
+            "f-conv-b",
+            "agent-a",
+            "convergence enrichment marker beta",
+        ))
+        .expect("insert fact");
+    seed_multiplicity(&store, "f-conv-a", 4);
+    seed_multiplicity(&store, "f-conv-b", 9);
+
+    let results = store
+        .search_text_for_recall("convergence enrichment marker", 10)
+        .expect("bm25 recall");
+
+    let alpha = results
+        .iter()
+        .find(|r| r.source_id == "f-conv-a")
+        .expect("alpha fact present in recall results");
+    let beta = results
+        .iter()
+        .find(|r| r.source_id == "f-conv-b")
+        .expect("beta fact present in recall results");
+    assert_eq!(
+        alpha.source_count, 4,
+        "batched source-count enrichment must not cross facts"
+    );
+    assert_eq!(
+        beta.source_count, 9,
+        "batched source-count enrichment must not cross facts"
+    );
+}
+
+/// #5672: `enrich_recall_results` now reads `fact_entities` once for the whole
+/// result set; each fact must still take the max `PageRank` of *its own*
+/// entities.
+#[test]
+fn search_text_for_recall_enriches_graph_importance_per_fact() {
+    let store = make_store();
+    let alpha_fact = make_fact(
+        "f-gi-a",
+        "agent-a",
+        "graph importance batching marker alpha",
+    );
+    let beta_fact = make_fact("f-gi-b", "agent-a", "graph importance batching marker beta");
+    store.insert_fact(&alpha_fact).expect("insert alpha fact");
+    store.insert_fact(&beta_fact).expect("insert beta fact");
+
+    let alpha_entity = make_entity("entity-gi-a", "Alpha Entity", "topic");
+    let beta_entity = make_entity("entity-gi-b", "Beta Entity", "topic");
+    store
+        .insert_entity(&alpha_entity)
+        .expect("insert alpha entity");
+    store
+        .insert_entity(&beta_entity)
+        .expect("insert beta entity");
+    store
+        .insert_fact_entity(&alpha_fact.id, &alpha_entity.id)
+        .expect("link alpha fact to alpha entity");
+    store
+        .insert_fact_entity(&beta_fact.id, &beta_entity.id)
+        .expect("link beta fact to beta entity");
+
+    store
+        .run_mut_query(
+            r#"
+            ?[entity_id, score_type, score, cluster_id, updated_at] <- [
+                ["entity-gi-a", "pagerank", 0.25, -1, "2026-06-01T00:00:00Z"],
+                ["entity-gi-b", "pagerank", 0.80, -1, "2026-06-01T00:00:00Z"]
+            ]
+            :put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+            "#,
+            std::collections::BTreeMap::new(),
+        )
+        .expect("seed pagerank scores");
+
+    let results = store
+        .search_text_for_recall("graph importance batching marker", 10)
+        .expect("bm25 recall");
+
+    let alpha = results
+        .iter()
+        .find(|r| r.source_id == "f-gi-a")
+        .expect("alpha fact present in recall results");
+    let beta = results
+        .iter()
+        .find(|r| r.source_id == "f-gi-b")
+        .expect("beta fact present in recall results");
+    assert!(
+        (alpha.graph_importance - 0.25).abs() < 1e-9,
+        "alpha must take its own entity's PageRank, got {}",
+        alpha.graph_importance
+    );
+    assert!(
+        (beta.graph_importance - 0.80).abs() < 1e-9,
+        "beta must take its own entity's PageRank, got {}",
+        beta.graph_importance
+    );
+}
+
+/// #5672: `hydrate_recall_scope_visibility` now reads `facts` once for the
+/// whole result set; each result must still receive its own scope, visibility
+/// and sensitivity.
+#[test]
+fn search_vectors_hydrates_scope_and_visibility_per_fact() {
+    use crate::knowledge::{FactSensitivity, MemoryScope};
+
+    let store = make_store();
+    let mut alpha_fact = make_fact("f-hyd-a", "agent-a", "hydration batching marker alpha");
+    alpha_fact.visibility = Visibility::Shared;
+    alpha_fact.scope = Some(MemoryScope::Project);
+    alpha_fact.sensitivity = FactSensitivity::Internal;
+    let mut beta_fact = make_fact("f-hyd-b", "agent-a", "hydration batching marker beta");
+    beta_fact.visibility = Visibility::Published;
+    beta_fact.scope = Some(MemoryScope::User);
+    beta_fact.sensitivity = FactSensitivity::Confidential;
+    store.insert_fact(&alpha_fact).expect("insert alpha fact");
+    store.insert_fact(&beta_fact).expect("insert beta fact");
+
+    let mut alpha_chunk = make_embedding(
+        "emb-hyd-a",
+        "hydration batching marker alpha",
+        "f-hyd-a",
+        "agent-a",
+    );
+    alpha_chunk.embedding = vec![0.9, 0.1, 0.0, 0.0];
+    let mut beta_chunk = make_embedding(
+        "emb-hyd-b",
+        "hydration batching marker beta",
+        "f-hyd-b",
+        "agent-a",
+    );
+    beta_chunk.embedding = vec![0.1, 0.9, 0.0, 0.0];
+    store
+        .insert_embedding(&alpha_chunk)
+        .expect("insert alpha embedding");
+    store
+        .insert_embedding(&beta_chunk)
+        .expect("insert beta embedding");
+
+    let results = store
+        .search_vectors(vec![0.5, 0.5, 0.0, 0.0], 5, 20)
+        .expect("vector search");
+
+    let alpha = results
+        .iter()
+        .find(|r| r.source_id == "f-hyd-a")
+        .expect("alpha fact present in vector results");
+    let beta = results
+        .iter()
+        .find(|r| r.source_id == "f-hyd-b")
+        .expect("beta fact present in vector results");
+
+    assert_eq!(
+        (alpha.scope, alpha.visibility, alpha.sensitivity),
+        (
+            Some(MemoryScope::Project),
+            Visibility::Shared,
+            FactSensitivity::Internal
+        ),
+        "batched hydration must not cross facts"
+    );
+    assert_eq!(
+        (beta.scope, beta.visibility, beta.sensitivity),
+        (
+            Some(MemoryScope::User),
+            Visibility::Published,
+            FactSensitivity::Confidential
+        ),
+        "batched hydration must not cross facts"
+    );
+}
