@@ -85,6 +85,20 @@ impl Default for ProposeRulesConfig {
 pub trait BackupMetricsRecorder: std::fmt::Debug + Send + Sync {
     /// Record one backup attempt duration.
     fn record_backup_duration(&self, duration_secs: f64, success: bool);
+
+    /// Publish persisted backup state: the newest valid manifest's timestamp
+    /// (`None` when no backup set exists), whether backups are enabled, and
+    /// the configured interval. (#6445)
+    ///
+    /// WHY: attempt duration answers "did a backup just run here"; freshness
+    /// alerting needs "is there a recent backup on disk", which survives a
+    /// restart and is defined even when this process has run no backup.
+    fn record_backup_state(
+        &self,
+        last_success_unixtime: Option<i64>,
+        enabled: bool,
+        interval_secs: u64,
+    );
 }
 
 /// Aggregated maintenance configuration for all daemon tasks.

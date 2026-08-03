@@ -697,6 +697,15 @@ impl RuntimeBuilder {
         );
         maintenance_config.after_action_store = Some(Arc::clone(&after_action_store));
         maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
+        // WHY(#6445): publish backup freshness from the manifests on disk
+        // before any backup runs. Without this the series only appears after
+        // this process completes a backup, so a restart — or an instance that
+        // has never backed up at all — exports nothing and BackupStale cannot
+        // fire.
+        oikonomos::maintenance::instance_backup::publish_backup_state(
+            &maintenance_config.instance_backup,
+            &RuntimeBackupMetricsRecorder,
+        );
         maintenance_config.session_store_health_probe =
             Some(Arc::new(RuntimeSessionStoreHealthProbe {
                 session_store: Arc::clone(&session_store),

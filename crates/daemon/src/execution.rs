@@ -560,6 +560,7 @@ pub(crate) async fn execute_builtin_with_behavior(
                 .map_or_else(InstanceBackupConfig::default, |m| m.instance_backup.clone());
             let backup_metrics = maintenance.and_then(|m| m.backup_metrics.clone());
             let started = Instant::now();
+            let scan_config = config.clone();
             let backup_result = tokio::task::spawn_blocking(move || {
                 let _span = tracing::info_span!("instance_backup").entered();
                 InstanceBackup::new(config).create_backup()
@@ -569,6 +570,18 @@ pub(crate) async fn execute_builtin_with_behavior(
                 context: "whole-instance backup",
             })?;
             let duration_secs = started.elapsed().as_secs_f64();
+
+            // WHY(#6445): republish persisted state on every outcome — success,
+            // skip, and failure alike. A failed or skipped run does not change
+            // what is on disk, but it is exactly when an operator needs the
+            // freshness gauge to be current rather than absent.
+            if let Some(metrics) = backup_metrics.as_ref() {
+                crate::maintenance::instance_backup::publish_backup_state(
+                    &scan_config,
+                    metrics.as_ref(),
+                );
+            }
+
             let report = match backup_result {
                 Ok(report) => {
                     if report.backup_path.is_some()
