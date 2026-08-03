@@ -170,8 +170,8 @@ pub mod checkpoint;
 /// Training data types re-exported from eidos.
 pub mod training {
     pub use eidos::training::{
-        RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
-        TrainingRecord,
+        DecontaminationPolicy, RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION,
+        ToolOutcome, TrainingConfig, TrainingRecord,
     };
 }
 
@@ -199,7 +199,7 @@ pub mod consolidation {
 pub mod embedding {
     pub use episteme::embedding::{
         DegradedEmbeddingProvider, EmbeddingConfig, EmbeddingError, EmbeddingProvider,
-        create_provider, is_degraded_provider,
+        LOADING_MODEL_NAME, create_provider, is_degraded_provider,
     };
 
     #[cfg(any(test, feature = "test-support"))]
@@ -276,7 +276,9 @@ pub mod metrics {
         record_extraction_correction, record_extraction_quality, record_recall_duration,
         register as register_knowledge,
     };
-    pub use graphe::metrics::{record_backup_duration, register as register_sessions};
+    pub use graphe::metrics::{
+        record_backup_duration, record_backup_state, register as register_sessions,
+    };
 }
 
 /// Memory manifest types used by side-query selection.

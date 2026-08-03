@@ -1,5 +1,9 @@
 //! Git diff parsing and string utilities.
 
+use unicode_width::UnicodeWidthStr;
+
+use crate::text::truncate_cols_ellipsis;
+
 use super::types::{DiffChange, DiffHunk, FileDiff};
 
 pub(crate) fn parse_git_diff(raw: &str) -> Vec<FileDiff> {
@@ -105,37 +109,16 @@ pub(crate) fn parse_hunk_header(line: &str) -> (usize, usize) {
     (old_start, new_start)
 }
 
-// WARNING: not the same contract as `parodos::text::truncate_chars_ellipsis` —
-// the `s.len() <= max_chars` guard below compares byte length, not char count,
-// so multi-byte UTF-8 input can be truncated when it should pass through
-// unchanged (or vice versa). Do not collapse into the parodos helper without
-// first fixing this to a char-count guard.
-pub(crate) fn truncate_str(s: &str, max_chars: usize) -> String {
-    if s.len() <= max_chars {
-        s.to_string()
-    } else {
-        let mut end = max_chars.min(s.len());
-        while end > 0 && !s.is_char_boundary(end) {
-            end -= 1;
-        }
-        let truncated = s.get(..end).unwrap_or(s);
-        if end >= 2 {
-            format!(
-                "{}…",
-                truncated
-                    .get(..truncated.len().saturating_sub(1))
-                    .unwrap_or(truncated)
-            )
-        } else {
-            truncated.to_string()
-        }
-    }
-}
-
+// WHY(#6542): `width` is a terminal column budget, so every measurement here is in
+// display columns. Bytes, chars and columns all disagree on non-ASCII — a CJK char
+// is three bytes, one char and two columns — and the pane is composed against the
+// column grid, so measuring in any other unit lands the `│` separator off its
+// column. `format!("{s:<width$}")` pads by chars and so cannot be used for this.
 pub(super) fn pad_to(s: String, width: usize) -> String {
-    if s.len() >= width {
-        s.get(..width).unwrap_or(&s).to_string()
+    let cols = UnicodeWidthStr::width(s.as_str());
+    if cols >= width {
+        truncate_cols_ellipsis(&s, width)
     } else {
-        format!("{s:<width$}")
+        format!("{s}{}", " ".repeat(width - cols))
     }
 }

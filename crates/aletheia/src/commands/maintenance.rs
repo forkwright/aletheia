@@ -13,8 +13,9 @@ use oikonomos::maintenance::{
     MaintenanceConfig, MaintenanceConfigSection, MaintenanceRuntimeCapabilities,
     MaintenanceTaskDefinition, MaintenanceTaskImplementationStatus, MaintenanceTaskOwner,
     ManualMaintenanceTask, PromptAuditRetentionConfig, PromptAuditRotator, ProposeRulesConfig,
-    RetentionExecutor, TraceRotationConfig, TraceRotator, maintenance_task_by_id,
-    maintenance_task_registry, manual_maintenance_task_ids, manual_maintenance_tasks,
+    ProsocheAuditRetentionConfig, ProsocheAuditRotator, RetentionExecutor, TraceRotationConfig,
+    TraceRotator, maintenance_task_by_id, maintenance_task_registry, manual_maintenance_task_ids,
+    manual_maintenance_tasks,
 };
 use oikonomos::prosoche_audit::{ProsocheAuditOutcome, ProsocheAuditRunner, ProsocheState};
 use oikonomos::runner::TaskRunner;
@@ -65,7 +66,13 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
     };
     let config = load_config(&oikos).whatever_context("failed to load config")?;
     let maint = build_config(&oikos, &config.maintenance, &config.prompt_audit);
-    let knowledge_executor = build_knowledge_executor(&oikos);
+    let knowledge_executor = build_knowledge_executor(
+        &oikos,
+        config
+            .maintenance
+            .cron_tasks
+            .graph_cleanup_audit_retention_days,
+    );
 
     match action {
         Action::Status { json } => {
@@ -316,6 +323,20 @@ async fn run_task(
                 report.bytes_freed
             );
         }
+        ManualMaintenanceTask::ProsocheAuditRotation => {
+            let report =
+                ProsocheAuditRotator::new(maint.prosoche_audit.clone(), &maint.prosoche_audit_dir)
+                    .prune()
+                    .whatever_context("prosoche audit rotation failed")?;
+            println!(
+                "prosoche-audit-rotation: {} reports pruned, {} retained, {} malformed skipped, {} fallback-pruned, {} bytes freed",
+                report.files_pruned,
+                report.files_retained,
+                report.malformed_files_skipped,
+                report.fallback_files_pruned,
+                report.bytes_freed
+            );
+        }
         ManualMaintenanceTask::NousSelfAudit => run_self_audit(),
         ManualMaintenanceTask::ProsocheSelfAudit => run_prosoche_self_audit(maint).await,
         ManualMaintenanceTask::DecayRefresh
@@ -541,7 +562,10 @@ async fn run_prosoche_self_audit(maint: &MaintenanceConfig) {
 }
 
 #[cfg(feature = "recall")]
-fn build_knowledge_executor(oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
+fn build_knowledge_executor(
+    oikos: &Oikos,
+    audit_retention_days: u32,
+) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
     use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
     let kb_path = oikos.knowledge_db();
@@ -550,12 +574,19 @@ fn build_knowledge_executor(oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanc
     }
     let store = KnowledgeStore::open_fjall(&kb_path, KnowledgeConfig::default()).ok()?;
     Some(Arc::new(
-        crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(store),
+        // WHY (#5674): `aletheia maintenance run knowledge-gc` must prune on the
+        // operator's configured window, not the adapter's built-in default —
+        // otherwise the CLI and the daemon disagree about what they deleted.
+        crate::knowledge_maintenance::KnowledgeMaintenanceAdapter::new(store)
+            .with_audit_retention_days(audit_retention_days),
     ))
 }
 
 #[cfg(not(feature = "recall"))]
-fn build_knowledge_executor(_oikos: &Oikos) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
+fn build_knowledge_executor(
+    _oikos: &Oikos,
+    _audit_retention_days: u32,
+) -> Option<Arc<dyn KnowledgeMaintenanceExecutor>> {
     None
 }
 
@@ -724,6 +755,9 @@ pub(crate) fn build_config(
         backup_metrics: None,
         prosoche_audit_dir: oikos.data().join("prosoche-audits"),
         propose_rules: ProposeRulesConfig::default(),
+        // NOTE: the window is the built-in default; no taxis setting exposes it
+        // yet, so the directory is bounded without widening the config schema.
+        prosoche_audit: ProsocheAuditRetentionConfig::default(),
         prompt_audit: PromptAuditRetentionConfig {
             enabled: prompt_audit.enabled,
             log_dir: prompt_audit

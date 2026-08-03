@@ -299,6 +299,24 @@ pub struct EmbeddingMeta {
 #[cfg(feature = "mneme-engine")]
 use crate::query::queries;
 
+/// Build the payload for a `requested[id] <- $ids` constant rule: one
+/// single-column row per id.
+///
+/// WHY(#5672): a batched read joins a constant rule of the requested ids
+/// against the stored relation. The join binds the relation's key column, so
+/// each lookup stays indexed while the whole set costs one query instead of
+/// one per id. Filtering a full relation scan with `is_in` would batch the
+/// round-trips but lose the index, which is worse as the relation grows.
+#[cfg(feature = "mneme-engine")]
+pub(crate) fn id_rows<'a>(ids: impl Iterator<Item = &'a str>) -> crate::engine::DataValue {
+    crate::engine::DataValue::List(
+        ids.map(|id| {
+            crate::engine::DataValue::List(vec![crate::engine::DataValue::Str(id.into())])
+        })
+        .collect(),
+    )
+}
+
 /// Typed wrapper for raw Datalog query results.
 ///
 /// Returned by [`KnowledgeStore::run_query`] and related escape-hatch methods.

@@ -70,11 +70,21 @@ pub fn make_merge_decision(
                 classified.qa_verdict.unwrap_or(QaVerdictStatus::Unknown)
             ),
         },
-        MergeTier::Tier3Hold => MergeDecision {
-            pr_number,
-            action: MergeAction::HoldForArchitect("QA PARTIAL or hold flag".to_string()),
-            reason: "tier-3: QA PARTIAL or hold flag -- held for architect review".to_string(),
-        },
+        MergeTier::Tier3Hold => {
+            let cause = if matches!(classified.qa_verdict, None | Some(QaVerdictStatus::Unknown)) {
+                "QA verdict missing or UNKNOWN"
+            } else if classified.qa_verdict == Some(QaVerdictStatus::Partial) {
+                "QA PARTIAL"
+            } else {
+                "hold flag"
+            };
+
+            MergeDecision {
+                pr_number,
+                action: MergeAction::HoldForArchitect(cause.to_string()),
+                reason: format!("tier-3: {cause} -- held for architect review"),
+            }
+        }
         MergeTier::Tier4PublicApi => MergeDecision {
             pr_number,
             action: MergeAction::HoldForArchitect("public API surface change".to_string()),
@@ -126,6 +136,14 @@ pub fn classify_merge_tier(classified: &ClassifiedPr, diff: Option<&str>) -> Mer
     }
 
     if classified.qa_verdict == Some(QaVerdictStatus::Partial) {
+        return MergeTier::Tier3Hold;
+    }
+
+    // WHY: a missing or Unknown verdict means QA never produced a result, which
+    // is not evidence that the change is safe. Falling through to tier 1/2 here
+    // auto-merged on the strength of a check that never ran; unknown quality is
+    // a hold state, not a pass. (#5399)
+    if matches!(classified.qa_verdict, None | Some(QaVerdictStatus::Unknown)) {
         return MergeTier::Tier3Hold;
     }
 
@@ -400,16 +418,49 @@ mod tests {
     }
 
     #[test]
-    fn decision_unknown_qa_verdict_auto_merges() {
-        // WHY: When QA verdict is unknown (no QA data), default to auto-merge
-        // for backward compatibility. The steward should not block all PRs
-        // just because QA wasn't run.
+    fn decision_missing_qa_verdict_holds_for_architect() {
+        // WHY: a missing verdict means QA never ran. Auto-merging on that is
+        // fail-open -- the absence of a result is not a passing result. (#5399)
         let mut pr = make_classified(1, true, true);
         pr.qa_verdict = None;
         let opts = MergeOptions::default();
         let decision = make_merge_decision(&pr, &opts, None);
 
-        assert!(matches!(decision.action, MergeAction::Merge(_)));
+        assert!(
+            matches!(decision.action, MergeAction::HoldForArchitect(_)),
+            "missing QA verdict must hold, got {:?}",
+            decision.action
+        );
+    }
+
+    #[test]
+    fn decision_unknown_qa_verdict_holds_for_architect() {
+        let mut pr = make_classified(1, true, true);
+        pr.qa_verdict = Some(QaVerdictStatus::Unknown);
+        let opts = MergeOptions::default();
+        let decision = make_merge_decision(&pr, &opts, None);
+
+        assert!(
+            matches!(decision.action, MergeAction::HoldForArchitect(_)),
+            "UNKNOWN QA verdict must hold, got {:?}",
+            decision.action
+        );
+    }
+
+    #[test]
+    fn decision_pass_qa_verdict_still_auto_merges() {
+        // WHY: the fail-closed change must not block PRs that were actually
+        // measured and passed -- this is the verdict that could have gone red
+        // had the guard been written too broadly. (#5399)
+        let pr = make_classified(1, true, true);
+        let opts = MergeOptions::default();
+        let decision = make_merge_decision(&pr, &opts, None);
+
+        assert!(
+            matches!(decision.action, MergeAction::Merge(_)),
+            "PASS verdict must still auto-merge, got {:?}",
+            decision.action
+        );
     }
 
     #[test]

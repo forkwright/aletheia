@@ -4,18 +4,15 @@
 //! is append-only and rotates per-day by filename (`YYYY-MM-DD.jsonl`); this
 //! task enforces the retention window.
 
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 use jiff::civil::Date;
-use jiff::{Timestamp, ToSpan};
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
 
 use crate::error;
-
-const SECONDS_PER_DAY: u64 = 86_400;
+#[cfg(test)]
+use crate::maintenance::dated_file_retention::SECONDS_PER_DAY;
+use crate::maintenance::dated_file_retention::{DatedFileRetention, DatedFileRetentionReport};
 
 /// Configuration for prompt audit log retention.
 #[derive(Debug, Clone)]
@@ -53,6 +50,18 @@ pub struct PromptAuditRetentionReport {
     pub fallback_files_pruned: u32,
 }
 
+impl From<DatedFileRetentionReport> for PromptAuditRetentionReport {
+    fn from(report: DatedFileRetentionReport) -> Self {
+        Self {
+            files_pruned: report.files_pruned,
+            bytes_freed: report.bytes_freed,
+            files_retained: report.files_retained,
+            malformed_files_skipped: report.malformed_files_skipped,
+            fallback_files_pruned: report.fallback_files_pruned,
+        }
+    }
+}
+
 /// Prunes prompt-audit daily files past the retention window.
 pub struct PromptAuditRotator {
     config: PromptAuditRetentionConfig,
@@ -78,59 +87,17 @@ impl PromptAuditRotator {
         if !self.config.enabled {
             return Ok(PromptAuditRetentionReport::default());
         }
-        if !self.config.log_dir.exists() {
-            return Ok(PromptAuditRetentionReport::default());
+
+        let report = DatedFileRetention {
+            dir: &self.config.log_dir,
+            extension: "jsonl",
+            retention_days: self.config.retention_days,
+            parse_date: parse_audit_date,
+            label: "prompt audit",
         }
+        .prune()?;
 
-        let now = SystemTime::now();
-        let today = Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date();
-        let cutoff_date = today
-            .checked_sub(i64::from(self.config.retention_days).days())
-            .unwrap_or(today);
-        let max_age =
-            std::time::Duration::from_secs(u64::from(self.config.retention_days) * SECONDS_PER_DAY);
-
-        let dir = fs::read_dir(&self.config.log_dir).context(error::MaintenanceIoSnafu {
-            context: format!("reading prompt audit dir {}", self.config.log_dir.display()),
-        })?;
-
-        let mut report = PromptAuditRetentionReport::default();
-
-        for entry in dir {
-            let entry = entry.context(error::MaintenanceIoSnafu {
-                context: "reading prompt audit directory entry",
-            })?;
-            let path = entry.path();
-            if path.is_dir() {
-                continue;
-            }
-            // WHY: only prune `*.jsonl` files — leave any accidental sidecar
-            // files alone so operators can drop notes or reports next to the
-            // log directory without the daemon deleting them.
-            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                continue;
-            }
-
-            if let Some(audit_date) = parse_audit_date(&path) {
-                if audit_date < cutoff_date {
-                    prune_file(&path, &mut report, "pruning prompt audit file by date")?;
-                } else {
-                    report.files_retained += 1;
-                }
-            } else if prune_malformed_by_mtime(&entry, now, max_age, &mut report)? {
-                tracing::debug!(
-                    path = %path.display(),
-                    "pruned malformed prompt audit file by mtime fallback"
-                );
-            } else {
-                tracing::debug!(
-                    path = %path.display(),
-                    "retained malformed prompt audit file by mtime fallback"
-                );
-            }
-        }
-
-        Ok(report)
+        Ok(report.into())
     }
 }
 
@@ -142,60 +109,15 @@ fn parse_audit_date(path: &Path) -> Option<Date> {
     stem.parse::<Date>().ok()
 }
 
-fn prune_file(
-    path: &Path,
-    report: &mut PromptAuditRetentionReport,
-    reason: &str,
-) -> error::Result<()> {
-    let metadata = fs::metadata(path).context(error::MaintenanceIoSnafu {
-        context: format!("reading metadata for {}", path.display()),
-    })?;
-    let size = metadata.len();
-    fs::remove_file(path).context(error::MaintenanceIoSnafu {
-        context: format!("pruning {}", path.display()),
-    })?;
-    report.files_pruned += 1;
-    report.bytes_freed += size;
-    tracing::debug!(path = %path.display(), reason, "pruned prompt audit file");
-    Ok(())
-}
-
-fn prune_malformed_by_mtime(
-    entry: &fs::DirEntry,
-    now: SystemTime,
-    max_age: std::time::Duration,
-    report: &mut PromptAuditRetentionReport,
-) -> error::Result<bool> {
-    let path = entry.path();
-    let metadata = entry.metadata().context(error::MaintenanceIoSnafu {
-        context: format!("reading metadata for {}", path.display()),
-    })?;
-    let modified = metadata.modified().context(error::MaintenanceIoSnafu {
-        context: format!("reading mtime for {}", path.display()),
-    })?;
-
-    // kanon:ignore RUST/no-result-unwrap-or-default — future mtime is treated as not expired; zero duration correctly skips pruning
-    let age = now.duration_since(modified).unwrap_or_default();
-    if age > max_age {
-        let size = metadata.len();
-        fs::remove_file(&path).context(error::MaintenanceIoSnafu {
-            context: format!("pruning {}", path.display()),
-        })?;
-        report.files_pruned += 1;
-        report.fallback_files_pruned += 1;
-        report.bytes_freed += size;
-        return Ok(true);
-    }
-
-    report.malformed_files_skipped += 1;
-    Ok(false)
-}
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::fs;
     use std::os::unix::fs::PermissionsExt;
+    use std::time::SystemTime;
+
+    use jiff::{Timestamp, ToSpan};
 
     use super::*;
 

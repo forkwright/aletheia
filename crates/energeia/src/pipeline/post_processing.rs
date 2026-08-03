@@ -53,7 +53,7 @@ impl PipelineStage for PostProcessingStage {
             // rather than showing zero sessions for a completed dispatch.
             for outcome in &ctx.outcomes {
                 match store.create_session(store_id, outcome.prompt_number) {
-                    Ok(session_store_id) => {
+                    Ok(_) => {
                         let update = crate::store::records::SessionUpdate {
                             status: Some(outcome.status),
                             session_id: outcome.session_id.clone(),
@@ -63,7 +63,9 @@ impl PipelineStage for PostProcessingStage {
                             pr_url: outcome.pr_url.clone(),
                             error: outcome.error.clone(),
                         };
-                        if let Err(e) = store.update_session(&session_store_id, update) {
+                        if let Err(e) =
+                            store.update_session(store_id, outcome.prompt_number, update)
+                        {
                             tracing::warn!(
                                 error = %e,
                                 prompt_number = outcome.prompt_number,

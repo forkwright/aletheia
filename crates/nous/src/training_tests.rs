@@ -44,7 +44,7 @@ fn test_config_no_pii(path: &str, max_shard_bytes: u64) -> TrainingConfig {
         path: path.to_owned(),
         max_shard_bytes,
         pii_filter_enabled: false,
-        author_classifier_enabled: false,
+        decontamination_policy: DecontaminationPolicy::Disabled,
         author_classifier_threshold: 0.85,
     }
 }
@@ -84,6 +84,9 @@ fn training_capture_writes_jsonl() {
         pii_filter_applied: false,
         pii_redaction_count: 0,
         pii_policy_ref: None,
+        decontamination_policy: None,
+        decontamination_verdict: None,
+        classifier_version: None,
     };
     capture.write_record(&record).expect("write");
 
@@ -129,6 +132,9 @@ fn training_capture_appends() {
             pii_filter_applied: false,
             pii_redaction_count: 0,
             pii_policy_ref: None,
+            decontamination_policy: None,
+            decontamination_verdict: None,
+            classifier_version: None,
         };
         capture.write_record(&record).expect("write");
     }
@@ -172,6 +178,9 @@ fn shard_rotation_on_size_limit() {
             pii_filter_applied: false,
             pii_redaction_count: 0,
             pii_policy_ref: None,
+            decontamination_policy: None,
+            decontamination_verdict: None,
+            classifier_version: None,
         };
         capture.write_record(&record).expect("write");
     }
@@ -379,6 +388,76 @@ fn quality_gate_accepts_tool_use_with_end_turn() {
     );
 }
 
+#[test]
+fn quality_gate_rejects_correction_turn() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "Actually that's incorrect, the value is 42.",
+        assistant_response: "You are right, I apologize for the error.",
+        is_correction: Some(true),
+        ..good_input()
+    });
+    assert!(
+        !captured,
+        "a correction turn pairs correction-shaped input with an acknowledgement; \
+         capturing it trains sycophancy"
+    );
+}
+
+#[test]
+fn quality_gate_accepts_non_correction_turn() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        is_correction: Some(false),
+        ..good_input()
+    });
+    assert!(
+        captured,
+        "an explicitly non-correction turn must still be captured: the gate keys on \
+         Some(true), not on the flag being present"
+    );
+}
+
+#[test]
+fn correction_turn_writes_no_record_to_disk() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    // WHY capture an ordinary turn first: it proves the corpus file exists and
+    // the writer is live, so the absence of the correction record below cannot be
+    // an artifact of nothing having been written at all.
+    capture.maybe_capture(CaptureInput {
+        assistant_response: "The value is 41.",
+        ..good_input()
+    });
+    capture.maybe_capture(CaptureInput {
+        user_message: "No, that's wrong.",
+        assistant_response: "You are right, I apologize.",
+        is_correction: Some(true),
+        ..good_input()
+    });
+
+    // WHY assert on the corpus rather than the return value: the defect was that
+    // the penalty was recorded in metadata while the record was written anyway,
+    // so the only honest check is what actually reached the corpus.
+    let written = std::fs::read_to_string(capture.file_path()).expect("read corpus");
+    assert!(
+        written.contains("The value is 41."),
+        "precondition: the ordinary turn should be in the corpus: {written}"
+    );
+    assert!(
+        !written.contains("I apologize"),
+        "correction turn reached the training corpus: {written}"
+    );
+}
+
 // -- Quality gate: happy path -------------------------------------------------
 
 #[test]
@@ -415,9 +494,13 @@ fn capture_preserves_episteme_labels() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
+    // WHY not a correction turn: this test covers episteme-label round-tripping,
+    // and correction turns are rejected outright by the quality gate (#5822), so
+    // they can never reach the corpus to have their labels checked. `Some(false)`
+    // still supplies the is_correction signal the quality score needs.
     let captured = capture.maybe_capture(CaptureInput {
-        turn_type: Some("correction".to_owned()),
-        is_correction: Some(true),
+        turn_type: Some("fact_capture".to_owned()),
+        is_correction: Some(false),
         fact_types: Some(vec!["preference".to_owned(), "identity".to_owned()]),
         ..good_input()
     });
@@ -426,14 +509,14 @@ fn capture_preserves_episteme_labels() {
     let content = std::fs::read_to_string(capture.file_path()).expect("read");
     let parsed: TrainingRecord =
         serde_json::from_str(content.lines().next().expect("line")).expect("parse");
-    assert_eq!(parsed.turn_type, Some("correction".to_owned()));
-    assert_eq!(parsed.is_correction, Some(true));
+    assert_eq!(parsed.turn_type, Some("fact_capture".to_owned()));
+    assert_eq!(parsed.is_correction, Some(false));
     assert_eq!(
         parsed.fact_types,
         Some(vec!["preference".to_owned(), "identity".to_owned()])
     );
-    // WHY: a correction turn supplies an is_correction signal, so a
-    // quality score must be present.
+    // WHY: the turn supplies an is_correction signal, so a quality score
+    // must be present.
     assert!(parsed.quality_score.is_some());
 }
 
@@ -609,7 +692,7 @@ fn pii_filter_redacts_user_message_when_enabled() {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: true,
-        author_classifier_enabled: false,
+        decontamination_policy: DecontaminationPolicy::Disabled,
         author_classifier_threshold: 0.85,
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
@@ -640,7 +723,7 @@ fn pii_filter_preserves_clean_content_with_screening_provenance() {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: true,
-        author_classifier_enabled: false,
+        decontamination_policy: DecontaminationPolicy::Disabled,
         author_classifier_threshold: 0.85,
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
@@ -670,7 +753,7 @@ fn pii_filter_disabled_passes_through() {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: false,
-        author_classifier_enabled: false,
+        decontamination_policy: DecontaminationPolicy::Disabled,
         author_classifier_threshold: 0.85,
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
@@ -699,7 +782,7 @@ fn pii_policy_ref_serializes_when_filter_applied() {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: true,
-        author_classifier_enabled: false,
+        decontamination_policy: DecontaminationPolicy::Disabled,
         author_classifier_threshold: 0.85,
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
@@ -780,6 +863,9 @@ fn training_record_serde_roundtrip() {
         pii_filter_applied: false,
         pii_redaction_count: 0,
         pii_policy_ref: None,
+        decontamination_policy: None,
+        decontamination_verdict: None,
+        classifier_version: None,
     };
 
     let json = serde_json::to_string(&record).expect("serialize");
@@ -799,7 +885,7 @@ fn test_config_with_classifier(path: &str, max_shard_bytes: u64) -> TrainingConf
         path: path.to_owned(),
         max_shard_bytes,
         pii_filter_enabled: false,
-        author_classifier_enabled: true,
+        decontamination_policy: DecontaminationPolicy::FailClosed,
         author_classifier_threshold: 0.85,
     }
 }
@@ -968,6 +1054,140 @@ mod audit_separation_tests {
                 ..good_input()
             }),
             "duplicate turn id must not append a second training row"
+        );
+    }
+}
+
+// -- Decontamination policy (#5382) ------------------------------------------
+
+mod decontamination_policy {
+    use super::*;
+
+    /// Longer than the classifier's internal `MAX_TEXT_LENGTH`, so
+    /// `classify` returns `TextTooLong`. This is the reachable
+    /// classifier-failure path a live corpus hits on an oversized paste.
+    fn unclassifiable_message() -> String {
+        "x".repeat(200_000)
+    }
+
+    fn config_with(policy: DecontaminationPolicy) -> TrainingConfig {
+        TrainingConfig {
+            enabled: true,
+            path: "training".to_owned(),
+            max_shard_bytes: 50 * 1024 * 1024,
+            pii_filter_enabled: false,
+            decontamination_policy: policy,
+            author_classifier_threshold: 0.85,
+        }
+    }
+
+    /// Rows in the active corpus shard. A shard file that was never written
+    /// counts as zero rather than failing the test.
+    fn corpus_rows(capture: &TrainingCapture) -> usize {
+        std::fs::read_to_string(capture.file_path())
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count()
+    }
+
+    fn quarantine_rows(dir: &std::path::Path) -> usize {
+        match std::fs::read_to_string(dir.join("training").join("quarantine.jsonl")) {
+            Ok(s) => s.lines().filter(|l| !l.trim().is_empty()).count(),
+            Err(_) => 0,
+        }
+    }
+
+    // WHY: this is the regression test for #5382. On the pre-fix code the
+    // classifier error arm returned "allow", so this turn entered the corpus.
+    #[test]
+    fn fail_closed_keeps_unclassifiable_turns_out_of_the_corpus() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let long = unclassifiable_message();
+        let mut capture =
+            TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::FailClosed))
+                .expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            user_message: long.as_str(),
+            turn_id: Some("turn-fc-001"),
+            ..good_input()
+        });
+
+        assert!(!captured, "fail_closed must not admit an unclassified turn");
+        assert_eq!(corpus_rows(&capture), 0, "corpus must stay empty");
+        assert_eq!(
+            quarantine_rows(dir.path()),
+            0,
+            "fail_closed drops rather than quarantines"
+        );
+    }
+
+    #[test]
+    fn quarantine_diverts_unclassifiable_turns_out_of_the_corpus() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let long = unclassifiable_message();
+        let mut capture =
+            TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::Quarantine))
+                .expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            user_message: long.as_str(),
+            turn_id: Some("turn-q-001"),
+            ..good_input()
+        });
+
+        assert!(!captured, "a quarantined turn is not a corpus row");
+        assert_eq!(corpus_rows(&capture), 0, "corpus must stay empty");
+        assert_eq!(
+            quarantine_rows(dir.path()),
+            1,
+            "the turn must be inspectable in quarantine"
+        );
+    }
+
+    #[test]
+    fn warn_admits_unclassifiable_turns_but_records_the_verdict() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let long = unclassifiable_message();
+        let mut capture =
+            TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::Warn))
+                .expect("new");
+
+        let captured = capture.maybe_capture(CaptureInput {
+            user_message: long.as_str(),
+            turn_id: Some("turn-w-001"),
+            ..good_input()
+        });
+
+        assert!(captured, "warn admits the turn");
+        let raw = std::fs::read_to_string(capture.file_path()).expect("shard");
+        let value: serde_json::Value =
+            serde_json::from_str(raw.lines().next().expect("one row")).expect("json");
+        assert_eq!(value["decontamination_policy"], "warn");
+        assert_eq!(value["decontamination_verdict"], "classifier_error");
+        assert_eq!(value["schema_version"], TRAINING_RECORD_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn disabled_policy_records_that_the_row_was_not_screened() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut capture =
+            TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::Disabled))
+                .expect("new");
+
+        assert!(capture.maybe_capture(CaptureInput {
+            turn_id: Some("turn-d-001"),
+            ..good_input()
+        }));
+        let raw = std::fs::read_to_string(capture.file_path()).expect("shard");
+        let value: serde_json::Value =
+            serde_json::from_str(raw.lines().next().expect("one row")).expect("json");
+        assert_eq!(value["decontamination_policy"], "disabled");
+        assert_eq!(value["decontamination_verdict"], "not_screened");
+        assert!(
+            value.get("classifier_version").is_none(),
+            "an unscreened row must not claim a classifier version"
         );
     }
 }

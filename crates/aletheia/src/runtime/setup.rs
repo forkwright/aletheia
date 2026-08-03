@@ -955,16 +955,9 @@ impl EmbeddingProvider for LazyEmbeddingProvider {
     fn model_name(&self) -> &str {
         match self.inner.get() {
             Some(provider) => provider.model_name(),
-            None => LazyEmbeddingProvider::LOADING_MODEL_NAME,
+            None => mneme::embedding::LOADING_MODEL_NAME,
         }
     }
-}
-
-impl LazyEmbeddingProvider {
-    /// Sentinel model name reported while the provider is still loading.
-    ///
-    /// Health checks use this to report `"degraded: embedding-loading"`.
-    pub(crate) const LOADING_MODEL_NAME: &'static str = "embedding-loading";
 }
 
 #[cfg(feature = "recall")]
@@ -2033,6 +2026,23 @@ mod tests {
         assert!(
             registry.find_provider("claude-opus-4-6").is_none(),
             "entry without apiKeyEnv uses the credential chain and must skip when no credential is available"
+        );
+    }
+
+    #[test]
+    fn lazy_provider_reports_the_shared_loading_sentinel() {
+        // WHY(#5580): pylon's /api/health embedding check compares
+        // `model_name()` against `mneme::embedding::LOADING_MODEL_NAME` and
+        // cannot depend on this binary to learn the value. Pinning the
+        // pre-initialization name to that same constant keeps producer and
+        // consumer on one definition — reintroducing a local literal here
+        // fails this test instead of silently sending the health check down
+        // the "pass" branch while the model is still loading.
+        let provider = LazyEmbeddingProvider::new(EmbeddingSettings::default());
+        assert_eq!(
+            provider.model_name(),
+            mneme::embedding::LOADING_MODEL_NAME,
+            "an uninitialized lazy provider must report the shared loading sentinel"
         );
     }
 }

@@ -366,6 +366,7 @@ pub(crate) async fn handle_stream_turn_complete(app: &mut App, outcome: TurnOutc
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
     }
+    app.layout.ops.mark_turn_complete();
     app.layout.ops.auto_hide_if_configured();
     let ctx_used = outcome
         .input_tokens
@@ -443,6 +444,7 @@ pub(crate) fn handle_stream_turn_abort(app: &mut App, reason: String) {
     app.connection.active_turn_id = None;
     app.connection.stream_rx = None;
     fail_running_ops_tools(app, &format!("aborted: {reason}"));
+    app.layout.ops.mark_turn_complete();
     if let Some(ref agent_id) = app.dashboard.focused_agent
         && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
@@ -469,6 +471,7 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     // so the user can read any partial response received before the error.
     app.connection.streaming_tool_calls.clear();
     fail_running_ops_tools(app, &clean_msg);
+    app.layout.ops.mark_turn_complete();
     if let Some(ref agent_id) = app.dashboard.focused_agent
         && let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == *agent_id)
     {
@@ -531,6 +534,7 @@ pub(crate) async fn handle_cancel_turn(app: &mut App) {
         agent.status = AgentStatus::Idle;
         agent.active_tool = None;
     }
+    app.layout.ops.mark_turn_complete();
     app.layout.ops.auto_hide_if_configured();
 }
 
