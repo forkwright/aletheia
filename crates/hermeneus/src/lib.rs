@@ -15,8 +15,6 @@ pub mod anthropic;
 /// authentication. Gated behind the `cc-provider` feature flag.
 #[cfg(feature = "cc-provider")]
 pub mod cc;
-/// Circuit breaker (Closed / Open / HalfOpen) with exponential backoff for LLM provider health.
-pub mod circuit_breaker;
 /// Codex subprocess provider: delegates LLM calls to the `codex` CLI.
 ///
 /// Uses Codex CLI OAuth credentials and is gated behind the `codex-provider`

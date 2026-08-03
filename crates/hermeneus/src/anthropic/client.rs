@@ -242,7 +242,10 @@ impl AnthropicProvider {
                 config.concurrency.clone(),
             )),
             pricing: Self::merge_pricing(config),
-            health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            health: Arc::new(ProviderHealthTracker::new(
+                name.clone(),
+                HealthConfig::default(),
+            )),
             cc_profile: None, // API key mode — no mimicry needed
             behavior: ProviderBehavior::new(
                 NON_STREAMING_TIMEOUT,
@@ -310,7 +313,10 @@ impl AnthropicProvider {
                 config.concurrency.clone(),
             )),
             pricing: Self::merge_pricing(config),
-            health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            health: Arc::new(ProviderHealthTracker::new(
+                name.clone(),
+                HealthConfig::default(),
+            )),
             cc_profile,
             behavior: ProviderBehavior::new(
                 NON_STREAMING_TIMEOUT,

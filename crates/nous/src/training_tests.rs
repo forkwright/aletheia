@@ -388,6 +388,76 @@ fn quality_gate_accepts_tool_use_with_end_turn() {
     );
 }
 
+#[test]
+fn quality_gate_rejects_correction_turn() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        user_message: "Actually that's incorrect, the value is 42.",
+        assistant_response: "You are right, I apologize for the error.",
+        is_correction: Some(true),
+        ..good_input()
+    });
+    assert!(
+        !captured,
+        "a correction turn pairs correction-shaped input with an acknowledgement; \
+         capturing it trains sycophancy"
+    );
+}
+
+#[test]
+fn quality_gate_accepts_non_correction_turn() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let captured = capture.maybe_capture(CaptureInput {
+        is_correction: Some(false),
+        ..good_input()
+    });
+    assert!(
+        captured,
+        "an explicitly non-correction turn must still be captured: the gate keys on \
+         Some(true), not on the flag being present"
+    );
+}
+
+#[test]
+fn correction_turn_writes_no_record_to_disk() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    // WHY capture an ordinary turn first: it proves the corpus file exists and
+    // the writer is live, so the absence of the correction record below cannot be
+    // an artifact of nothing having been written at all.
+    capture.maybe_capture(CaptureInput {
+        assistant_response: "The value is 41.",
+        ..good_input()
+    });
+    capture.maybe_capture(CaptureInput {
+        user_message: "No, that's wrong.",
+        assistant_response: "You are right, I apologize.",
+        is_correction: Some(true),
+        ..good_input()
+    });
+
+    // WHY assert on the corpus rather than the return value: the defect was that
+    // the penalty was recorded in metadata while the record was written anyway,
+    // so the only honest check is what actually reached the corpus.
+    let written = std::fs::read_to_string(capture.file_path()).expect("read corpus");
+    assert!(
+        written.contains("The value is 41."),
+        "precondition: the ordinary turn should be in the corpus: {written}"
+    );
+    assert!(
+        !written.contains("I apologize"),
+        "correction turn reached the training corpus: {written}"
+    );
+}
+
 // -- Quality gate: happy path -------------------------------------------------
 
 #[test]
@@ -424,9 +494,13 @@ fn capture_preserves_episteme_labels() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
+    // WHY not a correction turn: this test covers episteme-label round-tripping,
+    // and correction turns are rejected outright by the quality gate (#5822), so
+    // they can never reach the corpus to have their labels checked. `Some(false)`
+    // still supplies the is_correction signal the quality score needs.
     let captured = capture.maybe_capture(CaptureInput {
-        turn_type: Some("correction".to_owned()),
-        is_correction: Some(true),
+        turn_type: Some("fact_capture".to_owned()),
+        is_correction: Some(false),
         fact_types: Some(vec!["preference".to_owned(), "identity".to_owned()]),
         ..good_input()
     });
@@ -435,14 +509,14 @@ fn capture_preserves_episteme_labels() {
     let content = std::fs::read_to_string(capture.file_path()).expect("read");
     let parsed: TrainingRecord =
         serde_json::from_str(content.lines().next().expect("line")).expect("parse");
-    assert_eq!(parsed.turn_type, Some("correction".to_owned()));
-    assert_eq!(parsed.is_correction, Some(true));
+    assert_eq!(parsed.turn_type, Some("fact_capture".to_owned()));
+    assert_eq!(parsed.is_correction, Some(false));
     assert_eq!(
         parsed.fact_types,
         Some(vec!["preference".to_owned(), "identity".to_owned()])
     );
-    // WHY: a correction turn supplies an is_correction signal, so a
-    // quality score must be present.
+    // WHY: the turn supplies an is_correction signal, so a quality score
+    // must be present.
     assert!(parsed.quality_score.is_some());
 }
 

@@ -4,6 +4,8 @@ use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 
+use url::Url;
+
 /// `application/json` content type.
 pub const CONTENT_TYPE_JSON: &str = "application/json";
 
@@ -74,7 +76,7 @@ pub fn has_http_or_https_scheme(url: &str) -> bool {
 /// exceptions must be based on the parsed URL host rather than a string prefix.
 #[must_use]
 pub fn is_secure_or_plaintext_loopback_url(url: &str) -> bool {
-    let Ok(parsed) = url.parse::<reqwest::Url>() else {
+    let Ok(parsed) = url.parse::<Url>() else {
         return false;
     };
     let Some(host) = parsed.host_str() else {
@@ -100,7 +102,7 @@ pub fn is_secure_or_plaintext_loopback_url(url: &str) -> bool {
 /// `SECURITY/insecure-transport`.
 #[must_use]
 pub fn is_plaintext_loopback_url(url: &str) -> bool {
-    let Ok(parsed) = url.parse::<reqwest::Url>() else {
+    let Ok(parsed) = url.parse::<Url>() else {
         return false;
     };
 
@@ -117,7 +119,7 @@ pub fn is_plaintext_loopback_url(url: &str) -> bool {
 /// userinfo credentials and malformed URLs should not be echoed back verbatim.
 #[must_use]
 pub fn transport_url_for_diagnostic(url: &str) -> String {
-    let Ok(mut parsed) = url.parse::<reqwest::Url>() else {
+    let Ok(mut parsed) = url.parse::<Url>() else {
         return "<invalid URL>".to_owned();
     };
 
@@ -232,7 +234,7 @@ pub async fn validate_url_not_internal_with_resolver<R>(
 where
     R: HostResolver + ?Sized,
 {
-    let parsed: reqwest::Url = url_str.parse().map_err(|e| format!("invalid URL: {e}"))?;
+    let parsed: Url = url_str.parse().map_err(|e| format!("invalid URL: {e}"))?;
     let host = parsed.host_str().ok_or("URL has no host")?;
 
     if is_blocked_hostname(host) {

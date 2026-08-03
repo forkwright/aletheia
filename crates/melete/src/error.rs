@@ -58,6 +58,16 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Blocking-pool task running a consolidation store operation was
+    /// cancelled before it produced a value.
+    #[snafu(display("consolidation {context} task cancelled: {source}"))]
+    DreamStoreCancelled {
+        context: String,
+        source: tokio::task::JoinError,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Consolidation lock is held by another active process.
     #[snafu(display("consolidation lock held by PID {pid}"))]
     DreamLockHeld {

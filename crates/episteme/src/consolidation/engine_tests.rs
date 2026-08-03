@@ -45,13 +45,14 @@ fn consolidation_preserves_multiplicity_metadata() {
         content: "Alice is a senior engineer at Acme Corp".to_owned(),
         confidence: 0.95,
         tier: "inferred".to_owned(),
-        source_fact_ids: source_ids.clone(),
-        source_recorded_ats: source_recorded_ats.clone(),
-        source_scopes: vec![None; source_ids.len()],
-        source_project_ids: vec![None; source_ids.len()],
-        source_sensitivities: vec![crate::knowledge::FactSensitivity::Public; source_ids.len()],
-        source_visibilities: vec![crate::knowledge::Visibility::Private; source_ids.len()],
-        source_session_ids: vec![Some("test-session".to_owned()); source_ids.len()],
+        source_fact_ids: source_ids.clone().into(),
+        source_recorded_ats: source_recorded_ats.clone().into(),
+        source_scopes: vec![None; source_ids.len()].into(),
+        source_project_ids: vec![None; source_ids.len()].into(),
+        source_sensitivities: vec![crate::knowledge::FactSensitivity::Public; source_ids.len()]
+            .into(),
+        source_visibilities: vec![crate::knowledge::Visibility::Private; source_ids.len()].into(),
+        source_session_ids: vec![Some("test-session".to_owned()); source_ids.len()].into(),
     };
     let result = ConsolidationResult {
         original_count: source_ids.len(),
@@ -149,13 +150,13 @@ fn consolidation_preserves_confidential_project_metadata() {
         content: "Alice has access to the secret project".to_owned(),
         confidence: 0.95,
         tier: "inferred".to_owned(),
-        source_fact_ids: source_ids.clone(),
-        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); source_ids.len()],
-        source_scopes: vec![Some(MemoryScope::Project); source_ids.len()],
-        source_project_ids: vec![Some(project_id.as_str().to_owned()); source_ids.len()],
-        source_sensitivities: vec![FactSensitivity::Confidential; source_ids.len()],
-        source_visibilities: vec![Visibility::Private; source_ids.len()],
-        source_session_ids: vec![Some("secret-session".to_owned()); source_ids.len()],
+        source_fact_ids: source_ids.clone().into(),
+        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); source_ids.len()].into(),
+        source_scopes: vec![Some(MemoryScope::Project); source_ids.len()].into(),
+        source_project_ids: vec![Some(project_id.as_str().to_owned()); source_ids.len()].into(),
+        source_sensitivities: vec![FactSensitivity::Confidential; source_ids.len()].into(),
+        source_visibilities: vec![Visibility::Private; source_ids.len()].into(),
+        source_session_ids: vec![Some("secret-session".to_owned()); source_ids.len()].into(),
     };
     let result = ConsolidationResult {
         original_count: source_ids.len(),
@@ -232,13 +233,13 @@ fn consolidation_mixed_sensitivity_takes_strictest() {
         content: "Alice can access internal systems".to_owned(),
         confidence: 0.95,
         tier: "inferred".to_owned(),
-        source_fact_ids: source_ids.clone(),
-        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); source_ids.len()],
-        source_scopes: vec![None; source_ids.len()],
-        source_project_ids: vec![None; source_ids.len()],
-        source_sensitivities: sensitivities,
-        source_visibilities: vec![Visibility::Private; source_ids.len()],
-        source_session_ids: vec![None; source_ids.len()],
+        source_fact_ids: source_ids.clone().into(),
+        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); source_ids.len()].into(),
+        source_scopes: vec![None; source_ids.len()].into(),
+        source_project_ids: vec![None; source_ids.len()].into(),
+        source_sensitivities: sensitivities.into(),
+        source_visibilities: vec![Visibility::Private; source_ids.len()].into(),
+        source_session_ids: vec![None; source_ids.len()].into(),
     };
     let result = ConsolidationResult {
         original_count: source_ids.len(),
@@ -288,13 +289,13 @@ fn consolidation_mixed_project_ids_refused() {
         content: "Alice works on both projects".to_owned(),
         confidence: 0.95,
         tier: "inferred".to_owned(),
-        source_fact_ids: source_ids,
-        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); 2],
-        source_scopes: vec![None; 2],
-        source_project_ids: project_ids,
-        source_sensitivities: vec![FactSensitivity::Public; 2],
-        source_visibilities: vec![Visibility::Private; 2],
-        source_session_ids: vec![None; 2],
+        source_fact_ids: source_ids.into(),
+        source_recorded_ats: vec!["2026-01-01T00:00:00Z".to_owned(); 2].into(),
+        source_scopes: vec![None; 2].into(),
+        source_project_ids: project_ids.into(),
+        source_sensitivities: vec![FactSensitivity::Public; 2].into(),
+        source_visibilities: vec![Visibility::Private; 2].into(),
+        source_session_ids: vec![None; 2].into(),
     };
     let result = ConsolidationResult {
         original_count: 2,
@@ -619,4 +620,220 @@ fn ensure_consolidation_audit_owner_scope_backfills_pre_6380_table() {
             "legacy row {id} must survive the migration"
         );
     }
+}
+
+// WHY(#5694): three outputs per provider call makes the sharing of batch-level
+// metadata across sibling facts observable — one output per batch could not
+// distinguish a shared allocation from a per-fact copy.
+struct ThreeFactsPerBatchProvider;
+
+impl ConsolidationProvider for ThreeFactsPerBatchProvider {
+    fn consolidate(
+        &self,
+        _system: &str,
+        _user_message: &str,
+    ) -> Result<String, ConsolidationError> {
+        Ok(r#"[{"content":"first"},{"content":"second"},{"content":"third"}]"#.to_owned())
+    }
+}
+
+/// Requirement #5694: the seven `source_*` metadata fields are batch-level, so
+/// every consolidated fact from one batch must share one allocation with its
+/// siblings rather than owning a copy — while facts from different batches
+/// stay independent and keep their own batch's values.
+#[test]
+fn consolidated_facts_share_batch_metadata_within_a_batch_only() {
+    let provider = ThreeFactsPerBatchProvider;
+    // Two source facts per batch across two batches: sharing must hold inside
+    // each batch and must not leak across them.
+    let facts: Vec<SourceFact> = (0..4)
+        .map(|i| SourceFact {
+            id: FactId::new(format!("f-share-{i}")).expect("valid test id"),
+            content: format!("source fact {i}"),
+            confidence: 0.8,
+            recorded_at: format!("2026-01-0{}T00:00:00Z", i + 1),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::Public,
+            visibility: Visibility::Private,
+            source_session_id: None,
+        })
+        .collect();
+
+    let config = ConsolidationConfig {
+        batch_limit: 2,
+        ..ConsolidationConfig::default()
+    };
+    let LlmConsolidationResult { result, .. } = run_llm_consolidation(&provider, &facts, &config)
+        .expect("run_llm_consolidation must succeed");
+
+    let consolidated = &result.consolidated_facts;
+    assert_eq!(
+        consolidated.len(),
+        6,
+        "two batches of three outputs each must produce six consolidated facts"
+    );
+
+    let mut batches = consolidated.chunks(3);
+    let first_batch = batches.next().expect("first batch of three outputs");
+    let second_batch = batches.next().expect("second batch of three outputs");
+    assert!(
+        batches.next().is_none(),
+        "four sources at batch_limit 2 must form exactly two batches"
+    );
+
+    // Siblings from the same batch share every batch-level allocation.
+    for (label, batch) in [("first", first_batch), ("second", second_batch)] {
+        let (head, siblings) = batch.split_first().expect("batch has at least one output");
+        for sibling in siblings {
+            assert!(
+                Arc::ptr_eq(&head.source_fact_ids, &sibling.source_fact_ids),
+                "source_fact_ids must be shared within the {label} batch"
+            );
+            assert!(
+                Arc::ptr_eq(&head.source_recorded_ats, &sibling.source_recorded_ats),
+                "source_recorded_ats must be shared within the {label} batch"
+            );
+            assert!(
+                Arc::ptr_eq(&head.source_scopes, &sibling.source_scopes),
+                "source_scopes must be shared within the {label} batch"
+            );
+            assert!(
+                Arc::ptr_eq(&head.source_project_ids, &sibling.source_project_ids),
+                "source_project_ids must be shared within the {label} batch"
+            );
+            assert!(
+                Arc::ptr_eq(&head.source_sensitivities, &sibling.source_sensitivities),
+                "source_sensitivities must be shared within the {label} batch"
+            );
+            assert!(
+                Arc::ptr_eq(&head.source_visibilities, &sibling.source_visibilities),
+                "source_visibilities must be shared within the {label} batch"
+            );
+            assert!(
+                Arc::ptr_eq(&head.source_session_ids, &sibling.source_session_ids),
+                "source_session_ids must be shared within the {label} batch"
+            );
+        }
+    }
+
+    let first_head = first_batch.first().expect("first batch has an output");
+    let second_head = second_batch.first().expect("second batch has an output");
+
+    // Different batches keep independent allocations and their own sources.
+    assert!(
+        !Arc::ptr_eq(&first_head.source_fact_ids, &second_head.source_fact_ids),
+        "separate batches must not share a source_fact_ids allocation"
+    );
+
+    // The sharing must not have changed what each batch actually carries.
+    let batch_ids = |fact: &ConsolidatedFact| -> Vec<String> {
+        fact.source_fact_ids
+            .iter()
+            .map(|id| id.as_str().to_owned())
+            .collect()
+    };
+    assert_eq!(
+        batch_ids(first_head),
+        vec!["f-share-0".to_owned(), "f-share-1".to_owned()],
+        "first batch must carry its own two source ids"
+    );
+    assert_eq!(
+        batch_ids(second_head),
+        vec!["f-share-2".to_owned(), "f-share-3".to_owned()],
+        "second batch must carry its own two source ids"
+    );
+    assert_eq!(
+        first_head.source_recorded_ats.as_ref(),
+        [
+            "2026-01-01T00:00:00Z".to_owned(),
+            "2026-01-02T00:00:00Z".to_owned()
+        ],
+        "batch metadata must stay aligned to the batch's own source facts"
+    );
+}
+
+/// Insert one row into the current-schema `consolidation_audit` table.
+fn insert_audit_row(store: &KnowledgeStore, id: &str, nous_id: &str, consolidated_at: &str) {
+    let script = r"
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
+   original_fact_ids, consolidated_fact_ids, consolidated_at] <-
+    [[$id, $nous_id, 'entity_overflow', 'entity-1', 3, 1, '[]', '[]', $consolidated_at]]
+
+:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
+                          consolidated_count, original_fact_ids,
+                          consolidated_fact_ids, consolidated_at}
+";
+    let mut params = BTreeMap::new();
+    params.insert("id".to_owned(), DataValue::Str(id.into()));
+    params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+    params.insert(
+        "consolidated_at".to_owned(),
+        DataValue::Str(consolidated_at.into()),
+    );
+    store
+        .run_mut_query(script, params)
+        .expect("insert audit row");
+}
+
+fn audit_ids(store: &KnowledgeStore) -> BTreeSet<String> {
+    let rows = store
+        .run_query("?[id] := *consolidation_audit{id}", BTreeMap::new())
+        .expect("query consolidation_audit ids");
+    (0..rows.row_count())
+        .map(|i| rows.get_string(i, "id").expect("row has an id"))
+        .collect()
+}
+
+/// Requirement #5674: `consolidation_audit` is append-only with no TTL and no
+/// row cap, so it grows for the life of the instance. Pruning must remove the
+/// rows outside the retention window and nothing else — in particular it must
+/// not reach across `nous_id`, because the relation is shared by every nous on
+/// the store.
+#[test]
+fn prune_consolidation_audit_removes_only_expired_rows_for_the_named_nous() {
+    let store = make_store();
+
+    insert_audit_row(&store, "audit-old-1", "nous-a", "2026-01-01T00:00:00Z");
+    insert_audit_row(&store, "audit-old-2", "nous-a", "2026-02-01T00:00:00Z");
+    insert_audit_row(&store, "audit-fresh", "nous-a", "2026-06-01T00:00:00Z");
+    insert_audit_row(&store, "audit-other", "nous-b", "2026-01-01T00:00:00Z");
+
+    let (examined, removed) = store
+        .prune_consolidation_audit("nous-a", "2026-03-01T00:00:00Z")
+        .expect("prune must succeed");
+
+    assert_eq!(examined, 3, "examined counts only nous-a's rows");
+    assert_eq!(removed, 2, "both pre-cutoff nous-a rows are removed");
+
+    let remaining = audit_ids(&store);
+    assert_eq!(
+        remaining,
+        ["audit-fresh".to_owned(), "audit-other".to_owned()]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        "the in-window row and the other nous's row must both survive"
+    );
+}
+
+/// A cutoff older than every stored row must delete nothing and report it,
+/// rather than reporting a successful prune it did not perform.
+#[test]
+fn prune_consolidation_audit_is_a_no_op_when_nothing_is_expired() {
+    let store = make_store();
+
+    insert_audit_row(&store, "audit-fresh", "nous-a", "2026-06-01T00:00:00Z");
+
+    let (examined, removed) = store
+        .prune_consolidation_audit("nous-a", "2026-01-01T00:00:00Z")
+        .expect("prune must succeed");
+
+    assert_eq!(examined, 1);
+    assert_eq!(removed, 0);
+    assert_eq!(
+        audit_ids(&store),
+        ["audit-fresh".to_owned()]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+    );
 }

@@ -50,8 +50,65 @@ def named_step(workflow: dict, job: str, name: str) -> dict | None:
     return None
 
 
+def pull_request_paths(workflow: dict) -> list[str] | None:
+    """The workflow's pull_request `paths:` filter, or None when unfiltered.
+
+    WHY: `on:` parses to the boolean True for `on: pull_request`, and PyYAML
+    reads the bare key `on` as True as well, so both shapes are normalised
+    here rather than at each call site.
+    """
+    triggers = workflow.get("on", workflow.get(True, {}))
+    if not isinstance(triggers, dict):
+        return None
+    pull_request = triggers.get("pull_request")
+    if not isinstance(pull_request, dict):
+        return None
+    paths = pull_request.get("paths")
+    return paths if isinstance(paths, list) else None
+
+
+def unfiltered_pr_workflows() -> dict[str, dict]:
+    """Workflows whose pull_request trigger carries no `paths:` filter."""
+    unfiltered = {}
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        relative = f".github/workflows/{path.name}"
+        workflow = load_workflow(relative)
+        triggers = workflow.get("on", workflow.get(True, {}))
+        if not isinstance(triggers, dict) or "pull_request" not in triggers:
+            continue
+        if pull_request_paths(workflow) is None:
+            unfiltered[relative] = workflow
+    return unfiltered
+
+
+def workflow_run_text(workflow: dict) -> str:
+    return "\n".join(job_step_text(job) for job in workflow.get("jobs", {}).values())
+
+
 def main() -> int:
     errors: list[str] = []
+
+    # WHY(root-manifest coverage): a check that validates a file no PR-time
+    # trigger watches is a check that does not run. check-proskenion-pins.py
+    # compares proskenion's theatron pins against the ROOT Cargo.toml, but its
+    # only PR-time home was desktop.yml, which is paths-filtered to the
+    # proskenion/skene subtrees — so re-pinning theatron in the root workspace
+    # drifted the manifests with nothing watching, and the break surfaced on a
+    # later, unrelated PR. Any such cross-cutting validator must run from a
+    # workflow whose pull_request trigger is unfiltered.
+    ROOT_MANIFEST_VALIDATORS = ("scripts/check-proskenion-pins.py",)
+    unfiltered = unfiltered_pr_workflows()
+    unfiltered_text = "\n".join(
+        workflow_run_text(workflow) for workflow in unfiltered.values()
+    )
+    for validator in ROOT_MANIFEST_VALIDATORS:
+        if validator not in unfiltered_text:
+            errors.append(
+                f"{validator} reads the root Cargo.toml but runs only from "
+                "paths-filtered workflows — it must run from a workflow whose "
+                "pull_request trigger has no paths: filter (unfiltered today: "
+                f"{', '.join(sorted(unfiltered)) or 'none'})"
+            )
 
     gate = load_workflow(".github/workflows/gate-attestation.yml")
     # #6421/#6433/kanon#2522: gate-attestation delegates the check-trailer/

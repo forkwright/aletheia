@@ -28,6 +28,24 @@ pub enum AuthorClass {
 }
 
 impl AuthorClass {
+    /// Every class, in the index order the probability array is defined in.
+    ///
+    /// INVARIANT: `ALL[i].index() == i`. This is the single owner of the class
+    /// ordering — the metadata contract and the built-in heuristic metadata are
+    /// both derived from it rather than restating it.
+    pub(crate) const ALL: [Self; 4] = [
+        Self::User,
+        Self::Subagent,
+        Self::SystemScaffolding,
+        Self::Template,
+    ];
+
+    /// Canonical class names in index order, as they must appear in
+    /// `metadata.json`.
+    pub(crate) fn canonical_names() -> Vec<String> {
+        Self::ALL.iter().map(|c| c.as_str().to_owned()).collect()
+    }
+
     /// Convert from integer index to enum variant.
     fn from_index(idx: usize) -> Option<Self> {
         match idx {
@@ -97,6 +115,19 @@ impl ArtifactMetadata {
                 len: self.classes.len(),
             });
         }
+        // WHY: `AuthorProbs::probabilities` and `AuthorClass::from_index` are
+        // positional, so a correctly-sized artifact that orders its classes
+        // differently is silently misread — every score is attributed to the
+        // wrong class. A length check alone cannot see that, and the artifact
+        // is produced by a separate repo, which is exactly where the ordering
+        // can drift.
+        let expected = AuthorClass::canonical_names();
+        if self.classes != expected {
+            return Err(crate::error::ClassifyError::ClassOrderMismatch {
+                expected: expected.join(", "),
+                actual: self.classes.join(", "),
+            });
+        }
         Ok(())
     }
 }
@@ -156,12 +187,7 @@ impl Classifier {
                 producer: "aletheia-heuristic-classifier".to_owned(),
                 produced_at: Timestamp::now().to_string(),
                 model_type: "heuristic_rule_bank".to_owned(),
-                classes: vec![
-                    "user".to_owned(),
-                    "subagent".to_owned(),
-                    "system_scaffolding".to_owned(),
-                    "template".to_owned(),
-                ],
+                classes: AuthorClass::canonical_names(),
                 runtime_version: None,
             },
         }
@@ -497,6 +523,21 @@ mod tests {
     }
 
     #[test]
+    fn author_class_all_is_index_ordered() {
+        for (idx, class) in AuthorClass::ALL.iter().enumerate() {
+            assert_eq!(class.index(), idx, "ALL[{idx}] is out of index order");
+        }
+    }
+
+    #[test]
+    fn canonical_names_match_probability_array_order() {
+        assert_eq!(
+            AuthorClass::canonical_names(),
+            ["user", "subagent", "system_scaffolding", "template"]
+        );
+    }
+
+    #[test]
     fn author_class_from_index_all_variants() {
         assert_eq!(AuthorClass::from_index(0), Some(AuthorClass::User));
         assert_eq!(AuthorClass::from_index(1), Some(AuthorClass::Subagent));
@@ -554,6 +595,77 @@ mod tests {
             classifier.metadata().classes,
             ["user", "subagent", "system_scaffolding", "template"]
         );
+    }
+
+    /// Write a `metadata.json` whose only non-canonical field is `classes`.
+    fn write_metadata_with_classes(dir: &Path, classes: &str) {
+        std::fs::write(
+            dir.join("metadata.json"),
+            format!(
+                r#"{{
+                "schema_version": "1",
+                "artifact_version": "2026.05.08-test",
+                "producer": "alice-test-classifier",
+                "produced_at": "2026-05-08T00:00:00Z",
+                "model_type": "heuristic_rule_bank",
+                "classes": {classes},
+                "runtime_version": null
+            }}"#
+            ),
+        )
+        .expect("write metadata");
+    }
+
+    #[tokio::test]
+    async fn load_rejects_permuted_class_order() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // WHY: correct length, correct names, wrong order — the exact artifact
+        // a length-only check admits while every score lands on the wrong class.
+        write_metadata_with_classes(
+            dir.path(),
+            r#"["subagent", "user", "system_scaffolding", "template"]"#,
+        );
+
+        let Err(err) = Classifier::load(dir.path()).await else {
+            panic!("permuted class order must be rejected");
+        };
+
+        assert!(
+            matches!(err, crate::error::ClassifyError::ClassOrderMismatch { .. }),
+            "expected ClassOrderMismatch, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_rejects_renamed_class() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_metadata_with_classes(
+            dir.path(),
+            r#"["user", "agent", "system_scaffolding", "template"]"#,
+        );
+
+        let Err(err) = Classifier::load(dir.path()).await else {
+            panic!("renamed class must be rejected");
+        };
+
+        assert!(
+            matches!(err, crate::error::ClassifyError::ClassOrderMismatch { .. }),
+            "expected ClassOrderMismatch, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_accepts_built_in_metadata_classes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let canonical = Classifier::new().metadata().classes.clone();
+        write_metadata_with_classes(
+            dir.path(),
+            &serde_json::to_string(&canonical).expect("serialize classes"),
+        );
+
+        Classifier::load(dir.path())
+            .await
+            .expect("built-in class order must load");
     }
 
     #[test]

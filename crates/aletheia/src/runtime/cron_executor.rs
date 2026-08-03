@@ -12,7 +12,9 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{Instrument, info, warn};
 
-use energeia::cron::{CronLockStore, CronScheduler, CronTask, OverlapPolicy};
+use energeia::cron::{
+    CronFailureClass, CronFireOutcome, CronLockStore, CronScheduler, CronTask, OverlapPolicy,
+};
 use energeia::orchestrator::Orchestrator;
 use energeia::prompt;
 use energeia::types::DispatchSpec;
@@ -104,9 +106,7 @@ pub(super) fn start(
                 .run(cancel, move |task| {
                     let orchestrator = Arc::clone(&orchestrator);
                     let theke = theke.clone();
-                    async move {
-                        fire_task(task, orchestrator, theke).await;
-                    }
+                    async move { fire_task(task, orchestrator, theke).await }
                 })
                 .await;
             if let Err(e) = result {
@@ -138,7 +138,17 @@ fn dispatch_spec_from_config(cfg: &DispatchSpecConfig) -> DispatchSpec {
     spec
 }
 
-async fn fire_task(task: CronTask, orchestrator: Arc<Orchestrator>, theke: std::path::PathBuf) {
+/// Run one scheduled dispatch and report how it ended.
+///
+/// WHY(#5297): every path here used to log and return, so the scheduler
+/// recorded a successful fire for a queue that failed to load, a spec that
+/// matched no prompts, or a dispatch that errored. Each path now names its
+/// failure class so schedule health reflects whether the work actually ran.
+async fn fire_task(
+    task: CronTask,
+    orchestrator: Arc<Orchestrator>,
+    theke: std::path::PathBuf,
+) -> CronFireOutcome {
     let queue_dir = theke
         .join("projects")
         .join(&task.dispatch_spec.project)
@@ -154,7 +164,10 @@ async fn fire_task(task: CronTask, orchestrator: Arc<Orchestrator>, theke: std::
                 error = %e,
                 "cron task: failed to load prompt queue"
             );
-            return;
+            return CronFireOutcome::failed(
+                CronFailureClass::Input,
+                format!("failed to load prompt queue {}: {e}", queue_dir.display()),
+            );
         }
     };
 
@@ -171,24 +184,40 @@ async fn fire_task(task: CronTask, orchestrator: Arc<Orchestrator>, theke: std::
             queue = %queue_dir.display(),
             "cron task: no prompts matched dispatch spec"
         );
-        return;
+        // WHY: a scheduled dispatch that selects nothing is a misconfigured
+        // spec or an empty queue, not an acceptable no-op — the task exists to
+        // dispatch prompts. Recording it as Skipped would hide exactly the
+        // condition an operator needs to see.
+        return CronFireOutcome::failed(
+            CronFailureClass::NoMatch,
+            format!(
+                "no prompts in {} matched dispatch spec",
+                queue_dir.display()
+            ),
+        );
     }
 
     match orchestrator
         .dispatch(task.dispatch_spec.clone(), &selected)
         .await
     {
-        Ok(_result) => info!(
-            task = %task.name,
-            project = %task.dispatch_spec.project,
-            "cron dispatch completed"
-        ),
-        Err(e) => warn!(
-            task = %task.name,
-            project = %task.dispatch_spec.project,
-            error = %e,
-            "cron dispatch failed"
-        ),
+        Ok(_result) => {
+            info!(
+                task = %task.name,
+                project = %task.dispatch_spec.project,
+                "cron dispatch completed"
+            );
+            CronFireOutcome::Success
+        }
+        Err(e) => {
+            warn!(
+                task = %task.name,
+                project = %task.dispatch_spec.project,
+                error = %e,
+                "cron dispatch failed"
+            );
+            CronFireOutcome::failed(CronFailureClass::Execution, e.to_string())
+        }
     }
 }
 

@@ -266,30 +266,16 @@ impl EditorTab {
     }
 }
 
+// WHY: gramma::syntax owns the extension-to-syntect-token table; a local copy
+// drifted (tsx collapsed into the typescript token, producing wrong
+// highlighting) and omitted a dozen languages. Path::extension is kept rather
+// than gramma's string-splitting language_from_path so OS extension semantics
+// still apply to dotfiles and dotted parent directories.
 fn detect_language(path: &Path) -> String {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| match ext {
-            "rs" => "rust",
-            "py" => "python",
-            "ts" | "tsx" => "typescript",
-            "js" | "jsx" => "javascript",
-            "toml" => "toml",
-            "yaml" | "yml" => "yaml",
-            "md" | "markdown" => "markdown",
-            "json" => "json",
-            "sh" | "bash" => "bash",
-            "css" => "css",
-            "html" | "htm" => "html",
-            "sql" => "sql",
-            "xml" => "xml",
-            "go" => "go",
-            "c" | "h" => "c",
-            "cpp" | "cc" | "cxx" | "hpp" => "cpp",
-            other => other,
-        })
-        .unwrap_or("plain text")
-        .to_string()
+    gramma::syntax::language_from_extension(
+        path.extension().and_then(|ext| ext.to_str()).unwrap_or(""),
+    )
+    .to_string()
 }
 
 pub(crate) fn detect_language_pub(path: &Path) -> String {

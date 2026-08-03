@@ -241,13 +241,15 @@ pub(crate) fn list_all_sessions(
     )
 }
 
-/// Collect all CI validation records across all sessions via prefix scan.
+/// Collect CI validation records across all sessions matching `filter`.
 ///
-/// Use `limit` to cap memory usage.
+/// `filter` runs during the scan, so records it rejects are never retained;
+/// `limit` caps the retained records.
 #[cfg(feature = "storage-fjall")]
-pub(crate) fn list_all_ci_validations(
+pub(crate) fn list_ci_validations_where(
     keyspace: &fjall::Keyspace,
     limit: usize,
+    filter: impl Fn(&CiValidationRecord) -> bool,
 ) -> Result<Vec<CiValidationRecord>> {
     let prefix_bytes = schema::ci_validation_prefix().as_bytes();
     prefix_scan(
@@ -255,7 +257,7 @@ pub(crate) fn list_all_ci_validations(
         prefix_bytes,
         "ci_validation prefix scan",
         limit,
-        |_: &CiValidationRecord| true,
+        filter,
     )
 }
 
@@ -275,11 +277,15 @@ pub(crate) fn list_ci_validations_for_session(
     )
 }
 
-/// Collect all QA verdict records across all dispatches via prefix scan.
+/// Collect QA verdict records across all dispatches matching `filter`.
+///
+/// `filter` runs during the scan, so records it rejects are never retained;
+/// `limit` caps the retained records.
 #[cfg(feature = "storage-fjall")]
-pub(crate) fn list_all_qa_verdicts(
+pub(crate) fn list_qa_verdicts_where(
     keyspace: &fjall::Keyspace,
     limit: usize,
+    filter: impl Fn(&QaVerdictRecord) -> bool,
 ) -> Result<Vec<QaVerdictRecord>> {
     let prefix_bytes = schema::qa_verdict_prefix().as_bytes();
     prefix_scan(
@@ -287,7 +293,7 @@ pub(crate) fn list_all_qa_verdicts(
         prefix_bytes,
         "qa_verdict prefix scan",
         limit,
-        |_: &QaVerdictRecord| true,
+        filter,
     )
 }
 

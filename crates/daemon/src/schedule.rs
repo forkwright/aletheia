@@ -141,6 +141,8 @@ pub enum BuiltinTask {
     InstanceBackup,
     /// Prune prompt audit log daily files past the retention window (#3411).
     PromptAuditRotation,
+    /// Prune prosoche audit reports past the retention window (#5667).
+    ProsocheAuditRotation,
     /// Refresh empirical after-action routing statistics from JSONL logs.
     RoutingStoreRefresh,
     /// Materialize derived Datalog rules (IS-A closure, causal chains, defeasible defaults)
