@@ -3,6 +3,7 @@
 //! Implements consolidation operations on `KnowledgeStore`: candidate
 //! identification, LLM-driven consolidation execution, and audit trail.
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use tracing::instrument;
 
 use super::{
@@ -614,7 +615,7 @@ impl KnowledgeStore {
                     .build()
                 })?;
 
-            for original_id in &batch.source_fact_ids {
+            for original_id in batch.source_fact_ids.iter() {
                 self.supersede_fact_by_id(original_id, superseding_id.as_str(), &now_str)
                     .map_err(|e| {
                         StoreSnafu {
@@ -971,7 +972,7 @@ struct LlmConsolidationResult {
 
 /// Source facts and canonical first output for one nonempty batch.
 struct BatchSupersession {
-    source_fact_ids: Vec<FactId>,
+    source_fact_ids: Arc<[FactId]>,
     consolidated_fact_index: usize,
 }
 
@@ -1022,21 +1023,26 @@ fn run_llm_consolidation(
         // correct first output separately for every batch in the run.
         let first_consolidated_fact_index = all_consolidated.len();
 
-        let batch_fact_ids: Vec<FactId> = batch.iter().map(|s| s.id.clone()).collect();
+        // WHY(#5694): this metadata is per-batch, not per-fact — every output
+        // fact in the batch carries the same values. Building each one as an
+        // `Arc<[_]>` once means the loop below clones a pointer per output
+        // fact instead of a full copy of seven batch-length vectors.
+        let batch_fact_ids: Arc<[FactId]> = batch.iter().map(|s| s.id.clone()).collect();
         // WHY(#3634): preserve source recorded_at timestamps so multiplicity
         // metadata (time-spread, first/last observation) can be computed
         // downstream. Aligned by index to `batch_fact_ids`.
-        let batch_recorded_ats: Vec<String> = batch.iter().map(|s| s.recorded_at.clone()).collect();
+        let batch_recorded_ats: Arc<[String]> =
+            batch.iter().map(|s| s.recorded_at.clone()).collect();
         // WHY(#4660): carry source policy metadata through the batch so the
         // conservative merge in `persist_consolidated_facts` can enforce scope,
         // project, sensitivity, and visibility boundaries.
-        let batch_scopes: Vec<Option<MemoryScope>> = batch.iter().map(|s| s.scope).collect();
-        let batch_project_ids: Vec<Option<String>> =
+        let batch_scopes: Arc<[Option<MemoryScope>]> = batch.iter().map(|s| s.scope).collect();
+        let batch_project_ids: Arc<[Option<String>]> =
             batch.iter().map(|s| s.project_id.clone()).collect();
-        let batch_sensitivities: Vec<FactSensitivity> =
+        let batch_sensitivities: Arc<[FactSensitivity]> =
             batch.iter().map(|s| s.sensitivity).collect();
-        let batch_visibilities: Vec<Visibility> = batch.iter().map(|s| s.visibility).collect();
-        let batch_session_ids: Vec<Option<String>> =
+        let batch_visibilities: Arc<[Visibility]> = batch.iter().map(|s| s.visibility).collect();
+        let batch_session_ids: Arc<[Option<String>]> =
             batch.iter().map(|s| s.source_session_id.clone()).collect();
         // WHY(#5853): a consolidated fact's confidence reflects the sources
         // it was built from rather than a fixed constant.
@@ -1047,17 +1053,13 @@ fn run_llm_consolidation(
                 content: entry.content.clone(),
                 confidence: batch_confidence,
                 tier: "inferred".to_owned(),
-                // WHY: each ConsolidatedFact owns its source IDs, while the
-                // audit result and supersession plan also retain them after
-                // the loop; Arc<[FactId]> would eliminate this clone but
-                // ConsolidatedFact is part of the public API.
-                source_fact_ids: batch_fact_ids.clone(),
-                source_recorded_ats: batch_recorded_ats.clone(),
-                source_scopes: batch_scopes.clone(),
-                source_project_ids: batch_project_ids.clone(),
-                source_sensitivities: batch_sensitivities.clone(),
-                source_visibilities: batch_visibilities.clone(),
-                source_session_ids: batch_session_ids.clone(),
+                source_fact_ids: Arc::clone(&batch_fact_ids),
+                source_recorded_ats: Arc::clone(&batch_recorded_ats),
+                source_scopes: Arc::clone(&batch_scopes),
+                source_project_ids: Arc::clone(&batch_project_ids),
+                source_sensitivities: Arc::clone(&batch_sensitivities),
+                source_visibilities: Arc::clone(&batch_visibilities),
+                source_session_ids: Arc::clone(&batch_session_ids),
             });
         }
 
@@ -1132,9 +1134,9 @@ fn merge_consolidated_metadata(
     for (((scope, project_id), src_sensitivity), src_visibility) in consolidated
         .source_scopes
         .iter()
-        .zip(&consolidated.source_project_ids)
-        .zip(&consolidated.source_sensitivities)
-        .zip(&consolidated.source_visibilities)
+        .zip(consolidated.source_project_ids.iter())
+        .zip(consolidated.source_sensitivities.iter())
+        .zip(consolidated.source_visibilities.iter())
     {
         sensitivity = sensitivity.max(*src_sensitivity);
 
