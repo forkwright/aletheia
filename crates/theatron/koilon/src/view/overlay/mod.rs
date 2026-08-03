@@ -1,7 +1,7 @@
 mod pickers;
 
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::symbols;
 use ratatui::text::{Line, Span};
@@ -12,6 +12,7 @@ use crate::diff;
 use crate::keybindings;
 use crate::state::ControlMutationStatus;
 use crate::theme::Theme;
+use crate::view::centered_rect;
 
 /// Width percentage for the default (help/agent/session) popup.
 const POPUP_WIDTH_PCT: u16 = 60;
@@ -733,43 +734,4 @@ fn render_decision_card(
 
     let para = Paragraph::new(lines).wrap(Wrap { trim: false });
     frame.render_widget(para, inner);
-}
-/// Create a centered rect within the given area.
-pub(crate) fn centered_rect_pub(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    centered_rect(percent_x, percent_y, area)
-}
-
-// WARNING: not provably equivalent to `parodos::layout::centered_rect_pct` —
-// this uses ratatui's `Layout::split` (default `Flex::Start`) over two
-// pre-divided `(100 - percent) / 2` margin constraints, not direct pixel
-// arithmetic. When `100 - percent` is odd (e.g. percent = 85, used by
-// DIFF_POPUP_HEIGHT_PCT here and POPUP_HEIGHT_PCT in settings.rs), the three
-// constraints sum to 99% and `Flex::Start` leaves the shortfall unallocated
-// at the trailing edge instead of splitting it across both margins — a
-// different (off-center) result than `centered_rect_pct`'s floor-based
-// offset. Do not collapse into the parodos helper without confirming pixel
-// parity across the percent values actually used.
-#[expect(
-    clippy::indexing_slicing,
-    reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"
-)]
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        // kanon:ignore RUST/indexing-slicing — popup_layout split with 3 constraints; index 1 always valid; inner split also 3 constraints
-        .split(popup_layout[1])[1]
 }
