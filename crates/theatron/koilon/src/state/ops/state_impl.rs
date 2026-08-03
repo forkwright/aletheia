@@ -57,6 +57,7 @@ impl Default for OpsState {
             thinking: OpsThinkingBlock {
                 text: String::new(),
                 collapsed: false,
+                is_streaming: false,
             },
             tool_calls: Vec::new(),
             diffs: Vec::new(),
@@ -96,6 +97,7 @@ impl OpsState {
     pub(crate) fn clear_turn(&mut self) {
         self.thinking.text.clear();
         self.thinking.collapsed = false;
+        self.thinking.is_streaming = true;
         self.tool_calls.clear();
         self.diffs.clear();
         self.scroll_offset = 0;
@@ -103,6 +105,16 @@ impl OpsState {
         self.summary = OpsSummary::default();
         self.turn_started_at = Some(std::time::Instant::now());
         self.show_all_successful = false;
+    }
+
+    /// Mark the current turn as finished, leaving its data on screen.
+    ///
+    /// WHY: every terminal stream path (complete, abort, error, cancel) must
+    /// stop the thinking spinner. `clear_turn` is the start-of-turn reset and
+    /// discards the text, so it cannot serve this; the pane stays readable
+    /// between turns.
+    pub(crate) fn mark_turn_complete(&mut self) {
+        self.thinking.is_streaming = false;
     }
 
     /// Toggle visibility of all successful tool calls.

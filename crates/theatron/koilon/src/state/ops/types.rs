@@ -219,6 +219,12 @@ pub(crate) struct OpsToolCall {
 pub(crate) struct OpsThinkingBlock {
     pub(crate) text: String,
     pub(crate) collapsed: bool,
+    /// Whether the turn that produced this text is still running.
+    ///
+    /// WHY: the pane outlives the turn, so the spinner needs an explicit
+    /// completion signal. Without one it animates forever on a finished turn
+    /// and reads as "the model is still thinking".
+    pub(crate) is_streaming: bool,
 }
 
 /// A file diff entry parsed from tool results.

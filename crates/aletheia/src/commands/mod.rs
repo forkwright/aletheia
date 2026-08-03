@@ -98,7 +98,7 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
                 .await
                 .map_err(Into::into)
         }
-        Command::Tls { action } => tls::run(&action).map_err(Into::into),
+        Command::Tls { action } => tls::run(&action, instance_root).map_err(Into::into),
         Command::Status { url } => status::run(&url, instance_root)
             .await
             .map_err(anyhow::Error::from),

@@ -74,15 +74,24 @@ static SIGNALS: [OutcomeSignal; 3] = [
     ),
 ];
 
-/// Mean of all sample values, representing average turn quality around
-/// distillation events. Requires at least 5 samples.
+/// Minimum samples before a turn-quality mean is considered meaningful.
+const TURN_QUALITY_MIN_SAMPLES: usize = 5;
+
+/// Minimum samples before a recall-accuracy mean is considered meaningful.
+const ADMISSION_RECALL_MIN_SAMPLES: usize = 3;
+
+/// Arithmetic mean of `samples`, or `None` below `min_samples`.
+///
+/// WHY: the per-signal summaries differ only in how many samples they demand,
+/// so the averaging itself lives in one place. A signal that needs different
+/// arithmetic gets its own function rather than a flag on this one.
 #[expect(
     clippy::cast_precision_loss,
     clippy::as_conversions,
     reason = "usize->f64: sample counts bounded by config (tens of samples), far below f64 mantissa precision"
 )]
-fn compute_turn_quality_post_distillation(samples: &[MetricSample]) -> Option<f64> {
-    if samples.len() < 5 {
+fn mean_of_samples(samples: &[MetricSample], min_samples: usize) -> Option<f64> {
+    if samples.len() < min_samples {
         return None;
     }
     let sum: f64 = samples.iter().map(|s| s.value).sum();
@@ -90,19 +99,22 @@ fn compute_turn_quality_post_distillation(samples: &[MetricSample]) -> Option<f6
     Some(sum / n)
 }
 
-/// Mean recall precision across observations. Requires at least 3 samples.
-#[expect(
-    clippy::cast_precision_loss,
-    clippy::as_conversions,
-    reason = "usize->f64: sample counts bounded by config (tens of samples), far below f64 mantissa precision"
-)]
+/// Mean turn quality across the observed samples.
+///
+/// NOTE: this is a plain mean over every sample handed to it — it does not
+/// identify distillation-event boundaries and computes no pre/post split. The
+/// before/after comparison that justifies a distillation-trigger change is done
+/// by `evidence::validate_evidence`, which splits the sample stream in halves;
+/// this function only summarises. The signal keeps its distillation-flavoured
+/// name because that name is the join key between an emitted metric and the
+/// `distillation*Trigger` [`taxis::registry::ParameterSpec`] entries it scores.
+fn compute_turn_quality_post_distillation(samples: &[MetricSample]) -> Option<f64> {
+    mean_of_samples(samples, TURN_QUALITY_MIN_SAMPLES)
+}
+
+/// Mean recall precision across observations.
 fn compute_admission_recall_accuracy(samples: &[MetricSample]) -> Option<f64> {
-    if samples.len() < 3 {
-        return None;
-    }
-    let sum: f64 = samples.iter().map(|s| s.value).sum();
-    let n = samples.len() as f64; // kanon:ignore RUST/as-cast
-    Some(sum / n)
+    mean_of_samples(samples, ADMISSION_RECALL_MIN_SAMPLES)
 }
 
 /// Linear regression slope of competence scores over time.
@@ -193,6 +205,32 @@ mod tests {
         let samples = make_samples(&[0.8, 0.85, 0.9]);
         let result = compute_admission_recall_accuracy(&samples);
         assert!((result.unwrap() - 0.85).abs() < 0.001);
+    }
+
+    #[test]
+    fn turn_quality_demands_more_samples_than_admission_recall() {
+        // WHY: both signals reduce to a mean over the same helper, so the only
+        // thing separating them is the sample floor. Pin the gap here — a
+        // dedupe that collapsed the two thresholds would otherwise be silent.
+        let four = make_samples(&[0.5, 0.6, 0.7, 0.8]);
+        assert!(
+            compute_turn_quality_post_distillation(&four).is_none(),
+            "turn quality needs 5 samples"
+        );
+        assert!(
+            compute_admission_recall_accuracy(&four).is_some(),
+            "admission recall needs only 3 samples"
+        );
+    }
+
+    #[test]
+    fn turn_quality_means_every_sample_not_a_post_distillation_window() {
+        // WHY(#5840): the name implies a pre/post-distillation split. It is a
+        // plain mean over the whole stream; a windowed implementation would
+        // not return the grand mean here.
+        let samples = make_samples(&[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+        let result = compute_turn_quality_post_distillation(&samples);
+        assert!((result.unwrap() - 0.5).abs() < 0.001);
     }
 
     #[test]

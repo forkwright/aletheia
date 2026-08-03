@@ -42,6 +42,8 @@ pub enum MaintenanceConfigSection {
     ProposeRules,
     /// `promptAudit`.
     PromptAudit,
+    /// `prosocheAudit` report retention.
+    ProsocheAuditRetention,
     /// Runtime after-action store handle.
     RoutingAfterActionStore,
     /// `maintenance.cronTasks.evolution`.
@@ -82,6 +84,8 @@ pub enum ManualMaintenanceTask {
     InstanceBackup,
     /// Run prompt audit log retention.
     PromptAuditRotation,
+    /// Run prosoche audit report retention.
+    ProsocheAuditRotation,
     /// Run nous self-audit checks.
     NousSelfAudit,
     /// Run prosoche self-audit checks.
@@ -391,6 +395,7 @@ impl MaintenanceConfigSection {
             Self::InstanceBackup => config.instance_backup.enabled,
             Self::ProposeRules => config.propose_rules.enabled,
             Self::PromptAudit => config.prompt_audit.enabled,
+            Self::ProsocheAuditRetention => config.prosoche_audit.enabled,
             Self::RoutingAfterActionStore
             | Self::CronEvolution
             | Self::CronReflection
@@ -562,6 +567,22 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
             ScheduleSource::Cron("0 0 2 * * *"),
             true,
             RegistrationCondition::ConfigEnabled(MaintenanceConfigSection::PromptAudit),
+        ),
+    ),
+    task(
+        "prosoche-audit-rotation",
+        "Prosoche audit report retention",
+        MaintenanceTaskOwner::Daemon,
+        Some(MaintenanceConfigSection::ProsocheAuditRetention),
+        "Prosoche audit report retention",
+        MaintenanceTaskImplementationStatus::Implemented,
+        CRON_METRICS,
+        Some(ManualMaintenanceTask::ProsocheAuditRotation),
+        scheduled(
+            BuiltinTask::ProsocheAuditRotation,
+            ScheduleSource::Cron("0 30 2 * * *"),
+            true,
+            RegistrationCondition::ConfigEnabled(MaintenanceConfigSection::ProsocheAuditRetention),
         ),
     ),
     task(

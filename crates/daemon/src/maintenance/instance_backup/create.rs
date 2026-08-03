@@ -559,6 +559,20 @@ impl InstanceBackup {
         Ok(entries)
     }
 
+    /// Timestamp of the newest valid backup set on disk, or `None` if there is
+    /// none. (#6445)
+    ///
+    /// This is the durable answer to "when did a backup last succeed", as
+    /// opposed to a counter that only this process's completed attempts move.
+    /// Validity is [`Self::list_backups`]'s definition — a directory that has
+    /// been atomically renamed into place and whose `manifest.json` parses — so
+    /// an in-progress staging directory or a truncated manifest reads as
+    /// no-backup rather than as a fresh one.
+    // kanon:ignore RUST/pub-visibility -- consumed by the runtime's metrics hook
+    pub fn latest_backup_time(&self) -> error::Result<Option<std::time::SystemTime>> {
+        Ok(self.list_backups()?.first().map(|entry| entry.created))
+    }
+
     /// Remove old whole-instance backups beyond the configured retention count.
     fn prune_old_backups(&self) -> error::Result<u32> {
         let entries = self.list_backups()?;

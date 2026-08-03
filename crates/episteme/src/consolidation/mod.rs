@@ -13,11 +13,43 @@
 //! - **Batch limit:** Max 50 facts per LLM call
 //! - **Rate limit:** Max 1 consolidation cycle per hour per nous
 
-use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use snafu::{ResultExt, Snafu};
 
 use crate::id::{EntityId, FactId};
 use crate::knowledge::{FactSensitivity, MemoryScope, Visibility};
+
+/// Serde support for the `Arc<[T]>` batch-metadata fields of
+/// [`ConsolidatedFact`].
+///
+/// WHY(#5694): the batch metadata is identical across every fact produced from
+/// one consolidation batch, so the facts share one allocation rather than each
+/// owning a copy. `serde`'s own `Arc` impls live behind its `rc` feature,
+/// which is not enabled workspace-wide; these helpers keep the sharing local
+/// to this module instead of turning it on for every crate. The wire format is
+/// unchanged — an `Arc<[T]>` reads and writes exactly as the `Vec<T>` it
+/// replaced, so previously serialized records still deserialize.
+mod arc_slice {
+    use super::{Arc, Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(super) fn serialize<S, T>(value: &Arc<[T]>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+        T: Serialize,
+    {
+        value.as_ref().serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D, T>(deserializer: D) -> Result<Arc<[T]>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        Ok(Vec::<T>::deserialize(deserializer)?.into())
+    }
+}
 
 #[cfg(feature = "mneme-engine")]
 mod engine;
@@ -198,35 +230,40 @@ pub struct ConsolidatedFact {
     /// Epistemic tier (always `inferred` for LLM consolidation outputs).
     pub tier: String,
     /// IDs of the original facts that were consolidated into this one.
-    pub source_fact_ids: Vec<FactId>,
+    ///
+    /// INVARIANT: every fact produced from one consolidation batch shares this
+    /// allocation with its siblings, so the seven `source_*` fields below are
+    /// pointer-equal across a batch rather than merely equal by value.
+    #[serde(with = "arc_slice")]
+    pub source_fact_ids: Arc<[FactId]>,
     /// `recorded_at` timestamps (ISO 8601) of the original facts, aligned to
     /// [`source_fact_ids`](Self::source_fact_ids) by index.
     ///
     /// Used to compute multiplicity time-spread metadata (#3634). Defaulted
     /// via `#[serde(default)]` so legacy serialized `ConsolidatedFact`
     /// records (which predate this field) still deserialize.
-    #[serde(default)]
-    pub source_recorded_ats: Vec<String>,
+    #[serde(default, with = "arc_slice")]
+    pub source_recorded_ats: Arc<[String]>,
     /// Memory scopes of the original facts, aligned to
     /// [`source_fact_ids`](Self::source_fact_ids) by index.
-    #[serde(default)]
-    pub source_scopes: Vec<Option<MemoryScope>>,
+    #[serde(default, with = "arc_slice")]
+    pub source_scopes: Arc<[Option<MemoryScope>]>,
     /// Project identifiers of the original facts, aligned to
     /// [`source_fact_ids`](Self::source_fact_ids) by index.
-    #[serde(default)]
-    pub source_project_ids: Vec<Option<String>>,
+    #[serde(default, with = "arc_slice")]
+    pub source_project_ids: Arc<[Option<String>]>,
     /// Sensitivities of the original facts, aligned to
     /// [`source_fact_ids`](Self::source_fact_ids) by index.
-    #[serde(default)]
-    pub source_sensitivities: Vec<FactSensitivity>,
+    #[serde(default, with = "arc_slice")]
+    pub source_sensitivities: Arc<[FactSensitivity]>,
     /// Visibilities of the original facts, aligned to
     /// [`source_fact_ids`](Self::source_fact_ids) by index.
-    #[serde(default)]
-    pub source_visibilities: Vec<Visibility>,
+    #[serde(default, with = "arc_slice")]
+    pub source_visibilities: Arc<[Visibility]>,
     /// Source session IDs of the original facts, aligned to
     /// [`source_fact_ids`](Self::source_fact_ids) by index.
-    #[serde(default)]
-    pub source_session_ids: Vec<Option<String>>,
+    #[serde(default, with = "arc_slice")]
+    pub source_session_ids: Arc<[Option<String>]>,
 }
 
 /// Result of a consolidation operation.

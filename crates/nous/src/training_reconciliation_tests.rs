@@ -31,7 +31,7 @@ fn default_config() -> TrainingConfig {
         path: "training".to_owned(),
         max_shard_bytes: 50 * 1024 * 1024,
         pii_filter_enabled: false,
-        author_classifier_enabled: false,
+        decontamination_policy: DecontaminationPolicy::Disabled,
         author_classifier_threshold: 0.85,
     }
 }

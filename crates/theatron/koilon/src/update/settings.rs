@@ -153,28 +153,73 @@ pub(crate) async fn handle_save(app: &mut App) {
     };
 
     let mut errors = Vec::new();
+    let mut restart_required = Vec::new();
     for (section, data) in &changed {
-        if let Err(e) = app.client.update_config_section(section, data).await {
-            errors.push(format!("{section}: {e}"));
+        match app.client.update_config_section(section, data).await {
+            Ok(response) => restart_required.extend(restart_paths(&response)),
+            Err(e) => errors.push(format!("{section}: {e}")),
         }
     }
 
     if errors.is_empty() {
-        app.viewport.error_toast = Some(ErrorToast::new("Config saved and reloaded".to_owned()));
-        app.layout.overlay = None;
+        finish_save(app, &restart_required);
     } else if let Some(Overlay::Settings(s)) = &mut app.layout.overlay {
         s.save_status = SaveStatus::Error(errors.join("; "));
     }
 }
 
-pub(crate) fn handle_saved(app: &mut App) {
-    app.viewport.error_toast = Some(ErrorToast::new("Config saved and reloaded".to_owned()));
+/// Extract the field paths a config update deferred to restart.
+///
+/// WHY the response is read rather than assumed: pylon preserves cold values in
+/// the live config and reports them in `restart_required`, so a save can succeed
+/// while leaving the running system unchanged.
+// SAFETY: sanitized at ingestion: paths come from the API response.
+fn restart_paths(response: &serde_json::Value) -> Vec<String> {
+    let Some(paths) = response
+        .get("restart_required")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Vec::new();
+    };
+    paths
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(|path| sanitize_for_display(path).into_owned())
+        .collect()
+}
+
+/// Build the operator-facing result of a config save.
+///
+/// WHY the restart case names the paths: "saved and reloaded" on a cold change
+/// tells the operator the running system changed when it did not, and the paths
+/// are what they need to decide whether the restart is worth taking now.
+fn save_outcome_message(restart_required: &[String]) -> String {
+    if restart_required.is_empty() {
+        return "Config saved and reloaded".to_owned();
+    }
+    format!(
+        "Config saved — restart required for: {}",
+        restart_required.join(", ")
+    )
+}
+
+/// Complete a successful save: report the outcome and refresh dependent state.
+///
+/// WHY one function rather than a copy per call site: the toast text and the
+/// render invalidation below belong to the same event, and when they were split
+/// across two call sites only one of them ran.
+fn finish_save(app: &mut App, restart_required: &[String]) {
+    app.viewport.error_toast = Some(ErrorToast::new(save_outcome_message(restart_required)));
     app.layout.overlay = None;
     // Config changes can affect display (e.g. syntax highlighting theme). Invalidate
     // the cached markdown lines and rebuild virtual scroll heights so the next render
     // picks up fresh layout.
     app.viewport.render.markdown_cache.clear();
     app.rebuild_virtual_scroll();
+}
+
+pub(crate) fn handle_saved(app: &mut App) {
+    finish_save(app, &[]);
 }
 
 // SAFETY: sanitized at ingestion: error messages may contain external data.
@@ -414,6 +459,63 @@ mod tests {
         handle_saved(&mut app);
         assert!(app.layout.overlay.is_none());
         assert!(app.viewport.error_toast.is_some());
+    }
+
+    #[test]
+    fn hot_update_reports_saved_and_reloaded() {
+        assert_eq!(save_outcome_message(&[]), "Config saved and reloaded");
+    }
+
+    #[test]
+    fn cold_update_names_the_restart_paths() {
+        let message = save_outcome_message(&["gateway.port".to_owned()]);
+        assert!(
+            !message.contains("reloaded"),
+            "a cold change must not claim the running system reloaded: {message}"
+        );
+        assert!(message.contains("gateway.port"), "{message}");
+    }
+
+    #[test]
+    fn mixed_update_names_every_restart_path() {
+        let message = save_outcome_message(&["gateway.port".to_owned(), "gateway.bind".to_owned()]);
+        assert!(message.contains("gateway.port"), "{message}");
+        assert!(message.contains("gateway.bind"), "{message}");
+    }
+
+    #[test]
+    fn restart_paths_reads_the_response_field() {
+        let response = serde_json::json!({
+            "section": "gateway",
+            "config": {},
+            "restart_required": ["gateway.port", "gateway.bind"],
+        });
+        assert_eq!(
+            restart_paths(&response),
+            vec!["gateway.port".to_owned(), "gateway.bind".to_owned()]
+        );
+    }
+
+    #[test]
+    fn restart_paths_absent_or_empty_means_no_restart() {
+        assert!(restart_paths(&serde_json::json!({"section": "gateway"})).is_empty());
+        assert!(restart_paths(&serde_json::json!({"restart_required": []})).is_empty());
+    }
+
+    #[test]
+    fn finish_save_invalidates_the_render_cache() {
+        // WHY: config changes can alter the syntax-highlighting theme, so a
+        // completed save has to drop cached markdown. This ran only on the
+        // message-driven path before, which nothing emits.
+        let mut app = app_with_settings();
+        app.viewport.render.markdown_cache.text = "cached".to_owned();
+        app.viewport.render.markdown_cache.width = 80;
+        finish_save(&mut app, &[]);
+        assert!(
+            app.viewport.render.markdown_cache.text.is_empty()
+                && app.viewport.render.markdown_cache.width == 0,
+            "a completed save must invalidate cached markdown"
+        );
     }
 
     #[test]

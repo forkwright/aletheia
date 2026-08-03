@@ -253,7 +253,9 @@ pub fn record_cache_tokens(provider: &str, cache_read_tokens: u64, cache_write_t
 
 /// Record a circuit breaker state transition.
 ///
-/// `from` and `to` are lowercase state names: `closed`, `open`, `half_open`.
+/// `from` and `to` are lowercase [`crate::health::ProviderHealth`] state names:
+/// `up`, `degraded`, `down`, `probing`. The sole caller is
+/// [`crate::health::ProviderHealthTracker`], which owns provider failure gating.
 pub(crate) fn record_circuit_transition(provider: &str, from: &str, to: &str) {
     LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL
         .get_or_create(&CircuitTransitionLabels {
@@ -262,6 +264,22 @@ pub(crate) fn record_circuit_transition(provider: &str, from: &str, to: &str) {
             to: to.to_owned(),
         })
         .inc();
+}
+
+/// Current value of the transition counter for one `provider`/`from`/`to` triple.
+///
+/// WHY: lets the health-tracker tests assert the counter actually moved, rather
+/// than that a recording function exists. Reads the same global family the
+/// registry exports, so a regression that stops emitting fails the assertion.
+#[cfg(test)]
+pub(crate) fn circuit_transition_count(provider: &str, from: &str, to: &str) -> u64 {
+    LLM_CIRCUIT_BREAKER_TRANSITIONS_TOTAL
+        .get_or_create(&CircuitTransitionLabels {
+            provider: provider.to_owned(),
+            from: from.to_owned(),
+            to: to.to_owned(),
+        })
+        .get()
 }
 
 /// Set the current adaptive concurrency limit for a provider.
@@ -322,7 +340,7 @@ mod tests {
         set_concurrency_limit("test-init", 10);
         set_concurrency_latency_ewma("test-init", 0.5);
         set_concurrency_in_flight("test-init", 5);
-        record_circuit_transition("test-init", "closed", "open");
+        record_circuit_transition("test-init", "up", "down");
 
         let out = encode(&r);
         for fragment in [

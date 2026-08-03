@@ -15,15 +15,45 @@ fn detect_language_python() {
 
 #[test]
 fn detect_language_typescript() {
-    assert_eq!(tab::detect_language_pub(Path::new("app.tsx")), "typescript");
+    assert_eq!(tab::detect_language_pub(Path::new("app.ts")), "typescript");
+}
+
+// WHY: the previous local table collapsed tsx into the typescript token, so
+// syntect received the wrong syntax for every .tsx file.
+#[test]
+fn detect_language_tsx_is_not_typescript() {
+    assert_eq!(tab::detect_language_pub(Path::new("app.tsx")), "tsx");
+}
+
+#[test]
+fn detect_language_jsx_is_not_javascript() {
+    assert_eq!(tab::detect_language_pub(Path::new("app.jsx")), "jsx");
+}
+
+// WHY: the local table returned the extension itself for anything it did not
+// know, handing syntect an arbitrary token instead of a plain-text fallback.
+#[test]
+fn detect_language_unknown_extension_falls_back_to_text() {
+    assert_eq!(tab::detect_language_pub(Path::new("notes.xyz")), "text");
 }
 
 #[test]
 fn detect_language_no_extension() {
-    assert_eq!(
-        tab::detect_language_pub(Path::new("Makefile")),
-        "plain text"
-    );
+    assert_eq!(tab::detect_language_pub(Path::new("Makefile")), "text");
+}
+
+// WHY: Path::extension yields None for a leading-dot file, where splitting the
+// path on the rightmost dot would treat "bashrc" as the extension.
+#[test]
+fn detect_language_dotfile_has_no_extension() {
+    assert_eq!(tab::detect_language_pub(Path::new(".bashrc")), "text");
+}
+
+#[test]
+fn detect_language_adopts_gramma_extensions_absent_from_the_old_table() {
+    assert_eq!(tab::detect_language_pub(Path::new("main.zig")), "zig");
+    assert_eq!(tab::detect_language_pub(Path::new("App.kt")), "kotlin");
+    assert_eq!(tab::detect_language_pub(Path::new("style.scss")), "scss");
 }
 
 #[test]

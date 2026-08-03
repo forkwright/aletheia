@@ -338,6 +338,24 @@ pub enum QaVerdict {
     Partial,
     /// Critical criteria fail or blocking mechanical issues found.
     Fail,
+    /// Nothing was measured — no acceptance criteria were evaluated, so
+    /// quality is unknown rather than acceptable.
+    ///
+    /// INVARIANT: this is a non-passing state. An unmeasured PR must never
+    /// reach an automated merge decision as though it had been checked.
+    NeedsReview,
+}
+
+impl QaVerdict {
+    /// Returns `true` if this verdict clears an automated merge decision.
+    ///
+    /// WHY: callers previously tested `== Pass` ad hoc; centralising the
+    /// question keeps [`Self::NeedsReview`] from being read as acceptance at
+    /// a site that forgot to enumerate it.
+    #[must_use]
+    pub fn is_mergeable(self) -> bool {
+        matches!(self, Self::Pass)
+    }
 }
 
 impl std::fmt::Display for QaVerdict {
@@ -346,6 +364,7 @@ impl std::fmt::Display for QaVerdict {
             Self::Pass => write!(f, "pass"),
             Self::Partial => write!(f, "partial"),
             Self::Fail => write!(f, "fail"),
+            Self::NeedsReview => write!(f, "needs_review"),
         }
     }
 }

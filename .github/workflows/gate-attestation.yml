@@ -91,6 +91,24 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+# WHY: hybrid-gate.yml declares the concurrency group for the job it runs, and
+# a called workflow evaluates `github.workflow` / `github.ref` in the CALLER's
+# context — so for a repo whose gate workflow is only the delegating job, the
+# callee's group already governs the whole run. This repo is not that shape:
+# gate-coverage-scripts, gate-coverage-compile-checks and gate run here, in the
+# caller, and the callee's group does not reach them. A superseded push left
+# those three running against a SHA nothing would check.
+#
+# WARNING: the key must NOT be hybrid-gate.yml's `${{ github.workflow }}-${{
+# github.ref }}`. That callee documents that a caller sharing its key makes the
+# group self-cancel, since both expressions evaluate in this same caller
+# context and would collide. The `-caller` infix keeps this group distinct, so
+# it cancels superseded runs of the caller-side jobs while the callee keeps
+# managing its own.
+concurrency:
+  group: ${{ github.workflow }}-caller-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hybrid-gate:
     uses: forkwright/.github/.github/workflows/hybrid-gate.yml@main
@@ -154,6 +172,20 @@ jobs:
         run: |
           scripts/check-release-versioning.py
           scripts/test-release-versioning.py
+
+      - name: Diaporeia MCP inventory generator tests
+        run: scripts/test-diaporeia-mcp-inventory.py
+
+      # WHY: the pin check compares proskenion's theatron pins against the ROOT
+      # Cargo.toml, but its only PR-time home was desktop.yml, whose paths
+      # filter covers crates/theatron/proskenion/**, crates/theatron/skene/**,
+      # scripts/*proskenion* and desktop.yml itself — not the root manifest.
+      # So a PR that re-pinned theatron in the root workspace drifted the two
+      # manifests apart with the check never running, and the failure surfaced
+      # later on an unrelated PR that happened to touch a proskenion path.
+      # Running it here binds it to every PR; it is pure-python, no compile.
+      - name: Check proskenion theatron pins
+        run: scripts/check-proskenion-pins.py
 
   gate-coverage-compile-checks:
     name: gate-coverage-compile-checks

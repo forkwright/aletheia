@@ -458,9 +458,10 @@ impl ProviderRegistry {
     /// Register a provider with custom health thresholds.
     pub fn register_with_config(&mut self, provider: Box<dyn LlmProvider>, config: HealthConfig) {
         // kanon:ignore RUST/pub-visibility
+        let provider_name = provider.name().to_owned();
         self.providers.push(ProviderEntry {
             provider,
-            health: ProviderHealthTracker::new(config),
+            health: ProviderHealthTracker::new(provider_name, config),
         });
     }
 
