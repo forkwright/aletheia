@@ -19,6 +19,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Check desktop CI path filter covers proskenion path deps
+        run: scripts/check-desktop-ci-paths.py
       - name: Check proskenion theatron pins
         run: scripts/check-proskenion-pins.py
       - name: Configure git credentials for fleet deps
