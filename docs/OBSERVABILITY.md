@@ -29,7 +29,7 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 | `aletheia_llm_tokens_total` | Counter | `provider`, `direction` | Token consumption (`input` or `output`) |
 | `aletheia_llm_cost_usd_total` | Counter | `provider` | Estimated spend in USD |
 | `aletheia_llm_cache_tokens_total` | Counter | `provider`, `direction` | Prompt cache tokens (`read` or `write`) |
-| `aletheia_llm_circuit_breaker_transitions_total` | Counter | `provider`, `from`, `to` | Circuit breaker state changes |
+| `aletheia_llm_circuit_breaker_transitions_total` | Counter | `provider`, `from`, `to` | Provider health state changes (`up`, `degraded`, `down`, `probing`) |
 | `aletheia_llm_concurrency_limit` | Gauge | `provider` | Current adaptive concurrency limit |
 | `aletheia_llm_concurrency_in_flight` | Gauge | `provider` | In-flight requests |
 | `aletheia_llm_concurrency_latency_ewma_seconds` | Gauge | `provider` | EWMA latency estimate used by the limiter |
@@ -168,7 +168,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 
 ### LlmCircuitBreakerOpen
 
-**What it means:** A circuit breaker transitioned to `open` state within the last 5 minutes.
+**What it means:** A provider's circuit opened — its health tracker transitioned to `down` within the last 5 minutes, after consecutive failures, a rate limit, or an auth failure.
 
 **Impact:** Requests to that provider are failing fast. Fallback or retry logic is active.
 
@@ -176,7 +176,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 1. Identify the provider from the `provider` label
 2. Check provider health and credentials
 3. Review `aletheia_llm_requests_total{status="error"}` for error patterns
-4. If transient, the circuit should auto-recover to `half_open` then `closed`
+4. If transient, the circuit auto-recovers: after the cooldown one request is elected as a probe (`down` -> `probing`), and success returns it to `up`. An auth failure never auto-recovers.
 5. If persistent, switch primary provider in config or rotate credentials
 
 ### BackupStale
