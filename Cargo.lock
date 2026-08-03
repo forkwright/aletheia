@@ -3491,6 +3491,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gramma"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+dependencies = [
+ "syntect",
+]
+
+[[package]]
 name = "graphe"
 version = "0.33.9"
 dependencies = [
@@ -4657,6 +4665,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "futures-util",
+ "gramma",
  "image",
  "jiff",
  "koina",
