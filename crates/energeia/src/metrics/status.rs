@@ -508,6 +508,7 @@ mod tests {
             started_at,
             finished_at: None,
             succeeded: None,
+            outcome: None,
         };
         let value = rmp_serde::to_vec(&record).unwrap();
         let mut tx = lock_db.db.write_tx();
