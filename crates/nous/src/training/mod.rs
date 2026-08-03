@@ -39,6 +39,8 @@
 //! - Empty or whitespace-only responses
 //! - Tool-use-only turns (tool calls present but no text content)
 //! - Error, degraded, content-filtered, or max-tokens stop reasons
+//! - Correction turns, which are user feedback on the previous turn rather
+//!   than a user task; they are captured as DPO preference pairs instead
 //!
 //! This keeps the training corpus clean of failure modes and non-content
 //! turns that would teach the model to reproduce degenerate outputs.
@@ -52,9 +54,11 @@ use std::sync::Arc;
 use aletheia_classify::Classifier;
 use jiff::Timestamp;
 pub use mneme::training::{
-    RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
-    TrainingRecord,
+    DecontaminationPolicy, RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION,
+    ToolOutcome, TrainingConfig, TrainingRecord,
 };
+
+use self::decontamination::{DecontaminationGate, Disposition};
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};
@@ -314,6 +318,11 @@ impl CaptureInput<'_> {
     /// | Non-error stop reason | 0.10 | `stop_reason` — `EndTurn` / `StopSequence` = 1.0 |
     /// | Correction penalty | 0.10 | `is_correction = Some(true)` → 0.0 else 1.0 |
     ///
+    /// NOTE: the correction penalty is a backstop, not the primary control.
+    /// `maybe_capture` rejects correction turns outright, so on that path this
+    /// arm only fires for `Some(false)`. The penalty is kept for direct callers
+    /// of this function, which is a public API.
+    ///
     /// WHY this mix: these are the only DPO/ORPO-relevant signals
     /// available without a judge model. Tool success is the strongest
     /// signal because failed trajectories teach the wrong behaviour.
@@ -506,16 +515,16 @@ pub struct TrainingCapture {
     max_shard_bytes: u64,
     /// Whether to apply PII redaction before writing each record.
     pii_filter_enabled: bool,
-    /// Optional author classifier for filtering non-user-authored text.
+    /// Authorship decontamination gate.
     ///
-    /// If `Some`, applies an authorship gate before writing.
-    /// If `None`, no authorship filtering is applied.
-    classifier: Option<Arc<Classifier>>,
-    /// Confidence threshold for the authorship gate.
+    /// Owns the decision of whether a turn may enter the corpus; see
+    /// [`decontamination`].
+    gate: DecontaminationGate,
+    /// Full path to the quarantine shard.
     ///
-    /// User messages where the top non-user class exceeds this threshold
-    /// are rejected from training data.
-    classifier_threshold: f32,
+    /// Written only under [`DecontaminationPolicy::Quarantine`]; the file is
+    /// created lazily on the first quarantined row.
+    quarantine_path: PathBuf,
     /// Set of durable `turn_id` values already present in the corpus.
     ///
     /// WHY: retried or replayed turns must not append duplicate training
@@ -591,21 +600,15 @@ impl TrainingCapture {
             "training capture initialized"
         );
 
-        let classifier = if config.author_classifier_enabled {
-            Some(Arc::new(aletheia_classify::Classifier::new()))
-        } else {
-            None
-        };
-
         Ok(Self {
+            quarantine_path: dir.join("quarantine.jsonl"),
             dir,
             current_shard,
             manifest_path,
             manifest,
             max_shard_bytes: config.max_shard_bytes,
             pii_filter_enabled: config.pii_filter_enabled,
-            classifier,
-            classifier_threshold: config.author_classifier_threshold,
+            gate: DecontaminationGate::from_config(config),
             captured_turn_ids,
         })
     }
@@ -913,41 +916,29 @@ impl TrainingCapture {
         }
     }
 
-    /// WHY: extracted from `maybe_capture` to keep that function under the
-    /// line limit while preserving the authorship-gate contract.
-    /// Returns `true` if the authorship gate rejects this input.
-    fn authorship_gate_blocks(&self, input: &CaptureInput<'_>) -> bool {
-        let Some(classifier) = &self.classifier else {
-            return false;
-        };
-        match classifier.classify(input.user_message) {
-            Ok(probs) => {
-                let class = probs.argmax();
-                let confidence = probs.confidence();
-                if class != aletheia_classify::AuthorClass::User
-                    && confidence >= self.classifier_threshold
-                {
-                    debug!(
-                        session_id = input.session_id,
-                        class = class.as_str(),
-                        confidence = confidence,
-                        "training capture skipped: authorship gate rejected non-user text"
-                    );
-                    crate::metrics::record_training_capture_rejected(input.nous_id, class.as_str());
-                    return true;
-                }
-                false
-            }
-            Err(e) => {
-                // WHY: classifier failures must not block the pipeline.
-                // Log the error and continue with capture (graceful degradation).
-                warn!(
-                    error = %e,
-                    session_id = input.session_id,
-                    "authorship classification failed; continuing without filter"
-                );
-                false
-            }
+    /// Append a screened-out record to the quarantine shard.
+    ///
+    /// WHY quarantine rows are written as full records rather than counted:
+    /// the point of `Quarantine` over `FailClosed` is that an operator can
+    /// inspect what the gate removed and re-admit it after a threshold or
+    /// classifier change. A counter cannot support that.
+    ///
+    /// I/O failures are logged and swallowed: quarantine is an inspection
+    /// aid, and losing it must not block the pipeline or, worse, cause the
+    /// row to fall through into the corpus.
+    fn write_quarantine(&self, line: &str, session_id: &str) {
+        let appended = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.quarantine_path)
+            .and_then(|mut f| writeln!(f, "{line}"));
+        if let Err(e) = appended {
+            warn!(
+                error = %e,
+                session_id,
+                path = %self.quarantine_path.display(),
+                "quarantine shard write failed; record dropped"
+            );
         }
     }
 
@@ -978,18 +969,10 @@ impl TrainingCapture {
         false
     }
 
-    /// Capture a conversation turn if it passes the quality gate.
-    ///
-    /// Quality gate criteria:
-    /// - Assistant response must contain non-whitespace text
-    /// - Stop reason must not indicate an error or degraded mode
-    /// - Turn must not be tool-use-only (tool calls with no text content)
-    ///
-    /// Returns `true` if the record was written, `false` if it was
-    /// filtered out by the quality gate. I/O errors are logged as
-    /// warnings and do not propagate: training capture must never
-    /// block the pipeline.
-    pub fn maybe_capture(&mut self, input: CaptureInput<'_>) -> bool {
+    /// WHY: extracted from `maybe_capture` to keep that function under the
+    /// line limit. Returns `true` if the turn carries no usable assistant
+    /// text and must not be written.
+    fn content_gate_blocks(input: &CaptureInput<'_>) -> bool {
         // WHY: empty and whitespace-only responses teach the model to produce
         // vacuous output. `.trim().is_empty()` catches both `""` and `"  \n"`.
         if input.assistant_response.trim().is_empty() {
@@ -997,7 +980,7 @@ impl TrainingCapture {
                 session_id = input.session_id,
                 "training capture skipped: empty/whitespace response"
             );
-            return false;
+            return true;
         }
 
         // WHY: rejected stop reasons indicate the model failed to produce a
@@ -1011,7 +994,7 @@ impl TrainingCapture {
                 stop_reason = ?input.stop_reason,
                 "training capture skipped: rejected stop reason"
             );
-            return false;
+            return true;
         }
 
         // WHY: tool-use-only turns (tool calls present but the "response" is
@@ -1023,10 +1006,64 @@ impl TrainingCapture {
                 session_id = input.session_id,
                 "training capture skipped: tool-use-only turn"
             );
+            return true;
+        }
+
+        false
+    }
+
+    /// Capture a conversation turn if it passes the quality gate.
+    ///
+    /// Quality gate criteria:
+    /// - Assistant response must contain non-whitespace text
+    /// - Stop reason must not indicate an error or degraded mode
+    /// - Turn must not be tool-use-only (tool calls with no text content)
+    /// - Turn must survive the configured decontamination policy
+    ///
+    /// Returns `true` if the record was written to the corpus. A quarantined
+    /// record returns `false`: it is persisted, but not as corpus. I/O errors
+    /// are logged as warnings and do not propagate: training capture must
+    /// never block the pipeline.
+    pub fn maybe_capture(&mut self, input: CaptureInput<'_>) -> bool {
+        if Self::content_gate_blocks(&input) {
             return false;
         }
 
-        if self.authorship_gate_blocks(&input) {
+        // WHY: a correction turn is user feedback about the *previous* turn, not
+        // a user task paired with a good answer. Its assistant response is an
+        // acknowledgement ("You're right, I apologize"), so capturing it into the
+        // supervised corpus trains correction-shaped prompts to produce
+        // acknowledgement — a sycophancy pattern that accumulates silently. The
+        // `W_CORRECTION` penalty in `compute_quality_score` records the problem in
+        // metadata but nothing downstream skips the write, so the gate has to be
+        // here.
+        //
+        // WHY this loses no signal: correction turns are the DPO trigger, and the
+        // DPO path in `pipeline` runs off `FinalizeOutcome::Persisted` independently
+        // of this return value. Excluding the turn from SFT leaves the preference
+        // pair untouched.
+        //
+        // WHY ahead of the decontamination gate: a correction turn is not a corpus
+        // candidate at all, so it needs no verdict — evaluating it would only spend
+        // the gate's work and file a disposition for a record that is dropped either
+        // way.
+        if input.is_correction == Some(true) {
+            debug!(
+                session_id = input.session_id,
+                "training capture skipped: correction turn (DPO pair captured separately)"
+            );
+            return false;
+        }
+
+        let verdict = self
+            .gate
+            .evaluate(input.user_message, input.session_id, input.nous_id);
+        if verdict.disposition == Disposition::Drop {
+            debug!(
+                session_id = input.session_id,
+                verdict = verdict.label,
+                "training capture skipped: decontamination gate dropped the turn"
+            );
             return false;
         }
 
@@ -1069,6 +1106,9 @@ impl TrainingCapture {
             pii_filter_applied: pii.pii_filter_applied,
             pii_redaction_count: pii.pii_redaction_count,
             pii_policy_ref: pii.pii_policy_ref,
+            decontamination_policy: Some(self.gate.policy()),
+            decontamination_verdict: Some(verdict.label.to_owned()),
+            classifier_version: verdict.classifier_version.clone(),
         };
 
         let enriched = EnrichedTrainingRecord {
@@ -1092,6 +1132,19 @@ impl TrainingCapture {
                 return false;
             }
         };
+        // WHY quarantine diverts after serialization rather than before: the
+        // quarantined row carries the same provenance as a corpus row, so an
+        // operator re-admitting it later gets the verdict that removed it.
+        if verdict.disposition == Disposition::Quarantine {
+            self.write_quarantine(&line, input.session_id);
+            debug!(
+                session_id = input.session_id,
+                verdict = verdict.label,
+                "training record quarantined"
+            );
+            return false;
+        }
+
         line.push('\n');
 
         match self.commit_line(&line, record.schema_version, input.turn_id) {
@@ -1131,16 +1184,17 @@ impl TrainingCapture {
         &self.manifest
     }
 
-    /// Set the author classifier for this capture session.
+    /// Set the author classifier backing the decontamination gate.
     ///
-    /// If `Some`, the classifier is used to filter non-user-authored text
-    /// from training capture via the authorship gate in `maybe_capture`.
-    /// If `None`, no authorship filtering is applied.
+    /// The configured [`DecontaminationPolicy`] still decides what happens to
+    /// a screened-out turn; passing `None` disables screening regardless of
+    /// policy, so callers that clear the classifier also give up the gate.
     pub fn set_classifier(&mut self, classifier: Option<Arc<Classifier>>) {
-        self.classifier = classifier;
+        self.gate.set_classifier(classifier);
     }
 }
 
+pub(crate) mod decontamination;
 pub mod dpo;
 pub mod pii;
 
@@ -1167,7 +1221,7 @@ mod pii_filter_disabled_regression {
             path: "training".to_owned(),
             max_shard_bytes: 50 * 1024 * 1024,
             pii_filter_enabled: false,
-            author_classifier_enabled: false,
+            decontamination_policy: DecontaminationPolicy::Disabled,
             author_classifier_threshold: 0.85,
         };
         let capture = TrainingCapture::new(dir.path(), &config)
@@ -1238,7 +1292,7 @@ mod manifest_read_regression {
             path: "training".to_owned(),
             max_shard_bytes: 50 * 1024 * 1024,
             pii_filter_enabled: false,
-            author_classifier_enabled: false,
+            decontamination_policy: DecontaminationPolicy::Disabled,
             author_classifier_threshold: 0.85,
         };
         let dir = tmp.path().join(&config.path);

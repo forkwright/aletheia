@@ -20,6 +20,34 @@ feature = "test-full"
 category = "expensive"
 reason = "Full ML/network test tiers are scheduled and label-triggered in .github/workflows/online-tests.yml; release tags keep deterministic test-core coverage."
 
+# A feature that activates nothing and that no `cfg(feature = ...)` in its own
+# crate reads gates nothing at all. These entries record the shapes where that
+# is intentional; everything else is a defect the validator rejects.
+
+[[no_op_allowances]]
+crate = "*"
+feature = "default"
+category = "empty-default"
+reason = "An empty default feature set is a positive declaration that the crate opts into nothing by default; there is no behaviour for a cfg to gate."
+
+[[no_op_allowances]]
+crate = "*"
+feature = "test-core"
+category = "uniform-test-tier"
+reason = "Test tiers are declared on every workspace member so `--workspace --features test-core` resolves uniformly; crates with no tier-specific code carry the marker without a cfg."
+
+[[no_op_allowances]]
+crate = "*"
+feature = "test-full"
+category = "uniform-test-tier"
+reason = "Test tiers are declared on every workspace member so `--workspace --features test-full` resolves uniformly; crates with no tier-specific code carry the marker without a cfg."
+
+[[no_op_allowances]]
+crate = "*"
+feature = "test-support"
+category = "uniform-test-tier"
+reason = "Test-helper gate declared uniformly across crates; where a crate exposes no helpers the marker exists so dependants can name the feature unconditionally."
+
 [[no_default_recipes]]
 name = "bare-minimum"
 crate = "aletheia"

@@ -638,11 +638,22 @@ fn build_token_metrics_at(
             models.entry(model).or_default().add_session();
         }
 
-        let bucket = bucket_date(&session.created_at, query.granularity.as_deref());
-        series
-            .entry(bucket)
-            .or_default()
-            .add_tokens(input_tokens, output_tokens);
+        if let Some(bucket) = bucket_date(&session.created_at, query.granularity.as_deref()) {
+            series
+                .entry(bucket)
+                .or_default()
+                .add_tokens(input_tokens, output_tokens);
+        } else {
+            // WHY: an unparseable `created_at` used to bucket under
+            // `1970-01-01`, inventing a data point decades away from the
+            // requested range. The session still counts toward the agent and
+            // model totals above; only its series point is dropped.
+            warn!(
+                session_id = %session.id,
+                created_at = %session.created_at,
+                "skipping token-series point: session created_at is not a parseable date"
+            );
+        }
     }
 
     let windows = token_period_windows(session_rows, today);
@@ -765,17 +776,29 @@ fn date_in_range(timestamp: &str, query: &MetricsQuery) -> bool {
     true
 }
 
-fn bucket_date(timestamp: &str, granularity: Option<&str>) -> String {
-    let date = timestamp.get(..10).unwrap_or("1970-01-01");
-    match granularity {
-        Some("monthly") => date.get(..7).unwrap_or(date).to_owned(),
+/// Bucket a session timestamp into a time-series key at the given granularity.
+///
+/// WHY: the `weekly` arm used to format the month and day into the key
+/// (`2026-W06-12`), so every distinct date produced its own bucket and a
+/// weekly series was a relabelled daily one. Weekly keys are now ISO 8601
+/// week dates (`YYYY-Www`): every day of a week maps to one key, and the
+/// keys stay lexicographically ordered for `series_points`' sort. The ISO
+/// week-year — not the calendar year — is used, so the days either side of a
+/// New Year that belong to the same ISO week share a bucket.
+///
+/// Returns `None` when the leading `YYYY-MM-DD` is not a real calendar date,
+/// so the caller can skip the row with a diagnostic instead of silently
+/// folding it into a `1970-01-01` bucket.
+fn bucket_date(timestamp: &str, granularity: Option<&str>) -> Option<String> {
+    let date: jiff::civil::Date = timestamp.get(..10)?.parse().ok()?;
+    Some(match granularity {
+        Some("monthly") => format!("{:04}-{:02}", date.year(), date.month()),
         Some("weekly") => {
-            let year = date.get(..4).unwrap_or("1970");
-            let month_day = date.get(5..10).unwrap_or("01-01");
-            format!("{year}-W{month_day}")
+            let iso = date.iso_week_date();
+            format!("{:04}-W{:02}", iso.year(), iso.week())
         }
-        _ => date.to_owned(),
-    }
+        _ => format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day()),
+    })
 }
 
 fn series_points(series: HashMap<String, TokenTotals>) -> Vec<TokenSeriesPoint> {
@@ -1051,6 +1074,134 @@ mod tests {
         assert!(validate_metrics_query(&query(None, None, Some("2026-13-45"))).is_err());
         // A syntactically plausible but out-of-calendar date is also rejected.
         assert!(validate_metrics_query(&query(None, Some("2026-02-30"), None)).is_err());
+    }
+
+    fn weekly(timestamp: &str) -> Option<String> {
+        bucket_date(timestamp, Some("weekly"))
+    }
+
+    #[test]
+    fn weekly_buckets_every_day_of_one_iso_week_together() {
+        // Mon 2026-06-08 through Sun 2026-06-14 are all ISO week 2026-W24.
+        assert_eq!(weekly("2026-06-08T00:00:00Z").as_deref(), Some("2026-W24"));
+        for ts in [
+            "2026-06-09T23:59:59Z",
+            "2026-06-10T12:00:00Z",
+            "2026-06-14T08:30:00Z",
+        ] {
+            assert_eq!(
+                weekly(ts).as_deref(),
+                Some("2026-W24"),
+                "{ts} belongs to the same ISO week"
+            );
+        }
+    }
+
+    #[test]
+    fn weekly_separates_adjacent_iso_weeks() {
+        // Sun 2026-06-14 ends W24; Mon 2026-06-15 starts W25.
+        assert_eq!(weekly("2026-06-14T00:00:00Z").as_deref(), Some("2026-W24"));
+        assert_eq!(weekly("2026-06-15T00:00:00Z").as_deref(), Some("2026-W25"));
+    }
+
+    #[test]
+    fn weekly_spans_a_month_boundary_within_one_week() {
+        // Sun 2026-05-31 is W22; Mon 2026-06-01 opens W23. A month boundary
+        // must not split a week, nor merge two.
+        assert_eq!(weekly("2026-05-31T00:00:00Z").as_deref(), Some("2026-W22"));
+        assert_eq!(weekly("2026-06-01T00:00:00Z").as_deref(), Some("2026-W23"));
+    }
+
+    #[test]
+    fn weekly_uses_the_iso_week_year_across_a_new_year() {
+        // Mon 2025-12-29 through Sun 2026-01-04 are one ISO week, 2026-W01,
+        // even though the first three days fall in calendar year 2025.
+        // Keying off the calendar year would split this week in two.
+        for ts in [
+            "2025-12-29T00:00:00Z",
+            "2025-12-31T23:00:00Z",
+            "2026-01-01T00:00:00Z",
+            "2026-01-04T23:59:59Z",
+        ] {
+            assert_eq!(
+                weekly(ts).as_deref(),
+                Some("2026-W01"),
+                "{ts} belongs to ISO week 2026-W01"
+            );
+        }
+        // The days either side belong to the neighbouring ISO weeks.
+        assert_eq!(weekly("2025-12-28T00:00:00Z").as_deref(), Some("2025-W52"));
+        assert_eq!(weekly("2026-01-05T00:00:00Z").as_deref(), Some("2026-W02"));
+    }
+
+    #[test]
+    fn weekly_handles_a_leap_day() {
+        // 2024-02-29 exists and sits in W09 with the days around it.
+        for ts in [
+            "2024-02-28T00:00:00Z",
+            "2024-02-29T00:00:00Z",
+            "2024-03-01T00:00:00Z",
+        ] {
+            assert_eq!(
+                weekly(ts).as_deref(),
+                Some("2024-W09"),
+                "{ts} belongs to ISO week 2024-W09"
+            );
+        }
+    }
+
+    #[test]
+    fn weekly_keys_sort_chronologically() {
+        // `series_points` orders the series by lexicographic key, so the
+        // zero-padded week number must keep single-digit weeks in order.
+        let mut keys: Vec<String> = [
+            "2026-03-02T00:00:00Z",
+            "2026-01-05T00:00:00Z",
+            "2025-12-22T00:00:00Z",
+        ]
+        .iter()
+        .filter_map(|ts| weekly(ts))
+        .collect();
+        keys.sort();
+        assert_eq!(keys, ["2025-W52", "2026-W02", "2026-W10"]);
+    }
+
+    #[test]
+    fn daily_and_monthly_granularities_keep_their_keys() {
+        assert_eq!(
+            bucket_date("2026-06-10T12:00:00Z", None).as_deref(),
+            Some("2026-06-10")
+        );
+        assert_eq!(
+            bucket_date("2026-06-10T12:00:00Z", Some("daily")).as_deref(),
+            Some("2026-06-10")
+        );
+        assert_eq!(
+            bucket_date("2026-06-10T12:00:00Z", Some("monthly")).as_deref(),
+            Some("2026-06")
+        );
+    }
+
+    #[test]
+    fn unparseable_timestamps_are_skipped_not_bucketed_at_the_epoch() {
+        for ts in [
+            "",
+            "not-a-date",
+            "2026-13-45T00:00:00Z",
+            "2026-02-30",
+            "2026",
+        ] {
+            assert_eq!(
+                bucket_date(ts, Some("weekly")),
+                None,
+                "{ts:?} must not produce a bucket"
+            );
+            assert_eq!(
+                bucket_date(ts, None),
+                None,
+                "{ts:?} must not produce a bucket"
+            );
+        }
     }
 
     fn session(id: &str, created_at: &str) -> Session {

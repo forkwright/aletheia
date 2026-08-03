@@ -25,6 +25,49 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use crate::app::App;
 use crate::hyperlink::OscLink;
 
+/// Returns a centered rectangle sized as a percentage of `area`.
+///
+/// WARNING: not provably equivalent to `parodos::layout::centered_rect_pct` —
+/// this uses ratatui's `Layout::split` (default `Flex::Start`) over two
+/// pre-divided `(100 - percent) / 2` margin constraints, not direct pixel
+/// arithmetic. When `100 - percent` is odd (e.g. percent = 85, used by
+/// `DIFF_POPUP_HEIGHT_PCT` in `overlay` and `POPUP_HEIGHT_PCT` in `settings`),
+/// the three constraints sum to 99% and `Flex::Start` leaves the shortfall
+/// unallocated at the trailing edge instead of splitting it across both
+/// margins — a different (off-center) result than `centered_rect_pct`'s
+/// floor-based offset. Do not collapse into the parodos helper without
+/// confirming pixel parity across the percent values actually used.
+///
+/// WHY(#5900) this lives here: `overlay` and `settings` each carried a
+/// byte-identical copy of this function and of the warning above, so the
+/// documented divergence from parodos had two places to drift from. One
+/// definition keeps the contract single-owned without changing any rendered
+/// geometry.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "Layout.split() returns exactly as many Rects as constraints; [1] is valid for both 3-element constraint arrays"
+)]
+pub(crate) fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(area);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        // kanon:ignore RUST/indexing-slicing — popup_layout split with 3 constraints; index 1 always valid; inner split also 3 constraints
+        .split(popup_layout[1])[1]
+}
+
 const SIDEBAR_WIDTH: u16 = 22;
 const MIN_CHAT_WIDTH: u16 = 40;
 const MIN_SIDEBAR_TERMINAL_WIDTH: u16 = 60;
@@ -382,5 +425,40 @@ mod tests {
     #[test]
     fn min_ops_terminal_width_is_80() {
         assert_eq!(MIN_OPS_TERMINAL_WIDTH, 80);
+    }
+
+    #[test]
+    fn centered_rect_is_symmetric_on_even_margins() {
+        // WHY(#5900): pins the geometry the overlay and settings copies both
+        // produced, so the single shared definition cannot drift from it.
+        let area = Rect::new(0, 0, 200, 100);
+        let r = centered_rect(60, 70, area);
+        assert_eq!(
+            (r.x, r.width, r.y, r.height),
+            (40, 120, 15, 70),
+            "even margins must centre exactly"
+        );
+    }
+
+    #[test]
+    fn centered_rect_keeps_the_odd_margin_shortfall_trailing() {
+        // WHY(#5900): percent_y = 85 is the odd-remainder case the WARNING on
+        // `centered_rect` calls out — (100 - 85) / 2 = 7, so the three
+        // constraints sum to 99% and `Flex::Start` leaves the last cell
+        // unallocated at the trailing edge. Pinning it here means a future
+        // "adopt parodos::layout::centered_rect_pct" change has to prove pixel
+        // parity against a failing test rather than land silently.
+        let area = Rect::new(0, 0, 200, 100);
+        let r = centered_rect(80, 85, area);
+        assert_eq!(
+            (r.x, r.width),
+            (20, 160),
+            "even horizontal margins must centre exactly"
+        );
+        assert_eq!(
+            (r.y, r.height),
+            (7, 85),
+            "odd vertical margin leaves the shortfall after the popup, not before it"
+        );
     }
 }

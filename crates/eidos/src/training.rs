@@ -31,13 +31,18 @@ pub struct TrainingConfig {
     /// running a trusted local-only pipeline can disable explicitly.
     #[serde(default = "default_pii_filter_enabled")]
     pub pii_filter_enabled: bool,
-    /// Whether to apply the author classifier gate to training capture.
+    /// How the authorship decontamination gate treats captured turns.
     ///
-    /// When `true`, user messages classified as non-user-authored with
-    /// confidence >= `author_classifier_threshold` are rejected from the
-    /// training corpus. Default: `false` (regression-safe).
-    #[serde(default = "default_author_classifier_enabled")]
-    pub author_classifier_enabled: bool,
+    /// WHY this replaces the former `author_classifier_enabled` boolean: a
+    /// boolean could express "gate on" but not what the gate owes the corpus
+    /// when the classifier itself fails. Both capture paths answered that
+    /// question by admitting the turn, so a classifier outage silently
+    /// widened the corpus boundary. The policy makes the answer explicit and
+    /// selectable. `TrainingConfig` denies unknown fields, so a config still
+    /// carrying the removed boolean fails loudly at load rather than
+    /// downgrading the gate to `Disabled` in silence.
+    #[serde(default)]
+    pub decontamination_policy: DecontaminationPolicy,
     /// Confidence threshold for the authorship gate.
     ///
     /// User messages where the top non-user class exceeds this threshold
@@ -45,6 +50,57 @@ pub struct TrainingConfig {
     /// Default: 0.85.
     #[serde(default = "default_author_classifier_threshold")]
     pub author_classifier_threshold: f32,
+}
+
+/// How the authorship decontamination gate disposes of a captured turn.
+///
+/// The gate screens the user message of every candidate training and DPO
+/// record. This policy states what happens both when the classifier reports
+/// non-user-authored text and when the classifier cannot produce a verdict
+/// at all — the two cases a boolean toggle could not distinguish.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum DecontaminationPolicy {
+    /// Do not screen. Every turn passing the other quality gates is admitted.
+    ///
+    /// WHY this is the default: it preserves the behaviour of the former
+    /// `author_classifier_enabled = false` default, so upgrading does not
+    /// silently begin discarding turns an operator expected to keep.
+    #[default]
+    Disabled,
+    /// Screen and record the verdict, but admit every turn.
+    ///
+    /// Use to measure how much of a corpus the gate would remove before
+    /// enforcing it.
+    Warn,
+    /// Divert non-user-authored turns and classifier failures to a
+    /// quarantine shard instead of the corpus.
+    ///
+    /// The turn stays on disk for inspection but is not part of the
+    /// training corpus.
+    Quarantine,
+    /// Discard non-user-authored turns and classifier failures outright.
+    FailClosed,
+}
+
+impl DecontaminationPolicy {
+    /// Stable label for provenance records and metrics.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Warn => "warn",
+            Self::Quarantine => "quarantine",
+            Self::FailClosed => "fail_closed",
+        }
+    }
+
+    /// Whether this policy runs the classifier at all.
+    #[must_use]
+    pub fn screens(self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
 }
 
 /// Returns the default value for [`TrainingConfig::max_shard_bytes`].
@@ -55,11 +111,6 @@ fn default_max_shard_bytes() -> u64 {
 /// Default value for [`TrainingConfig::pii_filter_enabled`]: `true`.
 fn default_pii_filter_enabled() -> bool {
     true
-}
-
-/// Default value for [`TrainingConfig::author_classifier_enabled`]: `false`.
-fn default_author_classifier_enabled() -> bool {
-    false
 }
 
 /// Default value for [`TrainingConfig::author_classifier_threshold`]: 0.85.
@@ -74,7 +125,7 @@ impl Default for TrainingConfig {
             path: "data/training".to_owned(),
             max_shard_bytes: DEFAULT_MAX_SHARD_BYTES,
             pii_filter_enabled: true,
-            author_classifier_enabled: false,
+            decontamination_policy: DecontaminationPolicy::Disabled,
             author_classifier_threshold: 0.85,
         }
     }
@@ -82,9 +133,9 @@ impl Default for TrainingConfig {
 
 /// Current schema version for [`TrainingRecord`].
 ///
-/// Version 5 adds durable PII-screening provenance while preserving
+/// Version 6 adds authorship-decontamination provenance while preserving
 /// deserialization defaults for older JSONL rows.
-pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 5;
+pub const TRAINING_RECORD_SCHEMA_VERSION: u32 = 6;
 
 /// Outcome of a single tool invocation during a turn.
 ///
@@ -232,6 +283,28 @@ pub struct TrainingRecord {
     /// `None` for legacy rows and rows captured with the filter disabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pii_policy_ref: Option<String>,
+
+    // NOTE: Decontamination provenance (v6) groups the three fields below.
+    /// Authorship-decontamination policy in force when this row was written.
+    ///
+    /// `None` for legacy rows written before the policy existed. A reader
+    /// cannot infer the policy from the row's presence alone: under
+    /// `Warn` an admitted row may still be non-user-authored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decontamination_policy: Option<DecontaminationPolicy>,
+    /// Verdict the authorship gate reached for this row.
+    ///
+    /// Stable labels: `user`, `non_user`, `classifier_error`, `not_screened`.
+    /// Downstream jobs can exclude `non_user` and `classifier_error` rows
+    /// admitted under `Warn` without reclassifying the corpus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decontamination_verdict: Option<String>,
+    /// Artifact version of the classifier that produced the verdict.
+    ///
+    /// `None` when the row was not screened. Recorded so a corpus can be
+    /// re-screened selectively after a classifier upgrade.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classifier_version: Option<String>,
 }
 
 /// Serde skip helper for boolean fields defaulting to `false`.
@@ -255,8 +328,38 @@ mod tests {
         assert_eq!(config.path, "data/training");
         assert_eq!(config.max_shard_bytes, 50 * 1024 * 1024);
         assert!(config.pii_filter_enabled);
-        assert!(!config.author_classifier_enabled);
+        assert_eq!(
+            config.decontamination_policy,
+            DecontaminationPolicy::Disabled
+        );
         assert!((config.author_classifier_threshold - 0.85).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn decontamination_policy_parses_from_snake_case() {
+        for (text, expected) in [
+            ("disabled", DecontaminationPolicy::Disabled),
+            ("warn", DecontaminationPolicy::Warn),
+            ("quarantine", DecontaminationPolicy::Quarantine),
+            ("fail_closed", DecontaminationPolicy::FailClosed),
+        ] {
+            let parsed: DecontaminationPolicy =
+                serde_json::from_str(&format!("\"{text}\"")).expect("policy parses");
+            assert_eq!(parsed, expected);
+            assert_eq!(parsed.as_str(), text);
+        }
+    }
+
+    #[test]
+    fn removed_author_classifier_toggle_is_rejected_not_ignored() {
+        // WHY: silently ignoring the removed key would downgrade an operator
+        // who had enabled the gate back to `Disabled` without saying so.
+        let err = serde_json::from_str::<TrainingConfig>(r#"{"author_classifier_enabled":true}"#)
+            .expect_err("removed key must be rejected");
+        assert!(
+            err.to_string().contains("author_classifier_enabled"),
+            "error should name the removed key, got: {err}"
+        );
     }
 
     #[test]
@@ -296,6 +399,9 @@ mod tests {
             pii_filter_applied: true,
             pii_redaction_count: 1,
             pii_policy_ref: Some("nous-training-pii-v1".to_owned()),
+            decontamination_policy: Some(DecontaminationPolicy::FailClosed),
+            decontamination_verdict: Some("user".to_owned()),
+            classifier_version: Some("0.1.0-heuristic".to_owned()),
         };
 
         let json = serde_json::to_string(&record).expect("serialize");
@@ -339,6 +445,9 @@ mod tests {
             pii_filter_applied: false,
             pii_redaction_count: 0,
             pii_policy_ref: None,
+            decontamination_policy: None,
+            decontamination_verdict: None,
+            classifier_version: None,
         };
 
         let json = serde_json::to_string(&record).expect("serialize");

@@ -483,6 +483,49 @@ fn make_outcome() -> TurnOutcome {
     }
 }
 
+/// Put the ops pane in the state a live turn leaves it in: text accumulated,
+/// spinner running.
+fn app_mid_turn() -> App {
+    let mut app = test_app();
+    app.dashboard.agents.push(test_agent("syn", "Syn"));
+    app.dashboard.focused_agent = Some("syn".into());
+    handle_stream_turn_start(&mut app, "t1".into(), "syn".into());
+    app.layout.ops.push_thinking("weighing the options");
+    assert!(
+        app.layout.ops.thinking.is_streaming,
+        "precondition: a started turn is streaming"
+    );
+    app
+}
+
+#[tokio::test]
+async fn turn_complete_stops_the_thinking_spinner() {
+    let mut app = app_mid_turn();
+    handle_stream_turn_complete(&mut app, make_outcome()).await;
+    assert!(!app.layout.ops.thinking.is_streaming);
+}
+
+#[test]
+fn turn_abort_stops_the_thinking_spinner() {
+    let mut app = app_mid_turn();
+    handle_stream_turn_abort(&mut app, "user cancelled".to_string());
+    assert!(!app.layout.ops.thinking.is_streaming);
+}
+
+#[test]
+fn stream_error_stops_the_thinking_spinner() {
+    let mut app = app_mid_turn();
+    handle_stream_error(&mut app, "connection lost".to_string());
+    assert!(!app.layout.ops.thinking.is_streaming);
+}
+
+#[tokio::test]
+async fn cancel_turn_stops_the_thinking_spinner() {
+    let mut app = app_mid_turn();
+    handle_cancel_turn(&mut app).await;
+    assert!(!app.layout.ops.thinking.is_streaming);
+}
+
 #[tokio::test]
 async fn turn_complete_auto_scroll_stays_at_bottom() {
     let mut app = test_app();

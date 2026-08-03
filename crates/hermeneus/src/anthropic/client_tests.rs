@@ -809,6 +809,141 @@ fn estimate_cost_with_cache_prefix_dated_snapshot_resolution_includes_cache_toke
     );
 }
 
+/// INVARIANT: the base and cache components of one estimate are priced from the
+/// same pricing entry.
+///
+/// WHY: `estimate_cost_with_cache` resolves pricing twice — once inside
+/// `estimate_cost` for the base, then again for the cache ratios. Both entries
+/// below sit in family `claude-sonnet-4`, so the family tier has two candidates
+/// and only the two self-consistent totals are admissible; a blend of the two
+/// price points is not.
+#[test]
+fn estimate_cost_with_cache_does_not_blend_two_pricing_entries() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-sonnet-4-6".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 3.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    pricing.insert(
+        "claude-sonnet-4-9".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 30.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    let usage = Usage {
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        cache_read_tokens: 1_000_000,
+        cache_write_tokens: 0,
+    };
+    let cost = estimate_cost_with_cache(&pricing, "claude-sonnet-4-20250514", &usage);
+    let ratio = koina::models::cache_read_ratio();
+    let consistent_low = 3.0 + 3.0 * ratio;
+    let consistent_high = 30.0 + 30.0 * ratio;
+    assert!(
+        (cost - consistent_low).abs() < 0.0001 || (cost - consistent_high).abs() < 0.0001,
+        "base and cache must resolve to one entry; got {cost}, \
+         admissible: {consistent_low} or {consistent_high}"
+    );
+}
+
+/// The exact-match tier must win over the family tier when both can match.
+///
+/// WHY both siblings are queried: an exact key always shares a family with
+/// itself, so a single-entry map cannot tell tier 1 from tier 2 — both resolve
+/// the same entry and the assertion holds either way. Two same-family entries
+/// make the tiers distinguishable, but querying only one of them is still not
+/// enough: tier 2 resolves through `HashMap::iter().find()`, whose order is
+/// arbitrary, so a build with the exact tier removed passes or fails on the
+/// coin-flip of which entry iteration reaches first. Querying both pins it
+/// deterministically — without the exact tier both queries collapse onto the
+/// same entry, so whichever one iteration favours, the other assertion fails.
+#[test]
+fn estimate_cost_with_cache_exact_match_wins_over_family_sibling() {
+    let mut pricing = HashMap::new();
+    pricing.insert(
+        "claude-sonnet-4-6".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 3.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    pricing.insert(
+        "claude-sonnet-4-9".to_owned(),
+        ModelPricing {
+            input_cost_per_mtok: 30.0,
+            output_cost_per_mtok: 0.0,
+        },
+    );
+    let usage = Usage {
+        input_tokens: 1_000_000,
+        output_tokens: 0,
+        cache_read_tokens: 1_000_000,
+        cache_write_tokens: 1_000_000,
+    };
+    // Each total is base + 10% cache read + 125% cache write on that entry's
+    // own input rate: $3.00 -> 3.00 + 0.30 + 3.75; $30.00 -> 30.00 + 3.00 + 37.50.
+    for (model, expected) in [("claude-sonnet-4-6", 7.05), ("claude-sonnet-4-9", 70.50)] {
+        let cost = estimate_cost_with_cache(&pricing, model, &usage);
+        assert!(
+            (cost - expected).abs() < 0.0001,
+            "{model} must price from its own entry: expected ~${expected}, got {cost}"
+        );
+    }
+}
+
+/// INVARIANT: cache tokens are never priced without a resolved pricing entry.
+///
+/// WHY: `estimate_cost_with_cache` adds its cache term after an early return
+/// that only fires when the lookup misses. Dropping that guard would price
+/// cache tokens off a default `ModelPricing`, so an unconfigured model would
+/// start reporting a nonzero cost — the one case the base estimator is
+/// documented to report as zero.
+///
+/// WHY the populated case: an empty map misses at every tier for free, so it
+/// cannot tell a correct miss from a lookup that matches too much. A family or
+/// prefix tier widened to match any key still returns `None` when there is no
+/// key to return. The populated entries below share no family with the queried
+/// model and are not dash-prefixes of it, so they must all be rejected — which
+/// is what makes a widened tier observable here.
+#[test]
+fn estimate_cost_with_cache_unpriced_model_stays_zero() {
+    let usage = Usage {
+        input_tokens: 1_000,
+        output_tokens: 100,
+        cache_read_tokens: 5_000,
+        cache_write_tokens: 2_000,
+    };
+
+    let empty = HashMap::new();
+    let cost = estimate_cost_with_cache(&empty, "some-unknown-model", &usage);
+    assert!(
+        cost.abs() < f64::EPSILON,
+        "an unconfigured model must cost zero even with cache tokens, got {cost}"
+    );
+
+    let mut populated = HashMap::new();
+    for key in ["claude-sonnet-4-6", "claude-haiku-4-5"] {
+        populated.insert(
+            key.to_owned(),
+            ModelPricing {
+                input_cost_per_mtok: 1_000.0,
+                output_cost_per_mtok: 1_000.0,
+            },
+        );
+    }
+    let cost = estimate_cost_with_cache(&populated, "some-unknown-model", &usage);
+    assert!(
+        cost.abs() < f64::EPSILON,
+        "a model matching no configured entry must cost zero even when other \
+         entries are priced, got {cost}"
+    );
+}
+
 #[test]
 fn model_family_strips_last_segment() {
     assert_eq!(

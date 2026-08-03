@@ -196,11 +196,77 @@ def test_policy_validation_requires_documented_exclusion_reasons() -> None:
     )
 
 
+def _inert_feature_metadata(crate_dir: Path) -> dict[str, object]:
+    pkg = package("fixture-inert", {"inert": [], "wired": ["dep:serde"]}, "crates/fixture-inert")
+    pkg["manifest_path"] = str(crate_dir / "Cargo.toml")
+    return {"packages": [pkg], "workspace_members": [pkg["id"]]}
+
+
+def test_no_op_feature_is_rejected_unless_gated_or_allowed() -> None:
+    with tempfile.TemporaryDirectory() as tmp_str:
+        crate_dir = Path(tmp_str) / "fixture-inert"
+        (crate_dir / "src").mkdir(parents=True)
+        source = crate_dir / "src" / "lib.rs"
+        source.write_text("pub fn noop() {}\n", encoding="utf-8")
+        metadata = _inert_feature_metadata(crate_dir)
+        empty_policy: dict[str, object] = {}
+
+        errors = POLICY.validate_no_op_features(metadata, empty_policy)
+        expect(
+            any("feature `inert` activates nothing" in err for err in errors),
+            "a feature that activates nothing and has no cfg reader should be rejected",
+        )
+        expect(
+            not any("`wired`" in err for err in errors),
+            "a feature that activates a dependency should not be reported",
+        )
+
+        # A cfg reader in the crate's own source is what makes the feature real.
+        source.write_text(
+            '#[cfg(feature = "inert")]\npub fn gated() {}\n', encoding="utf-8"
+        )
+        expect(
+            POLICY.validate_no_op_features(metadata, empty_policy) == [],
+            "a feature read by cfg in its own crate should pass",
+        )
+
+        # An allowance is the escape hatch, and it must carry a reason.
+        source.write_text("pub fn noop() {}\n", encoding="utf-8")
+        allowed = {
+            "no_op_allowances": [
+                {
+                    "crate": "*",
+                    "feature": "inert",
+                    "category": "uniform-test-tier",
+                    "reason": "fixture",
+                }
+            ]
+        }
+        expect(
+            POLICY.validate_no_op_features(metadata, allowed) == [],
+            "a recorded no-op allowance should silence the finding",
+        )
+
+        undocumented = {
+            "no_op_allowances": [{"crate": "*", "feature": "inert", "category": "x"}],
+            "feature_exclusions": [],
+            "no_default_recipes": [],
+        }
+        expect(
+            any(
+                "no-op allowances need" in err
+                for err in POLICY.validate_policy(metadata, undocumented)
+            ),
+            "no-op allowances should require reason text",
+        )
+
+
 def main() -> int:
     test_derived_feature_matrix_tracks_metadata()
     test_no_default_recipe_matrix_is_manifest_driven()
     test_feature_table_validation_catches_drift()
     test_policy_validation_requires_documented_exclusion_reasons()
+    test_no_op_feature_is_rejected_unless_gated_or_allowed()
 
     if _FAILURES:
         print(f"FAIL: {len(_FAILURES)} assertion(s) failed", file=sys.stderr)

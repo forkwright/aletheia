@@ -127,6 +127,37 @@ pub enum Error {
     },
 }
 
+/// Substrings marking an [`Error::ApiRequest`] message as a transient failure.
+///
+/// WHY(#5456): the subprocess providers (CC, Kimi, Codex) each phrase their
+/// crash and malformed-output failures differently, so the subprocess markers
+/// are matched provider-agnostically — `"process exited"` and `"subprocess"`
+/// rather than `"cc process exited"` and `"cc subprocess"`. Enumerating the
+/// markers per provider re-opens this bug every time a provider is added.
+const TRANSIENT_REQUEST_MARKERS: [&str; 9] = [
+    "timeout",
+    "timed out",
+    "connection",
+    "reset",
+    "broken pipe",
+    "process exited",
+    "subprocess",
+    "is currently unavailable",
+    "circuit-breaker open",
+];
+
+/// Whether an [`Error::ApiRequest`] message denotes a transient failure.
+///
+/// INVARIANT: sole owner of this classification. `is_retryable`, `class` and
+/// `action` all delegate here so the three cannot drift apart — a message that
+/// is retryable must also classify Transient and action as Retry.
+fn is_transient_request_message(message: &str) -> bool {
+    let msg = message.to_lowercase();
+    TRANSIENT_REQUEST_MARKERS
+        .iter()
+        .any(|marker| msg.contains(marker))
+}
+
 impl Error {
     /// Whether this error indicates a transient failure worth retrying
     /// with a different model (429, 503, 529, timeout, connection reset,
@@ -147,18 +178,7 @@ impl Error {
             | Error::ApiError {
                 status: 500..=599, ..
             } => true,
-            Error::ApiRequest { message, .. } => {
-                let msg = message.to_lowercase();
-                msg.contains("timeout")
-                    || msg.contains("timed out")
-                    || msg.contains("connection")
-                    || msg.contains("reset")
-                    || msg.contains("broken pipe")
-                    || msg.contains("cc process exited")
-                    || msg.contains("cc subprocess")
-                    || msg.contains("is currently unavailable")
-                    || msg.contains("circuit-breaker open")
-            }
+            Error::ApiRequest { message, .. } => is_transient_request_message(message),
             _ => false,
         }
     }
@@ -183,17 +203,7 @@ impl koina::error_class::Classifiable for Error {
 
             // Mixed: classify by message content (timeout/connection/reset/pipe → transient)
             Error::ApiRequest { message, .. } => {
-                let msg = message.to_lowercase();
-                if msg.contains("timeout")
-                    || msg.contains("timed out")
-                    || msg.contains("connection")
-                    || msg.contains("reset")
-                    || msg.contains("broken pipe")
-                    || msg.contains("is currently unavailable")
-                    || msg.contains("circuit-breaker open")
-                    || msg.contains("cc process exited")
-                    || msg.contains("cc subprocess")
-                {
+                if is_transient_request_message(message) {
                     ErrorClass::Transient
                 } else {
                     ErrorClass::Permanent
@@ -229,17 +239,7 @@ impl koina::error_class::Classifiable for Error {
                 backoff_base_ms: 500,
             },
             Error::ApiRequest { message, .. } => {
-                let msg = message.to_lowercase();
-                if msg.contains("timeout")
-                    || msg.contains("timed out")
-                    || msg.contains("connection")
-                    || msg.contains("reset")
-                    || msg.contains("broken pipe")
-                    || msg.contains("is currently unavailable")
-                    || msg.contains("circuit-breaker open")
-                    || msg.contains("cc process exited")
-                    || msg.contains("cc subprocess")
-                {
+                if is_transient_request_message(message) {
                     ErrorAction::Retry {
                         max_attempts: 3,
                         backoff_base_ms: 500,
@@ -507,5 +507,107 @@ mod tests {
             matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
             "truncated stream should action as retry"
         );
+    }
+
+    /// Messages emitted verbatim by the Kimi and Codex subprocess providers.
+    ///
+    /// WHY(#5456): before the markers were made provider-agnostic these were
+    /// classified Permanent, so a Kimi or Codex crash escalated as a hard
+    /// error instead of activating fallback.
+    const NON_CC_SUBPROCESS_FAILURES: [&str; 6] = [
+        // crates/hermeneus/src/kimi/process.rs
+        "Kimi process exited with exit status: 1: (no stderr)",
+        "Kimi subprocess produced no text output",
+        "Kimi subprocess produced an empty response",
+        // crates/hermeneus/src/codex/process.rs and codex/parse.rs
+        "Codex process exited with exit status: 2: (no stderr)",
+        "Codex subprocess produced no text output",
+        "Codex subprocess stdout not captured",
+    ];
+
+    #[test]
+    fn non_cc_subprocess_failures_are_retryable() {
+        for message in NON_CC_SUBPROCESS_FAILURES {
+            let err = ApiRequestSnafu {
+                message: message.to_owned(),
+            }
+            .build();
+            assert!(
+                err.is_retryable(),
+                "{message:?} should be retryable so fallback activates"
+            );
+        }
+    }
+
+    #[test]
+    fn non_cc_subprocess_failures_classify_transient_and_retry() {
+        for message in NON_CC_SUBPROCESS_FAILURES {
+            let err = ApiRequestSnafu {
+                message: message.to_owned(),
+            }
+            .build();
+            assert_eq!(
+                err.class(),
+                koina::error_class::ErrorClass::Transient,
+                "{message:?} should classify as transient"
+            );
+            assert!(
+                matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+                "{message:?} should action as Retry, not Escalate"
+            );
+        }
+    }
+
+    #[test]
+    fn request_classification_surfaces_do_not_drift() {
+        // INVARIANT(#5456): is_retryable, class and action read the same
+        // marker set, so a retryable message is always Transient + Retry and a
+        // non-retryable one is always Permanent + Escalate.
+        let messages = [
+            "Kimi process exited with exit status: 1: (no stderr)",
+            "Codex subprocess produced no text output",
+            "CC process exited with exit status: 1: OAuth token rejected",
+            "connection timeout",
+            "invalid request body",
+            "failed to serialize request: trailing comma",
+            "model not found",
+        ];
+        for message in messages {
+            let err = ApiRequestSnafu {
+                message: message.to_owned(),
+            }
+            .build();
+            let retryable = err.is_retryable();
+            assert_eq!(
+                retryable,
+                err.class() == koina::error_class::ErrorClass::Transient,
+                "{message:?}: is_retryable disagrees with class"
+            );
+            assert_eq!(
+                retryable,
+                matches!(err.action(), koina::error_class::ErrorAction::Retry { .. }),
+                "{message:?}: is_retryable disagrees with action"
+            );
+        }
+    }
+
+    #[test]
+    fn non_subprocess_request_failures_stay_permanent() {
+        // WHY(#5456): the generalized "subprocess"/"process exited" markers
+        // must not swallow genuine permanent failures into the retry path.
+        for message in [
+            "invalid request body",
+            "failed to serialize request: trailing comma",
+            "failed to parse OpenAI chat response: missing field",
+        ] {
+            let err = ApiRequestSnafu {
+                message: message.to_owned(),
+            }
+            .build();
+            assert!(
+                !err.is_retryable(),
+                "{message:?} should stay permanent, not become retryable"
+            );
+        }
     }
 }

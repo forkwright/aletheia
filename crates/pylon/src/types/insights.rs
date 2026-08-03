@@ -107,7 +107,13 @@ pub struct QualityMetricsResponse {
 /// Query parameters shared by desktop metrics views.
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct MetricsQuery {
-    /// Series granularity: daily, weekly, or monthly.
+    /// Series granularity: daily, weekly, or monthly. Defaults to daily.
+    ///
+    /// Series point keys are `YYYY-MM-DD` for daily, `YYYY-Www` (ISO 8601
+    /// week date, week starting Monday) for weekly, and `YYYY-MM` for
+    /// monthly. Weekly keys carry the ISO week-year, which differs from the
+    /// calendar year for the days either side of a New Year that fall in the
+    /// same ISO week.
     #[serde(default)]
     pub granularity: Option<String>,
     /// Inclusive start date (`YYYY-MM-DD`).

@@ -106,6 +106,44 @@ impl ConsolidationTarget for PanickingTarget {
     }
 }
 
+/// Transcript source whose load blocks the calling thread for
+/// [`BLOCKING_SOURCE_MS`], and which records whether an unrelated async task
+/// made progress while it was blocking.
+///
+/// WHY(#5666): the production implementors are fjall-backed and scan the whole
+/// session keyspace. Sleeping stands in for that scan so the test can observe
+/// whether the call occupies a Tokio worker.
+struct BlockingSource {
+    probe_ran: Arc<std::sync::atomic::AtomicBool>,
+    probe_ran_during_block: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// How long [`BlockingSource`] occupies its thread.
+const BLOCKING_SOURCE_MS: u64 = 500;
+
+/// How long the probe task waits before recording that it ran. Must be well
+/// inside [`BLOCKING_SOURCE_MS`] so the probe lands during the blocking window.
+const PROBE_DELAY_MS: u64 = 50;
+
+impl TranscriptSource for BlockingSource {
+    fn count_sessions_since(
+        &self,
+        _since: jiff::Timestamp,
+    ) -> std::result::Result<usize, std::io::Error> {
+        Ok(1)
+    }
+
+    fn load_transcripts_since(
+        &self,
+        _since: jiff::Timestamp,
+    ) -> std::result::Result<Vec<SessionTranscript>, std::io::Error> {
+        std::thread::sleep(std::time::Duration::from_millis(BLOCKING_SOURCE_MS));
+        self.probe_ran_during_block
+            .store(self.probe_ran.load(Ordering::SeqCst), Ordering::SeqCst);
+        Ok(Vec::new())
+    }
+}
+
 /// Write bytes to a file (test helper).
 ///
 /// WHY: `std::fs::write` is disallowed by melete's clippy.toml.
@@ -351,8 +389,11 @@ async fn consolidation_pipeline_extracts_and_merges() {
     let engine = Arc::new(DreamEngine::new(config));
 
     let transcripts = vec![sample_transcript("session-001", "alice")];
-    let source = MockTranscriptSource::with_transcripts(transcripts);
-    let target = Arc::new(MockConsolidationTarget::new());
+    let source: Arc<dyn TranscriptSource> =
+        Arc::new(MockTranscriptSource::with_transcripts(transcripts));
+    let counting = Arc::new(MockConsolidationTarget::new());
+    let target_concrete = Arc::clone(&counting);
+    let target: Arc<dyn ConsolidationTarget> = target_concrete;
 
     // NOTE: mock provider returns a structured distillation summary.
     let summary = "## Summary\nBorrow checker overview\n\
@@ -366,13 +407,13 @@ async fn consolidation_pipeline_extracts_and_merges() {
         .unwrap();
 
     let report = engine
-        .run_consolidation(acquired, &source, target.as_ref(), provider.as_ref())
+        .run_consolidation(acquired, &source, &target, provider.as_ref())
         .await
         .unwrap_or_default();
 
     assert!(report.facts_added > 0, "should add facts");
     assert!(
-        target.merge_count.load(Ordering::Relaxed) > 0,
+        counting.merge_count.load(Ordering::Relaxed) > 0,
         "should call merge_flush"
     );
 
@@ -380,6 +421,76 @@ async fn consolidation_pipeline_extracts_and_merges() {
     assert!(
         lock_path.exists(),
         "lock file should exist after completion"
+    );
+}
+
+/// WHY(#5666): `TranscriptSource`/`ConsolidationTarget` are synchronous traits
+/// whose fjall-backed implementors block. Called inline on the async task that
+/// drives `run_consolidation`, they occupy a Tokio worker for the length of the
+/// scan and starve every other actor sharing the runtime.
+///
+/// The runtime is pinned to a single worker so starvation is observable: the
+/// probe task can only run if the blocking load has been moved off the worker.
+/// Against the pre-fix code — `source.load_transcripts_since(since)` called
+/// directly — the probe cannot be polled during the blocking window and this
+/// assertion fails.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn consolidation_store_calls_do_not_occupy_the_async_worker() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".consolidate-lock");
+
+    let config = make_config(lock_path.clone());
+    let engine = Arc::new(DreamEngine::new(config));
+
+    let probe_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let probe_ran_during_block = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let source: Arc<dyn TranscriptSource> = Arc::new(BlockingSource {
+        probe_ran: Arc::clone(&probe_ran),
+        probe_ran_during_block: Arc::clone(&probe_ran_during_block),
+    });
+    let target: Arc<dyn ConsolidationTarget> = Arc::new(MockConsolidationTarget::new());
+
+    let provider: Arc<dyn LlmProvider> =
+        Arc::new(hermeneus::test_utils::MockProvider::new("unused"));
+
+    let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
+        .unwrap()
+        .unwrap();
+
+    // WARNING: the consolidation must run as a spawned task, not inline in the
+    // test body. `#[tokio::test]` drives the body with `block_on` on the main
+    // thread, so blocking there never occupies a worker and the assertion below
+    // could not fail.
+    let consolidation = {
+        let engine = Arc::clone(&engine);
+        let source = Arc::clone(&source);
+        let target = Arc::clone(&target);
+        let provider = Arc::clone(&provider);
+        tokio::spawn(async move {
+            engine
+                .run_consolidation(acquired, &source, &target, provider.as_ref())
+                .await
+                .unwrap_or_default();
+        })
+    };
+
+    // NOTE: an ordinary async task sharing the single worker with the
+    // consolidation task. It needs the worker to be free to make progress.
+    let probe = {
+        let probe_ran = Arc::clone(&probe_ran);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(PROBE_DELAY_MS)).await;
+            probe_ran.store(true, Ordering::SeqCst);
+        })
+    };
+
+    consolidation.await.unwrap();
+    probe.await.unwrap();
+
+    assert!(
+        probe_ran_during_block.load(Ordering::SeqCst),
+        "a concurrent task must make progress while the transcript load blocks; \
+         the blocking store call is occupying the Tokio worker"
     );
 }
 
@@ -391,8 +502,9 @@ async fn consolidation_rollback_on_empty_transcripts() {
     let config = make_config(lock_path.clone());
     let engine = Arc::new(DreamEngine::new(config));
 
-    let source = MockTranscriptSource::with_transcripts(vec![]);
-    let target = MockConsolidationTarget::new();
+    let source: Arc<dyn TranscriptSource> =
+        Arc::new(MockTranscriptSource::with_transcripts(vec![]));
+    let target: Arc<dyn ConsolidationTarget> = Arc::new(MockConsolidationTarget::new());
 
     let provider: Arc<dyn LlmProvider> =
         Arc::new(hermeneus::test_utils::MockProvider::new("unused"));

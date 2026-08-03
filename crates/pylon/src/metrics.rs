@@ -210,6 +210,31 @@ fn looks_like_id(s: &str) -> bool {
         || (len == 36 && s.contains('-') && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-'))
 }
 
+/// Serializes tests that write or scrape the process-global gauge handles.
+///
+/// WHY this is crate-visible rather than local to this module's tests: the
+/// metric families above are `LazyLock` statics backed by `Arc`-internal
+/// state, so a per-test `MetricsRegistry::new()` does not give a test its own
+/// gauges — every registry encodes the same shared values. Both the direct
+/// `update_system_gauges` tests here and the `GET /metrics` handler tests in
+/// `crate::tests::metrics` write them, so every writer must take the same
+/// lock or the suite fails nondeterministically under cargo's parallel test
+/// threads.
+#[cfg(test)]
+pub(crate) static GAUGE_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Take the gauge lock, ignoring poisoning.
+///
+/// WHY poisoning is ignored: the guarded data is `()`. A panicking test leaves
+/// no invariant broken here, and propagating the poison would turn one real
+/// failure into a cascade of unrelated ones.
+#[cfg(test)]
+pub(crate) fn gauge_lock() -> std::sync::MutexGuard<'static, ()> {
+    GAUGE_TESTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,6 +278,7 @@ mod tests {
         reason = "test: encoding metrics into a String buffer is infallible"
     )]
     fn register_and_encode_roundtrip() {
+        let _guard = gauge_lock();
         let registry = MetricsRegistry::new();
         init(&registry);
         record_request("GET", "/api/health", 200, 0.001);
@@ -289,6 +315,7 @@ mod tests {
         reason = "test: encoding metrics into a String buffer is infallible"
     )]
     fn session_gauges_separate_active_from_retained_history() {
+        let _guard = gauge_lock();
         let registry = MetricsRegistry::new();
         init(&registry);
         update_system_gauges(

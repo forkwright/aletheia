@@ -235,6 +235,7 @@ impl OpenAiProvider {
         );
 
         let pricing = config.pricing.clone();
+        let provider_name = config.name.clone();
         Ok(Self {
             client,
             concurrency: Arc::new(AdaptiveConcurrencyLimiter::new(
@@ -242,7 +243,10 @@ impl OpenAiProvider {
                 config.concurrency.clone(),
             )),
             config,
-            health: Arc::new(ProviderHealthTracker::new(HealthConfig::default())),
+            health: Arc::new(ProviderHealthTracker::new(
+                provider_name,
+                HealthConfig::default(),
+            )),
             pricing,
         })
     }

@@ -16,4 +16,15 @@ reason = "do not call process::abort from library code"
 path = "reqwest::Client"
 reason = "HTTP client belongs in hermeneus or pylon, not koina"
 
+# WHY(#5577): reqwest re-exports url::Url, so reaching for it via reqwest
+# pulls the whole reqwest/hyper/rustls stack into every crate that depends on
+# koina. Parse URLs through the `url` crate instead.
+[[disallowed-types]]
+path = "reqwest::Url"
+reason = "use url::Url; reqwest drags an HTTP runtime into the foundation crate"
+
+[[disallowed-types]]
+path = "reqwest::Request"
+reason = "HTTP request types belong in hermeneus or pylon, not koina"
+
 # koina must not open SQLite connections; persistence belongs in mneme

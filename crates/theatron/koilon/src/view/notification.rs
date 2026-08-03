@@ -43,8 +43,7 @@ pub(crate) fn render_history(
     scroll: usize,
     theme: &Theme,
 ) {
-    let popup_area =
-        super::overlay::centered_rect_pub(NOTIF_POPUP_WIDTH_PCT, NOTIF_POPUP_HEIGHT_PCT, area);
+    let popup_area = super::centered_rect(NOTIF_POPUP_WIDTH_PCT, NOTIF_POPUP_HEIGHT_PCT, area);
     frame.render_widget(Clear, popup_area);
 
     let unread = app.layout.notifications.unread_count();
