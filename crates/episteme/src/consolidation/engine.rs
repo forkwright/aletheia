@@ -552,15 +552,46 @@ impl KnowledgeStore {
         &self,
         fact_id: &FactId,
     ) -> Result<Option<FactMultiplicity>, ConsolidationError> {
+        // WHY(#5672): the batched read is the single owner of the
+        // `fact_multiplicity` decode, so the one-fact path delegates rather
+        // than carrying a second copy that can drift from it.
+        let mut found = self.get_fact_multiplicities(std::slice::from_ref(fact_id))?;
+        Ok(found.remove(fact_id.as_str()))
+    }
+
+    /// Look up multiplicity metadata for many consolidated facts in one query.
+    ///
+    /// Returns a map keyed by fact id. Facts with no multiplicity record are
+    /// absent from the map rather than present with a zero value, matching
+    /// [`Self::get_fact_multiplicity`]'s `None`.
+    ///
+    /// WHY(#5672): the recall hot path enriches a whole result set at once.
+    /// A constant rule of the requested ids joined against the stored relation
+    /// keeps the lookup indexed while costing one query instead of one per fact.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the knowledge store query fails.
+    #[instrument(skip(self, fact_ids))]
+    pub fn get_fact_multiplicities(
+        &self,
+        fact_ids: &[FactId],
+    ) -> Result<std::collections::HashMap<String, FactMultiplicity>, ConsolidationError> {
+        if fact_ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
         let script = r"
-?[source_count, first_observed, last_observed, time_spread_seconds, recorded_at] :=
-    *fact_multiplicity{fact_id: $fact_id, source_count, first_observed,
+requested[fact_id] <- $fact_ids
+?[fact_id, source_count, first_observed, last_observed, time_spread_seconds, recorded_at] :=
+    requested[fact_id],
+    *fact_multiplicity{fact_id, source_count, first_observed,
                        last_observed, time_spread_seconds, recorded_at}
 ";
         let mut params = BTreeMap::new();
         params.insert(
-            "fact_id".to_owned(),
-            DataValue::Str(fact_id.as_str().into()),
+            "fact_ids".to_owned(),
+            crate::knowledge_store::id_rows(fact_ids.iter().map(FactId::as_str)),
         );
         let result = self.run_query(script, params).map_err(|e| {
             StoreSnafu {
@@ -569,28 +600,40 @@ impl KnowledgeStore {
             .build()
         })?;
 
-        if result.is_empty() {
-            return Ok(None);
+        let mut found = std::collections::HashMap::with_capacity(result.rows().len());
+        for row in 0..result.rows().len() {
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let id_str = result.get_string(row, "fact_id").unwrap_or_default();
+            let Ok(fact_id) = FactId::new(&id_str) else {
+                // WHY: a stored id that no longer parses is unreachable by any
+                // caller, which addresses facts by `FactId`. Skip rather than
+                // fail the whole batch.
+                tracing::warn!(fact_id = %id_str, "skipping undecodable fact id in multiplicity batch");
+                continue;
+            };
+            let source_count_i64 = result.get_i64(row, "source_count").unwrap_or(0);
+            let source_count = u32::try_from(source_count_i64).unwrap_or(0);
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let first_observed = result.get_string(row, "first_observed").unwrap_or_default();
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let last_observed = result.get_string(row, "last_observed").unwrap_or_default();
+            let time_spread_seconds = result.get_i64(row, "time_spread_seconds").unwrap_or(0);
+            // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
+            let recorded_at = result.get_string(row, "recorded_at").unwrap_or_default();
+
+            found.insert(
+                id_str,
+                FactMultiplicity {
+                    fact_id,
+                    source_count,
+                    first_observed,
+                    last_observed,
+                    time_spread_seconds,
+                    recorded_at,
+                },
+            );
         }
-
-        let source_count_i64 = result.get_i64(0, "source_count").unwrap_or(0);
-        let source_count = u32::try_from(source_count_i64).unwrap_or(0);
-        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
-        let first_observed = result.get_string(0, "first_observed").unwrap_or_default();
-        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
-        let last_observed = result.get_string(0, "last_observed").unwrap_or_default();
-        let time_spread_seconds = result.get_i64(0, "time_spread_seconds").unwrap_or(0);
-        // kanon:ignore RUST/no-result-unwrap-or-default — side-index read: empty default is safe for optional metadata
-        let recorded_at = result.get_string(0, "recorded_at").unwrap_or_default();
-
-        Ok(Some(FactMultiplicity {
-            fact_id: fact_id.clone(),
-            source_count,
-            first_observed,
-            last_observed,
-            time_spread_seconds,
-            recorded_at,
-        }))
+        Ok(found)
     }
 
     /// Mark each batch's original facts as superseded by its canonical output.
