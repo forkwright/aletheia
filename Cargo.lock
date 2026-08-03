@@ -4651,6 +4651,7 @@ name = "koilon"
 version = "0.33.9"
 dependencies = [
  "arboard",
+ "bathron",
  "clap",
  "compact_str",
  "crossterm",
@@ -4676,8 +4677,6 @@ dependencies = [
  "tokio",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
  "unicode-width",
 ]
 
