@@ -1,7 +1,0 @@
-{
-  "title": "{{slug}}",
-  "description": "{{description}}",
-  "body": [
-    "Replace this paragraph with your report content."
-  ]
-}
