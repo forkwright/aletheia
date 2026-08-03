@@ -15,8 +15,8 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::events::EventState;
 use crate::state::fetch::FetchState;
 use crate::state::ops::{
-    AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag, HealthTier, ServiceHealthStore,
-    ToggleApplyState, ToggleStore, ToolToggle, health_from_status,
+    AgentCapabilities, AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag, HealthTier,
+    ServiceHealthStore, ToggleApplyState, ToggleStore, ToolToggle, health_from_status,
 };
 
 use self::agents::AgentCards;
@@ -67,6 +67,40 @@ impl AgentListResponse {
         match self {
             Self::Wrapped { nous } => nous,
             Self::Bare(agents) => agents,
+        }
+    }
+}
+
+/// Capability subset of the `NousStatus` body returned by
+/// `GET /api/v1/nous/{id}`.
+///
+/// WARNING: `pylon::handlers::nous_dto::NousStatus` carries no
+/// `rename_all`, so these field names must stay verbatim-identical to the
+/// server's Rust field names. A rename on either side silently deserializes
+/// every field to its `Default`, rendering a card full of zeroes rather than
+/// failing.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct AgentDetailResp {
+    #[serde(default)]
+    context_window: u32,
+    #[serde(default)]
+    max_output_tokens: u32,
+    #[serde(default)]
+    thinking_enabled: bool,
+    #[serde(default)]
+    thinking_budget: u32,
+    #[serde(default)]
+    max_tool_iterations: u32,
+}
+
+impl From<AgentDetailResp> for AgentCapabilities {
+    fn from(resp: AgentDetailResp) -> Self {
+        Self {
+            context_window: resp.context_window,
+            max_output_tokens: resp.max_output_tokens,
+            thinking_enabled: resp.thinking_enabled,
+            thinking_budget: resp.thinking_budget,
+            max_tool_iterations: resp.max_tool_iterations,
         }
     }
 }
@@ -346,9 +380,49 @@ pub(crate) fn Ops() -> Element {
                 }
             };
 
+            // WHY: capability limits live only on the per-agent detail
+            // endpoint, so one request per agent is unavoidable. They are
+            // issued concurrently rather than in sequence, and a failure on
+            // any single agent degrades that card to `None` instead of
+            // failing the whole dashboard refresh.
+            let capabilities: Vec<Option<AgentCapabilities>> =
+                futures_util::future::join_all(agents_data.iter().map(|a| {
+                    let url = format!("{base}/api/v1/nous/{}", a.id);
+                    let client = &client;
+                    async move {
+                        match client.get(&url).send().await {
+                            Ok(resp) if resp.status().is_success() => {
+                                match resp.json::<AgentDetailResp>().await {
+                                    Ok(detail) => Some(detail.into()),
+                                    Err(err) => {
+                                        tracing::warn!(
+                                            error = %err,
+                                            "failed to parse nous detail response"
+                                        );
+                                        None
+                                    }
+                                }
+                            }
+                            Ok(resp) => {
+                                tracing::warn!(
+                                    status = %resp.status(),
+                                    "nous detail endpoint returned non-success"
+                                );
+                                None
+                            }
+                            Err(err) => {
+                                tracing::warn!(error = %err, "nous detail request failed");
+                                None
+                            }
+                        }
+                    }
+                }))
+                .await;
+
             let cards: Vec<AgentCardData> = agents_data
                 .iter()
-                .map(|a| AgentCardData {
+                .zip(capabilities)
+                .map(|(a, capabilities)| AgentCardData {
                     id: a.id.as_str().into(),
                     name: a.name.clone().unwrap_or_else(|| a.id.clone()),
                     emoji: a.emoji.clone(),
@@ -357,6 +431,7 @@ pub(crate) fn Ops() -> Element {
                     active_turns: 0,
                     last_activity: None,
                     connected: true,
+                    capabilities,
                 })
                 .collect();
             agent_store.write().load(cards);
@@ -684,5 +759,72 @@ pub(crate) fn Ops() -> Element {
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// WHY: this payload is the `pylon::handlers::nous_dto::NousStatus`
+    /// wire shape. `NousStatus` carries no `rename_all`, so serde emits the
+    /// Rust field names verbatim. Every field here is deliberately
+    /// non-`Default`, so a rename on either side turns this green assertion
+    /// red instead of silently producing a card of zeroes.
+    const NOUS_STATUS_BODY: &str = r#"{
+        "id": "scholiast",
+        "model": "claude-opus-5",
+        "status": "active",
+        "context_window": 200000,
+        "max_output_tokens": 64000,
+        "thinking_enabled": true,
+        "thinking_budget": 10000,
+        "max_tool_iterations": 25
+    }"#;
+
+    #[test]
+    fn agent_detail_resp_matches_server_field_names() {
+        let detail: AgentDetailResp =
+            serde_json::from_str(NOUS_STATUS_BODY).expect("NousStatus body must deserialize");
+
+        assert_eq!(detail.context_window, 200_000, "context_window must map");
+        assert_eq!(
+            detail.max_output_tokens, 64_000,
+            "max_output_tokens must map"
+        );
+        assert!(detail.thinking_enabled, "thinking_enabled must map");
+        assert_eq!(detail.thinking_budget, 10_000, "thinking_budget must map");
+        assert_eq!(
+            detail.max_tool_iterations, 25,
+            "max_tool_iterations must map"
+        );
+    }
+
+    #[test]
+    fn agent_detail_resp_tolerates_absent_capability_fields() {
+        let detail: AgentDetailResp = serde_json::from_str(r#"{"id":"scholiast"}"#)
+            .expect("a NousStatus without capability fields must still deserialize");
+
+        assert_eq!(detail.context_window, 0, "absent field falls back to zero");
+        assert!(!detail.thinking_enabled, "absent bool falls back to false");
+    }
+
+    #[test]
+    fn agent_capabilities_conversion_preserves_every_field() {
+        let detail: AgentDetailResp =
+            serde_json::from_str(NOUS_STATUS_BODY).expect("NousStatus body must deserialize");
+        let caps = AgentCapabilities::from(detail);
+
+        assert_eq!(
+            caps,
+            AgentCapabilities {
+                context_window: 200_000,
+                max_output_tokens: 64_000,
+                thinking_enabled: true,
+                thinking_budget: 10_000,
+                max_tool_iterations: 25,
+            },
+            "conversion must not drop or transpose a field"
+        );
     }
 }

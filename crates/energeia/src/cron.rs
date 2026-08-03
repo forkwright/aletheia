@@ -14,7 +14,7 @@
 //! | `cron.sleep` | info | `task_name`, `next`, `sleep_ms` | Scheduler computed next wake time |
 //! | `cron.shutdown` | info | | Cancellation token triggered |
 //! | `cron.fire.started` | info | `task_name`, `scheduled` | Fire state persisted as Started |
-//! | `cron.fire.finished` | info | `task_name`, `scheduled`, `succeeded` | Fire state persisted as Finished |
+//! | `cron.fire.finished` | info | `task_name`, `scheduled`, `succeeded`, `outcome` | Fire state persisted as Finished |
 //! | `cron.fire.stale` | warn | `task_name`, `started_at` | Started fire with no Finished record detected |
 //! | `cron.fire.outer_panic` | error | `error` | Outer fire task (tracked in `outer_tasks`) panicked or was aborted before completing |
 
@@ -96,11 +96,86 @@ const LOCK_PARTITION: &str = "cron_locks";
 /// Partition name for per-task fire state records (one record per task).
 const FIRE_STATE_PARTITION: &str = "cron_fire_state";
 
+/// Stage at which a cron fire failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CronFailureClass {
+    /// The callback could not load the work it was scheduled to perform.
+    Input,
+    /// The callback found no work matching its dispatch specification.
+    NoMatch,
+    /// The work was dispatched and reported failure.
+    Execution,
+    /// The callback panicked.
+    Panicked,
+}
+
+/// Terminal classification of a single cron fire, reported by the callback.
+///
+/// WHY(#5297): the scheduler previously took "the callback task did not panic"
+/// as success, so a callback that logged an error and returned normally was
+/// persisted as a successful fire. Schedule health then showed green for work
+/// that never ran. The callback states its own terminal outcome instead of
+/// having one inferred from the absence of a panic.
+///
+/// NOTE: `oikonomos::runner::TaskOutcome` is the same classification for the
+/// daemon's own task runner (WHY(#5129) there). The two are deliberately
+/// parallel rather than shared: energeia sits below the daemon in the
+/// dependency graph, so unifying them means moving the type to a common crate
+/// — a wider change than this fix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CronFireOutcome {
+    /// The scheduled work ran and completed.
+    Success,
+    /// The callback had nothing to do, and that is an expected state for this
+    /// task rather than an error.
+    Skipped {
+        /// Why the callback had no work to perform.
+        reason: String,
+    },
+    /// The scheduled work did not run, or ran and failed.
+    Failed {
+        /// Stage at which the fire failed.
+        class: CronFailureClass,
+        /// Human-readable failure detail.
+        detail: String,
+    },
+}
+
+impl CronFireOutcome {
+    /// Construct a failed outcome.
+    #[must_use]
+    pub fn failed(class: CronFailureClass, detail: impl Into<String>) -> Self {
+        Self::Failed {
+            class,
+            detail: detail.into(),
+        }
+    }
+
+    /// Construct an expected-no-work outcome.
+    #[must_use]
+    pub fn skipped(reason: impl Into<String>) -> Self {
+        Self::Skipped {
+            reason: reason.into(),
+        }
+    }
+
+    /// Whether this outcome represents a fire that did not fail.
+    ///
+    /// A [`Skipped`](Self::Skipped) fire is not a failure — it must not trip
+    /// failure alerting for a benign no-op — but it did not perform work
+    /// either. Callers that need that distinction read the outcome itself
+    /// rather than this predicate.
+    #[must_use]
+    pub const fn is_success(&self) -> bool {
+        !matches!(*self, Self::Failed { .. })
+    }
+}
+
 /// Persistent state for the most recent cron fire of a task.
 ///
 /// The record is written when the lock is acquired (`started_at` set,
-/// `finished_at`/`succeeded` are `None`) and updated when the callback
-/// task completes. A record with `finished_at == None` that is older
+/// `finished_at`/`succeeded`/`outcome` are `None`) and updated when the
+/// callback task completes. A record with `finished_at == None` that is older
 /// than the stale threshold indicates a crashed or interrupted fire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CronFireRecord {
@@ -110,8 +185,21 @@ pub struct CronFireRecord {
     pub started_at: Timestamp,
     /// Wall-clock time the callback task finished; `None` if still in progress.
     pub finished_at: Option<Timestamp>,
-    /// Whether the callback returned without panic; `None` if still in progress.
+    /// Whether the fire did not fail; `None` if still in progress.
+    ///
+    /// WARNING: this is `true` for a [`CronFireOutcome::Skipped`] fire, which
+    /// performed no work. Read `outcome` to tell the two apart.
     pub succeeded: Option<bool>,
+    /// Terminal classification reported by the callback; `None` if still in
+    /// progress.
+    ///
+    /// WHY: `#[serde(default)]` because records written before WHY(#5297) have
+    /// no such field. `None` on a finished record therefore means the fire
+    /// predates outcome recording — its `succeeded` asserts only that the
+    /// callback did not panic, which is strictly weaker than what a `Some`
+    /// outcome asserts. It must not be read as "the outcome was unremarkable".
+    #[serde(default)]
+    pub outcome: Option<CronFireOutcome>,
 }
 
 /// Fjall-backed lock store that persists the last-fired timestamp per task.
@@ -203,6 +291,7 @@ impl CronLockStore {
             started_at: Timestamp::now(),
             finished_at: None,
             succeeded: None,
+            outcome: None,
         };
         let value = rmp_serde::to_vec(&record).map_err(|e| {
             error::SerializationSnafu {
@@ -224,7 +313,9 @@ impl CronLockStore {
 
     /// Update the fire state for `task_name` to Finished.
     ///
-    /// Called when the spawned callback task exits (normally or via panic).
+    /// Called when the spawned callback task exits, with the outcome the
+    /// callback reported — or [`CronFailureClass::Panicked`] if it did not
+    /// return at all.
     ///
     /// # Errors
     ///
@@ -233,15 +324,17 @@ impl CronLockStore {
         &self,
         task_name: &str,
         scheduled_at: Timestamp,
-        succeeded: bool,
+        outcome: &CronFireOutcome,
     ) -> Result<()> {
         let existing = self.last_fire_record(task_name)?;
         let started_at = existing.map_or(scheduled_at, |r| r.started_at);
+        let succeeded = outcome.is_success();
         let record = CronFireRecord {
             scheduled_at,
             started_at,
             finished_at: Some(Timestamp::now()),
             succeeded: Some(succeeded),
+            outcome: Some(outcome.clone()),
         };
         let value = rmp_serde::to_vec(&record).map_err(|e| {
             error::SerializationSnafu {
@@ -261,6 +354,7 @@ impl CronLockStore {
             task = %task_name,
             scheduled = %scheduled_at,
             succeeded = %succeeded,
+            outcome = ?outcome,
             "cron.fire.finished"
         );
         Ok(())
@@ -427,7 +521,7 @@ impl CronScheduler {
     pub async fn run<F, Fut>(&self, cancel: CancellationToken, on_fire: F) -> Result<()>
     where
         F: Fn(CronTask) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output = CronFireOutcome> + Send + 'static,
     {
         loop {
             let now = Timestamp::now().to_zoned(TimeZone::UTC);
@@ -488,7 +582,7 @@ impl CronScheduler {
     async fn try_fire<F, Fut>(&self, task: &CronTask, base_scheduled: Timestamp, on_fire: &F)
     where
         F: Fn(CronTask) -> Fut + Clone + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output = CronFireOutcome> + Send + 'static,
     {
         if self.overlap_policy == OverlapPolicy::SkipIfInFlight
             && self.in_flight.lock().contains(task.name.as_str())
@@ -535,7 +629,7 @@ impl CronScheduler {
     fn spawn_fire<F, Fut>(&self, task: CronTask, base_scheduled: Timestamp, on_fire: F)
     where
         F: Fn(CronTask) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output = CronFireOutcome> + Send + 'static,
     {
         tracing::info!(
             task = %task.name,
@@ -569,12 +663,24 @@ impl CronScheduler {
             // rather than propagating to the outer fire task. This lets us
             // reliably record Finished state even when the callback panics.
             let inner = tokio::task::spawn(on_fire(task_for_callback).instrument(span));
-            let succeeded = inner.await.is_ok();
+            let outcome = match inner.await {
+                Ok(outcome) => outcome,
+                Err(e) => {
+                    tracing::error!(task = %task_name, scheduled = %base_scheduled, "cron task callback panicked");
+                    CronFireOutcome::failed(CronFailureClass::Panicked, e.to_string())
+                }
+            };
 
-            if !succeeded {
-                tracing::error!(task = %task_name, scheduled = %base_scheduled, "cron task callback panicked");
+            if let CronFireOutcome::Failed { class, detail } = &outcome {
+                tracing::error!(
+                    task = %task_name,
+                    scheduled = %base_scheduled,
+                    class = ?class,
+                    detail = %detail,
+                    "cron task fire failed"
+                );
             }
-            if let Err(e) = lock_store.record_fire_finished(&task_name, base_scheduled, succeeded) {
+            if let Err(e) = lock_store.record_fire_finished(&task_name, base_scheduled, &outcome) {
                 tracing::warn!(task = %task_name, error = %e, "failed to record cron fire finish");
             }
 
@@ -735,6 +841,7 @@ mod tests {
                     let f = f1.clone();
                     async move {
                         f.fetch_add(1, Ordering::SeqCst);
+                        CronFireOutcome::Success
                     }
                 })
                 .await
@@ -748,6 +855,7 @@ mod tests {
                     let f = f2.clone();
                     async move {
                         f.fetch_add(1, Ordering::SeqCst);
+                        CronFireOutcome::Success
                     }
                 })
                 .await
@@ -793,6 +901,7 @@ mod tests {
                     async move {
                         fired.fetch_add(1, Ordering::SeqCst);
                         tokio::time::sleep(Duration::from_secs(5)).await;
+                        CronFireOutcome::Success
                     }
                 })
                 .await
@@ -831,6 +940,7 @@ mod tests {
                     async move {
                         assert_eq!(task.dispatch_spec.project, "test");
                         fired.fetch_add(1, Ordering::SeqCst);
+                        CronFireOutcome::Success
                     }
                 })
                 .await
@@ -873,6 +983,7 @@ mod tests {
                     async move {
                         fired.fetch_add(1, Ordering::SeqCst);
                         tokio::time::sleep(Duration::from_secs(5)).await;
+                        CronFireOutcome::Success
                     }
                 })
                 .await
@@ -962,11 +1073,12 @@ mod tests {
         assert!(started.succeeded.is_none());
 
         store
-            .record_fire_finished("task-e", scheduled, true)
+            .record_fire_finished("task-e", scheduled, &CronFireOutcome::Success)
             .unwrap();
         let finished = store.last_fire_record("task-e").unwrap().unwrap();
         assert!(finished.finished_at.is_some());
         assert_eq!(finished.succeeded, Some(true));
+        assert_eq!(finished.outcome, Some(CronFireOutcome::Success));
     }
 
     #[test]
@@ -980,7 +1092,7 @@ mod tests {
         // Finished fire — must not count.
         store.record_fire_started("task-done", scheduled).unwrap();
         store
-            .record_fire_finished("task-done", scheduled, true)
+            .record_fire_finished("task-done", scheduled, &CronFireOutcome::Success)
             .unwrap();
 
         // Use Timestamp::MAX so that any started_at passes the threshold; the
@@ -1001,11 +1113,129 @@ mod tests {
         let t2 = Timestamp::now();
 
         store.record_fire_started("task-f", t1).unwrap();
-        store.record_fire_finished("task-f", t1, false).unwrap();
+        store
+            .record_fire_finished(
+                "task-f",
+                t1,
+                &CronFireOutcome::failed(CronFailureClass::Execution, "dispatch failed"),
+            )
+            .unwrap();
         store.record_fire_started("task-f", t2).unwrap();
 
         let rec = store.last_fire_record("task-f").unwrap().unwrap();
         assert_eq!(rec.scheduled_at, t2);
         assert!(rec.finished_at.is_none());
+    }
+
+    /// Build a scheduler that fires `task-outcome` every second, run it long
+    /// enough for one fire, and return the persisted record.
+    async fn record_after_one_fire(outcome: CronFireOutcome) -> CronFireRecord {
+        let db = koina::fjall::FjallDb::open_temp(&[LOCK_PARTITION]).unwrap();
+        let lock_store = Arc::new(CronLockStore::open(Arc::new(db.db)).unwrap());
+        let task = CronTask {
+            name: CompactString::new("task-outcome"),
+            cron: parse_schedule("* * * * * *"),
+            jitter: Duration::ZERO,
+            dispatch_spec: DispatchSpec::new("test".to_owned(), vec![]),
+        };
+        let scheduler = CronScheduler::new(vec![task], Arc::clone(&lock_store));
+        let cancel = CancellationToken::new();
+        let cancel_for_task = cancel.clone();
+
+        let handle = tokio::spawn(async move {
+            scheduler
+                .run(cancel_for_task, move |_task| {
+                    let outcome = outcome.clone();
+                    async move { outcome }
+                })
+                .await
+        });
+
+        tokio::time::sleep(Duration::from_millis(1_500)).await;
+        cancel.cancel();
+        handle.await.unwrap().unwrap();
+
+        lock_store
+            .last_fire_record("task-outcome")
+            .unwrap()
+            .expect("a fire record was persisted")
+    }
+
+    /// WHY(#5297): the regression guard. Before the fix the scheduler derived
+    /// success from `inner.await.is_ok()`, so a callback that returned
+    /// normally after failing its work persisted `succeeded: Some(true)`.
+    /// This asserts the failure reaches the record.
+    #[tokio::test]
+    async fn failing_callback_records_a_failed_fire() {
+        let record = record_after_one_fire(CronFireOutcome::failed(
+            CronFailureClass::Input,
+            "queue unreadable",
+        ))
+        .await;
+
+        assert!(record.finished_at.is_some());
+        assert_eq!(
+            record.succeeded,
+            Some(false),
+            "a callback that reported failure must not be recorded as a successful fire"
+        );
+        assert_eq!(
+            record.outcome,
+            Some(CronFireOutcome::Failed {
+                class: CronFailureClass::Input,
+                detail: "queue unreadable".to_owned(),
+            }),
+            "the failure class and detail must be persisted, not just a bool"
+        );
+    }
+
+    /// A declared no-op must not trip failure alerting, but must remain
+    /// distinguishable from a fire that actually did the work.
+    #[tokio::test]
+    async fn skipped_callback_is_not_recorded_as_a_failure() {
+        let record = record_after_one_fire(CronFireOutcome::skipped("nothing due")).await;
+
+        assert_eq!(record.succeeded, Some(true));
+        assert_eq!(
+            record.outcome,
+            Some(CronFireOutcome::Skipped {
+                reason: "nothing due".to_owned(),
+            }),
+            "a skipped fire must stay distinguishable from a successful one"
+        );
+    }
+
+    /// WHY(#5297): `CronFireRecord` is persisted as `MessagePack`, which encodes
+    /// a struct as a positional array — so a record written before `outcome`
+    /// existed is one element short. Without `#[serde(default)]` that is a
+    /// hard deserialize error on every pre-upgrade record, and
+    /// `stale_fire_count` fails for the whole partition rather than for one
+    /// task. This reads the exact legacy encoding.
+    #[test]
+    fn legacy_fire_record_without_outcome_deserializes() {
+        #[derive(Serialize)]
+        struct LegacyCronFireRecord {
+            scheduled_at: Timestamp,
+            started_at: Timestamp,
+            finished_at: Option<Timestamp>,
+            succeeded: Option<bool>,
+        }
+
+        let now = Timestamp::now();
+        let legacy = LegacyCronFireRecord {
+            scheduled_at: now,
+            started_at: now,
+            finished_at: Some(now),
+            succeeded: Some(true),
+        };
+        let bytes = rmp_serde::to_vec(&legacy).unwrap();
+
+        let decoded = rmp_serde::from_slice::<CronFireRecord>(&bytes)
+            .expect("a pre-outcome record must still decode");
+        assert_eq!(decoded.succeeded, Some(true));
+        assert_eq!(
+            decoded.outcome, None,
+            "absence of an outcome marks a record whose success claim predates outcome tracking"
+        );
     }
 }

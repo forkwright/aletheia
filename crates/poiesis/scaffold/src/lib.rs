@@ -99,8 +99,7 @@ pub fn scaffold_report(
 // ── Typst scaffold ───────────────────────────────────────────────────────────
 
 fn typst_files(slug: &str, description: &str, confidential: bool) -> Vec<ScaffoldFile> {
-    let mut report = TYPST_TEMPLATE.replace("{{slug}}", slug);
-    report = report.replace("{{description}}", description);
+    let mut report = TYPST_TEMPLATE.replace("{{slug}}", &single_line(slug));
 
     if confidential {
         report = report.replace("{{confidential_header}}", CONFIDENTIAL_HEADER);
@@ -110,18 +109,45 @@ fn typst_files(slug: &str, description: &str, confidential: bool) -> Vec<Scaffol
         report = report.replace("{{confidential_footer}}\n", "");
     }
 
-    let data = TYPST_DATA_STUB
-        .replace("{{slug}}", slug)
-        .replace("{{description}}", description);
-
     vec![
         ScaffoldFile::from_str("report.typ", &report),
-        ScaffoldFile::from_str("data.json", &data),
+        ScaffoldFile::from_str("data.json", &typst_data(slug, description)),
     ]
 }
 
+/// Serialise the `data.json` payload the Typst template reads.
+///
+/// WHY: the payload is built through `serde_json` rather than by substituting
+/// into a string template, so a `slug` or `description` containing `"`, `\`,
+/// or a line break cannot terminate the surrounding JSON string literal and
+/// inject further keys into the object.
+fn typst_data(slug: &str, description: &str) -> String {
+    let data = serde_json::json!({
+        "title": slug,
+        "description": description,
+        "body": [BODY_PLACEHOLDER],
+    });
+
+    // INVARIANT: serialising a `serde_json::Value` built from string and array
+    // literals has no failure mode; the fallback keeps the signature total.
+    serde_json::to_string_pretty(&data).unwrap_or_default()
+}
+
+/// Collapse line breaks so `text` cannot escape a Typst `//` line comment.
+///
+/// WHY: the report template carries the slug on a comment line. A slug holding
+/// a line break would close the comment and let the remainder parse as Typst
+/// markup.
+fn single_line(text: &str) -> String {
+    text.replace("\r\n", " ").replace(LINE_BREAKS, " ")
+}
+
+/// Characters Typst treats as ending a line.
+const LINE_BREAKS: [char; 6] = ['\n', '\r', '\u{0b}', '\u{0c}', '\u{2028}', '\u{2029}'];
+
+const BODY_PLACEHOLDER: &str = "Replace this paragraph with your report content.";
+
 const TYPST_TEMPLATE: &str = include_str!("templates/report.typ");
-const TYPST_DATA_STUB: &str = include_str!("templates/data.json");
 const CONFIDENTIAL_HEADER: &str = r#"#align(center)[#text(12pt, weight: "bold", fill: red)[CONFIDENTIAL]]
 "#;
 const CONFIDENTIAL_FOOTER: &str = r"#align(center)[#text(9pt, fill: red)[CONFIDENTIAL — DO NOT DISTRIBUTE]]
@@ -242,5 +268,63 @@ mod tests {
     fn scaffold_with_empty_slug_errors() {
         let err = scaffold_report("", "desc", Format::Typst, false).unwrap_err();
         assert!(matches!(err, Error::EmptySlug));
+    }
+
+    #[expect(clippy::expect_used, reason = "test assertions on synthetic data")]
+    fn data_json_for(slug: &str, description: &str) -> serde_json::Value {
+        let files = scaffold_report(slug, description, Format::Typst, false)
+            .expect("scaffold must succeed");
+        let data = files
+            .iter()
+            .find(|f| f.path == std::path::Path::new("data.json"))
+            .expect("data.json must be present");
+        let text = std::str::from_utf8(&data.contents).expect("data.json must be valid utf-8");
+        serde_json::from_str(text).expect("data.json must be well-formed JSON")
+    }
+
+    #[test]
+    fn data_json_escapes_a_description_that_closes_the_string_literal() {
+        let hostile = r#"" }, {"evil": "injected"#;
+        let data = data_json_for("q1-review", hostile);
+
+        assert_eq!(data.get("description"), Some(&serde_json::json!(hostile)));
+        assert!(
+            data.get("evil").is_none(),
+            "a crafted description must not inject sibling keys"
+        );
+    }
+
+    #[test]
+    fn data_json_escapes_backslashes_and_newlines_in_a_description() {
+        for hostile in [r"foo \ bar", "first\nsecond", "trailing\\"] {
+            let data = data_json_for("q1-review", hostile);
+            assert_eq!(data.get("description"), Some(&serde_json::json!(hostile)));
+        }
+    }
+
+    #[test]
+    fn data_json_escapes_a_hostile_slug() {
+        let hostile = r#"" , "evil": "injected"#;
+        let data = data_json_for(hostile, "Quarterly review");
+
+        assert_eq!(data.get("title"), Some(&serde_json::json!(hostile)));
+        assert!(data.get("evil").is_none());
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions on synthetic data")]
+    fn typst_report_keeps_a_multiline_slug_inside_its_comment() {
+        let files = scaffold_report("q1\n#panic()", "Quarterly review", Format::Typst, false)
+            .expect("scaffold must succeed");
+        let report = files
+            .iter()
+            .find(|f| f.path == std::path::Path::new("report.typ"))
+            .expect("report.typ must be present");
+        let text = std::str::from_utf8(&report.contents).expect("report.typ must be valid utf-8");
+
+        assert!(
+            !text.lines().any(|line| line.trim() == "#panic()"),
+            "a slug line break must not escape the comment: {text}"
+        );
     }
 }

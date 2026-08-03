@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use clap::Subcommand;
 use snafu::prelude::*;
+use taxis::oikos::Oikos;
 
 use crate::error::Result;
 
@@ -16,8 +17,9 @@ pub(crate) enum Action {
     /// Generate self-signed certificates for development/LAN use
     Generate {
         /// Output directory for cert and key files
-        #[arg(long, default_value = "instance/config/tls")]
-        output_dir: PathBuf,
+        /// (default: `<instance-root>/config/tls`)
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
         /// Certificate validity in days
         #[arg(long, default_value_t = 365)]
         days: u32,
@@ -30,14 +32,61 @@ pub(crate) enum Action {
     },
 }
 
-pub(crate) fn run(action: &Action) -> Result<()> {
+/// Where the resolved certificate output directory came from.
+///
+/// WHY: error and success messages must say whether a path was chosen by the
+/// operator or derived, so a surprising destination is diagnosable without
+/// re-deriving the resolution order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputDirSource {
+    /// The operator passed `--output-dir` explicitly.
+    ExplicitFlag,
+    /// Derived from the resolved instance root.
+    InstanceRoot,
+}
+
+impl OutputDirSource {
+    fn describe(self) -> &'static str {
+        match self {
+            Self::ExplicitFlag => "--output-dir",
+            Self::InstanceRoot => "instance root",
+        }
+    }
+}
+
+/// Resolve the certificate output directory.
+///
+/// An explicit `--output-dir` always wins. Otherwise the directory is derived
+/// from the instance root via [`Oikos`], which is the single owner of instance
+/// path layout: `-r/--instance-root` when given, else `ALETHEIA_ROOT`, else
+/// `./instance`.
+fn resolve_output_dir(
+    output_dir: Option<&PathBuf>,
+    instance_root: Option<&PathBuf>,
+) -> (PathBuf, OutputDirSource) {
+    if let Some(dir) = output_dir {
+        return (dir.clone(), OutputDirSource::ExplicitFlag);
+    }
+    // WHY: `Oikos::from_root` stores a not-yet-existing path as-is, so
+    // generating into a fresh instance root works before `aletheia init`.
+    let oikos = match instance_root {
+        Some(root) => Oikos::from_root(root),
+        None => Oikos::discover(),
+    };
+    (oikos.config().join("tls"), OutputDirSource::InstanceRoot)
+}
+
+pub(crate) fn run(action: &Action, instance_root: Option<&PathBuf>) -> Result<()> {
     match action {
         Action::Generate {
             output_dir,
             days,
             san,
             force,
-        } => generate_certs(output_dir, *days, san, *force),
+        } => {
+            let (resolved, source) = resolve_output_dir(output_dir.as_ref(), instance_root);
+            generate_certs(&resolved, source, *days, san, *force)
+        }
     }
 }
 
@@ -79,7 +128,13 @@ fn validate_san(san: &str) -> Result<()> {
     Ok(())
 }
 
-fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) -> Result<()> {
+fn generate_certs(
+    output_dir: &Path,
+    source: OutputDirSource,
+    days: u32,
+    sans: &[String],
+    force: bool,
+) -> Result<()> {
     if days == 0 {
         whatever!("tls generate: --days must be at least 1");
     }
@@ -90,8 +145,13 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
         validate_san(san)?;
     }
 
-    std::fs::create_dir_all(output_dir)
-        .with_whatever_context(|_| format!("failed to create {}", output_dir.display()))?;
+    std::fs::create_dir_all(output_dir).with_whatever_context(|_| {
+        format!(
+            "failed to create {} (from {})",
+            output_dir.display(),
+            source.describe()
+        )
+    })?;
 
     let cert_path = output_dir.join("cert.pem");
     let key_path = output_dir.join("key.pem");
@@ -100,8 +160,12 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
         for path in [&cert_path, &key_path] {
             if path.exists() {
                 whatever!(
-                    "file already exists: {}\nUse --force to overwrite.",
-                    path.display()
+                    "file already exists: {}\n  \
+                     Output directory {} came from {}.\n  \
+                     Use --force to overwrite.",
+                    path.display(),
+                    output_dir.display(),
+                    source.describe()
                 );
             }
         }
@@ -116,11 +180,12 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
         .with_whatever_context(|_| format!("failed to write {}", key_path.display()))?;
 
     // WHY: print absolute paths so the user knows where files were written,
-    // especially when --output-dir is the default relative path.
+    // especially when the output directory was derived rather than given.
     let abs_cert = std::fs::canonicalize(&cert_path).unwrap_or_else(|_| cert_path.clone());
     let abs_key = std::fs::canonicalize(&key_path).unwrap_or_else(|_| key_path.clone());
     println!("Certificate: {}", abs_cert.display());
     println!("Private key: {}", abs_key.display());
+    println!("Output directory from: {}", source.describe());
     println!("Valid for {days} days");
 
     Ok(())
@@ -128,7 +193,63 @@ fn generate_certs(output_dir: &Path, days: u32, sans: &[String], force: bool) ->
 
 #[cfg(test)]
 mod tests {
-    use super::validate_san;
+    use std::path::PathBuf;
+
+    use super::{OutputDirSource, resolve_output_dir, validate_san};
+
+    #[test]
+    fn instance_root_supplies_the_default_output_dir() {
+        // WHY: a path that cannot exist, so `Oikos::from_root` stores it
+        // verbatim and the assertion is not perturbed by canonicalization.
+        let root = PathBuf::from("/tmp/aletheia-5104-absent-root");
+        let (dir, source) = resolve_output_dir(None, Some(&root));
+        assert_eq!(
+            dir,
+            PathBuf::from("/tmp/aletheia-5104-absent-root/config/tls"),
+            "default output should sit under the instance root"
+        );
+        assert_eq!(source, OutputDirSource::InstanceRoot);
+    }
+
+    #[test]
+    fn explicit_output_dir_overrides_the_instance_root() {
+        let root = PathBuf::from("/tmp/example");
+        let explicit = PathBuf::from("/var/certs");
+        let (dir, source) = resolve_output_dir(Some(&explicit), Some(&root));
+        assert_eq!(dir, explicit, "an explicit --output-dir must win");
+        assert_eq!(source, OutputDirSource::ExplicitFlag);
+    }
+
+    #[test]
+    fn explicit_output_dir_is_honoured_without_an_instance_root() {
+        let explicit = PathBuf::from("/var/certs");
+        let (dir, source) = resolve_output_dir(Some(&explicit), None);
+        assert_eq!(dir, explicit);
+        assert_eq!(source, OutputDirSource::ExplicitFlag);
+    }
+
+    #[test]
+    fn resolved_default_is_never_bare_cwd_relative_instance_path() {
+        // WHY: the pre-fix default was the literal cwd-relative
+        // "instance/config/tls" regardless of -r, which is the defect.
+        let root = PathBuf::from("/srv/aletheia/instance");
+        let (dir, _) = resolve_output_dir(None, Some(&root));
+        assert!(
+            dir.starts_with(&root),
+            "resolved {} should be under {}",
+            dir.display(),
+            root.display()
+        );
+    }
+
+    #[test]
+    fn source_labels_are_distinct() {
+        assert_ne!(
+            OutputDirSource::ExplicitFlag.describe(),
+            OutputDirSource::InstanceRoot.describe(),
+            "messages must distinguish where the path came from"
+        );
+    }
 
     #[expect(clippy::unwrap_used, reason = "test assertions")]
     #[test]

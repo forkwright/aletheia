@@ -249,7 +249,7 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
     let (executor, store) = RealKnowledge::open(dir.path());
 
     let violations = [
-        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123"}"#,
+        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123","pr_state":"merged","resolved":true}"#,
         r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":null,"sha":null}"#,
     ];
     tokio::fs::write(training.join("violations.jsonl"), violations.join("\n"))
@@ -290,6 +290,42 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
             .iter()
             .any(|fact| fact.content.contains("recurs across scans")),
         "recurring lesson content should be persisted: {facts:?}"
+    );
+}
+
+/// Regression for #5384: a violation seen inside a PR with no recorded outcome
+/// must not be persisted as a fix. The PR here is still open and the violation
+/// unresolved, so the only honest fact is an unresolved observation.
+#[tokio::test]
+async fn pr_sighting_without_outcome_is_not_persisted_as_a_fix() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let training = dir.path().join("training");
+    std::fs::create_dir_all(&training).expect("create training dir");
+    let (executor, store) = RealKnowledge::open(dir.path());
+
+    let violations = [
+        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123","pr_state":"open","resolved":false}"#,
+    ];
+    tokio::fs::write(training.join("violations.jsonl"), violations.join("\n"))
+        .await
+        .expect("write violations");
+
+    let result = execute_lesson_extraction_from_dir("alice", &training, executor.as_ref())
+        .expect("lesson extraction should persist");
+    assert!(result.is_success());
+
+    let facts = current_facts(&store, "alice");
+    assert!(
+        facts
+            .iter()
+            .all(|fact| !fact.content.contains("was fixed in PR")),
+        "an unresolved PR sighting must not claim a fix: {facts:?}"
+    );
+    assert!(
+        facts
+            .iter()
+            .any(|fact| fact.content.contains("was observed in PR, outcome unknown")),
+        "the sighting should persist as an unresolved observation: {facts:?}"
     );
 }
 

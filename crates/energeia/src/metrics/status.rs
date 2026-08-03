@@ -432,10 +432,11 @@ mod tests {
         let (_dir, store) = setup();
         let d1 = store.create_dispatch("acme", &spec("acme")).unwrap();
         let d2 = store.create_dispatch("other", &spec("other")).unwrap();
-        let s1 = store.create_session(&d1, 1).unwrap();
+        store.create_session(&d1, 1).unwrap();
         store
             .update_session(
-                &s1,
+                &d1,
+                1,
                 SessionUpdate {
                     cost_usd: Some(2.0),
                     status: Some(SessionStatus::Success),
@@ -507,6 +508,7 @@ mod tests {
             started_at,
             finished_at: None,
             succeeded: None,
+            outcome: None,
         };
         let value = rmp_serde::to_vec(&record).unwrap();
         let mut tx = lock_db.db.write_tx();

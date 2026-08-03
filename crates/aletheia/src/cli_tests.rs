@@ -604,9 +604,8 @@ fn tls_generate_defaults_parses() {
                 },
         }) => {
             assert_eq!(
-                output_dir,
-                PathBuf::from("instance/config/tls"),
-                "output_dir should default to instance/config/tls"
+                output_dir, None,
+                "output_dir should be unset so it can be resolved from the instance root"
             );
             assert_eq!(days, 365, "days should default to 365");
             assert!(!force, "force flag should default to false");
@@ -641,7 +640,7 @@ fn tls_generate_custom_options_parses() {
         }) => {
             assert_eq!(
                 output_dir,
-                PathBuf::from("/tmp/certs"),
+                Some(PathBuf::from("/tmp/certs")),
                 "output_dir should be set"
             );
             assert_eq!(days, 90, "days should be set");

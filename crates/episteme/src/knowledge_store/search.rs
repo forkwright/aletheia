@@ -14,6 +14,73 @@ fn truncate_recall_results(results: &mut Vec<crate::knowledge::RecallResult>, k:
     results.truncate(limit);
 }
 
+/// Source ids of the fact-backed results, in result order.
+///
+/// WHY (#5672): the enrichment passes each read one stored relation for the
+/// whole set, so they need the requested ids up front rather than one at a time.
+#[cfg(feature = "mneme-engine")]
+fn fact_result_ids(results: &[crate::knowledge::RecallResult]) -> Vec<String> {
+    results
+        .iter()
+        .filter(|r| r.source_type == "fact")
+        .map(|r| r.source_id.clone())
+        .collect()
+}
+
+/// Apply one hydrated `facts` row to its recall result.
+///
+/// `row` is `[id, scope, project_id, visibility, sensitivity]`; fields that are
+/// absent, empty, or undecodable leave the result's current value in place.
+#[cfg(feature = "mneme-engine")]
+fn apply_hydrated_fact_fields(
+    result: &mut crate::knowledge::RecallResult,
+    row: &[crate::engine::DataValue],
+) {
+    if let Some(scope_str) = row.get(1).and_then(|v| v.get_str())
+        && !scope_str.is_empty()
+    {
+        match scope_str.parse::<crate::knowledge::MemoryScope>() {
+            Ok(scope) => result.scope = Some(scope),
+            Err(error) => tracing::warn!(
+                %error,
+                fact_id = %result.source_id,
+                scope = scope_str,
+                "failed to parse recall result memory scope"
+            ),
+        }
+    }
+    if let Some(project_id) = row
+        .get(2)
+        .and_then(|v| v.get_str())
+        .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok())
+    {
+        result.project_id = Some(project_id);
+    }
+    if let Some(vis_str) = row.get(3).and_then(|v| v.get_str())
+        && !vis_str.is_empty()
+    {
+        // kanon:ignore RUST/no-result-unwrap-or-default — Visibility::default() IS the documented
+        // fallback for unknown/legacy values from storage; clippy::manual_unwrap_or rejects an
+        // explicit Ok/Err match here.
+        result.visibility = vis_str
+            .parse::<crate::knowledge::Visibility>()
+            .unwrap_or_default();
+    }
+    if let Some(sensitivity_str) = row.get(4).and_then(|v| v.get_str())
+        && !sensitivity_str.is_empty()
+    {
+        if let Ok(s) = sensitivity_str.parse::<crate::knowledge::FactSensitivity>() {
+            result.sensitivity = s;
+        } else {
+            tracing::warn!(
+                sensitivity = sensitivity_str,
+                fact_id = %result.source_id,
+                "hydrated fact has undecodable sensitivity; leaving as-is to avoid widening to Public"
+            );
+        }
+    }
+}
+
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Insert a vector embedding for semantic search.
@@ -344,39 +411,61 @@ impl KnowledgeStore {
     /// WHY (#5663): accepts a pre-loaded `GraphContext` so callers can load it once
     /// and share it across `enrich_recall_results` + `expand_recall_by_cluster`,
     /// eliminating redundant full-table scans of `graph_scores` per search call.
+    ///
+    /// WHY (#5672): the `fact_entities` lookup is batched into one query for the
+    /// whole result set rather than one per fact.
     fn enrich_recall_results(
         &self,
         results: &mut [crate::knowledge::RecallResult],
         graph_ctx: &crate::graph_intelligence::GraphContext,
     ) {
-        let fact_results: Vec<&crate::knowledge::RecallResult> =
-            results.iter().filter(|r| r.source_type == "fact").collect();
-        if fact_results.is_empty() {
-            return;
-        }
-
         let pageranks = &graph_ctx.pageranks;
         if pageranks.is_empty() {
             return;
         }
 
-        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let script = "?[entity_id] := *fact_entities{fact_id: $fid, entity_id}";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(entity_rows) = self.run_read(script, params) else {
+        let fids = fact_result_ids(results);
+        if fids.is_empty() {
+            return;
+        }
+
+        let script = r"
+            requested[fact_id] <- $fids
+            ?[fact_id, entity_id] :=
+                requested[fact_id],
+                *fact_entities{fact_id, entity_id}
+        ";
+        let mut params = std::collections::BTreeMap::new();
+        params.insert(
+            "fids".to_owned(),
+            crate::knowledge_store::id_rows(fids.iter().map(String::as_str)),
+        );
+        // WHY: a failed lookup leaves every result's `graph_importance` at its
+        // current value, matching the per-fact loop's skip-on-error behaviour.
+        let Ok(entity_rows) = self.run_read(script, params) else {
+            return;
+        };
+
+        let mut max_pr: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+        for row in &entity_rows.rows {
+            let (Some(fact_id), Some(entity_id)) = (
+                row.first().and_then(|v| v.get_str()),
+                row.get(1).and_then(|v| v.get_str()),
+            ) else {
                 continue;
             };
-            let max_pr = entity_rows
-                .rows
-                .iter()
-                .filter_map(|row| row.first().and_then(|v| v.get_str()))
-                .filter_map(|entity_id| pageranks.get(entity_id).copied())
-                .fold(0.0_f64, f64::max);
-            result.graph_importance = max_pr;
+            let Some(pr) = pageranks.get(entity_id).copied() else {
+                continue;
+            };
+            let slot = max_pr.entry(fact_id).or_insert(0.0_f64);
+            *slot = slot.max(pr);
+        }
+
+        for result in results.iter_mut().filter(|r| r.source_type == "fact") {
+            result.graph_importance = max_pr
+                .get(result.source_id.as_str())
+                .copied()
+                .unwrap_or(0.0_f64);
         }
     }
 
@@ -384,16 +473,22 @@ impl KnowledgeStore {
     /// side-index so the recall pipeline can score the convergence factor (#4415).
     ///
     /// Non-consolidated / legacy facts have no multiplicity record and keep
-    /// `source_count` 0 (convergence scores 0 for them). NOTE: this issues one
-    /// indexed point-query per fact result; the convergence recall weight
-    /// defaults to 0 so the score — and thus ranking — is unchanged when the
-    /// feature is off. A batched side-index load is a future optimisation.
+    /// `source_count` 0 (convergence scores 0 for them).
+    ///
+    /// WHY (#5672): the side-index is read for the whole result set in one
+    /// query rather than one indexed point-query per fact result.
     fn enrich_source_counts(&self, results: &mut [crate::knowledge::RecallResult]) {
+        let fact_ids: Vec<crate::id::FactId> = results
+            .iter()
+            .filter(|r| r.source_type == "fact")
+            .filter_map(|r| crate::id::FactId::new(&r.source_id).ok())
+            .collect();
+        let Ok(multiplicities) = self.get_fact_multiplicities(&fact_ids) else {
+            return;
+        };
+
         for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let Ok(fact_id) = crate::id::FactId::new(&result.source_id) else {
-                continue;
-            };
-            if let Ok(Some(multiplicity)) = self.get_fact_multiplicity(&fact_id) {
+            if let Some(multiplicity) = multiplicities.get(result.source_id.as_str()) {
                 result.source_count = multiplicity.source_count;
             }
         }
@@ -405,64 +500,41 @@ impl KnowledgeStore {
     /// carry these fields. This enrichment looks them up from `facts` for
     /// `source_type == "fact"` results so downstream quota and visibility
     /// filters see accurate values.
+    ///
+    /// WHY (#5672): the `facts` lookup is batched into one query for the whole
+    /// result set rather than one point-query per fact result.
     fn hydrate_recall_scope_visibility(&self, results: &mut [crate::knowledge::RecallResult]) {
+        let fids = fact_result_ids(results);
+        if fids.is_empty() {
+            return;
+        }
+
+        let script = r"
+            requested[id] <- $fids
+            ?[id, scope, project_id, visibility, sensitivity] :=
+                requested[id],
+                *facts{id, scope, project_id, visibility, sensitivity}
+        ";
+        let mut params = std::collections::BTreeMap::new();
+        params.insert(
+            "fids".to_owned(),
+            crate::knowledge_store::id_rows(fids.iter().map(String::as_str)),
+        );
+        // WHY: a failed lookup leaves every result's scope/visibility at its
+        // current value, matching the per-fact loop's skip-on-error behaviour.
+        let Ok(rows) = self.run_read(script, params) else {
+            return;
+        };
+
+        let by_id: std::collections::HashMap<&str, &Vec<crate::engine::DataValue>> = rows
+            .rows
+            .iter()
+            .filter_map(|row| row.first().and_then(|v| v.get_str()).map(|id| (id, row)))
+            .collect();
+
         for result in results.iter_mut().filter(|r| r.source_type == "fact") {
-            let script = r"
-                ?[scope, project_id, visibility, sensitivity] :=
-                    *facts{id: $fid, scope, project_id, visibility, sensitivity}
-            ";
-            let mut params = std::collections::BTreeMap::new();
-            params.insert(
-                "fid".to_owned(),
-                crate::engine::DataValue::Str(result.source_id.as_str().into()),
-            );
-            let Ok(rows) = self.run_read(script, params) else {
-                continue;
-            };
-            if let Some(row) = rows.rows.first() {
-                if let Some(scope_str) = row.first().and_then(|v| v.get_str())
-                    && !scope_str.is_empty()
-                {
-                    match scope_str.parse::<crate::knowledge::MemoryScope>() {
-                        Ok(scope) => result.scope = Some(scope),
-                        Err(error) => tracing::warn!(
-                            %error,
-                            fact_id = %result.source_id,
-                            scope = scope_str,
-                            "failed to parse recall result memory scope"
-                        ),
-                    }
-                }
-                if let Some(project_id) = row
-                    .get(1)
-                    .and_then(|v| v.get_str())
-                    .and_then(|s| eidos::workspace::ProjectId::from_sha256_hex(s).ok())
-                {
-                    result.project_id = Some(project_id);
-                }
-                if let Some(vis_str) = row.get(2).and_then(|v| v.get_str())
-                    && !vis_str.is_empty()
-                {
-                    // kanon:ignore RUST/no-result-unwrap-or-default — Visibility::default() IS the documented
-                    // fallback for unknown/legacy values from storage; clippy::manual_unwrap_or rejects an
-                    // explicit Ok/Err match here.
-                    result.visibility = vis_str
-                        .parse::<crate::knowledge::Visibility>()
-                        .unwrap_or_default();
-                }
-                if let Some(sensitivity_str) = row.get(3).and_then(|v| v.get_str())
-                    && !sensitivity_str.is_empty()
-                {
-                    if let Ok(s) = sensitivity_str.parse::<crate::knowledge::FactSensitivity>() {
-                        result.sensitivity = s;
-                    } else {
-                        tracing::warn!(
-                            sensitivity = sensitivity_str,
-                            fact_id = %result.source_id,
-                            "hydrated fact has undecodable sensitivity; leaving as-is to avoid widening to Public"
-                        );
-                    }
-                }
+            if let Some(row) = by_id.get(result.source_id.as_str()) {
+                apply_hydrated_fact_fields(result, row);
             }
         }
     }

@@ -42,6 +42,22 @@ impl HealthTier {
     }
 }
 
+/// Effective capability limits for one agent, as reported by
+/// `GET /api/v1/nous/{id}`.
+///
+/// WHY: the list endpoint (`GET /api/v1/nous`) returns `NousSummary`, which
+/// carries no capability fields. These come from the per-agent detail
+/// endpoint, so they are absent whenever that fetch has not completed or
+/// failed for this agent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AgentCapabilities {
+    pub context_window: u32,
+    pub max_output_tokens: u32,
+    pub thinking_enabled: bool,
+    pub thinking_budget: u32,
+    pub max_tool_iterations: u32,
+}
+
 /// Display data for a single agent status card.
 #[derive(Debug, Clone)]
 pub(crate) struct AgentCardData {
@@ -53,6 +69,9 @@ pub(crate) struct AgentCardData {
     pub active_turns: u32,
     pub last_activity: Option<String>,
     pub connected: bool,
+    /// `None` when the per-agent detail fetch has not completed or failed;
+    /// the card renders without the capability block in that case.
+    pub capabilities: Option<AgentCapabilities>,
 }
 
 /// Store for agent status card data, keyed by NousId.
@@ -648,6 +667,7 @@ mod tests {
             active_turns: 0,
             last_activity: None,
             connected: true,
+            capabilities: None,
         }
     }
 

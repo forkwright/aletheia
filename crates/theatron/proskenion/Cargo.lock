@@ -2815,7 +2815,6 @@ dependencies = [
  "prometheus-client",
  "rand 0.10.1",
  "regex",
- "reqwest",
  "rustix",
  "serde",
  "serde_json",
@@ -2824,6 +2823,7 @@ dependencies = [
  "toml 1.1.0+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "url",
  "zeroize",
 ]
 

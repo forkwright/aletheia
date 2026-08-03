@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.33.9](https://github.com/forkwright/aletheia/compare/v0.33.8...v0.33.9) (2026-07-31)
+
+
+### Bug Fixes
+
+* **ci:** run the proskenion pin check on every PR, not only desktop paths ([#6547](https://github.com/forkwright/aletheia/issues/6547)) ([d9188aa](https://github.com/forkwright/aletheia/commit/d9188aa1903fd9cc63abfbb33ab9b71393c6c5c8))
+* **episteme:** reclaim the append-only consolidation audit trail ([#6545](https://github.com/forkwright/aletheia/issues/6545)) ([34cd128](https://github.com/forkwright/aletheia/commit/34cd1282565c468dd8c18839452cc7a0021b73d7)), closes [#5674](https://github.com/forkwright/aletheia/issues/5674)
+
 ## [0.33.8](https://github.com/forkwright/aletheia/compare/v0.33.7...v0.33.8) (2026-07-30)
 
 

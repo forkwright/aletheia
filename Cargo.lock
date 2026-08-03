@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "agora"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "futures",
  "indexmap 2.14.0",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "agora",
  "aletheia-routing",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-classify"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "jiff",
  "serde",
@@ -183,11 +183,11 @@ dependencies = [
 
 [[package]]
 name = "aletheia-lexica"
-version = "0.33.8"
+version = "0.33.9"
 
 [[package]]
 name = "aletheia-memory-mcp"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "jiff",
  "koina",
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-routing"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "futures",
  "jiff",
@@ -221,7 +221,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-sessions-migrate"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "dianoia"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "jiff",
  "koina",
@@ -2329,7 +2329,7 @@ dependencies = [
 
 [[package]]
 name = "diaporeia"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "axum 0.8.9",
  "cargo_metadata",
@@ -2453,7 +2453,7 @@ dependencies = [
 
 [[package]]
 name = "dokimion"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "jiff",
  "koina",
@@ -2542,7 +2542,7 @@ dependencies = [
 
 [[package]]
 name = "eidos"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "jiff",
  "koina",
@@ -2610,7 +2610,7 @@ dependencies = [
 
 [[package]]
 name = "energeia"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "aletheia-routing",
  "compact_str",
@@ -2711,7 +2711,7 @@ checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 
 [[package]]
 name = "episteme"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -3475,7 +3475,7 @@ dependencies = [
 
 [[package]]
 name = "gnosis"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "cargo_metadata",
  "fjall",
@@ -3491,8 +3491,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gramma"
+version = "1.5.0"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+dependencies = [
+ "syntect",
+]
+
+[[package]]
 name = "graphe"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "criterion",
  "eidos",
@@ -3723,7 +3731,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermeneus"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "criterion",
  "jiff",
@@ -4378,7 +4386,7 @@ dependencies = [
 
 [[package]]
 name = "integration-tests"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "axum 0.8.9",
  "dokimion",
@@ -4648,14 +4656,16 @@ dependencies = [
 
 [[package]]
 name = "koilon"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "arboard",
+ "bathron",
  "clap",
  "compact_str",
  "crossterm",
  "dirs",
  "futures-util",
+ "gramma",
  "image",
  "jiff",
  "koina",
@@ -4676,14 +4686,12 @@ dependencies = [
  "tokio",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
  "unicode-width",
 ]
 
 [[package]]
 name = "koina"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "criterion",
  "fjall",
@@ -4692,7 +4700,6 @@ dependencies = [
  "proptest",
  "rand 0.10.2",
  "regex",
- "reqwest 0.13.4",
  "rustix 1.1.4",
  "serde",
  "serde_json",
@@ -4702,6 +4709,7 @@ dependencies = [
  "toml 1.1.2+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "url",
  "zeroize",
 ]
 
@@ -4815,7 +4823,7 @@ dependencies = [
 
 [[package]]
 name = "krites"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "aho-corasick",
  "arc-swap",
@@ -5242,7 +5250,7 @@ dependencies = [
 
 [[package]]
 name = "melete"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "aletheia-lexica",
  "futures",
@@ -5353,7 +5361,7 @@ dependencies = [
 
 [[package]]
 name = "mneme"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "eidos",
  "episteme",
@@ -5538,7 +5546,7 @@ dependencies = [
 
 [[package]]
 name = "nous"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "aletheia-classify",
  "aletheia-lexica",
@@ -5739,7 +5747,7 @@ dependencies = [
 
 [[package]]
 name = "oikonomos"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "aletheia-routing",
  "axum 0.8.9",
@@ -5864,7 +5872,7 @@ dependencies = [
 
 [[package]]
 name = "organon"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "base64 0.22.1",
  "eidos",
@@ -6368,7 +6376,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-charts"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "insta",
  "poiesis-core",
@@ -6381,7 +6389,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-core"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "indexmap 2.14.0",
  "jiff",
@@ -6393,7 +6401,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-deck"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "minijinja",
  "poiesis-core",
@@ -6405,7 +6413,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-deck-layout"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "poiesis-core",
  "serde",
@@ -6413,7 +6421,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-diff"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "indexmap 2.14.0",
  "poiesis-ooxml-parse",
@@ -6426,7 +6434,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-doc"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "docx-rs",
  "insta",
@@ -6448,7 +6456,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-inspect"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "indexmap 2.14.0",
  "lopdf",
@@ -6465,7 +6473,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-intake"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "aletheia-lexica",
  "serde",
@@ -6476,7 +6484,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-lint"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "poiesis-core",
  "serde",
@@ -6486,14 +6494,14 @@ dependencies = [
 
 [[package]]
 name = "poiesis-ooxml-parse"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "quick-xml 0.41.0",
 ]
 
 [[package]]
 name = "poiesis-printer-chromium"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "chromiumoxide",
  "futures",
@@ -6506,7 +6514,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-scaffold"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "poiesis-core",
  "poiesis-sheet",
@@ -6518,7 +6526,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-sheet"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "calamine",
  "poiesis-core",
@@ -6532,7 +6540,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-slides"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "poiesis-core",
  "quick-xml 0.41.0",
@@ -6545,7 +6553,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-text"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "krilla 0.7.0",
  "poiesis-core",
@@ -6555,7 +6563,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-theme"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "indexmap 2.14.0",
  "jiff",
@@ -6570,7 +6578,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-typst"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "comemo",
  "jiff",
@@ -6586,7 +6594,7 @@ dependencies = [
 
 [[package]]
 name = "poiesis-verify"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "serde",
  "serde_json",
@@ -6983,7 +6991,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "pylon"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "axum 0.8.9",
  "axum-server",
@@ -8484,7 +8492,7 @@ checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 
 [[package]]
 name = "skene"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "bytes",
  "form_urlencoded",
@@ -8817,7 +8825,7 @@ dependencies = [
 
 [[package]]
 name = "symbolon"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -8950,7 +8958,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "taxis"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "agora",
  "chacha20poly1305",
@@ -9089,7 +9097,7 @@ source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf
 
 [[package]]
 name = "thesauros"
-version = "0.33.8"
+version = "0.33.9"
 dependencies = [
  "futures",
  "indexmap 2.14.0",

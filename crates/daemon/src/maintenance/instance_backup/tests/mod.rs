@@ -8,6 +8,7 @@ use super::restore::{publish_restore_plan, rollback_restore};
 use super::*;
 
 mod creation;
+mod freshness;
 mod restore;
 mod snapshot;
 mod verify;

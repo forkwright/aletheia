@@ -39,7 +39,21 @@ pub(crate) struct KnowledgeMaintenanceAdapter {
     /// `None` leaves consolidation as a no-op so the maintenance task can
     /// still be scheduled in deployments without a configured LLM provider.
     consolidation_provider: Option<Arc<dyn ConsolidationProvider>>,
+    /// Retention window in days for `consolidation_audit` rows (#5674).
+    ///
+    /// Consumed by [`KnowledgeMaintenanceExecutor::garbage_collect`]. `0`
+    /// disables pruning; production startup overrides this from
+    /// `maintenance.cronTasks.graphCleanupAuditRetentionDays` via
+    /// [`KnowledgeMaintenanceAdapter::with_audit_retention_days`].
+    audit_retention_days: u32,
 }
+
+/// Default `consolidation_audit` retention window in days.
+///
+/// Mirrors `taxis`'s `CronTaskSettings` default so an adapter built without
+/// [`KnowledgeMaintenanceAdapter::with_audit_retention_days`] — CLI paths and
+/// tests — prunes on the same window the daemon uses.
+const DEFAULT_AUDIT_RETENTION_DAYS: u32 = 90;
 
 /// Build a [`DedupTuning`] from the resolved `AgentBehaviorDefaults` so
 /// the runtime can hand the maintenance task / CLI a single struct that
@@ -69,6 +83,7 @@ impl KnowledgeMaintenanceAdapter {
             embedding_provider: None,
             tuning: DedupTuning::DEFAULT,
             consolidation_provider: None,
+            audit_retention_days: DEFAULT_AUDIT_RETENTION_DAYS,
         }
     }
 
@@ -108,6 +123,17 @@ impl KnowledgeMaintenanceAdapter {
         provider: Arc<dyn ConsolidationProvider>,
     ) -> Self {
         self.consolidation_provider = Some(provider);
+        self
+    }
+
+    /// Set the `consolidation_audit` retention window in days (#5674).
+    ///
+    /// Production startup passes
+    /// `maintenance.cronTasks.graphCleanupAuditRetentionDays`. `0` disables
+    /// audit pruning, which makes [`KnowledgeMaintenanceExecutor::garbage_collect`]
+    /// a reporting no-op rather than deleting rows.
+    pub(crate) fn with_audit_retention_days(mut self, days: u32) -> Self {
+        self.audit_retention_days = days;
         self
     }
 }
@@ -305,14 +331,52 @@ impl KnowledgeMaintenanceExecutor for KnowledgeMaintenanceAdapter {
         .build())
     }
 
-    fn garbage_collect(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
-        Err(oikonomos::error::TaskFailedSnafu {
-            task_id: "knowledge-gc".to_owned(),
-            reason:
-                "knowledge garbage collection has no concrete store contract and is not scheduled"
-                    .to_owned(),
+    /// Reclaim the append-only `consolidation_audit` trail (#5674).
+    ///
+    /// WHY this and not orphan/edge sweeping: `consolidation_audit` is the one
+    /// knowledge relation with no bound at all — a fresh ULID per consolidation
+    /// run, no TTL, no row cap. `merge_audit` is keyed on `(canonical_id,
+    /// merged_id)` and `fact_multiplicity` / `consolidation_provenance` on the
+    /// fact they describe, so all three are bounded by live cardinality and are
+    /// reclaimed when their subject is. Orphan-node sweeping is a separate
+    /// contract and remains unimplemented here.
+    fn garbage_collect(&self, nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
+        let start = std::time::Instant::now();
+
+        if self.audit_retention_days == 0 {
+            return Ok(MaintenanceReport {
+                duration_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+                detail: Some(
+                    "consolidation audit pruning disabled (retention window is 0 days)".to_owned(),
+                ),
+                ..Default::default()
+            });
         }
-        .build())
+
+        let cutoff = jiff::Timestamp::now()
+            - jiff::SignedDuration::from_hours(i64::from(self.audit_retention_days) * 24);
+        let cutoff = mneme::knowledge::format_timestamp(&cutoff);
+
+        let (examined, removed) = self
+            .store
+            .prune_consolidation_audit(nous_id, &cutoff)
+            .map_err(|e| {
+                oikonomos::error::TaskFailedSnafu {
+                    task_id: "knowledge-gc".to_owned(),
+                    reason: e.to_string(),
+                }
+                .build()
+            })?;
+
+        Ok(MaintenanceReport {
+            items_processed: examined,
+            items_modified: removed,
+            errors: 0,
+            duration_ms: start.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+            detail: Some(format!(
+                "consolidation audit: {removed} of {examined} rows older than {cutoff} removed"
+            )),
+        })
     }
 
     fn maintain_indexes(&self, _nous_id: &str) -> oikonomos::error::Result<MaintenanceReport> {
@@ -886,6 +950,122 @@ mod tests {
                 .as_deref()
                 .is_some_and(|detail| detail.contains("Knowledge consolidation")),
             "detail should summarize the consolidation pass"
+        );
+    }
+
+    /// Insert one `consolidation_audit` row directly, bypassing a real
+    /// consolidation run: `garbage_collect` only cares about `nous_id` and
+    /// `consolidated_at`.
+    fn insert_audit_row(store: &KnowledgeStore, id: &str, nous_id: &str, consolidated_at: &str) {
+        let script = r"
+?[id, nous_id, trigger_type, trigger_id, original_count, consolidated_count,
+   original_fact_ids, consolidated_fact_ids, consolidated_at] <-
+    [[$id, $nous_id, 'entity_overflow', 'entity-1', 3, 1, '[]', '[]', $consolidated_at]]
+
+:put consolidation_audit {id => nous_id, trigger_type, trigger_id, original_count,
+                          consolidated_count, original_fact_ids,
+                          consolidated_fact_ids, consolidated_at}
+";
+        let mut params = BTreeMap::new();
+        params.insert("id".to_owned(), DataValue::Str(id.into()));
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert(
+            "consolidated_at".to_owned(),
+            DataValue::Str(consolidated_at.into()),
+        );
+        store
+            .run_mut_query(script, params)
+            .expect("insert audit row");
+    }
+
+    fn audit_row_count(store: &KnowledgeStore) -> usize {
+        store
+            .run_query("?[id] := *consolidation_audit{id}", BTreeMap::new())
+            .expect("query consolidation_audit")
+            .row_count()
+    }
+
+    /// Requirement #5674: `garbage_collect` used to return `Err`
+    /// unconditionally, so the scheduled graph-cleanup cron hard-failed the
+    /// moment an operator enabled it and `consolidation_audit` had no
+    /// reclamation path at all. It must now delete rows outside the retention
+    /// window and report what it did.
+    #[test]
+    fn garbage_collect_prunes_audit_rows_outside_the_retention_window() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = KnowledgeStore::open_fjall(
+            dir.path().join("knowledge"),
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .expect("open store");
+        let store = Arc::new(store);
+
+        let now = jiff::Timestamp::now();
+        let long_ago = now - jiff::SignedDuration::from_hours(200 * 24);
+        let recent = now - jiff::SignedDuration::from_hours(24);
+
+        insert_audit_row(
+            &store,
+            "audit-old",
+            "alice",
+            &mneme::knowledge::format_timestamp(&long_ago),
+        );
+        insert_audit_row(
+            &store,
+            "audit-recent",
+            "alice",
+            &mneme::knowledge::format_timestamp(&recent),
+        );
+
+        let adapter = KnowledgeMaintenanceAdapter::new(Arc::clone(&store));
+        let report = adapter.garbage_collect("alice").expect("gc must succeed");
+
+        assert_eq!(report.items_processed, 2, "both rows are examined");
+        assert_eq!(report.items_modified, 1, "only the 200-day-old row expires");
+        assert_eq!(report.errors, 0);
+        assert_eq!(
+            audit_row_count(&store),
+            1,
+            "the in-window row must survive the prune"
+        );
+    }
+
+    /// A zero-day window is the operator's "keep everything" setting. It must
+    /// not be read as "everything is expired".
+    #[test]
+    fn garbage_collect_with_zero_retention_deletes_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = KnowledgeStore::open_fjall(
+            dir.path().join("knowledge"),
+            mneme::knowledge_store::KnowledgeConfig::default(),
+        )
+        .expect("open store");
+        let store = Arc::new(store);
+
+        let long_ago = jiff::Timestamp::now() - jiff::SignedDuration::from_hours(500 * 24);
+        insert_audit_row(
+            &store,
+            "audit-ancient",
+            "alice",
+            &mneme::knowledge::format_timestamp(&long_ago),
+        );
+
+        let adapter =
+            KnowledgeMaintenanceAdapter::new(Arc::clone(&store)).with_audit_retention_days(0);
+        let report = adapter.garbage_collect("alice").expect("gc must succeed");
+
+        assert_eq!(report.items_modified, 0);
+        assert_eq!(
+            audit_row_count(&store),
+            1,
+            "retention 0 must disable pruning, not prune everything"
+        );
+        assert!(
+            report
+                .detail
+                .as_deref()
+                .is_some_and(|d| d.contains("disabled")),
+            "the report must say pruning was disabled rather than claim a clean run"
         );
     }
 }
