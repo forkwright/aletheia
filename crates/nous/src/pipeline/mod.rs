@@ -1517,34 +1517,20 @@ pub(crate) async fn run_pipeline(
         {
             // WHY(#3786): authorship gate skips agent-authored turns to prevent
             // preference pairs derived from AI-generated text.
-            let dpo_passes_authorship = if pipeline_config.training.author_classifier_enabled {
-                let classifier = aletheia_classify::Classifier::new();
-                match classifier.classify(&input.content) {
-                    Ok(probs) => {
-                        let class = probs.argmax();
-                        let confidence = probs.confidence();
-                        let passes = class == aletheia_classify::AuthorClass::User
-                            || confidence < pipeline_config.training.author_classifier_threshold;
-                        if !passes {
-                            crate::metrics::record_training_capture_rejected(
-                                &config.id,
-                                class.as_str(),
-                            );
-                        }
-                        passes
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            session_id = %input.session.id,
-                            "DPO authorship classification failed; continuing without filter"
-                        );
-                        true
-                    }
-                }
-            } else {
-                true
-            };
+            //
+            // WHY(#5382) this defers to the shared gate rather than
+            // classifying inline: the corpus boundary has one owner, so DPO
+            // and supervised capture cannot drift apart on what they admit —
+            // which they had, each spelling its own fail-open error arm. A
+            // preference pair has no quarantine shard of its own, so any
+            // disposition that withholds the turn from the corpus withholds
+            // the pair too.
+            let dpo_passes_authorship = crate::training::decontamination::DecontaminationGate::from_config(
+                &pipeline_config.training,
+            )
+            .evaluate(&input.content, input.session.id.as_str(), config.id.as_ref())
+            .disposition
+                == crate::training::decontamination::Disposition::Admit;
 
             if dpo_passes_authorship
                 && let Some(pair) = crate::training::dpo::process_turn_global(

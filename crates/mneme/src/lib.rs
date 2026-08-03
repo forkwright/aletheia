@@ -170,8 +170,8 @@ pub mod checkpoint;
 /// Training data types re-exported from eidos.
 pub mod training {
     pub use eidos::training::{
-        RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
-        TrainingRecord,
+        DecontaminationPolicy, RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION,
+        ToolOutcome, TrainingConfig, TrainingRecord,
     };
 }
 
