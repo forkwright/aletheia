@@ -659,25 +659,42 @@ impl EnergeiaStore {
         queries::list_all_sessions(&self.keyspace, limit)
     }
 
-    /// List all CI validation records across all sessions, up to `limit`.
+    /// List CI validation records across all sessions that satisfy `filter`,
+    /// up to `limit` retained records.
     ///
     /// Intended for metrics computation. Use [`SCAN_LIMIT_CI_VALIDATIONS`] as a
     /// sensible default.
     ///
+    /// WHY(#5722): `filter` is applied during the scan, before the record is
+    /// retained, so a caller that only reads a subset never materializes the
+    /// whole partition. `limit` bounds retained records, not scanned ones.
+    ///
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub(crate) fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
-        queries::list_all_ci_validations(&self.keyspace, limit)
+    pub(crate) fn list_ci_validations_where(
+        &self,
+        limit: usize,
+        filter: impl Fn(&CiValidationRecord) -> bool,
+    ) -> Result<Vec<CiValidationRecord>> {
+        queries::list_ci_validations_where(&self.keyspace, limit, filter)
     }
 
-    /// List all QA verdict records, up to `limit`.
+    /// List QA verdict records that satisfy `filter`, up to `limit` retained
+    /// records.
+    ///
+    /// WHY(#5722): as for [`Self::list_ci_validations_where`], `filter` runs
+    /// during the scan so unreachable records are never accumulated.
     ///
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub(crate) fn list_all_qa_verdicts(&self, limit: usize) -> Result<Vec<QaVerdictRecord>> {
-        queries::list_all_qa_verdicts(&self.keyspace, limit)
+    pub(crate) fn list_qa_verdicts_where(
+        &self,
+        limit: usize,
+        filter: impl Fn(&QaVerdictRecord) -> bool,
+    ) -> Result<Vec<QaVerdictRecord>> {
+        queries::list_qa_verdicts_where(&self.keyspace, limit, filter)
     }
 
     /// List QA verdict records for a specific dispatch.
