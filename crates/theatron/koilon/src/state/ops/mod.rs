@@ -107,6 +107,19 @@ mod tests {
         assert!(state.selected_item.is_none());
         assert_eq!(state.summary.total_calls, 0);
         assert!(state.turn_started_at.is_some());
+        assert!(state.thinking.is_streaming);
+    }
+
+    #[test]
+    fn mark_turn_complete_stops_streaming_but_keeps_text() {
+        let mut state = OpsState::default();
+        state.clear_turn();
+        state.thinking.text = "some thinking".to_string();
+
+        state.mark_turn_complete();
+
+        assert!(!state.thinking.is_streaming);
+        assert_eq!(state.thinking.text, "some thinking");
     }
 
     #[test]
