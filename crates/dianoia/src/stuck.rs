@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 
 /// Configuration for stuck detection thresholds.
 ///
-/// Defaults match `taxis::config::AgentBehaviorDefaults::planning_stuck_*` fields.
-/// Callers should construct from the resolved taxis config rather than relying
-/// on `Default`.
+/// This type owns the default thresholds:
+/// `taxis::config::AgentBehaviorDefaults::planning_stuck_*` derives its values
+/// from `StuckConfig::default()` rather than restating them. Callers should
+/// construct from the resolved taxis config rather than relying on `Default`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StuckConfig {

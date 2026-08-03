@@ -49,6 +49,19 @@ pub enum ProviderHealth {
     },
 }
 
+impl ProviderHealth {
+    /// Lowercase state name, used as the `from`/`to` label value on
+    /// `aletheia_llm_circuit_breaker_transitions_total`.
+    pub(crate) fn label(&self) -> &'static str {
+        match *self {
+            Self::Up => "up",
+            Self::Degraded { .. } => "degraded",
+            Self::Down { .. } => "down",
+            Self::Probing { .. } => "probing",
+        }
+    }
+}
+
 /// Why a provider transitioned to `Down`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -98,12 +111,16 @@ pub struct ProviderHealthTracker {
     // kanon:ignore RUST/pub-visibility
     inner: Mutex<TrackerInner>,
     config: HealthConfig,
+    provider: String,
 }
 
 impl ProviderHealthTracker {
     /// Create a new tracker starting in `Up` state.
+    ///
+    /// `provider_name` is the `provider` label on the transition counter; pass
+    /// the same name the provider reports to the rest of the metrics surface.
     #[must_use]
-    pub fn new(config: HealthConfig) -> Self {
+    pub fn new(provider_name: impl Into<String>, config: HealthConfig) -> Self {
         // kanon:ignore RUST/pub-visibility
         Self {
             inner: Mutex::new(TrackerInner {
@@ -112,6 +129,7 @@ impl ProviderHealthTracker {
                 total_errors: 0,
             }),
             config,
+            provider: provider_name.into(),
         }
     }
 
@@ -119,6 +137,36 @@ impl ProviderHealthTracker {
         self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Apply a state change and record it on the transition counter.
+    ///
+    /// WHY: every health mutation routes through here so the counter has exactly
+    /// one emission site and cannot drift from the state machine. Rewrites that
+    /// keep the same state class — a failed probe stamping a fresh `Down` — carry
+    /// equal labels and correctly emit nothing.
+    fn transition(&self, inner: &mut TrackerInner, next: ProviderHealth) {
+        let from = inner.health.label();
+        let to = next.label();
+        inner.health = next;
+        if from != to {
+            crate::metrics::record_circuit_transition(&self.provider, from, to);
+        }
+    }
+
+    /// Next state after one more consecutive failure.
+    fn degraded_or_down(consecutive_errors: u32, now: Timestamp, threshold: u32) -> ProviderHealth {
+        if consecutive_errors >= threshold {
+            ProviderHealth::Down {
+                since: now,
+                reason: DownReason::ConsecutiveFailures,
+            }
+        } else {
+            ProviderHealth::Degraded {
+                consecutive_errors,
+                last_error_at: now,
+            }
+        }
     }
 
     /// Current health state.
@@ -138,37 +186,44 @@ impl ProviderHealthTracker {
     pub fn check_available(&self) -> Result<(), ProviderHealth> {
         // kanon:ignore RUST/pub-visibility
         let mut inner = self.lock_inner();
-        match &inner.health {
-            ProviderHealth::Up | ProviderHealth::Degraded { .. } => Ok(()),
-            ProviderHealth::Probing { .. } => Err(inner.health.clone()),
+        let elected = match &inner.health {
+            ProviderHealth::Up | ProviderHealth::Degraded { .. } => return Ok(()),
+            ProviderHealth::Probing { .. } => None,
             ProviderHealth::Down { since, reason } => {
                 if matches!(reason, DownReason::AuthFailure) {
-                    return Err(inner.health.clone());
-                }
-
-                let cooldown_ms = match reason {
-                    DownReason::RateLimited { retry_after_ms } => *retry_after_ms,
-                    _ => self.config.down_cooldown_ms,
-                };
-
-                let cooldown = jiff::SignedDuration::from_millis(
-                    i64::try_from(cooldown_ms).unwrap_or(i64::MAX),
-                );
-                let elapsed = Timestamp::now().duration_since(*since);
-
-                if elapsed >= cooldown {
-                    // WHY: Elect exactly one caller as the recovery probe.
-                    // Subsequent callers see `Probing` and fail fast until the
-                    // probe records success or error.
-                    inner.health = ProviderHealth::Probing {
-                        since: Timestamp::now(),
-                        reason: reason.clone(),
-                    };
-                    Ok(())
+                    None
                 } else {
-                    Err(inner.health.clone())
+                    let cooldown_ms = match reason {
+                        DownReason::RateLimited { retry_after_ms } => *retry_after_ms,
+                        _ => self.config.down_cooldown_ms,
+                    };
+
+                    let cooldown = jiff::SignedDuration::from_millis(
+                        i64::try_from(cooldown_ms).unwrap_or(i64::MAX),
+                    );
+                    let elapsed = Timestamp::now().duration_since(*since);
+
+                    if elapsed >= cooldown {
+                        // WHY: Elect exactly one caller as the recovery probe.
+                        // Subsequent callers see `Probing` and fail fast until the
+                        // probe records success or error.
+                        Some(ProviderHealth::Probing {
+                            since: Timestamp::now(),
+                            reason: reason.clone(),
+                        })
+                    } else {
+                        None
+                    }
                 }
             }
+        };
+
+        match elected {
+            Some(probe) => {
+                self.transition(&mut inner, probe);
+                Ok(())
+            }
+            None => Err(inner.health.clone()),
         }
     }
 
@@ -177,16 +232,11 @@ impl ProviderHealthTracker {
         // kanon:ignore RUST/pub-visibility
         let mut inner = self.lock_inner();
         inner.total_requests += 1;
-        match inner.health {
-            ProviderHealth::Degraded { .. } | ProviderHealth::Probing { .. } => {
-                inner.health = ProviderHealth::Up;
-            }
-            // NOTE: already healthy, no state transition needed
-            ProviderHealth::Up => {}
-            ProviderHealth::Down { .. } => {
-                // NOTE: Success while Down means a probe succeeded: transition to Up.
-                inner.health = ProviderHealth::Up;
-            }
+        // NOTE: `Up` is already healthy and needs no transition. Every other state
+        // recovers on success; a success while `Down` means an elected probe
+        // succeeded.
+        if !matches!(inner.health, ProviderHealth::Up) {
+            self.transition(&mut inner, ProviderHealth::Up);
         }
     }
 
@@ -197,21 +247,17 @@ impl ProviderHealthTracker {
         inner.total_requests += 1;
         inner.total_errors += 1;
 
-        match error {
-            Error::AuthFailed { .. } => {
-                inner.health = ProviderHealth::Down {
-                    since: Timestamp::now(),
-                    reason: DownReason::AuthFailure,
-                };
-            }
-            Error::RateLimited { retry_after_ms, .. } => {
-                inner.health = ProviderHealth::Down {
-                    since: Timestamp::now(),
-                    reason: DownReason::RateLimited {
-                        retry_after_ms: *retry_after_ms,
-                    },
-                };
-            }
+        let next = match error {
+            Error::AuthFailed { .. } => Some(ProviderHealth::Down {
+                since: Timestamp::now(),
+                reason: DownReason::AuthFailure,
+            }),
+            Error::RateLimited { retry_after_ms, .. } => Some(ProviderHealth::Down {
+                since: Timestamp::now(),
+                reason: DownReason::RateLimited {
+                    retry_after_ms: *retry_after_ms,
+                },
+            }),
             // WHY: ProviderInit errors (e.g. CC binary disappeared, spawn failed)
             // indicate the provider process is unavailable. They must follow the
             // same degradation path as ApiRequest errors so the health tracker
@@ -223,48 +269,25 @@ impl ProviderHealthTracker {
                 status: 500..=599, ..
             } => {
                 let now = Timestamp::now();
-                match &inner.health {
-                    ProviderHealth::Up => {
-                        if 1 >= self.config.consecutive_failure_threshold {
-                            inner.health = ProviderHealth::Down {
-                                since: now,
-                                reason: DownReason::ConsecutiveFailures,
-                            };
-                        } else {
-                            inner.health = ProviderHealth::Degraded {
-                                consecutive_errors: 1,
-                                last_error_at: now,
-                            };
-                        }
-                    }
+                let threshold = self.config.consecutive_failure_threshold;
+                match inner.health {
+                    ProviderHealth::Up => Some(Self::degraded_or_down(1, now, threshold)),
                     ProviderHealth::Degraded {
                         consecutive_errors, ..
-                    } => {
-                        let next = consecutive_errors + 1;
-                        if next >= self.config.consecutive_failure_threshold {
-                            inner.health = ProviderHealth::Down {
-                                since: now,
-                                reason: DownReason::ConsecutiveFailures,
-                            };
-                        } else {
-                            inner.health = ProviderHealth::Degraded {
-                                consecutive_errors: next,
-                                last_error_at: now,
-                            };
-                        }
-                    }
-                    ProviderHealth::Down { .. } => {
-                        // NOTE: Already down, no further transition.
-                    }
-                    ProviderHealth::Probing { .. } => {
-                        // WHY: Probe failed with an availability error. Reopen
-                        // the circuit with a fresh timestamp so the next probe
-                        // waits the full cooldown.
-                        inner.health = ProviderHealth::Down {
-                            since: Timestamp::now(),
-                            reason: DownReason::ConsecutiveFailures,
-                        };
-                    }
+                    } => Some(Self::degraded_or_down(
+                        consecutive_errors + 1,
+                        now,
+                        threshold,
+                    )),
+                    // NOTE: Already down, no further transition.
+                    ProviderHealth::Down { .. } => None,
+                    // WHY: Probe failed with an availability error. Reopen
+                    // the circuit with a fresh timestamp so the next probe
+                    // waits the full cooldown.
+                    ProviderHealth::Probing { .. } => Some(ProviderHealth::Down {
+                        since: now,
+                        reason: DownReason::ConsecutiveFailures,
+                    }),
                 }
             }
             _ => {
@@ -272,12 +295,18 @@ impl ProviderHealthTracker {
                 // unless a probe is in flight: an unresolved probe must not stay
                 // stuck in `Probing`.
                 if matches!(inner.health, ProviderHealth::Probing { .. }) {
-                    inner.health = ProviderHealth::Down {
+                    Some(ProviderHealth::Down {
                         since: Timestamp::now(),
                         reason: DownReason::ConsecutiveFailures,
-                    };
+                    })
+                } else {
+                    None
                 }
             }
+        };
+
+        if let Some(next) = next {
+            self.transition(&mut inner, next);
         }
     }
 }
@@ -291,10 +320,13 @@ mod tests {
     use crate::error::ApiErrorContext;
 
     fn tracker(threshold: u32, cooldown_ms: u64) -> ProviderHealthTracker {
-        ProviderHealthTracker::new(HealthConfig {
-            consecutive_failure_threshold: threshold,
-            down_cooldown_ms: cooldown_ms,
-        })
+        ProviderHealthTracker::new(
+            "test-provider",
+            HealthConfig {
+                consecutive_failure_threshold: threshold,
+                down_cooldown_ms: cooldown_ms,
+            },
+        )
     }
 
     use std::sync::Arc;
@@ -587,5 +619,61 @@ mod tests {
     fn tracker_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ProviderHealthTracker>();
+    }
+
+    #[test]
+    fn live_transitions_record_the_transition_counter() {
+        // WHY(#5775): the counter was wired only to a CircuitBreaker whose sole
+        // construction sites were `#[cfg(test)]`, so it was structurally zero in
+        // production and the LlmCircuitBreakerOpen alert could never fire. These
+        // assertions read the exported family, so losing the emission fails here.
+        //
+        // NOTE: the provider label is unique to this test so the process-global
+        // metric family carries no counts from any other test.
+        let provider = "health-transition-counter-probe";
+        let count =
+            |from: &str, to: &str| crate::metrics::circuit_transition_count(provider, from, to);
+
+        let t = ProviderHealthTracker::new(
+            provider,
+            HealthConfig {
+                consecutive_failure_threshold: 2,
+                // NOTE: a zero cooldown elects the probe on the next
+                // `check_available`, so the Down -> Probing edge is reached
+                // without a sleep and the test stays deterministic.
+                down_cooldown_ms: 0,
+            },
+        );
+        assert_eq!(count("up", "degraded"), 0, "counter must start empty");
+        assert_eq!(count("degraded", "down"), 0, "counter must start empty");
+
+        t.record_error(&api_request_error());
+        assert_eq!(count("up", "degraded"), 1, "up -> degraded not recorded");
+
+        t.record_error(&api_request_error());
+        assert_eq!(
+            count("degraded", "down"),
+            1,
+            "degraded -> down not recorded"
+        );
+
+        // The alert filters on `to="down"`; a further error while already Down
+        // holds the same state class and must not double-count.
+        t.record_error(&api_request_error());
+        assert_eq!(
+            count("degraded", "down"),
+            1,
+            "in-place Down rewrite double-counted"
+        );
+
+        t.check_available().unwrap();
+        assert_eq!(count("down", "probing"), 1, "down -> probing not recorded");
+
+        t.record_success();
+        assert_eq!(count("probing", "up"), 1, "probing -> up not recorded");
+
+        // A success while already Up is not a transition.
+        t.record_success();
+        assert_eq!(count("up", "up"), 0, "no-op success recorded a transition");
     }
 }

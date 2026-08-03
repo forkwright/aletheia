@@ -282,5 +282,10 @@ fn cron_fire_record_json(record: &CronFireRecord) -> serde_json::Value {
         "started_at": record.started_at.to_string(),
         "finished_at": record.finished_at.map(|ts| ts.to_string()),
         "succeeded": record.succeeded,
+        // WHY(#5297): `succeeded` alone cannot distinguish a fire that did the
+        // work from one that skipped it, nor say why a fire failed. `null`
+        // here means either still-running or a record written before outcomes
+        // were tracked — see `CronFireRecord::outcome`.
+        "outcome": record.outcome,
     })
 }

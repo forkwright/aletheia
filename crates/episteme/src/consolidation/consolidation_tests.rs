@@ -327,16 +327,18 @@ fn consolidated_fact_serde_roundtrip() {
         source_fact_ids: vec![
             FactId::new("f-1").expect("valid test id"),
             FactId::new("f-2").expect("valid test id"),
-        ],
+        ]
+        .into(),
         source_recorded_ats: vec![
             "2026-01-01T00:00:00Z".to_owned(),
             "2026-01-05T00:00:00Z".to_owned(),
-        ],
-        source_scopes: vec![None, None],
-        source_project_ids: vec![None, None],
-        source_sensitivities: vec![FactSensitivity::Public, FactSensitivity::Public],
-        source_visibilities: vec![Visibility::Private, Visibility::Private],
-        source_session_ids: vec![None, None],
+        ]
+        .into(),
+        source_scopes: vec![None, None].into(),
+        source_project_ids: vec![None, None].into(),
+        source_sensitivities: vec![FactSensitivity::Public, FactSensitivity::Public].into(),
+        source_visibilities: vec![Visibility::Private, Visibility::Private].into(),
+        source_session_ids: vec![None, None].into(),
     };
     let json = serde_json::to_string(&fact).expect("serialize");
     let back: ConsolidatedFact = serde_json::from_str(&json).expect("deserialize");
@@ -624,4 +626,74 @@ mod proptests {
             );
         }
     }
+}
+
+/// Requirement #5694: moving the batch-metadata fields from `Vec<T>` to
+/// `Arc<[T]>` must not change the wire format. Deserializes a record in the
+/// exact JSON shape the `Vec<T>` fields produced, so a stored
+/// `ConsolidatedFact` written before the change still loads.
+#[test]
+fn consolidated_fact_deserializes_pre_arc_wire_format() {
+    let legacy = r#"{
+        "content": "Alice is a senior engineer at Acme Corp",
+        "confidence": 0.95,
+        "tier": "inferred",
+        "source_fact_ids": ["f-1", "f-2"],
+        "source_recorded_ats": ["2026-01-01T00:00:00Z", "2026-01-05T00:00:00Z"],
+        "source_scopes": [null, "project"],
+        "source_project_ids": [null, "proj-a"],
+        "source_sensitivities": ["public", "confidential"],
+        "source_visibilities": ["private", "shared"],
+        "source_session_ids": [null, "sess-1"]
+    }"#;
+
+    let fact: ConsolidatedFact = serde_json::from_str(legacy).expect("legacy record deserializes");
+
+    assert_eq!(
+        fact.source_fact_ids.len(),
+        2,
+        "array-shaped source_fact_ids must load into Arc<[FactId]>"
+    );
+    assert_eq!(
+        fact.source_fact_ids[1].as_str(),
+        "f-2",
+        "element order must survive the Vec -> Arc<[_]> change"
+    );
+    assert_eq!(
+        fact.source_scopes.as_ref(),
+        [None, Some(MemoryScope::Project)],
+        "optional scope elements must round-trip unchanged"
+    );
+    assert_eq!(
+        fact.source_sensitivities.as_ref(),
+        [FactSensitivity::Public, FactSensitivity::Confidential],
+        "sensitivity variants must round-trip unchanged"
+    );
+    assert_eq!(
+        fact.source_visibilities.as_ref(),
+        [Visibility::Private, Visibility::Shared],
+        "visibility variants must round-trip unchanged"
+    );
+
+    // Re-serializing must reproduce the same array shape, not a wrapper.
+    let reserialized = serde_json::to_value(&fact).expect("serialize");
+    assert!(
+        reserialized["source_fact_ids"].is_array(),
+        "source_fact_ids must serialize as a bare JSON array"
+    );
+
+    // Records predating these fields omit them entirely; #[serde(default)]
+    // must still yield empty shared slices rather than failing to load.
+    let pre_3634 = r#"{
+        "content": "older record",
+        "confidence": 0.5,
+        "tier": "inferred",
+        "source_fact_ids": []
+    }"#;
+    let older: ConsolidatedFact =
+        serde_json::from_str(pre_3634).expect("pre-#3634 record deserializes");
+    assert!(
+        older.source_recorded_ats.is_empty(),
+        "absent batch-metadata fields must default to an empty slice"
+    );
 }

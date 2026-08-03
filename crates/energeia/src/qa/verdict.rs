@@ -11,7 +11,7 @@ use crate::types::{CriterionResult, MechanicalIssue, QaVerdict};
 /// - All criteria pass → [`QaVerdict::Pass`]
 /// - Some fail + some pass → [`QaVerdict::Partial`]
 /// - All fail → [`QaVerdict::Fail`]
-/// - No results and no issues → [`QaVerdict::Pass`] (vacuously true)
+/// - No results and no issues → [`QaVerdict::NeedsReview`] (nothing measured)
 #[must_use]
 pub fn determine_verdict(
     criteria: &[CriterionResult],
@@ -23,8 +23,12 @@ pub fn determine_verdict(
         return QaVerdict::Fail;
     }
 
+    // WHY: an empty criteria set means the harness measured nothing, not that
+    // the change is acceptable. Reporting Pass here is fail-open — it lets a
+    // PR with no acceptance criteria clear an automated merge decision on the
+    // strength of a check that never ran. (#5399)
     if criteria.is_empty() {
-        return QaVerdict::Pass;
+        return QaVerdict::NeedsReview;
     }
 
     let fail_count = criteria.iter().filter(|r| !r.passed).count();
@@ -106,8 +110,19 @@ mod tests {
     }
 
     #[test]
-    fn verdict_empty_results_is_pass() {
-        assert_eq!(determine_verdict(&[], &[]), QaVerdict::Pass);
+    fn verdict_empty_results_is_needs_review() {
+        // WHY: nothing was measured, so quality is unknown. Returning Pass here
+        // let a PR with no acceptance criteria clear an automated merge on the
+        // strength of a check that never ran. (#5399)
+        assert_eq!(determine_verdict(&[], &[]), QaVerdict::NeedsReview);
+    }
+
+    #[test]
+    fn needs_review_is_not_mergeable() {
+        assert!(!QaVerdict::NeedsReview.is_mergeable());
+        assert!(!QaVerdict::Partial.is_mergeable());
+        assert!(!QaVerdict::Fail.is_mergeable());
+        assert!(QaVerdict::Pass.is_mergeable());
     }
 
     #[test]

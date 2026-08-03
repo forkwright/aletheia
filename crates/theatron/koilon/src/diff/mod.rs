@@ -13,7 +13,9 @@ pub(crate) use types::{DiffViewState, compute_diff};
 #[cfg(test)]
 use crate::theme::Theme;
 #[cfg(test)]
-pub(crate) use parse::{parse_hunk_header, truncate_str};
+use parse::pad_to;
+#[cfg(test)]
+pub(crate) use parse::parse_hunk_header;
 #[cfg(test)]
 pub(crate) use render::{render_side_by_side, render_unified, render_word_diff};
 #[cfg(test)]
@@ -27,6 +29,7 @@ pub(crate) use types::{DiffChange, DiffHunk, DiffMode, FileDiff, collapse_to_rep
 mod tests {
     use ratatui::layout::Rect;
     use ratatui::text::Span;
+    use unicode_width::UnicodeWidthStr;
 
     use super::*;
 
@@ -389,22 +392,88 @@ diff --git a/b.rs b/b.rs
         assert!(state.total_lines > 10);
     }
 
-    // ── truncate_str ──
+    // ── Content truncation ──
 
     #[test]
-    fn truncate_str_short() {
-        assert_eq!(truncate_str("hello", 10), "hello");
+    fn side_by_side_keeps_multibyte_line_within_column_budget() {
+        // WHY(#6542): at width 80 the content budget is 32 columns. This line is 16
+        // chars, 48 bytes and exactly 32 columns, so it fills the budget precisely
+        // and must render whole. A byte-length guard truncated it with an ellipsis
+        // at well under the budget it was asked to respect.
+        let theme = default_theme();
+        let content = "日本語のテキストはここにあります";
+        assert_eq!(UnicodeWidthStr::width(content), 32);
+        assert!(content.len() > 32, "must exceed the budget in bytes");
+
+        let diff = compute_diff("test.rs", &format!("{content}\n"), "changed\n");
+        let rendered: String = render_side_by_side(&diff, 80, &theme)
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|s| s.content.to_string())
+            .collect();
+
+        assert!(
+            rendered.contains(content),
+            "content within the column budget must render whole, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains('…'),
+            "no ellipsis is expected below the budget, got: {rendered}"
+        );
     }
 
     #[test]
-    fn truncate_str_exact() {
-        assert_eq!(truncate_str("hello", 5), "hello");
+    fn side_by_side_separator_sits_at_the_half_width_column() {
+        // WHY(#6542): the panes are laid out in terminal columns, but truncation and
+        // padding both measured chars. A CJK char is one char and two columns, so a
+        // line of them built a left pane twice as wide as its half and pushed the
+        // `│` out of the column it marks. ASCII measures the same either way, which
+        // is why only non-ASCII content exposes it.
+        let theme = default_theme();
+        let content = "日本語のテキストはここにあります";
+        let diff = compute_diff("test.rs", &format!("{content}\n"), "changed\n");
+
+        for line in render_side_by_side(&diff, 80, &theme) {
+            let Some(sep) = line.spans.iter().position(|s| s.content.as_ref() == "│") else {
+                continue;
+            };
+            let left: String = line.spans[..sep]
+                .iter()
+                .map(|s| s.content.as_ref())
+                .collect();
+            assert_eq!(
+                UnicodeWidthStr::width(left.as_str()),
+                40,
+                "left pane must occupy exactly half of width 80, got: {left}"
+            );
+        }
+    }
+
+    // ── pad_to ──
+
+    #[test]
+    fn pad_to_leaves_string_that_already_fills_the_columns() {
+        // WHY(#6542): 3 chars, 9 bytes, 6 columns. It already fills a 6-column
+        // budget exactly, so no padding is due. Counting chars instead appended
+        // three spaces and overran the pane by three columns.
+        assert_eq!(pad_to("日本語".to_owned(), 6), "日本語");
     }
 
     #[test]
-    fn truncate_str_long() {
-        let result = truncate_str("hello world", 6);
-        assert!(result.len() <= 8); // may have ellipsis char
+    fn pad_to_truncates_by_columns_not_chars() {
+        // WHY(#6542): 6 chars but 12 columns. A 3-column budget fits one CJK char
+        // plus the ellipsis; taking 3 chars would have rendered 6 columns.
+        assert_eq!(pad_to("日本語テスト".to_owned(), 3), "日…");
+    }
+
+    #[test]
+    fn pad_to_leaves_exact_width_unchanged() {
+        assert_eq!(pad_to("abc".to_owned(), 3), "abc");
+    }
+
+    #[test]
+    fn pad_to_pads_ascii_to_width() {
+        assert_eq!(pad_to("ab".to_owned(), 4), "ab  ");
     }
 
     // ── File path display ──

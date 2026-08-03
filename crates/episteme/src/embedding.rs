@@ -580,6 +580,19 @@ impl DegradedEmbeddingProvider {
     }
 }
 
+/// Sentinel model name reported by a lazily-initialized embedding provider
+/// while the real model is still loading.
+///
+/// WHY (#5580): the value is emitted by `LazyEmbeddingProvider::model_name()`
+/// in the `aletheia` binary and compared by pylon's `/api/health` embedding
+/// check, which cannot depend on that binary. Declaring it in each crate left
+/// one observable string with two definition sites and no compile-time link,
+/// so a rename on either side silently sent the health check down the wrong
+/// branch. It lives here for the same reason
+/// [`DegradedEmbeddingProvider::MODEL_NAME`] does: both consumers already
+/// reach this module through the `mneme` re-export.
+pub const LOADING_MODEL_NAME: &str = "embedding-loading";
+
 /// Returns `true` if `provider` is the sentinel [`DegradedEmbeddingProvider`].
 ///
 /// WHY (#3380): health checks and `/api/health` need a stable way to detect

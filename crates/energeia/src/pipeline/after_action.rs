@@ -300,12 +300,22 @@ fn usd_to_cents(usd: f64) -> u64 {
     }
 }
 
-/// Aggregate QA verdicts: Fail > Partial > Pass.
+/// Aggregate QA verdicts: Fail > Partial > `NeedsReview` > Pass.
+///
+/// WHY: `NeedsReview` outranks Pass so a single unmeasured prompt cannot be
+/// averaged away by its passing siblings. An empty verdict set is itself
+/// unmeasured, so it aggregates to `NeedsReview` rather than Pass. (#5399)
 fn aggregate_qa_verdict(verdicts: &[QaVerdict]) -> QaVerdict {
+    if verdicts.is_empty() {
+        return QaVerdict::NeedsReview;
+    }
+
     if verdicts.contains(&QaVerdict::Fail) {
         QaVerdict::Fail
     } else if verdicts.contains(&QaVerdict::Partial) {
         QaVerdict::Partial
+    } else if verdicts.contains(&QaVerdict::NeedsReview) {
+        QaVerdict::NeedsReview
     } else {
         QaVerdict::Pass
     }
@@ -330,4 +340,47 @@ fn compute_prompt_hash(prompts: &[crate::prompt::PromptSpec]) -> crate::error::R
             acc
         });
     Ok(format!("sha256:{hex}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{QaVerdict, aggregate_qa_verdict};
+
+    #[test]
+    fn empty_verdict_set_is_needs_review() {
+        // WHY: no verdicts means no prompt was measured. Aggregating that to
+        // Pass reported a clean run for work nothing had checked. (#5399)
+        assert_eq!(aggregate_qa_verdict(&[]), QaVerdict::NeedsReview);
+    }
+
+    #[test]
+    fn needs_review_outranks_pass() {
+        // WHY: a single unmeasured prompt must not be averaged away by its
+        // passing siblings. (#5399)
+        assert_eq!(
+            aggregate_qa_verdict(&[QaVerdict::Pass, QaVerdict::NeedsReview]),
+            QaVerdict::NeedsReview
+        );
+    }
+
+    #[test]
+    fn fail_and_partial_outrank_needs_review() {
+        assert_eq!(
+            aggregate_qa_verdict(&[QaVerdict::NeedsReview, QaVerdict::Fail]),
+            QaVerdict::Fail
+        );
+        assert_eq!(
+            aggregate_qa_verdict(&[QaVerdict::NeedsReview, QaVerdict::Partial]),
+            QaVerdict::Partial
+        );
+    }
+
+    #[test]
+    fn all_pass_still_aggregates_to_pass() {
+        // WHY: the guard must not turn measured, passing runs into holds.
+        assert_eq!(
+            aggregate_qa_verdict(&[QaVerdict::Pass, QaVerdict::Pass]),
+            QaVerdict::Pass
+        );
+    }
 }

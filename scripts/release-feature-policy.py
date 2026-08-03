@@ -27,6 +27,8 @@ FEATURE_ROW = re.compile(
     re.IGNORECASE,
 )
 FEATURE_REF = re.compile(r"`([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+)`")
+CFG_FEATURE_USE = re.compile(r"feature\s*=\s*\"([a-zA-Z0-9_.-]+)\"")
+SOURCE_DIRS = ("src", "tests", "benches", "examples")
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -102,6 +104,18 @@ def policy_exclusions(policy: dict[str, Any]) -> list[dict[str, str]]:
 
 def no_default_recipes(policy: dict[str, Any]) -> list[dict[str, Any]]:
     return list(policy.get("no_default_recipes", []))
+
+
+def no_op_allowances(policy: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {
+            "crate": str(item.get("crate", "")),
+            "feature": str(item.get("feature", "")),
+            "category": str(item.get("category", "")),
+            "reason": str(item.get("reason", "")),
+        }
+        for item in policy.get("no_op_allowances", [])
+    ]
 
 
 def exclusion_matches(exclusion: dict[str, str], crate: str, feature: str) -> bool:
@@ -246,6 +260,64 @@ def validate_feature_references(metadata: dict[str, Any]) -> list[str]:
     return errors
 
 
+def crate_cfg_features(pkg: dict[str, Any]) -> set[str]:
+    """Feature names read by a `cfg(feature = ...)` in the crate's own sources."""
+    root = Path(pkg["manifest_path"]).parent
+    used: set[str] = set()
+    for subdir in SOURCE_DIRS:
+        directory = root / subdir
+        if not directory.is_dir():
+            continue
+        for path in directory.rglob("*.rs"):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            used.update(CFG_FEATURE_USE.findall(text))
+    return used
+
+
+def validate_no_op_features(
+    metadata: dict[str, Any], policy: dict[str, Any]
+) -> list[str]:
+    """Reject features that gate nothing.
+
+    A feature that activates no dependency or sibling feature and that no
+    `cfg(feature = ...)` in its own crate reads is inert: enabling it changes
+    neither the dependency graph nor the compiled code, so it advertises a
+    capability the build cannot deliver.
+    """
+    allowances = no_op_allowances(policy)
+    errors: list[str] = []
+
+    for pkg in sorted(workspace_packages(metadata), key=lambda item: item["name"]):
+        crate = pkg["name"]
+        inert = sorted(
+            feature
+            for feature, activates in pkg.get("features", {}).items()
+            if not activates
+        )
+        if not inert:
+            continue
+
+        used = crate_cfg_features(pkg)
+        manifest = Path(pkg["manifest_path"])
+        try:
+            rel_manifest = manifest.relative_to(ROOT)
+        except ValueError:
+            rel_manifest = manifest
+
+        for feature in inert:
+            if feature in used:
+                continue
+            if is_excluded(allowances, crate, feature) is not None:
+                continue
+            errors.append(
+                f"{rel_manifest}: feature `{feature}` activates nothing and no "
+                f'`cfg(feature = "{feature}")` in {crate} reads it — implement '
+                "it, remove it, or record a no_op_allowances entry"
+            )
+
+    return errors
+
+
 def validate_policy(metadata: dict[str, Any], policy: dict[str, Any]) -> list[str]:
     packages = package_by_name(metadata)
     key_map = docs_key_map(metadata)
@@ -283,6 +355,38 @@ def validate_policy(metadata: dict[str, Any], policy: dict[str, Any]) -> list[st
                 f"{crate}/{exclusion['feature']}"
             )
 
+    for allowance in no_op_allowances(policy):
+        if not allowance["feature"] or not allowance["category"] or not allowance["reason"]:
+            errors.append(
+                "scripts/release-feature-policy.toml: no-op allowances need "
+                "feature, category, and reason"
+            )
+            continue
+
+        if allowance["crate"] == "*":
+            if not any(
+                allowance["feature"] in pkg.get("features", {})
+                for pkg in packages.values()
+            ):
+                errors.append(
+                    "scripts/release-feature-policy.toml: wildcard no-op allowance "
+                    f"matches no workspace feature: {allowance['feature']}"
+                )
+            continue
+
+        crate = resolve_crate(allowance["crate"], key_map)
+        if crate is None:
+            errors.append(
+                "scripts/release-feature-policy.toml: unknown no-op allowance crate "
+                f"{allowance['crate']}"
+            )
+            continue
+        if allowance["feature"] not in packages[crate].get("features", {}):
+            errors.append(
+                "scripts/release-feature-policy.toml: unknown no-op allowance feature "
+                f"{crate}/{allowance['feature']}"
+            )
+
     for recipe in no_default_recipes(policy):
         name = str(recipe.get("name", ""))
         crate = resolve_crate(str(recipe.get("crate", "")), key_map)
@@ -313,6 +417,7 @@ def validate(metadata: dict[str, Any], policy: dict[str, Any], feature_doc: Path
     errors.extend(validate_policy(metadata, policy))
     errors.extend(validate_feature_table(metadata, feature_doc))
     errors.extend(validate_feature_references(metadata))
+    errors.extend(validate_no_op_features(metadata, policy))
     return errors
 
 

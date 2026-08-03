@@ -166,6 +166,7 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `maintenance.cronTasks.reflection.intervalSecs` | Hot | Interval read by scheduler |
 | `maintenance.cronTasks.graphCleanup.enabled` | Hot | Task toggle checked by scheduler |
 | `maintenance.cronTasks.graphCleanup.intervalSecs` | Hot | Interval read by scheduler |
+| `maintenance.cronTasks.graphCleanupAuditRetentionDays` | **Cold** | Captured into the knowledge maintenance adapter when it is built at startup |
 
 ### Pricing (`pricing`)
 

@@ -38,10 +38,10 @@ pub enum Error {
     #[snafu(display("TOML error: {source}"))]
     Toml { source: toml::ser::Error },
 
-    /// Invalid `tracing` filter directive.
-    #[snafu(display("invalid log directive: {source}"))]
-    LogDirective {
-        source: tracing_subscriber::filter::ParseError,
+    /// Tracing subscriber initialization failed.
+    #[snafu(display("initialize logging: {source}"))]
+    Logging {
+        source: bathron::logging::LoggingError,
     },
 
     /// An unexpected event type was received during SSE parsing.

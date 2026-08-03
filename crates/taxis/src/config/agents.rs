@@ -782,6 +782,11 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields �
 
 impl Default for AgentBehaviorDefaults {
     fn default() -> Self {
+        // WHY(#5585): the stuck-detection thresholds have one owner —
+        // `dianoia::stuck::StuckConfig`, the type that actually consumes them.
+        // Restating the literals here let the config layer drift from the
+        // detector it configures, with nothing to catch the divergence.
+        let stuck = dianoia::stuck::StuckConfig::default();
         Self {
             // Safety
             safety_loop_detection_threshold: 3,
@@ -829,11 +834,14 @@ impl Default for AgentBehaviorDefaults {
             working_state_max_task_stack: 10,
             // Planning
             planning_max_iterations: dianoia::plan::DEFAULT_MAX_ITERATIONS,
-            planning_stuck_history_window: 20,
-            planning_stuck_repeated_error_threshold: 3,
-            planning_stuck_same_args_threshold: 3,
-            planning_stuck_alternating_threshold: 3,
-            planning_stuck_escalating_retry_threshold: 3,
+            // WHY(#5585): saturating rather than defaulting — a window wider
+            // than u32::MAX is not a value any config surface needs to express,
+            // and a silent fallback literal would reintroduce the drift.
+            planning_stuck_history_window: u32::try_from(stuck.history_window).unwrap_or(u32::MAX),
+            planning_stuck_repeated_error_threshold: stuck.repeated_error_threshold,
+            planning_stuck_same_args_threshold: stuck.same_args_threshold,
+            planning_stuck_alternating_threshold: stuck.alternating_threshold,
+            planning_stuck_escalating_retry_threshold: stuck.escalating_retry_threshold,
             planning_reconciler_timestamp_tolerance_secs: 5,
             // Knowledge tuning
             knowledge_instinct_min_observations: 5,

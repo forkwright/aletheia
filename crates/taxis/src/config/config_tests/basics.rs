@@ -1272,6 +1272,31 @@ fn mirrored_defaults_agent_behavior() {
         config.agents.defaults.behavior.planning_max_iterations,
         dianoia::plan::DEFAULT_MAX_ITERATIONS
     );
+    // WHY(#5585): the planning stuck-detection thresholds are owned by the
+    // detector, not restated here. Pinning every field means a literal
+    // reintroduced on either side fails rather than silently diverging.
+    let stuck = dianoia::stuck::StuckConfig::default();
+    let behavior = &config.agents.defaults.behavior;
+    assert_eq!(
+        u64::from(behavior.planning_stuck_history_window),
+        u64::try_from(stuck.history_window).expect("history window fits u64")
+    );
+    assert_eq!(
+        behavior.planning_stuck_repeated_error_threshold,
+        stuck.repeated_error_threshold
+    );
+    assert_eq!(
+        behavior.planning_stuck_same_args_threshold,
+        stuck.same_args_threshold
+    );
+    assert_eq!(
+        behavior.planning_stuck_alternating_threshold,
+        stuck.alternating_threshold
+    );
+    assert_eq!(
+        behavior.planning_stuck_escalating_retry_threshold,
+        stuck.escalating_retry_threshold
+    );
     assert_eq!(
         config.agents.defaults.behavior.knowledge_surprise_threshold,
         episteme::surprise::DEFAULT_THRESHOLD
