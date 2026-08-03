@@ -688,3 +688,80 @@ async fn serendipity_discovery_with_executor_returns_report() {
         "expected zero-count report for mock executor, got: {output}"
     );
 }
+
+/// Records whether the backup task published persisted state, and whether it
+/// also recorded an attempt duration. (#6445)
+#[derive(Debug, Default)]
+struct BackupStateSpy {
+    state_calls: Mutex<Vec<(Option<i64>, bool, u64)>>,
+    duration_calls: Mutex<Vec<bool>>,
+}
+
+impl crate::maintenance::BackupMetricsRecorder for BackupStateSpy {
+    fn record_backup_duration(&self, _duration_secs: f64, success: bool) {
+        self.duration_calls.lock().expect("lock").push(success);
+    }
+
+    fn record_backup_state(
+        &self,
+        last_success_unixtime: Option<i64>,
+        enabled: bool,
+        interval_secs: u64,
+    ) {
+        self.state_calls.lock().expect("lock").push((
+            last_success_unixtime,
+            enabled,
+            interval_secs,
+        ));
+    }
+}
+
+#[tokio::test]
+async fn a_failed_backup_still_republishes_persisted_state() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    // NOTE: an instance root with none of the required stores makes
+    // create_backup fail, which is the path that previously recorded only an
+    // error duration.
+    let spy = Arc::new(BackupStateSpy::default());
+    let recorder: Arc<dyn crate::maintenance::BackupMetricsRecorder> =
+        Arc::<BackupStateSpy>::clone(&spy);
+    let maintenance = MaintenanceConfig {
+        instance_backup: crate::maintenance::InstanceBackupConfig {
+            enabled: true,
+            instance_root: tmp.path().join("missing-instance"),
+            backup_dir: tmp.path().join("backups"),
+            interval_hours: 12,
+            retention_count: 7,
+            additional_workspaces: Vec::new(),
+        },
+        backup_metrics: Some(recorder),
+        ..MaintenanceConfig::default()
+    };
+
+    let result = execute_builtin(
+        &BuiltinTask::InstanceBackup,
+        "test-nous",
+        None,
+        Some(&maintenance),
+        None,
+        None,
+    )
+    .await;
+    assert!(result.is_err(), "backup of an empty root should fail");
+
+    // WHY: freshness must stay current on the failure path. Before #6445 a
+    // failed run moved only the error histogram, leaving the operator with no
+    // published answer to "is there a recent backup".
+    let states = spy.state_calls.lock().expect("lock");
+    assert_eq!(states.len(), 1, "state must be published exactly once");
+    assert_eq!(
+        states[0],
+        (None, true, 12 * 3600),
+        "a failed run over an empty backup dir reports no backup, enabled, 12h cadence"
+    );
+    assert_eq!(
+        *spy.duration_calls.lock().expect("lock"),
+        vec![false],
+        "the attempt is still recorded as an error"
+    );
+}

@@ -223,16 +223,18 @@ fn render_thinking_block(
             ]));
         }
 
-        let ch = theme::spinner_frame(tick_count);
-        lines.push(Line::from(vec![
-            Span::raw("   "),
-            Span::styled(
-                ch.to_string(),
-                Style::default()
-                    .fg(theme.status.spinner)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
+        if thinking.is_streaming {
+            let ch = theme::spinner_frame(tick_count);
+            lines.push(Line::from(vec![
+                Span::raw("   "),
+                Span::styled(
+                    ch.to_string(),
+                    Style::default()
+                        .fg(theme.status.spinner)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
     }
 
     lines.push(Line::raw(""));
@@ -633,5 +635,61 @@ mod tests {
         let w = ops_pane_width(100, 80);
         // 100 * 80 / 100 = 80, available = 100 - 40 = 60
         assert_eq!(w, 60);
+    }
+
+    fn thinking_lines(is_streaming: bool, tick_count: u64) -> Vec<Line<'static>> {
+        let thinking = crate::state::ops::OpsThinkingBlock {
+            text: "weighing the options".to_string(),
+            collapsed: false,
+            is_streaming,
+        };
+        let mut lines = Vec::new();
+        render_thinking_block(
+            &thinking,
+            &mut lines,
+            40,
+            &Theme::default(),
+            false,
+            tick_count,
+        );
+        lines
+    }
+
+    /// A rendered line consisting solely of an animated spinner frame.
+    fn is_spinner_line(line: &Line<'static>, tick_count: u64) -> bool {
+        let rendered: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+        rendered.trim() == theme::spinner_frame(tick_count).to_string()
+    }
+
+    #[test]
+    fn streaming_thinking_block_renders_a_spinner() {
+        let lines = thinking_lines(true, 7);
+        assert!(
+            lines.iter().any(|l| is_spinner_line(l, 7)),
+            "an in-flight turn must still show that the model is thinking"
+        );
+    }
+
+    #[test]
+    fn completed_thinking_block_renders_no_spinner() {
+        let lines = thinking_lines(false, 7);
+        assert!(
+            !lines.iter().any(|l| is_spinner_line(l, 7)),
+            "a finished turn must not animate a spinner: it reads as still-active"
+        );
+    }
+
+    #[test]
+    fn completed_thinking_block_keeps_its_text() {
+        let lines = thinking_lines(false, 7);
+        let rendered: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(
+            rendered.contains("weighing the options"),
+            "dropping the spinner must not drop the thinking text with it"
+        );
     }
 }

@@ -213,6 +213,104 @@ mod tests {
         cursor.into_inner()
     }
 
+    /// Build a PPTX whose slide parts carry exactly the given numbers, written
+    /// to the archive in the order supplied.
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn pptx_with_numbered_slides(slides: &[(u32, &str)]) -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+        for (number, text) in slides {
+            let slide = format!(
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:sp><p:txBody><a:p><a:r><a:t>{text}</a:t></a:r></a:p></p:txBody></p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>"#
+            );
+            let name = format!("ppt/slides/slide{number}.xml");
+            zip.start_file(&name, options).expect("start slide part");
+            zip.write_all(slide.as_bytes()).expect("write slide part");
+        }
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pptx_reads_slides_past_a_numbering_gap() {
+        // WHY: deleting a slide in PowerPoint leaves the surviving part names
+        // unrenumbered, so slide3 can be absent while slide4 exists. Probing
+        // upward from slide1 and stopping at the first missing index returned
+        // only the first two slides and silently dropped the rest.
+        let bytes = pptx_with_numbered_slides(&[(1, "first"), (2, "second"), (4, "fourth")]);
+        let summary = inspect_pptx(&bytes).expect("inspect must succeed");
+
+        assert_eq!(
+            summary.slides,
+            vec!["first".to_owned(), "second".to_owned(), "fourth".to_owned()],
+            "every slide part must be read, including those past a numbering gap"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pptx_orders_slides_by_number_not_archive_order() {
+        // WHY: ZIP entry order is arbitrary, so slide order must come from the
+        // part number rather than the order the parts happen to be stored in.
+        let bytes = pptx_with_numbered_slides(&[(3, "third"), (1, "first"), (2, "second")]);
+        let summary = inspect_pptx(&bytes).expect("inspect must succeed");
+
+        assert_eq!(
+            summary.slides,
+            vec!["first".to_owned(), "second".to_owned(), "third".to_owned()],
+            "slides must be ordered by slide number"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn inspect_pptx_ignores_non_slide_parts() {
+        // WHY: sibling prefixes under `ppt/` hold template parts whose names also
+        // begin with `slide`, and `_rels` entries repeat the slide part names.
+        // Only the exact `ppt/slides/slideN.xml` shape is a slide.
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for name in [
+            "ppt/slideLayouts/slideLayout1.xml",
+            "ppt/slideMasters/slideMaster1.xml",
+            "ppt/slides/_rels/slide1.xml.rels",
+        ] {
+            zip.start_file(name, options).expect("start part");
+            zip.write_all(b"<x/>").expect("write part");
+        }
+        zip.finish().expect("finish zip");
+        let bytes = cursor.into_inner();
+
+        let summary = inspect_pptx(&bytes).expect("inspect must succeed");
+        assert!(
+            summary.slides.is_empty(),
+            "non-slide parts must not be counted, got: {:?}",
+            summary.slides
+        );
+    }
+
     #[test]
     #[expect(clippy::expect_used, reason = "test assertions")]
     fn inspect_xlsx_unescapes_xml_character_entities() {

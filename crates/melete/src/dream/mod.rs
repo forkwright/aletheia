@@ -24,8 +24,8 @@ use hermeneus::types::Message;
 use crate::contradiction::ContradictionLog;
 use crate::distill::{DistillConfig, DistillEngine};
 use crate::error::{
-    DreamConsolidationTargetSnafu, DreamLockJoinSnafu, DreamTranscriptSourceSnafu,
-    ProbeVerificationSnafu, Result,
+    DreamConsolidationTargetSnafu, DreamLockJoinSnafu, DreamStoreCancelledSnafu,
+    DreamTranscriptSourceSnafu, ProbeVerificationSnafu, Result,
 };
 use crate::flush::MemoryFlush;
 use crate::probe::{ProbeConfig, ProbeVerifier};
@@ -339,12 +339,7 @@ impl DreamEngine {
                 let start = std::time::Instant::now();
 
                 match engine
-                    .run_consolidation(
-                        acquired,
-                        source.as_ref(),
-                        target.as_ref(),
-                        provider.as_ref(),
-                    )
+                    .run_consolidation(acquired, &source, &target, provider.as_ref())
                     .await
                 {
                     Ok(report) => {
@@ -421,8 +416,8 @@ impl DreamEngine {
     async fn run_consolidation(
         &self,
         acquired: lock::AcquiredLock,
-        source: &dyn TranscriptSource,
-        target: &dyn ConsolidationTarget,
+        source: &Arc<dyn TranscriptSource>,
+        target: &Arc<dyn ConsolidationTarget>,
         provider: &dyn LlmProvider,
     ) -> Result<MergeReport> {
         let since = acquired
@@ -430,23 +425,29 @@ impl DreamEngine {
             .and_then(|st| lock::system_time_to_timestamp(*st))
             .unwrap_or(jiff::Timestamp::UNIX_EPOCH);
 
-        let transcripts =
-            match source
-                .load_transcripts_since(since)
-                .context(DreamTranscriptSourceSnafu {
-                    context: "load transcripts for consolidation",
-                }) {
-                Ok(t) => t,
-                Err(e) => {
-                    // WHY: rollback issues blocking std::fs I/O; run it on the
-                    // blocking pool so this async task never stalls a Tokio
-                    // worker thread.
-                    run_lock_op(move || acquired.rollback())
-                        .await
-                        .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
-                    return Err(e);
-                }
-            };
+        let loaded = {
+            let source = Arc::clone(source);
+            run_store_op("load transcripts", move || {
+                source.load_transcripts_since(since)
+            })
+            .await
+        };
+        let transcripts = match loaded.and_then(|inner| {
+            inner.context(DreamTranscriptSourceSnafu {
+                context: "load transcripts for consolidation",
+            })
+        }) {
+            Ok(t) => t,
+            Err(e) => {
+                // WHY: rollback issues blocking std::fs I/O; run it on the
+                // blocking pool so this async task never stalls a Tokio
+                // worker thread.
+                run_lock_op(move || acquired.rollback())
+                    .await
+                    .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: best-effort cleanup; failure means lock state is already invalid
+                return Err(e);
+            }
+        };
 
         if transcripts.is_empty() {
             tracing::info!("no transcripts to consolidate");
@@ -497,11 +498,15 @@ impl DreamEngine {
             }
 
             // NOTE: merge extracted facts INTO the knowledge graph.
-            match target
-                .merge_flush(&result.memory_flush, &transcript.nous_id)
-                .context(DreamConsolidationTargetSnafu {
-                    context: "merge flush INTO knowledge graph",
-                }) {
+            let merged = {
+                let target = Arc::clone(target);
+                let flush = result.memory_flush.clone();
+                let nous_id = transcript.nous_id.clone();
+                run_store_op("merge flush", move || target.merge_flush(&flush, &nous_id)).await?
+            };
+            match merged.context(DreamConsolidationTargetSnafu {
+                context: "merge flush INTO knowledge graph",
+            }) {
                 Ok(report) => {
                     total_report.facts_added =
                         total_report.facts_added.saturating_add(report.facts_added);
@@ -519,7 +524,8 @@ impl DreamEngine {
                 }
             }
 
-            Self::mark_contradictions_stale_into(target, &result, transcript, &mut total_report);
+            Self::mark_contradictions_stale_into(target, &result, transcript, &mut total_report)
+                .await?;
         }
 
         // NOTE: all transcripts processed; mark consolidation complete.
@@ -537,20 +543,27 @@ impl DreamEngine {
         self.last_scan_at.store(ts, Ordering::Relaxed);
     }
 
-    fn mark_contradictions_stale_into(
-        target: &dyn ConsolidationTarget,
+    async fn mark_contradictions_stale_into(
+        target: &Arc<dyn ConsolidationTarget>,
         result: &crate::distill::DistillResult,
         transcript: &SessionTranscript,
         total_report: &mut MergeReport,
-    ) {
+    ) -> Result<()> {
         if result.contradiction_log.is_empty() {
-            return;
+            return Ok(());
         }
-        match target
-            .mark_contradictions_stale(&result.contradiction_log, &transcript.nous_id)
-            .context(DreamConsolidationTargetSnafu {
-                context: "mark contradicted facts stale",
-            }) {
+        let marked = {
+            let target = Arc::clone(target);
+            let log = result.contradiction_log.clone();
+            let nous_id = transcript.nous_id.clone();
+            run_store_op("mark contradictions stale", move || {
+                target.mark_contradictions_stale(&log, &nous_id)
+            })
+            .await?
+        };
+        match marked.context(DreamConsolidationTargetSnafu {
+            context: "mark contradicted facts stale",
+        }) {
             Ok(count) => {
                 total_report.facts_stale = total_report.facts_stale.saturating_add(count);
             }
@@ -562,6 +575,7 @@ impl DreamEngine {
                 );
             }
         }
+        Ok(())
     }
 
     fn verify_flush_grounding(&self, flush: &MemoryFlush, messages: &[Message]) -> Result<()> {
@@ -575,6 +589,39 @@ impl DreamEngine {
             total_probes: probe_report.total_probes(),
         }
         .fail()
+    }
+}
+
+/// Run a blocking [`TranscriptSource`]/[`ConsolidationTarget`] operation on the
+/// Tokio blocking pool.
+///
+/// WHY(#5666): both traits are synchronous, and their production implementors
+/// are fjall-backed — `load_transcripts_since` scans the whole session keyspace
+/// since the last consolidation epoch, and `merge_flush`/
+/// `mark_contradictions_stale` issue tree writes. Calling them inline on the
+/// async task that drives `run_consolidation` blocks a Tokio worker for the
+/// duration of the scan, starving every other actor on the runtime.
+///
+/// WHY(#5734): a panic inside `op` is resumed on the caller rather than
+/// downgraded to an error, so it still reaches the consolidation task's
+/// `JoinHandle` and surfaces at shutdown. Converting it to an `Err` here would
+/// silently defeat that contract.
+///
+/// # Errors
+///
+/// Returns `DreamStoreCancelled` if the blocking task was cancelled by runtime
+/// shutdown. A panic is re-raised, not returned.
+async fn run_store_op<T, F>(context: &'static str, op: F) -> Result<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    match tokio::task::spawn_blocking(op).await {
+        Ok(value) => Ok(value),
+        Err(join_error) => match join_error.try_into_panic() {
+            Ok(payload) => std::panic::resume_unwind(payload),
+            Err(join_error) => Err(join_error).context(DreamStoreCancelledSnafu { context }),
+        },
     }
 }
 

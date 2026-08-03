@@ -18,6 +18,7 @@ test-full = []
 [dependencies]
 koina = { path = "../../koina" }
 skene = { path = "../skene" }
+gramma = { workspace = true }
 parodos = { workspace = true }
 
 # Core TUI — ratatui 0.30 defaults to crossterm 0.29
@@ -51,8 +52,7 @@ dirs = "6"
 
 # Logging (file-based, not stdout)
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-appender = "0.2"
+bathron = { workspace = true }
 
 # Error handling — snafu for all error types
 snafu = { workspace = true }

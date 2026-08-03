@@ -18,8 +18,6 @@ harness = false
 knowledge-store = ["mneme/mneme-engine"]
 # Gates mock search implementations and other test helpers. No test code in release binaries.
 test-support = ["hermeneus/test-utils", "organon/test-support"]
-# Pre-LLM triage stage: intent, sensitivity, tier classification (default: on)
-pre-llm-triage = []
 # Enable mneme's async reranker facade (HttpReranker / NaiveReranker).
 # Disabled by default to avoid pulling in reqwest + rustls for builds that
 # do not need recall reranking.

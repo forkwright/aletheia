@@ -54,7 +54,7 @@ Cargo metadata cannot infer.
 | **energeia** | `test-core` | no | - | `storage-fjall` |
 | **energeia** | `test-full` | no | - | `test-core` |
 | **episteme** | `default` | **yes** | `graph-algo`, `reranker` | - |
-| **episteme** | `graph-algo` | no | Graph algorithms | - |
+| **episteme** | `graph-algo` | no | Graph algorithms | `krites?/graph-algo` |
 | **episteme** | `reranker` | no | HTTP cross-encoder reranker | `dep:reqwest`, `dep:rustls`, `dep:tokio` |
 | **episteme** | `gliner` | no | GLiNER ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `nuextract` | no | NuExtract ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
@@ -117,7 +117,6 @@ Cargo metadata cannot infer.
 | **mneme** | `test-core` | no | - | `mneme-engine`, `storage-fjall` |
 | **mneme** | `test-full` | no | - | `test-core`, `embed-candle`, `online-tests` |
 | **nous** | `knowledge-store` | no | Knowledge-store CRUD in agent pipeline | `mneme/mneme-engine` |
-| **nous** | `pre-llm-triage` | no | Pre-LLM triage stage (intent, sensitivity, tier classification) | - |
 | **nous** | `reranker` | no | Async reranker facade (`HttpReranker` / `NaiveReranker`) | `mneme/reranker` |
 | **nous** | `gliner` | no | GLiNER bookkeeping provider facade | `mneme/gliner` |
 | **nous** | `nuextract` | no | NuExtract bookkeeping provider facade | `mneme/nuextract` |
@@ -126,7 +125,6 @@ Cargo metadata cannot infer.
 | **nous** | `test-core` | no | - | `knowledge-store` |
 | **nous** | `test-full` | no | - | `test-core` |
 | **organon** | `computer-use` | no | Screen capture, Landlock sandbox (Linux 5.13+) | - |
-| **organon** | `receipt_verification` | no | Receipt verification for hallucination detection | - |
 | **organon** | `energeia` | no | Energeia capability tools | `dep:energeia` (pre-enabled with `storage-fjall`) |
 | **organon** | `bookkeeper` | no | Bookkeeper maintenance tools | - |
 | **organon** | `z3` | no | Z3 SMT solver tool | `dep:z3` |

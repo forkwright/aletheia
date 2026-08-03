@@ -245,14 +245,38 @@ impl EnergeiaStore {
 
     /// Apply a partial update to an existing session record.
     ///
+    /// Addressed by the record's own primary key, so the cost is one point
+    /// read regardless of how many sessions the keyspace holds.
+    ///
+    /// WHY(#5687): the previous signature took a `SessionId` and resolved it
+    /// with a prefix scan over every session of every dispatch, deserializing
+    /// each record to compare its `id`. `(dispatch_id, prompt_number)` is the
+    /// key the record is already stored under and is available at every call
+    /// site, so addressing it directly removes the scan rather than masking it
+    /// behind a second index — an index would be a duplicate copy of the
+    /// record's location, free to drift from the record itself.
+    ///
     /// # Errors
     ///
     /// Returns `Error::NotFound` if the session does not exist.
-    pub fn update_session(&self, id: &SessionId, update: SessionUpdate) -> Result<()> {
-        // WHY: session keys are indexed by (dispatch_id, prompt_number), so we
-        // need to scan to find the record by SessionId. For the expected
-        // cardinality (<100 sessions per dispatch), this is acceptable.
-        let (key_str, mut record) = self.find_session_by_id(id)?;
+    pub fn update_session(
+        &self,
+        dispatch_id: &DispatchId,
+        prompt_number: u32,
+        update: SessionUpdate,
+    ) -> Result<()> {
+        let key_str = schema::session_key(dispatch_id, prompt_number);
+        let Some(value) = self
+            .keyspace
+            .get(key_str.as_bytes())
+            .map_err(|e| store_err("read session", e))?
+        else {
+            return Err(error::NotFoundSnafu {
+                what: format!("session {dispatch_id}:{prompt_number}"),
+            }
+            .build());
+        };
+        let mut record: SessionRecord = queries::deserialize_value(&value)?;
 
         if let Some(status) = update.status {
             record.status = status;
@@ -635,25 +659,42 @@ impl EnergeiaStore {
         queries::list_all_sessions(&self.keyspace, limit)
     }
 
-    /// List all CI validation records across all sessions, up to `limit`.
+    /// List CI validation records across all sessions that satisfy `filter`,
+    /// up to `limit` retained records.
     ///
     /// Intended for metrics computation. Use [`SCAN_LIMIT_CI_VALIDATIONS`] as a
     /// sensible default.
     ///
+    /// WHY(#5722): `filter` is applied during the scan, before the record is
+    /// retained, so a caller that only reads a subset never materializes the
+    /// whole partition. `limit` bounds retained records, not scanned ones.
+    ///
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub(crate) fn list_all_ci_validations(&self, limit: usize) -> Result<Vec<CiValidationRecord>> {
-        queries::list_all_ci_validations(&self.keyspace, limit)
+    pub(crate) fn list_ci_validations_where(
+        &self,
+        limit: usize,
+        filter: impl Fn(&CiValidationRecord) -> bool,
+    ) -> Result<Vec<CiValidationRecord>> {
+        queries::list_ci_validations_where(&self.keyspace, limit, filter)
     }
 
-    /// List all QA verdict records, up to `limit`.
+    /// List QA verdict records that satisfy `filter`, up to `limit` retained
+    /// records.
+    ///
+    /// WHY(#5722): as for [`Self::list_ci_validations_where`], `filter` runs
+    /// during the scan so unreachable records are never accumulated.
     ///
     /// # Errors
     ///
     /// Returns `Error::Store` on read failure.
-    pub(crate) fn list_all_qa_verdicts(&self, limit: usize) -> Result<Vec<QaVerdictRecord>> {
-        queries::list_all_qa_verdicts(&self.keyspace, limit)
+    pub(crate) fn list_qa_verdicts_where(
+        &self,
+        limit: usize,
+        filter: impl Fn(&QaVerdictRecord) -> bool,
+    ) -> Result<Vec<QaVerdictRecord>> {
+        queries::list_qa_verdicts_where(&self.keyspace, limit, filter)
     }
 
     /// List QA verdict records for a specific dispatch.
@@ -681,25 +722,6 @@ impl EnergeiaStore {
     }
 
     // ── Internal helpers ──
-
-    /// Find a session record by its `SessionId` via prefix scan over all sessions.
-    fn find_session_by_id(&self, id: &SessionId) -> Result<(String, SessionRecord)> {
-        let prefix_bytes = schema::session_prefix().as_bytes();
-        for guard in self.keyspace.prefix(prefix_bytes) {
-            let (key, value) = guard
-                .into_inner()
-                .map_err(|e| store_err("session scan", e))?;
-            let record = queries::deserialize_value::<SessionRecord>(&value)?;
-            if record.id == *id {
-                let key_str = String::from_utf8_lossy(&key).into_owned();
-                return Ok((key_str, record));
-            }
-        }
-        Err(error::NotFoundSnafu {
-            what: format!("session {id}"),
-        }
-        .build())
-    }
 
     /// Back-date a dispatch record's `created_at` by the given duration.
     ///
