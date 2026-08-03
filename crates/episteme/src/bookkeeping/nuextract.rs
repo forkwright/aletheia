@@ -160,9 +160,9 @@ impl NuExtractProvider {
         let output_ids = tokio::task::spawn_blocking(move || {
             let mut session = session
                 .lock()
-                .map_err(|_| provider_failed("lock_session", "mutex poisoned"))?;
+                .map_err(|_poisoned| provider_failed("lock_session", "mutex poisoned"))?;
             greedy_decode(
-                &mut *session,
+                &mut session,
                 &input_ids,
                 &attention_mask,
                 seq_len,
