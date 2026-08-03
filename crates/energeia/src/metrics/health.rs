@@ -301,12 +301,10 @@ fn corrective_rate(
             qa_verdicts
                 .iter()
                 .filter(|v| dispatch_ids.contains(v.dispatch_id.as_str()))
-                .filter(|v| {
-                    matches!(
-                        v.verdict,
-                        crate::types::QaVerdict::Partial | crate::types::QaVerdict::Fail
-                    )
-                })
+                // WHY: NeedsReview is a non-passing state — an unmeasured
+                // dispatch needs attention for the same reason a failing one
+                // does, so it must not be filtered out here. (#5399)
+                .filter(|v| !v.verdict.is_mergeable())
                 .map(|v| v.dispatch_id.as_str())
                 .collect(),
             false,
