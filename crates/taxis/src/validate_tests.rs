@@ -78,7 +78,10 @@ fn rejects_zero_backup_interval_hours() {
     // scheduler, a degenerate cadence with no defined product meaning.
     let section = json!({ "backup": { "backupIntervalHours": 0 } });
     let result = validate_section("maintenance", &section);
-    assert!(result.is_err(), "zero backupIntervalHours should be rejected");
+    assert!(
+        result.is_err(),
+        "zero backupIntervalHours should be rejected"
+    );
     let err = result.unwrap_err();
     assert!(
         err.errors.iter().any(|e| e.contains("backupIntervalHours")),
