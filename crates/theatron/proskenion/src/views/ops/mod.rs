@@ -445,6 +445,7 @@ pub(crate) fn Ops() -> Element {
                     pending: false,
                     apply_state: ToggleApplyState::Synced,
                     live_status: a.status.clone(),
+                    error: None,
                 })
                 .collect();
 
@@ -458,6 +459,7 @@ pub(crate) fn Ops() -> Element {
                         enabled: t.enabled,
                         pending: false,
                         apply_state: ToggleApplyState::Synced,
+                        error: None,
                     })
                 })
                 .collect();

@@ -245,6 +245,9 @@ pub(crate) struct AgentToggle {
     pub pending: bool,
     pub apply_state: ToggleApplyState,
     pub live_status: Option<String>,
+    /// Human-readable error from the last failed update. Kept visible until
+    /// a later update succeeds, mirroring `FeatureFlag::error`.
+    pub error: Option<String>,
 }
 
 /// A tool toggle for a specific agent.
@@ -255,6 +258,9 @@ pub(crate) struct ToolToggle {
     pub enabled: bool,
     pub pending: bool,
     pub apply_state: ToggleApplyState,
+    /// Human-readable error from the last failed update. Kept visible until
+    /// a later update succeeds, mirroring `FeatureFlag::error`.
+    pub error: Option<String>,
 }
 
 /// Runtime effect state for a persisted toggle request.
@@ -409,16 +415,26 @@ impl ToggleStore {
     }
 
     /// Resolve an in-flight agent toggle (clear pending state).
-    pub(crate) fn resolve_agent(&mut self, id: &NousId, success: bool, prev: bool) {
+    pub(crate) fn resolve_agent(
+        &mut self,
+        id: &NousId,
+        success: bool,
+        prev: bool,
+        error: Option<String>,
+    ) {
         let result = if success {
             ToggleActionResult::synced()
         } else {
             ToggleActionResult::failed()
         };
-        self.resolve_agent_result(id, prev, None, None, result);
+        self.resolve_agent_result(id, prev, None, None, result, error);
     }
 
     /// Resolve an in-flight agent toggle using server-reported runtime effects.
+    ///
+    /// On failure the optimistic flip is rolled back to `prev` (unlike feature
+    /// flags), but `error` is surfaced the same way so the operator sees why
+    /// the write did not land instead of an unexplained switch bounce.
     pub(crate) fn resolve_agent_result(
         &mut self,
         id: &NousId,
@@ -426,6 +442,7 @@ impl ToggleStore {
         applied_enabled: Option<bool>,
         live_status: Option<String>,
         result: ToggleActionResult,
+        error: Option<String>,
     ) {
         if let Some(t) = self.agent_toggles.iter_mut().find(|t| t.id == *id) {
             t.pending = false;
@@ -434,9 +451,11 @@ impl ToggleStore {
                     t.enabled = enabled;
                 }
                 t.live_status = live_status;
+                t.error = None;
             } else {
                 t.enabled = prev;
                 t.live_status = None;
+                t.error = Some(error.unwrap_or_else(|| "Update failed".to_string()));
             }
             t.apply_state = if t.live_status.as_deref() == Some("degraded")
                 && !result.live_applied
@@ -470,16 +489,21 @@ impl ToggleStore {
         tool_name: &str,
         success: bool,
         prev: bool,
+        error: Option<String>,
     ) {
         let result = if success {
             ToggleActionResult::synced()
         } else {
             ToggleActionResult::failed()
         };
-        self.resolve_tool_result(agent_id, tool_name, prev, None, result);
+        self.resolve_tool_result(agent_id, tool_name, prev, None, result, error);
     }
 
     /// Resolve an in-flight tool toggle using server-reported runtime effects.
+    ///
+    /// On failure the optimistic flip is rolled back to `prev` (unlike feature
+    /// flags), but `error` is surfaced the same way so the operator sees why
+    /// the write did not land instead of an unexplained switch bounce.
     pub(crate) fn resolve_tool_result(
         &mut self,
         agent_id: &NousId,
@@ -487,6 +511,7 @@ impl ToggleStore {
         prev: bool,
         applied_enabled: Option<bool>,
         result: ToggleActionResult,
+        error: Option<String>,
     ) {
         if let Some(t) = self
             .tool_toggles
@@ -498,8 +523,10 @@ impl ToggleStore {
                 if let Some(enabled) = applied_enabled {
                     t.enabled = enabled;
                 }
+                t.error = None;
             } else {
                 t.enabled = prev;
+                t.error = Some(error.unwrap_or_else(|| "Update failed".to_string()));
             }
             t.apply_state = ToggleApplyState::from_action(result);
         }
@@ -717,6 +744,7 @@ mod tests {
             pending: false,
             apply_state: ToggleApplyState::Synced,
             live_status: Some("idle".to_string()),
+            error: None,
         });
 
         let prev = store.flip_agent(&nid("syn"));
@@ -737,13 +765,24 @@ mod tests {
             pending: true,
             apply_state: ToggleApplyState::Synced,
             live_status: Some("idle".to_string()),
+            error: None,
         });
 
-        store.resolve_agent(&nid("syn"), false, true);
+        store.resolve_agent(
+            &nid("syn"),
+            false,
+            true,
+            Some("server returned 500".to_string()),
+        );
 
         let toggle = &store.agent_toggles[0];
         assert!(toggle.enabled, "failure must rollback to previous state");
         assert!(!toggle.pending, "must clear pending");
+        assert_eq!(
+            toggle.error.as_deref(),
+            Some("server returned 500"),
+            "failure must surface error"
+        );
     }
 
     #[test]
@@ -756,6 +795,7 @@ mod tests {
             pending: true,
             apply_state: ToggleApplyState::Synced,
             live_status: Some("idle".to_string()),
+            error: None,
         });
 
         store.resolve_agent_result(
@@ -769,6 +809,7 @@ mod tests {
                 reload_required: false,
                 restart_required: true,
             },
+            None,
         );
 
         let toggle = &store.agent_toggles[0];
@@ -776,6 +817,10 @@ mod tests {
         assert!(!toggle.pending);
         assert_eq!(toggle.apply_state, ToggleApplyState::RestartRequired);
         assert_eq!(toggle.live_status.as_deref(), Some("unknown"));
+        assert!(
+            toggle.error.is_none(),
+            "config_applied success must clear error"
+        );
     }
 
     #[test]
@@ -788,6 +833,7 @@ mod tests {
             pending: true,
             apply_state: ToggleApplyState::Synced,
             live_status: None,
+            error: None,
         });
 
         store.resolve_agent_result(
@@ -801,6 +847,7 @@ mod tests {
                 reload_required: false,
                 restart_required: true,
             },
+            None,
         );
 
         let toggle = &store.agent_toggles[0];
@@ -818,6 +865,7 @@ mod tests {
             enabled: true,
             pending: false,
             apply_state: ToggleApplyState::Synced,
+            error: None,
         });
         store.tool_toggles.push(ToolToggle {
             agent_id: nid("mneme"),
@@ -825,6 +873,7 @@ mod tests {
             enabled: true,
             pending: false,
             apply_state: ToggleApplyState::Synced,
+            error: None,
         });
         store.tool_toggles.push(ToolToggle {
             agent_id: nid("syn"),
@@ -832,6 +881,7 @@ mod tests {
             enabled: false,
             pending: false,
             apply_state: ToggleApplyState::Synced,
+            error: None,
         });
 
         let syn_tools = store.tools_for_agent(&nid("syn"));
@@ -985,6 +1035,7 @@ mod tests {
             enabled: false,
             pending: false,
             apply_state: ToggleApplyState::Synced,
+            error: None,
         });
         let prev = store.flip_tool(&nid("syn"), "read");
         assert_eq!(prev, Some(false));
@@ -1008,11 +1059,13 @@ mod tests {
             enabled: true,
             pending: true,
             apply_state: ToggleApplyState::Synced,
+            error: None,
         });
-        store.resolve_tool(&nid("syn"), "read", true, false);
+        store.resolve_tool(&nid("syn"), "read", true, false, None);
         let t = &store.tool_toggles[0];
         assert!(t.enabled, "success keeps optimistic state");
         assert!(!t.pending, "pending must be cleared");
+        assert!(t.error.is_none(), "success must clear error");
     }
 
     #[test]
@@ -1024,11 +1077,60 @@ mod tests {
             enabled: true,
             pending: true,
             apply_state: ToggleApplyState::Synced,
+            error: None,
         });
-        store.resolve_tool(&nid("syn"), "read", false, false);
+        store.resolve_tool(
+            &nid("syn"),
+            "read",
+            false,
+            false,
+            Some("connection error: timed out".to_string()),
+        );
         let t = &store.tool_toggles[0];
         assert!(!t.enabled, "failure restores prev state");
         assert!(!t.pending);
+        assert_eq!(
+            t.error.as_deref(),
+            Some("connection error: timed out"),
+            "failure must surface error"
+        );
+    }
+
+    #[test]
+    fn toggle_store_resolve_tool_failure_without_error_gets_default_message() {
+        let mut store = ToggleStore::new();
+        store.tool_toggles.push(ToolToggle {
+            agent_id: nid("syn"),
+            tool_name: "read".to_string(),
+            enabled: true,
+            pending: true,
+            apply_state: ToggleApplyState::Synced,
+            error: None,
+        });
+        store.resolve_tool(&nid("syn"), "read", false, false, None);
+        assert_eq!(
+            store.tool_toggles[0].error.as_deref(),
+            Some("Update failed")
+        );
+    }
+
+    #[test]
+    fn toggle_store_resolve_agent_failure_without_error_gets_default_message() {
+        let mut store = ToggleStore::new();
+        store.agent_toggles.push(AgentToggle {
+            id: nid("syn"),
+            name: "syn".to_string(),
+            enabled: true,
+            pending: true,
+            apply_state: ToggleApplyState::Synced,
+            live_status: Some("idle".to_string()),
+            error: None,
+        });
+        store.resolve_agent(&nid("syn"), false, true, None);
+        assert_eq!(
+            store.agent_toggles[0].error.as_deref(),
+            Some("Update failed")
+        );
     }
 
     #[test]
@@ -1040,6 +1142,7 @@ mod tests {
             enabled: true,
             pending: true,
             apply_state: ToggleApplyState::Synced,
+            error: None,
         });
 
         store.resolve_tool_result(
@@ -1053,6 +1156,7 @@ mod tests {
                 reload_required: true,
                 restart_required: false,
             },
+            None,
         );
 
         let toggle = &store.tool_toggles[0];
@@ -1062,6 +1166,7 @@ mod tests {
         );
         assert!(!toggle.pending);
         assert_eq!(toggle.apply_state, ToggleApplyState::ReloadRequired);
+        assert!(toggle.error.is_none(), "success must clear error");
     }
 
     #[test]
@@ -1140,8 +1245,8 @@ mod tests {
     fn toggle_store_resolve_unknown_id_no_panic() {
         let mut store = ToggleStore::new();
         // Should not panic when id is missing.
-        store.resolve_agent(&nid("ghost"), true, false);
-        store.resolve_tool(&nid("ghost"), "missing", true, false);
+        store.resolve_agent(&nid("ghost"), true, false, None);
+        store.resolve_tool(&nid("ghost"), "missing", true, false, None);
         store.resolve_feature("missing", true, false, None, Vec::new());
         assert!(store.agent_toggles.is_empty());
         assert!(store.tool_toggles.is_empty());
