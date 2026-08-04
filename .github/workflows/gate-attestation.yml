@@ -18,22 +18,18 @@
 #     nextest also carries --profile ci) that the fleet default omits. A
 #     Gate-Passed trailer and a green full-gate-build must attest the same
 #     invocations a local `kanon gate --stamp` run does.
-#   - needs_fleet_repo_token stays at the fleet default (false). Cargo.toml
-#     does carry a hard git dependency on forkwright/theatron.git, and the
-#     comment here previously cited that as the reason — but the input's
-#     criterion is whether the fetch needs AUTHENTICATION ("private fleet repo,
-#     or a public fleet repo where anonymous git-fetch rate limits have caused
-#     flakiness"), not whether a git dependency exists. forkwright/theatron is
-#     public and the pin is an immutable tag, so an unauthenticated fetch
-#     resolves it: `git ls-remote` with no credential helper and no token
-#     returns 237413b8 for refs/tags/v1.5.0, exactly the SHA Cargo.lock pins.
-#     The stale pin in the old comment (v1.3.0) is corrected here too.
-#     WARNING: this repo must not require that secret in a gate path.
-#     Dependabot-triggered runs read a separate secret store and get no Actions
-#     secrets, so the token is always empty for them — the reason
-#     .github/actions/fleet-git-credentials exists and tolerates an absent
-#     token. Declaring the dependency here as not needing authentication keeps
-#     the two consistent.
+#   - needs_fleet_repo_token: true (fleet default false) — Cargo.toml carries
+#     a hard git dependency on forkwright/theatron.git (tag=v1.5.0). The
+#     dependency is public and pinned to an immutable tag, so an
+#     unauthenticated fetch resolves it today (`git ls-remote` with no
+#     credential helper and no token returns the same SHA Cargo.lock pins for
+#     refs/tags/v1.5.0) — but the input is kept true anyway as standing
+#     insurance against anonymous git-fetch rate-limit flakiness on
+#     GitHub-hosted runners, the input's documented second criterion (see
+#     forkwright/.github hybrid-gate.yml). scripts/check-automation-pr-gates.py
+#     enforces true unconditionally whenever Cargo.toml resolves any
+#     forkwright git dependency — do not special-case a dependency as "public,
+#     so no token needed" here without changing that checker first.
 #   - doctest_cmd and system_packages stay at fleet default ("" / skip) — no
 #     doctest step, no apt-get step in the prior inline job.
 #
@@ -119,7 +115,7 @@ jobs:
       nextest_cmd: "cargo nextest run --profile ci --workspace --features test-core"
       doctest_cmd: ""
       system_packages: ""
-      needs_fleet_repo_token: false
+      needs_fleet_repo_token: true
       rust_cache_key: "gate-attestation"
       full_gate_timeout_minutes: 45
       ai_attribution_check: true
