@@ -339,3 +339,33 @@ async fn workspace_open_rejects_directory_target() {
     let resp = app.oneshot(open).await.expect("open response");
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+/// Source of the workspace handlers, scanned at test time so a personal
+/// deployment detail (a specific operator's backup tooling, vault size, or
+/// live instance identity) cannot regress into a public doc comment.
+///
+/// WHY(#5160): `write_file_content`'s doc comment once described the write
+/// target as "the operator's live, restic-backed theke vault" — a real
+/// maintainer's deployment, not a product-level constraint. Comments here
+/// must describe durable product behavior only.
+const WORKSPACE_HANDLER_SRC: &str = include_str!("../handlers/workspace.rs");
+
+/// Phrases specific to one maintainer's own deployment topology that must
+/// never appear in the public handler source.
+const FORBIDDEN_DEPLOYMENT_PHRASES: &[&str] =
+    &["restic-backed", "restic backed", "operator's live"];
+
+#[test]
+fn workspace_handler_comments_are_deployment_agnostic() {
+    let mut hits = Vec::new();
+    for phrase in FORBIDDEN_DEPLOYMENT_PHRASES {
+        if WORKSPACE_HANDLER_SRC.contains(phrase) {
+            hits.push(*phrase);
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "crates/pylon/src/handlers/workspace.rs leaks a maintainer-specific \
+         deployment detail into a public comment: {hits:?}"
+    );
+}
