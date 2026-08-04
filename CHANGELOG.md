@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.34.0](https://github.com/forkwright/aletheia/compare/v0.33.9...v0.34.0) (2026-08-04)
+
+
+### Features
+
+* **proskenion:** surface agent recovery for degraded actors ([#6562](https://github.com/forkwright/aletheia/issues/6562)) ([32bfcdd](https://github.com/forkwright/aletheia/commit/32bfcddad5eef5f8f163fa6557205b7f8bab5b8f))
+
+
+### Bug Fixes
+
+* **aletheia-classify:** validate artifact class order, not just length ([#6554](https://github.com/forkwright/aletheia/issues/6554)) ([a4f6ba3](https://github.com/forkwright/aletheia/commit/a4f6ba385f39e518fd3f98c8ab3d11c2cb4adaa9)), closes [#5393](https://github.com/forkwright/aletheia/issues/5393)
+* **aletheia:** resolve tls generate output from the instance root ([#6572](https://github.com/forkwright/aletheia/issues/6572)) ([469907c](https://github.com/forkwright/aletheia/commit/469907c1a9d525d30d798976cf5f9c2705133421)), closes [#5104](https://github.com/forkwright/aletheia/issues/5104)
+* **ci:** add caller-side concurrency group to gate-attestation ([#6589](https://github.com/forkwright/aletheia/issues/6589)) ([8345a8c](https://github.com/forkwright/aletheia/commit/8345a8c52fba2f0e88adb16ff684d7723b68d27e))
+* **ci:** drop unneeded fleet-repo token from hybrid gate ([#6590](https://github.com/forkwright/aletheia/issues/6590)) ([25b784b](https://github.com/forkwright/aletheia/commit/25b784beba7667ca227c10846c8153d302274af2))
+* **daemon,graphe:** derive backup freshness from persisted state ([#6582](https://github.com/forkwright/aletheia/issues/6582)) ([ba64e8c](https://github.com/forkwright/aletheia/commit/ba64e8c69aac22ab9ae87d7bb42ea80626bd38b8)), closes [#6445](https://github.com/forkwright/aletheia/issues/6445)
+* **decontamination:** fail-closed DecontaminationPolicy gate ([#6587](https://github.com/forkwright/aletheia/issues/6587)) ([c45ee26](https://github.com/forkwright/aletheia/commit/c45ee26581512ce593ffa895b3e108ae31105737)), closes [#5382](https://github.com/forkwright/aletheia/issues/5382)
+* **energeia:** address session updates by their primary key ([#6558](https://github.com/forkwright/aletheia/issues/6558)) ([1b279a0](https://github.com/forkwright/aletheia/commit/1b279a01b68acf5efb87588efe2fb3a390257ee8)), closes [#5687](https://github.com/forkwright/aletheia/issues/5687)
+* **energeia:** report cron fire outcomes instead of inferring them from panics ([#6573](https://github.com/forkwright/aletheia/issues/6573)) ([8e905fa](https://github.com/forkwright/aletheia/commit/8e905fac0fc18180f85b23d0787ab1a6ec42677a)), closes [#5297](https://github.com/forkwright/aletheia/issues/5297)
+* **energeia:** stop loading unreachable records into the health report ([#6560](https://github.com/forkwright/aletheia/issues/6560)) ([7b80b77](https://github.com/forkwright/aletheia/commit/7b80b776ff52c6e9c2adf8b8c7d3326062eaad63)), closes [#5722](https://github.com/forkwright/aletheia/issues/5722)
+* **episteme:** require real fixed-outcome evidence before FixedInPr lessons ([#6553](https://github.com/forkwright/aletheia/issues/6553)) ([3f6cb22](https://github.com/forkwright/aletheia/commit/3f6cb220801a41c96e32bfa51a918078ae03cd11)), closes [#5384](https://github.com/forkwright/aletheia/issues/5384)
+* **episteme:** restore the ort-gated gliner and nuextract feature builds ([#6567](https://github.com/forkwright/aletheia/issues/6567)) ([097346b](https://github.com/forkwright/aletheia/commit/097346b73286436f82215fbfca75e7cb3dc535ff)), closes [#6054](https://github.com/forkwright/aletheia/issues/6054)
+* **episteme:** share consolidation batch metadata across sibling facts ([#6559](https://github.com/forkwright/aletheia/issues/6559)) ([2743b92](https://github.com/forkwright/aletheia/commit/2743b9248a3e6252c5221833713541ef1da34950)), closes [#5694](https://github.com/forkwright/aletheia/issues/5694)
+* **features:** remove no-op feature flags and gate the class in CI ([#6555](https://github.com/forkwright/aletheia/issues/6555)) ([dded968](https://github.com/forkwright/aletheia/commit/dded968bc1640a99e5b7f1b794d39452e1af4c9f)), closes [#5430](https://github.com/forkwright/aletheia/issues/5430)
+* **hermeneus:** classify subprocess failures for all providers, not just CC ([#6556](https://github.com/forkwright/aletheia/issues/6556)) ([0d6126d](https://github.com/forkwright/aletheia/commit/0d6126d04aa4ac22b25d5e189f554c8bd150b409)), closes [#5456](https://github.com/forkwright/aletheia/issues/5456)
+* **hermeneus:** record circuit-breaker transitions from the live health tracker ([#6561](https://github.com/forkwright/aletheia/issues/6561)) ([d93fb6e](https://github.com/forkwright/aletheia/commit/d93fb6e4895c81007acc8254aa233faba2b3d954)), closes [#5775](https://github.com/forkwright/aletheia/issues/5775)
+* **koilon:** adopt bathron::logging and stop resolving the log dir to cwd ([#6578](https://github.com/forkwright/aletheia/issues/6578)) ([ac8505d](https://github.com/forkwright/aletheia/commit/ac8505d3946b045caa90e001478151e31a6d58aa)), closes [#5887](https://github.com/forkwright/aletheia/issues/5887)
+* **koilon:** adopt gramma's syntax table in detect_language ([#6580](https://github.com/forkwright/aletheia/issues/6580)) ([742e0a4](https://github.com/forkwright/aletheia/commit/742e0a41979f7deba64fdc739e1c5a0ffded8a03)), closes [#5894](https://github.com/forkwright/aletheia/issues/5894)
+* **koilon:** measure diff truncation and padding in display columns ([#6583](https://github.com/forkwright/aletheia/issues/6583)) ([42c35bb](https://github.com/forkwright/aletheia/commit/42c35bb04f5f12b60191bbd61b6f50db8e920ede)), closes [#6542](https://github.com/forkwright/aletheia/issues/6542) [#5901](https://github.com/forkwright/aletheia/issues/5901)
+* **koilon:** report restart-required config saves instead of claiming a reload ([#6575](https://github.com/forkwright/aletheia/issues/6575)) ([c58b84a](https://github.com/forkwright/aletheia/commit/c58b84adb2e39e5cfa1ad84a75f3960a0a7ebb96)), closes [#5326](https://github.com/forkwright/aletheia/issues/5326)
+* **koilon:** stop the ops-pane thinking spinner when the turn ends ([#6564](https://github.com/forkwright/aletheia/issues/6564)) ([91729c2](https://github.com/forkwright/aletheia/commit/91729c26d454ef9b8baa27309a4de2f6e6cf7e6b)), closes [#5810](https://github.com/forkwright/aletheia/issues/5810)
+* **koina:** drop the reqwest dependency from the foundation crate ([#6548](https://github.com/forkwright/aletheia/issues/6548)) ([a072802](https://github.com/forkwright/aletheia/commit/a072802c35dfb71c3cda38b76a9b870453736468))
+* **maintenance:** bound prosoche audit reports with a retention task ([#6566](https://github.com/forkwright/aletheia/issues/6566)) ([a8abd3e](https://github.com/forkwright/aletheia/commit/a8abd3e85f69ba47a42a27dd7a59e52e3277066a)), closes [#5667](https://github.com/forkwright/aletheia/issues/5667)
+* **melete:** run consolidation store calls on the blocking pool ([#6557](https://github.com/forkwright/aletheia/issues/6557)) ([3834fb0](https://github.com/forkwright/aletheia/commit/3834fb00275cb1bb886d2abe79df6887985022b0)), closes [#5666](https://github.com/forkwright/aletheia/issues/5666)
+* **nous:** count prompt-cache tokens toward per-turn budget enforcement ([#6594](https://github.com/forkwright/aletheia/issues/6594)) ([48a904c](https://github.com/forkwright/aletheia/commit/48a904c6a501ea07c1de7db080b3e82b8d3922e2)), closes [#5263](https://github.com/forkwright/aletheia/issues/5263)
+* **nous:** dedupe outcome-signal means and correct the distillation claim ([#6577](https://github.com/forkwright/aletheia/issues/6577)) ([89d44a3](https://github.com/forkwright/aletheia/commit/89d44a3762671a3139360b91080190744ce90080)), closes [#5840](https://github.com/forkwright/aletheia/issues/5840)
+* **nous:** keep correction turns out of the corpus and close the classifier fail-open gap ([#6565](https://github.com/forkwright/aletheia/issues/6565)) ([7daefd5](https://github.com/forkwright/aletheia/commit/7daefd517f47c82fc1216437284b7ea2934ba47f))
+* **poiesis-inspect:** read every slide part instead of halting at a numbering gap ([#6550](https://github.com/forkwright/aletheia/issues/6550)) ([df5d6dd](https://github.com/forkwright/aletheia/commit/df5d6dde2165fc6ced49d2004b6256e796826cf4)), closes [#5582](https://github.com/forkwright/aletheia/issues/5582)
+* **poiesis-scaffold:** build data.json through serde_json ([#6552](https://github.com/forkwright/aletheia/issues/6552)) ([001544d](https://github.com/forkwright/aletheia/commit/001544d93926a1027e5b57a44daecc12eb6a8ef4)), closes [#5607](https://github.com/forkwright/aletheia/issues/5607)
+* **proskenion:** route the desktop-config write through bathron's atomic replace ([#6579](https://github.com/forkwright/aletheia/issues/6579)) ([54b7574](https://github.com/forkwright/aletheia/commit/54b7574e67b6c7dd50642051b286723b34031e2b))
+* **proskenion:** stop the standalone lockfile drifting behind releases ([#6568](https://github.com/forkwright/aletheia/issues/6568)) ([0a367d8](https://github.com/forkwright/aletheia/commit/0a367d8e0fc94da5b087b8038aa3bc3f62fe5c88))
+* **proskenion:** surface per-agent capability limits in the ops view ([#6563](https://github.com/forkwright/aletheia/issues/6563)) ([b31a7b5](https://github.com/forkwright/aletheia/commit/b31a7b5833181f8f094291c6207e9735b0cf0145)), closes [#5801](https://github.com/forkwright/aletheia/issues/5801)
+* **pylon:** bucket weekly metrics by ISO week instead of month-day ([#6571](https://github.com/forkwright/aletheia/issues/6571)) ([adc9025](https://github.com/forkwright/aletheia/commit/adc90255c83f2e3e5540aa4070833627cedc0916)), closes [#5061](https://github.com/forkwright/aletheia/issues/5061)
+* **qa:** fail closed on unmeasured QaVerdict ([#6588](https://github.com/forkwright/aletheia/issues/6588)) ([8b4645c](https://github.com/forkwright/aletheia/commit/8b4645cac9768a88b264c4219e711cc3e45483c5)), closes [#5399](https://github.com/forkwright/aletheia/issues/5399)
+* **scripts:** exclude tests/ and benches/ from the L3 public API index ([#6591](https://github.com/forkwright/aletheia/issues/6591)) ([07fce87](https://github.com/forkwright/aletheia/commit/07fce870012ab83a4693a6205f863f07cc676858)), closes [#5408](https://github.com/forkwright/aletheia/issues/5408)
+* **taxis:** reject zero backup and cron cadences in maintenance config ([#6593](https://github.com/forkwright/aletheia/issues/6593)) ([0290a35](https://github.com/forkwright/aletheia/commit/0290a354fa4c8d2756b5dccb0910a75e7b1f0814))
+
+
+### Performance
+
+* **episteme:** batch the three recall enrichment passes into one query each ([#6576](https://github.com/forkwright/aletheia/issues/6576)) ([1336b76](https://github.com/forkwright/aletheia/commit/1336b767030fb0916d7aa817eab62c923f8c52a2)), closes [#5672](https://github.com/forkwright/aletheia/issues/5672)
+
 ## [0.33.9](https://github.com/forkwright/aletheia/compare/v0.33.8...v0.33.9) (2026-07-31)
 
 

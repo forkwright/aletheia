@@ -2809,7 +2809,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.33.9"
+version = "0.34.0"
 dependencies = [
  "jiff",
  "prometheus-client",
@@ -4954,7 +4954,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.33.9"
+version = "0.34.0"
 dependencies = [
  "bytes",
  "form_urlencoded",
