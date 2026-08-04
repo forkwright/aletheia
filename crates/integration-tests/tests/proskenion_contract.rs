@@ -660,7 +660,17 @@ fn discover_proskenion_api_paths() -> BTreeMap<String, Vec<String>> {
             if cfg_test_pending && trimmed.starts_with("mod tests") {
                 break;
             }
-            cfg_test_pending = trimmed.starts_with("#[cfg(test)]");
+            // WARNING: cfg_test_pending must survive any attribute/blank
+            // lines between `#[cfg(test)]` and `mod tests` (e.g. an
+            // intervening `#[expect(clippy::unwrap_used, ...)]`) or the skip
+            // never fires and literal strings inside the test module (URLs
+            // asserted in unit tests, not real desktop /api calls) get
+            // misread as discovered production API paths.
+            if trimmed.starts_with("#[cfg(test)]") {
+                cfg_test_pending = true;
+            } else if !trimmed.starts_with('#') && !trimmed.is_empty() {
+                cfg_test_pending = false;
+            }
 
             for literal in quoted_strings(line) {
                 if let Some(path) = normalize_source_api_path(&literal) {
