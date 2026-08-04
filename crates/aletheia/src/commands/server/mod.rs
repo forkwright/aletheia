@@ -1,5 +1,6 @@
 //! Default server startup: runs when no subcommand is given.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -224,15 +225,23 @@ pub(crate) async fn run(args: Args) -> Result<()> {
     // WHY: Cancel root token on OS signal so all subsystems observe
     // shutdown simultaneously.
     let token_for_signal = runtime.shutdown_token.clone();
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            shutdown_signal().await;
-            // SAFETY: "token" here is a CancellationToken (shutdown coordination), not a credential
-            info!("signal received -- cancelling shutdown token"); // kanon:ignore SECURITY/credential-logging -- logs signal event, not a credential
-            token_for_signal.cancel();
-        })
-        .await
-        .whatever_context("server error")?;
+    // WHY: `into_make_service_with_connect_info` injects `ConnectInfo<SocketAddr>`
+    // into request extensions so the metrics local_only ACL (#6454) and the
+    // per-IP rate limiter read the real peer address instead of treating
+    // every connection as peer-less (denied as non-loopback, bucketed under
+    // a single shared "peer" key).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        shutdown_signal().await;
+        // SAFETY: "token" here is a CancellationToken (shutdown coordination), not a credential
+        info!("signal received -- cancelling shutdown token"); // kanon:ignore SECURITY/credential-logging -- logs signal event, not a credential
+        token_for_signal.cancel();
+    })
+    .await
+    .whatever_context("server error")?;
 
     // INVARIANT: Drain ordering must follow this sequence:
     // 0. Notify systemd that shutdown has begun (STOPPING=1).
