@@ -45,6 +45,8 @@ fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
     let raw = ulid.as_u128();
     #[expect(
         clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap,
         reason = "u128→u64→i64: XOR-fold mixes all 128 source bits into 64, then mask ensures sign bit is zero so the final cast never wraps"
     )]
     {
