@@ -1,5 +1,7 @@
 //! Knowledge extraction pipeline: LLM-driven entity/relationship/fact extraction.
 
+/// Dispatch after-action JSONL extraction (QA verdicts, session failures).
+pub mod after_action;
 /// Unified diff parser for structured change analysis.
 pub mod diff;
 /// Dispatch pattern detection and scoring for steward learning.

@@ -506,6 +506,48 @@ impl KnowledgeSearchService for RealKnowledgeService {
             })
         })
     }
+
+    fn persist_pr_lesson(
+        &self,
+        diff: &str,
+        pr_title: &str,
+        pr_number: Option<u32>,
+        nous_id: &str,
+        source: &str,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<organon::types::LessonPersistSummary, KnowledgeAdapterError>>
+                + Send
+                + '_,
+        >,
+    > {
+        let diff = diff.to_owned();
+        let pr_title = pr_title.to_owned();
+        let nous_id = nous_id.to_owned();
+        let source = source.to_owned();
+        Box::pin(async move {
+            let config = mneme::extract::lesson::LessonConfig {
+                pr_title,
+                pr_number,
+                nous_id,
+                source,
+            };
+            let lesson = mneme::extract::lesson::extract_lessons(&diff, &config);
+            let result = mneme::extract::lesson::persist_lesson(&lesson, &self.store, &config)
+                .map_err(|e| {
+                    organon::error::MutateStoreSnafu {
+                        message: e.to_string(),
+                    }
+                    .build()
+                })?;
+            Ok(organon::types::LessonPersistSummary {
+                facts_inserted: result.facts_inserted,
+                entities_inserted: result.entities_inserted,
+                relationships_inserted: result.relationships_inserted,
+                causal_edges_inserted: result.causal_edges_inserted,
+            })
+        })
+    }
 }
 
 fn ts() -> jiff::Timestamp {

@@ -490,20 +490,29 @@ const TASKS: &[MaintenanceTaskDefinition] = &[
             RegistrationCondition::RetentionEnabledWithExecutor,
         ),
     ),
-    // NOTE: episteme's training-data extractor targets workflow/training/, a
-    // path the current repo layout does not have (see crates/episteme/src/
-    // extract/training.rs) — Planned keeps the task visible without a live
-    // cron probing a path that cannot exist. Re-Implement only once it is
-    // rewired to a real production trigger (Phase 05 REQ-05/06/07/08:
-    // PR-merge lesson extraction, QA-verdict capture, or session-outcome
-    // Facts through mneme).
-    planned(
+    // WHY(#6419): repointed from the retired workflow/training/{violations,
+    // lint}.jsonl phronesis-era schema (a repo-relative path the daemon's
+    // instance-root cwd could never resolve) to
+    // {ALETHEIA_ROOT}/logs/after-actions/*.jsonl — the dispatch-telemetry
+    // JSONL trail energeia's pipeline already writes after every completed
+    // dispatch (see episteme::extract::after_action and
+    // crate::execution::after_action_log_dir). That directory is real in
+    // every deployment that has completed at least one dispatch.
+    task(
         "lesson-extraction",
-        "Lesson extraction from training data",
+        "Lesson extraction from after-action dispatch telemetry",
         MaintenanceTaskOwner::KnowledgeGraph,
-        MaintenanceConfigSection::KnowledgeMaintenance,
+        Some(MaintenanceConfigSection::KnowledgeMaintenance),
         "Lesson extraction",
-        BuiltinTask::LessonExtraction,
+        MaintenanceTaskImplementationStatus::Implemented,
+        CRON_METRICS,
+        None,
+        scheduled(
+            BuiltinTask::LessonExtraction,
+            ScheduleSource::Cron("0 0 5 * * *"),
+            true,
+            RegistrationCondition::KnowledgeExecutorConfigured,
+        ),
     ),
     task(
         "ops-fact-extraction",

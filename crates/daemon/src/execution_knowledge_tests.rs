@@ -241,22 +241,45 @@ async fn ops_fact_extraction_persists_all_extracted_facts_to_real_fjall() {
     );
 }
 
+/// #6419: lesson extraction reads after-action JSONL (the real,
+/// instance-populated telemetry energeia writes after every dispatch), not
+/// the retired workflow/training/ phronesis schema. This is the regression
+/// guard — reverting `execute_lesson_extraction_from_dir` back to reading a
+/// path that cannot exist would make this test fail to find any facts.
 #[tokio::test]
-async fn lesson_extraction_persists_training_facts_to_real_fjall() {
+async fn lesson_extraction_persists_after_action_facts_to_real_fjall() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let training = dir.path().join("training");
-    std::fs::create_dir_all(&training).expect("create training dir");
+    let log_dir = dir.path().join("after-actions");
+    std::fs::create_dir_all(&log_dir).expect("create after-action log dir");
     let (executor, store) = RealKnowledge::open(dir.path());
 
-    let violations = [
-        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123","pr_state":"merged","resolved":true}"#,
-        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/main.rs","line":20,"snippet":".expect(\"other\")","project":"","pr_number":null,"sha":null}"#,
+    let records = [
+        serde_json::json!({
+            "dispatch_id": "d1",
+            "session_outcomes": [
+                {"status": "failed", "model": "sonnet", "failure_class": "prompt-quality", "category": "refactor"},
+                {"status": "success", "model": "sonnet"},
+            ],
+            "qa_verdict": "partial",
+            "prompt_hash": "hash-1",
+        }),
+        serde_json::json!({
+            "dispatch_id": "d2",
+            "session_outcomes": [{"status": "success", "model": "sonnet"}],
+            "qa_verdict": "pass",
+            "prompt_hash": "hash-2",
+        }),
     ];
-    tokio::fs::write(training.join("violations.jsonl"), violations.join("\n"))
+    let lines = records
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    tokio::fs::write(log_dir.join("2026-08-04.jsonl"), lines)
         .await
-        .expect("write violations");
+        .expect("write after-action fixture");
 
-    let result = execute_lesson_extraction_from_dir("alice", &training, executor.as_ref())
+    let result = execute_lesson_extraction_from_dir("alice", &log_dir, executor.as_ref())
         .expect("lesson extraction should persist");
 
     assert!(result.is_success());
@@ -271,7 +294,11 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
     );
 
     let facts = current_facts(&store, "alice");
-    assert_eq!(facts.len(), 2, "all lesson facts are retrievable");
+    assert_eq!(
+        facts.len(),
+        2,
+        "one verdict fact + one failure-class fact are retrievable"
+    );
     assert!(
         facts
             .iter()
@@ -280,52 +307,52 @@ async fn lesson_extraction_persists_training_facts_to_real_fjall() {
         "lesson facts should carry daemon provenance: {facts:?}"
     );
     assert!(
-        facts
-            .iter()
-            .any(|fact| fact.content.contains("was fixed in PR")),
-        "fixed lesson content should be persisted: {facts:?}"
+        facts.iter().any(|fact| fact.content.contains("partial")),
+        "the non-passing verdict should be persisted: {facts:?}"
     );
     assert!(
         facts
             .iter()
-            .any(|fact| fact.content.contains("recurs across scans")),
-        "recurring lesson content should be persisted: {facts:?}"
+            .any(|fact| fact.content.contains("prompt-quality")),
+        "the session failure class should be persisted: {facts:?}"
+    );
+    // d2 passed cleanly with no session failures — it must not contribute
+    // any fact of its own (no manufactured signal from a clean dispatch).
+    assert!(
+        facts.iter().all(|fact| !fact.content.contains("hash-2")),
+        "a clean dispatch must not be persisted as a lesson: {facts:?}"
     );
 }
 
-/// Regression for #5384: a violation seen inside a PR with no recorded outcome
-/// must not be persisted as a fix. The PR here is still open and the violation
-/// unresolved, so the only honest fact is an unresolved observation.
+/// A dispatch that passed cleanly with no session failures is not signal —
+/// persisting it would be exactly the kind of manufactured-fact noise the
+/// old phronesis-era #5384 fix guarded against (don't claim more than the
+/// evidence supports). Here that means: no facts at all.
 #[tokio::test]
-async fn pr_sighting_without_outcome_is_not_persisted_as_a_fix() {
+async fn clean_dispatch_produces_no_lesson_facts() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let training = dir.path().join("training");
-    std::fs::create_dir_all(&training).expect("create training dir");
+    let log_dir = dir.path().join("after-actions");
+    std::fs::create_dir_all(&log_dir).expect("create after-action log dir");
     let (executor, store) = RealKnowledge::open(dir.path());
 
-    let violations = [
-        r#"{"type":"violation","schema_version":2,"ts":"2026-03-25T15:43:30Z","rule":"RUST/expect","file":"/src/lib.rs","line":10,"snippet":".expect(\"msg\")","project":"","pr_number":42,"sha":"abc123","pr_state":"open","resolved":false}"#,
-    ];
-    tokio::fs::write(training.join("violations.jsonl"), violations.join("\n"))
+    let record = serde_json::json!({
+        "dispatch_id": "d3",
+        "session_outcomes": [{"status": "success", "model": "sonnet"}],
+        "qa_verdict": "pass",
+        "prompt_hash": "hash-3",
+    });
+    tokio::fs::write(log_dir.join("2026-08-04.jsonl"), record.to_string())
         .await
-        .expect("write violations");
+        .expect("write after-action fixture");
 
-    let result = execute_lesson_extraction_from_dir("alice", &training, executor.as_ref())
+    let result = execute_lesson_extraction_from_dir("alice", &log_dir, executor.as_ref())
         .expect("lesson extraction should persist");
     assert!(result.is_success());
 
     let facts = current_facts(&store, "alice");
     assert!(
-        facts
-            .iter()
-            .all(|fact| !fact.content.contains("was fixed in PR")),
-        "an unresolved PR sighting must not claim a fix: {facts:?}"
-    );
-    assert!(
-        facts
-            .iter()
-            .any(|fact| fact.content.contains("was observed in PR, outcome unknown")),
-        "the sighting should persist as an unresolved observation: {facts:?}"
+        facts.is_empty(),
+        "a clean, fully-passing dispatch must not manufacture a lesson fact: {facts:?}"
     );
 }
 

@@ -903,19 +903,22 @@ async fn execute_knowledge_task(
     Ok(ExecutionResult::from_maintenance_report(&report, output))
 }
 
-/// Execute lesson extraction from training data JSONL files.
+/// Execute lesson extraction from after-action dispatch telemetry.
 ///
-/// Reads `workflow/training/violations.jsonl` and `lint.jsonl`, extracts
-/// patterns from PR outcomes, and logs the results. The training data path
-/// is resolved relative to the current working directory.
+/// Reads `{ALETHEIA_ROOT}/logs/after-actions/*.jsonl` — the JSONL trail
+/// `energeia::pipeline::after_action::append_after_action_record` appends
+/// after every completed dispatch — and converts non-passing QA verdicts and
+/// session failure classes into knowledge facts (#6419).
+///
+/// WHY(#6419): the prior source, `workflow/training/{violations,lint}.jsonl`,
+/// is a repo-relative path from a retired phronesis-era schema; the daemon's
+/// working directory is the instance root, not a repo checkout, so that path
+/// could never exist. The after-action log directory is instance-relative
+/// and populated by the running instance itself, so it is real in every
+/// deployment that has completed at least one dispatch.
 ///
 /// WHY: blocking I/O (file reads + JSON parsing) is done on the blocking
 /// pool to avoid starving the async scheduler.
-///
-/// NOTE: the registry entry for this task is `Planned`, not scheduled — the
-/// current repo layout has no `workflow/training/` directory, so this always
-/// takes the skip branch below. Re-wire the registry entry to a real trigger
-/// before promoting it back to `Implemented`.
 async fn execute_lesson_extraction(
     nous_id: &str,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
@@ -930,23 +933,28 @@ async fn execute_lesson_extraction(
 
     let nous_id = nous_id.to_owned();
     let result = tokio::task::spawn_blocking(move || {
-        // WHY: training data lives at repo root under workflow/training/.
-        // The daemon runs from the instance directory, so we look for the
-        // training dir relative to cwd first, then fall back to an absolute path.
-        let candidates = [
-            std::path::PathBuf::from("workflow/training"),
-            std::path::PathBuf::from("../workflow/training"),
-        ];
+        let log_dir = after_action_log_dir();
 
-        let training_dir = candidates.iter().find(|p| p.exists());
+        if !log_dir.is_dir() {
+            // WHY(#6419): a scheduled task whose input cannot be found must
+            // say so loudly rather than blending into routine info logs —
+            // silent-skip-reads-as-success is exactly how the
+            // workflow/training/ defect sat undetected for months. A missing
+            // directory here means either no dispatch has ever completed on
+            // this instance, or ALETHEIA_ROOT is misconfigured; both are
+            // worth a WARN, not a silent no-op.
+            tracing::warn!(
+                path = %log_dir.display(),
+                "lesson-extraction: after-action log directory not found — \
+                 no dispatch has completed yet, or ALETHEIA_ROOT is misconfigured"
+            );
+            return Ok(ExecutionResult::skipped(Some(format!(
+                "skipped: after-action log directory not found at {}",
+                log_dir.display()
+            ))));
+        }
 
-        let Some(training_dir) = training_dir else {
-            return Ok(ExecutionResult::skipped(Some(
-                "skipped: no training data directory found".to_owned(),
-            )));
-        };
-
-        execute_lesson_extraction_from_dir(&nous_id, training_dir, executor.as_ref())
+        execute_lesson_extraction_from_dir(&nous_id, &log_dir, executor.as_ref())
     })
     .await
     .context(error::BlockingJoinSnafu {
@@ -954,6 +962,20 @@ async fn execute_lesson_extraction(
     })??;
 
     Ok(result)
+}
+
+/// Resolve the after-action log directory from `ALETHEIA_ROOT`.
+///
+/// Mirrors `default_prosoche_audit_dir`'s resolution below, and
+/// `energeia::pipeline::after_action`'s `oikos.logs().join("after-actions")`
+/// path — without a direct daemon -> energeia crate dependency (episteme
+/// sits below energeia in the crate layering; the JSONL file on disk is the
+/// contract between the two, not a shared Rust type).
+fn after_action_log_dir() -> PathBuf {
+    let root = RealSystem
+        .var("ALETHEIA_ROOT")
+        .map_or_else(|| PathBuf::from("instance"), PathBuf::from);
+    root.join("logs").join("after-actions")
 }
 
 /// Extract operational metrics into knowledge graph facts.
@@ -1042,19 +1064,18 @@ fn execute_ops_fact_extraction_blocking(
 
 fn execute_lesson_extraction_from_dir(
     nous_id: &str,
-    training_dir: &Path,
+    log_dir: &Path,
     executor: &dyn KnowledgeMaintenanceExecutor,
 ) -> Result<ExecutionResult> {
-    let extraction = episteme::extract::training::extract_from_training_data(training_dir)
+    let extraction = episteme::extract::after_action::extract_from_after_action_logs(log_dir)
         .context(error::MaintenanceIoSnafu {
             context: "lesson extraction",
         })?;
 
-    let lesson_count = extraction.lessons.len();
-    let extracted_facts = episteme::extract::training::lessons_to_facts(&extraction.lessons);
+    let fact_count = extraction.facts.len();
     let durable_facts = extracted_facts_to_facts(
         nous_id,
-        &extracted_facts,
+        &extraction.facts,
         "daemon:lesson-extraction",
         jiff::Timestamp::now(),
     )?;
@@ -1062,20 +1083,17 @@ fn execute_lesson_extraction_from_dir(
     persist_facts(executor, durable_facts.iter(), "lesson-extraction")?;
 
     tracing::info!(
-        violations_read = extraction.violations_read,
-        lint_summaries_read = extraction.lint_summaries_read,
-        lessons_extracted = lesson_count,
-        facts_produced = durable_facts.len(),
-        facts_inserted = inserted,
+        files_read = extraction.files_read,
+        records_read = extraction.records_read,
         records_skipped = extraction.records_skipped,
+        facts_produced = fact_count,
+        facts_inserted = inserted,
         "lesson extraction complete"
     );
 
     Ok(ExecutionResult::success(Some(format!(
-        "{lesson_count} lessons extracted, {} facts produced, {inserted} inserted ({} violations, {} lint summaries read)",
-        durable_facts.len(),
-        extraction.violations_read,
-        extraction.lint_summaries_read,
+        "{fact_count} facts produced, {inserted} inserted ({} after-action files, {} dispatch records, {} records skipped)",
+        extraction.files_read, extraction.records_read, extraction.records_skipped,
     ))))
 }
 

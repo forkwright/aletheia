@@ -171,6 +171,22 @@ pub struct FactSummary {
     pub forget_reason: Option<String>,
 }
 
+/// Counts of graph objects written by a post-merge lesson persist.
+///
+/// Returned by [`KnowledgeSearchService::persist_pr_lesson`] so callers can
+/// report what actually landed rather than assuming success wrote signal.
+#[expect(
+    missing_docs,
+    reason = "summary struct fields are self-documenting by name"
+)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LessonPersistSummary {
+    pub facts_inserted: usize,
+    pub entities_inserted: usize,
+    pub relationships_inserted: usize,
+    pub causal_edges_inserted: usize,
+}
+
 /// Abstracts knowledge store operations for memory tools.
 ///
 /// Implemented by an adapter in the binary crate wrapping `KnowledgeStore` + `EmbeddingProvider`.
@@ -237,6 +253,24 @@ pub trait KnowledgeSearchService: Send + Sync {
         nous_id: &str,
         skill_name: &str,
     ) -> Pin<Box<dyn Future<Output = Result<Option<String>, KnowledgeAdapterError>> + Send + '_>>;
+
+    /// Extract and persist a post-merge lesson from a unified PR diff.
+    ///
+    /// Parses `diff` into entities, relationships, facts, and causal edges
+    /// (institutional patterns: what changed, why, what broke, what fixed
+    /// it) and writes them into the knowledge graph. Callers should treat
+    /// this as best-effort telemetry, not a correctness gate: a failure here
+    /// must never fail the caller's own operation.
+    fn persist_pr_lesson(
+        &self,
+        diff: &str,
+        pr_title: &str,
+        pr_number: Option<u32>,
+        nous_id: &str,
+        source: &str,
+    ) -> Pin<
+        Box<dyn Future<Output = Result<LessonPersistSummary, KnowledgeAdapterError>> + Send + '_>,
+    >;
 }
 
 /// Result from a read-only Datalog query.
