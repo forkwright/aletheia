@@ -837,3 +837,64 @@ fn prune_consolidation_audit_is_a_no_op_when_nothing_is_expired() {
             .collect::<BTreeSet<_>>()
     );
 }
+
+/// Seed a `graph_scores` row exactly as `graph_intelligence::RECOMPUTE_GRAPH_SCORES`
+/// writes a Louvain community member: `score_type = 'cluster'`.
+fn insert_cluster_score(store: &KnowledgeStore, entity_id: &str, cluster_id: i64) {
+    let script = r"
+?[entity_id, score_type, score, cluster_id, updated_at] <-
+    [[$entity_id, 'cluster', 0.0, $cluster_id, '2026-03-01T00:00:00Z']]
+
+:put graph_scores { entity_id, score_type => score, cluster_id, updated_at }
+";
+    let mut params = BTreeMap::new();
+    params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
+    params.insert("cluster_id".to_owned(), DataValue::from(cluster_id));
+    store
+        .run_mut_query(script, params)
+        .expect("seed graph_scores cluster row");
+}
+
+/// Requirement (aletheia#4678): `find_community_overflow_candidates` must see
+/// the clusters that `graph_intelligence`'s recompute pipeline actually
+/// writes. The write path stamps `score_type = 'cluster'`
+/// (`RECOMPUTE_GRAPH_SCORES`); `COMMUNITY_OVERFLOW_CANDIDATES` and
+/// `CLUSTER_FACTS_FOR_CONSOLIDATION` must join on that same string, or every
+/// computed community is invisible to consolidation.
+#[test]
+fn find_community_overflow_candidates_sees_cluster_scores_from_recompute() {
+    let store = make_store();
+    let entity = make_entity("e-cluster-member", "Cluster Member", "topic");
+    store.insert_entity(&entity).expect("insert entity");
+
+    let fact = make_fact("f-cluster-0", "alice", "clustered source fact");
+    store.insert_fact(&fact).expect("insert fact");
+    store
+        .insert_fact_entity(&fact.id, &entity.id)
+        .expect("link fact to entity");
+
+    insert_cluster_score(&store, entity.id.as_str(), 7);
+
+    let candidates = store
+        .find_community_overflow_candidates(
+            "alice",
+            &ConsolidationConfig {
+                community_fact_threshold: 1,
+                ..ConsolidationConfig::default()
+            },
+        )
+        .expect("find_community_overflow_candidates must succeed");
+
+    assert_eq!(
+        candidates.len(),
+        1,
+        "the fact's cluster must surface as a community-overflow candidate; got {candidates:?}"
+    );
+    let candidate = candidates.first().expect("exactly one candidate");
+    assert_eq!(candidate.cluster_id, Some(7));
+    assert_eq!(
+        candidate.fact_ids,
+        vec![fact.id.clone()],
+        "gather_cluster_facts must join the same score_type as the overflow query"
+    );
+}
