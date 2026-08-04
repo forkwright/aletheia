@@ -65,7 +65,7 @@ jobs:
           token: ${{ secrets.FLEET_REPO_TOKEN }}
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912 # v2
+        uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2
         with:
           tool: nextest
 
