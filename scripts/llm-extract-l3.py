@@ -476,6 +476,21 @@ def extract_from_file(rs_path: Path, crate_dir: Path) -> ModuleSection | None:
 # Crate-level extraction
 # ---------------------------------------------------------------------------
 
+# WHY: Cargo compiles tests/ and benches/ as separate integration-test and
+# benchmark targets, not as part of the library crate. Their `pub` items
+# (e.g. shared fixtures like `tests/common/mod.rs::TestEnv`) are routinely
+# exported so sibling test binaries can `mod common;` them, but they are not
+# reachable from crate consumers and must not appear in the public API
+# corpus. Checked against the crate-relative top-level directory only, so a
+# library module that happens to be named `src/tests.rs` is unaffected.
+_NON_LIBRARY_TOP_LEVEL_DIRS = frozenset({"tests", "benches"})
+
+
+def _is_library_source(rs_file: Path, crate_dir: Path) -> bool:
+    """True if `rs_file` is part of the crate's library surface (not a
+    Cargo test/bench target)."""
+    return rs_file.relative_to(crate_dir).parts[0] not in _NON_LIBRARY_TOP_LEVEL_DIRS
+
 
 def extract_crate(crate_name: str, crate_dir: Path) -> CrateIndex:
     """Extract all public items from a crate's .rs files."""
@@ -485,7 +500,9 @@ def extract_crate(crate_name: str, crate_dir: Path) -> CrateIndex:
     )
 
     rs_files = sorted(
-        f for f in crate_dir.rglob("*.rs") if "target" not in f.parts
+        f
+        for f in crate_dir.rglob("*.rs")
+        if "target" not in f.parts and _is_library_source(f, crate_dir)
     )
     for rs_file in rs_files:
         section = extract_from_file(rs_file, crate_dir)
