@@ -254,13 +254,13 @@ pub async fn file_content(
 ///
 /// Writes UTF-8 text content back to a file in the workspace vault.
 ///
-/// SAFETY: the write target is the operator's live, restic-backed theke vault.
-/// The write is atomic — content lands in a sibling temp file that is fsynced
-/// and then renamed over the destination — so a crash or partial write never
-/// leaves the vault with a truncated note. The path is validated through the
-/// same escape guard as every read endpoint, the extension must be a known
-/// text format, the body is size-capped, and an optional `if_match_mtime_ms`
-/// guard rejects writes that would clobber a concurrent edit.
+/// SAFETY: the write is atomic — content lands in a sibling temp file that is
+/// fsynced and then renamed over the destination — so a crash or partial
+/// write never leaves the vault with a truncated note. The path is validated
+/// through the same escape guard as every read endpoint, the extension must
+/// be a known text format, the body is size-capped, and an optional
+/// `if_match_mtime_ms` guard rejects writes that would clobber a concurrent
+/// edit.
 ///
 /// # Cancel safety
 ///

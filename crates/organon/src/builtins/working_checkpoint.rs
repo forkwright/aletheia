@@ -1,7 +1,7 @@
 //! Agent-curated working-memory checkpoint tool.
 //!
 //! Agents call `update_working_checkpoint` to persist structured key-info
-//! that the turn-start hook reinjects into the next user message as a
+//! that the turn-start hook reinjects into the system prompt as a
 //! `<key_info>` block.
 
 use std::future::Future;
@@ -86,7 +86,7 @@ fn working_checkpoint_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("update_working_checkpoint"),
         description: "Persist structured key-info that the agent wants to retain \
-             across turns. This content is reinjected into the next user message \
+             across turns. This content is reinjected into the system prompt \
              as a <key_info> block, surviving context compaction."
             .to_owned(),
         extended_description: Some(
@@ -308,6 +308,26 @@ mod tests {
         };
         assert_eq!(metadata.reversibility, Reversibility::PartiallyReversible);
         assert_eq!(metadata.approval, ApprovalRequirement::Required);
+    }
+
+    #[test]
+    fn checkpoint_tool_description_names_the_real_injection_target() {
+        // WHY: `crates/nous/src/hooks/builtins/working_checkpoint.rs` injects
+        // checkpoint content into `context.pipeline.system_prompt`, not a
+        // synthesized user message. The agent reads this description on
+        // every turn to decide what to write, so it must match where the
+        // content actually lands.
+        let def = working_checkpoint_def();
+        assert!(
+            def.description.contains("system prompt"),
+            "description should name the system prompt as the injection target: {:?}",
+            def.description
+        );
+        assert!(
+            !def.description.contains("next user message"),
+            "description should not claim injection into the next user message: {:?}",
+            def.description
+        );
     }
 
     #[tokio::test]
