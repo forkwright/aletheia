@@ -34,18 +34,22 @@ const PARTIAL_MARKER_PREFIX: &str = "[partial: ";
 /// Convert a ULID to a globally unique `i64` for use as `turn_seq` in the
 /// usage table.
 ///
-/// Uses the upper 63 bits of the 128-bit ULID value. A ULID's upper 48 bits
-/// are a millisecond timestamp, so the result is monotonically increasing
-/// within each millisecond and practically unique across restarts.
+/// XOR-folds the 128-bit ULID's high and low 64-bit halves so every bit of
+/// entropy — the 48-bit timestamp and all 80 random bits — influences the
+/// result, then clears the sign bit. A naive high-63-bits truncation keeps
+/// only the timestamp plus the top 15 of the 80 random bits, so two turns
+/// finalized in the same session within the same millisecond would collide
+/// roughly one time in 2^15; folding in the full random suffix restores
+/// ULID-grade collision resistance for this derived key.
 fn turn_seq_from_ulid(ulid: &Ulid) -> i64 {
-    // NOTE: ULID is 128-bit: shift right 65 bits to keep upper 63 bits (48-bit timestamp + 15-bit randomness prefix); mask ensures sign bit is zero so cast to i64 never wraps
     let raw = ulid.as_u128();
     #[expect(
         clippy::as_conversions,
-        reason = "u128→i64: mask ensures sign bit is zero so cast never wraps"
+        reason = "u128→u64→i64: XOR-fold mixes all 128 source bits into 64, then mask ensures sign bit is zero so the final cast never wraps"
     )]
     {
-        ((raw >> 65) & 0x7FFF_FFFF_FFFF_FFFF) as i64 // kanon:ignore RUST/as-cast
+        let folded = (raw as u64) ^ ((raw >> 64) as u64); // kanon:ignore RUST/as-cast
+        (folded & 0x7FFF_FFFF_FFFF_FFFF) as i64 // kanon:ignore RUST/as-cast
     }
 }
 
@@ -562,6 +566,41 @@ mod tests {
         assert_eq!(history[0].content, "Hi there");
         assert_eq!(history[1].role, Role::Assistant);
         assert_eq!(history[1].content, "Hello!");
+    }
+
+    /// Regression test for #5268: the old `turn_seq_from_ulid` kept only the
+    /// upper 63 bits of the 128-bit ULID (48-bit timestamp + top 15 of the
+    /// 80 random bits), so two distinct turn IDs sharing those top 63 bits
+    /// mapped to the same `usage_exists_for_turn` dedup key even though their
+    /// low 65 random bits differ. That collision made `finalize` treat the
+    /// second turn as an already-recorded duplicate, silently dropping its
+    /// messages and usage. The fix must fold every bit of entropy into the
+    /// derived key.
+    #[test]
+    fn turn_seq_from_ulid_distinguishes_ulids_sharing_top_63_bits() {
+        // WHY: zeroing the low 65 bits leaves the top 63 bits (timestamp +
+        // top 15 random bits) identical between raw1/raw2 — exactly the bits
+        // the old implementation kept. Only the low bits differ.
+        let low_mask: u128 = (1u128 << 65) - 1;
+        let base: u128 = 0x1234_5678_9ABC_DEF0_1234_5678_9ABC_DEF0;
+        let raw1 = base & !low_mask;
+        let raw2 = raw1 | 1;
+        assert_eq!(
+            raw1 >> 65,
+            raw2 >> 65,
+            "test fixture must share the old scheme's kept bits"
+        );
+
+        let ulid1 = Ulid::from_u128(raw1);
+        let ulid2 = Ulid::from_u128(raw2);
+
+        assert_ne!(
+            turn_seq_from_ulid(&ulid1),
+            turn_seq_from_ulid(&ulid2),
+            "turn_seq must distinguish ULIDs that differ only in their low \
+             65 bits, or the legacy usage_exists_for_turn guard aliases \
+             distinct turns and drops the second turn's finalize"
+        );
     }
 
     /// Regression test for #4915: partial terminal outcomes must not be
