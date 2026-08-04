@@ -347,16 +347,84 @@ def extract_trait_signature(node: Node, source: bytes) -> str:
     return header + " { }"
 
 
+def extract_struct_signature(node: Node, source: bytes) -> str:
+    """Render a struct declaration with non-pub fields elided.
+
+    Enum variant fields cannot carry a narrower visibility than the enum
+    itself, so enums are safe to render verbatim (see `extract_signature`).
+    Structs are not: a bare `pub struct` commonly wraps private
+    implementation fields, and the L3 corpus must not expose them.
+
+    - Unit structs (`pub struct Foo;`) have no field list to leak; render
+      unchanged.
+    - Named-field structs: keep only bare-`pub` fields. If every field is
+      private, render the field list opaquely. If some are pub, render
+      those and note that private fields were elided.
+    - Tuple structs: render fully only when every positional field is
+      bare `pub` (dropping one field would silently shift the positions
+      of the rest); otherwise render the field list opaquely, since a
+      partial tuple cannot be shown without revealing field position.
+    """
+    field_list = next(
+        (c for c in node.children if c.type in ("field_declaration_list", "ordered_field_declaration_list")),
+        None,
+    )
+    if field_list is None:
+        return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace").strip()
+
+    header = source[node.start_byte : field_list.start_byte].decode("utf-8", errors="replace").strip()
+
+    if field_list.type == "field_declaration_list":
+        all_fields = [c for c in field_list.children if c.type == "field_declaration"]
+        pub_fields = [f for f in all_fields if node_is_pub(f, source)]
+        if not pub_fields:
+            return f"{header} {{ /* private fields */ }}" if all_fields else f"{header} {{}}"
+        rendered = [
+            source[f.start_byte : f.end_byte].decode("utf-8", errors="replace").strip() for f in pub_fields
+        ]
+        if len(pub_fields) < len(all_fields):
+            rendered.append("/* private fields elided */")
+        body = ",\n    ".join(rendered)
+        return f"{header} {{\n    {body},\n}}"
+
+    # ordered_field_declaration_list (tuple struct): group children into
+    # per-field spans split on top-level commas, since tuple-struct fields
+    # have no wrapping field_declaration node of their own.
+    fields: list[list[Node]] = [[]]
+    for child in field_list.children:
+        if child.type in ("(", ")"):
+            continue
+        if child.type == ",":
+            fields.append([])
+            continue
+        fields[-1].append(child)
+    fields = [f for f in fields if f]
+    all_pub = all(
+        f[0].type == "visibility_modifier"
+        and source[f[0].start_byte : f[0].end_byte].decode("utf-8", errors="replace").strip() == "pub"
+        for f in fields
+    )
+    if all_pub:
+        return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace").strip()
+    return f"{header}(/* private fields */);"
+
+
 def extract_signature(node: Node, source: bytes) -> str:
     """Extract the item signature, omitting body implementations.
 
-    - struct/enum: full declaration (these are type definitions, not code)
+    - struct: full declaration, but non-pub fields are elided (see
+      `extract_struct_signature`)
+    - enum: full declaration (variant fields cannot be narrower than the
+      enum's own visibility, so there is nothing to elide)
     - fn: header only, no body block
     - trait: header + method signatures only, no default bodies
     - impl: header + pub method signatures only, no bodies
     - type_item (pub type X = Y;), const_item, static_item: full text
     """
-    if node.type in ("struct_item", "enum_item"):
+    if node.type == "struct_item":
+        return extract_struct_signature(node, source)
+
+    if node.type == "enum_item":
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace").strip()
 
     if node.type == "function_item":
