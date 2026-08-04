@@ -462,6 +462,25 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
                     .to_owned(),
             );
         }
+
+        // WHY(#5155): a zero RPM or burst leaves `TokenBucket::fill_rate` at
+        // 0.0, so `try_acquire`'s `deficit / fill_rate` divides by zero and
+        // saturates `retry_after` to `u64::MAX` instead of yielding a
+        // sensible block or a rejected config.
+        if let Some(per_user) = rate_limit.get("perUser") {
+            let per_user_enabled = per_user
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if per_user_enabled {
+                check_positive_u32(per_user, "defaultRpm", errors);
+                check_positive_u32(per_user, "defaultBurst", errors);
+                check_positive_u32(per_user, "llmRpm", errors);
+                check_positive_u32(per_user, "llmBurst", errors);
+                check_positive_u32(per_user, "toolRpm", errors);
+                check_positive_u32(per_user, "toolBurst", errors);
+            }
+        }
     }
 }
 

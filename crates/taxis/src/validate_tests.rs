@@ -272,6 +272,89 @@ fn rejects_enabled_rate_limit_with_zero_requests_per_minute() {
 }
 
 #[test]
+fn rejects_enabled_per_user_rate_limit_with_zero_llm_rpm() {
+    let section = json!({
+        "rateLimit": {
+            "perUser": {
+                "enabled": true,
+                "llmRpm": 0
+            }
+        }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "enabled per-user rate limiting must have a positive llmRpm"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("llmRpm")),
+        "error should mention llmRpm: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_enabled_per_user_rate_limit_with_zero_burst() {
+    let section = json!({
+        "rateLimit": {
+            "perUser": {
+                "enabled": true,
+                "defaultBurst": 0
+            }
+        }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "enabled per-user rate limiting must have a positive defaultBurst"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("defaultBurst")),
+        "error should mention defaultBurst: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_disabled_per_user_rate_limit_with_zero_fields() {
+    // A disabled per-user limiter is a dead config branch: zero fields
+    // there never reach `TokenBucket`, so they are not rejected.
+    let section = json!({
+        "rateLimit": {
+            "perUser": {
+                "enabled": false,
+                "llmRpm": 0
+            }
+        }
+    });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "zero fields on a disabled per-user rate limiter should be accepted"
+    );
+}
+
+#[test]
+fn accepts_valid_enabled_per_user_rate_limit() {
+    let section = json!({
+        "rateLimit": {
+            "perUser": {
+                "enabled": true,
+                "defaultRpm": 60,
+                "defaultBurst": 10,
+                "llmRpm": 20,
+                "llmBurst": 5,
+                "toolRpm": 30,
+                "toolBurst": 8
+            }
+        }
+    });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "valid enabled per-user rate limit config should be accepted"
+    );
+}
+
+#[test]
 fn rejects_disabled_csrf_without_acknowledgement() {
     let section = json!({ "csrf": { "enabled": false } });
     let result = validate_section("gateway", &section);
