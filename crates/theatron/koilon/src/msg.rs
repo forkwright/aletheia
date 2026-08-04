@@ -415,15 +415,12 @@ pub enum Msg {
     SlashCompleteDown,
     SlashCompleteSelect,
 
-    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
     ToastPush {
         message: String,
         kind: NotificationKind,
         duration_secs: u64,
     },
-    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
     ErrorBannerSet(String),
-    #[expect(dead_code, reason = "sent by API event bridge; not yet wired")]
     ErrorBannerDismiss,
 
     #[expect(
@@ -569,10 +566,6 @@ pub enum OverlayKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NotificationKind {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "API bridge sends these; not yet wired")
-    )]
     Info,
     Warning,
     #[cfg_attr(
