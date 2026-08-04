@@ -62,12 +62,6 @@ mode = "none"
 enabled = false
 disableAcknowledged = true
 
-# WHY: local_only metrics 403s even loopback peers (ConnectInfo gap, see
-# tracking issue); public is safe on the 127.0.0.1-bound test instance and
-# keeps the smoke assertion on metrics content, not the exposure ACL.
-[gateway.metrics]
-mode = "public"
-
 [sandbox]
 enabled = false
 
@@ -195,9 +189,11 @@ fn server_starts_serves_health_and_shuts_down() {
     let (code, body) = http_get(port, "/api/v1/sessions").expect("sessions request");
     assert_eq!(code, 200, "sessions body: {body}");
 
-    // Verify metrics endpoint
+    // Verify metrics endpoint: the instance config omits [gateway.metrics],
+    // so this exercises the default `local_only` ACL over a genuine loopback
+    // TCP connection (#6454 — ConnectInfo must be injected for this to pass).
     let (code, body) = http_get(port, "/metrics").expect("metrics request");
-    assert_eq!(code, 200);
+    assert_eq!(code, 200, "loopback /metrics under local_only: {body}");
     assert!(
         body.contains("aletheia_uptime_seconds"),
         "metrics body missing uptime"
