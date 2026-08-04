@@ -111,6 +111,24 @@ fn private_helper() -> u32 {
     0
 }
 
+/// A public struct mixing public and private fields. Only the public
+/// field must appear in the L3 output; the private field's name and
+/// type must not leak.
+pub struct MixedVisibility {
+    pub id: u64,
+    hidden_field: HiddenType,
+}
+
+/// A public struct with only private fields. The L3 output must render
+/// this opaquely, with no field name or type exposed.
+pub struct AllPrivateFields {
+    hidden_field: HiddenType,
+}
+
+/// A public tuple struct mixing a public and a private positional field.
+/// The private field's type must not leak.
+pub struct MixedTuple(pub u32, HiddenType);
+
 impl Widget {
     pub fn new(id: u64) -> Self {
         Self { id }
@@ -214,6 +232,40 @@ def test_non_pub_items_excluded(md: str) -> None:
     expect(
         "internal_id" not in md,
         "pub(crate) method internal_id leaked into L3 output",
+    )
+
+
+def test_struct_private_fields_elided(md: str) -> None:
+    """Structs with private fields must not leak field names or types.
+
+    Regression test for #5405: `extract_signature` rendered struct_item
+    nodes as raw source text, so any private field on an otherwise-public
+    struct (name, type, and all) appeared verbatim in the generated L3
+    corpus.
+    """
+    expect(
+        "pub struct MixedVisibility" in md,
+        "pub struct MixedVisibility missing from L3 output",
+    )
+    expect(
+        "pub id: u64" in md,
+        "public field on MixedVisibility missing from L3 output",
+    )
+    expect(
+        "pub struct AllPrivateFields" in md,
+        "pub struct AllPrivateFields missing from L3 output",
+    )
+    expect(
+        "pub struct MixedTuple" in md,
+        "pub struct MixedTuple missing from L3 output",
+    )
+    expect(
+        "HiddenType" not in md,
+        "private field type HiddenType leaked into L3 output",
+    )
+    expect(
+        "hidden_field" not in md,
+        "private field name hidden_field leaked into L3 output",
     )
 
 
@@ -411,6 +463,7 @@ def main() -> int:
 
         test_pub_items_extracted(md)
         test_non_pub_items_excluded(md)
+        test_struct_private_fields_elided(md)
         test_cfg_test_items_excluded(md)
         test_doc_comments_attached(md)
         test_fn_body_stripped(md)
