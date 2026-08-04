@@ -3,7 +3,7 @@
 #[cfg(feature = "storage-fjall")]
 use std::io::Write;
 
-use super::super::{KnowledgeConfig, KnowledgeStore, migration};
+use super::super::{KnowledgeConfig, KnowledgeStore, entities_ddl, migration};
 use crate::test_fixtures::{make_entity, make_fact};
 
 #[cfg(feature = "storage-fjall")]
@@ -45,6 +45,58 @@ fn migration_registry_is_sequential_and_current() {
         KnowledgeStore::SCHEMA_VERSION,
         "latest migration target should match schema version"
     );
+}
+
+#[test]
+fn atomic_rewrite_abort_preserves_pre_rewrite_relation() {
+    // Regression test for #5779: pre-fix, a destructive migration step ran
+    // `::remove <relation>` as its own committed `db.run()` call, so a
+    // failure anywhere in the row-by-row reinsert loop left the relation
+    // recreated-but-empty with the source rows already gone. This drives
+    // `atomic_rewrite` (the fix) through exactly that shape — remove,
+    // recreate, then a step that fails — and asserts the pre-rewrite data
+    // survives the abort. Reverting `atomic_rewrite` to independent
+    // `self.db.run()` calls per step (the pre-fix shape) makes this go red:
+    // the entity would be gone after the failed rewrite instead of intact.
+    let store = make_store();
+    let entity = make_entity("alice", "Alice", "person");
+    store.insert_entity(&entity).expect("insert entity");
+
+    let steps = vec![
+        (
+            "remove entities".to_owned(),
+            "::remove entities".to_owned(),
+            std::collections::BTreeMap::new(),
+        ),
+        (
+            "recreate entities".to_owned(),
+            entities_ddl(4),
+            std::collections::BTreeMap::new(),
+        ),
+        (
+            "reinsert (deliberately broken)".to_owned(),
+            "this is not valid datalog".to_owned(),
+            std::collections::BTreeMap::new(),
+        ),
+    ];
+
+    let err = store
+        .atomic_rewrite("test", steps)
+        .expect_err("a broken step must fail the whole rewrite, not partially apply it");
+    assert!(
+        err.to_string().contains("reinsert (deliberately broken)"),
+        "error should name the failing step, got: {err}"
+    );
+
+    let entities = store
+        .list_entities()
+        .expect("list entities after aborted rewrite");
+    assert_eq!(
+        entities.len(),
+        1,
+        "aborted atomic_rewrite must not destroy the pre-rewrite entities relation"
+    );
+    assert_eq!(entities[0].name, "Alice");
 }
 
 #[test]

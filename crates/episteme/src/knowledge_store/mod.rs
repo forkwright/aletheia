@@ -1155,24 +1155,40 @@ impl KnowledgeStore {
         .map(Some)
     }
 
-    fn stamp_schema_version(&self, version: i64, context: &str) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::{DataValue, ScriptMutability};
-        let mut params = BTreeMap::new();
+    /// Build the `schema_version` upsert script + params for `version`, without
+    /// running it.
+    ///
+    /// SSOT for the stamp script: [`Self::stamp_schema_version`] runs it
+    /// standalone, while destructive migration steps fold it into the same
+    /// `atomic_rewrite` transaction as the rewrite it closes out, so the
+    /// version never advances on data that did not durably land.
+    fn schema_version_stamp_step(
+        version: i64,
+    ) -> (
+        String,
+        std::collections::BTreeMap<String, crate::engine::DataValue>,
+    ) {
+        use crate::engine::DataValue;
+        let mut params = std::collections::BTreeMap::new();
         params.insert("schema_key".to_owned(), DataValue::Str("schema".into()));
         params.insert(
             "stamp_key".to_owned(),
             DataValue::Str(Self::migration_stamp_key(version).into()),
         );
         params.insert("version".to_owned(), DataValue::from(version));
+        (
+            r"?[key, version] <- [[$schema_key, $version], [$stamp_key, $version]]
+              :put schema_version { key => version }"
+                .to_owned(),
+            params,
+        )
+    }
+
+    fn stamp_schema_version(&self, version: i64, context: &str) -> crate::error::Result<()> {
+        use crate::engine::ScriptMutability;
+        let (script, params) = Self::schema_version_stamp_step(version);
         self.db
-            .run(
-                r"?[key, version] <- [[$schema_key, $version], [$stamp_key, $version]]
-                  :put schema_version { key => version }",
-                params,
-                ScriptMutability::Mutable,
-            )
+            .run(&script, params, ScriptMutability::Mutable)
             .map_err(|e| {
                 crate::error::EngineQuerySnafu {
                     message: format!("{context} version write failed: {e}"),
