@@ -117,6 +117,33 @@ async fn allows_tool_when_within_budget() {
     );
 }
 
+#[tokio::test]
+async fn denies_tool_when_cache_tokens_push_turn_over_budget() {
+    let hook = CostControlHook::new(100);
+    let usage = TurnUsage {
+        input_tokens: 40,
+        output_tokens: 30, // total_tokens() = 70, under the 100 budget
+        cache_read_tokens: 20,
+        cache_write_tokens: 15, // budgeted_tokens() = 105, over the 100 budget
+        ..TurnUsage::default()
+    };
+    let ctx = ToolHookContext {
+        nous_id: "test",
+        turn_usage: &usage,
+        tool_allowlist: None,
+    };
+
+    let result = hook
+        .before_tool("test_tool", &serde_json::json!({}), &ctx)
+        .await;
+    assert!(
+        matches!(result, ToolHookResult::Deny { .. }),
+        "prompt-cache read/write tokens must count toward the turn budget: \
+         input+output alone (70) is under the 100 budget but the full \
+         footprint (105) is over it"
+    );
+}
+
 // -- Scope enforcement tests --
 
 #[tokio::test]
