@@ -20,6 +20,8 @@ mod entities;
 #[cfg(feature = "mneme-engine")]
 mod facts;
 #[cfg(feature = "mneme-engine")]
+mod hot_reload;
+#[cfg(feature = "mneme-engine")]
 mod lesson_e2e;
 #[cfg(feature = "mneme-engine")]
 mod migration;

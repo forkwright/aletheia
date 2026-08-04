@@ -161,6 +161,16 @@ impl Oikos {
         self.knowledge_db().join(cohort)
     }
 
+    /// The operator-editable Datalog rule directory for a single episteme
+    /// cohort's hot-reloaded rule store.
+    ///
+    /// Drop `.mnm` rule files here to have them applied to the running store
+    /// without a restart (`krites::Db::attach_rule_store`).
+    #[must_use]
+    pub fn knowledge_cohort_rules_dir(&self, cohort: &str) -> PathBuf {
+        self.knowledge_cohort_db(cohort).join("rules")
+    }
+
     /// The backups directory.
     #[must_use]
     pub fn backups(&self) -> PathBuf {
@@ -468,6 +478,11 @@ mod tests {
             oikos.knowledge_db(),
             PathBuf::from("/srv/instance/data/knowledge.fjall"),
             "knowledge db path"
+        );
+        assert_eq!(
+            oikos.knowledge_cohort_rules_dir("shared"),
+            PathBuf::from("/srv/instance/data/knowledge.fjall/shared/rules"),
+            "knowledge cohort rules dir"
         );
         assert_eq!(
             oikos.logs(),
