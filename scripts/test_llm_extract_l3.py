@@ -342,6 +342,62 @@ def test_empty_crate_produces_no_modules(tmp: Path) -> None:
     )
 
 
+def test_integration_test_fixtures_excluded(tmp: Path) -> None:
+    """pub items under a crate's tests/ and benches/ dirs must not leak into L3.
+
+    Regression test for #5408: the extractor walked every *.rs file under
+    crate_dir with only a `target/` exclusion, so Cargo integration-test and
+    benchmark fixtures (which routinely export `pub` helper types so sibling
+    test binaries can share them via `mod common;`) were rendered into the L3
+    public-API corpus as if they were real crate API.
+    """
+    crate_root = tmp / "fixtures-excluded"
+    crate_dir = crate_root / "fixture-crate"
+    (crate_dir / "src").mkdir(parents=True)
+    (crate_dir / "tests" / "common").mkdir(parents=True)
+    (crate_dir / "benches").mkdir(parents=True)
+    (crate_dir / "Cargo.toml").write_text(FIXTURE_CARGO_TOML)
+    (crate_dir / "src" / "lib.rs").write_text(
+        "/// Real public API.\npub fn real_api() -> u32 { 0 }\n"
+    )
+    (crate_dir / "tests" / "common" / "mod.rs").write_text(
+        "/// Shared integration-test fixture, not crate API.\n"
+        "pub struct TestEnv;\n"
+        "\n"
+        "impl TestEnv {\n"
+        "    pub fn builder() -> u32 { 0 }\n"
+        "}\n"
+    )
+    (crate_dir / "tests" / "public_api.rs").write_text(
+        "/// Integration test entry point.\npub fn not_crate_api() {}\n"
+    )
+    (crate_dir / "benches" / "throughput.rs").write_text(
+        "/// Benchmark harness helper.\npub fn bench_helper() -> u32 { 0 }\n"
+    )
+
+    original_root = EXTRACTOR.REPO_ROOT  # type: ignore[attr-defined]
+    EXTRACTOR.REPO_ROOT = crate_root  # type: ignore[attr-defined]
+    try:
+        idx = EXTRACTOR.extract_crate("fixture-crate", crate_dir)  # type: ignore[attr-defined]
+    finally:
+        EXTRACTOR.REPO_ROOT = original_root  # type: ignore[attr-defined]
+    md = EXTRACTOR.render_crate_markdown(idx)  # type: ignore[attr-defined]
+
+    expect("pub fn real_api" in md, "real crate API missing from L3 output")
+    expect(
+        "TestEnv" not in md,
+        "tests/common/mod.rs pub struct TestEnv leaked into L3 output",
+    )
+    expect(
+        "not_crate_api" not in md,
+        "tests/public_api.rs pub fn leaked into L3 output",
+    )
+    expect(
+        "bench_helper" not in md,
+        "benches/throughput.rs pub fn leaked into L3 output",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -364,6 +420,7 @@ def main() -> int:
         test_source_hash_multi_file_matches_contract(tmp)
         test_source_hash_excludes_target_dir(tmp)
         test_empty_crate_produces_no_modules(tmp)
+        test_integration_test_fixtures_excluded(tmp)
 
     if _FAILURES:
         print(f"FAIL: {len(_FAILURES)} assertion(s) failed", file=sys.stderr)
