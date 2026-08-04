@@ -78,6 +78,14 @@ jobs:
       - name: Check proskenion flake wiring
         run: scripts/check-proskenion-flake.py
 
+      # WHY: the pin check compares the versions the lockfile records, which
+      # cannot see a dependency-set change. Editing a root-workspace manifest
+      # rewrites what proskenion's lockfile must record, and every cargo step
+      # below resolves without --locked, so a stale lock is silently updated
+      # here and fails only in the tag-triggered release build.
+      - name: Check proskenion lockfile resolves
+        run: cargo metadata --manifest-path crates/theatron/proskenion/Cargo.toml --format-version 1 --locked > /dev/null
+
       - name: cargo fmt --check
         run: cargo fmt --manifest-path crates/theatron/proskenion/Cargo.toml --all -- --check
 

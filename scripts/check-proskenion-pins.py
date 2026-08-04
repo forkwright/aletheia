@@ -11,6 +11,11 @@ from pathlib import Path
 
 THEATRON_DEPS = ("bathron", "gramma", "skeue", "themelion")
 PIN_KEYS = ("git", "tag", "rev", "branch", "features", "default-features")
+# WHY: koina and skene are root-workspace members that proskenion consumes by
+# path across the workspace boundary, so their locked version is the root
+# workspace version. proskenion's own entry is versioned independently and must
+# not be compared against it.
+ROOT_MEMBER_DEPS = ("koina", "skene")
 LOGGER = logging.getLogger("check-proskenion-pins")
 
 
@@ -24,10 +29,51 @@ def workspace_deps(manifest: Path) -> dict:
     return data.get("workspace", {}).get("dependencies", {})
 
 
+def workspace_version(manifest: Path) -> str | None:
+    data = load_toml(manifest)
+    return data.get("workspace", {}).get("package", {}).get("version")
+
+
+def locked_versions(lockfile: Path) -> dict[str, str]:
+    data = load_toml(lockfile)
+    return {
+        package["name"]: package["version"]
+        for package in data.get("package", [])
+        if "name" in package and "version" in package
+    }
+
+
 def normalized_pin(dep: object) -> dict:
     if not isinstance(dep, dict):
         return {"value": dep}
     return {key: dep.get(key) for key in PIN_KEYS if key in dep}
+
+
+def lock_errors(repo_root: Path, root_manifest: Path) -> list[str]:
+    """Check proskenion's lockfile records the current root workspace version.
+
+    WHY: release-please patches the root Cargo.toml and root Cargo.lock, but
+    proskenion is a separate workspace with its own lockfile that no release
+    step rewrites. Left unchecked it drifts behind every release until
+    `cargo --locked` can no longer resolve the workspace.
+    """
+    lockfile = repo_root / "crates" / "theatron" / "proskenion" / "Cargo.lock"
+    root_version = workspace_version(root_manifest)
+    if root_version is None:
+        return ["root Cargo.toml: missing [workspace.package] version"]
+
+    locked = locked_versions(lockfile)
+    errors: list[str] = []
+    for dep_name in ROOT_MEMBER_DEPS:
+        if dep_name not in locked:
+            errors.append(f"{dep_name}: missing from proskenion Cargo.lock")
+            continue
+        if locked[dep_name] != root_version:
+            errors.append(
+                f"{dep_name}: proskenion Cargo.lock records {locked[dep_name]}, "
+                f"root workspace is {root_version}"
+            )
+    return errors
 
 
 def main() -> int:
@@ -60,13 +106,16 @@ def main() -> int:
                 f"{dep_name}: root pin {root_norm!r} != proskenion pin {proskenion_norm!r}"
             )
 
+    errors.extend(lock_errors(repo_root, root_manifest))
+
     if errors:
         LOGGER.error("proskenion theatron pin check failed:")
         for error in errors:
             LOGGER.error("  - %s", error)
         LOGGER.error(
             "Update crates/theatron/proskenion/Cargo.toml to mirror the root "
-            "[workspace.dependencies] pins."
+            "[workspace.dependencies] pins, and crates/theatron/proskenion/"
+            "Cargo.lock to record the root [workspace.package] version."
         )
         return 1
 
