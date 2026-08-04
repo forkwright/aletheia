@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, info};
 
@@ -75,9 +76,9 @@ pub enum DpoError {
         source: std::io::Error,
     },
 
-    /// Failed to read file metadata.
-    #[snafu(display("failed to read metadata for {}: {source}", path.display()))]
-    ReadMetadata {
+    /// Failed to read the DPO JSONL file to check for an existing `pair_id`.
+    #[snafu(display("failed to read DPO file {}: {source}", path.display()))]
+    ReadFile {
         path: PathBuf,
         source: std::io::Error,
     },
@@ -91,6 +92,23 @@ pub type Result<T> = std::result::Result<T, DpoError>;
 /// Serialized as one JSON line in the output JSONL file.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DpoPair {
+    /// Schema version that produced this pair.
+    ///
+    /// Defaults to `0` when deserializing rows written before the field
+    /// existed, distinguishing legacy rows from version-1+ rows.
+    #[serde(default)]
+    pub schema_version: u32,
+    /// Stable idempotency key derived from `session_id`, `rejected_turn`,
+    /// and `chosen_turn` (see [`compute_pair_id`]).
+    ///
+    /// Deterministic: the same correction sequence always yields the same
+    /// `pair_id`, so a replayed write of the same pair can be detected and
+    /// deduplicated by [`DpoWriter::write_pair`]. Defaults to the empty
+    /// string when deserializing legacy rows written before the field
+    /// existed; an empty `pair_id` never matches an existing row, so
+    /// legacy rows are never treated as duplicates of anything.
+    #[serde(default)]
+    pub pair_id: String,
     /// The user prompt that both the rejected and chosen responses answer.
     pub prompt: String,
     /// The corrected assistant response (preferred).
@@ -104,6 +122,66 @@ pub struct DpoPair {
     pub rejected_turn: u64,
     /// Turn number of the chosen response.
     pub chosen_turn: u64,
+    /// Version tag for the semantic-similarity validator
+    /// ([`DpoExtractor::validate_semantic_match`]) that admitted this pair.
+    ///
+    /// `None` for legacy rows written before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validator_version: Option<String>,
+    /// Stable PII/secret redaction policy reference applied to this pair's
+    /// text before persistence.
+    ///
+    /// `Some(pii::POLICY_REF)` when the full nous training PII suite ran
+    /// (`pii_filter_enabled = true`); `None` when only the always-on
+    /// secret redactor ran, and for legacy rows written before the field
+    /// existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pii_policy_ref: Option<String>,
+}
+
+/// Current schema version for [`DpoPair`].
+pub const DPO_PAIR_SCHEMA_VERSION: u32 = 1;
+
+/// Version tag for [`DpoExtractor::validate_semantic_match`], recorded on
+/// every captured pair via [`DpoPair::validator_version`].
+///
+/// Bump when the matching algorithm, threshold, or continuation-bypass
+/// rule changes, so downstream corpus consumers can tell which validation
+/// semantics admitted a given pair.
+pub const DPO_VALIDATOR_VERSION: &str = "dpo-jaccard-v1";
+
+/// Compute the stable idempotency key for a DPO pair from its identity:
+/// `session_id`, `rejected_turn`, and `chosen_turn`.
+///
+/// WHY length-prefixed field hashing rather than naive concatenation:
+/// concatenating `session_id`/`rejected_turn`/`chosen_turn` directly could
+/// collide across different splits (session `"a"` turns `1`,`23` vs.
+/// session `"a1"` turns `2`,`3`). Hashing each field with its own length
+/// prefix removes that ambiguity.
+fn compute_pair_id(session_id: &str, rejected_turn: u64, chosen_turn: u64) -> String {
+    let mut hasher = Sha256::new();
+    hash_field(&mut hasher, session_id);
+    hash_field(&mut hasher, &rejected_turn.to_string());
+    hash_field(&mut hasher, &chosen_turn.to_string());
+    let digest = hasher.finalize();
+
+    let mut out = String::with_capacity(digest.len() * 2 + 5);
+    out.push_str("dpo1:");
+    for byte in &digest {
+        use std::fmt::Write;
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// Feed one field into `hasher`, prefixed with its byte length so that
+/// field boundaries cannot be confused by concatenation ambiguity.
+fn hash_field(hasher: &mut Sha256, value: &str) {
+    hasher.update(value.len().to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(value.as_bytes());
+    hasher.update(b"\0");
 }
 
 /// Snapshot of a single turn's data needed for DPO extraction.
@@ -259,12 +337,17 @@ impl DpoExtractor {
                     "dpo.pair_captured"
                 );
                 Some(DpoPair {
+                    schema_version: DPO_PAIR_SCHEMA_VERSION,
+                    pair_id: compute_pair_id(session_id, pending.rejected_turn, turn_number),
                     prompt: pending.prompt,
                     chosen: assistant_response.clone(),
                     rejected: pending.rejected,
                     session_id: session_id.to_owned(),
                     rejected_turn: pending.rejected_turn,
                     chosen_turn: turn_number,
+                    validator_version: Some(DPO_VALIDATOR_VERSION.to_owned()),
+                    pii_policy_ref: pii_filter_enabled
+                        .then(|| crate::training::pii::POLICY_REF.to_owned()),
                 })
             } else {
                 debug!(
@@ -385,11 +468,26 @@ impl DpoWriter {
 
     /// Write a single [`DpoPair`] as a JSON line to the output file.
     ///
+    /// Idempotent on `pair.pair_id`: if a row with the same `pair_id`
+    /// already exists in this writer's output file, the write is skipped
+    /// and this returns `Ok(())` without appending a duplicate line. A pair
+    /// with an empty `pair_id` (legacy callers, pre-#5386) is never treated
+    /// as a duplicate and is always appended.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the file cannot be opened, the pair cannot
-    /// be serialized, or the write fails.
+    /// Returns an error if the existing file cannot be read for the
+    /// duplicate check, the file cannot be opened for appending, the pair
+    /// cannot be serialized, or the write fails.
     pub fn write_pair(&self, pair: &DpoPair) -> Result<()> {
+        if self.contains_pair_id(&pair.pair_id)? {
+            debug!(
+                pair_id = pair.pair_id.as_str(),
+                "dpo.pair_duplicate: skipping idempotent replay"
+            );
+            return Ok(());
+        }
+
         let mut line = serde_json::to_string(pair).context(SerializeSnafu)?;
         line.push('\n');
 
@@ -403,6 +501,35 @@ impl DpoWriter {
             .context(WritePairSnafu { path: &self.path })?;
 
         Ok(())
+    }
+
+    /// Whether a row with the given `pair_id` has already been written to
+    /// this writer's output file.
+    ///
+    /// An empty `pair_id` never matches (legacy rows carry no durable
+    /// identity to dedupe against).
+    ///
+    /// WHY re-read the file on every call rather than cache an in-memory
+    /// set: `DpoWriter` holds no handle between writes (see struct docs),
+    /// so a fresh read also catches pairs written by a prior process
+    /// instance for the same dated file — a crash/restart replay, not just
+    /// duplicates within this process's lifetime. Malformed or legacy JSON
+    /// lines are treated as non-matches rather than errors, so one corrupt
+    /// row cannot block every future write.
+    fn contains_pair_id(&self, pair_id: &str) -> Result<bool> {
+        if pair_id.is_empty() {
+            return Ok(false);
+        }
+
+        let content = match std::fs::read_to_string(&self.path) {
+            Ok(content) => content,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(source) => return Err(source).context(ReadFileSnafu { path: &self.path }),
+        };
+
+        Ok(content.lines().any(|line| {
+            serde_json::from_str::<DpoPair>(line).is_ok_and(|existing| existing.pair_id == pair_id)
+        }))
     }
 
     /// Path to the current DPO JSONL output file.
@@ -499,6 +626,95 @@ mod tests {
         assert_eq!(pair.rejected_turn, 1);
         assert_eq!(pair.chosen_turn, 3);
         assert_eq!(pair.session_id, "ses-1");
+    }
+
+    #[test]
+    fn extractor_emitted_pair_carries_schema_and_provenance_fields() {
+        let mut extractor = DpoExtractor::new();
+
+        let _ = extractor.process_turn(
+            "ses-1",
+            1,
+            "What is the capital of France?",
+            "London",
+            false,
+            true,
+        );
+        let _ = extractor.process_turn(
+            "ses-1",
+            2,
+            "Actually, the capital of France is Paris.",
+            "You are right.",
+            true,
+            true,
+        );
+        let pair = extractor
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                true,
+            )
+            .expect("should emit pair after correction sequence");
+
+        assert_eq!(pair.schema_version, DPO_PAIR_SCHEMA_VERSION);
+        assert_eq!(pair.pair_id, compute_pair_id("ses-1", 1, 3));
+        assert_ne!(pair.pair_id, "", "a captured pair must carry a durable id");
+        assert_eq!(
+            pair.validator_version,
+            Some(DPO_VALIDATOR_VERSION.to_owned())
+        );
+        assert_eq!(
+            pair.pii_policy_ref,
+            Some(crate::training::pii::POLICY_REF.to_owned()),
+            "pii_filter_enabled=true must record the policy ref"
+        );
+    }
+
+    #[test]
+    fn extractor_emitted_pair_omits_pii_policy_ref_when_filter_disabled() {
+        let mut extractor = DpoExtractor::new();
+
+        let _ = extractor.process_turn(
+            "ses-1",
+            1,
+            "What is the capital of France?",
+            "London",
+            false,
+            false,
+        );
+        let _ = extractor.process_turn(
+            "ses-1",
+            2,
+            "Actually, the capital of France is Paris.",
+            "You are right.",
+            true,
+            false,
+        );
+        let pair = extractor
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
+            .expect("should emit pair after correction sequence");
+
+        assert_eq!(
+            pair.pii_policy_ref, None,
+            "pii_filter_enabled=false must not claim the full-suite policy ran"
+        );
+        // WHY: the always-on secret redactor still runs regardless of
+        // pii_filter_enabled, but this pair carries no secret-shaped text,
+        // so provenance is correctly empty rather than falsely populated.
+        assert_eq!(
+            pair.validator_version,
+            Some(DPO_VALIDATOR_VERSION.to_owned())
+        );
     }
 
     #[test]
@@ -641,20 +857,84 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn dpo_pair_serde_roundtrip() {
-        let pair = DpoPair {
+    /// Builds a fully-populated pair for tests, mirroring what
+    /// `DpoExtractor::process_turn` produces.
+    fn sample_pair(session_id: &str, rejected_turn: u64, chosen_turn: u64) -> DpoPair {
+        DpoPair {
+            schema_version: DPO_PAIR_SCHEMA_VERSION,
+            pair_id: compute_pair_id(session_id, rejected_turn, chosen_turn),
             prompt: "What is 2+2?".to_owned(),
             chosen: "4".to_owned(),
             rejected: "5".to_owned(),
-            session_id: "ses-1".to_owned(),
-            rejected_turn: 1,
-            chosen_turn: 3,
-        };
+            session_id: session_id.to_owned(),
+            rejected_turn,
+            chosen_turn,
+            validator_version: Some(DPO_VALIDATOR_VERSION.to_owned()),
+            pii_policy_ref: Some(crate::training::pii::POLICY_REF.to_owned()),
+        }
+    }
+
+    #[test]
+    fn dpo_pair_serde_roundtrip() {
+        let pair = sample_pair("ses-1", 1, 3);
 
         let json = serde_json::to_string(&pair).expect("serialize");
         let back: DpoPair = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, pair);
+    }
+
+    #[test]
+    fn dpo_pair_legacy_row_deserializes_with_defaults() {
+        // WHY: rows written before #5386 have neither the new provenance
+        // fields nor `pair_id`/`schema_version`. A reader must accept them
+        // rather than fail closed on the whole corpus.
+        let legacy = r#"{
+            "prompt": "What is 2+2?",
+            "chosen": "4",
+            "rejected": "5",
+            "session_id": "ses-1",
+            "rejected_turn": 1,
+            "chosen_turn": 3
+        }"#;
+
+        let parsed: DpoPair = serde_json::from_str(legacy).expect("legacy row deserializes");
+        assert_eq!(parsed.schema_version, 0, "legacy rows default to version 0");
+        assert_eq!(parsed.pair_id, "", "legacy rows have no durable pair_id");
+        assert_eq!(parsed.validator_version, None);
+        assert_eq!(parsed.pii_policy_ref, None);
+        assert_eq!(parsed.prompt, "What is 2+2?");
+    }
+
+    #[test]
+    fn dpo_pair_id_is_stable_and_derived_from_identity() {
+        let a = compute_pair_id("ses-1", 1, 3);
+        let b = compute_pair_id("ses-1", 1, 3);
+        assert_eq!(a, b, "same session/turn identity must yield the same id");
+
+        assert_ne!(
+            a,
+            compute_pair_id("ses-2", 1, 3),
+            "different session must yield a different id"
+        );
+        assert_ne!(
+            a,
+            compute_pair_id("ses-1", 2, 3),
+            "different rejected_turn must yield a different id"
+        );
+        assert_ne!(
+            a,
+            compute_pair_id("ses-1", 1, 4),
+            "different chosen_turn must yield a different id"
+        );
+
+        // WHY: guards against naive string-concatenation collisions across
+        // field boundaries (session "ses-1" turns 1,23 vs session "ses-11"
+        // turns 2,3 must not collide just because their concatenation would).
+        assert_ne!(
+            compute_pair_id("ses-1", 1, 23),
+            compute_pair_id("ses-11", 2, 3),
+            "field boundaries must not be confusable via concatenation"
+        );
     }
 
     #[test]
@@ -669,26 +949,58 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let writer = DpoWriter::new(dir.path()).expect("new");
 
-        let pair = DpoPair {
-            prompt: "P".to_owned(),
-            chosen: "C".to_owned(),
-            rejected: "R".to_owned(),
-            session_id: "ses-1".to_owned(),
-            rejected_turn: 1,
-            chosen_turn: 3,
-        };
+        let pair = sample_pair("ses-1", 1, 3);
+        let other_pair = sample_pair("ses-1", 5, 7);
         writer.write_pair(&pair).expect("write");
-        writer.write_pair(&pair).expect("write");
+        writer.write_pair(&other_pair).expect("write");
 
         let content = std::fs::read_to_string(writer.file_path()).expect("read");
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines.len(), 2, "two distinct pairs must produce two lines");
 
         let parsed: DpoPair =
             serde_json::from_str(lines.first().expect("first line")).expect("parse");
-        assert_eq!(parsed.prompt, "P");
-        assert_eq!(parsed.chosen, "C");
-        assert_eq!(parsed.rejected, "R");
+        assert_eq!(parsed.prompt, "What is 2+2?");
+        assert_eq!(parsed.chosen, "4");
+        assert_eq!(parsed.rejected, "5");
+    }
+
+    #[test]
+    fn dpo_writer_write_pair_is_idempotent_for_duplicate_pair_id() {
+        // WHY(#5386): a replayed write of the same correction sequence (e.g.
+        // after a crash-restart) must not duplicate the pair in the corpus.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let writer = DpoWriter::new(dir.path()).expect("new");
+        let pair = sample_pair("ses-1", 1, 3);
+
+        writer.write_pair(&pair).expect("first write");
+        writer.write_pair(&pair).expect("replayed write");
+        writer.write_pair(&pair).expect("second replayed write");
+
+        let content = std::fs::read_to_string(writer.file_path()).expect("read");
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "three writes of the same pair_id must produce exactly one line"
+        );
+    }
+
+    #[test]
+    fn dpo_writer_legacy_empty_pair_id_is_never_deduped() {
+        // WHY: an empty pair_id (pre-#5386 callers, or a legacy row read
+        // back) carries no durable identity, so it must never suppress a
+        // write — otherwise the second real pair silently vanishes.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let writer = DpoWriter::new(dir.path()).expect("new");
+        let mut pair = sample_pair("ses-1", 1, 3);
+        pair.pair_id = String::new();
+
+        writer.write_pair(&pair).expect("first write");
+        writer.write_pair(&pair).expect("second write");
+
+        let content = std::fs::read_to_string(writer.file_path()).expect("read");
+        assert_eq!(content.lines().count(), 2);
     }
 
     #[test]
