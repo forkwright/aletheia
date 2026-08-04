@@ -11,7 +11,6 @@
 //! Auth values are treated as opaque references in the canonical store. This
 //! module may read legacy plaintext tokens only to migrate existing profiles.
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use snafu::{ResultExt, Snafu};
@@ -285,35 +284,27 @@ fn save_notification_prefs_in(
 fn write_desktop_config(path: &Path, desktop: &DesktopConfig) -> Result<(), ConfigError> {
     let content = toml::to_string_pretty(desktop).context(SerializeSnafu)?;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context(CreateDirSnafu {
-            path: parent.to_path_buf(),
-        })?;
-    }
+    let parent = path.parent().ok_or(ConfigError::NoConfigDir)?;
+    std::fs::create_dir_all(parent).context(CreateDirSnafu {
+        path: parent.to_path_buf(),
+    })?;
 
-    // WHY: On Unix create the file with 0o600 mode atomically. On Windows
-    // the equivalent `OpenOptionsExt::mode` does not exist; the file lives
-    // in the user's config directory where default ACLs are user-private.
-    #[cfg(unix)]
-    let mut file = {
-        use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)
-            .context(WriteFileSnafu { path })?
-    };
-    #[cfg(not(unix))]
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(path)
-        .context(WriteFileSnafu { path })?;
-    file.write_all(content.as_bytes())
-        .context(WriteFileSnafu { path })?;
+    // WHY: bathron owns the atomic replace sequence fleet-wide, so a crash or
+    // power loss between truncate and flush cannot leave desktop.toml empty.
+    // It also fsyncs the containing directory, which a bare tempfile-and-rename
+    // does not, so the rename itself survives power loss rather than only the
+    // file contents. The 0o600 mode is applied to the replacement before the
+    // rename, so the file is never briefly visible at the process umask; it is
+    // ignored on Windows, where the user's config directory carries
+    // user-private ACLs.
+    // WARNING: write_atomic deliberately does not create the parent directory,
+    // which is why create_dir_all above is still required.
+    bathron::atomic::write_atomic(path, content.as_bytes(), Some(0o600)).map_err(|source| {
+        ConfigError::WriteFile {
+            path: path.to_path_buf(),
+            source: std::io::Error::other(source),
+        }
+    })?;
 
     Ok(())
 }
@@ -321,6 +312,8 @@ fn write_desktop_config(path: &Path, desktop: &DesktopConfig) -> Result<(), Conf
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
+    use std::io::Write as _;
+
     use super::*;
 
     fn temp_base() -> (tempfile::TempDir, PathBuf) {
@@ -656,5 +649,60 @@ auth_token = "{legacy_token}"
         let active = store.active().unwrap();
         assert_eq!(active.url, "http://save-me:18789");
         assert_eq!(active.auth_token.as_deref(), Some(raw_token));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_desktop_config_replaces_the_file_instead_of_truncating_in_place() {
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("desktop.toml");
+
+        let config_for = |url: &str| DesktopConfig {
+            connection: ConnectionConfig {
+                server_url: url.to_string(),
+                ..ConnectionConfig::default()
+            },
+            notifications: NotificationPreferences::default(),
+        };
+
+        write_desktop_config(&path, &config_for("http://first:18789")).unwrap();
+        let inode_before = std::fs::metadata(&path).unwrap().ino();
+
+        write_desktop_config(&path, &config_for("http://second:18789")).unwrap();
+        let after = std::fs::metadata(&path).unwrap();
+
+        // INVARIANT: persist() renames a sibling temp file over the target, which
+        // swaps in a fresh inode. A truncate-then-write implementation keeps the
+        // original inode and leaves the file empty between the two syscalls, so
+        // this assertion is what distinguishes an atomic write from a torn one.
+        assert_ne!(
+            inode_before,
+            after.ino(),
+            "desktop.toml was rewritten in place; a crash mid-write would truncate it"
+        );
+
+        // WHY: the temp file is created 0o600 before persist so the renamed file
+        // cannot inherit a wider default mode from the process umask.
+        assert_eq!(
+            after.permissions().mode() & 0o777,
+            0o600,
+            "desktop.toml must stay user-private across an atomic replace"
+        );
+
+        let parsed: DesktopConfig =
+            toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(parsed.connection.server_url, "http://second:18789");
+
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .filter(|name| name != "desktop.toml")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temp files survived the write: {leftovers:?}"
+        );
     }
 }
