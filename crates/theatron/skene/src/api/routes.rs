@@ -45,6 +45,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         path_template: "/api/v1/nous/{id}/tools",
     },
     ClientRouteContract {
+        method: "POST",
+        path_template: "/api/v1/nous/{id}/recover",
+    },
+    ClientRouteContract {
         method: "GET",
         path_template: "/api/v1/sessions",
     },
@@ -360,6 +364,12 @@ pub mod nous {
     /// [`agent_tools_path`] to build an encoded path.
     pub const AGENT_TOOLS_TEMPLATE: &str = "/api/v1/nous/{id}/tools";
 
+    /// Template for one agent's recovery route.
+    ///
+    /// `{id}` is a placeholder - do not interpolate directly. Use
+    /// [`agent_recover_path`] to build an encoded path.
+    pub const AGENT_RECOVER_TEMPLATE: &str = "/api/v1/nous/{id}/recover";
+
     /// Build the path for reading or toggling one agent.
     #[must_use]
     pub fn agent_path(id: &str) -> String {
@@ -384,6 +394,19 @@ pub mod nous {
     #[must_use]
     pub fn agent_tools_url(base_url: &str, id: &str) -> String {
         keryx::url::join_base_path(base_url, &agent_tools_path(id))
+    }
+
+    /// Build the path for resetting one degraded agent to idle.
+    #[must_use]
+    pub fn agent_recover_path(id: &str) -> String {
+        let encoded = encoding::path_segment(id);
+        format!("/api/v1/nous/{encoded}/recover")
+    }
+
+    /// Build the absolute URL for resetting one degraded agent to idle.
+    #[must_use]
+    pub fn agent_recover_url(base_url: &str, id: &str) -> String {
+        keryx::url::join_base_path(base_url, &agent_recover_path(id))
     }
 }
 
