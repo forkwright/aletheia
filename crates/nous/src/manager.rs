@@ -869,17 +869,25 @@ impl NousManager {
         if let Some(join) = old_join {
             let restart_drain_timeout =
                 Duration::from_secs(self.nous_behavior.manager_restart_drain_timeout_secs);
-            match tokio::time::timeout(restart_drain_timeout, join).await {
-                Ok(_) => {
-                    tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
-                }
-                Err(_) => {
-                    tracing::warn!(
-                        nous_id = %id,
-                        drain_timeout_secs = self.nous_behavior.manager_restart_drain_timeout_secs,
-                        "actor did not drain within timeout, spawning replacement — concurrent store access possible"
-                    );
-                }
+            // WHY: keep an abort handle so a stuck actor that never drains
+            // its inbox is forcibly torn down rather than left running
+            // detached once the replacement is spawned below — the same
+            // pattern `shutdown_all_with_timeout` uses (#5735). Without this,
+            // restart is not a single-owner transition: the old task can
+            // still be mutating actor/session state after a new owner exists.
+            let abort = join.abort_handle();
+            if tokio::time::timeout(restart_drain_timeout, join)
+                .await
+                .is_ok()
+            {
+                tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
+            } else {
+                abort.abort();
+                tracing::warn!(
+                    nous_id = %id,
+                    drain_timeout_secs = self.nous_behavior.manager_restart_drain_timeout_secs,
+                    "actor did not drain within timeout — aborted before spawning replacement"
+                );
             }
         }
 

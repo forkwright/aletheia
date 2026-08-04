@@ -962,3 +962,63 @@ async fn health_poller_restarts_dead_actor() {
 
     cancel.cancel();
 }
+
+/// `restart_actor` must not leave the old actor task running detached after
+/// a drain timeout: a stuck actor that never drains its inbox is aborted
+/// before the replacement is spawned, so restart stays a single-owner
+/// transition. Mirrors `shutdown_all_timeout_aborts_stuck_actor`. (#5022)
+#[tokio::test]
+async fn restart_actor_aborts_stuck_old_task_on_drain_timeout() {
+    let behavior = taxis::config::NousBehaviorConfig {
+        manager_restart_drain_timeout_secs: 0,
+        manager_max_restart_backoff_secs: 0,
+        ..taxis::config::NousBehaviorConfig::default()
+    };
+    let (_dir, oikos) = make_oikos();
+    let mut mgr = make_manager_with_behavior(oikos, behavior);
+
+    // Spawn a real actor so the manager sees a normal ActorEntry.
+    mgr.spawn(syn_config(), PipelineConfig::default())
+        .await
+        .expect("spawn");
+
+    // Swap the actor's join handle for a task that outlives the drain
+    // timeout, simulating an actor that cannot drain its inbox (e.g. blocked
+    // on a long-running turn) and so never observes the Shutdown message.
+    let blocking_join: JoinHandle<()> = tokio::spawn(async {
+        // WHY: 1 hour sleep stands in for a stuck actor; if the drain-timeout
+        // path fails to abort it, the leaked task keeps running for an hour.
+        tokio::time::sleep(Duration::from_hours(1)).await;
+    });
+    let blocking_abort = blocking_join.abort_handle();
+    {
+        let actors = &mgr.actors;
+        let entry = actors.get("syn").expect("actor registered");
+        let mut guard = entry
+            .join
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Drop the real join handle; we don't need it for this test — the
+        // real actor is still alive, which is fine: it stops when the
+        // manager drops at end of test.
+        if let Some(original) = guard.take() {
+            original.abort();
+        }
+        *guard = Some(blocking_join);
+    }
+
+    mgr.restart_actor("syn").await;
+
+    assert!(
+        blocking_abort.is_finished(),
+        "stuck old actor task should have been aborted once the drain timeout elapsed, \
+         instead it was left running detached after the replacement was spawned"
+    );
+    assert_eq!(
+        mgr.count(),
+        1,
+        "restart should still register exactly one (replacement) actor for the id"
+    );
+
+    mgr.shutdown_all().await;
+}
