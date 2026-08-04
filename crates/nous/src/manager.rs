@@ -876,18 +876,18 @@ impl NousManager {
             // restart is not a single-owner transition: the old task can
             // still be mutating actor/session state after a new owner exists.
             let abort = join.abort_handle();
-            match tokio::time::timeout(restart_drain_timeout, join).await {
-                Ok(_) => {
-                    tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
-                }
-                Err(_) => {
-                    abort.abort();
-                    tracing::warn!(
-                        nous_id = %id,
-                        drain_timeout_secs = self.nous_behavior.manager_restart_drain_timeout_secs,
-                        "actor did not drain within timeout — aborted before spawning replacement"
-                    );
-                }
+            if tokio::time::timeout(restart_drain_timeout, join)
+                .await
+                .is_ok()
+            {
+                tracing::debug!(nous_id = %id, "old actor drained cleanly before restart");
+            } else {
+                abort.abort();
+                tracing::warn!(
+                    nous_id = %id,
+                    drain_timeout_secs = self.nous_behavior.manager_restart_drain_timeout_secs,
+                    "actor did not drain within timeout — aborted before spawning replacement"
+                );
             }
         }
 
