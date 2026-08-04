@@ -31,8 +31,11 @@ pub(super) struct ResponseExtract {
 ///
 /// WHY: when `complexity.enabled == false` (the default) this returns
 /// `config.generation.model` unchanged, preserving existing behaviour bit-for-bit.
-/// When enabled, the last user message plus available tool count feed into
-/// [`route_model`], which maps a score to a tier model.
+/// When enabled, the last user message, available tool count, and
+/// `config.spawn_depth` feed into [`route_model`], which maps a score to a
+/// tier model. A non-zero `spawn_depth` (set on every ephemeral sub-agent by
+/// `SpawnServiceImpl::build_spawn_config`) short-circuits scoring to the
+/// Opus tier via `score_complexity`'s cross-agent branch (#5823).
 pub(super) fn resolve_turn_model(
     ctx: &PipelineContext,
     config: &NousConfig,
@@ -71,7 +74,7 @@ pub(super) fn resolve_turn_route(
         message_text: last_user_text,
         tool_count,
         message_count: ctx.messages.len(),
-        depth: 0,
+        depth: config.spawn_depth,
         tier_override: None,
         model_override: None,
     };
