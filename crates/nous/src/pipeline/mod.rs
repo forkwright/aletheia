@@ -848,6 +848,21 @@ impl TurnUsage {
     pub fn total_tokens(&self) -> u64 {
         self.input_tokens + self.output_tokens
     }
+
+    /// Tokens that count against per-turn budget enforcement: input, output,
+    /// and prompt-cache read/write tokens.
+    ///
+    /// WHY(#5263): cache read/write tokens still occupy context and (for
+    /// writes) cost more per token than a plain input token, so a per-turn
+    /// budget check based on `total_tokens` alone lets a cache-heavy turn
+    /// exceed its real footprint before enforcement reacts. `total_tokens`
+    /// keeps its narrower input+output meaning for existing
+    /// telemetry/training call sites; this method is for consumers that
+    /// must not undercount cache traffic, such as `CostControlHook`.
+    #[must_use]
+    pub fn budgeted_tokens(&self) -> u64 {
+        self.total_tokens() + self.cache_read_tokens + self.cache_write_tokens
+    }
 }
 
 /// Assemble bootstrap context and populate the pipeline context.

@@ -32,6 +32,27 @@ fn turn_usage_total() {
 }
 
 #[test]
+fn turn_usage_budgeted_tokens_includes_cache() {
+    let usage = TurnUsage {
+        input_tokens: 1000,
+        output_tokens: 500,
+        cache_read_tokens: 800,
+        cache_write_tokens: 200,
+        llm_calls: 3,
+    };
+    assert_eq!(
+        usage.budgeted_tokens(),
+        2500,
+        "budgeted_tokens should include cache read/write tokens"
+    );
+    assert_eq!(
+        usage.total_tokens(),
+        1500,
+        "total_tokens keeps its narrower input+output meaning"
+    );
+}
+
+#[test]
 fn interaction_signal_serde() {
     let signal = InteractionSignal::CodeGeneration;
     let json = serde_json::to_string(&signal).expect("serialize signal");

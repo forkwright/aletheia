@@ -75,7 +75,10 @@ impl TurnHook for CostControlHook {
                 return ToolHookResult::Allow;
             }
 
-            let used = context.turn_usage.total_tokens();
+            // WHY(#5263): budgeted_tokens() includes prompt-cache read/write
+            // tokens so a cache-heavy turn cannot exceed the real budget
+            // while looking under it to total_tokens() alone.
+            let used = context.turn_usage.budgeted_tokens();
             if used > self.turn_token_budget {
                 debug!(
                     used,
