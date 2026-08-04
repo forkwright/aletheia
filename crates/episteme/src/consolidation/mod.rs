@@ -477,7 +477,7 @@ candidates[entity_id, count(fact_id)] :=
 /// Returns: `[cluster_id, fact_count]` sorted by `fact_count` descending.
 pub const COMMUNITY_OVERFLOW_CANDIDATES: &str = r"
 candidates[cluster_id, count(fact_id)] :=
-    *graph_scores{entity_id, score_type: 'louvain', cluster_id},
+    *graph_scores{entity_id, score_type: 'cluster', cluster_id},
     *fact_entities{fact_id, entity_id},
     *facts{id: fact_id, valid_from, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at},
     nous_id == $nous_id,
@@ -520,7 +520,7 @@ pub const ENTITY_FACTS_FOR_CONSOLIDATION: &str = r"
 ///           sensitivity, visibility, source_session_id]`.
 pub const CLUSTER_FACTS_FOR_CONSOLIDATION: &str = r"
 ?[fact_id, content, confidence, recorded_at, scope, project_id, sensitivity, visibility, source_session_id] :=
-    *graph_scores{entity_id, score_type: 'louvain', cluster_id: $cluster_id},
+    *graph_scores{entity_id, score_type: 'cluster', cluster_id: $cluster_id},
     *fact_entities{fact_id, entity_id},
     *facts{id: fact_id, content, confidence, nous_id, tier, valid_to, superseded_by, is_forgotten, recorded_at, scope, project_id, visibility, sensitivity, source_session_id},
     nous_id == $nous_id,
