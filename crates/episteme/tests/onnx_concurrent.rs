@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use episteme::bookkeeping::{BookkeepingResult, GlinerExtractionProvider, NuExtractProvider};
+// WHY: `episteme::bookkeeping` imports `BookkeepingResult` privately rather than
+// re-exporting it; `eidos::bookkeeping` is its canonical home.
+use eidos::bookkeeping::BookkeepingResult;
+use episteme::bookkeeping::{GlinerExtractionProvider, NuExtractProvider};
 use episteme::extract::{ExtractionConfig, ExtractionEngine, ExtractionError, ExtractionProvider};
 
 struct NeverFallback;
