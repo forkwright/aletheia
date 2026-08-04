@@ -162,6 +162,7 @@ pub(crate) fn ToggleControlsPanel(
                     t.pending,
                     t.apply_state,
                     t.live_status.clone(),
+                    t.error.clone(),
                 )
             })
             .collect()
@@ -204,7 +205,7 @@ pub(crate) fn ToggleControlsPanel(
                 EmptyState { title: "No agents available".to_string() }
             }
 
-            for (id , name , enabled , pending , apply_state , live_status) in agent_ids {
+            for (id , name , enabled , pending , apply_state , live_status , error) in agent_ids {
                 AgentToggleRow {
                     key: "{id}",
                     id: id.clone(),
@@ -213,6 +214,7 @@ pub(crate) fn ToggleControlsPanel(
                     pending,
                     apply_state,
                     live_status,
+                    error,
                     store,
                     config,
                     confirm_disable,
@@ -275,6 +277,7 @@ fn AgentToggleRow(
     pending: bool,
     apply_state: ToggleApplyState,
     live_status: Option<String>,
+    error: Option<String>,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
     mut confirm_disable: Signal<Option<skene::id::NousId>>,
@@ -303,6 +306,7 @@ fn AgentToggleRow(
                     t.enabled,
                     t.pending,
                     t.apply_state,
+                    t.error.clone(),
                 )
             })
             .collect()
@@ -388,8 +392,12 @@ fn AgentToggleRow(
             }
         }
 
+        if let Some(ref err) = error {
+            div { style: "{ERROR_STYLE}", "{err}" }
+        }
+
         if is_expanded {
-            for (aid , tname , tool_enabled , tool_pending , tool_apply_state) in tools {
+            for (aid , tname , tool_enabled , tool_pending , tool_apply_state , tool_error) in tools {
                 ToolToggleRow {
                     key: "{aid}-{tname}",
                     agent_id: aid,
@@ -397,6 +405,7 @@ fn AgentToggleRow(
                     enabled: tool_enabled,
                     pending: tool_pending,
                     apply_state: tool_apply_state,
+                    error: tool_error,
                     store,
                     config,
                 }
@@ -412,6 +421,7 @@ fn ToolToggleRow(
     enabled: bool,
     pending: bool,
     apply_state: ToggleApplyState,
+    error: Option<String>,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
 ) -> Element {
@@ -439,6 +449,9 @@ fn ToolToggleRow(
                     }
                 },
             )}
+        }
+        if let Some(ref err) = error {
+            div { style: "{ERROR_STYLE}", "{err}" }
         }
     }
 }
@@ -767,8 +780,9 @@ fn fire_agent_toggle(
         let client = match authenticated_client(&cfg) {
             Ok(client) => client,
             Err(err) => {
-                tracing::warn!("agent toggle client error: {err}");
-                store.write().resolve_agent(&id, false, prev_val);
+                store
+                    .write()
+                    .resolve_agent(&id, false, prev_val, Some(err.to_string()));
                 return;
             }
         };
@@ -803,15 +817,33 @@ fn fire_agent_toggle(
                             body.enabled,
                             body.status,
                             action_result,
+                            None,
                         );
                     }
-                    Err(_) => {
-                        store.write().resolve_agent(&id, false, prev_val);
+                    Err(err) => {
+                        store.write().resolve_agent(
+                            &id,
+                            false,
+                            prev_val,
+                            Some(format!("failed to parse agent response: {err}")),
+                        );
                     }
                 }
             }
-            Ok(_) | Err(_) => {
-                store.write().resolve_agent(&id, false, prev_val);
+            Ok(resp) => {
+                let status = resp.status();
+                let message = status_failure_message(status, resp).await;
+                store
+                    .write()
+                    .resolve_agent(&id, false, prev_val, Some(message));
+            }
+            Err(e) => {
+                store.write().resolve_agent(
+                    &id,
+                    false,
+                    prev_val,
+                    Some(format!("connection error: {e}")),
+                );
             }
         }
     });
@@ -834,10 +866,13 @@ fn fire_tool_toggle(
         let client = match authenticated_client(&cfg) {
             Ok(client) => client,
             Err(err) => {
-                tracing::warn!("tool toggle client error: {err}");
-                store
-                    .write()
-                    .resolve_tool(&agent_id, &tool_name, false, prev_val);
+                store.write().resolve_tool(
+                    &agent_id,
+                    &tool_name,
+                    false,
+                    prev_val,
+                    Some(err.to_string()),
+                );
                 return;
             }
         };
@@ -860,19 +895,35 @@ fn fire_tool_toggle(
                             prev_val,
                             body.enabled_for(&tool_name),
                             body.action_result(),
+                            None,
                         );
                     }
-                    Err(_) => {
-                        store
-                            .write()
-                            .resolve_tool(&agent_id, &tool_name, false, prev_val);
+                    Err(err) => {
+                        store.write().resolve_tool(
+                            &agent_id,
+                            &tool_name,
+                            false,
+                            prev_val,
+                            Some(format!("failed to parse tool response: {err}")),
+                        );
                     }
                 }
             }
-            Ok(_) | Err(_) => {
+            Ok(resp) => {
+                let status = resp.status();
+                let message = status_failure_message(status, resp).await;
                 store
                     .write()
-                    .resolve_tool(&agent_id, &tool_name, false, prev_val);
+                    .resolve_tool(&agent_id, &tool_name, false, prev_val, Some(message));
+            }
+            Err(e) => {
+                store.write().resolve_tool(
+                    &agent_id,
+                    &tool_name,
+                    false,
+                    prev_val,
+                    Some(format!("connection error: {e}")),
+                );
             }
         }
     });
