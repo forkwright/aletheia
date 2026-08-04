@@ -159,8 +159,8 @@ Before any upgrade:
 3. If the new version ran and modified the database schema, restore from the
    pre-upgrade whole-instance backup set:
    ```bash
-   aletheia backup --list                              # find pre-upgrade backup
-   LATEST=$(aletheia backup --list --json | jq -r '.[0].name')
+   aletheia backup list                              # find pre-upgrade backup
+   LATEST=$(aletheia backup list --json | jq -r '.[0].name')
    BACKUP="instance/data/backups/instance/${LATEST}"
    aletheia backup verify "$BACKUP"
    aletheia backup restore "$BACKUP"

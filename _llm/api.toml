@@ -18,7 +18,7 @@ description = "System status dashboard"
 
 [[cli.command]]
 name = "backup"
-description = "Database backup management (--list, --prune)"
+description = "Database backup management (create, list, prune, verify, restore)"
 
 [[cli.command]]
 name = "maintenance"
