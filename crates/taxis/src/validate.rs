@@ -548,6 +548,30 @@ fn validate_maintenance(value: &Value, errors: &mut Vec<String>) {
             errors.push("dbMonitoring.warnThresholdMb must not exceed alertThresholdMb".to_owned());
         }
     }
+
+    // WHY(#5141): zero has no defined product meaning here — it feeds
+    // `Duration::from_hours(0)` at the scheduler and `skip(0)` at prune time,
+    // which deletes every backup set including one just created.
+    if let Some(backup) = value.get("backup") {
+        check_positive_u64(backup, "backupIntervalHours", errors);
+        check_positive_u64(backup, "backupRetentionCount", errors);
+    }
+
+    // WHY(#5141): an enabled cron task with a zero cadence has no defined
+    // scheduling behavior; a disabled task's cadence is inert.
+    if let Some(cron_tasks) = value.get("cronTasks") {
+        for task in ["evolution", "reflection", "graphCleanup"] {
+            if let Some(entry) = cron_tasks.get(task) {
+                let enabled = entry
+                    .get("enabled")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if enabled {
+                    check_positive_u64(entry, "intervalSecs", errors);
+                }
+            }
+        }
+    }
 }
 
 fn validate_data(value: &Value, errors: &mut Vec<String>) {

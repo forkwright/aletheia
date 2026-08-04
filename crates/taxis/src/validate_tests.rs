@@ -73,6 +73,95 @@ fn rejects_warn_exceeding_alert() {
 }
 
 #[test]
+fn rejects_zero_backup_interval_hours() {
+    // WHY(#5141): a zero interval feeds `Duration::from_hours(0)` at the
+    // scheduler, a degenerate cadence with no defined product meaning.
+    let section = json!({ "backup": { "backupIntervalHours": 0 } });
+    let result = validate_section("maintenance", &section);
+    assert!(result.is_err(), "zero backupIntervalHours should be rejected");
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("backupIntervalHours")),
+        "error should mention backupIntervalHours: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_zero_backup_retention_count() {
+    // WHY(#5141): retention 0 makes pruning (`skip(retention_count)`) drop
+    // every backup set, including one just created.
+    let section = json!({ "backup": { "backupRetentionCount": 0 } });
+    let result = validate_section("maintenance", &section);
+    assert!(
+        result.is_err(),
+        "zero backupRetentionCount should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains("backupRetentionCount")),
+        "error should mention backupRetentionCount: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_valid_backup_settings() {
+    let section = json!({
+        "backup": { "backupIntervalHours": 24, "backupRetentionCount": 7 }
+    });
+    assert!(
+        validate_section("maintenance", &section).is_ok(),
+        "non-zero backup interval and retention should be accepted"
+    );
+}
+
+#[test]
+fn rejects_zero_interval_secs_for_enabled_cron_task() {
+    // WHY(#5141): an enabled cron task with intervalSecs = 0 has no defined
+    // scheduling behavior.
+    for task in ["evolution", "reflection", "graphCleanup"] {
+        let section = json!({
+            "cronTasks": { (task): { "enabled": true, "intervalSecs": 0 } }
+        });
+        let result = validate_section("maintenance", &section);
+        assert!(
+            result.is_err(),
+            "zero intervalSecs on enabled cron task '{task}' should be rejected"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.errors.iter().any(|e| e.contains("intervalSecs")),
+            "error for '{task}' should mention intervalSecs: {err:?}"
+        );
+    }
+}
+
+#[test]
+fn accepts_zero_interval_secs_for_disabled_cron_task() {
+    // A disabled cron task's cadence is inert, so a zero value there is not
+    // a foot-gun the way an enabled one is.
+    let section = json!({
+        "cronTasks": { "evolution": { "enabled": false, "intervalSecs": 0 } }
+    });
+    assert!(
+        validate_section("maintenance", &section).is_ok(),
+        "zero intervalSecs on a disabled cron task should be accepted"
+    );
+}
+
+#[test]
+fn accepts_valid_enabled_cron_task() {
+    let section = json!({
+        "cronTasks": { "evolution": { "enabled": true, "intervalSecs": 3600 } }
+    });
+    assert!(
+        validate_section("maintenance", &section).is_ok(),
+        "enabled cron task with a positive intervalSecs should be accepted"
+    );
+}
+
+#[test]
 fn accepts_valid_agents() {
     let section = json!({
         "defaults": {
