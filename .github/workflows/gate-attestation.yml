@@ -19,7 +19,17 @@
 #     Gate-Passed trailer and a green full-gate-build must attest the same
 #     invocations a local `kanon gate --stamp` run does.
 #   - needs_fleet_repo_token: true (fleet default false) — Cargo.toml carries
-#     a hard git dependency on forkwright/theatron.git (tag=v1.3.0).
+#     a hard git dependency on forkwright/theatron.git (tag=v1.5.0). The
+#     dependency is public and pinned to an immutable tag, so an
+#     unauthenticated fetch resolves it today (`git ls-remote` with no
+#     credential helper and no token returns the same SHA Cargo.lock pins for
+#     refs/tags/v1.5.0) — but the input is kept true anyway as standing
+#     insurance against anonymous git-fetch rate-limit flakiness on
+#     GitHub-hosted runners, the input's documented second criterion (see
+#     forkwright/.github hybrid-gate.yml). scripts/check-automation-pr-gates.py
+#     enforces true unconditionally whenever Cargo.toml resolves any
+#     forkwright git dependency — do not special-case a dependency as "public,
+#     so no token needed" here without changing that checker first.
 #   - doctest_cmd and system_packages stay at fleet default ("" / skip) — no
 #     doctest step, no apt-get step in the prior inline job.
 #
