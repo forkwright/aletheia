@@ -231,10 +231,22 @@ impl NamedRows {
             next: None,
         })
     }
+
+    /// Create a query and parameters to apply an operation (insert, put, delete, rm) to a stored
+    /// relation with the named rows.
+    pub fn into_payload(self, relation: &str, op: &str) -> Payload {
+        let cols_str = self.headers.join(", ");
+        let query = format!("?[{cols_str}] <- $data :{op} {relation} {{ {cols_str} }}");
+        let data = DataValue::List(self.rows.into_iter().map(|r| DataValue::List(r)).collect());
+        (query, [("data".to_string(), data)].into())
+    }
 }
 
 const STATUS_STR: &str = "status";
 const OK_STR: &str = "OK";
+
+/// The query and parameters.
+pub type Payload = (String, BTreeMap<String, DataValue>);
 
 /// Commands to be sent to a multi-transaction
 #[derive(Eq, PartialEq, Debug)]
@@ -244,7 +256,7 @@ pub enum TransactionPayload {
     /// Abort the current transaction
     Abort,
     /// Run a query inside the transaction
-    Query((String, BTreeMap<String, DataValue>)),
+    Query(Payload),
 }
 
 impl<'s, S: Storage<'s>> Db<S> {
@@ -382,6 +394,11 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
     }
 
+    /// This returns the set of fixed rule implementations for this specific backend.
+    pub fn get_fixed_rules(&'s self) -> BTreeMap<String, Arc<Box<dyn FixedRule>>> {
+        return self.fixed_rules.read().unwrap().clone();
+    }
+
     /// Run the CozoScript passed in. The `params` argument is a map of parameters.
     pub fn run_script(
         &'s self,
@@ -389,22 +406,40 @@ impl<'s, S: Storage<'s>> Db<S> {
         params: BTreeMap<String, DataValue>,
         mutability: ScriptMutability,
     ) -> Result<NamedRows> {
-        let cur_vld = current_validity();
-        self.do_run_script(
-            payload,
-            &params,
-            cur_vld,
-            mutability == ScriptMutability::Immutable,
+        self.run_script_ast(
+            parse_script(
+                payload,
+                &params,
+                &self.get_fixed_rules(),
+                current_validity(),
+            )?,
+            current_validity(),
+            mutability,
         )
     }
+
     /// Run the CozoScript passed in. The `params` argument is a map of parameters.
     pub fn run_script_read_only(
         &'s self,
         payload: &str,
         params: BTreeMap<String, DataValue>,
     ) -> Result<NamedRows> {
-        let cur_vld = current_validity();
-        self.do_run_script(payload, &params, cur_vld, true)
+        self.run_script(payload, params, ScriptMutability::Immutable)
+    }
+
+    /// Run the AST CozoScript passed in.
+    pub fn run_script_ast(
+        &'s self,
+        payload: CozoScript,
+        cur_vld: ValidityTs,
+        mutability: ScriptMutability,
+    ) -> Result<NamedRows> {
+        let read_only = mutability == ScriptMutability::Immutable;
+        match payload {
+            CozoScript::Single(p) => self.execute_single(cur_vld, p, read_only),
+            CozoScript::Imperative(ps) => self.execute_imperative(cur_vld, &ps, read_only),
+            CozoScript::Sys(op) => self.run_sys_op(op, read_only),
+        }
     }
 
     /// Export relations to JSON data.
@@ -874,25 +909,6 @@ impl<'s, S: Storage<'s>> Db<S> {
             thread::sleep(Duration::from_micros((secs * 1000000.) as u64));
         }
         Ok(q_res)
-    }
-
-    fn do_run_script(
-        &'s self,
-        payload: &str,
-        param_pool: &BTreeMap<String, DataValue>,
-        cur_vld: ValidityTs,
-        read_only: bool,
-    ) -> Result<NamedRows> {
-        match parse_script(
-            payload,
-            param_pool,
-            &self.fixed_rules.read().unwrap(),
-            cur_vld,
-        )? {
-            CozoScript::Single(p) => self.execute_single(cur_vld, p, read_only),
-            CozoScript::Imperative(ps) => self.execute_imperative(cur_vld, &ps, read_only),
-            CozoScript::Sys(op) => self.run_sys_op(op, read_only),
-        }
     }
 
     fn execute_single(
@@ -1764,22 +1780,28 @@ impl<'s, S: Storage<'s>> Db<S> {
         let mut rows = vec![];
         let mut idx = 0;
         for col in &handle.metadata.keys {
+            let default_expr = col.default_gen.as_ref().map(|gen| format!("{}", gen));
+
             rows.push(vec![
                 json!(col.name),
                 json!(true),
                 json!(idx),
                 json!(col.typing.to_string()),
                 json!(col.default_gen.is_some()),
+                json!(default_expr),
             ]);
             idx += 1;
         }
         for col in &handle.metadata.non_keys {
+            let default_expr = col.default_gen.as_ref().map(|gen| format!("{}", gen));
+
             rows.push(vec![
                 json!(col.name),
                 json!(false),
                 json!(idx),
                 json!(col.typing.to_string()),
                 json!(col.default_gen.is_some()),
+                json!(default_expr),
             ]);
             idx += 1;
         }
@@ -1794,6 +1816,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 "index".to_string(),
                 "type".to_string(),
                 "has_default".to_string(),
+                "default_expr".to_string(),
             ],
             rows,
         ))

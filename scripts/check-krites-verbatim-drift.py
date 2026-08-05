@@ -74,15 +74,19 @@ SHINGLE_SIZE = 8
 MIN_IDENTIFIER_TOKENS_PER_LINE = 3
 
 # WHY: derived by running --calibrate against the pinned snapshot (see
-# crates/krites/upstream-snapshot/NOTICE.md for the pinned upstream commit).
-# The known-original set's highest score (global max across the whole
-# upstream corpus, i.e. worst case) measured 0.0529
-# (fixed_rule/algos/kcore.rs vs upstream fixed_rule/algos/pagerank.rs — two
-# graph algorithms sharing loop/accumulator boilerplate, nowhere near a real
-# match). 0.10 clears that with a 0.047 margin (~1.9x). A changed upstream
-# snapshot invalidates this constant until recalibrated — run --calibrate
-# again and update both the constant and this comment together.
-CALIBRATED_THRESHOLD = 0.10
+# crates/krites/upstream-snapshot/NOTICE.md for the pinned upstream commit,
+# 481af058ab, re-vendored from the earlier v0.7.6-tag snapshot). The
+# known-original set's highest score (global max across the whole upstream
+# corpus, i.e. worst case) measured 0.0881 (storage/fjall_backend.rs vs
+# upstream's newly-added storage/newrocks.rs — both are RocksDB-storage-
+# backend implementations sharing generic put/get/delete/batch boilerplate,
+# nowhere near a real match; newrocks.rs did not exist in the v0.7.6
+# snapshot, which is why this max moved up from a prior 0.0529). 0.17
+# clears that with a 0.082 margin (~1.9x, matching the safety factor of the
+# original calibration). A changed upstream snapshot invalidates this
+# constant until recalibrated — run --calibrate again and update both the
+# constant and this comment together.
+CALIBRATED_THRESHOLD = 0.17
 
 # Known-original: files with no genuine upstream lineage (aletheia-authored
 # engine surface sitting inside the derived crate). The calibration set
@@ -244,7 +248,16 @@ def global_best_match(fs: FileShingles, upstream: dict[str, FileShingles]) -> Sc
     best_upstream_count = 0
     for up_relpath, up in upstream.items():
         shared = len(fs.shingle_set & up.shingle_set)
-        if shared == 0 and up.shingle_set:
+        # WHY: shared == 0 implies jaccard == 0 unconditionally — whether
+        # up.shingle_set is empty (jaccard's not-a-and-not-b special case,
+        # or a zero-numerator division) or non-empty (zero-numerator
+        # division). A zero score can never exceed best_score (init 0.0,
+        # strictly increasing thereafter), so skipping the union-formation
+        # in jaccard() for every zero-overlap candidate is always safe —
+        # previously this only skipped when up.shingle_set was non-empty,
+        # leaving empty-upstream-file candidates to fall through and
+        # recompute the same 0.0 the guard exists to shortcut.
+        if shared == 0:
             continue
         score = jaccard(fs.shingle_set, up.shingle_set)
         if score > best_score:
@@ -326,7 +339,7 @@ def run_calibration() -> int:
         overlap = [s for s in by_score if s.jaccard <= highest_original]
         print()
         print(
-            f"OVERLAP CHECK — known-derived files scoring <= known-original max "
+            "OVERLAP CHECK — known-derived files scoring <= known-original max "
             f"({highest_original:.4f}): {len(overlap)} / {len(derived)}"
         )
         for s in overlap:
