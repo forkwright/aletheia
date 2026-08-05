@@ -974,6 +974,16 @@ pub(super) fn open_knowledge_stores(
             std::fs::create_dir_all(parent)
                 .whatever_context("failed to CREATE knowledge store directory")?;
         }
+
+        // WHY (aletheia#5779 §8.5): the verified pre-migration snapshot must
+        // run BEFORE `open_fjall` claims the fjall lock — see
+        // `episteme::knowledge_store::snapshot` module docs for why it
+        // cannot live inside the migration path itself. A no-op on first
+        // boot (kb_path doesn't exist yet).
+        let snapshot_dir = kb_path.with_extension("pre-migration-snapshot");
+        mneme::knowledge_store::snapshot::pre_migration_snapshot(&kb_path, &snapshot_dir)
+            .whatever_context("pre-migration snapshot was not verified-restorable")?;
+
         let knowledge_config = build_knowledge_config(embedding, knowledge, false);
         let store =
             match mneme::knowledge_store::KnowledgeStore::open_fjall(&kb_path, knowledge_config) {

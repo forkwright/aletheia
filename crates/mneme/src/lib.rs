@@ -34,6 +34,11 @@
 /// Newtype wrappers for knowledge-domain identifiers (re-exported from `eidos`).
 pub use eidos::id;
 
+/// Process-crash injection hook for migration atomicity proofs
+/// (aletheia#5779 §8.4) — see `episteme::crash_injection` for the seam
+/// rationale (`abort()` itself lives only in a dedicated test binary).
+pub use episteme::crash_injection;
+
 /// Curated knowledge domain types: facts, entities, relationships, embeddings.
 ///
 /// This is an explicit, curated subset of `eidos::knowledge` rather than a
@@ -241,6 +246,15 @@ pub mod knowledge_store {
     pub use episteme::knowledge_store::{
         HybridQuery, KnowledgeConfig, KnowledgeStore, QueryResult,
     };
+
+    /// Pre-migration verified snapshot (aletheia#5779 §8.5) — call before
+    /// `KnowledgeStore::open_fjall` in a store's startup path, never after.
+    #[cfg(feature = "storage-fjall")]
+    pub mod snapshot {
+        pub use episteme::knowledge_store::snapshot::{
+            copy_excluding_psyche, pre_migration_snapshot,
+        };
+    }
 }
 
 /// Admission control policy types for knowledge store fact insertion.

@@ -67,9 +67,16 @@ pub(crate) mod marshal;
 #[cfg(feature = "mneme-engine")]
 mod migration;
 #[cfg(feature = "mneme-engine")]
+mod migration_atomic;
+#[cfg(feature = "mneme-engine")]
 mod search;
 #[cfg(feature = "mneme-engine")]
 mod skills;
+/// Pre-migration verified snapshot (aletheia#5779 §8.5). Independent of
+/// `mneme-engine` — pure filesystem + fjall, no Datalog engine involved —
+/// so callers can snapshot before ever touching `KnowledgeStore`.
+#[cfg(feature = "storage-fjall")]
+pub mod snapshot;
 
 #[cfg(feature = "mneme-engine")]
 pub use derived_rules::DerivedFreshness;
@@ -611,6 +618,11 @@ impl crate::query_rewrite::HasRrfScore for HybridResult {
 #[cfg(feature = "mneme-engine")]
 pub struct KnowledgeStore {
     db: std::sync::Arc<crate::engine::Db>,
+    /// Filesystem root for a fjall-backed store; `None` for an in-memory
+    /// store. WHY: the migration free-space precheck (aletheia#5779, §8.3)
+    /// needs the on-disk path to query filesystem headroom, and `Db` does
+    /// not expose it (storage backend is dispatched behind an internal enum).
+    path: Option<std::path::PathBuf>,
     dim: usize,
     embedding_model: String,
     allow_assumed_embedding_meta: bool,
@@ -663,6 +675,7 @@ impl KnowledgeStore {
         })?;
         let store = Self {
             db: std::sync::Arc::new(db),
+            path: None,
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
@@ -699,6 +712,7 @@ impl KnowledgeStore {
         })?;
         let store = Self {
             db: std::sync::Arc::new(db),
+            path: Some(path.to_path_buf()),
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,

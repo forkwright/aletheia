@@ -27,7 +27,7 @@ test-support = []
 # WHY: mneme-engine brings in the Datalog knowledge store via krites and the
 # tokio blocking-task utilities graphe's engine errors need.
 mneme-engine = ["dep:krites", "dep:tokio", "graphe/mneme-engine"]
-storage-fjall = ["mneme-engine", "krites/storage-fjall"]
+storage-fjall = ["mneme-engine", "krites/storage-fjall", "dep:fjall"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
 openai-embed = ["dep:reqwest", "dep:tokio", "dep:rustls"]
 # WHY: candle embedding tests download config.json from HuggingFace at test
@@ -45,6 +45,13 @@ eidos = { path = "../eidos" }
 graphe = { path = "../graphe", default-features = false }
 koina = { path = "../koina" }
 krites = { path = "../krites", optional = true }
+# WHY: matches krites' pin exactly (storage/fjall_backend.rs) — the
+# pre-migration snapshot verification (knowledge_store/snapshot.rs,
+# aletheia#5779 §8.5) opens the same on-disk format with the same crate
+# version. Re-check both Cargo.toml entries together if either changes.
+fjall = { version = "=3.1.6", default-features = false, features = [
+    "lz4",
+], optional = true }
 jiff = { workspace = true, features = ["serde"] }
 parking_lot = "0.12"
 prometheus-client = { workspace = true }

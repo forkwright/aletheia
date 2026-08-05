@@ -25,6 +25,12 @@ pub mod causal;
 pub mod conflict;
 /// LLM-driven fact consolidation for knowledge maintenance.
 pub mod consolidation;
+/// Process-crash injection hook for migration atomicity proofs (aletheia#5779
+/// §8.4). `std::process::abort` itself must never live here (disallowed by
+/// this crate's `clippy.toml`); a test-only child binary registers the hook
+/// that actually aborts, migration code only calls the no-op-by-default
+/// [`crash_injection::crash_point`].
+pub mod crash_injection;
 /// Multi-factor temporal decay with lifecycle stages and graduated pruning.
 #[cfg_attr(
     not(test),
