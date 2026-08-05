@@ -20,6 +20,13 @@ default = ["graph-algo", "reranker"]
 # declaration. The `?` keeps krites optional: the forward applies only when a
 # feature that pulls krites in (mneme-engine) is already enabled.
 graph-algo = ["krites?/graph-algo"]
+# WHY (aletheia#5779 §8.4/F10): the process-crash injection seam
+# (`crash_injection` module) must not exist in a normal production build —
+# `register_crash_hook` would otherwise be reachable public API in the
+# shipped daemon, letting any in-process code install a callback that runs
+# inside migration code. Non-default; enabled only by the
+# `integration-tests` crate's dev-dependency for the crash-injection matrix.
+crash-injection = []
 reranker = ["dep:reqwest", "dep:rustls", "dep:tokio"]
 gliner = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 nuextract = ["dep:ort", "dep:tokio", "dep:tokenizers"]

@@ -37,6 +37,9 @@ pub use eidos::id;
 /// Process-crash injection hook for migration atomicity proofs
 /// (aletheia#5779 §8.4) — see `episteme::crash_injection` for the seam
 /// rationale (`abort()` itself lives only in a dedicated test binary).
+/// Gated behind the non-default `crash-injection` feature (F10): absent
+/// from a normal build.
+#[cfg(feature = "crash-injection")]
 pub use episteme::crash_injection;
 
 /// Curated knowledge domain types: facts, entities, relationships, embeddings.
@@ -247,8 +250,13 @@ pub mod knowledge_store {
         HybridQuery, KnowledgeConfig, KnowledgeStore, QueryResult,
     };
 
-    /// Pre-migration verified snapshot (aletheia#5779 §8.5) — call before
-    /// `KnowledgeStore::open_fjall` in a store's startup path, never after.
+    /// Pre-migration verified snapshot (aletheia#5779 §8.5). Taken
+    /// automatically as the first statement of `KnowledgeStore::open_fjall`
+    /// itself (aletheia#5779 F4) — gated on whether a schema migration
+    /// might actually run, so every production caller is protected without
+    /// an explicit call. These primitives remain available for direct use
+    /// (e.g. an operator-triggered manual backup); calling them again is
+    /// safe but redundant with `open_fjall`'s automatic protection.
     #[cfg(feature = "storage-fjall")]
     pub mod snapshot {
         pub use episteme::knowledge_store::snapshot::{

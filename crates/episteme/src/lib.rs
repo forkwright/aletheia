@@ -30,6 +30,13 @@ pub mod consolidation;
 /// this crate's `clippy.toml`); a test-only child binary registers the hook
 /// that actually aborts, migration code only calls the no-op-by-default
 /// [`crash_injection::crash_point`].
+///
+/// Gated behind the non-default `crash-injection` feature (F10): without
+/// it, this module — and `register_crash_hook` as reachable public API —
+/// does not exist in a normal build, and every `crash_point` call site in
+/// migration code compiles away entirely rather than paying even a no-op
+/// `OnceLock::get()` per step.
+#[cfg(feature = "crash-injection")]
 pub mod crash_injection;
 /// Multi-factor temporal decay with lifecycle stages and graduated pruning.
 #[cfg_attr(

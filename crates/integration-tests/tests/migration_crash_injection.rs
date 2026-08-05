@@ -21,12 +21,13 @@
 //! in `episteme::knowledge_store::migration_atomic`'s own test module,
 //! which drives the identical private step functions against `open_mem`.
 //!
-//! Runs under `cargo nextest` with the default profile's `retries = 0`
-//! expectation in mind — see `.config/nextest.toml`; a retry would mask
-//! exactly the nondeterminism this harness exists to find. This test does
-//! not itself override the profile (no per-test override configured yet);
-//! flakiness here should be treated as a real finding, not silently retried
-//! away.
+//! Runs under `cargo nextest`, which retries flaky tests by default
+//! (`.config/nextest.toml`'s `[profile.default]`/`[profile.ci]`
+//! `retries = { backoff = "fixed", count = 2, delay = "1s" }`) — a retry
+//! would mask exactly the nondeterminism this harness exists to find. Both
+//! tests in this file have a per-test `retries = 0` override in that same
+//! config, in both profiles; flakiness here is a real finding, never a
+//! silently-retried-away transient.
 #![expect(clippy::expect_used, reason = "test setup and assertions")]
 
 use std::collections::BTreeMap;

@@ -505,6 +505,34 @@ fn strip_to_v1_shape(store: &KnowledgeStore) {
     let _ = store.run_mut_query("::fts drop facts:content_fts", BTreeMap::new());
 }
 
+/// aletheia#5779 F9: this proves the full v1->v19 climb converges to the
+/// fresh-store shape, but it does **not** prove every one of the 8
+/// destructive `rebuild_relation_atomically` sites runs its real transform
+/// on this (or any) climb. `facts`'s five sites all stage the TERMINAL
+/// `FACTS_DDL` as `live_ddl` (not each site's own historical shape,
+/// pre-dating this rewrite — `migration_old.rs`'s `migrate_v1_to_v2`
+/// already did the same), so `migrate_v1_to_v2`'s backfill jumps `facts`
+/// straight to its final column set; every later facts site's
+/// `column_probe` then finds `expected == live` immediately and resumes at
+/// `Rebuilt`, running only index recreation + the stamp — verified by the
+/// column/index/version/content assertions below, which is exactly what
+/// makes them insufficient to prove those later sites' `transform`
+/// closures ever execute for real. Structurally the same is true of
+/// `causal_edges`: `migrate_v5_to_v6` creates it fresh with the same
+/// terminal `CAUSAL_EDGES_DDL` that `migrate_v6_to_v7`'s `live_ddl` also
+/// names, so v6->v7's `column_probe` short-circuits too — on a genuine
+/// historical v1 store, not just this fixture, because causal_edges never
+/// existed before v5->v6 created it at the terminal shape. `entities` is
+/// `FOUNDATIONAL_RELATIONS` (created at the terminal `entities_ddl(dim)`
+/// shape by `make_store`'s own fresh-store bootstrap, never downgraded by
+/// `strip_to_v1_shape`), so `migrate_v12_to_v13`'s `column_probe` also
+/// short-circuits in this fixture. On a genuine full v1 climb, only
+/// `migrate_v1_to_v2` is provably exercising steps 2-7 for real; the other
+/// seven sites are exercised for real only by the per-site fixture tests
+/// above (each of which forces `CleanStart` directly) and by this module's
+/// own equivalence checks against pre-rewrite output — never simultaneously
+/// with each other on one climb. Do not read a passing run of this test as
+/// proof that all 8 sites' transforms executed.
 #[test]
 fn full_climb_from_v1_matches_fresh_store_schema() {
     let climbed = make_store();
@@ -518,6 +546,40 @@ fn full_climb_from_v1_matches_fresh_store_schema() {
         .expect("climbing from v1 through every migration must succeed");
 
     let fresh = make_store();
+
+    // WHY: extends the facts-only column/index parity check below to the
+    // other two relations `rebuild_relation_atomically` sites touch
+    // (`causal_edges` via v6->v7/v16->v17, `entities` via v12->v13) — a
+    // gross shape regression on either (e.g. a dropped column, a missing
+    // index) would otherwise be invisible to this test even though it
+    // exercises both relations' migration sites on the climb.
+    for relation in ["causal_edges", "entities"] {
+        let mut climbed_cols = climbed
+            .run_script_read_only(&format!("::columns {relation}"), BTreeMap::new())
+            .unwrap_or_else(|e| panic!("climbed columns for '{relation}': {e}"))
+            .rows
+            .into_iter()
+            .map(|row| row[0].get_str().expect("column name").to_owned())
+            .collect::<Vec<_>>();
+        let mut fresh_cols = fresh
+            .run_script_read_only(&format!("::columns {relation}"), BTreeMap::new())
+            .unwrap_or_else(|e| panic!("fresh columns for '{relation}': {e}"))
+            .rows
+            .into_iter()
+            .map(|row| row[0].get_str().expect("column name").to_owned())
+            .collect::<Vec<_>>();
+        climbed_cols.sort_unstable();
+        fresh_cols.sort_unstable();
+        assert_eq!(
+            climbed_cols, fresh_cols,
+            "'{relation}': a store climbed from v1 must reach the identical column set a fresh store gets"
+        );
+        assert_eq!(
+            indices_of(&climbed, relation),
+            indices_of(&fresh, relation),
+            "'{relation}': index set must match too"
+        );
+    }
 
     let mut climbed_facts_cols = climbed
         .run_script_read_only("::columns facts", BTreeMap::new())

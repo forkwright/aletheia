@@ -102,28 +102,36 @@ pub(super) fn rebuild_relation_atomically(
     store: &KnowledgeStore,
     spec: &RebuildSpec<'_>,
 ) -> crate::error::Result<()> {
+    #[cfg(feature = "crash-injection")]
     crate::crash_injection::crash_point(1);
     match recovery_sweep(store, spec)? {
         ResumePoint::CleanStart => {
-            rebuild_from_scratch(store, spec)?; // steps 2-5
+            rebuild_from_scratch(store, spec)?; // steps 2-5 (free-space precheck runs inside, F5/F6)
+            #[cfg(feature = "crash-injection")]
             crate::crash_injection::crash_point(6);
             swap_rename(store, spec)?; // step 6
+            #[cfg(feature = "crash-injection")]
             crate::crash_injection::crash_point(7);
             remove_retired(store, spec)?; // step 7
+            #[cfg(feature = "crash-injection")]
             crate::crash_injection::crash_point(8);
             recreate_expected_indices(store, spec)?; // step 8
         }
         ResumePoint::SwapCommitted => {
+            #[cfg(feature = "crash-injection")]
             crate::crash_injection::crash_point(7);
             remove_retired(store, spec)?; // step 7
+            #[cfg(feature = "crash-injection")]
             crate::crash_injection::crash_point(8);
             recreate_expected_indices(store, spec)?; // step 8
         }
         ResumePoint::Rebuilt => {
+            #[cfg(feature = "crash-injection")]
             crate::crash_injection::crash_point(8);
             recreate_expected_indices(store, spec)?; // step 8 (idempotent)
         }
     }
+    #[cfg(feature = "crash-injection")]
     crate::crash_injection::crash_point(9);
     store.stamp_schema_version(spec.target_version, spec.label) // step 9
 }
@@ -140,7 +148,14 @@ fn recovery_sweep(
     store: &KnowledgeStore,
     spec: &RebuildSpec<'_>,
 ) -> crate::error::Result<ResumePoint> {
-    free_space_precheck(store, spec)?;
+    // WHY (F5): the free-space precheck used to run here, before this match
+    // classifies and repairs whatever state a prior crash left — meaning it
+    // could refuse to reclaim the exact space a stale `<rel>__rebuild` is
+    // squatting on, permanently wedging a boot whose data is fully intact.
+    // It now runs inside `rebuild_from_scratch`, strictly after every repair
+    // branch below has already discarded any reclaimable leftover, and it
+    // reuses that step's own full-relation read rather than paying for a
+    // second one (F6) — see this module's `free_space_precheck`.
 
     let rebuild_name = rebuild_name(spec.relation);
     let retired_name = retired_name(spec.relation);
@@ -158,6 +173,15 @@ fn recovery_sweep(
             // the live relation away and left it there. Repair by putting
             // the name back, then treat it as a clean start.
             undo_rename(store, &retired_name, spec.relation)?;
+            // WHY (F7): the wildcard on `rebuild_exists` explicitly admits a
+            // co-existing `<rel>__rebuild` in this state. Left behind, the
+            // very next thing a `CleanStart` run does is `::create
+            // <rel>__rebuild` (step 3), which hard-errors on an already-
+            // existing relation — a repair branch that leaves the boot
+            // failing is worse than no repair at all.
+            if rebuild_exists {
+                drop_unindexed_relation(store, &rebuild_name)?;
+            }
             Ok(ResumePoint::CleanStart)
         }
         (true, false, true) => {
@@ -176,6 +200,26 @@ fn recovery_sweep(
     }
 }
 
+/// F9: this only tells apart migrations whose target shape genuinely
+/// differs from whatever shape the live relation already carries when this
+/// site's rebuild starts. On `facts`/`causal_edges`/`entities`, every site
+/// declares `spec.live_ddl` as the TERMINAL (current, v19-equivalent) DDL,
+/// not that site's own historical intermediate shape — a decision made
+/// before this staging+rename mechanism existed (`migrate_v1_to_v2`
+/// already recreated with the terminal `FACTS_DDL`,
+/// `knowledge_store/migration_old.rs`) and preserved here rather than
+/// re-derived, since guessing at historical intermediate DDL shapes that
+/// are not otherwise recorded anywhere risks introducing a NEW defect to
+/// fix an old one that causes no data loss. The consequence: on a real
+/// climb from v1, the first facts rebuild (v1->v2) already leaves `facts`
+/// at its terminal shape, so every later facts site's probe here finds
+/// `expected == live` immediately and resumes at `Rebuilt` — steps 2-7
+/// never run for real on that site, only index recreation + the version
+/// stamp do. Not data loss (the terminal shape is already correct), but it
+/// means only `migrate_v1_to_v2` (of the facts sites) exercises this
+/// module's steps 2-7 on a genuine full climb; the crash-injection matrix
+/// and this module's own tests must not claim otherwise (see the
+/// `full_climb_from_v1_matches_fresh_store_schema` integration test).
 fn column_probe(
     store: &KnowledgeStore,
     spec: &RebuildSpec<'_>,
@@ -191,8 +235,8 @@ fn column_probe(
     store.run_mut(&staged, BTreeMap::new())?;
 
     let probe = (|| -> crate::error::Result<bool> {
-        let expected = column_names(store, &rebuild_name)?;
-        let live = column_names(store, spec.relation)?;
+        let expected = column_signatures(store, &rebuild_name)?;
+        let live = column_signatures(store, spec.relation)?;
         Ok(expected == live)
     })();
     let cleanup = store.run_mut(&format!("::remove {rebuild_name}"), BTreeMap::new());
@@ -204,22 +248,48 @@ fn column_probe(
     }
 }
 
-fn column_names(
+/// One column's full identity as reported by `::columns`: name, whether
+/// it's part of the key, its type, and its default expression (if any).
+///
+/// F9: the prior comparison used only the column NAME set — invisible to a
+/// future migration that changes a column's type, moves it between key and
+/// value, or changes its default without renaming it, which `column_probe`
+/// would then silently treat as "already rebuilt" and skip entirely.
+type ColumnSignature = (String, bool, String, Option<String>);
+
+fn column_signatures(
     store: &KnowledgeStore,
     relation: &str,
-) -> crate::error::Result<std::collections::BTreeSet<String>> {
+) -> crate::error::Result<std::collections::BTreeSet<ColumnSignature>> {
     let rows = store.run_read(&format!("::columns {relation}"), BTreeMap::new())?;
     rows.rows
         .iter()
         .map(|row| {
-            row.first()
+            let name = row
+                .first()
                 .and_then(DataValue::get_str)
                 .map(str::to_owned)
                 .ok_or_else(|| {
                     integrity_error(format!(
                         "::columns {relation} returned a row with no column-name field"
                     ))
-                })
+                })?;
+            let is_key = row.get(1).and_then(DataValue::get_bool).ok_or_else(|| {
+                integrity_error(format!(
+                    "::columns {relation} returned a row with no is_key field"
+                ))
+            })?;
+            let column_type = row
+                .get(3)
+                .and_then(DataValue::get_str)
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    integrity_error(format!(
+                        "::columns {relation} returned a row with no type field"
+                    ))
+                })?;
+            let default_expr = row.get(5).and_then(DataValue::get_str).map(str::to_owned);
+            Ok((name, is_key, column_type, default_expr))
         })
         .collect()
 }
@@ -241,41 +311,32 @@ fn drop_unindexed_relation(store: &KnowledgeStore, relation: &str) -> crate::err
 // Free-space precheck
 // ---------------------------------------------------------------------
 
-fn free_space_precheck(store: &KnowledgeStore, spec: &RebuildSpec<'_>) -> crate::error::Result<()> {
+/// F6: sized from `old_rows` — the same full read `rebuild_from_scratch`'s
+/// step 2 already had to take for the real transform — rather than a
+/// second `export_relations` call that existed purely to estimate bytes.
+/// The prior shape materialised the relation twice and scanned it twice per
+/// site; on the fleet's real `facts` relation across 8 sites on a full
+/// climb that was a real OOM/latency risk on exactly the operation whose
+/// failure mode is data loss.
+///
+/// WHY this does not also account for index bytes: fjall doesn't expose
+/// per-relation (let alone per-index) byte usage — see the estimate below.
+/// The real peak during steps 4-5 is old data + old FTS/HNSW index + staged
+/// copy, and this heuristic only covers the first and third. Known,
+/// documented gap; not fixed here.
+fn free_space_precheck(
+    store: &KnowledgeStore,
+    spec: &RebuildSpec<'_>,
+    old_rows: &NamedRows,
+) -> crate::error::Result<()> {
     let Some(path) = store.path.as_deref() else {
         return Ok(()); // in-memory store: no filesystem headroom to check
     };
 
-    // WHY: size against whichever of the live/retired copies currently
-    // holds the real data — at sweep time we don't yet know the resume
-    // point, and a relation named `spec.relation` may not exist right now
-    // (e.g. mid-repair of the (false, true) case).
-    let retired = retired_name(spec.relation);
-    let size_source = if store.relation_exists(spec.relation)? {
-        spec.relation.to_owned()
-    } else if store.relation_exists(&retired)? {
-        retired
-    } else {
-        return Ok(()); // nothing on disk yet to size against
-    };
-
-    let exported = store
-        .db
-        .export_relations(std::iter::once(size_source.as_str()))
-        .map_err(|e| {
-            integrity_error(format!(
-                "free-space precheck: export of '{size_source}' failed: {e}"
-            ))
-        })?;
-    let Some(rows) = exported.get(&size_source) else {
-        return Ok(());
-    };
-
     // WHY: a conservative byte-size heuristic, not an exact on-disk
-    // accounting — fjall doesn't expose per-relation byte usage. 2x the
-    // estimated live size covers the old copy plus the staged rebuild
-    // existing side by side until the swap.
-    let estimated_bytes = estimate_relation_bytes(rows);
+    // accounting. 2x the estimated live size covers the old copy plus the
+    // staged rebuild existing side by side until the swap.
+    let estimated_bytes = estimate_relation_bytes(old_rows);
     let needed_bytes = estimated_bytes.saturating_mul(2);
 
     let available_bytes = koina::disk_space::available_space(path).map_err(|e| {
@@ -285,9 +346,20 @@ fn free_space_precheck(store: &KnowledgeStore, spec: &RebuildSpec<'_>) -> crate:
         ))
     })?;
 
+    check_headroom(spec.relation, needed_bytes, available_bytes)
+}
+
+/// Pure decision extracted from [`free_space_precheck`] so the ENOSPC path
+/// (plan §8.4's fault kind) is deterministically testable without needing a
+/// real disk actually near-full — see this module's tests.
+fn check_headroom(
+    relation: &str,
+    needed_bytes: u64,
+    available_bytes: u64,
+) -> crate::error::Result<()> {
     if available_bytes < needed_bytes {
         return Err(crate::error::MigrationDiskHeadroomSnafu {
-            relation: spec.relation.to_owned(),
+            relation: relation.to_owned(),
             needed_bytes,
             available_bytes,
         }
@@ -341,13 +413,21 @@ fn rebuild_from_scratch(
     store: &KnowledgeStore,
     spec: &RebuildSpec<'_>,
 ) -> crate::error::Result<()> {
+    #[cfg(feature = "crash-injection")]
     crate::crash_injection::crash_point(2);
     let old_rows = store.run_read(spec.read_script, BTreeMap::new())?; // step 2
+    // F5/F6: precheck now runs here — after `recovery_sweep`'s classify/
+    // repair has already discarded any reclaimable leftover, and reusing
+    // this step's own full read instead of a second full materialization.
+    free_space_precheck(store, spec, &old_rows)?;
+    #[cfg(feature = "crash-injection")]
     crate::crash_injection::crash_point(3);
     create_rebuild_relation(store, spec)?; // step 3
     let new_rows = (spec.transform)(&old_rows)?;
+    #[cfg(feature = "crash-injection")]
     crate::crash_injection::crash_point(4);
     batch_insert(store, &rebuild_name(spec.relation), &new_rows)?; // step 4
+    #[cfg(feature = "crash-injection")]
     crate::crash_injection::crash_point(5);
     drop_all_indices(store, spec)?; // step 5
     Ok(())
@@ -543,35 +623,79 @@ fn remove_retired(store: &KnowledgeStore, spec: &RebuildSpec<'_>) -> crate::erro
     }
 
     let mut attempts: u32 = 0;
+    // F8: the last `::remove` failure AND the last force-detach failure, so
+    // the eventual bounded-retry error (if attempts are exhausted) carries
+    // the engine's own reasons rather than nothing — the prior shape used
+    // `.is_ok()` on the remove and discarded the detach result entirely, so
+    // an operator staring at a permanent boot wedge got zero cause. The
+    // detach failure is usually the more diagnostic of the two: the outer
+    // `::remove` error is typically the generic "has indices attached",
+    // while the detach failure names the actual reason detachment itself
+    // didn't work.
+    // WARNING: no `= None` initializer on `last_remove_error` — the loop's
+    // own `match` below runs first on every iteration and either returns
+    // (`Ok`) or reassigns it (`Err`) before any read reachable from this
+    // declaration, so an initial `None` is provably dead (rustc
+    // `unused_assignments`, not cosmetic — it fails the `-D warnings` gate).
+    let mut last_remove_error: Option<crate::error::Error>;
+    let mut last_detach_error: Option<crate::error::Error> = None;
     loop {
-        if store
-            .run_mut(&format!("::remove {retired}"), BTreeMap::new())
-            .is_ok()
-        {
-            return Ok(());
+        match store.run_mut(&format!("::remove {retired}"), BTreeMap::new()) {
+            Ok(()) => return Ok(()),
+            Err(e) => last_remove_error = Some(e),
         }
         if attempts >= MAX_RETIRED_REMOVE_ATTEMPTS {
-            return Err(integrity_error(format!(
-                "migration '{}': retired relation '{retired}' exists and cannot be removed after {attempts} force-detach attempt(s); repair by restoring from backup or manual inspection",
-                spec.label
+            return Err(integrity_error(force_detach_exhausted_message(
+                spec.label,
+                &retired,
+                attempts,
+                last_remove_error.as_ref(),
+                last_detach_error.as_ref(),
             )));
         }
         attempts += 1;
         let stale = list_live_indices(store, &retired)?;
         if stale.is_empty() {
+            let remove_cause = last_remove_error
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "no engine error captured".to_owned());
             return Err(integrity_error(format!(
-                "migration '{}': retired relation '{retired}' exists, cannot be removed, and carries no live indices to force-detach; repair by manual inspection",
+                "migration '{}': retired relation '{retired}' exists, cannot be removed, and carries no live indices to force-detach; last removal error: {remove_cause}; repair by manual inspection",
                 spec.label
             )));
         }
         for idx in &stale {
             let verb = drop_verb_for_kind(&idx.kind)?;
-            // NOTE: best-effort — a detach failure here surfaces via the
-            // next `::remove` attempt (or the bounded-retry error above),
-            // never silently swallowed into an apparent success.
-            let _ = store.run_mut(&format!("{verb} {retired}:{}", idx.name), BTreeMap::new());
+            // NOTE: the outcome (success or failure) is captured — never
+            // silently swallowed into an apparent success — so the eventual
+            // bounded-retry error names the real reason detachment failed,
+            // not just that removal kept failing.
+            if let Err(e) = store.run_mut(&format!("{verb} {retired}:{}", idx.name), BTreeMap::new())
+            {
+                last_detach_error = Some(e);
+            }
         }
     }
+}
+
+fn force_detach_exhausted_message(
+    label: &str,
+    retired: &str,
+    attempts: u32,
+    last_remove_error: Option<&crate::error::Error>,
+    last_detach_error: Option<&crate::error::Error>,
+) -> String {
+    let remove_cause = last_remove_error
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "no engine error captured".to_owned());
+    let detach_cause = last_detach_error.map_or_else(
+        || "no force-detach was attempted or all attempts reported success yet the relation is still not removable".to_owned(),
+        |e| e.to_string(),
+    );
+    format!(
+        "migration '{label}': retired relation '{retired}' exists and cannot be removed after {attempts} force-detach attempt(s); last removal error: {remove_cause}; last force-detach error: {detach_cause}; repair by restoring from backup or manual inspection"
+    )
 }
 
 // ---------------------------------------------------------------------
@@ -659,6 +783,19 @@ mod tests {
             live_ddl: widget_live_ddl(),
             expected_indices: vec![],
             transform: &widget_transform,
+        }
+    }
+
+    const WIDGET_LABEL_FTS_DDL: &str =
+        "::fts create widgets:label_fts { extractor: label, tokenizer: Simple, filters: [Lowercase] }";
+
+    fn widget_spec_with_index() -> RebuildSpec<'static> {
+        RebuildSpec {
+            expected_indices: vec![IndexSpec {
+                name: "label_fts",
+                recreate_ddl: WIDGET_LABEL_FTS_DDL.to_owned(),
+            }],
+            ..widget_spec()
         }
     }
 
@@ -806,11 +943,225 @@ mod tests {
     }
 
     #[test]
+    fn resume_from_crash_between_step_8_and_9_recreates_nothing_twice_and_still_stamps() {
+        // Plan §8.3's crash-safety table's last row ("8->9": `<rel>` new,
+        // indexed, unstamped -> probe -> resume at 9 -> none lost) — the one
+        // row not otherwise covered by an existing test, and only
+        // meaningful with a spec that actually declares an index (an empty
+        // `expected_indices` makes step 8 a true no-op either way).
+        let baseline_store = make_store();
+        seed_widgets(&baseline_store);
+        let indexed_spec = widget_spec_with_index();
+        rebuild_relation_atomically(&baseline_store, &indexed_spec).expect("baseline run");
+        let baseline = exported_widgets(&baseline_store);
+
+        let resumed_at_9 = make_store();
+        seed_widgets(&resumed_at_9);
+        let spec = widget_spec_with_index();
+        rebuild_from_scratch(&resumed_at_9, &spec).expect("steps 2-5");
+        swap_rename(&resumed_at_9, &spec).expect("step 6");
+        remove_retired(&resumed_at_9, &spec).expect("step 7");
+        recreate_expected_indices(&resumed_at_9, &spec).expect("step 8 (indices live, unstamped)");
+
+        // A crash lands here: `widgets` is new-shape, indexed, but the
+        // version stamp never ran. `column_probe` must resolve this to
+        // `Rebuilt` (not `CleanStart`) so the resumed run recreates nothing
+        // a second time and only stamps.
+        let resume = recovery_sweep(&resumed_at_9, &spec).expect("sweep after simulated 8->9 crash");
+        assert_eq!(resume, ResumePoint::Rebuilt);
+
+        rebuild_relation_atomically(&resumed_at_9, &spec).expect("resume from step 9");
+        assert_eq!(exported_widgets(&resumed_at_9).rows, baseline.rows);
+        assert_eq!(resumed_at_9.schema_version().expect("schema version"), 999);
+        let live = list_live_indices(&resumed_at_9, "widgets").expect("list widgets indices");
+        assert_eq!(
+            live.len(),
+            1,
+            "the index recreated before the simulated crash must still be exactly once live, \
+             not duplicated or dropped by the resume"
+        );
+    }
+
+    #[test]
     fn free_space_precheck_is_a_noop_for_in_memory_stores() {
         let store = make_store();
         seed_widgets(&store);
         // In-memory stores have no filesystem path; the precheck must not
         // error just because there's nothing to statvfs.
-        free_space_precheck(&store, &widget_spec()).expect("no-op for mem store");
+        free_space_precheck(&store, &widget_spec(), &NamedRows::new(vec![], vec![]))
+            .expect("no-op for mem store");
+    }
+
+    /// F8: plan §8.3 named this branch the difference between recoverable
+    /// and "permanent boot failure on a store whose data is intact" — but
+    /// it is unreachable by construction on any path this code produces
+    /// (step 5 always empties the index set before the swap), so no test
+    /// in the original diff ever attached a real index to a retired
+    /// relation and drove `remove_retired` against it. This constructs
+    /// exactly that state directly (bypassing step 5, as an out-of-band
+    /// actor would) to get real evidence rather than the absence of proof.
+    ///
+    /// **Result, empirically confirmed by this test**: the force-detach
+    /// does NOT recover. `krites::runtime::relation::index_management::remove_index`
+    /// (`index_management.rs:190-195`) reconstructs the index's sub-relation
+    /// name as `"{current_parent_name}:{idx_name}"` instead of using the
+    /// already-known physical name captured off the index map's own
+    /// `RelationHandle` entry — a name that is only ever correct when the
+    /// parent has never been renamed since the index was created. Once the
+    /// swap has renamed the parent to `<rel>__retired`, the sub-relation is
+    /// still physically named `<rel>:<idx_name>` (rename never touches
+    /// `{name}:{k}` sub-relations — verified independently at
+    /// `index_management.rs:213-254` / `relation_crud.rs:210-213`), so
+    /// `destroy_relation` looks up a name that was never created and fails
+    /// with "Cannot find requested stored relation"
+    /// (`relation_crud.rs:142-169`). This is a **krites-level defect**, not
+    /// something this call site's command string can work around: the
+    /// caller only names `<parent>:<index>`, and krites' own internal
+    /// reconstruction — not the caller's string — picks the wrong physical
+    /// target. Out of scope for this repair (a foundational
+    /// engine function used by every index kind on every relation, not a
+    /// "snapshot and sweep" defect); recorded here so the bounded-retry
+    /// path stays genuinely diagnosable (F8's other half, fixed above) and
+    /// so this is not mistaken for "fixed" — file as its own krites issue.
+    #[test]
+    fn remove_retired_force_detach_cannot_recover_an_index_attached_before_the_rename() {
+        let store = make_store();
+        seed_widgets(&store);
+        store
+            .run_mut(
+                "::fts create widgets:label_fts { extractor: label, tokenizer: Simple, filters: [Lowercase] }",
+                BTreeMap::new(),
+            )
+            .expect("attach a real fts index to widgets before any rename");
+        let retired = retired_name("widgets");
+        store
+            .run_mut(&format!("::rename widgets -> {retired}"), BTreeMap::new())
+            .expect("rename widgets away with the index still attached (out-of-band, as F8 posits)");
+
+        let live_on_retired =
+            list_live_indices(&store, &retired).expect("list indices on the retired relation");
+        assert_eq!(
+            live_on_retired.len(),
+            1,
+            "rename_relation must carry the parent's own index map over to the new name \
+             (verified: this enumeration succeeds) even though it does not rename the \
+             sub-relation itself"
+        );
+
+        let spec = widget_spec();
+        let err = remove_retired(&store, &spec).expect_err(
+            "empirically: force-detach cannot recover this state today (krites-level defect \
+             in remove_index's sub-relation name reconstruction, see this test's doc comment) \
+             — if this starts passing, krites' remove_index was fixed and this test (plus its \
+             doc comment) should be updated to assert success instead",
+        );
+        let message = err.to_string();
+        assert!(
+            message.contains("force-detach attempt"),
+            "expected the bounded-retry exhaustion message, got: {message}"
+        );
+        assert!(
+            message.contains("last force-detach error"),
+            "F8: the bounded-retry error must surface the force-detach failure, not discard it \
+             — got: {message}"
+        );
+        assert!(
+            message.contains("Cannot find requested stored relation")
+                || message.contains("not found")
+                || message.contains("relation"),
+            "expected the surfaced force-detach error to name a real engine cause, got: {message}"
+        );
+    }
+
+    #[test]
+    fn sweep_repair_of_a_foreign_rename_also_discards_a_co_existing_rebuild() {
+        // F7: `(false, true, _)` explicitly admits `<rel>__rebuild` may
+        // exist alongside a foreign-renamed retired copy. Left behind, the
+        // very next `CleanStart` run hard-errors on step 3's
+        // `::create <rel>__rebuild` finding one already there — a repair
+        // branch that leaves the boot failing.
+        let store = make_store();
+        seed_widgets(&store);
+        let spec = widget_spec();
+
+        // Simulate the (false, true) case AND a leftover `__rebuild` from
+        // some earlier, unrelated partial attempt.
+        store
+            .run_mut(
+                &format!("::rename widgets -> {}", retired_name("widgets")),
+                BTreeMap::new(),
+            )
+            .expect("simulate foreign rename");
+        create_rebuild_relation(&store, &spec).expect("simulate a leftover __rebuild");
+
+        let resume = recovery_sweep(&store, &spec)
+            .expect("sweep must repair both the foreign rename and the leftover rebuild");
+        assert_eq!(resume, ResumePoint::CleanStart);
+        assert!(
+            !store.relation_exists(&rebuild_name("widgets")).unwrap(),
+            "the leftover __rebuild must be discarded by the repair, not left to collide with step 3"
+        );
+
+        // The repair must leave the store in a state a real run actually
+        // completes from — not just a resume point that then fails.
+        rebuild_relation_atomically(&store, &spec)
+            .expect("a full run must succeed after this repair, not hard-error on step 3");
+    }
+
+    #[test]
+    fn column_probe_full_signature_catches_a_type_change_a_name_only_comparison_would_miss() {
+        // F9: the prior comparison used only the column NAME set, which is
+        // blind to a column whose type (or key/value placement, or default)
+        // changed without being renamed.
+        let store = make_store();
+        store
+            .run_mut(
+                ":create typed { id: String => count: String }",
+                BTreeMap::new(),
+            )
+            .expect("create typed with a String count column");
+        store
+            .run_mut(
+                ":create typed__rebuild { id: String => count: Int }",
+                BTreeMap::new(),
+            )
+            .expect("create rebuild with an Int count column (same name, different type)");
+
+        let live = column_signatures(&store, "typed").expect("read live signatures");
+        let rebuild = column_signatures(&store, "typed__rebuild").expect("read rebuild signatures");
+
+        let name_only_live: std::collections::BTreeSet<&str> =
+            live.iter().map(|(name, ..)| name.as_str()).collect();
+        let name_only_rebuild: std::collections::BTreeSet<&str> =
+            rebuild.iter().map(|(name, ..)| name.as_str()).collect();
+        assert_eq!(
+            name_only_live, name_only_rebuild,
+            "fixture sanity check: the two shapes must share identical column NAMES \
+             so a name-only comparison would have wrongly called this a match"
+        );
+
+        assert_ne!(
+            live, rebuild,
+            "a type change on an identically-named column must be visible to the full-tuple \
+             signature comparison, not silently treated as an already-matching shape"
+        );
+    }
+
+    #[test]
+    fn check_headroom_refuses_when_available_is_short() {
+        // Plan §8.4's ENOSPC fault kind, exercised deterministically: the
+        // decision logic itself, not a real near-full disk.
+        let err = check_headroom("widgets", 1_000, 500)
+            .expect_err("insufficient headroom must be refused");
+        assert!(
+            err.to_string().contains("insufficient disk headroom"),
+            "expected a disk-headroom refusal, got: {err}"
+        );
+    }
+
+    #[test]
+    fn check_headroom_permits_when_available_is_sufficient() {
+        check_headroom("widgets", 1_000, 1_000).expect("exactly enough headroom must pass");
+        check_headroom("widgets", 1_000, 1_001).expect("more than enough headroom must pass");
     }
 }
