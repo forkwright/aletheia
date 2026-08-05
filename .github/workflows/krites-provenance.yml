@@ -1,0 +1,32 @@
+# WHY: the krites retirement program's only anti-backsliding gate is that
+# PROVENANCE.toml never grows a 'derived' row and never falls out of sync with
+# the crate's file list or its own NOTICE.md rendering. See
+# deliverables/krites-replacement/PLAN.md §3 wave 0.1 and §9 kill criterion 8.
+name: Krites Provenance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  krites-provenance:
+    name: PROVENANCE.toml ledger
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check ledger completeness, NOTICE.md sync, no derived-row growth
+        run: python3 scripts/check-krites-provenance.py --base-ref "origin/${{ github.base_ref || 'main' }}"
