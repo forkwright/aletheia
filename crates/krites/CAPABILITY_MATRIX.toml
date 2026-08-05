@@ -18,6 +18,15 @@
 # `call_sites` is a measured integer with the exact command recorded in
 # `call_sites_method`, never a guess. Zero call sites is never grounds to
 # drop a row -- see the plan's B7 finding and kill criterion 10.
+# check_call_sites_measured (scripts/check-krites-capability-matrix.py)
+# re-executes every call_sites_method in CI and fails the build if it
+# doesn't reproduce the declared count -- this is not just a convention.
+#
+# `call_sites = -1` is the ONE documented exception: "not measured", legal
+# only when `call_sites_method` states why -- prefixed `not measured:` /
+# `not separately measured:` (too generic a token/type to grep meaningfully)
+# or `covered under <other-row-id>; not separately re-measured` (a sibling
+# row already counts it). -1 is never a stand-in for a guessed 0.
 #
 # dest_wave values: "wave-0".."wave-12" per PLAN.md Sec 4/Sec 7; "sovereign"
 # for code that already carries forward unrewritten (PLAN.md Sec 4 totals);
@@ -218,8 +227,9 @@ exec_site = "crates/krites/src/runtime/sys.rs:146"
 dest_wave = "wave-4"
 dest_module = "HNSW (relation/index_management.rs create_hnsw_index)"
 gate = "E04/E05: exactly one canary node (level=1, all-Null tuple key), byte-compatible; insert -> close -> reopen -> search recall vs. the E25 exact-kNN oracle."
-call_sites = 2
+call_sites = 1
 call_sites_method = "grep -rn -- '[\"'\\''`]::hnsw create' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "1 measured site: episteme/src/knowledge_store/mod.rs:264 (hnsw_ddl, the format! that builds the DSL string). The pattern deliberately does not match mod.rs:46's `//! ::hnsw create ...` doc-comment example -- no leading quote/backtick before the keyword there, so the quote-anchor excludes it correctly."
 
 [[capability]]
 id = "sysop-create-fts-index"
@@ -290,7 +300,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Sorts before every other variant; byte-identity of encoding (Sec 6.1)."
 call_sites = 48
-call_sites_method = "grep -rn 'DataValue::Null\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Null\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
 id = "datavalue-bool"
@@ -301,7 +311,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding (Sec 6.1)."
 call_sites = 19
-call_sites_method = "grep -rn 'DataValue::Bool\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Bool\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
 id = "datavalue-num"
@@ -312,7 +322,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding, including integer-vs-float ordering (Sec 6.1); per-op differential in wave 7 for the ~102 functions consuming Num."
 call_sites = 2
-call_sites_method = "grep -rn 'DataValue::Num\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Num\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
 id = "datavalue-str"
@@ -323,7 +333,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding via CompactString inline storage (Sec 6.1)."
 call_sites = 394
-call_sites_method = "grep -rn 'DataValue::Str\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Str\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
 id = "datavalue-bytes"
@@ -334,7 +344,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding via serde_bytes; raw byte sequence round-trips unchanged (Sec 6.1)."
 call_sites = 0
-call_sites_method = "grep -rn 'DataValue::Bytes\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Bytes\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see. Not flagged in Appendix A -- report to T0."
 
 [[capability]]
@@ -346,7 +356,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs (UuidWrapper)"
 gate = "Chronological v1-UUID field ordering preserved exactly: UuidWrapper::cmp compares (time_hi, time_mid, time_low, rest), not the RFC byte layout."
 call_sites = 0
-call_sites_method = "grep -rn 'DataValue::Uuid\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Uuid\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see. Not flagged in Appendix A -- report to T0."
 
 [[capability]]
@@ -358,7 +368,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs (RegexWrapper, engine-internal)"
 gate = "Never serializes (serde impl returns a custom error on attempt, by design); Hash/Ord compare the source pattern string only, never compiled regex state."
 call_sites = 0
-call_sites_method = "grep -rn 'DataValue::Regex\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Regex\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Doc-comment-declared engine-internal (never appears in user-facing query results); zero external sites is expected by design, not a gap."
 
 [[capability]]
@@ -370,7 +380,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding for an ordered sequence (Sec 6.1); Set (wave 6) coerces to List at the output boundary."
 call_sites = 2
-call_sites_method = "grep -rn 'DataValue::List\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::List\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
 id = "datavalue-set"
@@ -381,7 +391,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs (engine-internal)"
 gate = "Deduplicated ordered set coerces to List at the output boundary with element order preserved."
 call_sites = 0
-call_sites_method = "grep -rn 'DataValue::Set\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Set\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Doc-comment-declared engine-internal; zero external sites is expected by design, not a gap."
 
 [[capability]]
@@ -393,7 +403,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs (Vector payload); cross-checked at wave-4 (HNSW)"
 gate = "Typed floating-point vector byte-encoding stable; dimension sourced from the embedding provider's reported dim, not a config constant (Appendix A row: HNSW durable entry point, E47)."
 call_sites = 9
-call_sites_method = "grep -rn 'DataValue::Vec\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Vec\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
 id = "datavalue-json"
@@ -404,7 +414,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs + data/json.rs"
 gate = "Recorded-vector oracle only, never upstream (data/tests/json.rs is 27.8% verbatim -- krites already diverged there); round-trip through encode/decode preserves the value; ordering vs. other variants stays byte-stable (Appendix A row: DataValue::Json + data/json.rs)."
 call_sites = 0
-call_sites_method = "grep -rn 'DataValue::Json\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Json\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see."
 
 [[capability]]
@@ -416,7 +426,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs (Validity, ValidityTs); also wave-9 (grammar) and wave-10 (query engine)"
 gate = "ValidityTs encoding is byte-identical and memcmp(encode(a), encode(b)) == a.cmp(b) holds with the reversed (Reverse<i64>) ordering; N16 bitemporal sentinel byte-match on supersession (Appendix A row: Time-travel / Validity)."
 call_sites = 0
-call_sites_method = "grep -rn 'DataValue::Validity\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Validity\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "One of the plan's original five zero-call-site unmapped items (B7); now named. Engine-internal per doc comment -- expected zero external constructor sites."
 
 [[capability]]
@@ -428,7 +438,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs (engine-internal sentinel)"
 gate = "Sorts after every other variant; used as the upper-bound key in range scans -- wave-10 range-scan queries against the bound remain correct."
 call_sites = 0
-call_sites_method = "grep -rn 'DataValue::Bot\\b' crates/ --include='*.rs' | grep -v ^crates/krites/src/"
+call_sites_method = "grep -rn 'DataValue::Bot\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Doc-comment-declared engine-internal; zero external sites is expected by design, not a gap."
 
 # ---------------------------------------------------------------------------
@@ -581,9 +591,9 @@ source = "crates/krites/src/lib.rs:39"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (ReadOnlyViolationSnafu enforcement)"
 gate = "Every mutating SysOp arm rejects an Immutable script identically to today -- all ReadOnlyViolationSnafu sites in runtime/sys.rs (Compact, RemoveRelation, CreateIndex, CreateVectorIndex, CreateFtsIndex, CreateMinHashLshIndex, RemoveIndex, RenameRelation, SetTriggers, SetAccessLevel: 10 of the 19 SysOp arms)."
-call_sites = 0
+call_sites = 103
 call_sites_method = "grep -rn 'ScriptMutability' crates/ --include='*.rs' | grep -v ^crates/krites/"
-notes = "Zero-call-site outside krites' own dispatch path (episteme/mneme call Db::run/run_read_only, not this enum directly) -- report to T0."
+notes = "Not zero-call-site: episteme imports and constructs ScriptMutability directly (crate::engine::ScriptMutability) and passes it into Db::run/run_read_only at every DDL/query call site, e.g. knowledge_store/migration.rs:94,96 and knowledge_store/derived_rules.rs:23,460. Load-bearing, not merely wave-boundary-adjacent."
 
 [[capability]]
 id = "api-transaction-payload"
@@ -639,7 +649,8 @@ dest_wave = "wave-11"
 dest_module = "runtime/db.rs (cross-checked at wave-10)"
 gate = "A cooperative cancel token is honoured by the executor and by long index operations (HNSW build, FTS reindex); cancelling mid-build shows bounded wind-down (Appendix A row: Poison / cancellation). D08: the poison boundary aborts after a structured log."
 call_sites = 0
-call_sites_method = "grep -rn '\\bPoison\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+call_sites_method = "grep -rn '\\bPoison\\b' crates/ --include='*.rs' | grep -v ^crates/krites/ | grep -vP '^\\S+:[0-9]+:\\s*//'"
+notes = "Bare 'Poison' is a comment-only mention outside krites (crud.rs:22,23, prose about 'the Poison flag'), never a code call site -- the trailing grep -vP excludes comment lines so the measured figure matches the real code usage, not a text-search false positive."
 
 [[capability]]
 id = "api-db-open-mem"

@@ -29,6 +29,16 @@ floor, required fields, unique ids). Pass --plan-md <path> for an optional,
 non-gating local live-diff when both repos are checked out side by side
 (e.g. on metis, ~/metis-ops next to ~/dev/aletheia or a dispatch worktree).
 
+`call_sites` on a sysop/datavalue/public_api row is a measured integer,
+never a guess: `check_call_sites_measured` re-executes each row's
+`call_sites_method` and fails the build if it doesn't reproduce the
+declared count. `call_sites = -1` is the one documented exception -- it
+means "not measured", and is only legal when `call_sites_method` states why
+(a generic-token/type-level rationale, or `covered under <other-row-id>;
+not separately re-measured`). Zero call sites is never grounds to drop a
+row -- see the plan's B7 finding and kill criterion 10 -- and -1 is never a
+stand-in for zero.
+
 Usage:
     python3 scripts/check-krites-capability-matrix.py
     python3 scripts/check-krites-capability-matrix.py --plan-md /path/to/PLAN.md
@@ -38,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -57,12 +68,51 @@ EXPECTED_APPENDIX_A_ROWS = 33
 IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_:]*")
 
 
+def _strip_leading_attributes(text: str) -> int:
+    """Consume zero or more leading `#[...]` attributes (bracket-matched,
+    not a naive regex, so `#[serde(rename = "]")]`-style nested brackets
+    don't truncate early) plus trailing whitespace. Returns chars consumed.
+
+    WHY: a lone `stripped.startswith("#[")` line-skip (the prior approach)
+    discards the REST of the line too -- `#[allow(dead_code)] Sneaky,` loses
+    `Sneaky` along with the attribute. Consuming just the attribute lets the
+    caller keep scanning the remainder of the line for a variant.
+    """
+    pos = 0
+    while text[pos : pos + 2] == "#[":
+        depth = 0
+        j = pos
+        while j < len(text):
+            if text[j] == "[":
+                depth += 1
+            elif text[j] == "]":
+                depth -= 1
+                if depth == 0:
+                    j += 1
+                    break
+            j += 1
+        pos = j
+        while pos < len(text) and text[pos] in " \t":
+            pos += 1
+    return pos
+
+
 def extract_enum_variants(text: str, enum_name: str) -> dict[str, int]:
     """Return {variant_name: line_number} for a `pub enum <enum_name> { ... }` block.
 
-    Scoped to the first top-level enum by that name; skips doc comments
-    (`///`), inner comments, and attributes (`#[...]`). Stops at the
-    closing brace that returns to column 0.
+    Scoped to the first top-level enum by that name. Strips line comments
+    and leading attributes, then scans each line for every top-level
+    variant declaration it contains -- not just one anchored at column 0.
+    Stops at the closing brace that returns to column 0.
+
+    WHY(line-scan, not line-anchor): `^([A-Za-z_]...)`, matched once per
+    line, is evadable by putting a second variant after the first on the
+    same line (`Compact, Sneaky,`) -- the anchor never sees past the first
+    comma. Both that shape and `#[attr] Sneaky,` produce a `cargo fmt
+    --check` diff (rustfmt puts one variant per line), so today this is
+    unreachable through a fmt-clean PR -- but `gate` includes this check
+    and fmt is a separate step; nothing ties them together structurally, so
+    the parser is hardened to not depend on that coincidence.
     """
     lines = text.splitlines()
     start = None
@@ -74,34 +124,71 @@ def extract_enum_variants(text: str, enum_name: str) -> dict[str, int]:
         raise ValueError(f"enum {enum_name} not found")
 
     variants: dict[str, int] = {}
-    depth = 0
+    enum_depth = 0
     started_body = False
+    # WHY: bracket depth left open by a struct/tuple variant payload that
+    # spans multiple lines (e.g. `Query {\n    source: Box<Error>,\n },`).
+    # While > 0, subsequent lines are payload interior (field names, etc.)
+    # -- never a new variant -- so they're depth-tracked only, not scanned.
+    payload_depth = 0
     for i in range(start, len(lines)):
-        line = lines[i]
-        depth += line.count("{") - line.count("}")
-        if "{" in line and not started_body:
+        # Strip trailing line comments before anything else -- `// Sneaky,`
+        # must never be mistaken for code.
+        code = re.sub(r"//.*$", "", lines[i])
+        enum_depth += code.count("{") - code.count("}")
+        if "{" in code and not started_body:
             started_body = True
+            code = code[code.index("{") + 1 :]
+        elif not started_body:
             continue
-        if not started_body:
-            continue
-        if depth <= 0:
+        if enum_depth <= 0:
             break
-        stripped = line.strip()
-        if not stripped or stripped.startswith("///") or stripped.startswith("//"):
+
+        if payload_depth > 0:
+            payload_depth += (
+                code.count("(") + code.count("{") - code.count(")") - code.count("}")
+            )
             continue
-        if stripped.startswith("#["):
-            continue
-        # WHY: `[,({]` covers all three variant shapes -- unit (`Name,`),
-        # tuple (`Name(...)`), and struct (`Name { ... }`, e.g.
-        # MultiTransactionError::Query { source: Box<Error> }). Missing the
-        # `{` case here silently drops struct variants from extraction,
-        # which would make the checker pass without ever having looked at
-        # them -- an "unverifiable collapsing to clean", exactly what the
-        # tri-state Verdict pattern (Appendix A row: Tri-state Verdict) exists
-        # to forbid.
-        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*[,({]", stripped)
-        if m:
-            variants[m.group(1)] = i + 1
+
+        pos = 0
+        while pos < len(code):
+            stripped = code[pos:].lstrip()
+            pos += len(code[pos:]) - len(stripped)
+            if not stripped:
+                break
+            consumed = _strip_leading_attributes(code[pos:])
+            if consumed:
+                pos += consumed
+                continue
+            # WHY: `[,({]` covers all three variant shapes -- unit
+            # (`Name,`), tuple (`Name(...)`), and struct (`Name { ... }`,
+            # e.g. MultiTransactionError::Query { source: Box<Error> }).
+            # Missing the `{` case here silently drops struct variants from
+            # extraction, which would make the checker pass without ever
+            # having looked at them -- an "unverifiable collapsing to
+            # clean", exactly what the tri-state Verdict pattern (Appendix
+            # A row: Tri-state Verdict) exists to forbid.
+            m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*([,({])", code[pos:])
+            if not m:
+                break
+            name, opener = m.group(1), m.group(2)
+            variants.setdefault(name, i + 1)
+            pos += m.end()
+            if opener in "({":
+                depth = 1
+                j = pos
+                while j < len(code) and depth > 0:
+                    if code[j] in "({":
+                        depth += 1
+                    elif code[j] in ")}":
+                        depth -= 1
+                    j += 1
+                if depth > 0:
+                    payload_depth = depth
+                    break
+                pos = j
+            while pos < len(code) and code[pos] in ", \t":
+                pos += 1
     return variants
 
 
@@ -267,6 +354,197 @@ def check_all_rows_well_formed(rows: list[dict]) -> list[str]:
     return errors
 
 
+# WHY(call_sites = -1): the documented not-measured sentinel. A krites
+# capability whose call-site count is either too generic a token to grep
+# meaningfully, or already counted under a sibling row, records -1 rather
+# than a fabricated 0 -- and MUST say which, via `call_sites_method`
+# starting with one of these prefixes (or the `covered under <id>` form
+# below). check_call_sites_measured enforces this; a bare -1 with no
+# recognized reason is a checker failure, not a silent pass.
+CALL_SITES_NOT_MEASURED = -1
+NOT_MEASURED_PREFIXES = ("not measured:", "not separately measured:")
+_COVERED_UNDER_RE = re.compile(r"^covered under ([a-z0-9-]+); not separately re-measured$")
+
+# WHY: the one row (`sysop-remove-index`) whose call_sites_method aggregates
+# several sub-greps in prose rather than being one literal command:
+# "sum of quote-anchored grep for 'A', 'B', ... (n1+n2+...)". Parsed and
+# re-run per pattern below so it stays measured, not just narrated.
+_AGGREGATE_PROSE_RE = re.compile(
+    r"^sum of quote-anchored grep for (?P<patterns>.+) across crates/ "
+    r"excluding crates/krites/ \((?P<breakdown>[0-9+]+)\)$"
+)
+_QUOTED_RE = re.compile(r"'([^']+)'")
+
+# WHY: a runnable call_sites_method may carry a trailing prose annotation
+# after the literal shell pipeline (e.g. "... | grep -v ^crates/krites/
+# (proxy: not disambiguated from ...)"). The two-space run is the
+# deliberate separator -- no recorded grep pipeline in this file contains
+# one, so splitting on it can't truncate real command text.
+_TRAILING_ANNOTATION_SEP = "  "
+
+_FILE_LINE_RE = re.compile(r"^(crates/[\w./-]+\.(?:rs|pest)):([0-9]+(?:,[0-9]+)*)$")
+
+
+def _quote_anchored_grep(pattern: str) -> str:
+    """Reproduce the sysop category's quote-anchored grep template (see the
+    category header WHY comment) for one literal DSL-keyword pattern."""
+    return (
+        "grep -rn -- '[\"'\\''`]" + pattern + "' crates/ "
+        "--include='*.rs' | grep -v ^crates/krites/"
+    )
+
+
+def _run_grep_pipeline(cmd: str) -> int:
+    """Execute a recorded grep pipeline from the repo root; return the
+    matched line count. A pipeline with zero matches exits non-zero (the
+    trailing `grep -v` convention) -- expected, not an error; only stdout
+    is read."""
+    result = subprocess.run(
+        cmd, shell=True, cwd=REPO_ROOT, capture_output=True, text=True, check=False
+    )
+    return len([line for line in result.stdout.splitlines() if line])
+
+
+def check_call_sites_measured(rows: list[dict]) -> list[str]:
+    """Enforce the file header's claim that `call_sites` is "a measured
+    integer ... never a guess": for every sysop/datavalue/public_api row,
+    either call_sites == -1 with a recognized not-measured reason, or
+    call_sites_method is actually executed and its output count must equal
+    the declared figure. This is what makes drift between the prose and
+    reality a build failure instead of something only an adversarial review
+    catches by hand.
+    """
+    errors: list[str] = []
+    row_ids = {r.get("id") for r in rows}
+    for row in rows:
+        if "call_sites" not in row:
+            continue
+        row_id = row.get("id", "<no id>")
+        call_sites = row["call_sites"]
+        method = row.get("call_sites_method", "")
+
+        if not isinstance(call_sites, int) or isinstance(call_sites, bool):
+            errors.append(f"row '{row_id}': call_sites must be an integer, got {call_sites!r}")
+            continue
+
+        if call_sites == CALL_SITES_NOT_MEASURED:
+            covered = _COVERED_UNDER_RE.match(method)
+            if covered:
+                if covered.group(1) not in row_ids:
+                    errors.append(
+                        f"row '{row_id}': call_sites_method references "
+                        f"unknown row id '{covered.group(1)}'"
+                    )
+                continue
+            if method.startswith(NOT_MEASURED_PREFIXES):
+                continue
+            errors.append(
+                f"row '{row_id}': call_sites = -1 (not-measured sentinel) but "
+                f"call_sites_method {method!r} doesn't start with a recognized "
+                "reason ('not measured:', 'not separately measured:', or "
+                "'covered under <id>; not separately re-measured')"
+            )
+            continue
+
+        if call_sites < 0:
+            errors.append(
+                f"row '{row_id}': call_sites = {call_sites} is negative and not "
+                f"the documented {CALL_SITES_NOT_MEASURED} sentinel"
+            )
+            continue
+
+        aggregate = _AGGREGATE_PROSE_RE.match(method)
+        if aggregate:
+            patterns = _QUOTED_RE.findall(aggregate.group("patterns"))
+            breakdown = [int(x) for x in aggregate.group("breakdown").split("+")]
+            if len(patterns) != len(breakdown):
+                errors.append(
+                    f"row '{row_id}': aggregate call_sites_method names "
+                    f"{len(patterns)} patterns but the breakdown has "
+                    f"{len(breakdown)} terms"
+                )
+                continue
+            measured = [_run_grep_pipeline(_quote_anchored_grep(p)) for p in patterns]
+            if measured != breakdown:
+                errors.append(
+                    f"row '{row_id}': call_sites_method breakdown {breakdown} "
+                    f"does not reproduce -- measured {measured} for {patterns}"
+                )
+                continue
+            if sum(measured) != call_sites:
+                errors.append(
+                    f"row '{row_id}': call_sites = {call_sites} but the "
+                    f"aggregate call_sites_method measures {sum(measured)}"
+                )
+            continue
+
+        if not method.strip().startswith("grep"):
+            errors.append(
+                f"row '{row_id}': call_sites = {call_sites} but "
+                f"call_sites_method {method!r} is neither a runnable grep "
+                "pipeline nor the recognized aggregate-prose form -- cannot "
+                "verify the figure is measured, not guessed"
+            )
+            continue
+
+        runnable = method.split(_TRAILING_ANNOTATION_SEP, 1)[0].rstrip()
+        measured_count = _run_grep_pipeline(runnable)
+        if measured_count != call_sites:
+            errors.append(
+                f"row '{row_id}': call_sites = {call_sites} but "
+                f"call_sites_method measures {measured_count} -- `{runnable}`"
+            )
+
+    return errors
+
+
+def check_file_line_refs(rows: list[dict]) -> list[str]:
+    """Validate every sysop/datavalue/public_api `source`/`exec_site`
+    citation resolves to a real file with the cited line(s) in range.
+
+    Scoped to these three categories -- appendix_a's `source` cites
+    PLAN.md, a sibling repo CI cannot read (see module docstring), not a
+    local file:line, so it's exempt by construction rather than by a
+    fragile regex-non-match skip.
+    """
+    errors: list[str] = []
+    file_cache: dict[str, int] = {}
+    for row in rows:
+        if row.get("category") not in ("sysop", "datavalue", "public_api"):
+            continue
+        row_id = row.get("id", "<no id>")
+        for field in ("source", "exec_site"):
+            value = row.get(field)
+            if value is None:
+                continue
+            m = _FILE_LINE_RE.match(value)
+            if not m:
+                errors.append(
+                    f"row '{row_id}': {field} {value!r} is not in the "
+                    "required 'crates/.../file.{rs,pest}:N[,N...]' form"
+                )
+                continue
+            rel_path, line_list = m.group(1), m.group(2)
+            path = REPO_ROOT / rel_path
+            if rel_path not in file_cache:
+                if not path.is_file():
+                    file_cache[rel_path] = -1
+                else:
+                    file_cache[rel_path] = len(path.read_text(encoding="utf-8").splitlines())
+            n_lines = file_cache[rel_path]
+            if n_lines == -1:
+                errors.append(f"row '{row_id}': {field} references missing file {rel_path}")
+                continue
+            for line_str in line_list.split(","):
+                line_no = int(line_str)
+                if not 1 <= line_no <= n_lines:
+                    errors.append(
+                        f"row '{row_id}': {field} line {line_no} out of range "
+                        f"for {rel_path} ({n_lines} lines)"
+                    )
+    return errors
+
+
 def live_plan_diff(plan_md: Path, rows: list[dict]) -> list[str]:
     """Best-effort, non-gating: diff PLAN.md's Appendix A table against the
     matrix's appendix_a rows when the plan repo is locally reachable."""
@@ -295,9 +573,21 @@ def live_plan_diff(plan_md: Path, rows: list[dict]) -> list[str]:
         if row.get("category") == "appendix_a":
             matrix_tokens |= item_tokens(row.get("item", ""))
 
+    # WHY: tokenize the raw cell, not a backtick/paren-stripped version.
+    # `item_tokens`'s IDENT_RE already extracts only identifier-shaped text
+    # -- backticks and parens are non-identifier characters it ignores on
+    # its own. Pre-stripping them was actively destructive: a plan cell
+    # that is ENTIRELY backticked (`` `MultiTransaction` ``) or entirely
+    # parenthesized reduces to the empty string before tokenization ever
+    # runs, so `toks` is empty, `toks & matrix_tokens` is always empty, and
+    # every such row is reported as drift regardless of whether it's
+    # mirrored correctly. Verified against the real PLAN.md: this produced
+    # 11 false-positive warnings out of 33 rows; removing the strip drops
+    # that to 0 while still flagging a genuinely-unmirrored row (tested by
+    # injecting one).
     warnings = []
     for plan_row in plan_rows:
-        toks = item_tokens(re.sub(r"`[^`]*`|\([^)]*\)", "", plan_row))
+        toks = item_tokens(plan_row)
         if not toks & matrix_tokens:
             warnings.append(f"PLAN.md Appendix A row not found in matrix: {plan_row!r}")
 
@@ -329,6 +619,8 @@ def main() -> int:
     errors += check_category("datavalue", extract_datavalue_variants(), rows, "data/value.rs")
     errors += check_category("public_api", extract_lib_public_api(), rows, "lib.rs")
     errors += check_appendix_a(rows)
+    errors += check_call_sites_measured(rows)
+    errors += check_file_line_refs(rows)
 
     if args.plan_md is not None:
         for warning in live_plan_diff(args.plan_md, rows):
