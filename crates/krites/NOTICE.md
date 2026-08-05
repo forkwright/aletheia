@@ -7,8 +7,8 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 199 files under `src/`: 175 derived, 24 sovereign, 0 dual
-- Mean verbatim match across the 175 derived files: 49.2% (unweighted average of the per-file `verbatim_pct` column below)
+- 201 files under `src/`: 177 derived, 24 sovereign, 0 dual
+- Mean verbatim match across the 177 derived files: 49.7% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -99,6 +99,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fixed_rule/utilities/mod.rs` | `fixed_rule/utilities/mod.rs` | 57.1% | derived |
 | `src/fixed_rule/utilities/reorder_sort.rs` | `fixed_rule/utilities/reorder_sort.rs` | 70.0% | derived |
 | `src/fixed_rule/utilities/rrf.rs` | — | 0.0% | sovereign |
+| `src/fts/README.md` | `fts/README.md` | 100.0% | derived |
 | `src/fts/ast.rs` | `fts/ast.rs` | 79.6% | derived |
 | `src/fts/config.rs` | `fts/mod.rs` | 41.2% | derived |
 | `src/fts/error.rs` | — | 0.0% | sovereign |
@@ -124,6 +125,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fts/tokenizer/simple_tokenizer.rs` | `fts/tokenizer/simple_tokenizer.rs` | 80.3% | derived |
 | `src/fts/tokenizer/split_compound_words.rs` | `fts/tokenizer/split_compound_words.rs` | 87.8% | derived |
 | `src/fts/tokenizer/stemmer.rs` | `fts/tokenizer/stemmer.rs` | 89.0% | derived |
+| `src/fts/tokenizer/stop_word_filter/gen_stopwords.py` | `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 88.2% | derived |
 | `src/fts/tokenizer/stop_word_filter/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 71.8% | derived |
 | `src/fts/tokenizer/stop_word_filter/stopwords/af_da.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.3% | derived |
 | `src/fts/tokenizer/stop_word_filter/stopwords/el_ja.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.2% | derived |
@@ -228,4 +230,4 @@ The related trap, since it is what produced the gap: `docs/HUBS.md` asks memory 
 
 ## Anti-backsliding
 
-`scripts/check-krites-provenance.py` runs in CI and fails the build if any file under `crates/krites/src/` is missing from the ledger, if this file drifts from what the ledger renders, or if the set of `derived` rows grows relative to the PR's base branch. A module leaves `derived` status only through the land-dark → soak → delete sequence in PLAN.md §2, which flips its row to `dual` and then `sovereign` (or deletes the row entirely).
+`scripts/check-krites-provenance.py` runs in CI (wired into the repo's required `gate` check, not a side workflow) and fails the build if: any file under `crates/krites/src/` is missing from the ledger; this file drifts from what the ledger renders; the set of `derived` rows grows relative to the PR's base commit; a row's status skips the `derived` → `dual` → `sovereign` sequence; a `sovereign` row carries a nonzero `verbatim_pct`; a `dual` row's soak window has expired against the current commit count on `main`; or — when the offline upstream snapshot is present — a `derived` row's stored `verbatim_pct` no longer matches a fresh recomputation. The status-sequence and sovereign/verbatim_pct checks together make a direct `derived` → `sovereign` jump structurally impossible, not merely discouraged: neither check alone stops a bypass that clears the other (flip status alone leaves verbatim_pct as evidence; zero the field too and the sequence check still requires a `dual` commit in between).

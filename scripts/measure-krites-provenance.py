@@ -14,6 +14,7 @@ from krites_provenance_lib import (  # noqa: E402
     KRITES_SRC,
     LEDGER_PATH,
     NOTICE_PATH,
+    UPSTREAM_SNAPSHOT_DIR,
     dump_ledger,
     iter_src_files,
     render_notice,
@@ -124,6 +125,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/utilities/mod.rs": "fixed_rule/utilities/mod.rs",
     "fixed_rule/utilities/reorder_sort.rs": "fixed_rule/utilities/reorder_sort.rs",
     "fixed_rule/utilities/rrf.rs": None,
+    "fts/README.md": "fts/README.md",
     "fts/ast.rs": "fts/ast.rs",
     "fts/config.rs": "fts/mod.rs",
     "fts/error.rs": None,
@@ -149,6 +151,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fts/tokenizer/simple_tokenizer.rs": "fts/tokenizer/simple_tokenizer.rs",
     "fts/tokenizer/split_compound_words.rs": "fts/tokenizer/split_compound_words.rs",
     "fts/tokenizer/stemmer.rs": "fts/tokenizer/stemmer.rs",
+    "fts/tokenizer/stop_word_filter/gen_stopwords.py": "fts/tokenizer/stop_word_filter/gen_stopwords.py",
     "fts/tokenizer/stop_word_filter/mod.rs": "fts/tokenizer/stop_word_filter/mod.rs",
     "fts/tokenizer/stop_word_filter/stopwords/af_da.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
     "fts/tokenizer/stop_word_filter/stopwords/el_ja.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
@@ -242,13 +245,24 @@ _upstream_cache: dict[str, str] = {}
 
 
 def fetch_upstream(path: str) -> str:
+    # WHY(P6): prefer the offline vendored snapshot (wave0/drift-metric,
+    # crates/krites/upstream-snapshot/cozo-core-src/) when present, so
+    # regeneration — and CI's check_verbatim_recompute — work without a
+    # network fetch and without trusting a raw.githubusercontent.com read
+    # done once and never re-verified. Falls back to the network fetch when
+    # the snapshot hasn't landed yet; both paths are pinned to the same
+    # UPSTREAM_REF, so the value is identical either way.
     if path not in _upstream_cache:
-        url = f"{RAW_BASE}/{path}"
-        try:
-            with urllib.request.urlopen(url, timeout=20) as resp:  # noqa: S310
-                _upstream_cache[path] = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            raise SystemExit(f"fetch failed ({exc.code}): {url}") from exc
+        snapshot_file = UPSTREAM_SNAPSHOT_DIR / path
+        if snapshot_file.is_file():
+            _upstream_cache[path] = snapshot_file.read_text(errors="replace")
+        else:
+            url = f"{RAW_BASE}/{path}"
+            try:
+                with urllib.request.urlopen(url, timeout=20) as resp:  # noqa: S310
+                    _upstream_cache[path] = resp.read().decode("utf-8")
+            except urllib.error.HTTPError as exc:
+                raise SystemExit(f"fetch failed ({exc.code}): {url}") from exc
     return _upstream_cache[path]
 
 
