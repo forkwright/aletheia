@@ -8,23 +8,32 @@ A node is a top-level directory under src/ (data, fixed_rule, fts, parse,
 query, runtime, storage) or "root" for the eight files that sit directly in
 src/ (lib.rs, async_surface.rs, counterfactual.rs, counterfactual_tests.rs,
 error.rs, hot_reload.rs, query_cache.rs, utils.rs). An edge A -> B means some
-file under subsystem A carries a `use crate::B::…` (or a bare `use crate::X`
-where X is a root re-export, target "root"). Self-loops (A -> A) are dropped.
+file under subsystem A carries a `use crate::B::…`. A bare `use crate::X`
+resolves through lib.rs's own re-exports/type-aliases first (e.g. `crate::
+DataValue` -> `data::value::DataValue` -> subsystem `data`); only a name with
+no such mapping (a genuine root-level module like `error`, or otherwise
+unresolvable) buckets to the synthetic "root" node. Self-loops (A -> A) are
+dropped.
 
 Parser: brace-depth-aware statement extraction (handles multi-line grouped
 imports, nested groups, `pub`/`pub(crate)` prefixes, `as` aliases, `self`).
 Comment-guarded: a `use crate::` occurrence preceded by `//` on the same
-source line is skipped. No `cargo`/`syn` dependency — stdlib only, so it runs
-identically in any Python 3.9+.
+source line is skipped. A statement inside a `#[cfg(test)] mod { … }` block
+counts as test code regardless of the file's own path. No `cargo`/`syn`
+dependency — stdlib only, so it runs identically in any Python 3.9+.
 
 Usage:
     python3 scripts/krites-module-dag.py [--src crates/krites/src]
                                           [--format json|markdown]
                                           [--out FILE] [--check FILE]
+                                          [--wave-scope]
 
---check FILE fails (exit 1, prints a diff) when the emitted JSON differs
-from FILE — FILE is a checked-in snapshot this script is the sole producer
-of; the SSOT drift gate is "does this script's output still match".
+--check FILE fails (exit 1, prints a diff) when the emitted output differs
+from FILE. The checked-in snapshots this script is the sole producer of are
+crates/krites/module-dag.json, crates/krites/module-dag.md (--format
+markdown), and crates/krites/module-dag.wave-scope.json (--wave-scope); CI
+runs all three --check invocations so drift fails the gate — see
+gate-attestation.yml's gate-coverage-scripts job.
 """
 from __future__ import annotations
 
@@ -52,6 +61,32 @@ USE_START_RE = re.compile(
 )
 
 TEST_PATH_RE = re.compile(r"(^|/)tests?(/|$)")
+
+# WHY(D4): a file's path alone does not tell you a `use crate::` statement is
+# test-only — `#[cfg(test)] mod tests { use crate::…; }` is common in
+# non-test-path files. Matched separately from USE_START_RE so a `pub`/
+# `pub(crate)` prefix on the mod itself (`pub(crate) mod tests`) is handled
+# the same way it is on `use`.
+CFG_TEST_MOD_RE = re.compile(
+    r"#\[cfg\(test\)\][ \t\n]*(?:pub(?:\([^)]*\))?[ \t]+)?mod[ \t]+\w+[ \t]*\{"
+)
+
+# WHY(D3): the only names a `use crate::X` can refer to besides a KNOWN_
+# SUBSYSTEMS directory are crate-root re-exports and type aliases — both
+# declared exclusively in lib.rs (and, in principle, any other root-level
+# file). Captures `type NAME = crate::path::...` aliases (e.g. `type
+# DbInstance = crate::runtime::db::Db<...>`); stops at the first non-path
+# character (`<`, whitespace, `;`) so generic parameters are dropped.
+# NOTE: `pub`/`pub(crate)` is REQUIRED here (unlike USE_START_RE, which
+# matches any visibility since every `use crate::` — private included —
+# produces a real DAG edge). A private `type X = crate::…` is not reachable
+# from another file as `crate::X`, so admitting it would risk a spurious
+# reexport-map entry that nothing can actually trigger, or worse a name
+# collision with a real pub re-export.
+TYPE_ALIAS_RE = re.compile(
+    r"(?m)^[ \t]*pub(?:\([^)]*\))?[ \t]+type[ \t]+(?P<name>[A-Za-z_]\w*)\b"
+    r"[^=\n]*=[ \t]*crate::(?P<path>[\w:]+)"
+)
 
 
 class ParseError(ValueError):
@@ -123,40 +158,133 @@ def find_top_level_brace_span(s: str) -> tuple[int, int] | None:
     return None
 
 
-def collect_full_paths(rest: str) -> list[str]:
-    """Full `::`-joined module path of every leaf item a `crate::<rest>` use
-    resolves to (prefix expansion through nested groups; `self` resolves to
-    the enclosing prefix; `*` and empty prefixes are dropped)."""
+def collect_named_paths(rest: str) -> list[tuple[str, str]]:
+    """Every leaf item a `crate::<rest>` use resolves to, as (locally-bound
+    name, full `::`-joined source path) — prefix expansion through nested
+    groups, `self` resolving to the enclosing prefix, `*` and empty
+    prefixes dropped. The bound name honors an `as` alias when present,
+    else it's the leaf's own name; this is what a re-export map (D3) keys
+    on, since that's the only name visible to another file writing
+    `use crate::<bound name>`. `collect_full_paths` is the path-only
+    projection every other caller already relies on — unchanged output."""
     rest = rest.strip()
     if not rest:
         return []
     span = find_top_level_brace_span(rest)
     if span is None:
-        path = rest.split(" as ")[0].strip()
+        if " as " in rest:
+            path, _, alias = rest.partition(" as ")
+            path = path.strip()
+            alias = alias.strip()
+        else:
+            path = rest.strip()
+            alias = path.rsplit("::", 1)[-1]
         if not path or path == "self" or path == "*":
             return []
-        return [path]
+        return [(alias, path)]
     open_idx, close_idx = span
     prefix = rest[:open_idx]
     if prefix.endswith("::"):
         prefix = prefix[:-2]
     prefix = prefix.strip()
     inner = rest[open_idx + 1 : close_idx]
-    results: list[str] = []
+    results: list[tuple[str, str]] = []
     for item in split_top_level_commas(inner):
         item = item.strip()
         if item == "self":
             if prefix:
-                results.append(prefix)
+                results.append((prefix.rsplit("::", 1)[-1], prefix))
             continue
-        for sub in collect_full_paths(item):
-            results.append(f"{prefix}::{sub}" if prefix else sub)
+        for bound, sub in collect_named_paths(item):
+            full = f"{prefix}::{sub}" if prefix else sub
+            results.append((bound, full))
     return results
+
+
+def collect_full_paths(rest: str) -> list[str]:
+    """Full `::`-joined module path of every leaf item a `crate::<rest>` use
+    resolves to (prefix expansion through nested groups; `self` resolves to
+    the enclosing prefix; `*` and empty prefixes are dropped)."""
+    return [path for _, path in collect_named_paths(rest)]
 
 
 def collect_first_segments(rest: str) -> list[str]:
     """First path segment of every leaf item a `crate::<rest>` use resolves to."""
     return [p.split("::", 1)[0] for p in collect_full_paths(rest) if p.split("::", 1)[0]]
+
+
+def find_cfg_test_spans(text: str) -> list[tuple[int, int]]:
+    """Byte-offset [start, end) spans of every `#[cfg(test)] mod { ... }`
+    block, depth-aware so a `use crate::` inside counts as test code no
+    matter the file's own path (D4). Same brace-matching limitation as
+    find_statement_end: a literal `{`/`}` inside a string or char literal
+    would misdetect the span end — no such case exists under
+    crates/krites/src/ today."""
+    spans: list[tuple[int, int]] = []
+    for m in CFG_TEST_MOD_RE.finditer(text):
+        depth = 0
+        i = m.end() - 1
+        n = len(text)
+        while i < n:
+            c = text[i]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    spans.append((m.start(), i + 1))
+                    break
+            i += 1
+    return spans
+
+
+def in_any_span(pos: int, spans: list[tuple[int, int]]) -> bool:
+    return any(start <= pos < end for start, end in spans)
+
+
+def resolve_full_path(full_path: str, reexports: dict[str, str]) -> str:
+    """Resolve a `crate::<full_path>` target through the root re-export map
+    (D3): if the first segment isn't a real subsystem directory but IS a
+    name lib.rs re-exports or type-aliases from one, substitute the true
+    source path (e.g. `DataValue` -> `data::value::DataValue`) so both the
+    coarse subsystem bucket and the fine wave-scope grouping see the real
+    target instead of the synthetic `root` node."""
+    first, sep, rest_of_path = full_path.partition("::")
+    if first in KNOWN_SUBSYSTEMS:
+        return full_path
+    resolved = reexports.get(first)
+    if not resolved:
+        return full_path
+    return f"{resolved}{sep}{rest_of_path}" if sep else resolved
+
+
+def build_root_reexport_map(src_root: pathlib.Path) -> dict[str, str]:
+    """Mechanically-derived map of every crate-root re-exported / type-
+    aliased name -> the full source path it resolves to, built from the
+    ROOT-level files' (non-recursive glob — exactly the files subsystem_of
+    treats as ROOT) own `pub`/`pub(crate) use crate::…` re-export statements
+    (honoring `as` aliases via collect_named_paths) plus `pub type NAME =
+    crate::…` aliases. Only pub-visible items are admitted: a private `use`/
+    `type` in a root file is not reachable elsewhere as `crate::X`, so it
+    cannot be what a real cross-file `use crate::X` means and would only
+    risk a spurious or colliding entry. Rust re-exports live exclusively at
+    the crate root, so this is the complete set of names a `use crate::X`
+    elsewhere could mean without X being a subsystem directory itself."""
+    reexports: dict[str, str] = {}
+    for f in sorted(src_root.glob("*.rs")):
+        text = f.read_text(encoding="utf-8")
+        for m in USE_START_RE.finditer(text):
+            if m.group("pub") is None:
+                continue
+            if is_line_commented(text, m.start()):
+                continue
+            rest = text[m.end() : find_statement_end(text, m.end())]
+            for bound, path in collect_named_paths(rest):
+                if bound and path:
+                    reexports[bound] = path
+        for m in TYPE_ALIAS_RE.finditer(text):
+            reexports[m.group("name")] = m.group("path")
+    return reexports
 
 
 def subsystem_of(rel_path: pathlib.Path) -> str:
@@ -181,16 +309,23 @@ def is_test_path(rel_path: pathlib.Path) -> bool:
     return name.endswith("_tests.rs") or name == "tests.rs"
 
 
-def extract_imports(src_root: pathlib.Path, path: pathlib.Path) -> list[dict]:
+def extract_imports(
+    src_root: pathlib.Path, path: pathlib.Path, reexports: dict[str, str]
+) -> list[dict]:
     """Every `crate::…` leaf import in `path`, with NO subsystem-level
     filtering — same-subsystem-but-different-submodule crossings (e.g.
     `fts::tokenizer::stop_word_filter` -> `fts::error`) must survive this
     step for the finer wave-scope grouping to see them; only the coarse
-    subsystem graph (parse_file) collapses those to self-loops."""
+    subsystem graph (parse_file) collapses those to self-loops. `test` is
+    per-STATEMENT (D4): a file-level test-path flag OR a `#[cfg(test)] mod`
+    span containing the statement. `target_path`/`target_subsystem` are
+    resolved through `reexports` first (D3), so a bare `use crate::
+    DataValue` lands on `data`, not the synthetic `root` bucket."""
     text = path.read_text(encoding="utf-8")
     rel = path.relative_to(src_root)
     source_subsystem = subsystem_of(rel)
     test_file = is_test_path(rel)
+    cfg_test_spans = find_cfg_test_spans(text)
     imports: list[dict] = []
     for m in USE_START_RE.finditer(text):
         if is_line_commented(text, m.start()):
@@ -199,28 +334,32 @@ def extract_imports(src_root: pathlib.Path, path: pathlib.Path) -> list[dict]:
         stmt_end = find_statement_end(text, crate_kw_end)
         rest = text[crate_kw_end:stmt_end]
         line_no = line_of(text, m.start())
+        test_stmt = test_file or in_any_span(m.start(), cfg_test_spans)
         for full_path in collect_full_paths(rest):
-            seg = full_path.split("::", 1)[0]
+            resolved_path = resolve_full_path(full_path, reexports)
+            seg = resolved_path.split("::", 1)[0]
             if not seg:
                 continue
             imports.append(
                 {
                     "source_subsystem": source_subsystem,
                     "target_subsystem": target_bucket(seg),
-                    "target_path": full_path,
+                    "target_path": resolved_path,
                     "file": rel.as_posix(),
                     "line": line_no,
-                    "test": test_file,
+                    "test": test_stmt,
                 }
             )
     return imports
 
 
-def parse_file(src_root: pathlib.Path, path: pathlib.Path) -> list[dict]:
+def parse_file(
+    src_root: pathlib.Path, path: pathlib.Path, reexports: dict[str, str]
+) -> list[dict]:
     """Coarse subsystem-level edges: same-subsystem imports are self-loops
     and dropped here. Use extract_imports directly for finer analysis."""
     edges = []
-    for imp in extract_imports(src_root, path):
+    for imp in extract_imports(src_root, path, reexports):
         if imp["target_subsystem"] == imp["source_subsystem"]:
             continue
         edges.append(
@@ -337,11 +476,29 @@ def groups_for_module_path(module_path: str, groups: dict[str, dict]) -> list[st
     return sorted(name for name, spec in groups.items() if matches_group(module_path, spec))
 
 
+def count_use_statements(files: list[pathlib.Path]) -> int:
+    """Count of parser-eligible `use crate::…` STATEMENTS — same
+    is_line_commented filter extract_imports applies, counted per-file (no
+    string-concatenation file-boundary risk). This is a different number
+    from edge/import counts elsewhere (those count LEAF items inside a
+    possibly-grouped statement, e.g. one `use crate::fts::{A, B};`
+    statement is 1 here and 2 there) — it reports statements walked, not
+    edges produced (D5)."""
+    total = 0
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        for m in USE_START_RE.finditer(text):
+            if not is_line_commented(text, m.start()):
+                total += 1
+    return total
+
+
 def build_graph(src_root: pathlib.Path) -> dict:
     files = sorted(src_root.rglob("*.rs"))
+    reexports = build_root_reexport_map(src_root)
     all_edges: list[dict] = []
     for f in files:
-        all_edges.extend(parse_file(src_root, f))
+        all_edges.extend(parse_file(src_root, f, reexports))
 
     all_edges.sort(key=lambda e: (e["from"], e["to"], e["file"], e["line"]))
 
@@ -382,9 +539,7 @@ def build_graph(src_root: pathlib.Path) -> dict:
         "nodes": nodes,
         "edges": edges_out,
         "file_count": len(files),
-        "statement_count": sum(1 for _ in USE_START_RE.finditer("".join(
-            f.read_text(encoding="utf-8") for f in files
-        ))),
+        "statement_count": count_use_statements(files),
         "required_edges_present": [list(p) for p in REQUIRED_EDGES if p in pair_evidence],
         "required_edges_missing": missing_required,
     }
@@ -392,9 +547,10 @@ def build_graph(src_root: pathlib.Path) -> dict:
 
 def build_wave_scope_report(src_root: pathlib.Path) -> dict:
     files = sorted(src_root.rglob("*.rs"))
+    reexports = build_root_reexport_map(src_root)
     raw_imports: list[dict] = []
     for f in files:
-        raw_imports.extend(extract_imports(src_root, f))
+        raw_imports.extend(extract_imports(src_root, f, reexports))
 
     crossings: dict[tuple[str, str], list[dict]] = {}
     for e in raw_imports:
@@ -452,40 +608,40 @@ def build_wave_scope_report(src_root: pathlib.Path) -> dict:
 
 
 def find_cycles(edges: list[dict]) -> list[list[str]]:
-    adj: dict[str, list[str]] = {}
+    """Every elementary (simple) cycle in the coarse subsystem graph —
+    complete enumeration, not a sample (D6). Node count is small (7
+    subsystems + root), so a direct canonical-rotation DFS is exact and
+    cheap: for each candidate start node `s`, only visit nodes `> s` mid-
+    path and close only back to `s`, so every cycle is found exactly once,
+    from its lexicographically-smallest node — no duplicate rotations, and
+    no distinct-cycle collapsing (the prior `sorted(set(c))` dedup key
+    conflated any two cycles over the same node set)."""
+    adj: dict[str, set[str]] = {}
+    nodes: set[str] = set()
     for e in edges:
-        adj.setdefault(e["from"], []).append(e["to"])
-    for n in adj:
-        adj[n].sort()
+        adj.setdefault(e["from"], set()).add(e["to"])
+        nodes.add(e["from"])
+        nodes.add(e["to"])
 
-    WHITE, GRAY, BLACK = 0, 1, 2
-    color: dict[str, int] = {}
     cycles: list[list[str]] = []
+    for start in sorted(nodes):
+        path = [start]
+        on_path = {start}
 
-    def dfs(node: str, stack: list[str]) -> None:
-        color[node] = GRAY
-        stack.append(node)
-        for nxt in adj.get(node, []):
-            if color.get(nxt, WHITE) == WHITE:
-                dfs(nxt, stack)
-            elif color.get(nxt) == GRAY:
-                idx = stack.index(nxt)
-                cycles.append(stack[idx:] + [nxt])
-        stack.pop()
-        color[node] = BLACK
+        def dfs(node: str) -> None:
+            for nxt in sorted(adj.get(node, ())):
+                if nxt == start:
+                    if len(path) > 1:
+                        cycles.append(path[:])
+                elif nxt > start and nxt not in on_path:
+                    path.append(nxt)
+                    on_path.add(nxt)
+                    dfs(nxt)
+                    path.pop()
+                    on_path.discard(nxt)
 
-    for n in sorted(adj.keys()):
-        if color.get(n, WHITE) == WHITE:
-            dfs(n, [])
-
-    seen = set()
-    unique = []
-    for c in cycles:
-        key = tuple(sorted(set(c)))
-        if key not in seen:
-            seen.add(key)
-            unique.append(c)
-    return sorted(unique)
+        dfs(start)
+    return sorted(cycles)
 
 
 def render_markdown(graph: dict) -> str:
