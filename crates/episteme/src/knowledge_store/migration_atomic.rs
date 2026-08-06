@@ -671,7 +671,8 @@ fn remove_retired(store: &KnowledgeStore, spec: &RebuildSpec<'_>) -> crate::erro
             // silently swallowed into an apparent success — so the eventual
             // bounded-retry error names the real reason detachment failed,
             // not just that removal kept failing.
-            if let Err(e) = store.run_mut(&format!("{verb} {retired}:{}", idx.name), BTreeMap::new())
+            if let Err(e) =
+                store.run_mut(&format!("{verb} {retired}:{}", idx.name), BTreeMap::new())
             {
                 last_detach_error = Some(e);
             }
@@ -786,8 +787,7 @@ mod tests {
         }
     }
 
-    const WIDGET_LABEL_FTS_DDL: &str =
-        "::fts create widgets:label_fts { extractor: label, tokenizer: Simple, filters: [Lowercase] }";
+    const WIDGET_LABEL_FTS_DDL: &str = "::fts create widgets:label_fts { extractor: label, tokenizer: Simple, filters: [Lowercase] }";
 
     fn widget_spec_with_index() -> RebuildSpec<'static> {
         RebuildSpec {
@@ -967,7 +967,8 @@ mod tests {
         // version stamp never ran. `column_probe` must resolve this to
         // `Rebuilt` (not `CleanStart`) so the resumed run recreates nothing
         // a second time and only stamps.
-        let resume = recovery_sweep(&resumed_at_9, &spec).expect("sweep after simulated 8->9 crash");
+        let resume =
+            recovery_sweep(&resumed_at_9, &spec).expect("sweep after simulated 8->9 crash");
         assert_eq!(resume, ResumePoint::Rebuilt);
 
         rebuild_relation_atomically(&resumed_at_9, &spec).expect("resume from step 9");
@@ -1036,7 +1037,9 @@ mod tests {
         let retired = retired_name("widgets");
         store
             .run_mut(&format!("::rename widgets -> {retired}"), BTreeMap::new())
-            .expect("rename widgets away with the index still attached (out-of-band, as F8 posits)");
+            .expect(
+                "rename widgets away with the index still attached (out-of-band, as F8 posits)",
+            );
 
         let live_on_retired =
             list_live_indices(&store, &retired).expect("list indices on the retired relation");

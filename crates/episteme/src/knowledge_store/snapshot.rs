@@ -548,7 +548,9 @@ mod tests {
             .keyspace("data", fjall::KeyspaceCreateOptions::default)
             .expect("open replaced data keyspace");
         assert_eq!(
-            db.read_tx().len(&keyspace).expect("count replaced snapshot"),
+            db.read_tx()
+                .len(&keyspace)
+                .expect("count replaced snapshot"),
             2,
             "the replaced snapshot must reflect the new source, not merge with the old"
         );
