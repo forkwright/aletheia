@@ -19,6 +19,8 @@ Two consequences bind day-to-day work in this crate:
 
 The naming rule in `docs/HUBS.md` — prefer Krites/Datalog/Fjall over CozoDB — is about **architecture** and explicitly stops short of provenance. Attribution and licensing statements name CozoDB, because they are claims about authorship rather than about how the system is built.
 
+**Verbatim-drift measurement** (retirement program wave 0.3): `scripts/check-krites-verbatim-drift.py` scores any file here against the pinned upstream snapshot at `upstream-snapshot/` (its own `NOTICE.md`). Report-only — see PROMOTION CRITERIA in the script's module docstring before it gates anything.
+
 ## Read first
 
 1. `src/lib.rs`: Public Db facade, DbInner dispatch, storage backend selection
