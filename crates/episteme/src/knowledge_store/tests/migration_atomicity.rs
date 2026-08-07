@@ -521,7 +521,7 @@ fn strip_to_v1_shape(store: &KnowledgeStore) {
 /// `causal_edges`: `migrate_v5_to_v6` creates it fresh with the same
 /// terminal `CAUSAL_EDGES_DDL` that `migrate_v6_to_v7`'s `live_ddl` also
 /// names, so v6->v7's `column_probe` short-circuits too — on a genuine
-/// historical v1 store, not just this fixture, because causal_edges never
+/// historical v1 store, not just this fixture, because `causal_edges` never
 /// existed before v5->v6 created it at the terminal shape. `entities` is
 /// `FOUNDATIONAL_RELATIONS` (created at the terminal `entities_ddl(dim)`
 /// shape by `make_store`'s own fresh-store bootstrap, never downgraded by
