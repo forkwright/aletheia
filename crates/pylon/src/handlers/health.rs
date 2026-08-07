@@ -1,3 +1,7 @@
+// kanon:ignore RUST/file-too-long — cohesive control-plane truth surface: the flat
+// `/api/v1/system/health` checks and the richer `/api/v1/system/status` subsystem
+// records (#5313) share the same check functions and HealthState; splitting now
+// would duplicate that data-gathering across sibling modules.
 //! Health check endpoint.
 
 use std::collections::HashSet;
