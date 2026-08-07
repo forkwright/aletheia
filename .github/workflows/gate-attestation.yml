@@ -207,6 +207,28 @@ jobs:
       - name: Check krites capability-coverage matrix
         run: scripts/check-krites-capability-matrix.py
 
+      # WHY: krites retirement plan wave 0.1 (metis-ops/deliverables/
+      # krites-replacement/PLAN.md §3, kill criterion 8). The anti-backslide
+      # gate for crates/krites/PROVENANCE.toml: completeness, NOTICE.md
+      # sync, no derived-row regression, status-sequence (derived -> dual ->
+      # sovereign, no direct jump), soak expiry, offline verbatim recompute.
+      # Runs here, not as a standalone workflow — gate-coverage-scripts
+      # feeds the required `gate` check, so a standalone workflow (the
+      # prior shape) could report failure without ever blocking a merge.
+      # --base-ref: on `push` (post-merge to main), `origin/main` already
+      # IS the just-pushed commit by checkout time, so comparing against it
+      # is a self-comparison no-op that can never detect a regression —
+      # `github.event.before` (the pre-push SHA) is used on that trigger
+      # instead. On `pull_request`, `origin/<base_ref>` is the PR's actual
+      # merge target and needs no such substitution.
+      - name: Check krites provenance ledger
+        run: |
+          python3 scripts/check-krites-provenance.py \
+            --base-ref "${{ github.event_name == 'push' && github.event.before || format('origin/{0}', github.base_ref || 'main') }}"
+
+      - name: Krites provenance checker self-tests
+        run: scripts/test-krites-provenance.py
+
   gate-coverage-compile-checks:
     name: gate-coverage-compile-checks
     runs-on: ubuntu-latest
