@@ -671,7 +671,7 @@ source = "crates/krites/src/lib.rs:174"
 dest_wave = "sovereign"
 dest_module = "storage/fjall_backend.rs"
 gate = "Insertion point for wave 1's pre-migration filesystem-level snapshot, taken BEFORE this call in the startup path (Sec 8.5) -- not inside migration.rs, which cannot re-open a keyspace this process already holds."
-call_sites = 42
+call_sites = 43
 call_sites_method = "grep -rn 'open_fjall(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
 [[capability]]
