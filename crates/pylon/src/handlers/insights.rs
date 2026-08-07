@@ -1362,7 +1362,11 @@ fn select_tool_detail(
     let in_window =
         |r: &&ToolAuditRecord| tool_record_date(r).is_some_and(|d| d >= window_start && d <= today);
 
-    let (tools, mut time_series, invocations) = if let Some(name) = tool_filter {
+    let (tools, mut time_series, invocations): (
+        Vec<ToolStat>,
+        Vec<ToolTimeSeriesBucket>,
+        Vec<ToolInvocationRecord>,
+    ) = if let Some(name) = tool_filter {
         let mut per_tool = per_tool;
         let tools = per_tool
             .remove(name)
