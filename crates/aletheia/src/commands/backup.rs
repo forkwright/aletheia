@@ -54,32 +54,16 @@ pub(crate) enum BackupAction {
     },
 }
 
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "CLI flags — each bool is a distinct switch"
-)]
 #[derive(Debug, Clone, Args)]
 pub(crate) struct BackupArgs {
+    /// WHY(#5107): subcommands are the only supported grammar. The legacy
+    /// top-level `--list`/`--prune`/`--keep`/`--json`/`--yes` flags let
+    /// `--list` and `--prune` combine and parse together, silently
+    /// picking list over prune; they are retired rather than kept as
+    /// deprecated aliases, so an invalid combination is a clap parse
+    /// error and never reaches backup state.
     #[command(subcommand)]
     pub action: Option<BackupAction>,
-
-    // Legacy flags (used when no subcommand is given)
-    /// List available backups
-    #[arg(long)]
-    pub list: bool,
-    /// Prune old backups
-    #[arg(long)]
-    pub prune: bool,
-    /// Number of backups to keep when pruning. Defaults to the configured
-    /// `maintenance.backup.backup_retention_count`. (#5136)
-    #[arg(long)]
-    pub keep: Option<usize>,
-    /// Output as JSON (for --list)
-    #[arg(long)]
-    pub json: bool,
-    /// Skip confirmation prompt when pruning
-    #[arg(long)]
-    pub yes: bool,
 }
 
 // ── Dispatch ───────────────────────────────────────────────────────────────
@@ -106,23 +90,11 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &BackupArgs) -> Result<
             let keep = keep.unwrap_or_else(|| configured_retention_count(&oikos));
             run_instance(&oikos, false, true, keep, false, *yes)
         }
-        Some(BackupAction::Create) => {
+        // `Create` is also the default when no subcommand is given.
+        Some(BackupAction::Create) | None => {
             let oikos = super::resolve_oikos(instance_root)?;
             let keep = configured_retention_count(&oikos);
             run_instance(&oikos, false, false, keep, false, false)
-        }
-        None => {
-            let oikos = super::resolve_oikos(instance_root)?;
-            let &BackupArgs {
-                list,
-                prune,
-                keep,
-                json,
-                yes,
-                ..
-            } = args;
-            let keep = keep.unwrap_or_else(|| configured_retention_count(&oikos));
-            run_instance(&oikos, list, prune, keep, json, yes)
         }
     }
 }
