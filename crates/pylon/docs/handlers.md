@@ -185,6 +185,61 @@ data than this endpoint's flat `checks` array provides, see
 
 ---
 
+### `GET /api/v1/system/status`
+
+Authoritative, operator-grade subsystem status (#5313). Requires `Role::Operator`.
+
+WHY: distinct from `/api/v1/system/health`'s flat `checks` array — each record here
+names an explicit code owner and is allowed to report `"unknown"` for a subsystem this
+endpoint cannot yet see, instead of defaulting it to `"healthy"`. This is the canonical
+backend source Proskenion/Koilon should consume for control-plane status views.
+
+**Response `200 OK` / `503 Service Unavailable`:**
+
+```json
+{
+  "status": "degraded",
+  "generated_at": "2026-08-07T16:00:00Z",
+  "subsystems": [
+    {
+      "id": "provider_reachability",
+      "name": "LLM Provider Reachability",
+      "status": "degraded",
+      "owner": "crates/hermeneus",
+      "last_checked": "2026-08-07T16:00:00Z",
+      "degraded_reason": "required providers: anthropic is degraded (recent_errors (3 consecutive))",
+      "details": { "providers": [ { "name": "anthropic", "status": "degraded" } ] },
+      "suggested_action": "Check provider credentials and network reachability."
+    },
+    {
+      "id": "daemon_runtime",
+      "name": "Daemon / Cron / Dispatch Runtime",
+      "status": "unknown",
+      "owner": "crates/aletheia::runtime",
+      "last_checked": "2026-08-07T16:00:00Z",
+      "failure_reason": "daemon task state is not yet wired into AppState; this endpoint can only see configured intent, not live runtime state",
+      "details": { "heartbeat_enabled": true, "self_audit_enabled": true, "external_timer_enabled": false },
+      "suggested_action": "Attach a daemon task-state reader to AppState from aletheia::runtime (#5142)."
+    }
+  ]
+}
+```
+
+`status` per subsystem: `"healthy"`, `"degraded"`, `"failed"`, or `"unknown"`. Aggregate
+`status`: `"failed"` if any subsystem failed, else `"degraded"` if any degraded, else
+`"healthy"` — `"unknown"` subsystems are always listed but never elevate the aggregate
+(a gap to close, not evidence of a live failure). HTTP 503 only when aggregate is
+`"failed"`. Fields present only when meaningful:
+`degraded_reason`/`failure_reason`/`details`/`suggested_action`/`last_success`/`last_failure`.
+
+Tracked subsystems today: `provider_reachability`, `provider_credentials`,
+`embeddings`, `session_store`, `nous_runtime`, `turn_event_persistence`,
+`memory_graph`, `daemon_runtime`, `tool_execution_history`,
+`training_qa_persistence`, `metrics_exposure`, `event_bus`,
+`config_security_posture`.
+
+---
+
 ### `GET /metrics`
 
 Prometheus text-format exposition. No auth required.
@@ -1056,12 +1111,53 @@ Estimated cost breakdown by provider and model derived from token usage and conf
 
 ### `GET /api/v1/journal`
 
-Structured audit log of operator actions, config changes, credential rotations, and
-significant agent events. Ordered by recency.
+Queryable system event log. Requires unscoped Operator — scoped tokens get `403`.
 
-**Query parameters:** `limit` (default 100), `since` (ISO-8601 timestamp), `kind` (event type filter).
+WHY(#4486): pylon has no persistent event journal backend today. The handler reports
+that explicitly via `data_unavailable` rather than returning an empty array that reads
+as "no events occurred" — see `crates/pylon/src/handlers/insights.rs` `get_journal`.
 
-**Response `200 OK`** - JSON array of journal entries.
+**Query parameters:** `source` (subsystem filter), `level` (severity filter), `since`
+(ISO-8601 timestamp), `limit` (default 100, max 1000).
+
+**Response `200 OK`**:
+
+```json
+{
+  "events": [],
+  "data_unavailable": [
+    { "metric": "journal", "reason": "no persistent event journal is available in pylon" }
+  ]
+}
+```
+
+`events` is always empty until a persistent journal backend exists; `data_unavailable`
+is how callers distinguish "backend not implemented" from "implemented but empty."
+
+---
+
+## Tool Stats
+
+### `GET /api/tool-stats`
+
+Aggregated tool-usage statistics for the desktop metrics dashboard. Requires unscoped
+Operator. Mounted unversioned (not under `/api/v1`) to match the URL Proskenion's tool
+metrics views already call (#4484).
+
+WHY: bounded by the store's `recent_tool_audit_records` hard cap (200 records, no
+date-ranged query) — see `TOOL_AUDIT_FETCH_LIMIT` in
+`crates/pylon/src/handlers/insights.rs`. Aggregates are real, computed data over
+whatever that snapshot covers; a busy install's true weekly/monthly volume can exceed
+it, in which case `data_unavailable` names the gap rather than hiding it.
+
+**Query parameters:** `days` (aggregation window, default 7, clamped to `1..=90`),
+`tool` (restrict `tools`/`time_series`/`invocations` to one tool name; `summary` stays
+global regardless).
+
+**Response `200 OK`** - `summary` (today/week/month totals + deltas, success rate,
+avg duration, most-used tool), `tools` (per-tool count/percentile-duration/failure
+stats), `time_series` (daily invocation counts per tool), `invocations` (raw records
+in the window).
 
 ---
 

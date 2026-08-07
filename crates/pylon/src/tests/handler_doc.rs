@@ -11,6 +11,7 @@ const HANDLERS_MD: &str = include_str!("../../docs/handlers.md");
 const ROUTES: &[&str] = &[
     "/api/health",
     "/api/docs/openapi.json",
+    "/api/tool-stats",
     "/metrics",
     // sessions
     "/api/v1/sessions",
@@ -32,6 +33,8 @@ const ROUTES: &[&str] = &[
     "/api/v1/config",
     "/api/v1/config/reload",
     "/api/v1/config/{section}",
+    "/api/v1/system/health",
+    "/api/v1/system/status",
     // knowledge
     "/api/v1/knowledge/facts",
     "/api/v1/knowledge/facts/{id}",
