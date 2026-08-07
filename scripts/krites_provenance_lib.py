@@ -189,6 +189,24 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "they extend."
     )
     lines.append("")
+    lines.append("## A second vendored source: stop word lists")
+    lines.append("")
+    lines.append(
+        "`fts/tokenizer/stop_word_filter`'s word lists are not CozoDB's expression, even in the "
+        "rows above marked `derived`/`dual` against a CozoDB `upstream_path`: they are the "
+        "[stopwords-iso](https://github.com/stopwords-iso/stopwords-iso/) project's data (copyright "
+        "Gene Diaz, MIT license), which CozoDB itself vendored rather than authored. Krites vendors "
+        "the same corpus a second time — CozoDB is a sibling vendor here, not the copyright source. "
+        "The `upstream_path` column names CozoDB because that is where this crate's copy was copied "
+        "from mechanically, which is a real and correctly-tracked lineage fact for the "
+        "`derived`/`dual` rows in that module; it does not make CozoDB the author of the word data, "
+        "and does not substitute for the MIT notice that data separately requires. That notice — "
+        "attribution plus the full license text — lives at "
+        "`src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` and "
+        "[`LICENSE-MIT-stopwords-iso`](LICENSE-MIT-stopwords-iso), independent of this file and of "
+        "this module's CozoDB-retirement status."
+    )
+    lines.append("")
     lines.append("## What that requires")
     lines.append("")
     lines.append(

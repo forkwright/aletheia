@@ -7,8 +7,8 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 201 files under `src/`: 177 derived, 24 sovereign, 0 dual
-- Mean verbatim match across the 177 derived files: 49.7% (unweighted average of the per-file `verbatim_pct` column below)
+- 206 files under `src/`: 168 derived, 28 sovereign, 10 dual
+- Mean verbatim match across the 168 derived files: 51.3% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -125,15 +125,20 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fts/tokenizer/simple_tokenizer.rs` | `fts/tokenizer/simple_tokenizer.rs` | 80.3% | derived |
 | `src/fts/tokenizer/split_compound_words.rs` | `fts/tokenizer/split_compound_words.rs` | 87.8% | derived |
 | `src/fts/tokenizer/stemmer.rs` | `fts/tokenizer/stemmer.rs` | 89.0% | derived |
-| `src/fts/tokenizer/stop_word_filter/gen_stopwords.py` | `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 88.2% | derived |
-| `src/fts/tokenizer/stop_word_filter/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 71.8% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/af_da.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.3% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/el_ja.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.2% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/ko_ro.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.7% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/mod.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/nl_de.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 2.5% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/ru_ur.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.2% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/vi_zu.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.6% | derived |
+| `src/fts/tokenizer/stop_word_filter/derived/gen_stopwords.py` | `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 88.2% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 71.3% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/af_da.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.3% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/el_ja.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.2% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/ko_ro.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.7% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/mod.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/nl_de.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 2.5% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/ru_ur.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.2% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/vi_zu.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.6% | dual |
+| `src/fts/tokenizer/stop_word_filter/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 3.8% | dual |
+| `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/stopwords.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/tokenized_string.rs` | `fts/tokenizer/tokenized_string.rs` | 79.2% | derived |
 | `src/fts/tokenizer/tokenizer_impl.rs` | `fts/tokenizer/tokenizer_impl.rs` | 81.9% | derived |
 | `src/fts/tokenizer/whitespace_tokenizer.rs` | `fts/tokenizer/whitespace_tokenizer.rs` | 80.3% | derived |
@@ -215,6 +220,10 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/utils.rs` | `utils.rs` | 71.4% | derived |
 
 Aletheia's own additions are real and sit alongside the derived files — `async_surface`, `counterfactual`, `hot_reload`, `query_cache`, `storage/fjall_backend`, the CSR PageRank path, `kcore`, RRF, the fixed-rule test suite, and `data/tests/proptest_memcmp` — all `sovereign` in the table above. They do not change the provenance of the derived files they extend.
+
+## A second vendored source: stop word lists
+
+`fts/tokenizer/stop_word_filter`'s word lists are not CozoDB's expression, even in the rows above marked `derived`/`dual` against a CozoDB `upstream_path`: they are the [stopwords-iso](https://github.com/stopwords-iso/stopwords-iso/) project's data (copyright Gene Diaz, MIT license), which CozoDB itself vendored rather than authored. Krites vendors the same corpus a second time — CozoDB is a sibling vendor here, not the copyright source. The `upstream_path` column names CozoDB because that is where this crate's copy was copied from mechanically, which is a real and correctly-tracked lineage fact for the `derived`/`dual` rows in that module; it does not make CozoDB the author of the word data, and does not substitute for the MIT notice that data separately requires. That notice — attribution plus the full license text — lives at `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` and [`LICENSE-MIT-stopwords-iso`](LICENSE-MIT-stopwords-iso), independent of this file and of this module's CozoDB-retirement status.
 
 ## What that requires
 
