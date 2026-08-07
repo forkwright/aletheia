@@ -17,6 +17,11 @@ graph-algo = []
 async = []
 hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
+# WHY: wave-4 land-dark selector (PLAN.md Sec2) -- derived runtime/hnsw/
+# stays default; this feature swaps in the fresh runtime/hnsw_sovereign/
+# tree instead (see runtime/mod.rs's #[path] swap). Off by default so the
+# soak window starts from an explicit opt-in, never a silent flip.
+krites_sovereign_hnsw = []
 test-core = ["storage-fjall"]
 test-full = ["test-core"]
 

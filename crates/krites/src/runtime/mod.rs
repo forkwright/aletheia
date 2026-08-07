@@ -70,6 +70,30 @@ pub(crate) mod exec;
     clippy::unnecessary_wraps,
     reason = "HNSW vector index — unsafe geometry, bounds-checked indexing, numeric casts for index math"
 )]
+#[cfg(not(feature = "krites_sovereign_hnsw"))]
+pub(crate) mod hnsw;
+// WHY: wave-4 land-dark selector (PLAN.md Sec2). Both trees compile (CI
+// matrix / manual verify with --features krites_sovereign_hnsw); only one
+// is ever part of a given build, so callers of `crate::runtime::hnsw::*`
+// need no changes either way.
+#[cfg(feature = "krites_sovereign_hnsw")]
+#[expect(
+    clippy::as_conversions,
+    clippy::default_trait_access,
+    clippy::indexing_slicing,
+    clippy::mutable_key_type,
+    clippy::range_plus_one,
+    clippy::ref_option,
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::uninlined_format_args,
+    clippy::unnecessary_wraps,
+    reason = "HNSW vector index -- unsafe geometry, bounds-checked indexing, numeric \
+              casts for index math (same rationale as the derived module's own \
+              module-level expect on the cfg(not(...)) branch above)"
+)]
+#[path = "hnsw_sovereign/mod.rs"]
 pub(crate) mod hnsw;
 #[expect(
     clippy::default_trait_access,
