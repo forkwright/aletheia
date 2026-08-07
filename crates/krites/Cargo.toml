@@ -17,6 +17,13 @@ graph-algo = []
 async = []
 hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
+# WHY: wave-5 land-dark selectors (PLAN.md Sec2) -- each derived
+# fixed_rule::algos/utilities module stays default; the feature swaps in
+# its fresh sovereign_native.rs counterpart instead (see algos/mod.rs and
+# utilities/mod.rs's #[path] swaps). Off by default so the soak window
+# starts from an explicit opt-in, never a silent flip.
+krites_sovereign_algos = []
+krites_sovereign_utilities = []
 test-core = ["storage-fjall"]
 test-full = ["test-core"]
 
