@@ -41,7 +41,7 @@ Navigation index for concepts that touch many components.
 - Facts carry `Visibility` and optional `MemoryScope`; recall and MCP/API surfaces must preserve those filters, scope reads to the requesting `nous_id`, and require explicit per-request ownership for writes (no fallback service authorship)
 - Recall weights are configurable per-agent via `taxis` config and consumed by `nous`
 - `memory_search` routes through `organon` → `mneme` → `episteme` with the same scoring
-- Memory docs and comments use Krites/Datalog/Fjall for current architecture; CozoDB/SQLite/redb references are acceptable only in explicitly historical migration notes.
+- Memory docs and comments use Krites/Datalog/Fjall for current architecture; CozoDB/SQLite/redb references are acceptable only in explicitly historical migration notes. This is a naming rule and stops at architecture: provenance, attribution and licensing statements name CozoDB directly, because they are claims about authorship rather than about how the system is built. `crates/krites/NOTICE.md` is the attribution of record and is not subject to this rule.
 
 **Known mismatches:** none
 

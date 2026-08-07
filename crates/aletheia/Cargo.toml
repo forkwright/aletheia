@@ -16,6 +16,10 @@ path = "src/main.rs"
 name = "seed_psyche_facts"
 path = "src/bin/seed_psyche_facts.rs"
 
+[[bin]]
+name = "golden_set_harness"
+path = "src/bin/golden_set_harness.rs"
+
 [features]
 # WARNING: embed-candle must remain in defaults. It has been accidentally
 # removed three times: #1263, #1326, #1378. A compile-time test in

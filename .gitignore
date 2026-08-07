@@ -21,6 +21,10 @@ data/
 !crates/*/src/data/**
 !crates/mneme/src/engine/data/
 !crates/mneme/src/engine/data/**
+# Pinned upstream snapshot for the krites verbatim-drift metric (wave 0.3) —
+# also source code, not runtime data.
+!crates/krites/upstream-snapshot/cozo-core-src/data/
+!crates/krites/upstream-snapshot/cozo-core-src/data/**
 # Seed eval datasets are part of the shipped example instance
 !instance.example/data/
 !instance.example/data/**
