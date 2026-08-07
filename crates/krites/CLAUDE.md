@@ -6,7 +6,20 @@ Embedded Datalog engine with HNSW vector search and graph algorithms. Depends on
 
 ## Depth
 
-Embedded Datalog engine with HNSW vector search, full-text search, and graph algorithms. 55K lines. Embedded Datalog engine for Aletheia knowledge graph.
+Embedded Datalog engine with HNSW vector search, full-text search, and graph algorithms for the Aletheia knowledge graph. 62k lines across 198 files under `src/` (51.3k excluding tests).
+
+## Provenance — read before editing anything here
+
+This crate is substantially derived from **CozoDB** (`cozo-core`), licensed **MPL-2.0**. The attribution of record is [`NOTICE.md`](NOTICE.md), with the license text beside it; do not restate their contents elsewhere, and do not remove them.
+
+Two consequences bind day-to-day work in this crate:
+
+- **The MPL notices stay.** Upstream identifiers were renamed during the migration and the notices were dropped, which is the one thing MPL §3.1 does not permit. That has been repaired. Anything that reads like tidy-up but removes attribution re-creates the defect.
+- **`Cargo.toml` deliberately overrides the workspace license** with `AGPL-3.0-or-later AND MPL-2.0`. It is not drift. The derived files, and our modifications to them, stay MPL under file-level copyleft; the AGPL Larger Work is permitted by §3.3.
+
+The naming rule in `docs/HUBS.md` — prefer Krites/Datalog/Fjall over CozoDB — is about **architecture** and explicitly stops short of provenance. Attribution and licensing statements name CozoDB, because they are claims about authorship rather than about how the system is built.
+
+**Verbatim-drift measurement** (retirement program wave 0.3): `scripts/check-krites-verbatim-drift.py` scores any file here against the pinned upstream snapshot at `upstream-snapshot/` (its own `NOTICE.md`). Report-only — see PROMOTION CRITERIA in the script's module docstring before it gates anything.
 
 ## Read first
 
