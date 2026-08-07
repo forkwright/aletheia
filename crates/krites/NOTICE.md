@@ -7,7 +7,7 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 201 files under `src/`: 177 derived, 24 sovereign, 0 dual
+- 210 files under `src/`: 177 derived, 24 sovereign, 9 dual
 - Mean verbatim match across the 177 derived files: 49.7% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
@@ -191,9 +191,18 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 26.4% | derived |
 | `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 29.4% | derived |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 10.8% | derived |
+| `src/runtime/hnsw_sovereign/adaptive.rs` | `runtime/hnsw.rs` | 3.7% | dual |
+| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | `runtime/hnsw.rs` | 6.1% | dual |
+| `src/runtime/hnsw_sovereign/graph.rs` | `runtime/hnsw.rs` | 25.6% | dual |
+| `src/runtime/hnsw_sovereign/mod.rs` | `runtime/hnsw.rs` | 1.9% | dual |
+| `src/runtime/hnsw_sovereign/put.rs` | `runtime/hnsw.rs` | 12.4% | dual |
+| `src/runtime/hnsw_sovereign/remove.rs` | `runtime/hnsw.rs` | 21.4% | dual |
+| `src/runtime/hnsw_sovereign/search.rs` | `runtime/hnsw.rs` | 11.6% | dual |
+| `src/runtime/hnsw_sovereign/types.rs` | `runtime/hnsw.rs` | 13.1% | dual |
+| `src/runtime/hnsw_sovereign/visited_pool.rs` | `runtime/hnsw.rs` | 14.1% | dual |
 | `src/runtime/imperative.rs` | `runtime/imperative.rs` | 44.2% | derived |
 | `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 59.6% | derived |
-| `src/runtime/mod.rs` | `runtime/mod.rs` | 3.6% | derived |
+| `src/runtime/mod.rs` | `runtime/mod.rs` | 3.1% | derived |
 | `src/runtime/relation/handles.rs` | `runtime/relation.rs` | 76.8% | derived |
 | `src/runtime/relation/index_create.rs` | `runtime/relation.rs` | 73.9% | derived |
 | `src/runtime/relation/index_management.rs` | `runtime/relation.rs` | 66.7% | derived |
