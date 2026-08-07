@@ -231,7 +231,7 @@ fn run(args: &Args) -> anyhow::Result<()> {
             store.as_ref(),
             provider.as_ref(),
             q,
-            seed_entities.get(&q.id).map(Vec::as_slice).unwrap_or(&[]),
+            seed_entities.get(&q.id).map_or(&[][..], Vec::as_slice),
             args,
         ));
     }
