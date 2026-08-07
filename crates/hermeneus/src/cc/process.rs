@@ -35,6 +35,12 @@ const MAX_OUTPUT_LINES: usize = 100_000;
 /// subprocess to consume excessive memory during parsing.
 const MAX_SYSTEM_PROMPT_BYTES: usize = 100 * 1024; // 100 KB
 
+/// Maximum bytes of subprocess stderr preserved in an error message.
+///
+/// WHY(#5261): CC's stderr can carry echoed prompt fragments or
+/// credential-shaped strings; sanitize before it reaches the caller.
+const MAX_DIAGNOSTIC_TEXT_BYTES: usize = 512;
+
 /// Extract the OAuth access token from the raw JSON content of a CC credentials file.
 ///
 /// Separated from I/O so it can be unit-tested without touching the real filesystem
@@ -241,15 +247,19 @@ pub(crate) async fn run_completion(
                 } else {
                     String::new()
                 };
+                // WHY(#5261): stderr can carry echoed prompt fragments or
+                // credential-shaped strings; sanitize before it reaches the
+                // caller in an error message.
+                let stderr_display = if stderr_text.trim().is_empty() {
+                    "(no stderr)".to_owned()
+                } else {
+                    crate::secret::sanitize_provider_text(
+                        stderr_text.trim(),
+                        MAX_DIAGNOSTIC_TEXT_BYTES,
+                    )
+                };
                 return Err(error::ApiRequestSnafu {
-                    message: format!(
-                        "CC process exited with {status}: {}",
-                        if stderr_text.is_empty() {
-                            "(no stderr)"
-                        } else {
-                            stderr_text.trim()
-                        }
-                    ),
+                    message: format!("CC process exited with {status}: {stderr_display}"),
                 }
                 .build());
             }
