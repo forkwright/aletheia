@@ -54,6 +54,12 @@ fn defaults_are_sensible() {
         config.gateway.auth.mode, "token",
         "default auth mode should be token"
     );
+    assert_eq!(
+        config.gateway.auth.none_role, "readonly",
+        "SECURITY(#5169, #5342): default noneRole must be least-privilege \
+         readonly, not admin — a browser-facing auth.mode=none instance must \
+         not default to full-privilege access"
+    );
     assert!(
         !config.gateway.tls.enabled,
         "tls should be disabled by default"
