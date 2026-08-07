@@ -12,37 +12,6 @@ use crate::state::view_preservation::ViewPreservationStore;
 
 use crate::components::agent_sidebar::AgentSidebarView;
 
-const SIDEBAR_BASE_STYLE: &str = "\
-    background: var(--bg-surface); \
-    color: var(--text-primary); \
-    padding: var(--space-4) 0; \
-    display: flex; \
-    flex-direction: column; \
-    gap: var(--space-1); \
-    flex-shrink: 0; \
-    border-right: 1px solid var(--border-separator); \
-    overflow-y: auto; \
-    overflow-x: hidden; \
-    transition: width var(--duration-slow) var(--ease-out-expo);\
-";
-
-const CONTENT_STYLE: &str = "\
-    flex: 1; \
-    display: flex; \
-    flex-direction: column; \
-    overflow: hidden; \
-    background: var(--bg); \
-    color: var(--text-primary);\
-";
-
-const BRAND_STYLE: &str = "\
-    font-size: var(--text-lg); \
-    font-weight: var(--weight-bold); \
-    padding: var(--space-2) var(--space-4); \
-    margin-bottom: var(--space-2); \
-    color: var(--text-primary);\
-";
-
 /// Layout shell rendered around all routes.
 ///
 /// Provides `Signal<NavAction>` as context so child views can access it.
@@ -76,34 +45,33 @@ pub(crate) fn Layout() -> Element {
         sidebar_collapsed,
     );
 
-    let sidebar_width = if *sidebar_collapsed.read() {
-        "var(--sidebar-width-collapsed)"
+    let sidebar_class = if *sidebar_collapsed.read() {
+        "app-sidebar is-collapsed"
     } else {
-        "var(--sidebar-width)"
+        "app-sidebar"
+    };
+    let brand_class = if *sidebar_collapsed.read() {
+        "app-sidebar-brand is-collapsed"
+    } else {
+        "app-sidebar-brand"
     };
 
     rsx! {
         div {
-            // WHY: paint the shell root explicitly — body resolves dark-theme
-            // tokens (data-theme lives on an inner div), so any unpainted gap
-            // would render near-black on the light theme.
-            style: "display: flex; height: 100vh; background: var(--bg); color: var(--text-primary); font-family: var(--font-body, system-ui, -apple-system, sans-serif);",
+            class: "app-shell",
             // NOTE: tabindex="-1" + onkeydown lets the root div capture keyboard events.
             tabindex: "-1",
             onkeydown: keyboard_handler,
             "aria-label": "Aletheia application",
 
             nav {
-                style: "width: {sidebar_width}; {SIDEBAR_BASE_STYLE}",
+                class: "{sidebar_class}",
                 role: "navigation",
                 "aria-label": "Main navigation",
                 if !*sidebar_collapsed.read() {
-                    div { style: "{BRAND_STYLE}", "Aletheia" }
+                    div { class: "{brand_class}", "Aletheia" }
                 } else {
-                    div {
-                        style: "font-size: var(--text-lg); font-weight: var(--weight-bold); padding: var(--space-2) 0; margin-bottom: var(--space-2); text-align: center; color: var(--accent);",
-                        "A"
-                    }
+                    div { class: "{brand_class}", "A" }
                 }
                 // ── Workspace section ──
                 if !*sidebar_collapsed.read() {
@@ -142,10 +110,10 @@ pub(crate) fn Layout() -> Element {
             }
             // Content area: topbar + main
             div {
-                style: "flex: 1; display: flex; flex-direction: column; overflow: hidden;",
+                class: "app-content",
                 TopBar {}
                 main {
-                    style: "{CONTENT_STYLE}",
+                    class: "app-main",
                     role: "main",
                     "aria-label": "Main content",
                     Outlet::<Route> {}
