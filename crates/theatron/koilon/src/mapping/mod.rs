@@ -14,7 +14,7 @@ mod tests {
     use crate::api::types::SseEvent;
     use crate::app::test_helpers::*;
     use crate::events::{Event, StreamEvent};
-    use crate::msg::{MessageActionKind, Msg, OverlayKind};
+    use crate::msg::{MessageActionKind, Msg, NotificationKind, OverlayKind};
     use crate::state::Overlay;
 
     fn key(code: KeyCode) -> crossterm::event::Event {
@@ -296,6 +296,76 @@ mod tests {
         let event = Event::Sse(SseEvent::Ping);
         let msg = app.map_event(event);
         assert!(matches!(msg, Some(Msg::Tick)));
+    }
+
+    // WHY(#6357): koilon#event-bridge -- these guard the SSE->Msg mapping half
+    // of the API event bridge. Regression to `_ => Msg::Tick` (the state before
+    // the bridge existed) silently drops the event; these fail loudly instead.
+    #[test]
+    fn sse_error_maps_to_error_banner_set() {
+        let app = test_app();
+        let event = Event::Sse(SseEvent::Error {
+            message: "gateway unreachable".to_string(),
+        });
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::ErrorBannerSet(m)) if m == "gateway unreachable"));
+    }
+
+    #[test]
+    fn sse_nous_lifecycle_restart_required_maps_to_warning_toast() {
+        let app = test_app();
+        let event = Event::Sse(SseEvent::NousLifecycle {
+            nous_id: "syn".into(),
+            event: "created".to_string(),
+            restart_required: true,
+        });
+        let msg = app.map_event(event);
+        assert!(matches!(
+            msg,
+            Some(Msg::ToastPush {
+                kind: NotificationKind::Warning,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn sse_nous_lifecycle_no_restart_maps_to_info_toast() {
+        let app = test_app();
+        let event = Event::Sse(SseEvent::NousLifecycle {
+            nous_id: "syn".into(),
+            event: "updated".to_string(),
+            restart_required: false,
+        });
+        let msg = app.map_event(event);
+        assert!(matches!(
+            msg,
+            Some(Msg::ToastPush {
+                kind: NotificationKind::Info,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn ctrl_d_dismisses_error_banner_when_showing() {
+        let mut app = test_app();
+        app.viewport.error_banner = Some(crate::state::notification::ErrorBanner {
+            message: "boom".to_string(),
+        });
+        let event = Event::Terminal(key_mod(KeyCode::Char('d'), KeyModifiers::CONTROL));
+        let msg = app.map_event(event);
+        assert!(matches!(msg, Some(Msg::ErrorBannerDismiss)));
+    }
+
+    #[test]
+    fn ctrl_d_is_unbound_without_error_banner() {
+        // WHY: Ctrl+D must not claim the key globally -- only intercept it while
+        // a banner is actually showing, so it stays free for future bindings.
+        let app = test_app();
+        let event = Event::Terminal(key_mod(KeyCode::Char('d'), KeyModifiers::CONTROL));
+        let msg = app.map_event(event);
+        assert!(!matches!(msg, Some(Msg::ErrorBannerDismiss)));
     }
 
     #[test]

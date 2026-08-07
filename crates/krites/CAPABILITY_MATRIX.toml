@@ -266,7 +266,7 @@ dest_module = "relation/index_management.rs (pairs with CreateIndex; the B26 sub
 gate = "Removing an index releases its persisted key range and its `{name}:{k}` sub-relation metadata row together -- never leaving one behind (B26)."
 call_sites = 16
 call_sites_method = "sum of quote-anchored grep for '::index drop', '::hnsw drop', '::fts drop', '::lsh drop' across crates/ excluding crates/krites/ (3+3+7+3)"
-notes = "Was 6, all '::fts drop'. Wave 1's recovery sweep enumerates every index kind before a staging swap, so all four drop forms now have sites (3+3+7+3). No form is zero-call-site any more."
+notes = "Wave 1's recovery sweep enumerates every index kind before a staging swap, so all four drop forms now have sites (3+3+7+3). No form is zero-call-site any more."
 
 [[capability]]
 id = "sysop-describe-relation"
@@ -671,7 +671,7 @@ source = "crates/krites/src/lib.rs:174"
 dest_wave = "sovereign"
 dest_module = "storage/fjall_backend.rs"
 gate = "Insertion point for wave 1's pre-migration filesystem-level snapshot, taken BEFORE this call in the startup path (Sec 8.5) -- not inside migration.rs, which cannot re-open a keyspace this process already holds."
-call_sites = 47
+call_sites = 48
 call_sites_method = "grep -rn 'open_fjall(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
 [[capability]]
@@ -815,8 +815,8 @@ source = "crates/krites/src/lib.rs:362,379,404,413"
 dest_wave = "wave-11"
 dest_module = "MultiTransaction"
 gate = "Same gate as api-transaction-payload; INVARIANT preserved: send -> recv -> send -> recv, never pipelined (both channels capacity 1, per lib.rs:363-365 comment)."
-call_sites = 0
-call_sites_method = "grep -rn 'MultiTransaction\\b' crates/ --include='*.rs' | grep -v ^crates/krites/ | grep -vE ':\\s*//'  (comment lines excluded: the only hit is episteme/knowledge_store/migration_atomic.rs:12, a doc comment recording that MultiTransaction cannot carry sys-ops -- a mention, not a use)"
+call_sites = 1
+call_sites_method = "grep -rn 'MultiTransaction\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 # ---------------------------------------------------------------------------
 # category = "appendix_a" -- every ranked capability row in PLAN.md's
