@@ -17,6 +17,11 @@ graph-algo = []
 async = []
 hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
+# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- selects the sovereign
+# UCD/CLDR-generated ascii-folding table (fold_table_sovereign/) over the
+# CozoDB-derived match-table (fold_table/), off by default during the soak
+# window. See fts/tokenizer/ascii_folding_filter/fold_table.rs.
+krites_sovereign_ascii_folding_table = []
 test-core = ["storage-fjall"]
 test-full = ["test-core"]
 

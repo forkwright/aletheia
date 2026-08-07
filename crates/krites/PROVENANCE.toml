@@ -674,29 +674,50 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 3.7
-status = "derived"
-soak_expires_at_commit_count = 0
+verbatim_pct = 3.5
+status = "dual"
+soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 99.1
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 99.5
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 99.5
-status = "derived"
+status = "dual"
+soak_expires_at_commit_count = 2838
+
+[[file]]
+path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py"
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs"
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs"
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
@@ -704,6 +725,13 @@ path = "fts/tokenizer/ascii_folding_filter/mod.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 78.8
 status = "derived"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "fts/tokenizer/ascii_folding_filter/tests/bmp_equivalence.rs"
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
@@ -737,7 +765,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/mod.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 7.0
+verbatim_pct = 6.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
