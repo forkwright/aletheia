@@ -1,0 +1,72 @@
+# WHY: PLAN.md wave 0.3 — the calibrated verbatim-drift metric for
+# crates/krites, run informationally on every PR that touches the crate.
+# REPORT-ONLY BY DESIGN, but not never-fails: the drift SIGNAL proper (the
+# "Full crate drift report" step below) never fails the build — it runs
+# without --strict, so a file scoring above CALIBRATED_THRESHOLD is
+# reported, not gated. The other two steps DO enforce and CAN fail this
+# job on a red exit, deliberately: "Test the drift metric itself" is the
+# metric's own unit-test suite (regressions in the tokenizer/classifier
+# should fail here, not silently erode the report), and "Calibration
+# numbers" fails if CALIBRATED_THRESHOLD no longer clears the known-
+# original max (a stale constant after a snapshot update should fail
+# loudly, not print a silently-wrong margin). Both failure modes are
+# desirable signal about the metric's own integrity, distinct from the
+# (currently non-blocking) drift signal about crates/krites itself.
+# Promotion of the drift signal to a blocking gate is a separate,
+# deliberate change — see PROMOTION CRITERIA in that script's module
+# docstring. Do not add this workflow's job to branch protection required
+# checks, and do not add --strict to the "Full crate drift report" step,
+# until every criterion listed there holds.
+name: krites verbatim drift (report-only)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/krites/src/**"
+      - "crates/krites/upstream-snapshot/**"
+      - "scripts/check-krites-verbatim-drift.py"
+      - "scripts/test-krites-verbatim-drift.py"
+      - ".github/workflows/krites-verbatim-drift.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: krites-verbatim-drift-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift-report:
+    name: drift report (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "latest"
+
+      # WHY: the metric's own tokenizer/classifier logic is covered here so a
+      # regression in discriminating power is caught before it reaches the
+      # (currently informational) report below.
+      - name: Test the drift metric itself
+        run: uv run scripts/test-krites-verbatim-drift.py
+
+      - name: Calibration numbers (known-original vs known-derived)
+        run: uv run scripts/check-krites-verbatim-drift.py --calibrate
+
+      - name: Full crate drift report
+        run: |
+          {
+            echo "### krites verbatim-drift report (informational — does not gate)"
+            echo
+            echo '```'
+            uv run scripts/check-krites-verbatim-drift.py
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
