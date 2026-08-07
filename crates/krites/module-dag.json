@@ -292,8 +292,8 @@
     {
       "from": "runtime",
       "to": "data",
-      "count": 97,
-      "production_count": 91,
+      "count": 124,
+      "production_count": 116,
       "test_only": false,
       "first_evidence": "runtime/db.rs:29",
       "first_production_evidence": "runtime/db.rs:29"
@@ -319,8 +319,8 @@
     {
       "from": "runtime",
       "to": "parse",
-      "count": 22,
-      "production_count": 21,
+      "count": 25,
+      "production_count": 24,
       "test_only": false,
       "first_evidence": "runtime/exec.rs:28",
       "first_production_evidence": "runtime/exec.rs:28"
@@ -337,8 +337,8 @@
     {
       "from": "runtime",
       "to": "root",
-      "count": 22,
-      "production_count": 19,
+      "count": 28,
+      "production_count": 25,
       "test_only": false,
       "first_evidence": "runtime/db.rs:32",
       "first_production_evidence": "runtime/db.rs:32"
@@ -346,7 +346,7 @@
     {
       "from": "runtime",
       "to": "storage",
-      "count": 12,
+      "count": 14,
       "production_count": 12,
       "test_only": false,
       "first_evidence": "runtime/callback.rs:14",
@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 198,
-  "statement_count": 960,
+  "file_count": 207,
+  "statement_count": 1012,
   "required_edges_present": [
     [
       "runtime",
