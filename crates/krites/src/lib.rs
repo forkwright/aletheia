@@ -148,6 +148,12 @@ pub struct Db {
     /// Optional LRU cache that records whether each normalized query string has
     /// been seen before, exposing hit/miss metrics for observability.
     cache: Option<Arc<QueryCache>>,
+    /// Background hot-reload watcher, set by [`Db::attach_rule_store`].
+    ///
+    /// Retained so the watcher's background tasks and filesystem watch stay
+    /// alive for the lifetime of this `Db`; dropping the `Db` stops the watch.
+    #[cfg(feature = "hot-reload")]
+    rule_watcher: Option<crate::hot_reload::HotReloader>,
 }
 
 #[expect(
@@ -156,7 +162,12 @@ pub struct Db {
 )]
 impl Db {
     fn new(inner: DbInner) -> Self {
-        Self { inner, cache: None }
+        Self {
+            inner,
+            cache: None,
+            #[cfg(feature = "hot-reload")]
+            rule_watcher: None,
+        }
     }
 
     /// Open an in-memory database.
@@ -215,6 +226,42 @@ impl Db {
             DbInner::Fjall(db) => db.rule_store = Some(store),
         }
         self
+    }
+
+    /// Start watching `rule_dir` for `.mnm` Datalog rule files and attach the
+    /// resulting live ruleset to this `Db`.
+    ///
+    /// Loads the initial ruleset from `rule_dir` synchronously (returning an
+    /// error if it fails to read or parse), then spawns a background watcher
+    /// that atomically swaps the active ruleset whenever a file under
+    /// `rule_dir` changes — see [`Db::with_rule_store`] for how the attached
+    /// ruleset affects subsequent [`Db::run`] calls. The watcher handle is
+    /// retained on `self`, so the watch runs for the lifetime of this `Db`
+    /// and stops when it is dropped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `rule_dir` cannot be read, its `.mnm` files fail to
+    /// parse, or the filesystem watcher cannot be initialized.
+    #[cfg(feature = "hot-reload")]
+    pub fn attach_rule_store(
+        &mut self,
+        rule_dir: impl AsRef<std::path::Path>,
+    ) -> crate::Result<()> {
+        let fixed_rules = match &self.inner {
+            DbInner::Mem(db) => Arc::clone(&db.fixed_rules),
+            #[cfg(feature = "storage-fjall")]
+            DbInner::Fjall(db) => Arc::clone(&db.fixed_rules),
+        };
+        let (watcher, _events, store) =
+            crate::hot_reload::HotReloader::start(rule_dir, &fixed_rules)?;
+        match &mut self.inner {
+            DbInner::Mem(db) => db.rule_store = Some(store),
+            #[cfg(feature = "storage-fjall")]
+            DbInner::Fjall(db) => db.rule_store = Some(store),
+        }
+        self.rule_watcher = Some(watcher);
+        Ok(())
     }
 
     /// Return a snapshot of query cache statistics, or `None` if no cache is attached.

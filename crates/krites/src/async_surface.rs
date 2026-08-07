@@ -87,6 +87,12 @@ impl AsyncDb {
             Err(arc) => Db {
                 inner: arc.clone_inner(),
                 cache: None,
+                // WHY None on the shared-Arc path: the watcher is a live
+                // filesystem handle owned by one Db. Reconstructing from a
+                // shared inner cannot clone it, and duplicating the watch
+                // would double-deliver reload events. Callers that need hot
+                // reload attach it after building.
+                rule_watcher: None,
             },
         };
         db.cache = Some(Arc::new(QueryCache::new(capacity)));
@@ -103,6 +109,12 @@ impl AsyncDb {
             Err(arc) => Db {
                 inner: arc.clone_inner(),
                 cache: None,
+                // WHY None on the shared-Arc path: the watcher is a live
+                // filesystem handle owned by one Db. Reconstructing from a
+                // shared inner cannot clone it, and duplicating the watch
+                // would double-deliver reload events. Callers that need hot
+                // reload attach it after building.
+                rule_watcher: None,
             },
         }
         .with_config(config);

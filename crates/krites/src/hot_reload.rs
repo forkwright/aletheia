@@ -171,13 +171,6 @@ impl HotReloader {
         clippy::type_complexity,
         reason = "fixed_rules mirror type from Db runtime"
     )]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "called from tests; not yet wired into non-test Db startup"
-        )
-    )]
     pub fn start(
         rule_dir: impl AsRef<Path>,
         fixed_rules: &Arc<

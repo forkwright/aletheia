@@ -528,6 +528,12 @@ pub struct KnowledgeConfig {
     pub allow_assumed_embedding_meta: bool,
     /// Admission policy for fact insertion. Default: [`DefaultAdmissionPolicy`](crate::admission::DefaultAdmissionPolicy).
     pub admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
+    /// Directory of operator-editable `.mnm` Datalog rule files to hot-reload.
+    ///
+    /// When set, the store watches this directory for changes and applies
+    /// them to the running `Db` without a restart (`krites::Db::attach_rule_store`).
+    /// `None` (the default) leaves the engine's rule store unattached.
+    pub rule_dir: Option<std::path::PathBuf>,
 }
 
 #[cfg(feature = "mneme-engine")]
@@ -541,6 +547,7 @@ impl std::fmt::Debug for KnowledgeConfig {
                 &self.allow_assumed_embedding_meta,
             )
             .field("admission_policy", &"<dyn AdmissionPolicy>")
+            .field("rule_dir", &self.rule_dir)
             .finish()
     }
 }
@@ -553,6 +560,7 @@ impl Default for KnowledgeConfig {
             embedding_model: crate::embedding::DEFAULT_CANDLE_MODEL.to_owned(),
             allow_assumed_embedding_meta: false,
             admission_policy: Box::new(crate::admission::DefaultAdmissionPolicy),
+            rule_dir: None,
         }
     }
 }
@@ -655,12 +663,20 @@ impl KnowledgeStore {
     pub fn open_mem_with_config(
         config: KnowledgeConfig,
     ) -> crate::error::Result<std::sync::Arc<Self>> {
-        let db = crate::engine::Db::open_mem().map_err(|e| {
+        let mut db = crate::engine::Db::open_mem().map_err(|e| {
             crate::error::EngineInitSnafu {
                 message: e.to_string(),
             }
             .build()
         })?;
+        if let Some(rule_dir) = &config.rule_dir {
+            db.attach_rule_store(rule_dir).map_err(|e| {
+                crate::error::EngineInitSnafu {
+                    message: format!("failed to attach rule store at {}: {e}", rule_dir.display()),
+                }
+                .build()
+            })?;
+        }
         let store = Self {
             db: std::sync::Arc::new(db),
             dim: config.dim,
@@ -691,12 +707,20 @@ impl KnowledgeStore {
     ) -> crate::error::Result<std::sync::Arc<Self>> {
         let path = path.as_ref();
         Self::migrate_to_cohort_layout(path)?;
-        let db = crate::engine::Db::open_fjall(path).map_err(|e| {
+        let mut db = crate::engine::Db::open_fjall(path).map_err(|e| {
             crate::error::EngineInitSnafu {
                 message: e.to_string(),
             }
             .build()
         })?;
+        if let Some(rule_dir) = &config.rule_dir {
+            db.attach_rule_store(rule_dir).map_err(|e| {
+                crate::error::EngineInitSnafu {
+                    message: format!("failed to attach rule store at {}: {e}", rule_dir.display()),
+                }
+                .build()
+            })?;
+        }
         let store = Self {
             db: std::sync::Arc::new(db),
             dim: config.dim,

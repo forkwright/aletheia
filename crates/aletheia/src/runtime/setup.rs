@@ -974,7 +974,11 @@ pub(super) fn open_knowledge_stores(
             std::fs::create_dir_all(parent)
                 .whatever_context("failed to CREATE knowledge store directory")?;
         }
-        let knowledge_config = build_knowledge_config(embedding, knowledge, false);
+        let rules_dir = oikos.knowledge_cohort_rules_dir(&cohort);
+        std::fs::create_dir_all(&rules_dir)
+            .whatever_context("failed to CREATE knowledge rule directory")?;
+        let mut knowledge_config = build_knowledge_config(embedding, knowledge, false);
+        knowledge_config.rule_dir = Some(rules_dir);
         let store =
             match mneme::knowledge_store::KnowledgeStore::open_fjall(&kb_path, knowledge_config) {
                 Ok(s) => s,
@@ -1031,6 +1035,9 @@ pub(super) fn build_knowledge_config(
         embedding_model: embedding_config.effective_model_name(),
         allow_assumed_embedding_meta,
         admission_policy: policy,
+        // WHY: rule_dir is per-cohort (each cohort watches its own rule
+        // directory), so the caller sets it after this shared config is built.
+        rule_dir: None,
     }
 }
 
