@@ -1,0 +1,243 @@
+{
+  "groups": {
+    "W1b_storage_mem_temp": "PLAN.md:108 storage/{mem,temp}.rs",
+    "W2a_fold_table": "PLAN.md:109 ascii-folding table",
+    "W2b_stopwords": "PLAN.md:110 stopword lists",
+    "W3prime_algos_19": "PLAN.md:113,206 19 of 22 graph algorithms (excl. PageRank/Louvain)",
+    "W4prime_hnsw": "PLAN.md:112,208 HNSW",
+    "W5prime_value_model": "PLAN.md:114,209 data/{value,memcmp,tuple,symb}.rs",
+    "W3_storage_trait_fts_index": "PLAN.md:111,222 storage trait + BM25/FTS index, after W1b+W2a/W2b",
+    "W5_live3_algos": "PLAN.md:113,223 PageRank/Louvain/RRF, after the 19"
+  },
+  "cross_group_edges": [
+    {
+      "from": "W1b_storage_mem_temp",
+      "to": "W3_storage_trait_fts_index",
+      "count": 7,
+      "evidence": [
+        "storage/mem.rs:18 -> crate::storage::error::StorageResult",
+        "storage/mem.rs:18 -> crate::storage::error::WriteInReadTransactionSnafu",
+        "storage/mem.rs:19 -> crate::storage::Storage",
+        "storage/mem.rs:19 -> crate::storage::StoreTx",
+        "storage/temp.rs:11 -> crate::storage::Storage",
+        "storage/temp.rs:11 -> crate::storage::StoreTx",
+        "storage/temp.rs:9 -> crate::storage::error::StorageResult"
+      ]
+    },
+    {
+      "from": "W1b_storage_mem_temp",
+      "to": "W5prime_value_model",
+      "count": 5,
+      "evidence": [
+        "storage/mem.rs:14 -> crate::data::tuple::Tuple",
+        "storage/mem.rs:14 -> crate::data::tuple::check_key_for_validity",
+        "storage/mem.rs:15 -> crate::data::value::ValidityTs",
+        "storage/temp.rs:5 -> crate::data::tuple::Tuple",
+        "storage/temp.rs:6 -> crate::data::value::ValidityTs"
+      ]
+    },
+    {
+      "from": "W2a_fold_table",
+      "to": "W3_storage_trait_fts_index",
+      "count": 4,
+      "evidence": [
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::AsciiFoldingFilter",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::RawTokenizer",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::SimpleTokenizer",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::TextAnalyzer"
+      ]
+    },
+    {
+      "from": "W2b_stopwords",
+      "to": "W3_storage_trait_fts_index",
+      "count": 7,
+      "evidence": [
+        "fts/tokenizer/stop_word_filter/mod.rs:11 -> crate::fts::error::TokenizationFailedSnafu",
+        "fts/tokenizer/stop_word_filter/mod.rs:154 -> crate::fts::tokenizer::tests::assert_token",
+        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::SimpleTokenizer",
+        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::StopWordFilter",
+        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::TextAnalyzer",
+        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::Token",
+        "fts/tokenizer/stop_word_filter/mod.rs:196 -> crate::fts::tokenizer::tests::collect_tokens"
+      ]
+    },
+    {
+      "from": "W3_storage_trait_fts_index",
+      "to": "W5prime_value_model",
+      "count": 15,
+      "evidence": [
+        "fts/config.rs:6 -> crate::data::memcmp::MemCmpEncoder",
+        "fts/config.rs:7 -> crate::data::value::DataValue",
+        "fts/indexing.rs:14 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "fts/indexing.rs:14 -> crate::data::tuple::Tuple",
+        "fts/indexing.rs:14 -> crate::data::tuple::decode_tuple_from_key",
+        "fts/indexing.rs:15 -> crate::data::value::LARGEST_UTF_CHAR",
+        "fts/indexing.rs:24 -> crate::data::value::DataValue",
+        "fts/mod.rs:8 -> crate::data::value::DataValue",
+        "storage/fjall_backend.rs:562 -> crate::data::value::DataValue",
+        "storage/fjall_backend.rs:562 -> crate::data::value::Validity",
+        "storage/fjall_backend.rs:8 -> crate::data::tuple::Tuple",
+        "storage/fjall_backend.rs:8 -> crate::data::tuple::check_key_for_validity",
+        "storage/fjall_backend.rs:9 -> crate::data::value::ValidityTs",
+        "storage/mod.rs:7 -> crate::data::tuple::Tuple",
+        "storage/mod.rs:8 -> crate::data::value::ValidityTs"
+      ]
+    },
+    {
+      "from": "W3prime_algos_19",
+      "to": "W5prime_value_model",
+      "count": 34,
+      "evidence": [
+        "fixed_rule/algos/all_pairs_shortest_path.rs:26 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/all_pairs_shortest_path.rs:27 -> crate::data::value::DataValue",
+        "fixed_rule/algos/astar.rs:19 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/astar.rs:20 -> crate::data::tuple::Tuple",
+        "fixed_rule/algos/astar.rs:21 -> crate::data::value::DataValue",
+        "fixed_rule/algos/bfs.rs:14 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/bfs.rs:15 -> crate::data::value::DataValue",
+        "fixed_rule/algos/degree_centrality.rs:14 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/degree_centrality.rs:15 -> crate::data::value::DataValue",
+        "fixed_rule/algos/dfs.rs:14 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/dfs.rs:15 -> crate::data::value::DataValue",
+        "fixed_rule/algos/kcore.rs:18 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/kcore.rs:19 -> crate::data::value::DataValue",
+        "fixed_rule/algos/kruskal.rs:20 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/kruskal.rs:21 -> crate::data::value::DataValue",
+        "fixed_rule/algos/label_propagation.rs:18 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/label_propagation.rs:19 -> crate::data::value::DataValue",
+        "fixed_rule/algos/prim.rs:17 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/prim.rs:18 -> crate::data::value::DataValue",
+        "fixed_rule/algos/random_walk.rs:17 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/random_walk.rs:18 -> crate::data::value::DataValue",
+        "fixed_rule/algos/shortest_path_bfs.rs:14 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/shortest_path_bfs.rs:15 -> crate::data::value::DataValue",
+        "fixed_rule/algos/shortest_path_bfs.rs:159 -> crate::data::value::DataValue",
+        "fixed_rule/algos/shortest_path_dijkstra.rs:22 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/shortest_path_dijkstra.rs:23 -> crate::data::value::DataValue",
+        "fixed_rule/algos/strongly_connected_components.rs:17 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/strongly_connected_components.rs:18 -> crate::data::value::DataValue",
+        "fixed_rule/algos/top_sort.rs:14 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/top_sort.rs:15 -> crate::data::value::DataValue",
+        "fixed_rule/algos/triangles.rs:16 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/triangles.rs:17 -> crate::data::value::DataValue",
+        "fixed_rule/algos/yen.rs:17 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/yen.rs:18 -> crate::data::value::DataValue"
+      ]
+    },
+    {
+      "from": "W4prime_hnsw",
+      "to": "W5prime_value_model",
+      "count": 19,
+      "evidence": [
+        "runtime/hnsw/adaptive.rs:14 -> crate::data::value::DataValue",
+        "runtime/hnsw/adaptive.rs:17 -> crate::data::tuple::Tuple",
+        "runtime/hnsw/adaptive.rs:18 -> crate::data::value::Vector",
+        "runtime/hnsw/graph.rs:29 -> crate::data::value::DataValue",
+        "runtime/hnsw/graph.rs:30 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "runtime/hnsw/graph.rs:31 -> crate::data::value::Vector",
+        "runtime/hnsw/put.rs:25 -> crate::data::value::DataValue",
+        "runtime/hnsw/put.rs:27 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "runtime/hnsw/put.rs:28 -> crate::data::value::Vector",
+        "runtime/hnsw/remove.rs:7 -> crate::data::value::DataValue",
+        "runtime/hnsw/remove.rs:8 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "runtime/hnsw/search.rs:11 -> crate::data::tuple::Tuple",
+        "runtime/hnsw/search.rs:12 -> crate::data::value::Vector",
+        "runtime/hnsw/search.rs:16 -> crate::data::value::DataValue",
+        "runtime/hnsw/search.rs:240 -> crate::data::value::DataValue",
+        "runtime/hnsw/types.rs:11 -> crate::data::tuple::Tuple",
+        "runtime/hnsw/types.rs:12 -> crate::data::value::Vector",
+        "runtime/hnsw/types.rs:9 -> crate::data::value::DataValue",
+        "runtime/hnsw/visited_pool.rs:91 -> crate::data::value::DataValue"
+      ]
+    },
+    {
+      "from": "W5_live3_algos",
+      "to": "W5prime_value_model",
+      "count": 6,
+      "evidence": [
+        "fixed_rule/algos/louvain.rs:16 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/louvain.rs:17 -> crate::data::value::DataValue",
+        "fixed_rule/algos/pagerank.rs:13 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/pagerank.rs:14 -> crate::data::value::DataValue",
+        "fixed_rule/utilities/rrf.rs:10 -> crate::data::value::DataValue",
+        "fixed_rule/utilities/rrf.rs:9 -> crate::data::symb::Symbol"
+      ]
+    }
+  ],
+  "day1_pairwise_independent": [
+    [
+      "W1b_storage_mem_temp",
+      "W2a_fold_table"
+    ],
+    [
+      "W1b_storage_mem_temp",
+      "W2b_stopwords"
+    ],
+    [
+      "W1b_storage_mem_temp",
+      "W3prime_algos_19"
+    ],
+    [
+      "W1b_storage_mem_temp",
+      "W4prime_hnsw"
+    ],
+    [
+      "W2a_fold_table",
+      "W2b_stopwords"
+    ],
+    [
+      "W2a_fold_table",
+      "W3prime_algos_19"
+    ],
+    [
+      "W2a_fold_table",
+      "W4prime_hnsw"
+    ],
+    [
+      "W2a_fold_table",
+      "W5prime_value_model"
+    ],
+    [
+      "W2b_stopwords",
+      "W3prime_algos_19"
+    ],
+    [
+      "W2b_stopwords",
+      "W4prime_hnsw"
+    ],
+    [
+      "W2b_stopwords",
+      "W5prime_value_model"
+    ],
+    [
+      "W3prime_algos_19",
+      "W4prime_hnsw"
+    ]
+  ],
+  "day1_pairwise_coupled": [
+    {
+      "pair": [
+        "W1b_storage_mem_temp",
+        "W5prime_value_model"
+      ],
+      "W1b_storage_mem_temp_imports_W5prime_value_model": 5,
+      "W5prime_value_model_imports_W1b_storage_mem_temp": 0
+    },
+    {
+      "pair": [
+        "W3prime_algos_19",
+        "W5prime_value_model"
+      ],
+      "W3prime_algos_19_imports_W5prime_value_model": 34,
+      "W5prime_value_model_imports_W3prime_algos_19": 0
+    },
+    {
+      "pair": [
+        "W4prime_hnsw",
+        "W5prime_value_model"
+      ],
+      "W4prime_hnsw_imports_W5prime_value_model": 19,
+      "W5prime_value_model_imports_W4prime_hnsw": 0
+    }
+  ]
+}
