@@ -656,9 +656,10 @@ fn remove_retired(store: &KnowledgeStore, spec: &RebuildSpec<'_>) -> crate::erro
         attempts += 1;
         let stale = list_live_indices(store, &retired)?;
         if stale.is_empty() {
-            let remove_cause = last_remove_error
-                .as_ref()
-                .map_or_else(|| "no engine error captured".to_owned(), ToString::to_string);
+            let remove_cause = last_remove_error.as_ref().map_or_else(
+                || "no engine error captured".to_owned(),
+                ToString::to_string,
+            );
             return Err(integrity_error(format!(
                 "migration '{}': retired relation '{retired}' exists, cannot be removed, and carries no live indices to force-detach; last removal error: {remove_cause}; repair by manual inspection",
                 spec.label
@@ -686,8 +687,10 @@ fn force_detach_exhausted_message(
     last_remove_error: Option<&crate::error::Error>,
     last_detach_error: Option<&crate::error::Error>,
 ) -> String {
-    let remove_cause = last_remove_error
-        .map_or_else(|| "no engine error captured".to_owned(), ToString::to_string);
+    let remove_cause = last_remove_error.map_or_else(
+        || "no engine error captured".to_owned(),
+        ToString::to_string,
+    );
     let detach_cause = last_detach_error.map_or_else(
         || "no force-detach was attempted or all attempts reported success yet the relation is still not removable".to_owned(),
         ToString::to_string,
