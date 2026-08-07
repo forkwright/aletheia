@@ -130,9 +130,32 @@ All 4xx / 5xx responses share this JSON shape:
 
 ### `GET /api/health`
 
-Liveness and readiness check. No auth required.
+Public liveness check. No auth required, always `200 OK`.
 
 **Middleware path:** full stack minus JWT Claims (no auth extractor).
+
+WHY(#5312, #5153): this endpoint used to carry the full detailed payload
+below, including an absolute `data_dir` path, on an unauthenticated route.
+It was split into this minimal liveness probe plus the authenticated
+`GET /api/v1/system/health` below; `GET /health` (deprecated, unversioned)
+returns the same minimal body.
+
+**Response `200 OK`** - always this shape, never `503`:
+
+```json
+{ "status": "healthy" }
+```
+
+If this response is returned at all, pylon is alive. It carries no subsystem
+detail — use `GET /api/v1/system/health` for that.
+
+---
+
+### `GET /api/v1/system/health`
+
+Operator-only readiness and diagnostics. Requires `Role::Operator`.
+
+**Middleware path:** full stack, JWT Claims required.
 
 **Response `200 OK` / `503 Service Unavailable`:**
 
@@ -140,17 +163,25 @@ Liveness and readiness check. No auth required.
 {
   "status": "healthy",
   "version": "0.13.0",
+  "git_sha": "abc1234",
   "uptime_seconds": 3721,
   "checks": [
     { "name": "session_store", "status": "pass", "message": null },
     { "name": "providers",     "status": "warn", "message": "no LLM providers registered" },
     { "name": "nous_actors",   "status": "pass", "message": null }
-  ]
+  ],
+  "data_dir": "/home/operator/.aletheia/data"
 }
 ```
 
-`status` values: `"healthy"` (all pass), `"degraded"` (any warn), `"unhealthy"` (any fail).
-HTTP 503 is returned only when status is `"unhealthy"`.
+`status` values: `"healthy"` (all pass), `"degraded"` (any warn), `"unhealthy"`
+(any fail or timeout). HTTP 503 is returned only when status is
+`"unhealthy"`. `data_dir` is operator-only — never present on the public
+`GET /api/health` response above.
+
+For richer, typed subsystem status with freshness/ownership/remediation
+data than this endpoint's flat `checks` array provides, see
+`GET /api/v1/system/status` (#5313).
 
 ---
 

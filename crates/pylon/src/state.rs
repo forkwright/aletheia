@@ -206,6 +206,18 @@ pub struct HealthState {
     pub metrics_mode: taxis::config::MetricsMode,
     /// Whether `/metrics` exposes detailed label values (#5322).
     pub metrics_detailed: bool,
+    /// In-process broadcast bus for domain events (#5313 subsystem status:
+    /// subscriber count + journal depth).
+    pub event_bus: Arc<EventBus>,
+    /// Per-turn event buffer registry (#5313 subsystem status: active
+    /// buffer count as a turn-event-persistence liveness signal).
+    pub turn_buffer_registry: Arc<TurnBufferRegistry>,
+    /// Shared knowledge store, when the `knowledge-store` feature is
+    /// enabled and a store was constructed (#5313 subsystem status:
+    /// presence signal only — full graph diagnostics live behind
+    /// `GET /api/v1/knowledge/check`, which this does not duplicate).
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
 }
 
 impl FromRef<Arc<AppState>> for HealthState {
@@ -222,6 +234,10 @@ impl FromRef<Arc<AppState>> for HealthState {
             credential_runtime: Arc::clone(&state.credential_runtime),
             metrics_mode: state.metrics_mode,
             metrics_detailed: state.metrics_detailed,
+            event_bus: Arc::clone(&state.event_bus),
+            turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: state.knowledge_store.clone(),
         }
     }
 }

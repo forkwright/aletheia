@@ -288,6 +288,18 @@ impl TurnBufferRegistry {
         map.get(&key).cloned()
     }
 
+    /// Number of turn buffers currently held (active plus not-yet-reaped
+    /// completed/failed/aborted entries).
+    ///
+    /// WHY(#5313): surfaced as a control-plane subsystem signal for turn
+    /// event persistence — a count is a real, cheap liveness signal even
+    /// though the registry has no deeper notion of "healthy" beyond holding
+    /// buffers and reaping them on schedule.
+    #[must_use]
+    pub async fn active_count(&self) -> usize {
+        self.buffers.lock().await.len()
+    }
+
     /// Remove expired completed, failed, or aborted turn buffers.
     ///
     /// INVARIANT: the outer `buffers` lock is never held across an inner

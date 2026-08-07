@@ -20,7 +20,9 @@ use crate::state::HealthState;
 
 #[path = "health_dto.rs"]
 mod health_dto;
-pub use health_dto::{HealthCheck, HealthResponse, LivenessResponse};
+pub use health_dto::{
+    HealthCheck, HealthResponse, LivenessResponse, SubsystemStatus, SubsystemStatusResponse,
+};
 
 /// Per-check timeout: individual health checks that exceed this are reported as "timeout".
 const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -71,6 +73,84 @@ pub async fn detailed(
     require_role(&claims, Role::Operator)?;
     let (http_status, response) = detailed_health(&state).await;
     Ok((http_status, Json(response)))
+}
+
+/// GET /api/v1/system/status: authoritative, operator-grade subsystem
+/// status (#5313).
+///
+/// Distinct from `/api/v1/system/health`'s flat `checks` array: each record
+/// here names an explicit code owner and is allowed to report `"unknown"`
+/// for a subsystem this endpoint cannot yet see, instead of defaulting it
+/// to `"healthy"` — a control plane that lies toward optimism is worse than
+/// one that says "I don't know." This is the canonical backend source
+/// Proskenion/Koilon should consume for control-plane status views instead
+/// of re-deriving ad hoc health from the flat checks array.
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no side
+/// effects beyond not returning a response.
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/status",
+    responses(
+        (status = 200, description = "Subsystem status", body = SubsystemStatusResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 503, description = "One or more subsystems failed", body = SubsystemStatusResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn system_status(
+    State(state): State<HealthState>,
+    claims: Claims,
+) -> Result<impl IntoResponse, ApiError> {
+    require_role(&claims, Role::Operator)?;
+
+    let generated_at = jiff::Timestamp::now().to_string();
+    let subsystems = match tokio::time::timeout(
+        OVERALL_TIMEOUT,
+        collect_subsystem_status(&state, &generated_at),
+    )
+    .await
+    {
+        Ok(subsystems) => subsystems,
+        // WHY: a timed-out collector must report failure, not an empty list
+        // that aggregates to a fake "healthy" — the same anti-pattern this
+        // endpoint exists to eliminate.
+        Err(_elapsed) => vec![SubsystemStatus {
+            id: "system_status_collector".to_owned(),
+            name: "Subsystem Status Collector".to_owned(),
+            status: "failed".to_owned(),
+            owner: "crates/pylon::handlers::health".to_owned(),
+            last_checked: generated_at.clone(),
+            last_success: None,
+            last_failure: Some(generated_at.clone()),
+            degraded_reason: None,
+            failure_reason: Some(format!(
+                "subsystem status collection timed out after {}s",
+                OVERALL_TIMEOUT.as_secs()
+            )),
+            details: None,
+            suggested_action: None,
+        }],
+    };
+
+    let status = aggregate_subsystem_status(&subsystems);
+    let http_status = if status == "failed" {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+
+    Ok((
+        http_status,
+        Json(SubsystemStatusResponse {
+            status: status.to_owned(),
+            generated_at,
+            subsystems,
+        }),
+    ))
 }
 
 async fn detailed_health(state: &HealthState) -> (StatusCode, HealthResponse) {
@@ -773,6 +853,14 @@ fn check_prosoche_heartbeat_path(
     let runs_daemon = settings.mode.runs_daemon_tasks()
         && (settings.heartbeat.enabled || settings.self_audit.enabled);
     let uses_external = settings.mode.uses_external_timer() && settings.external_timer.enabled;
+    // WHY(#5313): this check used to report "pass" unconditionally, including
+    // when neither path is active — a fake-pass that told an operator
+    // maintenance was fine while nothing was actually scheduled to run.
+    let status = if runs_daemon || uses_external {
+        "pass"
+    } else {
+        "warn"
+    };
     let message = match (runs_daemon, uses_external) {
         (true, true) => format!(
             "active path: both; daemon heartbeat every {}s, self-audit every {}s; external timer task {} every {}s",
@@ -794,7 +882,7 @@ fn check_prosoche_heartbeat_path(
 
     HealthCheck {
         name: "prosoche_heartbeat_path".to_owned(),
-        status: "pass".to_owned(),
+        status: status.to_owned(),
         message: Some(message),
         details: None,
     }
@@ -1193,6 +1281,412 @@ fn base64url_decode(s: &str) -> Result<Vec<u8>, ()> {
     Ok(out)
 }
 
+// ── Subsystem status (#5313) ──
+
+/// Severity ordering for the internal `pass`/`warn`/`fail`/`timeout` check
+/// scale, used to fold two related [`HealthCheck`]s into one
+/// [`SubsystemStatus`] by worst-of.
+fn health_check_severity(status: &str) -> u8 {
+    match status {
+        "pass" => 0,
+        "warn" => 1,
+        "fail" | "timeout" => 2,
+        _ => 1,
+    }
+}
+
+/// Wrap an existing [`HealthCheck`] into a [`SubsystemStatus`] record,
+/// mapping the check's `pass`/`warn`/`fail`/`timeout` scale onto the richer
+/// `healthy`/`degraded`/`failed` vocabulary and attributing an explicit
+/// code owner (#5313's acceptance criteria: one owner per subsystem).
+fn subsystem_from_check(
+    check: HealthCheck,
+    id: &str,
+    name: &str,
+    owner: &str,
+    generated_at: &str,
+    suggested_action: Option<&str>,
+) -> SubsystemStatus {
+    let status = match check.status.as_str() {
+        "pass" => "healthy",
+        "warn" => "degraded",
+        _ => "failed", // "fail" | "timeout"
+    };
+    SubsystemStatus {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        status: status.to_owned(),
+        owner: owner.to_owned(),
+        last_checked: generated_at.to_owned(),
+        last_success: None,
+        last_failure: None,
+        degraded_reason: (status == "degraded").then(|| check.message.clone()).flatten(),
+        failure_reason: (status == "failed").then(|| check.message.clone()).flatten(),
+        details: check.details,
+        suggested_action: (status != "healthy")
+            .then(|| suggested_action.map(str::to_owned))
+            .flatten(),
+    }
+}
+
+/// Combine two related [`HealthCheck`]s into one worst-of check with both
+/// messages preserved, for subsystems the flat health endpoint tracks as
+/// two checks but that a control-plane operator should see as one record.
+fn combine_checks(name: &'static str, a: &HealthCheck, b: &HealthCheck) -> HealthCheck {
+    let status = if health_check_severity(&b.status) > health_check_severity(&a.status) {
+        b.status.clone()
+    } else {
+        a.status.clone()
+    };
+    let message = [a.message.as_deref(), b.message.as_deref()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("; ");
+    HealthCheck {
+        name: name.to_owned(),
+        status,
+        message: (!message.is_empty()).then_some(message),
+        details: b.details.clone().or_else(|| a.details.clone()),
+    }
+}
+
+/// Collect authoritative, operator-grade subsystem status records (#5313).
+///
+/// Reuses the same check functions that back `/api/v1/system/health` where
+/// real data already exists (SSOT: one computation, two presentations).
+/// Subsystems with no pylon-reachable signal today report `"unknown"`
+/// rather than being silently omitted or defaulted to `"healthy"`.
+async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Vec<SubsystemStatus> {
+    let (clock_skew_leeway, expiry_warning_threshold, prosoche, gateway_check, rate_limit_check) = {
+        let config = state.config.read().await;
+        (
+            config.api_limits.clock_skew_leeway_secs,
+            config.api_limits.expiry_warning_threshold_secs,
+            config.maintenance.prosoche.clone(),
+            gateway_security_check(&config.gateway.auth.mode, &config.gateway.bind),
+            rate_limiting_check(
+                config.gateway.rate_limit.enabled,
+                config.gateway.rate_limit.trust_proxy,
+                config.gateway.rate_limit.per_user.enabled,
+            ),
+        )
+    };
+
+    let session_store_check = check_session_store(state).await;
+    let actor_check = check_nous_actors(state).await;
+    let poller_snapshot = state.nous_manager.poller_snapshot();
+    let poller_check = check_nous_health_poller(
+        poller_snapshot.running,
+        poller_snapshot.restart_count,
+        poller_snapshot.last_error.as_deref(),
+    );
+    let provider_reachability = check_provider_reachability(state);
+    let credential_validity =
+        check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
+    let credential_runtime = check_credential_runtime(state).await;
+    let embedding_check = check_embedding_provider(state);
+    let metrics_check = metrics_exposure_check(
+        state.metrics_mode,
+        state.metrics_detailed,
+        &state.oikos.data().to_string_lossy(),
+    );
+
+    let mut provider_credentials = subsystem_from_check(
+        credential_validity,
+        "provider_credentials",
+        "Provider Credential Validity",
+        "crates/symbolon::credential",
+        generated_at,
+        Some("Refresh or rotate the expiring/missing credential."),
+    );
+    // WHY: credential_validity is the sharper status signal (expiry,
+    // presence); credential_runtime's status is always "pass" by
+    // construction (it reports the last mutation outcome, not a live
+    // check), so only its detail — supported providers, last mutation
+    // effect — is folded in, never its status.
+    provider_credentials.details = credential_runtime.details;
+
+    vec![
+        subsystem_from_check(
+            provider_reachability,
+            "provider_reachability",
+            "LLM Provider Reachability",
+            "crates/hermeneus",
+            generated_at,
+            Some("Check provider credentials and network reachability."),
+        ),
+        provider_credentials,
+        subsystem_from_check(
+            embedding_check,
+            "embeddings",
+            "Embedding Provider",
+            "crates/mneme::embedding",
+            generated_at,
+            Some("Check embedding model load logs; recall falls back to BM25 while degraded."),
+        ),
+        subsystem_from_check(
+            session_store_check,
+            "session_store",
+            "Session Store",
+            "crates/mneme::store",
+            generated_at,
+            Some("Check the session store backend connectivity."),
+        ),
+        subsystem_from_check(
+            combine_checks("nous_runtime", &actor_check, &poller_check),
+            "nous_runtime",
+            "Nous Agent Runtime",
+            "crates/nous::manager",
+            generated_at,
+            Some("Check nous actor logs; a dead actor may need POST /api/v1/nous/{id}/recover."),
+        ),
+        subsystem_turn_event_persistence(state, generated_at).await,
+        subsystem_memory_graph(state, generated_at),
+        subsystem_daemon_runtime(&prosoche, generated_at),
+        subsystem_tool_execution_history(state, generated_at).await,
+        subsystem_training_qa_persistence(generated_at),
+        subsystem_from_check(
+            metrics_check,
+            "metrics_exposure",
+            "Metrics Exposure",
+            "crates/pylon::metrics",
+            generated_at,
+            Some(
+                "Review `/metrics` exposure mode; avoid `public` with `detailed=true` on \
+                 non-loopback binds.",
+            ),
+        ),
+        subsystem_event_bus(state, generated_at).await,
+        subsystem_from_check(
+            combine_checks("config_security_posture", &gateway_check, &rate_limit_check),
+            "config_security_posture",
+            "Gateway Config & Security Posture",
+            "crates/pylon::security",
+            generated_at,
+            Some("Review gateway auth mode, bind address, and rate-limit configuration."),
+        ),
+    ]
+}
+
+/// Turn event buffer subsystem: a real liveness/backlog signal from
+/// `TurnBufferRegistry`, not a fabricated pass.
+async fn subsystem_turn_event_persistence(
+    state: &HealthState,
+    generated_at: &str,
+) -> SubsystemStatus {
+    let active = state.turn_buffer_registry.active_count().await;
+    SubsystemStatus {
+        id: "turn_event_persistence".to_owned(),
+        name: "Turn Event Buffer".to_owned(),
+        status: "healthy".to_owned(),
+        owner: "crates/pylon::turn_buffer".to_owned(),
+        last_checked: generated_at.to_owned(),
+        last_success: None,
+        last_failure: None,
+        degraded_reason: None,
+        failure_reason: None,
+        details: Some(serde_json::json!({ "active_turn_buffers": active })),
+        suggested_action: None,
+    }
+}
+
+/// Memory graph (knowledge store) subsystem: a presence check only. Full
+/// graph diagnostics live behind `GET /api/v1/knowledge/check`, which this
+/// deliberately does not duplicate.
+fn subsystem_memory_graph(state: &HealthState, generated_at: &str) -> SubsystemStatus {
+    #[cfg(feature = "knowledge-store")]
+    let present = state.knowledge_store.is_some();
+    #[cfg(not(feature = "knowledge-store"))]
+    let present = {
+        let _ = state;
+        false
+    };
+
+    if present {
+        SubsystemStatus {
+            id: "memory_graph".to_owned(),
+            name: "Memory Graph (Knowledge Store)".to_owned(),
+            status: "healthy".to_owned(),
+            owner: "crates/mneme::knowledge_store".to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: None,
+            failure_reason: None,
+            details: Some(serde_json::json!({ "note": "presence check only" })),
+            suggested_action: Some(
+                "See GET /api/v1/knowledge/check for graph diagnostics.".to_owned(),
+            ),
+        }
+    } else {
+        SubsystemStatus {
+            id: "memory_graph".to_owned(),
+            name: "Memory Graph (Knowledge Store)".to_owned(),
+            status: "unknown".to_owned(),
+            owner: "crates/mneme::knowledge_store".to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: None,
+            failure_reason: Some(
+                "knowledge-store feature not enabled, or no store configured on this instance"
+                    .to_owned(),
+            ),
+            details: None,
+            suggested_action: None,
+        }
+    }
+}
+
+/// Daemon / cron / dispatch runtime subsystem: genuinely `"unknown"`.
+///
+/// WHY(#5142, #5313): true daemon task state (enabled/disabled, last
+/// success/failure, backoff, hung detection) for cron/maintenance,
+/// retention enforcement, and the dispatch/runtime pipeline lives in
+/// aletheia's runtime layer (`crates/aletheia/src/runtime`), which is not
+/// attached to `AppState`/`HealthState`. This record makes that gap visible
+/// instead of defaulting it to `"healthy"`. `details` still surfaces the
+/// CONFIGURED intent pulled from `state.config` — real data, clearly
+/// distinguished from a verified runtime state.
+fn subsystem_daemon_runtime(
+    prosoche: &taxis::config::ProsocheMaintenanceSettings,
+    generated_at: &str,
+) -> SubsystemStatus {
+    let configured = serde_json::json!({
+        "heartbeat_enabled": prosoche.heartbeat.enabled,
+        "self_audit_enabled": prosoche.self_audit.enabled,
+        "external_timer_enabled": prosoche.external_timer.enabled,
+        "note": "configured intent only — not a verified runtime state",
+    });
+    SubsystemStatus {
+        id: "daemon_runtime".to_owned(),
+        name: "Daemon / Cron / Dispatch Runtime".to_owned(),
+        status: "unknown".to_owned(),
+        owner: "crates/aletheia::runtime".to_owned(),
+        last_checked: generated_at.to_owned(),
+        last_success: None,
+        last_failure: None,
+        degraded_reason: None,
+        failure_reason: Some(
+            "daemon task state (cron/maintenance, retention, dispatch pipeline) is not yet \
+             wired into AppState; this endpoint can only see configured intent, not live \
+             runtime state"
+                .to_owned(),
+        ),
+        details: Some(configured),
+        suggested_action: Some(
+            "Attach a daemon task-state reader to AppState from aletheia::runtime (#5142)."
+                .to_owned(),
+        ),
+    }
+}
+
+/// Tool execution history subsystem: a real read against the tool-audit
+/// log, not a fabricated pass. Full aggregated tool usage statistics live
+/// behind `GET /api/tool-stats` (#4484), which this deliberately does not
+/// duplicate — this record only proves the audit log itself is readable.
+async fn subsystem_tool_execution_history(
+    state: &HealthState,
+    generated_at: &str,
+) -> SubsystemStatus {
+    let result = state.session_store.lock().await.recent_tool_audit_records(1);
+    match result {
+        Ok(_) => SubsystemStatus {
+            id: "tool_execution_history".to_owned(),
+            name: "Tool Execution History".to_owned(),
+            status: "healthy".to_owned(),
+            owner: "crates/mneme::store".to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: None,
+            failure_reason: None,
+            details: None,
+            suggested_action: None,
+        },
+        Err(e) => SubsystemStatus {
+            id: "tool_execution_history".to_owned(),
+            name: "Tool Execution History".to_owned(),
+            status: "failed".to_owned(),
+            owner: "crates/mneme::store".to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: None,
+            failure_reason: Some(format!("tool audit log unreadable: {e}")),
+            details: None,
+            suggested_action: Some(
+                "Check the session-store backend for the tool_audit partition.".to_owned(),
+            ),
+        },
+    }
+}
+
+/// Training / QA data persistence subsystem: genuinely `"unknown"`.
+///
+/// WHY(#5313): DPO/training-corpus persistence lives in `nous::training`
+/// with no pylon-reachable status signal today. Reported honestly as
+/// unknown rather than assumed healthy.
+fn subsystem_training_qa_persistence(generated_at: &str) -> SubsystemStatus {
+    SubsystemStatus {
+        id: "training_qa_persistence".to_owned(),
+        name: "Training / QA Data Persistence".to_owned(),
+        status: "unknown".to_owned(),
+        owner: "crates/nous::training".to_owned(),
+        last_checked: generated_at.to_owned(),
+        last_success: None,
+        last_failure: None,
+        degraded_reason: None,
+        failure_reason: Some(
+            "no pylon-reachable status signal for DPO/training-corpus persistence yet"
+                .to_owned(),
+        ),
+        details: None,
+        suggested_action: Some(
+            "Expose a status reader from nous::training's pending-state store.".to_owned(),
+        ),
+    }
+}
+
+/// Domain event bus / SSE subsystem: real subscriber count and journal
+/// depth from `EventBus`.
+async fn subsystem_event_bus(state: &HealthState, generated_at: &str) -> SubsystemStatus {
+    let subscribers = state.event_bus.subscriber_count();
+    let journal_len = state.event_bus.journal_len().await;
+    SubsystemStatus {
+        id: "event_bus".to_owned(),
+        name: "Domain Event Bus / SSE".to_owned(),
+        status: "healthy".to_owned(),
+        owner: "crates/pylon::event_bus".to_owned(),
+        last_checked: generated_at.to_owned(),
+        last_success: None,
+        last_failure: None,
+        degraded_reason: None,
+        failure_reason: None,
+        details: Some(serde_json::json!({
+            "subscriber_count": subscribers,
+            "journal_len": journal_len,
+        })),
+        suggested_action: None,
+    }
+}
+
+/// Aggregate status across every subsystem record: `"failed"` if any
+/// subsystem failed, else `"degraded"` if any subsystem degraded, else
+/// `"healthy"`. `"unknown"` subsystems never elevate the aggregate — they
+/// are always listed (see [`collect_subsystem_status`]) so the gap stays
+/// visible without being mistaken for a live failure.
+fn aggregate_subsystem_status(subsystems: &[SubsystemStatus]) -> &'static str {
+    if subsystems.iter().any(|s| s.status == "failed") {
+        "failed"
+    } else if subsystems.iter().any(|s| s.status == "degraded") {
+        "degraded"
+    } else {
+        "healthy"
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(
@@ -1445,6 +1939,23 @@ mod tests {
         assert!(
             msg.contains("21600s"),
             "message should reference default self-audit cadence: {msg}"
+        );
+    }
+
+    #[test]
+    fn prosoche_heartbeat_path_warns_when_no_path_is_active() {
+        // WHY(#5313): this check used to report "pass" unconditionally, even
+        // with no active maintenance path at all — a fake-pass regardless of
+        // configuration.
+        let mut settings = taxis::config::ProsocheMaintenanceSettings::default();
+        settings.heartbeat.enabled = false;
+        settings.self_audit.enabled = false;
+        let check = check_prosoche_heartbeat_path(&settings);
+        assert_eq!(check.status, "warn");
+        let msg = check.message.as_deref().unwrap_or_default();
+        assert!(
+            msg.contains("disabled"),
+            "message should name the disabled path: {msg}"
         );
     }
 

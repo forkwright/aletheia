@@ -498,6 +498,26 @@ pub(super) async fn body_string(response: axum::response::Response) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
+/// Shut down a spawned nous actor and wait until its channel is fully
+/// closed, so `nous_manager.get(id)` still returns a handle but any message
+/// to it (status, ping) fails — the "actor existed, then died" scenario
+/// distinct from "actor was never spawned".
+pub(super) async fn stop_actor_until_channel_closes(state: &AppState, id: &str) {
+    let handle = state.nous_manager.get(id).expect("actor handle");
+    handle.shutdown().await.expect("send shutdown");
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if handle.status().await.is_err() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("actor channel closes");
+}
+
 pub(super) async fn create_test_session(app: &axum::Router) -> serde_json::Value {
     let req = authed_request(
         "POST",

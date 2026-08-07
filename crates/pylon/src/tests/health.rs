@@ -485,3 +485,182 @@ async fn detailed_health_includes_data_dir_for_operator() {
         "operator data_dir should contain instance root {expected}; got {data_dir}"
     );
 }
+
+// ── /api/v1/system/status (#5313) ──
+
+#[tokio::test]
+async fn system_status_requires_auth() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(
+            Request::get("/api/v1/system/status")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn system_status_requires_operator() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_as(
+            "/api/v1/system/status",
+            symbolon::types::Role::Readonly,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn system_status_lists_every_subsystem_with_an_owner() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/status"))
+        .await
+        .unwrap();
+
+    assert_ne!(
+        resp.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "baseline test state should not have a genuinely failed subsystem"
+    );
+    let body = body_json(resp).await;
+    assert!(body["status"].is_string());
+    assert!(body["generated_at"].is_string());
+
+    let subsystems = body["subsystems"].as_array().expect("subsystems array");
+    let expected_ids = [
+        "provider_reachability",
+        "provider_credentials",
+        "embeddings",
+        "session_store",
+        "nous_runtime",
+        "turn_event_persistence",
+        "memory_graph",
+        "daemon_runtime",
+        "tool_execution_history",
+        "training_qa_persistence",
+        "metrics_exposure",
+        "event_bus",
+        "config_security_posture",
+    ];
+    let ids: Vec<&str> = subsystems.iter().filter_map(|s| s["id"].as_str()).collect();
+    for expected in expected_ids {
+        assert!(ids.contains(&expected), "missing subsystem: {expected}");
+    }
+
+    for subsystem in subsystems {
+        assert!(
+            subsystem["owner"].as_str().is_some_and(|o| !o.is_empty()),
+            "every subsystem needs a non-empty owner: {subsystem:?}"
+        );
+        assert!(subsystem["last_checked"].is_string());
+        let status = subsystem["status"].as_str().expect("status is a string");
+        assert!(
+            ["healthy", "degraded", "failed", "unknown"].contains(&status),
+            "unexpected status vocabulary: {status}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn system_status_reports_unknown_for_unwired_subsystems_without_failing_aggregate() {
+    // WHY(#5313): "unknown" must never be silently omitted, and must never
+    // be confused with "healthy" or force the aggregate to "failed" — a
+    // subsystem this endpoint cannot see yet is a gap to close, not
+    // evidence the system is down.
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/status"))
+        .await
+        .unwrap();
+
+    assert_ne!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body_json(resp).await;
+    let subsystems = body["subsystems"].as_array().expect("subsystems array");
+
+    for id in ["daemon_runtime", "training_qa_persistence"] {
+        let subsystem = subsystems
+            .iter()
+            .find(|s| s["id"] == id)
+            .unwrap_or_else(|| panic!("missing subsystem: {id}"));
+        assert_eq!(subsystem["status"], "unknown");
+        assert!(
+            subsystem["failure_reason"].is_string(),
+            "unknown subsystem should explain why: {subsystem:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn system_status_degrades_when_no_providers_registered() {
+    let (app, _dir) = app_no_providers().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/status"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "degraded");
+
+    let subsystems = body["subsystems"].as_array().expect("subsystems array");
+    let provider_reachability = subsystems
+        .iter()
+        .find(|s| s["id"] == "provider_reachability")
+        .expect("provider_reachability present");
+    assert_eq!(provider_reachability["status"], "degraded");
+    assert!(provider_reachability["degraded_reason"].is_string());
+}
+
+#[tokio::test]
+async fn system_status_fails_when_a_nous_actor_dies() {
+    let (state, _dir) = test_state().await;
+    stop_actor_until_channel_closes(&state, "syn").await;
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/status"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body_json(resp).await;
+    assert_eq!(body["status"], "failed");
+
+    let subsystems = body["subsystems"].as_array().expect("subsystems array");
+    let nous_runtime = subsystems
+        .iter()
+        .find(|s| s["id"] == "nous_runtime")
+        .expect("nous_runtime present");
+    assert_eq!(nous_runtime["status"], "failed");
+    assert!(nous_runtime["failure_reason"].is_string());
+}
+
+#[tokio::test]
+async fn system_status_turn_event_persistence_reports_a_count() {
+    let (app, _dir) = app().await;
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/status"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let subsystems = body["subsystems"].as_array().expect("subsystems array");
+    let turn_events = subsystems
+        .iter()
+        .find(|s| s["id"] == "turn_event_persistence")
+        .expect("turn_event_persistence present");
+    assert_eq!(turn_events["status"], "healthy");
+    assert_eq!(
+        turn_events["details"]["active_turn_buffers"], 0,
+        "no turns have streamed in this test state"
+    );
+}
