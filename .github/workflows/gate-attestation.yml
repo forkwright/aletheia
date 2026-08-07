@@ -194,6 +194,19 @@ jobs:
           scripts/krites-module-dag.py --format markdown --check crates/krites/module-dag.md
           scripts/krites-module-dag.py --wave-scope --check crates/krites/module-dag.wave-scope.json
 
+      # WHY: krites retirement plan wave 0.4 (metis-ops/deliverables/
+      # krites-replacement/PLAN.md Sec 3, kill criterion 10). `unmapped` --
+      # a SysOp variant, DataValue variant, or public Db-boundary item
+      # present in source with no row in crates/krites/CAPABILITY_MATRIX.toml
+      # -- is a build failure by design: the five capabilities lost from the
+      # prior retirement plan (MinHash LSH, time-travel/Validity, triggers,
+      # access levels, query registry) were all zero-call-site items nobody
+      # would have missed at review time. Runs unconditionally like the
+      # other pure-python checks in this job, not path-scoped, so a PR that
+      # touches krites without touching the matrix still gets caught.
+      - name: Check krites capability-coverage matrix
+        run: scripts/check-krites-capability-matrix.py
+
   gate-coverage-compile-checks:
     name: gate-coverage-compile-checks
     runs-on: ubuntu-latest
