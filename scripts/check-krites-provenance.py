@@ -214,13 +214,20 @@ def check_verbatim_recompute(rows: list[dict]) -> list[str]:
     value has drifted — the check that makes the published numbers
     self-verifying instead of trusted-forever. Skips (does not fail) when
     the snapshot is absent so this branch has no landing-order dependency
-    on wave0/drift-metric."""
+    on wave0/drift-metric.
+
+    WHY dual is included: a 'dual' row's file is still, physically, the
+    unmodified CozoDB-lineage copy soaking before deletion (PLAN.md §2) — it
+    carries a real upstream_path the same as a 'derived' row, and drifting
+    silently during the soak window is exactly the failure this check
+    exists to catch. Only 'sovereign' rows (upstream_path == 'none',
+    nothing to recompute against) are exempt."""
     if not UPSTREAM_SNAPSHOT_DIR.is_dir():
         print("krites-provenance: no upstream-snapshot/ present — skipping offline verbatim_pct recompute")
         return []
     errors = []
     for row in rows:
-        if row["status"] != "derived":
+        if row["status"] not in ("derived", "dual"):
             continue
         snapshot_path = UPSTREAM_SNAPSHOT_DIR / row["upstream_path"]
         if not snapshot_path.is_file():
