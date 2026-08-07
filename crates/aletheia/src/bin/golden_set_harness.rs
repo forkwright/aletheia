@@ -139,7 +139,7 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(feature = "recall")]
     {
-        run(args)
+        run(&args)
     }
 
     #[cfg(not(feature = "recall"))]
@@ -153,7 +153,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 #[cfg(feature = "recall")]
-fn run(args: Args) -> anyhow::Result<()> {
+fn run(args: &Args) -> anyhow::Result<()> {
     use mneme::embedding::create_provider;
     use mneme::knowledge_store::KnowledgeStore;
 
@@ -231,8 +231,8 @@ fn run(args: Args) -> anyhow::Result<()> {
             store.as_ref(),
             provider.as_ref(),
             q,
-            seed_entities.get(&q.id).cloned().unwrap_or_default(),
-            &args,
+            seed_entities.get(&q.id).map(Vec::as_slice).unwrap_or(&[]),
+            args,
         ));
     }
 
@@ -406,7 +406,7 @@ fn run_one_query(
     store: &mneme::knowledge_store::KnowledgeStore,
     provider: &dyn mneme::embedding::EmbeddingProvider,
     q: &GoldenQuery,
-    seed_entity_strs: Vec<String>,
+    seed_entity_strs: &[String],
     args: &Args,
 ) -> QueryResultRecord {
     use mneme::knowledge_store::HybridQuery;
@@ -423,7 +423,7 @@ fn run_one_query(
 
     let seed_entities: Vec<mneme::id::EntityId> = match seed_entity_strs
         .iter()
-        .map(|s| mneme::id::EntityId::new(s))
+        .map(mneme::id::EntityId::new)
         .collect::<Result<Vec<_>, _>>()
     {
         Ok(ids) => ids,
