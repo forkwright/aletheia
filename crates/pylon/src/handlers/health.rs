@@ -1289,8 +1289,9 @@ fn base64url_decode(s: &str) -> Result<Vec<u8>, ()> {
 fn health_check_severity(status: &str) -> u8 {
     match status {
         "pass" => 0,
-        "warn" => 1,
         "fail" | "timeout" => 2,
+        // "warn" and any unrecognized status are treated alike: not
+        // clean-pass, not confirmed-failed.
         _ => 1,
     }
 }
@@ -1351,14 +1352,30 @@ fn combine_checks(name: &'static str, a: &HealthCheck, b: &HealthCheck) -> Healt
     }
 }
 
-/// Collect authoritative, operator-grade subsystem status records (#5313).
+/// Raw check outputs gathered before subsystem-status assembly.
 ///
-/// Reuses the same check functions that back `/api/v1/system/health` where
-/// real data already exists (SSOT: one computation, two presentations).
-/// Subsystems with no pylon-reachable signal today report `"unknown"`
-/// rather than being silently omitted or defaulted to `"healthy"`.
-async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Vec<SubsystemStatus> {
-    let (clock_skew_leeway, expiry_warning_threshold, prosoche, gateway_check, rate_limit_check) = {
+/// Kept as one struct + one gathering function so `collect_subsystem_status`
+/// reads as pure assembly (map checks onto owned subsystem records) rather
+/// than interleaving data-gathering with presentation.
+struct FlatSubsystemChecks {
+    prosoche: taxis::config::ProsocheMaintenanceSettings,
+    gateway: HealthCheck,
+    rate_limit: HealthCheck,
+    session_store: HealthCheck,
+    actor: HealthCheck,
+    poller: HealthCheck,
+    provider_reachability: HealthCheck,
+    credential_validity: HealthCheck,
+    credential_runtime: HealthCheck,
+    embedding: HealthCheck,
+    metrics: HealthCheck,
+}
+
+/// Run every existing flat check function once (SSOT: the same computation
+/// backs both `/api/v1/system/health`'s flat array and this endpoint's
+/// richer per-subsystem records).
+async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemChecks {
+    let (clock_skew_leeway, expiry_warning_threshold, prosoche, gateway, rate_limit) = {
         let config = state.config.read().await;
         (
             config.api_limits.clock_skew_leeway_secs,
@@ -1373,10 +1390,10 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
         )
     };
 
-    let session_store_check = check_session_store(state).await;
-    let actor_check = check_nous_actors(state).await;
+    let session_store = check_session_store(state).await;
+    let actor = check_nous_actors(state).await;
     let poller_snapshot = state.nous_manager.poller_snapshot();
-    let poller_check = check_nous_health_poller(
+    let poller = check_nous_health_poller(
         poller_snapshot.running,
         poller_snapshot.restart_count,
         poller_snapshot.last_error.as_deref(),
@@ -1385,15 +1402,37 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
     let credential_validity =
         check_credential_validity(state, clock_skew_leeway, expiry_warning_threshold);
     let credential_runtime = check_credential_runtime(state).await;
-    let embedding_check = check_embedding_provider(state);
-    let metrics_check = metrics_exposure_check(
+    let embedding = check_embedding_provider(state);
+    let metrics = metrics_exposure_check(
         state.metrics_mode,
         state.metrics_detailed,
         &state.oikos.data().to_string_lossy(),
     );
 
-    let mut provider_credentials = subsystem_from_check(
+    FlatSubsystemChecks {
+        prosoche,
+        gateway,
+        rate_limit,
+        session_store,
+        actor,
+        poller,
+        provider_reachability,
         credential_validity,
+        credential_runtime,
+        embedding,
+        metrics,
+    }
+}
+
+/// Wrap `credential_validity` and `credential_runtime` into one
+/// `provider_credentials` record.
+fn subsystem_provider_credentials(
+    validity: HealthCheck,
+    runtime: HealthCheck,
+    generated_at: &str,
+) -> SubsystemStatus {
+    let mut status = subsystem_from_check(
+        validity,
         "provider_credentials",
         "Provider Credential Validity",
         "crates/symbolon::credential",
@@ -1405,20 +1444,35 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
     // construction (it reports the last mutation outcome, not a live
     // check), so only its detail — supported providers, last mutation
     // effect — is folded in, never its status.
-    provider_credentials.details = credential_runtime.details;
+    status.details = runtime.details;
+    status
+}
+
+/// Collect authoritative, operator-grade subsystem status records (#5313).
+///
+/// Reuses the same check functions that back `/api/v1/system/health` where
+/// real data already exists (SSOT: one computation, two presentations).
+/// Subsystems with no pylon-reachable signal today report `"unknown"`
+/// rather than being silently omitted or defaulted to `"healthy"`.
+async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Vec<SubsystemStatus> {
+    let checks = gather_flat_subsystem_checks(state).await;
 
     vec![
         subsystem_from_check(
-            provider_reachability,
+            checks.provider_reachability,
             "provider_reachability",
             "LLM Provider Reachability",
             "crates/hermeneus",
             generated_at,
             Some("Check provider credentials and network reachability."),
         ),
-        provider_credentials,
+        subsystem_provider_credentials(
+            checks.credential_validity,
+            checks.credential_runtime,
+            generated_at,
+        ),
         subsystem_from_check(
-            embedding_check,
+            checks.embedding,
             "embeddings",
             "Embedding Provider",
             "crates/mneme::embedding",
@@ -1426,7 +1480,7 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
             Some("Check embedding model load logs; recall falls back to BM25 while degraded."),
         ),
         subsystem_from_check(
-            session_store_check,
+            checks.session_store,
             "session_store",
             "Session Store",
             "crates/mneme::store",
@@ -1434,7 +1488,7 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
             Some("Check the session store backend connectivity."),
         ),
         subsystem_from_check(
-            combine_checks("nous_runtime", &actor_check, &poller_check),
+            combine_checks("nous_runtime", &checks.actor, &checks.poller),
             "nous_runtime",
             "Nous Agent Runtime",
             "crates/nous::manager",
@@ -1443,11 +1497,11 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
         ),
         subsystem_turn_event_persistence(state, generated_at).await,
         subsystem_memory_graph(state, generated_at),
-        subsystem_daemon_runtime(&prosoche, generated_at),
+        subsystem_daemon_runtime(&checks.prosoche, generated_at),
         subsystem_tool_execution_history(state, generated_at).await,
         subsystem_training_qa_persistence(generated_at),
         subsystem_from_check(
-            metrics_check,
+            checks.metrics,
             "metrics_exposure",
             "Metrics Exposure",
             "crates/pylon::metrics",
@@ -1459,7 +1513,7 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
         ),
         subsystem_event_bus(state, generated_at).await,
         subsystem_from_check(
-            combine_checks("config_security_posture", &gateway_check, &rate_limit_check),
+            combine_checks("config_security_posture", &checks.gateway, &checks.rate_limit),
             "config_security_posture",
             "Gateway Config & Security Posture",
             "crates/pylon::security",

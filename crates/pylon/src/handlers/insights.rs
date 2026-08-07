@@ -1287,8 +1287,11 @@ fn percentile_nearest_rank(sorted_values: &[u64], p: f64) -> u64 {
     }
     #[expect(
         clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
         clippy::as_conversions,
-        reason = "ceil() of a rank bounded by TOOL_AUDIT_FETCH_LIMIT fits usize"
+        reason = "p is always a fixed non-negative percentile constant (0.25/0.5/0.75/0.95) \
+                  from this file's own callers; ceil() of a rank bounded by \
+                  TOOL_AUDIT_FETCH_LIMIT fits usize"
     )]
     let rank = (p * usize_to_f64(sorted_values.len())).ceil() as usize; // kanon:ignore RUST/as-cast
     let idx = rank.saturating_sub(1).min(sorted_values.len() - 1);
@@ -1308,6 +1311,111 @@ fn invocation_record(record: &ToolAuditRecord) -> ToolInvocationRecord {
             None
         },
     }
+}
+
+/// Accumulate per-tool stats and per-date/per-tool series counts for every
+/// record within `[window_start, today]`.
+fn accumulate_windowed_tool_data(
+    records: &[ToolAuditRecord],
+    window_start: jiff::civil::Date,
+    today: jiff::civil::Date,
+) -> (
+    HashMap<String, ToolAccumulator>,
+    HashMap<String, HashMap<String, u64>>,
+) {
+    let mut per_tool: HashMap<String, ToolAccumulator> = HashMap::new();
+    let mut series: HashMap<String, HashMap<String, u64>> = HashMap::new();
+    for record in records {
+        let Some(date) = tool_record_date(record) else {
+            continue;
+        };
+        if date < window_start || date > today {
+            continue;
+        }
+        per_tool
+            .entry(record.tool_name.clone())
+            .or_default()
+            .record(record);
+
+        if let Some(bucket) = bucket_date(&record.created_at, None) {
+            *series
+                .entry(bucket)
+                .or_default()
+                .entry(record.tool_name.clone())
+                .or_insert(0) += 1;
+        }
+    }
+    (per_tool, series)
+}
+
+/// Narrow `per_tool`/`series`/`records` to the optional `tool` filter and
+/// produce the three detail collections of the response, time-series sorted
+/// by date.
+fn select_tool_detail(
+    per_tool: HashMap<String, ToolAccumulator>,
+    series: HashMap<String, HashMap<String, u64>>,
+    records: &[ToolAuditRecord],
+    tool_filter: Option<&str>,
+    window_start: jiff::civil::Date,
+    today: jiff::civil::Date,
+) -> (Vec<ToolStat>, Vec<ToolTimeSeriesBucket>, Vec<ToolInvocationRecord>) {
+    let in_window =
+        |r: &&ToolAuditRecord| tool_record_date(r).is_some_and(|d| d >= window_start && d <= today);
+
+    let (tools, mut time_series, invocations) = if let Some(name) = tool_filter {
+        let mut per_tool = per_tool;
+        let tools = per_tool
+            .remove(name)
+            .map(|acc| acc.into_stat(name.to_owned()))
+            .into_iter()
+            .collect();
+        let time_series = series
+            .into_iter()
+            .filter_map(|(date, mut counts)| {
+                let count = counts.remove(name)?;
+                Some(ToolTimeSeriesBucket {
+                    date,
+                    counts: HashMap::from([(name.to_owned(), count)]),
+                })
+            })
+            .collect();
+        let invocations = records
+            .iter()
+            .filter(|r| r.tool_name == name)
+            .filter(in_window)
+            .map(invocation_record)
+            .collect();
+        (tools, time_series, invocations)
+    } else {
+        let tools = per_tool
+            .into_iter()
+            .map(|(name, acc)| acc.into_stat(name))
+            .collect();
+        let time_series = series
+            .into_iter()
+            .map(|(date, counts)| ToolTimeSeriesBucket { date, counts })
+            .collect();
+        let invocations = records.iter().filter(in_window).map(invocation_record).collect();
+        (tools, time_series, invocations)
+    };
+    time_series.sort_by(|a, b| a.date.cmp(&b.date));
+    (tools, time_series, invocations)
+}
+
+/// Disclose when the tool-audit snapshot itself is bounded (see
+/// [`TOOL_AUDIT_FETCH_LIMIT`]), so wide-window totals are never silently
+/// presented as complete.
+fn tool_stats_data_unavailable(record_count: usize, days: u32) -> Vec<UnavailableMetric> {
+    if record_count < TOOL_AUDIT_FETCH_LIMIT {
+        return Vec::new();
+    }
+    vec![UnavailableMetric {
+        metric: "long_window_completeness".to_owned(),
+        reason: format!(
+            "tool-audit snapshot bounded to the {TOOL_AUDIT_FETCH_LIMIT} most recent \
+             records; week/month/{days}-day totals may undercount on a busy install"
+        ),
+    }]
 }
 
 /// Build the full `/api/tool-stats` response from a bounded newest-first
@@ -1333,28 +1441,7 @@ fn build_tool_stats(
     let prev_windowed = count_window(records, prev_window_start, prev_window_end);
     let periods = tool_period_windows(records, today);
 
-    let mut per_tool: HashMap<String, ToolAccumulator> = HashMap::new();
-    let mut series: HashMap<String, HashMap<String, u64>> = HashMap::new();
-    for record in records {
-        let Some(date) = tool_record_date(record) else {
-            continue;
-        };
-        if date < window_start || date > today {
-            continue;
-        }
-        per_tool
-            .entry(record.tool_name.clone())
-            .or_default()
-            .record(record);
-
-        if let Some(bucket) = bucket_date(&record.created_at, None) {
-            *series
-                .entry(bucket)
-                .or_default()
-                .entry(record.tool_name.clone())
-                .or_insert(0) += 1;
-        }
-    }
+    let (per_tool, series) = accumulate_windowed_tool_data(records, window_start, today);
 
     // WHY: most-used is always computed across every tool, even when `tool`
     // narrows the response below — `summary` is deliberately global (#4484).
@@ -1364,59 +1451,14 @@ fn build_tool_stats(
         .map(|(name, acc)| (name.clone(), acc.total))
         .unwrap_or_default();
 
-    let (tools, time_series, invocations) = if let Some(name) = query.tool.as_deref() {
-        let tools = per_tool
-            .remove(name)
-            .map(|acc| acc.into_stat(name.to_owned()))
-            .into_iter()
-            .collect();
-        let time_series = series
-            .into_iter()
-            .filter_map(|(date, mut counts)| {
-                let count = counts.remove(name)?;
-                Some(ToolTimeSeriesBucket {
-                    date,
-                    counts: HashMap::from([(name.to_owned(), count)]),
-                })
-            })
-            .collect();
-        let invocations = records
-            .iter()
-            .filter(|r| r.tool_name == name)
-            .filter(|r| tool_record_date(r).is_some_and(|d| d >= window_start && d <= today))
-            .map(invocation_record)
-            .collect();
-        (tools, time_series, invocations)
-    } else {
-        let tools = per_tool
-            .into_iter()
-            .map(|(name, acc)| acc.into_stat(name))
-            .collect();
-        let time_series = series
-            .into_iter()
-            .map(|(date, counts)| ToolTimeSeriesBucket { date, counts })
-            .collect();
-        let invocations = records
-            .iter()
-            .filter(|r| tool_record_date(r).is_some_and(|d| d >= window_start && d <= today))
-            .map(invocation_record)
-            .collect();
-        (tools, time_series, invocations)
-    };
-    let mut time_series: Vec<ToolTimeSeriesBucket> = time_series;
-    time_series.sort_by(|a, b| a.date.cmp(&b.date));
-
-    let data_unavailable = if records.len() >= TOOL_AUDIT_FETCH_LIMIT {
-        vec![UnavailableMetric {
-            metric: "long_window_completeness".to_owned(),
-            reason: format!(
-                "tool-audit snapshot bounded to the {TOOL_AUDIT_FETCH_LIMIT} most recent \
-                 records; week/month/{days}-day totals may undercount on a busy install"
-            ),
-        }]
-    } else {
-        Vec::new()
-    };
+    let (tools, time_series, invocations) = select_tool_detail(
+        per_tool,
+        series,
+        records,
+        query.tool.as_deref(),
+        window_start,
+        today,
+    );
 
     ToolStatsResponse {
         summary: ToolUsageSummary {
@@ -1436,7 +1478,7 @@ fn build_tool_stats(
         tools,
         time_series,
         invocations,
-        data_unavailable,
+        data_unavailable: tool_stats_data_unavailable(records.len(), days),
     }
 }
 
