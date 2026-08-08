@@ -5,7 +5,7 @@ use crossterm::event::{Event as TermEvent, MouseButton, MouseEventKind};
 use crate::api::types::SseEvent;
 use crate::app::App;
 use crate::events::{Event, StreamEvent};
-use crate::msg::Msg;
+use crate::msg::{Msg, NotificationKind};
 
 impl App {
     pub(crate) fn map_event(&self, event: Event) -> Option<Msg> {
@@ -116,7 +116,35 @@ impl App {
             SseEvent::DistillAfter { nous_id } => Msg::SseDistillAfter { nous_id },
             SseEvent::StreamLagged { dropped } => Msg::SseStreamLagged { dropped },
             SseEvent::Ping => Msg::Tick,
-            SseEvent::Error { message } => Msg::ShowError(message),
+            // WHY(#6357): a server-emitted error is a persistent condition an
+            // operator must acknowledge, not a transient one — route it to the
+            // top-of-viewport banner instead of the auto-expiring local toast.
+            SseEvent::Error { message } => Msg::ErrorBannerSet(message),
+            // WHY(#6357): `nous.lifecycle` is a live EventBus topic (agent
+            // created/restarted) this dashboard subscribes to but previously
+            // dropped on the floor via the catch-all below. `restart_required`
+            // is operator-actionable, so it renders as a Warning toast with a
+            // longer dwell time than an informational lifecycle change.
+            SseEvent::NousLifecycle {
+                nous_id,
+                event,
+                restart_required,
+            } => {
+                let message = if restart_required {
+                    format!("agent {nous_id}: {event} — restart required")
+                } else {
+                    format!("agent {nous_id}: {event}")
+                };
+                Msg::ToastPush {
+                    message,
+                    kind: if restart_required {
+                        NotificationKind::Warning
+                    } else {
+                        NotificationKind::Info
+                    },
+                    duration_secs: if restart_required { 10 } else { 5 },
+                }
+            }
             _ => Msg::Tick,
         }
     }
