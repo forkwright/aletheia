@@ -75,9 +75,15 @@ impl SessionTx<'_> {
             if previously.contains(&neighbour) {
                 continue;
             }
-            let val = [DataValue::from(dist), DataValue::Null, DataValue::from(false)];
-            let key_bytes = idx_table
-                .encode_key_for_store(&edge_key(level, target_key, &neighbour), Default::default())?;
+            let val = [
+                DataValue::from(dist),
+                DataValue::Null,
+                DataValue::from(false),
+            ];
+            let key_bytes = idx_table.encode_key_for_store(
+                &edge_key(level, target_key, &neighbour),
+                Default::default(),
+            )?;
             let val_bytes = idx_table.encode_val_only_for_store(&val, Default::default())?;
             self.store_tx.put(&key_bytes, &val_bytes)?;
         }
@@ -107,7 +113,11 @@ impl SessionTx<'_> {
             if already_deleted {
                 self.store_tx.del(&key_bytes)?;
             } else {
-                let val = [DataValue::from(dist), DataValue::Null, DataValue::from(true)];
+                let val = [
+                    DataValue::from(dist),
+                    DataValue::Null,
+                    DataValue::from(true),
+                ];
                 let val_bytes = idx_table.encode_val_only_for_store(&val, Default::default())?;
                 self.store_tx.put(&key_bytes, &val_bytes)?;
             }
@@ -266,7 +276,9 @@ impl SessionTx<'_> {
             if candidate_dist > *worst_kept {
                 break;
             }
-            for (neighbour, _) in self.hnsw_get_neighbours(&candidate, cur_level, idx_table, false)? {
+            for (neighbour, _) in
+                self.hnsw_get_neighbours(&candidate, cur_level, idx_table, false)?
+            {
                 if visited.contains(&neighbour) {
                     continue;
                 }

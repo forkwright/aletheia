@@ -24,7 +24,8 @@ fn open(path: &Path) -> TestDb {
 }
 
 fn run(db: &TestDb, script: &str) {
-    db.run_script(script, BTreeMap::new(), ScriptMutability::Mutable).unwrap();
+    db.run_script(script, BTreeMap::new(), ScriptMutability::Mutable)
+        .unwrap();
 }
 
 fn create_index(db: &TestDb) {
@@ -40,7 +41,10 @@ fn create_index(db: &TestDb) {
 
 /// Deterministic, well-separated coordinates — not random, so the test's
 /// own exact-kNN reference is reproducible without a seeded RNG dependency.
-#[expect(clippy::cast_precision_loss, reason = "test fixture with small integers")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "test fixture with small integers"
+)]
 fn vec_for(i: usize) -> [f32; 4] {
     let base = i as f32;
     [base, base * 0.3, ((i % 11) * 2) as f32, (i % 17) as f32]
@@ -51,7 +55,10 @@ fn insert_all(db: &TestDb, ids: impl Iterator<Item = usize>) {
         let v = vec_for(i);
         run(
             db,
-            &format!("?[id, vec] <- [[{i}, vec([{},{},{},{}])]] :put v {{}}", v[0], v[1], v[2], v[3]),
+            &format!(
+                "?[id, vec] <- [[{i}, vec([{},{},{},{}])]] :put v {{}}",
+                v[0], v[1], v[2], v[3]
+            ),
         );
     }
 }
@@ -75,7 +82,11 @@ fn exact_topk(present: &[usize], query: [f32; 4], k: usize) -> Vec<i64> {
         .iter()
         .map(|&i| {
             let v = vec_for(i);
-            let d: f64 = v.iter().zip(query.iter()).map(|(a, b)| f64::from(a - b).powi(2)).sum();
+            let d: f64 = v
+                .iter()
+                .zip(query.iter())
+                .map(|(a, b)| f64::from(a - b).powi(2))
+                .sum();
             (d, i64::try_from(i).unwrap_or(i64::MAX))
         })
         .collect();
@@ -100,7 +111,12 @@ fn entry_point_id(db: &TestDb) -> i64 {
     let base = tx.get_relation("v", false).unwrap();
     let (idx_handle, _manifest) = base.hnsw_indices.get("idx").unwrap().clone();
     let row = idx_handle
-        .scan_bounded_prefix(&tx, &[], &[DataValue::from(i64::MIN)], &[DataValue::from(1)])
+        .scan_bounded_prefix(
+            &tx,
+            &[],
+            &[DataValue::from(i64::MIN)],
+            &[DataValue::from(1)],
+        )
         .next()
         .expect("index must have an entry point after inserts")
         .unwrap();
@@ -188,11 +204,17 @@ fn close_reopen_preserves_recall_across_inserts_and_deletes() {
         for &q in &queries {
             let approx = search(&db, q, 10);
             for id in &approx {
-                assert!(!to_delete.contains(id), "deleted id {id} reappeared after reopen");
+                assert!(
+                    !to_delete.contains(id),
+                    "deleted id {id} reappeared after reopen"
+                );
             }
         }
         let avg = average_recall(&db, &queries, &remaining, 10);
-        assert!(avg >= 0.05, "post-delete-and-reopen average recall too low ({avg:.2})");
+        assert!(
+            avg >= 0.05,
+            "post-delete-and-reopen average recall too low ({avg:.2})"
+        );
     }
 }
 

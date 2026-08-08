@@ -102,7 +102,12 @@ pub(crate) type CompoundKey = (Tuple, usize, i32);
 
 /// Build a self-entry (degree/existence) key: `[level, key.., idx, subidx,
 /// key.., idx, subidx]` — the `fr == to` shape described on the module.
-pub(super) fn self_entry_key(level: i64, key: &[DataValue], idx: usize, subidx: i32) -> Vec<DataValue> {
+pub(super) fn self_entry_key(
+    level: i64,
+    key: &[DataValue],
+    idx: usize,
+    subidx: i32,
+) -> Vec<DataValue> {
     let mut out = Vec::with_capacity(key.len() * 2 + 5);
     out.push(DataValue::from(level));
     for _ in 0..2 {
@@ -257,12 +262,13 @@ impl VectorCache {
         use ndarray::Zip;
         match self.distance {
             HnswDistance::L2 => match (v1, v2) {
-                (Vector::F32(a), Vector::F32(b)) => Ok(f64::from(
-                    Zip::from(a).and(b).fold(0.0f32, |acc, &x, &y| {
+                (Vector::F32(a), Vector::F32(b)) => Ok(f64::from(Zip::from(a).and(b).fold(
+                    0.0f32,
+                    |acc, &x, &y| {
                         let d = x - y;
                         acc + d * d
-                    }),
-                )),
+                    },
+                ))),
                 (Vector::F64(a), Vector::F64(b)) => {
                     Ok(Zip::from(a).and(b).fold(0.0f64, |acc, &x, &y| {
                         let d = x - y;
@@ -312,10 +318,7 @@ impl VectorCache {
                 (Vector::F64(a), Vector::F64(b)) => Ok(1. - a.dot(b)),
                 _ => Err(InvalidOperationSnafu {
                     op: "hnsw_ip",
-                    reason: format!(
-                        "cannot compute inner product between {:?} and {:?}",
-                        v1, v2
-                    ),
+                    reason: format!("cannot compute inner product between {:?} and {:?}", v1, v2),
                 }
                 .build()
                 .into()),
@@ -433,7 +436,11 @@ mod tests {
         for i in 0..20 {
             cache.insert(dummy_key(i), Vector::F64(ndarray::Array1::zeros(4)));
         }
-        assert_eq!(cache.len(), 10, "cache must stay bounded at its configured capacity");
+        assert_eq!(
+            cache.len(),
+            10,
+            "cache must stay bounded at its configured capacity"
+        );
     }
 
     #[test]
@@ -443,10 +450,16 @@ mod tests {
             cache.insert(dummy_key(i), Vector::F64(ndarray::Array1::zeros(4)));
         }
         for i in 5..10 {
-            assert!(cache.cache.contains(&dummy_key(i)), "recently-inserted key {i} should remain");
+            assert!(
+                cache.cache.contains(&dummy_key(i)),
+                "recently-inserted key {i} should remain"
+            );
         }
         for i in 0..5 {
-            assert!(!cache.cache.contains(&dummy_key(i)), "oldest key {i} should have been evicted");
+            assert!(
+                !cache.cache.contains(&dummy_key(i)),
+                "oldest key {i} should have been evicted"
+            );
         }
     }
 
@@ -464,7 +477,10 @@ mod tests {
         let a = Vector::F64(ndarray::Array1::from_vec(vec![0.0, 0.0]));
         let b = Vector::F64(ndarray::Array1::from_vec(vec![3.0, 4.0]));
         let d = cache.dist(&a, &b).unwrap();
-        assert!((d - 25.0).abs() < 1e-10, "3-4-5 triangle: squared distance should be 25.0, got {d}");
+        assert!(
+            (d - 25.0).abs() < 1e-10,
+            "3-4-5 triangle: squared distance should be 25.0, got {d}"
+        );
     }
 
     #[test]
@@ -472,7 +488,10 @@ mod tests {
         let cache = VectorCache::new(HnswDistance::Cosine, 10);
         let v = Vector::F64(ndarray::Array1::from_vec(vec![1.0, 0.0, 0.0]));
         let d = cache.dist(&v, &v).unwrap();
-        assert!(d.abs() < 1e-10, "identical vectors must have ~0 cosine distance, got {d}");
+        assert!(
+            d.abs() < 1e-10,
+            "identical vectors must have ~0 cosine distance, got {d}"
+        );
     }
 
     /// SC-1: a zero-magnitude vector has no direction to compare — clamp to
@@ -483,7 +502,10 @@ mod tests {
         let zero = Vector::F64(ndarray::Array1::zeros(3));
         let other = Vector::F64(ndarray::Array1::from_vec(vec![1.0, 2.0, 3.0]));
         let d = cache.dist(&zero, &other).unwrap();
-        assert!(d.is_finite(), "zero-vector cosine distance must be finite, got {d}");
+        assert!(
+            d.is_finite(),
+            "zero-vector cosine distance must be finite, got {d}"
+        );
         assert!((0.0..=2.0).contains(&d));
     }
 
@@ -494,7 +516,10 @@ mod tests {
         let cache = VectorCache::new(HnswDistance::Cosine, 10);
         let a = Vector::F32(ndarray::Array1::from_vec(vec![1.0f32, 1.0, 1.0]));
         let d = cache.dist(&a, &a).unwrap();
-        assert!(d >= 0.0, "cosine distance of a vector with itself must never be negative, got {d}");
+        assert!(
+            d >= 0.0,
+            "cosine distance of a vector with itself must never be negative, got {d}"
+        );
     }
 
     #[test]
@@ -503,6 +528,9 @@ mod tests {
         let a = Vector::F64(ndarray::Array1::from_vec(vec![1.0, 0.0]));
         let b = Vector::F64(ndarray::Array1::from_vec(vec![0.5, 0.5]));
         let d = cache.dist(&a, &b).unwrap();
-        assert!((d - 0.5).abs() < 1e-10, "1 - dot([1,0],[0.5,0.5]) = 0.5, got {d}");
+        assert!(
+            (d - 0.5).abs() < 1e-10,
+            "1 - dot([1,0],[0.5,0.5]) = 0.5, got {d}"
+        );
     }
 }

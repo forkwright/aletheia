@@ -35,9 +35,15 @@ impl VisitedPool {
         for _ in 0..pool_size {
             // SAFETY: the queue's capacity is exactly `pool_size` and this
             // loop pushes at most `pool_size` times, so push never fails.
-            let _ = slots.push(FxHashSet::with_capacity_and_hasher(set_capacity, Default::default()));
+            let _ = slots.push(FxHashSet::with_capacity_and_hasher(
+                set_capacity,
+                Default::default(),
+            ));
         }
-        Self { slots, set_capacity }
+        Self {
+            slots,
+            set_capacity,
+        }
     }
 
     pub(crate) fn with_defaults() -> Self {
@@ -48,9 +54,9 @@ impl VisitedPool {
     /// allocation (graceful degradation, not a hard failure) if the pool is
     /// currently exhausted.
     pub(crate) fn acquire(&self) -> FxHashSet<CompoundKey> {
-        self.slots
-            .pop()
-            .unwrap_or_else(|| FxHashSet::with_capacity_and_hasher(self.set_capacity, Default::default()))
+        self.slots.pop().unwrap_or_else(|| {
+            FxHashSet::with_capacity_and_hasher(self.set_capacity, Default::default())
+        })
     }
 
     /// Return a set to the pool, clearing it first. If the pool is already
@@ -97,13 +103,20 @@ mod tests {
         let pool = VisitedPool::new(1, 64);
         let _held = pool.acquire();
         assert_eq!(pool.available(), 0);
-        assert!(pool.acquire().is_empty(), "a second acquire beyond capacity must still succeed");
+        assert!(
+            pool.acquire().is_empty(),
+            "a second acquire beyond capacity must still succeed"
+        );
     }
 
     #[test]
     fn release_beyond_capacity_drops_the_set_silently() {
         let pool = VisitedPool::new(1, 64);
         pool.release(FxHashSet::default());
-        assert_eq!(pool.available(), 1, "pool must not grow past its configured capacity");
+        assert_eq!(
+            pool.available(),
+            1,
+            "pool must not grow past its configured capacity"
+        );
     }
 }

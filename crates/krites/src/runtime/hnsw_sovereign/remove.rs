@@ -102,24 +102,31 @@ impl SessionTx<'_> {
             encountered_singleton |= neighbours.is_empty();
 
             for (neighbour, _dist) in neighbours {
-                let out_bytes = idx_table
-                    .encode_key_for_store(&edge_key(level, &target, &neighbour), Default::default())?;
+                let out_bytes = idx_table.encode_key_for_store(
+                    &edge_key(level, &target, &neighbour),
+                    Default::default(),
+                )?;
                 self.store_tx.del(&out_bytes)?;
-                let in_bytes = idx_table
-                    .encode_key_for_store(&edge_key(level, &neighbour, &target), Default::default())?;
+                let in_bytes = idx_table.encode_key_for_store(
+                    &edge_key(level, &neighbour, &target),
+                    Default::default(),
+                )?;
                 self.store_tx.del(&in_bytes)?;
 
                 let neighbour_self = self_entry_key(level, &neighbour.0, neighbour.1, neighbour.2);
                 let neighbour_self_bytes =
                     idx_table.encode_key_for_store(&neighbour_self, Default::default())?;
-                let existing = self.store_tx.get(&neighbour_self_bytes, false)?.ok_or_else(|| {
-                    InvalidOperationSnafu {
+                let existing =
+                    self.store_tx
+                        .get(&neighbour_self_bytes, false)?
+                        .ok_or_else(|| {
+                            InvalidOperationSnafu {
                         op: "hnsw_remove",
                         reason: "neighbour self-entry missing during removal — index is corrupted"
                             .to_string(),
                     }
                     .build()
-                })?;
+                        })?;
                 let mut neighbour_val = decode_edge_value(&existing)?;
                 let degree = neighbour_val[0].get_float().ok_or_else(|| {
                     InvalidOperationSnafu {
@@ -131,7 +138,8 @@ impl SessionTx<'_> {
                 neighbour_val[0] = DataValue::from(degree - 1.0);
                 let neighbour_val_bytes =
                     idx_table.encode_val_only_for_store(&neighbour_val, Default::default())?;
-                self.store_tx.put(&neighbour_self_bytes, &neighbour_val_bytes)?;
+                self.store_tx
+                    .put(&neighbour_self_bytes, &neighbour_val_bytes)?;
             }
         }
 
@@ -169,8 +177,10 @@ impl SessionTx<'_> {
             .next()
             .transpose()?;
 
-        let marker_key_bytes = idx_table
-            .encode_key_for_store(&entry_point_key(orig_table.metadata.keys.len()), Default::default())?;
+        let marker_key_bytes = idx_table.encode_key_for_store(
+            &entry_point_key(orig_table.metadata.keys.len()),
+            Default::default(),
+        )?;
 
         let Some(row) = candidate else {
             self.store_tx.del(&marker_key_bytes)?;
@@ -190,7 +200,8 @@ impl SessionTx<'_> {
             DataValue::Bytes(opaque_ref),
             DataValue::from(false),
         ];
-        let marker_val_bytes = idx_table.encode_val_only_for_store(&marker_val, Default::default())?;
+        let marker_val_bytes =
+            idx_table.encode_val_only_for_store(&marker_val, Default::default())?;
         self.store_tx.put(&marker_key_bytes, &marker_val_bytes)?;
         Ok(())
     }

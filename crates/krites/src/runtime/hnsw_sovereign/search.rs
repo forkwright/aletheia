@@ -44,7 +44,8 @@ impl SessionTx<'_> {
         }
         let q = convert_query_dtype(q, config.manifest.dtype);
 
-        let mut vec_cache = VectorCache::new(config.manifest.distance, DEFAULT_VECTOR_CACHE_CAPACITY);
+        let mut vec_cache =
+            VectorCache::new(config.manifest.distance, DEFAULT_VECTOR_CACHE_CAPACITY);
         let key_len = config.base_handle.metadata.keys.len();
 
         let Some(ep) = config
@@ -158,7 +159,9 @@ impl SessionTx<'_> {
                 let field_name = if cand_key.1 < key_len {
                     config.base_handle.metadata.keys[cand_key.1].name.clone()
                 } else {
-                    config.base_handle.metadata.non_keys[cand_key.1 - key_len].name.clone()
+                    config.base_handle.metadata.non_keys[cand_key.1 - key_len]
+                        .name
+                        .clone()
                 };
                 cand_tuple.push(DataValue::Str(field_name));
             }
@@ -230,7 +233,8 @@ mod tests {
 
     fn setup_db() -> DbInstance {
         let db = DbInstance::default();
-        db.run_default(":create vectors { id: Int => vec: <F32; 4> }").unwrap();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
         db.run_default(
             r"::hnsw create vectors:idx {
                 dim: 4, m: 16, dtype: F32, fields: [vec], distance: L2,
@@ -324,7 +328,8 @@ mod tests {
     #[test]
     fn cosine_zero_vector_does_not_produce_nan() {
         let db = DbInstance::default();
-        db.run_default(":create c { id: Int => vec: <F32; 3> }").unwrap();
+        db.run_default(":create c { id: Int => vec: <F32; 3> }")
+            .unwrap();
         db.run_default(
             r"::hnsw create c:idx {
                 dim: 3, m: 8, dtype: F32, fields: [vec], distance: Cosine, ef_construction: 20,
@@ -332,8 +337,10 @@ mod tests {
             }",
         )
         .unwrap();
-        db.run_default("?[id, vec] <- [[0, vec([0.0, 0.0, 0.0])]] :put c {}").unwrap();
-        db.run_default("?[id, vec] <- [[1, vec([1.0, 0.0, 0.0])]] :put c {}").unwrap();
+        db.run_default("?[id, vec] <- [[0, vec([0.0, 0.0, 0.0])]] :put c {}")
+            .unwrap();
+        db.run_default("?[id, vec] <- [[1, vec([1.0, 0.0, 0.0])]] :put c {}")
+            .unwrap();
         let res = db
             .run_default(
                 r"?[id, dist] := ~c:idx{id | query: vec([1.0, 0.0, 0.0]), k: 2, ef: 20, bind_distance: dist} :order dist",
@@ -342,8 +349,14 @@ mod tests {
         assert_eq!(res.rows.len(), 2);
         for row in &res.rows {
             let dist = row[1].get_float().unwrap();
-            assert!(dist.is_finite(), "distance must never be NaN/Inf, got {dist}");
-            assert!((0.0..=2.0).contains(&dist), "cosine distance must land in [0,2], got {dist}");
+            assert!(
+                dist.is_finite(),
+                "distance must never be NaN/Inf, got {dist}"
+            );
+            assert!(
+                (0.0..=2.0).contains(&dist),
+                "cosine distance must land in [0,2], got {dist}"
+            );
         }
         // The exact-parallel vector must sort ahead of the zero vector.
         assert_eq!(res.rows[0][0].get_int().unwrap(), 1);

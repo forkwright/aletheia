@@ -16,7 +16,10 @@
 //! the production (non-test) build has zero callers.
 #![cfg_attr(
     not(test),
-    expect(dead_code, reason = "infrastructure for future HNSW search-path integration")
+    expect(
+        dead_code,
+        reason = "infrastructure for future HNSW search-path integration"
+    )
 )]
 
 use ordered_float::OrderedFloat;
@@ -147,7 +150,11 @@ impl SessionTx<'_> {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, clippy::cast_precision_loss, reason = "test assertions and test-only numeric casts")]
+#[expect(
+    clippy::unwrap_used,
+    clippy::cast_precision_loss,
+    reason = "test assertions and test-only numeric casts"
+)]
 mod tests {
     use super::*;
     use crate::DbInstance;
@@ -171,15 +178,24 @@ mod tests {
     #[test]
     fn search_strategy_at_boundary() {
         let config = AdaptiveSearchConfig::with_threshold(10);
-        let below = if config.should_use_exact(10) { SearchStrategy::Exact } else { SearchStrategy::Approximate };
+        let below = if config.should_use_exact(10) {
+            SearchStrategy::Exact
+        } else {
+            SearchStrategy::Approximate
+        };
         assert_eq!(below, SearchStrategy::Exact);
-        let above = if config.should_use_exact(11) { SearchStrategy::Exact } else { SearchStrategy::Approximate };
+        let above = if config.should_use_exact(11) {
+            SearchStrategy::Exact
+        } else {
+            SearchStrategy::Approximate
+        };
         assert_eq!(above, SearchStrategy::Approximate);
     }
 
     fn setup_db() -> DbInstance {
         let db = DbInstance::default();
-        db.run_default(":create vectors { id: Int => vec: <F32; 4> }").unwrap();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
         db.run_default(
             r"::hnsw create vectors:idx {
                 dim: 4, m: 16, dtype: F32, fields: [vec], distance: L2,
@@ -210,11 +226,27 @@ mod tests {
         let q = Vector::F32(ndarray::Array1::from_vec(vec![5.0, 5.0, 5.0, 5.0]));
         let mut stack = vec![];
         let rows = tx
-            .hnsw_exact_knn(&q, 3, &base, &idx_handle, &mut vec_cache, &None, &mut stack, true)
+            .hnsw_exact_knn(
+                &q,
+                3,
+                &base,
+                &idx_handle,
+                &mut vec_cache,
+                &None,
+                &mut stack,
+                true,
+            )
             .unwrap();
-        assert_eq!(rows.len(), 3, "exact search must return k=3 rows on a 10-vector index");
+        assert_eq!(
+            rows.len(),
+            3,
+            "exact search must return k=3 rows on a 10-vector index"
+        );
         let ids: Vec<i64> = rows.iter().filter_map(|r| r[0].get_int()).collect();
-        assert!(ids.contains(&5), "id=5 (the exact match) must be among the top 3, got {ids:?}");
+        assert!(
+            ids.contains(&5),
+            "id=5 (the exact match) must be among the top 3, got {ids:?}"
+        );
     }
 
     #[test]
@@ -227,7 +259,16 @@ mod tests {
         let q = Vector::F32(ndarray::Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0]));
         let mut stack = vec![];
         let rows = tx
-            .hnsw_exact_knn(&q, 5, &base, &idx_handle, &mut vec_cache, &None, &mut stack, false)
+            .hnsw_exact_knn(
+                &q,
+                5,
+                &base,
+                &idx_handle,
+                &mut vec_cache,
+                &None,
+                &mut stack,
+                false,
+            )
             .unwrap();
         assert!(rows.is_empty());
     }

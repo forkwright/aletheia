@@ -83,7 +83,16 @@ impl SessionTx<'_> {
         else {
             // Empty index: this vector becomes the sole node and the entry point.
             let level = manifest.get_random_level();
-            return self.hnsw_put_fresh_at_levels(hash.as_ref(), tuple_key, idx, subidx, orig_table, idx_table, level, 0);
+            return self.hnsw_put_fresh_at_levels(
+                hash.as_ref(),
+                tuple_key,
+                idx,
+                subidx,
+                orig_table,
+                idx_table,
+                level,
+                0,
+            );
         };
 
         let bottom_level = ep[0].get_int().ok_or_else(|| {
@@ -146,7 +155,11 @@ impl SessionTx<'_> {
 
         let target: CompoundKey = (tuple_key.to_vec(), idx, subidx);
         for level in max(target_level, bottom_level)..=0 {
-            let m_max = if level == 0 { manifest.m_max0 } else { manifest.m_max };
+            let m_max = if level == 0 {
+                manifest.m_max0
+            } else {
+                manifest.m_max
+            };
             self.hnsw_search_level(
                 q,
                 manifest.ef_construction,
@@ -162,7 +175,8 @@ impl SessionTx<'_> {
             self.hnsw_write_self_entry(level, &target, neighbours.len(), hash.as_ref(), idx_table)?;
             for (neighbour, Reverse(OrderedFloat(dist))) in &neighbours {
                 self.hnsw_connect_at_level(
-                    level, &target, neighbour, *dist, m_max, manifest, idx_table, orig_table, vec_cache,
+                    level, &target, neighbour, *dist, m_max, manifest, idx_table, orig_table,
+                    vec_cache,
                 )?;
             }
         }
@@ -211,7 +225,11 @@ impl SessionTx<'_> {
         orig_table: &RelationHandle,
         vec_cache: &mut VectorCache,
     ) -> Result<()> {
-        let edge_val = [DataValue::from(dist), DataValue::Null, DataValue::from(false)];
+        let edge_val = [
+            DataValue::from(dist),
+            DataValue::Null,
+            DataValue::from(false),
+        ];
         let edge_val_bytes = idx_table.encode_val_only_for_store(&edge_val, Default::default())?;
         for (from, to) in [(target, neighbour), (neighbour, target)] {
             let key_bytes =
@@ -220,14 +238,19 @@ impl SessionTx<'_> {
         }
 
         let neighbour_self = self_entry_key(level, &neighbour.0, neighbour.1, neighbour.2);
-        let neighbour_self_bytes = idx_table.encode_key_for_store(&neighbour_self, Default::default())?;
-        let existing = self.store_tx.get(&neighbour_self_bytes, false)?.ok_or_else(|| {
-            InvalidOperationSnafu {
-                op: "hnsw_index",
-                reason: "neighbour self-entry missing during connect — index is corrupted".to_string(),
-            }
-            .build()
-        })?;
+        let neighbour_self_bytes =
+            idx_table.encode_key_for_store(&neighbour_self, Default::default())?;
+        let existing = self
+            .store_tx
+            .get(&neighbour_self_bytes, false)?
+            .ok_or_else(|| {
+                InvalidOperationSnafu {
+                    op: "hnsw_index",
+                    reason: "neighbour self-entry missing during connect — index is corrupted"
+                        .to_string(),
+                }
+                .build()
+            })?;
         let mut neighbour_val = decode_edge_value(&existing)?;
         #[expect(
             clippy::cast_possible_truncation,
@@ -247,12 +270,17 @@ impl SessionTx<'_> {
                 neighbour, m_max, level, manifest, idx_table, orig_table, vec_cache,
             )?;
         }
-        #[expect(clippy::cast_precision_loss, reason = "HNSW degree bounded by m_max (< 2^53)")]
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "HNSW degree bounded by m_max (< 2^53)"
+        )]
         {
             neighbour_val[0] = DataValue::from(degree as f64);
         }
-        let neighbour_val_bytes = idx_table.encode_val_only_for_store(&neighbour_val, Default::default())?;
-        self.store_tx.put(&neighbour_self_bytes, &neighbour_val_bytes)?;
+        let neighbour_val_bytes =
+            idx_table.encode_val_only_for_store(&neighbour_val, Default::default())?;
+        self.store_tx
+            .put(&neighbour_self_bytes, &neighbour_val_bytes)?;
         Ok(())
     }
 
@@ -288,7 +316,11 @@ impl SessionTx<'_> {
             self_key.push(DataValue::from(idx_to_i64(idx)));
             self_key.push(DataValue::from(i64::from(subidx)));
         }
-        let self_val = [DataValue::from(0.0), DataValue::Bytes(hash.to_vec()), DataValue::from(false)];
+        let self_val = [
+            DataValue::from(0.0),
+            DataValue::Bytes(hash.to_vec()),
+            DataValue::from(false),
+        ];
 
         let opaque_ref = idx_table.encode_key_for_store(&self_key, Default::default())?;
         let entry_point_val = [
@@ -300,7 +332,8 @@ impl SessionTx<'_> {
             idx_table.encode_key_for_store(&entry_point_key(key_len), Default::default())?;
         let entry_point_val_bytes =
             idx_table.encode_val_only_for_store(&entry_point_val, Default::default())?;
-        self.store_tx.put(&entry_point_key_bytes, &entry_point_val_bytes)?;
+        self.store_tx
+            .put(&entry_point_key_bytes, &entry_point_val_bytes)?;
 
         for level in bottom_level..=top_level {
             self_key[0] = DataValue::from(level);
@@ -418,7 +451,16 @@ impl SessionTx<'_> {
 
         let mut vec_cache = VectorCache::new(manifest.distance, DEFAULT_VECTOR_CACHE_CAPACITY);
         for (vec, field_idx, sub) in extracted {
-            self.hnsw_put_vector(tuple, vec, field_idx, sub, manifest, orig_table, idx_table, &mut vec_cache)?;
+            self.hnsw_put_vector(
+                tuple,
+                vec,
+                field_idx,
+                sub,
+                manifest,
+                orig_table,
+                idx_table,
+                &mut vec_cache,
+            )?;
         }
         Ok(true)
     }
@@ -447,8 +489,11 @@ impl SessionTx<'_> {
     /// `O(n)`: one canary scan plus one base-relation lookup per vector.
     #[cfg_attr(
         not(test),
-        expect(dead_code, reason = "maintenance entry point — exercised directly by tests; \
-                                     no in-crate scheduler to call it in production yet")
+        expect(
+            dead_code,
+            reason = "maintenance entry point — exercised directly by tests; \
+                                     no in-crate scheduler to call it in production yet"
+        )
     )]
     pub(crate) fn hnsw_check_consistency(
         &self,
@@ -492,7 +537,8 @@ mod tests {
     /// 4-dim F32/L2 HNSW index named `idx` on `vectors { id: Int => vec: <F32; 4> }`.
     fn setup_db() -> DbInstance {
         let db = DbInstance::default();
-        db.run_default(":create vectors { id: Int => vec: <F32; 4> }").unwrap();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
         db.run_default(
             r"::hnsw create vectors:idx {
                 dim: 4, m: 16, dtype: F32, fields: [vec], distance: L2,
@@ -505,7 +551,10 @@ mod tests {
 
     fn insert_vectors(db: &DbInstance, n: usize) {
         for i in 0..n {
-            #[expect(clippy::cast_precision_loss, reason = "test fixture with small integers")]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "test fixture with small integers"
+            )]
             let val = i as f32;
             db.run_default(&format!(
                 "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
@@ -519,7 +568,9 @@ mod tests {
         let db = setup_db();
         db.run_default("?[id, vec] <- [[42, vec([1.0, 2.0, 3.0, 4.0])]] :put vectors {}")
             .unwrap();
-        let res = db.run_default("?[id, vec] := *vectors{id, vec}, id = 42").unwrap();
+        let res = db
+            .run_default("?[id, vec] := *vectors{id, vec}, id = 42")
+            .unwrap();
         assert_eq!(res.rows.len(), 1);
         assert_eq!(res.rows[0][0].get_int().unwrap(), 42);
     }
@@ -540,14 +591,20 @@ mod tests {
                 .unwrap();
         }
         let res = db.run_default("?[id] := *vectors{id}").unwrap();
-        assert_eq!(res.rows.len(), 1, "duplicate insert must not create extra rows");
+        assert_eq!(
+            res.rows.len(),
+            1,
+            "duplicate insert must not create extra rows"
+        );
     }
 
     #[test]
     fn put_updated_vector_replaces_old() {
         let db = setup_db();
-        db.run_default("?[id, vec] <- [[7, vec([0.0, 0.0, 0.0, 0.0])]] :put vectors {}").unwrap();
-        db.run_default("?[id, vec] <- [[7, vec([9.0, 9.0, 9.0, 9.0])]] :put vectors {}").unwrap();
+        db.run_default("?[id, vec] <- [[7, vec([0.0, 0.0, 0.0, 0.0])]] :put vectors {}")
+            .unwrap();
+        db.run_default("?[id, vec] <- [[7, vec([9.0, 9.0, 9.0, 9.0])]] :put vectors {}")
+            .unwrap();
         let res = db
             .run_default(
                 r"?[id, dist] := ~vectors:idx{id | query: vec([9.0, 9.0, 9.0, 9.0]), k: 1, ef: 50, bind_distance: dist}",
@@ -578,7 +635,10 @@ mod tests {
                 r"?[id, dist] := ~vectors:idx{id | query: vec([50.0, 50.0, 50.0, 50.0]), k: 5, ef: 50, bind_distance: dist}",
             )
             .unwrap();
-        assert!(!res.rows.is_empty(), "graph must remain searchable after shrink events");
+        assert!(
+            !res.rows.is_empty(),
+            "graph must remain searchable after shrink events"
+        );
         assert!(res.rows.len() <= 5);
     }
 
@@ -641,11 +701,19 @@ mod tests {
             .scan_prefix(&tx, &vec![DataValue::from(1_i64)])
             .map(|r| r.unwrap())
             .collect();
-        assert_eq!(rows.len(), 1, "exactly one entry-point marker row must exist");
+        assert_eq!(
+            rows.len(),
+            1,
+            "exactly one entry-point marker row must exist"
+        );
         let row = &rows[0];
         assert_eq!(row[0], DataValue::from(1_i64));
         for field in &row[1..2 * key_len + 5] {
-            assert_eq!(*field, DataValue::Null, "every tuple-key field must be Null");
+            assert_eq!(
+                *field,
+                DataValue::Null,
+                "every tuple-key field must be Null"
+            );
         }
     }
 
@@ -656,7 +724,8 @@ mod tests {
     fn entry_point_marker_survives_deletes() {
         let db = setup_db();
         insert_vectors(&db, 30);
-        db.run_default("?[id] <- [[0],[1],[2],[3],[4]] :rm vectors {}").unwrap();
+        db.run_default("?[id] <- [[0],[1],[2],[3],[4]] :rm vectors {}")
+            .unwrap();
 
         let tx = db.transact().unwrap();
         let base = tx.get_relation("vectors", false).unwrap();
@@ -665,7 +734,11 @@ mod tests {
             .scan_prefix(&tx, &vec![DataValue::from(1_i64)])
             .map(|r| r.unwrap())
             .collect();
-        assert_eq!(rows.len(), 1, "the marker must still be exactly one row after deletes");
+        assert_eq!(
+            rows.len(),
+            1,
+            "the marker must still be exactly one row after deletes"
+        );
     }
 
     /// E24: `hnsw_check_consistency` must find a manufactured orphan (a
@@ -688,8 +761,13 @@ mod tests {
                 .encode_key_for_store(&key, crate::SourceSpan::default())
                 .unwrap();
             tx.store_tx.del(&encoded).unwrap();
-            let orphans = tx.hnsw_check_consistency(&manifest, &base, &idx_handle).unwrap();
-            assert_eq!(orphans, 1, "the manually-deleted row must be detected as an orphan");
+            let orphans = tx
+                .hnsw_check_consistency(&manifest, &base, &idx_handle)
+                .unwrap();
+            assert_eq!(
+                orphans, 1,
+                "the manually-deleted row must be detected as an orphan"
+            );
             tx.commit_tx().unwrap();
         }
 
@@ -704,7 +782,9 @@ mod tests {
         let tx = db.transact().unwrap();
         let base = tx.get_relation("vectors", false).unwrap();
         let (idx_handle, manifest) = base.hnsw_indices.get("idx").unwrap().clone();
-        let orphans = tx.hnsw_check_consistency(&manifest, &base, &idx_handle).unwrap();
+        let orphans = tx
+            .hnsw_check_consistency(&manifest, &base, &idx_handle)
+            .unwrap();
         assert_eq!(orphans, 0, "a fresh rebuild must carry no orphans");
     }
 
