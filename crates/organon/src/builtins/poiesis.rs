@@ -704,7 +704,14 @@ impl ToolExecutor for VerifyReportExecutor {
 
             match serde_json::to_string_pretty(&summary) {
                 Ok(json) => {
-                    if any_failed {
+                    if summary.insufficient_claims {
+                        Ok(ToolResult::error(format!(
+                            "VERIFY FAILED: manifest has {} claim(s), below the minimum of {} \
+                             required for a meaningful report\n{json}",
+                            summary.total,
+                            poiesis_verify::MIN_CLAIMS
+                        )))
+                    } else if any_failed {
                         Ok(ToolResult::error(format!(
                             "VERIFY FAILED: {}/{} claims passed\n{json}",
                             summary.passed, summary.total
