@@ -7,6 +7,18 @@ use crate::state::Overlay;
 
 impl crate::app::App {
     pub(super) fn map_key(&self, key: KeyEvent) -> Option<Msg> {
+        // WHY(#6357): the persistent error banner is dismissed explicitly by the
+        // operator (unlike the auto-expiring toast queue), so Ctrl+D is checked
+        // before any mode-specific routing -- an active overlay, editor session,
+        // or selection mode must not be able to swallow the dismiss key while a
+        // server-pushed error is showing.
+        if self.viewport.error_banner.is_some()
+            && key.modifiers == KeyModifiers::CONTROL
+            && key.code == KeyCode::Char('d')
+        {
+            return Some(Msg::ErrorBannerDismiss);
+        }
+
         // WHY: Ctrl+C during an active turn cancels it immediately rather than quitting.
         // This is the highest-priority check so overlays and selection mode cannot
         // intercept it -- the user's intent is unambiguous when a turn is running.
